@@ -31,7 +31,7 @@ jobs:
           cache: pip
           cache-dependency-path: src/templates.ts
 
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: "1.23"
           cache-dependency-path: src/standard-templates.ts
