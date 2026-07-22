@@ -1,0 +1,73 @@
+name: Release Liftoff
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: Run all release checks without publishing to npm
+        required: true
+        default: true
+        type: boolean
+  push:
+    tags:
+      - v*
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: Publish @msn-control/liftoff
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: src/templates.ts
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+          cache-dependency-path: src/standard-templates.ts
+
+      - uses: opentofu/setup-opentofu@v1
+        with:
+          tofu_version: 1.12.5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run package check
+        run: npm run check
+
+      - name: Run package smoke test
+        run: npm run smoke:package
+
+      - name: Inspect publish package
+        run: npm pack --dry-run --json
+
+      - name: Select npm dist-tag
+        id: dist-tag
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          if [[ "$version" == *-* ]]; then
+            echo "tag=next" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=latest" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish to npm
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
+        run: npm publish --access public --provenance --tag "${{ steps.dist-tag.outputs.tag }}"

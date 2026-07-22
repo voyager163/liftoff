@@ -1,0 +1,54 @@
+{
+  "name": "@msn-control/liftoff",
+  "version": "0.3.2",
+  "description": "Mission Control Liftoff CLI for scaffolding governed GenAI and standard API applications.",
+  "type": "module",
+  "license": "GPL-3.0-only",
+  "homepage": "https://github.com/voyager163/liftoff#readme",
+  "bugs": {
+    "url": "https://github.com/voyager163/liftoff/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/voyager163/liftoff.git"
+  },
+  "keywords": [
+    "genai",
+    "api",
+    "cli",
+    "scaffold",
+    "fastapi",
+    "fastify",
+    "golang",
+    "pydanticai",
+    "opentofu",
+    "openspec",
+    "mission-control"
+  ],
+  "bin": {
+    "liftoff": "dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "smoke:package": "npm run build && node scripts/package-smoke-test.mjs",
+    "check": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.10",
+    "typescript": "^5.5.4",
+    "vitest": "^4.1.9"
+  }
+}
