@@ -7,6 +7,7 @@ import { spawnSync } from 'node:child_process';
 
 const packageRoot = process.cwd();
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
+const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -70,7 +71,7 @@ try {
   await mkdir(homeDirectory, { recursive: true });
   await mkdir(outsideDirectory, { recursive: true });
 
-  const pack = run('npm', ['pack', '--json', '--pack-destination', packDirectory]);
+  const pack = run(npmCommand, ['pack', '--json', '--pack-destination', packDirectory]);
   const packResults = JSON.parse(pack.stdout);
   const packResult = packResults[0];
   if (!packResult?.filename) {
@@ -95,7 +96,7 @@ try {
     HOME: homeDirectory,
     npm_config_cache: npmCache
   };
-  run('npm', ['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {
+  run(npmCommand, ['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {
     cwd: outsideDirectory,
     env: npmEnv
   });
