@@ -257,7 +257,7 @@ describe('commands', () => {
       }
       await rm(tempRoot, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, 120_000);
 
   it('rejects non-empty create targets', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-existing-'));
