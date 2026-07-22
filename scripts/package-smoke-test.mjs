@@ -69,6 +69,13 @@ function resolveInstalledBinary(prefix) {
     : path.join(prefix, 'bin', 'liftoff');
 }
 
+function resolveInstalledEntrypoint(prefix) {
+  const modulesDirectory = process.platform === 'win32'
+    ? path.join(prefix, 'node_modules')
+    : path.join(prefix, 'lib', 'node_modules');
+  return path.join(modulesDirectory, '@msn-control', 'liftoff', 'dist', 'cli.js');
+}
+
 try {
   const packDirectory = path.join(tempRoot, 'pack');
   const installPrefix = path.join(tempRoot, 'global');
@@ -113,8 +120,12 @@ try {
   if (!existsSync(liftoffBinary)) {
     throw new Error(`Installed liftoff binary not found at ${liftoffBinary}`);
   }
+  const liftoffEntrypoint = resolveInstalledEntrypoint(installPrefix);
+  if (!existsSync(liftoffEntrypoint)) {
+    throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
+  }
 
-  const help = run(liftoffBinary, ['help'], {
+  const help = run(process.execPath, [liftoffEntrypoint, 'help'], {
     cwd: outsideDirectory,
     env: npmEnv
   });
@@ -122,7 +133,7 @@ try {
     throw new Error('Installed liftoff help output did not include the expected heading');
   }
 
-  const createHelp = run(liftoffBinary, ['create', '--help'], {
+  const createHelp = run(process.execPath, [liftoffEntrypoint, 'create', '--help'], {
     cwd: outsideDirectory,
     env: npmEnv
   });
@@ -130,7 +141,7 @@ try {
     throw new Error('Installed liftoff command help did not include create usage');
   }
 
-  const missingValue = runFailure(liftoffBinary, ['plan', '--pattern'], {
+  const missingValue = runFailure(process.execPath, [liftoffEntrypoint, 'plan', '--pattern'], {
     cwd: outsideDirectory,
     env: npmEnv
   });
@@ -139,9 +150,9 @@ try {
   }
 
   const typo = runFailure(
-    liftoffBinary,
+    process.execPath,
     [
-      'create', 'typo-app', '--no-genai', '--api', 'node', '--cluod', 'aws',
+      liftoffEntrypoint, 'create', 'typo-app', '--no-genai', '--api', 'node', '--cluod', 'aws',
       '--region', 'eastus', '--spec', 'openspec', '--frontned', '--environments', 'dev', '--yes'
     ],
     { cwd: outsideDirectory, env: npmEnv }
@@ -150,7 +161,7 @@ try {
     throw new Error('Installed liftoff did not reject a mistyped create flag before generation');
   }
 
-  const badSubcommand = runFailure(liftoffBinary, ['dev', 'destroy'], {
+  const badSubcommand = runFailure(process.execPath, [liftoffEntrypoint, 'dev', 'destroy'], {
     cwd: outsideDirectory,
     env: npmEnv
   });
