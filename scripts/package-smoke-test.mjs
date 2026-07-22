@@ -7,7 +7,11 @@ import { spawnSync } from 'node:child_process';
 
 const packageRoot = process.cwd();
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
-const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const npmCliPath = process.env.npm_execpath;
+
+if (!npmCliPath) {
+  throw new Error('npm_execpath is required. Run this smoke test through npm.');
+}
 
 function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
@@ -42,6 +46,10 @@ function runFailure(command, args, options = {}) {
   return result;
 }
 
+function runNpm(args, options = {}) {
+  return run(process.execPath, [npmCliPath, ...args], options);
+}
+
 function assertPackageContains(packResult, expectedPath) {
   if (!packResult.files.some((file) => file.path === expectedPath)) {
     throw new Error(`Packed package is missing ${expectedPath}`);
@@ -71,7 +79,7 @@ try {
   await mkdir(homeDirectory, { recursive: true });
   await mkdir(outsideDirectory, { recursive: true });
 
-  const pack = run(npmCommand, ['pack', '--json', '--pack-destination', packDirectory]);
+  const pack = runNpm(['pack', '--json', '--pack-destination', packDirectory]);
   const packResults = JSON.parse(pack.stdout);
   const packResult = packResults[0];
   if (!packResult?.filename) {
@@ -96,7 +104,7 @@ try {
     HOME: homeDirectory,
     npm_config_cache: npmCache
   };
-  run(npmCommand, ['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {
+  runNpm(['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {
     cwd: outsideDirectory,
     env: npmEnv
   });
