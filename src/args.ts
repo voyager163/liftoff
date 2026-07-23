@@ -155,6 +155,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (argv[0] === '--help') {
     return { command: 'help', positional: [], flags: {} };
   }
+  if (argv[0] === '--version') {
+    return { command: 'version', positional: [], flags: {} };
+  }
 
   const command = argv[0];
   if (command.startsWith('-')) {

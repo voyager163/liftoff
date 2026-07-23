@@ -2,7 +2,9 @@
 
 ## Supported versions
 
-Security fixes target the current stable `@msn-control/liftoff` release. Upgrade to the npm `latest` dist-tag before reporting an issue that may already be resolved.
+Security fixes target the current stable `@msn-control/liftoff` release on the canonical registry at `https://registry.npmjs.org`. Versions before 0.3.0 are unsupported. Check the canonical `latest` dist-tag and run `liftoff --version` after upgrading before reporting an issue that may already be resolved.
+
+Managed registries can lag behind canonical npm. If an approved mirror exposes an older release, stop onboarding and ask the mirror owner to synchronize it; use direct canonical npm only where organizational policy permits. A successful installation of an older mirrored version does not make that version supported.
 
 ## Report a vulnerability
 

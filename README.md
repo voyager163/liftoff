@@ -8,17 +8,21 @@ Source, issues, and contribution guidance live at [github.com/voyager163/liftoff
 
 ## Installation
 
-Install the latest stable CLI globally:
+The authoritative Liftoff release registry is `https://registry.npmjs.org`. Where direct public npm access is permitted, verify and install the latest stable CLI explicitly from that registry:
 
 ```bash
-npm install -g @msn-control/liftoff@latest
+npm view @msn-control/liftoff@latest version --registry=https://registry.npmjs.org
+npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
 ```
 
-After installation, confirm the command is available:
+After installation, confirm the resolved version and command availability:
 
 ```bash
+liftoff --version
 liftoff help
 ```
+
+Versions before 0.3.0 are unsupported and must not be used for new projects. If npm is configured to use a managed registry or mirror, query `@msn-control/liftoff@latest` through that registry before installing and compare it with the canonical version. Stop if the managed registry exposes an older version or rejects the current explicit version; ask the mirror owner to synchronize or approve the release before onboarding resumes. Liftoff does not modify `.npmrc` or bypass managed-registry policy automatically.
 
 ## Quick Start
 
@@ -213,6 +217,8 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the contribution workflow and [SECURI
 
 ## Release
 
-The `Release Liftoff` workflow builds, tests, packs, smoke-installs, and publishes `@msn-control/liftoff` from this repository. Stable versions publish with the `latest` npm dist-tag; prerelease versions publish with `next`.
+The `Release Liftoff` workflow builds, tests, packs, smoke-installs, and publishes `@msn-control/liftoff` from this repository. Stable versions publish with the `latest` npm dist-tag; prerelease versions publish with `next`. After publication, the workflow waits for canonical npm propagation, clean-installs the selected dist-tag into an isolated prefix, verifies its package version, and executes installed CLI commands. A mismatch fails the workflow even though npm has already accepted immutable package bytes.
 
 Releases use npm trusted publishing with provenance from this public repository. Publishing remains blocked unless npm authorizes `.github/workflows/release.yml` for `voyager163/liftoff`.
+
+Canonical publication does not prove that an external managed mirror has synchronized. Organizations using a mirror should gate their internal release announcement on that mirror exposing the canonical stable version. See [CONTRIBUTING.md](CONTRIBUTING.md) for post-publish recovery and historical-version deprecation procedures.

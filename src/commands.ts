@@ -51,6 +51,9 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
           printHelp(context.stdout);
         }
         return 0;
+      case 'version':
+        context.stdout.write(`Liftoff ${liftoffVersion}\n`);
+        return 0;
       case 'create':
         return await createCommand(parsed, context);
       case 'plan':
@@ -701,11 +704,10 @@ function cloudLayer(cloud: string): DoctorLayer {
 
 async function lookupLatestPublishedVersion(): Promise<string | undefined> {
   const registry = process.env.LIFTOFF_REGISTRY ?? 'https://registry.npmjs.org';
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 2000);
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
     const response = await fetch(`${registry}/@msn-control%2fliftoff/latest`, { signal: controller.signal });
-    clearTimeout(timer);
     if (!response.ok) {
       return undefined;
     }
@@ -713,7 +715,35 @@ async function lookupLatestPublishedVersion(): Promise<string | undefined> {
     return data.version;
   } catch {
     return undefined; // offline or unreachable: doctor stays quiet about freshness
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+async function cliLayer(): Promise<DoctorLayer> {
+  const checks: DoctorCheck[] = [
+    { label: 'version', severity: 'ok', detail: `Liftoff ${liftoffVersion}` }
+  ];
+  const latest = await lookupLatestPublishedVersion();
+  if (!latest) {
+    return { title: 'CLI', checks };
+  }
+
+  if (compareSemver(latest, liftoffVersion) > 0) {
+    checks.push({
+      label: 'cli freshness',
+      severity: 'warn',
+      detail: `Liftoff ${latest} is published, this CLI is ${liftoffVersion}`,
+      remedy: `install Liftoff ${latest} from an approved registry that exposes it; where direct public npm access is permitted: npm install -g @msn-control/liftoff@${latest} --registry=https://registry.npmjs.org`
+    });
+  } else {
+    checks.push({
+      label: 'cli freshness',
+      severity: 'ok',
+      detail: `running ${liftoffVersion}, latest stable ${latest}`
+    });
+  }
+  return { title: 'CLI', checks };
 }
 
 async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Promise<DoctorLayer> {
@@ -743,16 +773,6 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
   }
 
   checks.push(stackProjectCheck(projectRoot, manifest.project.apiStack));
-
-  const latest = await lookupLatestPublishedVersion();
-  if (latest && compareSemver(latest, liftoffVersion) > 0) {
-    checks.push({
-      label: 'cli freshness',
-      severity: 'warn',
-      detail: `Liftoff ${latest} is published, this CLI is ${liftoffVersion}`,
-      remedy: 'npm install -g @msn-control/liftoff@latest'
-    });
-  }
 
   try {
     const config = await loadConfigOptions('liftoff.config.json', projectRoot);
@@ -853,6 +873,7 @@ async function doctorCommand(parsed: ParsedArgs, context: CommandContext): Promi
     }
   }
 
+  layers.push(await cliLayer());
   const environment = environmentLayer(manifest?.project.apiStack);
   layers.push(environment);
   const dockerAvailable = environment.checks.some((check) => check.label === 'docker' && check.severity === 'ok');
@@ -964,7 +985,10 @@ function hasMissingCreateInputs(options: ProjectOptions): boolean {
 }
 
 function printHelp(stream: NodeJS.WritableStream): void {
-  stream.write(`Mission Control Liftoff\n\n`);
+  stream.write(`Mission Control Liftoff ${liftoffVersion}\n\n`);
+  stream.write(`Global options:\n`);
+  stream.write(`  --version   Show the installed Liftoff version\n`);
+  stream.write(`  --help      Show general help\n\n`);
   stream.write(`Commands:\n`);
   stream.write(`  create      Generate a new project\n`);
   stream.write(`  plan        Preview generated artifacts\n`);

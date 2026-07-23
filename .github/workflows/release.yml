@@ -71,3 +71,7 @@ jobs:
       - name: Publish to npm
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
         run: npm publish --access public --provenance --tag "${{ steps.dist-tag.outputs.tag }}"
+
+      - name: Verify published package from canonical npm
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
+        run: npm run verify:published -- "${{ steps.dist-tag.outputs.tag }}"
