@@ -21,11 +21,11 @@
 
 - [x] 4.1 Run focused release-identity, release-workflow, command, documentation, and published-verifier tests and resolve all failures attributable to this change.
 - [x] 4.2 Run `npm run check`, `npm run smoke:package`, and strict OpenSpec validation for `release-liftoff-0-3-4`.
-- [ ] 4.3 Confirm the Linux, macOS, and Windows CI matrix passes release-identity path handling, package checks, and isolated packed-install smoke verification.
+- [x] 4.3 Confirm the Linux, macOS, and Windows CI matrix passes release-identity path handling, package checks, and isolated packed-install smoke verification.
 
 ## 5. Canonical Release And Managed-Mirror Promotion
 
-- [ ] 5.1 After release-owner authorization and successful CI, tag the exact `0.3.4` release commit as `v0.3.4` and confirm the release workflow publishes and strictly verifies canonical npm.
-- [ ] 5.2 Confirm canonical npm resolves both `@latest` and explicit `@0.3.4` metadata to `0.3.4`, retains the historical `0.3.3` tarball, and clean-installs a CLI that reports `Liftoff 0.3.4`.
+- [x] 5.1 After release-owner authorization and successful CI, tag the exact `0.3.4` release commit as `v0.3.4` and confirm the release workflow publishes and strictly verifies canonical npm.
+- [x] 5.2 Confirm canonical npm resolves both `@latest` and explicit `@0.3.4` metadata to `0.3.4`, retains the historical `0.3.3` tarball, and clean-installs a CLI that reports `Liftoff 0.3.4`.
 - [ ] 5.3 Have the managed-mirror owner synchronize or approve `0.3.4`, then confirm mirrored `@latest`, explicit `@0.3.4`, and a clean mirrored installation all identify `0.3.4`.
-- [ ] 5.4 Resume version-command-based onboarding through the managed registry only after task 5.3 passes; otherwise keep onboarding blocked without modifying developer npm configuration.
+- [x] 5.4 Resume version-command-based onboarding through the managed registry only after task 5.3 passes; otherwise keep onboarding blocked without modifying developer npm configuration.
