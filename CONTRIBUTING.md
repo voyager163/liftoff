@@ -34,6 +34,15 @@ Filesystem and manifest changes must remain portable across Windows, macOS, and 
 
 The public release authority is `https://registry.npmjs.org`. The release workflow performs local package checks before publishing and strict canonical verification afterward. The post-publish verifier must remain after `npm publish`, must receive the selected `latest` or `next` dist-tag, and must not use `continue-on-error` or legacy compatibility mode.
 
+Before tagging a release, verify that root package and lockfile metadata agree. The first command is a local metadata-only dry run; the second additionally proves that the intended Git tag exactly matches the package version:
+
+```bash
+npm run verify:release-identity
+npm run verify:release-identity -- v0.3.4
+```
+
+The release tag, root package metadata, root lockfile metadata, packed package version, and installed `liftoff --version` output must all identify the same release.
+
 If canonical post-publish verification fails, do not announce the release as complete. Compare the expected and observed dist-tag versions. Correct the dist-tag when the expected immutable package already exists; otherwise publish a corrected patch release. Do not unpublish a released package as routine recovery.
 
 A successful canonical release does not make an external managed mirror ready. Teams using a managed registry must withhold internal installation guidance until the mirror exposes both the canonical stable dist-tag and its explicit version and a clean mirrored install reports the expected package version.

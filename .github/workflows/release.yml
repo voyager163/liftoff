@@ -57,6 +57,16 @@ jobs:
       - name: Inspect publish package
         run: npm pack --dry-run --json
 
+      - name: Verify release identity
+        env:
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: |
+          if [[ -n "$RELEASE_TAG" ]]; then
+            npm run verify:release-identity -- "$RELEASE_TAG"
+          else
+            npm run verify:release-identity
+          fi
+
       - name: Select npm dist-tag
         id: dist-tag
         shell: bash

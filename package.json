@@ -1,6 +1,6 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.3.3",
+  "version": "0.3.4",
   "description": "Mission Control Liftoff CLI for scaffolding governed GenAI and standard API applications.",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -41,6 +41,7 @@
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "smoke:package": "npm run build && node scripts/package-smoke-test.mjs",
+    "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
     "verify:published": "npm run build && node scripts/verify-published-package.mjs",
     "check": "npm run build && npm test"
   },
