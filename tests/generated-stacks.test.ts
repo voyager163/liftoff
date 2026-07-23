@@ -2,13 +2,14 @@ import { spawnSync } from 'node:child_process';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import ts from 'typescript';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { writeArtifacts } from '../src/file-system.js';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+const typescriptCli = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url));
 
 function availableCommand(commands: string[]): string | undefined {
   return commands.find((command) => spawnSync(command, ['--version'], { encoding: 'utf8' }).status === 0);
@@ -91,15 +92,15 @@ describe('generated standard stack smoke checks', () => {
 
       JSON.parse(await readFile(path.join(projectRoot, 'backend', 'package.json'), 'utf8'));
       JSON.parse(await readFile(path.join(projectRoot, 'backend', 'tsconfig.json'), 'utf8'));
-      for (const filePath of await filesUnder(path.join(projectRoot, 'backend'), '.ts')) {
-        const source = await readFile(filePath, 'utf8');
-        const result = ts.transpileModule(source, {
-          compilerOptions: { module: ts.ModuleKind.NodeNext, target: ts.ScriptTarget.ES2022 },
-          reportDiagnostics: true,
-          fileName: filePath
-        });
-        expect(result.diagnostics?.filter((diagnostic) => diagnostic.category === ts.DiagnosticCategory.Error) ?? []).toEqual([]);
-      }
+      checkedSpawn(process.execPath, [
+        typescriptCli,
+        '--noCheck',
+        '--noEmit',
+        '--module', 'NodeNext',
+        '--moduleResolution', 'NodeNext',
+        '--target', 'ES2022',
+        ...await filesUnder(path.join(projectRoot, 'backend'), '.ts')
+      ], projectRoot);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

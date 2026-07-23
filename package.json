@@ -1,6 +1,6 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "Mission Control Liftoff CLI for scaffolding governed GenAI and standard API applications.",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -48,7 +48,7 @@
   },
   "devDependencies": {
     "@types/node": "^20.14.10",
-    "typescript": "^5.5.4",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.9"
   }
 }
