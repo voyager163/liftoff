@@ -31,8 +31,8 @@
 ## 5. Release Operations And Final Verification
 
 - [x] 5.1 Have an authorized npm release owner deprecate `@msn-control/liftoff@<0.3.0` with current-stable upgrade guidance, then confirm explicit historical versions remain downloadable.
-- [ ] 5.2 Have the managed-mirror owner synchronize or approve Liftoff 0.3.3, then verify both `@latest` and explicit `@0.3.3` metadata plus a clean install resolve to 0.3.3 before internal onboarding resumes.
+- [x] 5.2 Have the managed-mirror owner synchronize or approve Liftoff 0.3.3, then verify both `@latest` and explicit `@0.3.3` metadata plus a clean install resolve to 0.3.3 before internal onboarding resumes.
 - [x] 5.3 Run the focused argument, command, doctor, release-verifier, and documentation tests, followed by `npm run check` and `npm run smoke:package`.
 - [x] 5.4 Run the published verifier against canonical npm's immutable 0.3.3 release in explicit non-publishing compatibility mode, confirm installed metadata is 0.3.3 and help plus standard-project planning execute, and confirm release workflow invocation remains strict.
-- [ ] 5.5 Confirm the existing Linux, macOS, and Windows CI matrix passes the cross-platform global-prefix, entrypoint, temporary-path, and cleanup coverage.
+- [x] 5.5 Confirm the existing Linux, macOS, and Windows CI matrix passes the cross-platform global-prefix, entrypoint, temporary-path, and cleanup coverage.
 - [x] 5.6 Run OpenSpec validation for `prevent-stale-liftoff-installs` and resolve every artifact or delta-spec error before implementation is considered complete.
