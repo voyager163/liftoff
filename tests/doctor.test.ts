@@ -1,17 +1,21 @@
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, doctorExitCode, runCommand } from '../src/commands.js';
+import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
 
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
+const unreachableRegistry = 'http://127.0.0.1:1';
 
 beforeAll(() => {
   // unreachable registry: freshness lookup must soft-fail silently
-  process.env.LIFTOFF_REGISTRY = 'http://127.0.0.1:1';
+  process.env.LIFTOFF_REGISTRY = unreachableRegistry;
 });
 
 afterAll(() => {
@@ -23,10 +27,26 @@ afterAll(() => {
 });
 
 afterEach(async () => {
+  process.env.LIFTOFF_REGISTRY = unreachableRegistry;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
 });
+
+async function withRegistryVersion(version: string, callback: () => Promise<void>): Promise<void> {
+  const server = createServer((_request, response) => {
+    response.writeHead(200, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ version }));
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address() as AddressInfo;
+  process.env.LIFTOFF_REGISTRY = `http://127.0.0.1:${address.port}`;
+  try {
+    await callback();
+  } finally {
+    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
+  }
+}
 
 async function fixtureProject(pattern = 'prompt'): Promise<string> {
   const projectRoot = await createFixtureProject({
@@ -74,11 +94,14 @@ describe('doctor exit-code model', () => {
 });
 
 describe('doctor command', () => {
-  it('runs only environment checks outside a project', async () => {
+  it('runs CLI and environment checks outside a project while offline', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-'));
     cleanups.push(elsewhere);
 
     const result = await run(['doctor'], elsewhere);
+    expect(result.out).toContain('CLI');
+    expect(result.out).toContain(`version: Liftoff ${liftoffVersion}`);
+    expect(result.out).not.toContain('cli freshness');
     expect(result.out).toContain('Environment');
     expect(result.out).toContain('node:');
     expect(result.out).not.toContain('Project');
@@ -90,6 +113,7 @@ describe('doctor command', () => {
     const root = await fixtureProject();
 
     const result = await run(['doctor'], root);
+    expect(result.out).toContain('CLI');
     expect(result.out).toContain('Environment');
     expect(result.out).toContain('Project');
     expect(result.out).toContain('Runtime');
@@ -97,6 +121,44 @@ describe('doctor command', () => {
     expect(result.out).toMatch(/manifest: valid, \d+ artifacts present/);
     expect(result.out).toContain('scaffold drift: project matches the current templates');
     expect(result.out).not.toContain('cli freshness');
+  }, 30_000);
+
+  it('reports current and newer authoritative registry versions outside a project', async () => {
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-freshness-'));
+    cleanups.push(elsewhere);
+
+    await withRegistryVersion(liftoffVersion, async () => {
+      const current = await run(['doctor'], elsewhere);
+      expect(current.out).toContain(`cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`);
+    });
+
+    await withRegistryVersion('99.0.0', async () => {
+      const newer = await run(['doctor', '--json'], elsewhere);
+      const report = JSON.parse(newer.out);
+      const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+      const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
+      expect(freshness).toMatchObject({
+        severity: 'warn',
+        detail: `Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`
+      });
+      expect(freshness.remedy).toContain('@msn-control/liftoff@99.0.0');
+      expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
+      expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
+    });
+  }, 30_000);
+
+  it('ignores and preserves stale managed-registry configuration', async () => {
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-mirror-'));
+    cleanups.push(elsewhere);
+    const npmrcPath = path.join(elsewhere, '.npmrc');
+    const npmrc = 'registry=https://stale.example.invalid/npm/\n';
+    await writeFile(npmrcPath, npmrc, 'utf8');
+
+    await withRegistryVersion('99.0.0', async () => {
+      const result = await run(['doctor'], elsewhere);
+      expect(result.out).toContain(`Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`);
+      expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
+    });
   }, 30_000);
 
   it('fails with a remedy when .env is missing and passes once created', async () => {
@@ -155,6 +217,7 @@ describe('doctor command', () => {
     const result = await run(['doctor', '--json'], root);
     const report = JSON.parse(result.out);
     expect(report.schemaVersion).toBe(1);
+    expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('CLI');
     expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
     expect(typeof report.summary.failures).toBe('number');
     expect(typeof report.summary.warnings).toBe('number');

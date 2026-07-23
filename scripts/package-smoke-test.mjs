@@ -133,6 +133,14 @@ try {
     throw new Error('Installed liftoff help output did not include the expected heading');
   }
 
+  const version = run(process.execPath, [liftoffEntrypoint, '--version'], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (version.stdout.trim() !== `Liftoff ${packResult.version}`) {
+    throw new Error(`Installed liftoff reported an unexpected version: ${version.stdout.trim()}`);
+  }
+
   const createHelp = run(process.execPath, [liftoffEntrypoint, 'create', '--help'], {
     cwd: outsideDirectory,
     env: npmEnv

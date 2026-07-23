@@ -4,6 +4,7 @@ import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
 
 describe('commands', () => {
@@ -35,6 +36,7 @@ describe('commands', () => {
   it('rejects unknown flags, options, subcommands, and extra positionals', () => {
     expect(() => parseArgs(['create', 'app', '--cluod', 'aws'])).toThrow(/Unknown flag.*--cluod/);
     expect(() => parseArgs(['plan', '-f'])).toThrow(/Unknown option/);
+    expect(() => parseArgs(['-v'])).toThrow(/Unknown option/);
     expect(() => parseArgs(['dev', 'destroy'])).toThrow(/Unsupported dev subcommand.*up, down, logs, reset/);
     expect(() => parseArgs(['regions', 'typo'])).toThrow(/Unsupported regions subcommand/);
     expect(() => parseArgs(['validate', 'one', 'two'])).toThrow(/Too many positional arguments/);
@@ -54,6 +56,28 @@ describe('commands', () => {
     expect(stdout.text()).toContain('Usage: liftoff create [project-name]');
     expect(stdout.text()).toContain('--pattern <value>');
     expect(stderr.text()).toBe('');
+  });
+
+  it('reports the installed version and includes it in general help outside a project', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-version-'));
+    try {
+      for (const argv of [[], ['help']]) {
+        const stdout = new CaptureStream();
+        const code = await runCommand(parseArgs(argv), { cwd: tempRoot, stdout, stderr: new CaptureStream() });
+        expect(code).toBe(0);
+        expect(stdout.text()).toContain(`Mission Control Liftoff ${liftoffVersion}`);
+        expect(stdout.text()).toContain('--version');
+      }
+
+      const stdout = new CaptureStream();
+      const stderr = new CaptureStream();
+      const code = await runCommand(parseArgs(['--version']), { cwd: tempRoot, stdout, stderr });
+      expect(code).toBe(0);
+      expect(stdout.text()).toBe(`Liftoff ${liftoffVersion}\n`);
+      expect(stderr.text()).toBe('');
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects invalid configuration types before writing a project', async () => {
