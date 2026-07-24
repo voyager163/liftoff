@@ -164,7 +164,7 @@ export async function verifyPublishedPackage(
       '--no-fund',
       '--ignore-scripts',
       `--registry=${CANONICAL_NPM_REGISTRY}`,
-      `${identity.name}@${options.tag}`
+      `${identity.name}@${identity.version}`
     ], commandOptions);
     assertCommand(install, `Canonical npm install of ${identity.name}@${options.tag}`);
 

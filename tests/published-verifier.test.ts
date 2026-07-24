@@ -91,6 +91,7 @@ describe('published package verifier', () => {
     });
     expect(state.npmCalls).toHaveLength(2);
     expect(state.npmCalls.every((args) => args.includes(`--registry=${CANONICAL_NPM_REGISTRY}`))).toBe(true);
+    expect(state.npmCalls.find((args) => args[0] === 'install')).toContain('@msn-control/liftoff@0.3.3');
     expect(state.nodeCalls.map((args) => args[1])).toEqual(['help', '--version', 'plan']);
     expect(state.removed).toBe(true);
     expect(state.tempRoot && existsSync(state.tempRoot)).toBe(false);
