@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
-import { CaptureStream } from './helpers.js';
+import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 const cleanups: string[] = [];
 afterEach(async () => {
@@ -31,7 +31,12 @@ async function fixtureProject(): Promise<string> {
 async function run(args: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr });
+  const code = await runCommand(parseArgs(args), {
+    cwd,
+    stdout,
+    stderr,
+    runner: new ReadyInitRunner()
+  });
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
