@@ -22,7 +22,7 @@ jobs:
 
       - uses: actions/setup-node@v7
         with:
-          node-version: 24
+          node-version: "20.19"
           cache: npm
 
       - uses: actions/setup-python@v7
@@ -42,6 +42,10 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Run Windows initialization safety coverage
+        if: runner.os == 'Windows'
+        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/commands.test.ts
 
       - name: Run package check
         run: npm run check

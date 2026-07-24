@@ -1,5 +1,6 @@
 import type { AddArtifact } from './template-types.js';
 import type { ApiStackId, ProjectPlan } from './types.js';
+import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
 
 type StackBuilder = (add: AddArtifact, plan: ProjectPlan) => void;
 
@@ -351,6 +352,7 @@ def downgrade():
 
 function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('node-backend-package', 'backend', ['backend', 'package.json'], renderNodePackage(plan));
+  add('node-backend-lock', 'backend', ['backend', 'package-lock.json'], renderNpmLock('node-backend', `${plan.safeProjectName}-backend`));
   add('node-backend-tsconfig', 'backend', ['backend', 'tsconfig.json'], renderNodeTsconfig());
   add('node-backend-drizzle-config', 'backend', ['backend', 'drizzle.config.ts'], renderNodeDrizzleConfig());
   add('node-backend-config', 'backend', ['backend', 'src', 'config.ts'], renderNodeConfig(plan));
@@ -366,36 +368,7 @@ function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
 }
 
 function renderNodePackage(plan: ProjectPlan): string {
-  return JSON.stringify({
-    name: `${plan.safeProjectName}-backend`,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    engines: { node: '>=20' },
-    scripts: {
-      dev: 'tsx watch src/server.ts',
-      build: 'tsc -p tsconfig.json',
-      start: 'node dist/server.js',
-      test: 'vitest run',
-      'db:generate': 'drizzle-kit generate',
-      'db:migrate': 'drizzle-kit migrate'
-    },
-    dependencies: {
-      '@fastify/cors': '^10.0.1',
-      '@fastify/swagger': '^9.4.0',
-      'drizzle-orm': '^0.44.0',
-      fastify: '^5.4.0',
-      pg: '^8.16.0'
-    },
-    devDependencies: {
-      '@types/node': '^20.14.10',
-      '@types/pg': '^8.15.0',
-      'drizzle-kit': '^0.31.0',
-      tsx: '^4.20.0',
-      typescript: '^5.5.4',
-      vitest: '^4.1.9'
-    }
-  }, null, 2);
+  return renderNpmPackage('node-backend', `${plan.safeProjectName}-backend`);
 }
 
 function renderNodeTsconfig(): string {

@@ -2,8 +2,10 @@ import { createInterface } from 'node:readline/promises';
 import { stdin as input, stdout as output } from 'node:process';
 import {
   apiStacks,
+  codingAgents,
   environments,
   getApiStack,
+  getCodingAgent,
   getPattern,
   getProjectType,
   getProvider,
@@ -15,8 +17,10 @@ import {
 } from './catalogs.js';
 import type { ProjectOptions, ProjectPlan, RegionDefinition } from './types.js';
 import { formatProjectPlan } from './planner.js';
+import type { DependencyCommandPlan } from './project-dependencies.js';
+import { formatCommand } from './process-runner.js';
 
-export async function promptForCreateOptions(initial: ProjectOptions): Promise<ProjectOptions> {
+export async function promptForInitOptions(initial: ProjectOptions): Promise<ProjectOptions> {
   const rl = createInterface({ input, output });
   try {
     const projectName = initial.projectName ?? await askRequired(rl, 'Project name');
@@ -48,6 +52,22 @@ export async function promptForCreateOptions(initial: ProjectOptions): Promise<P
       label: `${workflow.label}${workflow.default ? ' (default)' : ''}`,
       disabled: false
     })), 'openspec');
+    const selectedAgents = initial.agents ?? await askAgents(rl);
+    const normalizedAgents = selectedAgents
+      .map((agent) => getCodingAgent(agent)?.id)
+      .filter((agent): agent is NonNullable<typeof agent> => agent !== undefined);
+    const defaultAgent = specWorkflow === 'spec-kit' && normalizedAgents.length > 1
+      ? initial.defaultAgent ?? await choose(
+          rl,
+          'Select the default Spec Kit agent',
+          codingAgents
+            .filter((agent) => normalizedAgents.includes(agent.id))
+            .map((agent) => ({ value: agent.id, label: agent.label, disabled: false })),
+          normalizedAgents[0]
+        )
+      : specWorkflow === 'spec-kit'
+        ? normalizedAgents[0]
+        : undefined;
     const selectedEnvironments = initial.environments ?? await askEnvironments(rl);
 
     return {
@@ -60,6 +80,8 @@ export async function promptForCreateOptions(initial: ProjectOptions): Promise<P
       region,
       includeFrontend,
       specWorkflow,
+      agents: normalizedAgents,
+      ...(defaultAgent ? { defaultAgent } : {}),
       environments: selectedEnvironments
     };
   } finally {
@@ -75,7 +97,7 @@ export async function confirmPlan(plan: ProjectPlan, yes?: boolean): Promise<boo
   const rl = createInterface({ input, output });
   try {
     output.write(`\nGenerated plan:\n${formatProjectPlan(plan)}\n\n`);
-    return await confirm(rl, 'Create project?', true);
+    return await confirm(rl, 'Initialize project?', true);
   } finally {
     rl.close();
   }
@@ -170,6 +192,62 @@ async function askEnvironments(rl: ReturnType<typeof createInterface>): Promise<
   return answer.split(',').map((value) => value.trim()).filter(Boolean);
 }
 
+async function askAgents(rl: ReturnType<typeof createInterface>): Promise<string[]> {
+  while (true) {
+    output.write('? Select one or more AI coding agents:\n');
+    codingAgents.forEach((agent, index) => {
+      output.write(`  ${index + 1}. ${agent.label}${agent.id === 'github-copilot' ? ' (default)' : ''}\n`);
+    });
+    const answer = (await rl.question('Select comma-separated options [1]: ')).trim() || '1';
+    const selected = answer.split(',').map((value) => value.trim()).filter(Boolean);
+    const resolved = selected.map((value) => {
+      const byIndex = codingAgents[Number(value) - 1];
+      return byIndex ?? getCodingAgent(value);
+    });
+    if (resolved.some((agent) => !agent)) {
+      output.write('Please choose valid agent options.\n');
+      continue;
+    }
+    return codingAgents
+      .filter((agent) => resolved.some((selectedAgent) => selectedAgent?.id === agent.id))
+      .map((agent) => agent.id);
+  }
+}
+
+export async function confirmToolInstallation(detail: string): Promise<boolean> {
+  const rl = createInterface({ input, output });
+  try {
+    output.write(`\nWorkstation tool requiring action:\n${detail}\n\n`);
+    return await confirm(rl, 'Run this allowlisted installation command?', false);
+  } finally {
+    rl.close();
+  }
+}
+
+export async function confirmFileReplacements(paths: readonly string[]): Promise<boolean> {
+  const rl = createInterface({ input, output });
+  try {
+    output.write(`\nExisting regular files with different content:\n${paths.map((file) => `- ${file}`).join('\n')}\n\n`);
+    return await confirm(rl, 'Replace every listed file?', false);
+  } finally {
+    rl.close();
+  }
+}
+
+export async function confirmDependencyInstallation(commands: DependencyCommandPlan[]): Promise<boolean> {
+  const rl = createInterface({ input, output });
+  try {
+    output.write('\nProject dependency commands:\n');
+    for (const command of commands) {
+      output.write(`- ${command.cwd}: ${formatCommand(command.command)}\n`);
+    }
+    output.write('\n');
+    return await confirm(rl, 'Install project-local dependencies now?', false);
+  } finally {
+    rl.close();
+  }
+}
+
 export function resolveCatalogInput(options: ProjectOptions): ProjectOptions {
   return {
     ...options,
@@ -177,6 +255,8 @@ export function resolveCatalogInput(options: ProjectOptions): ProjectOptions {
     apiStack: options.apiStack && getApiStack(options.apiStack)?.id,
     pattern: options.pattern && getPattern(options.pattern)?.id,
     cloud: options.cloud && getProvider(options.cloud)?.id,
-    specWorkflow: options.specWorkflow && getSpecWorkflow(options.specWorkflow)?.id
+    specWorkflow: options.specWorkflow && getSpecWorkflow(options.specWorkflow)?.id,
+    agents: options.agents?.map((agent) => getCodingAgent(agent)?.id ?? agent),
+    defaultAgent: options.defaultAgent && getCodingAgent(options.defaultAgent)?.id
   };
 }

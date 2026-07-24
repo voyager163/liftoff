@@ -15,9 +15,13 @@ const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fix
 const cleanups: string[] = [];
 
 interface TestManifest {
+  artifactVersion?: unknown;
   project: {
     frontend: unknown;
+    agents?: unknown;
+    defaultAgent?: unknown;
   };
+  framework?: unknown;
   artifacts: Array<{
     logicalName: string;
     pathParts: string[];
@@ -89,6 +93,40 @@ describe('manifest validation', () => {
       manifest.artifacts[1].pathParts = manifest.artifacts[0].pathParts;
     });
     await expect(loadManifest(duplicatePath)).rejects.toThrow('duplicate artifact path');
+  });
+
+  it.each([
+    [
+      'non-canonical agents',
+      (manifest: TestManifest) => {
+        manifest.artifactVersion = 3;
+        manifest.project.agents = ['claude', 'github-copilot'];
+        manifest.project.defaultAgent = 'claude';
+        manifest.framework = { state: 'initialized', adapter: 'openspec', contractVersion: '1.6.0' };
+      },
+      /canonical order/
+    ],
+    [
+      'initialized framework without a contract',
+      (manifest: TestManifest) => {
+        manifest.artifactVersion = 3;
+        manifest.project.agents = ['github-copilot'];
+        manifest.framework = { state: 'initialized', adapter: 'openspec' };
+      },
+      /requires Manifest\.framework\.contractVersion/
+    ],
+    [
+      'legacy framework claiming integrations',
+      (manifest: TestManifest) => {
+        manifest.artifactVersion = 3;
+        manifest.project.agents = ['github-copilot'];
+        manifest.framework = { state: 'legacy', adapter: 'openspec' };
+      },
+      /Legacy framework state cannot claim/
+    ]
+  ])('rejects invalid v3 state: %s', async (_label, mutate, expected) => {
+    const root = await manifestRoot(mutate);
+    await expect(loadManifest(root)).rejects.toThrow(expected);
   });
 });
 

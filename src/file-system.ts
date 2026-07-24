@@ -3,7 +3,9 @@ import { access, lstat, mkdir, readdir, readFile, realpath, rename, stat, unlink
 import path from 'node:path';
 import {
   getApiStack,
+  canonicalizeCodingAgents,
   getEnvironment,
+  getCodingAgent,
   getPattern,
   getProvider,
   getProjectType,
@@ -11,6 +13,7 @@ import {
   listRegions
 } from './catalogs.js';
 import type { GeneratedArtifact, LiftoffManifest, ManifestArtifact } from './types.js';
+import { validateFrameworkInstallation } from './framework-validation.js';
 
 export class FileSystemError extends Error {
   constructor(message: string) {
@@ -158,7 +161,7 @@ export async function writeArtifacts(targetRoot: string, artifacts: GeneratedArt
   }
 }
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
@@ -204,15 +207,17 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
     throw new FileSystemError('Manifest liftoffVersion must be a valid semantic version.');
   }
 
-  const project = normalizeManifestProject(raw.project);
+  const project = normalizeManifestProject(raw.project, artifactVersion);
+  const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
   const artifacts = normalizeManifestArtifacts(raw.artifacts)
     .filter((artifact) => !LEGACY_SEED_LOGICAL_NAMES.has(artifact.logicalName));
 
   return {
-    artifactVersion: 2,
+    artifactVersion: artifactVersion as 2 | 3,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project,
+    framework,
     artifacts
   };
 }
@@ -236,7 +241,7 @@ function optionalString(record: Record<string, unknown>, key: string, scope: str
   return value;
 }
 
-function normalizeManifestProject(project: unknown): LiftoffManifest['project'] {
+function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
   if (!isRecord(project)) {
     throw new FileSystemError('Manifest.project must be a JSON object.');
   }
@@ -287,6 +292,38 @@ function normalizeManifestProject(project: unknown): LiftoffManifest['project'] 
     throw new FileSystemError(`Manifest project specWorkflow ${JSON.stringify(specWorkflowValue)} is invalid.`);
   }
 
+  let agents: LiftoffManifest['project']['agents'] = [];
+  let defaultAgent: LiftoffManifest['project']['defaultAgent'];
+  if (artifactVersion >= 3) {
+    if (!Array.isArray(project.agents)) {
+      throw new FileSystemError('Manifest.project.agents must be an array.');
+    }
+    const rawAgents = project.agents.map((value, index) => {
+      if (typeof value !== 'string') {
+        throw new FileSystemError(`Manifest.project.agents[${index}] must be a string.`);
+      }
+      const agent = getCodingAgent(value);
+      if (!agent || agent.id !== value) {
+        throw new FileSystemError(`Manifest project agent ${JSON.stringify(value)} is invalid.`);
+      }
+      return agent.id;
+    });
+    const canonical = canonicalizeCodingAgents(rawAgents).agents.map((agent) => agent.id);
+    if (canonical.length !== rawAgents.length || canonical.some((agent, index) => agent !== rawAgents[index])) {
+      throw new FileSystemError('Manifest.project.agents must be unique and in canonical order.');
+    }
+    agents = canonical;
+
+    const defaultAgentValue = optionalString(project, 'defaultAgent', 'Manifest.project');
+    if (defaultAgentValue) {
+      const resolved = getCodingAgent(defaultAgentValue);
+      if (!resolved || resolved.id !== defaultAgentValue) {
+        throw new FileSystemError(`Manifest project defaultAgent ${JSON.stringify(defaultAgentValue)} is invalid.`);
+      }
+      defaultAgent = resolved.id;
+    }
+  }
+
   if (!Array.isArray(project.environments) || project.environments.length === 0) {
     throw new FileSystemError('Manifest.project.environments must be a non-empty string array.');
   }
@@ -313,8 +350,56 @@ function normalizeManifestProject(project: unknown): LiftoffManifest['project'] 
     region: regionValue,
     frontend,
     specWorkflow: specWorkflow.id,
+    agents,
+    ...(defaultAgent ? { defaultAgent } : {}),
     environments
   };
+}
+
+function normalizeManifestFramework(
+  value: unknown,
+  artifactVersion: number,
+  project: LiftoffManifest['project']
+): LiftoffManifest['framework'] {
+  if (artifactVersion === 2) {
+    return { state: 'legacy', adapter: project.specWorkflow };
+  }
+  if (!isRecord(value)) {
+    throw new FileSystemError('Manifest.framework must be a JSON object.');
+  }
+  const state = requiredString(value, 'state', 'Manifest.framework');
+  if (state !== 'initialized' && state !== 'legacy') {
+    throw new FileSystemError('Manifest.framework.state must be "initialized" or "legacy".');
+  }
+  const adapterValue = requiredString(value, 'adapter', 'Manifest.framework');
+  const adapter = getSpecWorkflow(adapterValue);
+  if (!adapter || adapter.id !== adapterValue || adapter.id !== project.specWorkflow) {
+    throw new FileSystemError('Manifest.framework.adapter must match Manifest.project.specWorkflow.');
+  }
+  const contractVersion = optionalString(value, 'contractVersion', 'Manifest.framework');
+  if (contractVersion && !SEMVER_PATTERN.test(contractVersion)) {
+    throw new FileSystemError('Manifest.framework.contractVersion must be a valid semantic version.');
+  }
+  if (state === 'legacy') {
+    if (contractVersion || project.agents.length > 0 || project.defaultAgent) {
+      throw new FileSystemError('Legacy framework state cannot claim a contract version or configured agents.');
+    }
+    return { state, adapter: adapter.id };
+  }
+  if (!contractVersion) {
+    throw new FileSystemError('Initialized framework state requires Manifest.framework.contractVersion.');
+  }
+  if (project.agents.length === 0) {
+    throw new FileSystemError('Initialized framework state requires at least one configured agent.');
+  }
+  if (adapter.id === 'spec-kit') {
+    if (!project.defaultAgent || !project.agents.includes(project.defaultAgent)) {
+      throw new FileSystemError('Spec Kit manifests require a selected defaultAgent.');
+    }
+  } else if (project.defaultAgent) {
+    throw new FileSystemError('OpenSpec manifests cannot record a defaultAgent.');
+  }
+  return { state, adapter: adapter.id, contractVersion };
 }
 
 function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
@@ -369,6 +454,14 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         issues.push(`Unable to access artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`);
       }
     }
+  }
+
+  if (manifest.framework.state === 'initialized') {
+    issues.push(...await validateFrameworkInstallation(projectRoot, {
+      workflow: manifest.framework.adapter,
+      agents: manifest.project.agents,
+      ...(manifest.project.defaultAgent ? { defaultAgent: manifest.project.defaultAgent } : {})
+    }));
   }
 
   return issues;

@@ -26,63 +26,54 @@ Versions before 0.3.0 are unsupported and must not be used for new projects. If 
 
 ## Quick Start
 
-Preview a generated project before writing files:
+Preview a project and its derived workstation requirements without writing files or running installers:
 
 ```bash
-liftoff plan --pattern rag --cloud azure --region eastus --frontend
+liftoff plan --pattern rag --cloud azure --region eastus --frontend --agents copilot,claude
 ```
 
-Create a project non-interactively:
+Initialize a named project. Liftoff probes required runtimes, the selected spec framework, cloud/development tools, and every selected AI coding agent before it writes:
 
 ```bash
-liftoff create claims-copilot --pattern rag --cloud azure --region eastus --spec openspec --frontend --yes
+liftoff init claims-copilot --pattern rag --cloud azure --region eastus --spec openspec --agents copilot,claude --frontend --yes
 cd claims-copilot
 cp .env.example .env
 liftoff validate
 liftoff doctor
 ```
 
-Create a standard Node.js API without GenAI components:
+Add `--install-tools` only after reviewing machine-level install commands, and add `--install-dependencies` to run the generated project's locked dependency commands. These permissions are independent from `--yes`.
+
+To initialize an existing Git worktree root in place, run `liftoff init` at that exact root. With no project name, Liftoff uses the repository directory name; a supplied name changes project identity without creating a child directory.
 
 ```bash
-liftoff plan --no-genai --api node --cloud azure --region eastus
-liftoff create claims-api --no-genai --api node --cloud azure --region eastus --spec openspec --no-frontend --yes
+cd existing-repository
+liftoff init --no-genai --api node --cloud azure --region eastus --spec spec-kit --agents copilot,claude --default-agent copilot
 ```
 
-Standard API choices are `python` (FastAPI), `node` (Fastify with TypeScript), and `go` (Huma v2 with Chi). Existing GenAI commands that provide `--pattern` continue to infer the GenAI project type and Python/FastAPI stack.
+In a non-Git directory or below (but not at) a Git root, a project name creates a named child. Standard API choices are `python` (FastAPI), `node` (Fastify with TypeScript), and `go` (Huma v2 with Chi). A GenAI `--pattern` selects the Python/FastAPI/PydanticAI stack.
 
-Use the local development helper to print the Docker Compose command, then run the printed command:
+For an existing application, migration creates a fresh sibling scaffold, runs the same readiness and official-framework pipeline, stages a filtered source copy, and leaves the source byte-for-byte unchanged:
 
 ```bash
-liftoff dev up
-docker compose up --build
+liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 ```
 
-For an existing project, create a Liftoff-shaped sibling scaffold and staged migration plan without modifying the source project:
-
-```bash
-liftoff migrate ../legacy-app --region eastus --yes
-```
-
-## How Liftoff Works
-
-Liftoff turns a small set of project decisions into a deterministic scaffold and records what it wrote so future CLI versions can reconcile safely.
+## Lifecycle
 
 ```text
-plan -> create or migrate -> validate and doctor -> update -> dev and infra helpers
+plan -> init or migrate -> validate and doctor -> update -> dev and infra helpers
 ```
 
-- `liftoff plan` resolves flags or config into a project plan, renders the artifact list, and writes nothing.
-- `liftoff create` first determines whether the project is GenAI or standard. GenAI projects select a pattern and use Python/FastAPI/PydanticAI; standard projects select an approved Python, Node.js, or Go API stack. Both flows collect cloud, region, frontend, environments, and spec workflow.
-- `liftoff migrate <path>` scans a legacy project, generates a fresh sibling Liftoff scaffold, stages a filtered legacy copy under `migration/legacy`, and emits an OpenSpec migration change or `MIGRATION.md`.
-- `liftoff validate` checks that `liftoff.manifest.json` can be loaded and every durable manifest artifact exists on disk.
-- `liftoff doctor` runs read-only readiness checks. Outside a generated project it checks the local environment; inside a generated project it also checks manifest health, scaffold drift, runtime configuration, cloud auth, and Azure Functions tooling for worker-enabled Azure projects.
-- `liftoff update` checks scaffold drift by default and writes nothing. It exits 0 when clean and 2 when drift exists, which makes it usable as a CI drift gate.
-- `liftoff update --apply` writes safe changes such as new, missing, moved, or untouched upgraded artifacts. It skips conflicts unless `--force` is also provided, and it reports orphaned files without deleting them automatically.
-- `liftoff dev` prints Docker Compose helper commands such as `docker compose up --build`, `docker compose logs -f`, and `docker compose down --volumes`.
-- `liftoff infra` prints OpenTofu helper commands such as `tofu init`, `tofu plan -var-file=environments/dev.tfvars`, and `tofu apply -var-file=environments/dev.tfvars`.
+- `liftoff plan` resolves project decisions, previews artifacts and requirements, and has no side effects.
+- `liftoff init` initializes a new child or the exact current Git root, checks workstation readiness, runs the pinned official OpenSpec or Spec Kit initializer in temporary staging, validates all output, and merges transactionally.
+- `liftoff migrate <path>` scans a non-Liftoff source, requires a new or empty sibling target, and uses the same staged framework and optional dependency phases. `--force` never permits a non-empty migration target.
+- `liftoff validate` checks the manifest's durable files plus the declared framework contract and selected-agent markers.
+- `liftoff doctor` performs read-only plan-derived probes with blocking, advisory, authentication-health, framework, drift, runtime, and cloud layers. JSON output uses stable requirement identifiers and states.
+- `liftoff update` is a read-only drift check by default. `liftoff update --apply` writes safe durable changes, skips conflicts unless `--force` is supplied, and reports orphans without deleting them.
+- `liftoff dev` and `liftoff infra` print Docker Compose and OpenTofu helper commands; they do not execute them.
 
-Discovery commands are available for the catalogs that drive generation:
+Catalog discovery remains available:
 
 ```bash
 liftoff patterns
@@ -91,19 +82,46 @@ liftoff regions
 liftoff regions search korea --cloud azure
 ```
 
-Azure is the available V1 provider. AWS and GCP are listed as planned provider adapters and are rejected before generation.
+Azure is the available V1 provider. AWS and GCP remain planned and are rejected before generation.
+
+## Workstation Readiness
+
+Liftoff automatically detects requirements derived from the full project plan:
+
+- Blocking: Node.js 20.19+, the selected Python/Node/Go runtime, the exact tested OpenSpec or Spec Kit CLI, and every selected Copilot or Claude Code integration.
+- Advisory: Docker and daemon health, OpenTofu, Azure CLI, and cloud authentication.
+- Authentication: Liftoff reports observable health but never stores credentials or signs in on the developer's behalf.
+
+On macOS, allowlisted recipes use Homebrew, npm, or `uv`; on Windows they use WinGet, npm, or `uv`. Liftoff prints each command and requires `--install-tools` or separate interactive approval. Linux system packages are never installed with automatic elevation: Liftoff gives distribution-appropriate official guidance, while npm/`uv` framework recipes remain separately consented. PATH-changing installs are re-probed and may require a new terminal.
+
+Copilot is detected through its CLI or supported VS Code extensions. Claude Code is checked with its version and doctor commands. Both agents may be selected together; Spec Kit additionally records one selected agent as its default integration.
+
+## Target, Ownership, And Consent Safety
+
+Liftoff renders into a temporary staging directory, runs official framework commands there, rejects symlinks and unexpected framework roots, validates the complete tree, then computes one immutable destination preflight. Existing unrelated files are preserved. Different regular files are disclosed as one conflict set; structural collisions, symlink paths, unsafe ancestors, and an existing `liftoff.manifest.json` are non-overridable blockers. Writes are atomic and handled failures roll back created or replaced files.
+
+The four consent flags do not imply one another:
+
+| Flag | Authorizes | Does not authorize |
+| --- | --- | --- |
+| `--yes` | Project defaults and plan confirmation | File replacement, machine installs, or project dependencies |
+| `--force` | Only listed, validated regular-file replacements | Manifest guards, symlinks, structural collisions, tools, dependencies, or non-empty migration targets |
+| `--install-tools` | Allowlisted workstation installation commands | Project decisions, overwrites, or project dependencies |
+| `--install-dependencies` | Locked project-local dependency commands after a successful merge | Machine tools, project decisions, or overwrites |
+
+OpenSpec and Spec Kit core/integration output is owned by their official initializers. Liftoff validates the declared version and selected-agent markers but does not place framework-owned or one-time seed files in durable artifact hashes. Schema-v3 manifests record this contract explicitly; schema-v2 projects remain supported as legacy state without inventing framework ownership or agent selections.
 
 ## Strict Commands And Safe Recovery
 
 Liftoff validates each command before running it. Unknown flags or subcommands, missing flag values, invalid booleans, incompatible duplicates, and extra positional arguments exit 1 without generating files or printing a fallback helper command. Use command-specific help to see the accepted syntax:
 
 ```bash
-liftoff create --help
+liftoff init --help
+liftoff migrate --help
 liftoff update --help
-liftoff regions --help
 ```
 
-`liftoff update --apply` preflights every path and destination before its first mutation. A new or moved artifact is adopted when the destination already contains the rendered bytes; different pre-existing bytes are reported as a conflict and skipped. `--force` overwrites reviewed conflicts. Orphans are reported but never deleted automatically. Any write, replacement, cleanup, or manifest failure exits 1 without a success summary or false manifest state, so fixing the filesystem issue and retrying is safe.
+The former `liftoff create` command is intentionally rejected with guidance to use `liftoff init`; there is no compatibility alias.
 
 Manifest paths must be portable path-part arrays confined to the project. Traversal, absolute, drive-qualified, UNC, embedded-separator, empty, and symlink-escaping paths are rejected before artifact access. If validation reports an unsafe or malformed manifest, restore `liftoff.manifest.json` from version control or regenerate a fresh project with the matching Liftoff version. Do not repair the issue by weakening path validation or by retaining a hand-edited unsafe path.
 
@@ -178,7 +196,7 @@ Conditional areas:
 Generated projects contain two root files with different ownership models:
 
 - `liftoff.config.json` is user-owned desired state after creation. Liftoff writes it once during generation and does not machine-rewrite it afterwards. Supported changes, such as adding an environment or enabling frontend output, are reconciled by `liftoff update`. Project type, API stack, and GenAI pattern changes are migrations and should use `liftoff migrate`.
-- `liftoff.manifest.json` is the CLI-owned compatibility record. Manifest schema v2 records `artifactVersion`, the generating `liftoffVersion`, project type, API stack, applicable GenAI pattern, durable generated artifact `logicalName`s, categories, OS-neutral path parts, and `sha256:` content hashes.
+- `liftoff.manifest.json` is the CLI-owned compatibility record. Manifest schema v3 records the generating `liftoffVersion`, project identity, selected agents, applicable default agent, official framework adapter and tested contract version, and durable generated artifact `logicalName`s with OS-neutral path parts and `sha256:` content hashes. V2 manifests remain readable as explicit legacy framework state.
 
 The manifest lets `liftoff validate`, `liftoff doctor`, and `liftoff update` distinguish clean generated files from local edits. Seed content, such as the initial OpenSpec bootstrap change, is written once and intentionally omitted from the durable manifest so it can follow its own lifecycle. Treat the manifest as CLI-owned: restore or regenerate it when validation fails rather than hand-editing artifact paths or hashes.
 
@@ -186,7 +204,7 @@ The manifest lets `liftoff validate`, `liftoff doctor`, and `liftoff update` dis
 
 Generated projects contain persistent files that outlive any CLI release. The following rules are the compatibility contract, enforced by `tests/contract.test.ts` where possible:
 
-- **Manifest schema**: `liftoff.manifest.json` uses `artifactVersion` 2, the first supported schema version, recording the generating CLI version (`liftoffVersion`) and a `sha256:`-prefixed `contentHash` per artifact. Readers accept every supported version and reject others with a remedy; writers always write the latest version.
+- **Manifest schema**: writers use `artifactVersion` 3; readers support v2 legacy and v3 initialized framework state and reject other versions with a remedy. Durable artifacts retain `sha256:`-prefixed hashes, while framework-owned and seed files are validated separately.
 - **Append-only identifiers**: artifact `logicalName`s and catalog ids (project types, API stacks, patterns, providers, environments, spec workflows) are never renamed or removed, only added. The contract test snapshots the logical-name sets.
 - **Deterministic rendering**: artifact content depends only on the project plan and the template code, with no timestamps, randomness, or environment leakage. Verified by a double-render byte-equality test.
 - **Reserved namespaces**: `.liftoff/` in generated projects is reserved for future CLI-managed state; no new CLI-managed root-level files beyond `liftoff.config.json` and `liftoff.manifest.json`. `liftoff.config.json` is written once at generation and never machine-written afterwards.

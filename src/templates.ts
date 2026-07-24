@@ -8,6 +8,12 @@ import {
 import type { AddArtifact } from './template-types.js';
 import type { GeneratedArtifact, LiftoffManifest, PatternDefinition, ProjectPlan } from './types.js';
 import { liftoffVersion } from './version.js';
+import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
+import { formatCommand } from './process-runner.js';
+import {
+  workstationRequirementCatalog,
+  type WorkstationRequirementId
+} from './workstation-catalog.js';
 
 const contentHash = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 const DEFAULT_FUNCTION_WORKER_QUEUE_NAME = 'events';
@@ -118,9 +124,35 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   return artifacts;
 }
 
-export function buildManifest(plan: ProjectPlan, artifacts: GeneratedArtifact[]): LiftoffManifest {
+export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
+  durable: GeneratedArtifact[];
+  framework: GeneratedArtifact[];
+  seed: GeneratedArtifact[];
+  manifest: GeneratedArtifact;
+} {
+  const manifest = artifacts.find((artifact) => artifact.logicalName === 'manifest');
+  if (!manifest) {
+    throw new Error('Generated artifacts are missing the Liftoff manifest.');
+  }
   return {
-    artifactVersion: 2,
+    durable: artifacts.filter((artifact) =>
+      artifact.logicalName !== 'manifest' && artifact.category !== 'seed' && artifact.category !== 'framework'
+    ),
+    framework: artifacts.filter((artifact) => artifact.category === 'framework'),
+    seed: artifacts.filter((artifact) => artifact.category === 'seed'),
+    manifest
+  };
+}
+
+export function buildManifest(
+  plan: ProjectPlan,
+  artifacts: GeneratedArtifact[],
+  options: { frameworkState?: 'initialized' | 'legacy' } = {}
+): LiftoffManifest {
+  const frameworkState = options.frameworkState ?? 'initialized';
+  const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
+  return {
+    artifactVersion: 3,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -132,10 +164,17 @@ export function buildManifest(plan: ProjectPlan, artifacts: GeneratedArtifact[])
       region: plan.region.slug,
       frontend: plan.includeFrontend,
       specWorkflow: plan.specWorkflow.id,
+      agents,
+      ...(frameworkState === 'initialized' && plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
       environments: plan.environments.map((environment) => environment.id)
     },
+    framework: {
+      state: frameworkState,
+      adapter: plan.framework.id,
+      ...(frameworkState === 'initialized' ? { contractVersion: plan.framework.version } : {})
+    },
     artifacts: artifacts
-      .filter((artifact) => artifact.category !== 'seed') // seed content is written once, never tracked
+      .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
       .map((artifact) => ({
         logicalName: artifact.logicalName,
         category: artifact.category,
@@ -157,7 +196,9 @@ function addBaseArtifacts(add: AddArtifact, plan: ProjectPlan): void {
     region: plan.region.slug,
     includeFrontend: plan.includeFrontend,
     environments: plan.environments.map((environment) => environment.id),
-    specWorkflow: plan.specWorkflow.id
+    specWorkflow: plan.specWorkflow.id,
+    agents: plan.agents.map((agent) => agent.id),
+    ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {})
   }, null, 2));
   add('env-example', 'configuration', ['.env.example'], renderEnvExample(plan));
   add(
@@ -276,22 +317,23 @@ function addInfrastructureArtifacts(add: AddArtifact, plan: ProjectPlan): void {
 function addGovernanceArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   if (plan.specWorkflow.id === 'openspec') {
     const changeName = `bootstrap-${plan.safeProjectName}`;
-    add('openspec-config', 'governance', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
+    add('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
     add('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
     add('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
     add('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
     add('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
-    add('openspec-spec-placeholder', 'governance', ['openspec', 'specs', '.gitkeep'], '');
+    add('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
   } else {
-    add('spec-kit-constitution', 'governance', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
-    add('spec-kit-spec-template', 'governance', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
-    add('spec-kit-plan-template', 'governance', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
-    add('specs-placeholder', 'governance', ['specs', '.gitkeep'], '');
+    add('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
+    add('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+    add('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+    add('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
   }
 }
 
 function addFrontendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('frontend-package', 'frontend', ['frontend', 'package.json'], renderFrontendPackage(plan));
+  add('frontend-lock', 'frontend', ['frontend', 'package-lock.json'], renderNpmLock('frontend', `${plan.safeProjectName}-frontend`));
   add('frontend-index', 'frontend', ['frontend', 'index.html'], renderFrontendIndex(plan));
   add('frontend-main', 'frontend', ['frontend', 'src', 'main.ts'], renderFrontendMain());
   add('frontend-app', 'frontend', ['frontend', 'src', 'App.vue'], renderFrontendApp(plan));
@@ -305,17 +347,18 @@ function addFrontendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
 function renderDirectBuildAndTestGuide(plan: ProjectPlan): string {
   let backendCommands: string;
   if (plan.projectType.id === 'genai' || plan.apiStack.id === 'python-fastapi') {
-    backendCommands = `python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e "./backend[test]"
+    backendCommands = `# macOS and Linux
+python3 -m venv .venv
+.venv/bin/python -m pip install -e "./backend[test]"
 (cd backend && python -m pytest -q)`;
   } else if (plan.apiStack.id === 'node-fastify') {
     backendCommands = `cd backend
-npm install
+npm ci
 npm run build
 npm test`;
   } else {
     backendCommands = `cd backend
+go mod download
 go test ./...`;
   }
   const frontendCommands = plan.includeFrontend ? `
@@ -325,28 +368,90 @@ Build the frontend without a running backend:
 \`\`\`bash
 cp frontend/.env.example frontend/.env
 cd frontend
-npm install
+npm ci
 npm run build
 \`\`\`
 ` : '';
+  const windowsPythonCommands = plan.projectType.id === 'genai' || plan.apiStack.id === 'python-fastapi'
+    ? `
+
+Equivalent Windows dependency commands:
+
+\`\`\`powershell
+py -3 -m venv .venv
+.venv\\Scripts\\python.exe -m pip install -e "./backend[test]"
+\`\`\`
+`
+    : '';
   const functionCommands = hasFunctionWorker(plan) ? `
 
 Run the Function worker unit tests from the same Python virtual environment:
 
 \`\`\`bash
-cd functions/${functionWorkerName(plan)}
-python -m pip install -r requirements.txt
-python -m pytest -q
+.venv/bin/python -m pip install -r functions/${functionWorkerName(plan)}/requirements.txt
+(cd functions/${functionWorkerName(plan)} && ../../.venv/bin/python -m pytest -q)
 \`\`\`
 ` : '';
-  return `## Direct Build And Test
+  return `## Project Dependencies, Build, And Test
+
+\`liftoff init --install-dependencies\` runs the selected stack's locked project-local dependency commands. To run or resume them manually:
 
 \`\`\`bash
 ${backendCommands}
 \`\`\`
 
-On Windows, activate Python virtual environments with \`.venv\\Scripts\\activate\`.
-${frontendCommands}${functionCommands}`;
+${windowsPythonCommands}${frontendCommands}${functionCommands}`;
+}
+
+function renderAdvisoryReadinessGuide(plan: ProjectPlan): string {
+  const selected: WorkstationRequirementId[] = [
+    'docker',
+    'opentofu',
+    ...(plan.provider.id === 'azure' ? ['azure-cli' as const] : [])
+  ];
+  return selected.map((id) => {
+    const requirement = workstationRequirementCatalog[id];
+    const mac = requirement.install.darwin;
+    const windows = requirement.install.win32;
+    const commands = [
+      ...(mac ? [`macOS: \`${formatCommand(mac.command)}\``] : []),
+      ...(windows ? [`Windows: \`${formatCommand(windows.command)}\``] : []),
+      `Linux: ${requirement.linuxRemedies.unknown}`
+    ].join('; ');
+    const health = id === 'docker'
+      ? ' After installation, start Docker Desktop or the Docker daemon.'
+      : id === 'azure-cli'
+        ? ' After installation, run `az login` if authentication is not ready.'
+        : '';
+    return `- ${requirement.label}: ${commands}.${health}`;
+  }).join('\n');
+}
+
+function renderSpecWorkflowGuide(plan: ProjectPlan): string {
+  const agents = plan.agents.map((agent) =>
+    `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default integration)' : ''}`
+  ).join(', ');
+  const ownership = plan.specWorkflow.id === 'openspec'
+    ? 'OpenSpec core files and the selected Copilot or Claude skill integrations'
+    : 'Spec Kit core files, integration state, and the selected Copilot or Claude skill integrations';
+  return `## Spec-Driven Workflow And Validation
+
+- Workflow: ${plan.specWorkflow.label} ${plan.framework.version}
+- AI coding agents: ${agents}
+- Framework ownership: the official initializer owns ${ownership}. Liftoff validates these files but excludes framework-owned output and one-time seed content from durable manifest hashes.
+- Deferred tools: advisory workstation checks may be deferred. Liftoff never claims they are installed and never installs them without \`--install-tools\`.
+
+If \`liftoff doctor\` reports a selected advisory tool as missing, use its registered readiness remedy:
+
+${renderAdvisoryReadinessGuide(plan)}
+
+Validate the scaffold and workstation after setup:
+
+\`\`\`bash
+liftoff validate
+liftoff doctor
+\`\`\`
+`;
 }
 
 function renderGeneratedConfigurationGuide(plan: ProjectPlan): string {
@@ -420,9 +525,7 @@ tofu apply -var-file=environments/dev.tfvars
 
 The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
 
-## Spec-Driven Workflow
-
-Selected workflow: ${plan.specWorkflow.label}.
+${renderSpecWorkflowGuide(plan)}
 `;
   }
 
@@ -473,9 +576,7 @@ tofu apply -var-file=environments/dev.tfvars
 
 The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
 
-## Spec-Driven Workflow
-
-Selected workflow: ${plan.specWorkflow.label}.
+${renderSpecWorkflowGuide(plan)}
 ${functionsSection}
 `;
 }
@@ -2569,25 +2670,7 @@ function renderSpecKitPlanTemplate(): string {
 }
 
 function renderFrontendPackage(plan: ProjectPlan): string {
-  return JSON.stringify({
-    name: `${plan.safeProjectName}-frontend`,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    scripts: {
-      dev: 'vite',
-      build: 'vite build',
-      preview: 'vite preview'
-    },
-    dependencies: {
-      '@vitejs/plugin-vue': '^5.0.5',
-      vite: '^5.3.1',
-      vue: '^3.4.29',
-      tailwindcss: '^3.4.4',
-      autoprefixer: '^10.4.19',
-      postcss: '^8.4.38'
-    }
-  }, null, 2);
+  return renderNpmPackage('frontend', `${plan.safeProjectName}-frontend`);
 }
 
 function renderFrontendIndex(plan: ProjectPlan): string {

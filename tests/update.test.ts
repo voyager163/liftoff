@@ -94,6 +94,24 @@ describe('update command', () => {
     expect(result.err).toContain('--force requires --apply');
   });
 
+  it('rejects framework integration drift instead of claiming uninitialized agents', async () => {
+    const root = await fixtureProject();
+    const configPath = path.join(root, 'liftoff.config.json');
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const before = await readFile(manifestPath, 'utf8');
+    await editJson(configPath, (config) => {
+      config.agents = ['copilot', 'claude'];
+    });
+
+    const result = await run(['update', '--apply'], root);
+
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('official framework initialization');
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
+    await expect(access(path.join(root, '.claude', 'skills', 'openspec-apply-change', 'SKILL.md')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('reconciles an added environment from config drift', async () => {
     const root = await fixtureProject();
     await editJson(path.join(root, 'liftoff.config.json'), (config) => {
@@ -460,6 +478,78 @@ describe('update command', () => {
     const result = await run(['update'], root);
     expect(result.code).toBe(0);
     expect(result.out).toContain('No drift');
+  });
+
+  it('preserves legacy framework uncertainty without fabricating ownership during validate and update', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const configPath = path.join(root, 'liftoff.config.json');
+    const frameworkMarker = path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md');
+    await editJson(manifestPath, (manifest) => {
+      manifest.artifactVersion = 2;
+      delete manifest.project.agents;
+      delete manifest.project.defaultAgent;
+      delete manifest.framework;
+    });
+    await editJson(configPath, (config) => {
+      delete config.agents;
+      delete config.defaultAgent;
+      config.environments = ['dev', 'test'];
+    });
+    await unlink(frameworkMarker);
+
+    const before = await run(['validate'], root);
+    expect(before.code).toBe(0);
+
+    const apply = await run(['update', '--apply'], root);
+    expect(apply.code).toBe(0);
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    expect(manifest).toMatchObject({
+      artifactVersion: 3,
+      project: { agents: [] },
+      framework: { state: 'legacy', adapter: 'openspec' }
+    });
+    await expect(access(frameworkMarker)).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const after = await run(['validate'], root);
+    expect(after.code).toBe(0);
+  });
+
+  it('validates Spec Kit agent markers without allowing update to own or recreate them', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Spec Kit Update App',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['dev'],
+      specWorkflow: 'spec-kit',
+      agents: ['copilot', 'claude'],
+      defaultAgent: 'copilot',
+      includeFrontend: false
+    });
+    cleanups.push(path.dirname(root));
+    const marker = path.join(root, '.claude', 'skills', 'speckit-specify', 'SKILL.md');
+    await unlink(marker);
+
+    const before = await run(['validate'], root);
+    expect(before.code).toBe(1);
+    expect(before.err).toContain('Missing framework marker');
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.environments = ['dev', 'test'];
+    });
+
+    const update = await run(['update', '--apply'], root);
+    expect(update.code).toBe(0);
+    await expect(access(marker)).rejects.toMatchObject({ code: 'ENOENT' });
+    const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    expect(manifest.artifacts.some((artifact: { pathParts: string[] }) =>
+      artifact.pathParts.join('/') === '.claude/skills/speckit-specify/SKILL.md'
+    )).toBe(false);
+
+    const after = await run(['validate'], root);
+    expect(after.code).toBe(1);
+    expect(after.err).toContain('Missing framework marker');
   });
 
   it('refuses projects written by a newer CLI', async () => {

@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
-import { CaptureStream } from './helpers.js';
+import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 const cleanups: string[] = [];
 afterEach(async () => {
@@ -14,10 +14,14 @@ afterEach(async () => {
   }
 });
 
-async function run(args: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
+async function run(
+  args: string[],
+  cwd: string,
+  runner = new ReadyInitRunner()
+): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr });
+  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr, runner });
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
@@ -89,8 +93,13 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(2);
+    expect(manifest.artifactVersion).toBe(3);
     expect(manifest.project.pattern).toBe('rag');
+    expect(manifest.framework).toMatchObject({
+      state: 'initialized',
+      adapter: 'openspec',
+      contractVersion: '1.6.0'
+    });
 
     const after = await hashTree(source);
     expect(after).toEqual(before);
@@ -238,6 +247,111 @@ describe('migrate command', () => {
     expect(checklist).toContain('migration/legacy/requirements.txt');
   });
 
+  it.each([
+    {
+      workflow: 'openspec',
+      extra: [] as string[],
+      expectedDefault: undefined,
+      marker: ['.claude', 'skills', 'openspec-apply-change', 'SKILL.md']
+    },
+    {
+      workflow: 'spec-kit',
+      extra: ['--default-agent', 'claude'],
+      expectedDefault: 'claude',
+      marker: ['.claude', 'skills', 'speckit-specify', 'SKILL.md']
+    }
+  ])('uses official $workflow initialization for both selected agents', async ({
+    workflow,
+    extra,
+    expectedDefault,
+    marker
+  }) => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+    const result = await run([
+      'migrate', source, '--region', 'eastus', '--spec', workflow,
+      '--agents', 'copilot,claude', ...extra, '--yes'
+    ], parent);
+
+    expect(result.code).toBe(0);
+    const target = path.join(parent, 'legacy-app-liftoff');
+    const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
+    expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
+    expect(manifest.project.defaultAgent).toBe(expectedDefault);
+    await access(path.join(target, ...marker));
+    await access(path.join(
+      target,
+      '.github',
+      'skills',
+      workflow === 'openspec' ? 'openspec-apply-change' : 'speckit-specify',
+      'SKILL.md'
+    ));
+    expect(await hashTree(source)).toEqual(before);
+  });
+
+  it('blocks on a missing framework before target writes and leaves the source unchanged', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+    const runner = new ReadyInitRunner({ missing: ['openspec'] });
+
+    const result = await run(['migrate', source, '--region', 'eastus', '--yes'], parent, runner);
+
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('OpenSpec: command not found');
+    expect(result.err).toContain('liftoff migrate');
+    await expect(access(path.join(parent, 'legacy-app-liftoff'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await hashTree(source)).toEqual(before);
+    expect(runner.calls.some((command) => command.executable === 'openspec' && command.args[0] === 'init')).toBe(false);
+  });
+
+  it('uses separate tool-install consent without weakening source immutability', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+    const runner = new ReadyInitRunner({ missing: ['openspec'] });
+
+    const result = await run([
+      'migrate', source, '--region', 'eastus', '--yes', '--install-tools'
+    ], parent, runner);
+
+    expect(result.code).toBe(0);
+    expect(runner.calls.some((command) =>
+      command.executable === 'npm' &&
+      command.args[0] === 'install' &&
+      command.args.some((argument) => argument.includes('@fission-ai/openspec'))
+    )).toBe(true);
+    await access(path.join(parent, 'legacy-app-liftoff', 'liftoff.manifest.json'));
+    expect(await hashTree(source)).toEqual(before);
+  });
+
+  it('installs dependencies only under the fresh target and never runs commands from the source', async () => {
+    const { parent, source } = await buildStandardFixture('legacy-node-dependencies', {
+      'package.json': JSON.stringify({
+        dependencies: { fastify: '^5.0.0' },
+        devDependencies: { typescript: '^5.5.0' }
+      })
+    });
+    const before = await hashTree(source);
+    const runner = new ReadyInitRunner();
+
+    const result = await run([
+      'migrate', source, '--region', 'eastus', '--yes', '--install-dependencies'
+    ], parent, runner);
+
+    expect(result.code).toBe(0);
+    const target = path.join(parent, 'legacy-node-dependencies-liftoff');
+    expect(runner.callDetails.some(({ command, options }) =>
+      command.executable === 'npm' &&
+      command.args[0] === 'ci' &&
+      options?.cwd === path.join(target, 'backend')
+    )).toBe(true);
+    for (const { options } of runner.callDetails) {
+      if (!options?.cwd) continue;
+      const relative = path.relative(source, options.cwd);
+      expect(relative === '' || !relative.startsWith('..') && !path.isAbsolute(relative)).toBe(false);
+    }
+    expect(await hashTree(source)).toEqual(before);
+  });
+
   it('fails safely when the target directory already exists and is not empty', async () => {
     const { parent, source } = await buildLegacyFixture();
     const target = path.join(parent, 'legacy-app-liftoff');
@@ -247,6 +361,11 @@ describe('migrate command', () => {
     const result = await run(['migrate', source, '--region', 'eastus', '--yes'], parent);
     expect(result.code).toBe(1);
     expect(result.err).toContain('new or empty');
+    expect(await readFile(path.join(target, 'keep.txt'), 'utf8')).toBe('existing\n');
+
+    const forced = await run(['migrate', source, '--region', 'eastus', '--yes', '--force'], parent);
+    expect(forced.code).toBe(1);
+    expect(forced.err).toContain('new or empty');
     expect(await readFile(path.join(target, 'keep.txt'), 'utf8')).toBe('existing\n');
   });
 

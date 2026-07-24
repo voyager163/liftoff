@@ -1,6 +1,8 @@
 import type {
   ApiStackDefinition,
   ApiStackId,
+  CodingAgentDefinition,
+  CodingAgentId,
   EnvironmentDefinition,
   EnvironmentId,
   PatternDefinition,
@@ -10,6 +12,7 @@ import type {
   ProjectTypeDefinition,
   ProjectTypeId,
   RegionDefinition,
+  FrameworkDefinition,
   SpecWorkflowDefinition,
   SpecWorkflowId
 } from './types.js';
@@ -253,6 +256,67 @@ export const specWorkflows: SpecWorkflowDefinition[] = [
   }
 ];
 
+export const codingAgents: CodingAgentDefinition[] = [
+  {
+    id: 'github-copilot',
+    inputName: 'copilot',
+    label: 'GitHub Copilot',
+    aliases: ['copilot', 'github-copilot', 'github copilot', 'gh-copilot'],
+    executable: 'copilot',
+    integrationIds: {
+      openspec: 'github-copilot',
+      'spec-kit': 'copilot'
+    }
+  },
+  {
+    id: 'claude',
+    inputName: 'claude',
+    label: 'Claude Code',
+    aliases: ['claude', 'claude-code', 'claude code'],
+    executable: 'claude',
+    integrationIds: {
+      openspec: 'claude',
+      'spec-kit': 'claude'
+    }
+  }
+];
+
+export const frameworkDefinitions: Record<SpecWorkflowId, FrameworkDefinition> = {
+  openspec: {
+    id: 'openspec',
+    executable: 'openspec',
+    version: '1.6.0',
+    installCommand: {
+      executable: 'npm',
+      args: ['install', '-g', '@fission-ai/openspec@1.6.0']
+    },
+    allowedRoots: ['.claude', '.github', 'openspec'],
+    baseMarkers: [['openspec', 'config.yaml']],
+    agentMarkers: {
+      'github-copilot': [['.github', 'skills', 'openspec-apply-change', 'SKILL.md']],
+      claude: [['.claude', 'skills', 'openspec-apply-change', 'SKILL.md']]
+    }
+  },
+  'spec-kit': {
+    id: 'spec-kit',
+    executable: 'specify',
+    version: '0.14.1',
+    installCommand: {
+      executable: 'uv',
+      args: ['tool', 'install', 'specify-cli==0.14.1']
+    },
+    allowedRoots: ['.claude', '.github', '.specify', 'specs'],
+    baseMarkers: [
+      ['.specify', 'init-options.json'],
+      ['.specify', 'integration.json']
+    ],
+    agentMarkers: {
+      'github-copilot': [['.github', 'skills', 'speckit-specify', 'SKILL.md']],
+      claude: [['.claude', 'skills', 'speckit-specify', 'SKILL.md']]
+    }
+  }
+};
+
 export function getPattern(value: string): PatternDefinition | undefined {
   const normalized = normalize(value);
   return patterns.find((pattern) => normalize(pattern.id) === normalized || pattern.aliases.some((alias) => normalize(alias) === normalized));
@@ -276,6 +340,40 @@ export function getProvider(value: string): ProviderDefinition | undefined {
 export function getSpecWorkflow(value: string): SpecWorkflowDefinition | undefined {
   const normalized = normalize(value);
   return specWorkflows.find((workflow) => normalize(workflow.id) === normalized || normalize(workflow.label) === normalized);
+}
+
+export function getCodingAgent(value: string): CodingAgentDefinition | undefined {
+  const normalized = normalize(value);
+  return codingAgents.find((agent) =>
+    normalize(agent.id) === normalized ||
+    normalize(agent.inputName) === normalized ||
+    agent.aliases.some((alias) => normalize(alias) === normalized)
+  );
+}
+
+export function getFrameworkDefinition(value: SpecWorkflowId): FrameworkDefinition {
+  return frameworkDefinitions[value];
+}
+
+export function canonicalizeCodingAgents(values?: string[]): {
+  agents: CodingAgentDefinition[];
+  unknown: string[];
+} {
+  const selected = values === undefined ? ['github-copilot'] : values;
+  const ids = new Set<CodingAgentId>();
+  const unknown: string[] = [];
+  for (const value of selected) {
+    const agent = getCodingAgent(value);
+    if (agent) {
+      ids.add(agent.id);
+    } else {
+      unknown.push(value);
+    }
+  }
+  return {
+    agents: codingAgents.filter((agent) => ids.has(agent.id)),
+    unknown
+  };
 }
 
 export function getEnvironment(value: string): EnvironmentDefinition | undefined {
@@ -362,4 +460,8 @@ export function isEnvironmentId(value: string): value is EnvironmentId {
 
 export function isSpecWorkflowId(value: string): value is SpecWorkflowId {
   return specWorkflows.some((workflow) => workflow.id === value);
+}
+
+export function isCodingAgentId(value: string): value is CodingAgentId {
+  return codingAgents.some((agent) => agent.id === value);
 }

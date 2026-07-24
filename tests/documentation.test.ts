@@ -18,6 +18,24 @@ describe('installation and release documentation', () => {
     expect(readme).toContain('does not modify `.npmrc`');
   });
 
+  it('documents init targeting, independent consent, workstation setup, and the removed create command', async () => {
+    const readme = await repositoryFile('README.md');
+
+    expect(readme).toContain('liftoff init claims-copilot');
+    expect(readme).toContain('exact current Git root');
+    expect(readme).toContain('named child');
+    expect(readme).toContain('Homebrew');
+    expect(readme).toContain('WinGet');
+    expect(readme).toContain('Linux system packages are never installed with automatic elevation');
+    for (const flag of ['--yes', '--force', '--install-tools', '--install-dependencies']) {
+      expect(readme).toContain(`\`${flag}\``);
+    }
+    expect(readme).toContain('OpenSpec and Spec Kit core/integration output is owned by their official initializers');
+    expect(readme).toContain('The former `liftoff create` command is intentionally rejected');
+    const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)].map((match) => match[1]).join('\n');
+    expect(bashExamples).not.toContain('liftoff create');
+  });
+
   it('documents canonical recovery, mirror readiness, and non-destructive deprecation', async () => {
     const [contributing, security] = await Promise.all([
       repositoryFile('CONTRIBUTING.md'),

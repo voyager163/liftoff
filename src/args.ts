@@ -1,73 +1,109 @@
 import type { ParsedArgs } from './types.js';
 
 type FlagKind = 'boolean' | 'value';
+export type CommandGroup = 'Onboarding' | 'Maintenance' | 'Reference' | 'Operations';
+export type FlagGroup = 'Project' | 'Framework' | 'Consent' | 'Output' | 'General' | 'Command';
 
-interface FlagDefinition {
+export interface FlagDefinition {
   kind: FlagKind;
   negatable?: boolean;
+  description: string;
+  metavar?: string;
+  defaultValue?: string;
+  group: FlagGroup;
 }
 
 export interface CommandDefinition {
   description: string;
   usage: string;
+  group: CommandGroup;
   flags: Readonly<Record<string, FlagDefinition>>;
   subcommands?: readonly string[];
   defaultMaxPositionals: number;
   subcommandMaxPositionals?: Readonly<Record<string, number>>;
 }
 
-const booleanFlag = (negatable = false): FlagDefinition => ({ kind: 'boolean', negatable });
-const valueFlag = (): FlagDefinition => ({ kind: 'value' });
-const helpFlag = { help: booleanFlag() };
+const booleanFlag = (
+  description: string,
+  group: FlagGroup,
+  negatable = false,
+  defaultValue?: string
+): FlagDefinition => ({ kind: 'boolean', description, group, negatable, ...(defaultValue ? { defaultValue } : {}) });
+const valueFlag = (
+  description: string,
+  group: FlagGroup,
+  metavar = 'value',
+  defaultValue?: string
+): FlagDefinition => ({ kind: 'value', description, group, metavar, ...(defaultValue ? { defaultValue } : {}) });
+const helpFlag = { help: booleanFlag('Show command-specific help', 'General') };
 
 const projectFlags = {
-  project: valueFlag(),
-  genai: booleanFlag(true),
-  api: valueFlag(),
-  pattern: valueFlag(),
-  cloud: valueFlag(),
-  region: valueFlag(),
-  frontend: booleanFlag(true),
-  environments: valueFlag(),
-  spec: valueFlag(),
-  config: valueFlag()
+  project: valueFlag('Project name or project path', 'Project', 'path'),
+  genai: booleanFlag('Create a GenAI project; use --no-genai for a standard API', 'Project', true),
+  api: valueFlag('Backend API stack', 'Project', 'stack'),
+  pattern: valueFlag('GenAI application pattern', 'Project', 'pattern'),
+  cloud: valueFlag('Cloud provider', 'Project', 'provider', 'azure'),
+  region: valueFlag('Cloud deployment region', 'Project', 'region', 'eastus'),
+  frontend: booleanFlag('Include the Vue frontend starter', 'Project', true, 'false'),
+  environments: valueFlag('Comma-separated environments', 'Project', 'list', 'dev,test,prod'),
+  spec: valueFlag('Spec-driven framework', 'Framework', 'framework', 'openspec'),
+  agents: valueFlag('Comma-separated AI coding agents', 'Framework', 'list', 'copilot'),
+  'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
+  config: valueFlag('Load deterministic project options from JSON', 'Project', 'file')
 } as const;
 
 export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
   help: {
     description: 'Show general or command-specific help',
     usage: '[command]',
+    group: 'Reference',
     flags: helpFlag,
     defaultMaxPositionals: 1
   },
-  create: {
-    description: 'Generate a new project',
+  init: {
+    description: 'Initialize a project and prepare its workstation',
     usage: '[project-name]',
-    flags: { ...projectFlags, yes: booleanFlag(), ...helpFlag },
+    group: 'Onboarding',
+    flags: {
+      ...projectFlags,
+      yes: booleanFlag('Accept project defaults and plan confirmation', 'Consent'),
+      force: booleanFlag('Authorize replacement of listed regular-file conflicts', 'Consent'),
+      'install-tools': booleanFlag('Authorize allowlisted workstation tool installation', 'Consent'),
+      'install-dependencies': booleanFlag('Authorize project-local dependency installation', 'Consent'),
+      ...helpFlag
+    },
     defaultMaxPositionals: 1
   },
   plan: {
     description: 'Preview generated artifacts',
     usage: '',
+    group: 'Onboarding',
     flags: { ...projectFlags, ...helpFlag },
     defaultMaxPositionals: 0
   },
   patterns: {
     description: 'List GenAI patterns',
     usage: '',
+    group: 'Reference',
     flags: helpFlag,
     defaultMaxPositionals: 0
   },
   providers: {
     description: 'List cloud providers',
     usage: '',
+    group: 'Reference',
     flags: helpFlag,
     defaultMaxPositionals: 0
   },
   regions: {
     description: 'List or search provider regions',
     usage: '[search <query>]',
-    flags: { cloud: valueFlag(), region: valueFlag(), ...helpFlag },
+    group: 'Reference',
+    flags: {
+      cloud: valueFlag('Cloud provider', 'Project', 'provider', 'azure'),
+      region: valueFlag('Exact region identifier', 'Project', 'region'),
+      ...helpFlag
+    },
     subcommands: ['search'],
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: { search: 1 }
@@ -75,17 +111,19 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
   validate: {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',
-    flags: { project: valueFlag(), ...helpFlag },
+    group: 'Maintenance',
+    flags: { project: valueFlag('Project path', 'Project', 'path'), ...helpFlag },
     defaultMaxPositionals: 1
   },
   update: {
     description: 'Reconcile a project with current templates',
     usage: '[project-path]',
+    group: 'Maintenance',
     flags: {
-      project: valueFlag(),
-      apply: booleanFlag(),
-      force: booleanFlag(),
-      json: booleanFlag(),
+      project: valueFlag('Project path', 'Project', 'path'),
+      apply: booleanFlag('Apply the proposed reconciliation', 'Consent'),
+      force: booleanFlag('Replace modified managed files', 'Consent'),
+      json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag
     },
     defaultMaxPositionals: 1
@@ -93,19 +131,33 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
   migrate: {
     description: 'Adopt an existing project',
     usage: '<source-path>',
-    flags: { ...projectFlags, yes: booleanFlag(), ...helpFlag },
+    group: 'Onboarding',
+    flags: {
+      ...projectFlags,
+      yes: booleanFlag('Accept project defaults and plan confirmation', 'Consent'),
+      force: booleanFlag('Retained for parity; never overrides the fresh migration target guard', 'Consent'),
+      'install-tools': booleanFlag('Authorize allowlisted workstation tool installation', 'Consent'),
+      'install-dependencies': booleanFlag('Authorize project-local dependency installation', 'Consent'),
+      ...helpFlag
+    },
     defaultMaxPositionals: 1
   },
   doctor: {
     description: 'Check local and project readiness',
     usage: '',
-    flags: { cloud: valueFlag(), json: booleanFlag(), ...helpFlag },
+    group: 'Maintenance',
+    flags: {
+      cloud: valueFlag('Cloud provider to inspect', 'Project', 'provider', 'azure'),
+      json: booleanFlag('Emit machine-readable JSON', 'Output'),
+      ...helpFlag
+    },
     defaultMaxPositionals: 0
   },
   dev: {
     description: 'Print Docker Compose helper commands',
     usage: '[up|down|logs|reset]',
-    flags: { profile: valueFlag(), ...helpFlag },
+    group: 'Operations',
+    flags: { profile: valueFlag('Docker Compose profile', 'Command', 'name'), ...helpFlag },
     subcommands: ['up', 'down', 'logs', 'reset'],
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: { up: 0, down: 0, logs: 0, reset: 0 }
@@ -113,7 +165,8 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
   infra: {
     description: 'Print OpenTofu helper commands',
     usage: '[init|plan|apply|output]',
-    flags: { env: valueFlag(), ...helpFlag },
+    group: 'Operations',
+    flags: { env: valueFlag('Target environment', 'Command', 'environment', 'dev'), ...helpFlag },
     subcommands: ['init', 'plan', 'apply', 'output'],
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: { init: 0, plan: 0, apply: 0, output: 0 }
@@ -162,6 +215,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
   const command = argv[0];
   if (command.startsWith('-')) {
     throw new UsageError(`Unknown option: ${command}. Run \`liftoff help\` for usage.`);
+  }
+  if (command === 'create') {
+    throw new UsageError('The `liftoff create` command was replaced by `liftoff init`. Run `liftoff init --help` for usage.');
   }
   const definition = commandDefinitions[command];
   if (!definition) {
@@ -267,14 +323,53 @@ export function formatCommandHelp(command: string): string {
   if (definition.subcommands) {
     lines.push('', `Subcommands: ${definition.subcommands.join(', ')}`);
   }
-  const flagNames = Object.entries(definition.flags).map(([name, flag]) => {
-    const value = flag.kind === 'value' ? ' <value>' : '';
-    const negated = flag.negatable ? ` / --no-${name}` : '';
-    return `  --${name}${value}${negated}`;
-  });
-  if (flagNames.length > 0) {
-    lines.push('', 'Options:', ...flagNames);
+  const groupedFlags = Object.entries(definition.flags).reduce((groups, entry) => {
+    const group = entry[1].group;
+    const entries = groups.get(group) ?? [];
+    entries.push(entry);
+    groups.set(group, entries);
+    return groups;
+  }, new Map<FlagGroup, Array<[string, FlagDefinition]>>());
+  for (const [group, entries] of groupedFlags) {
+    lines.push('', `${group} options:`);
+    const names = entries.map(([name, flag]) => {
+      const value = flag.kind === 'value' ? ` <${flag.metavar ?? 'value'}>` : '';
+      const negated = flag.negatable ? ` / --no-${name}` : '';
+      return `--${name}${value}${negated}`;
+    });
+    const width = Math.max(...names.map((name) => name.length));
+    for (const [index, [, flag]] of entries.entries()) {
+      const defaultValue = flag.defaultValue ? ` (default: ${flag.defaultValue})` : '';
+      lines.push(`  ${names[index].padEnd(width)}  ${flag.description}${defaultValue}`);
+    }
   }
+  return `${lines.join('\n')}\n`;
+}
+
+export function formatGeneralHelp(version: string): string {
+  const lines = [
+    `Mission Control Liftoff ${version}`,
+    'Initialize a governed application and prepare its local workstation.',
+    '',
+    'Usage: liftoff <command> [options]',
+    '',
+    'Global options:',
+    '  --version  Show the installed Liftoff version',
+    '  --help     Show general help'
+  ];
+  const groups: CommandGroup[] = ['Onboarding', 'Maintenance', 'Reference', 'Operations'];
+  for (const group of groups) {
+    const entries = Object.entries(commandDefinitions).filter(([, definition]) => definition.group === group);
+    if (entries.length === 0) {
+      continue;
+    }
+    const width = Math.max(...entries.map(([command]) => command.length));
+    lines.push('', `${group}:`);
+    for (const [command, definition] of entries) {
+      lines.push(`  ${command.padEnd(width)}  ${definition.description}`);
+    }
+  }
+  lines.push('', 'Run `liftoff help <command>` for command-specific usage.');
   return `${lines.join('\n')}\n`;
 }
 

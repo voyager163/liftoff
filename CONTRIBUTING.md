@@ -6,7 +6,7 @@ Thank you for helping improve Mission Control Liftoff.
 
 Install the supported toolchains:
 
-- Node.js 20 or newer
+- Node.js 20.19 or newer
 - Python 3.12
 - Go 1.23
 - OpenTofu 1.12
@@ -38,7 +38,7 @@ Before tagging a release, verify that root package and lockfile metadata agree. 
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.3.4
+npm run verify:release-identity -- v0.4.0
 ```
 
 The release tag, root package metadata, root lockfile metadata, packed package version, and installed `liftoff --version` output must all identify the same release.

@@ -36,7 +36,12 @@ export async function reconcileProject(
     // the manifest is rewritten wholesale on apply; liftoff.config.json is user-owned
     // desired state; seed content is gifted once and follows its own lifecycle -
     // none of them are reconciled
-    if (artifact.logicalName === 'manifest' || artifact.logicalName === 'liftoff-config' || artifact.category === 'seed') {
+    if (
+      artifact.logicalName === 'manifest' ||
+      artifact.logicalName === 'liftoff-config' ||
+      artifact.category === 'seed' ||
+      artifact.category === 'framework'
+    ) {
       continue;
     }
     const renderHash = hashBytes(artifact.content);

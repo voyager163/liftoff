@@ -11,6 +11,7 @@ export type PatternId =
 export type ProviderId = 'azure' | 'aws' | 'gcp';
 export type ProviderStatus = 'available' | 'planned';
 export type SpecWorkflowId = 'openspec' | 'spec-kit';
+export type CodingAgentId = 'github-copilot' | 'claude';
 export type EnvironmentId = 'dev' | 'test' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
 export type ProjectTypeId = 'genai' | 'standard';
@@ -72,6 +73,30 @@ export interface SpecWorkflowDefinition {
   description: string;
 }
 
+export interface ExternalCommand {
+  executable: string;
+  args: string[];
+}
+
+export interface CodingAgentDefinition {
+  id: CodingAgentId;
+  inputName: string;
+  label: string;
+  aliases: string[];
+  executable: string;
+  integrationIds: Record<SpecWorkflowId, string>;
+}
+
+export interface FrameworkDefinition {
+  id: SpecWorkflowId;
+  executable: string;
+  version: string;
+  installCommand: ExternalCommand;
+  allowedRoots: string[];
+  baseMarkers: string[][];
+  agentMarkers: Record<CodingAgentId, string[][]>;
+}
+
 export interface ProjectOptions {
   projectName?: string;
   projectType?: string;
@@ -82,8 +107,13 @@ export interface ProjectOptions {
   includeFrontend?: boolean;
   environments?: string[];
   specWorkflow?: string;
+  agents?: string[];
+  defaultAgent?: string;
   configPath?: string;
   yes?: boolean;
+  force?: boolean;
+  installTools?: boolean;
+  installDependencies?: boolean;
 }
 
 export interface ProjectPlan {
@@ -99,6 +129,9 @@ export interface ProjectPlan {
   frontendStarter: string;
   environments: EnvironmentDefinition[];
   specWorkflow: SpecWorkflowDefinition;
+  agents: CodingAgentDefinition[];
+  defaultAgent?: CodingAgentDefinition;
+  framework: FrameworkDefinition;
   approvedStack: string[];
 }
 
@@ -117,7 +150,7 @@ export interface ManifestArtifact {
 }
 
 export interface LiftoffManifest {
-  artifactVersion: 2;
+  artifactVersion: 2 | 3;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
   project: {
@@ -129,7 +162,14 @@ export interface LiftoffManifest {
     region: string;
     frontend: boolean;
     specWorkflow: SpecWorkflowId;
+    agents: CodingAgentId[];
+    defaultAgent?: CodingAgentId;
     environments: EnvironmentId[];
+  };
+  framework: {
+    state: 'initialized' | 'legacy';
+    adapter: SpecWorkflowId;
+    contractVersion?: string;
   };
   artifacts: ManifestArtifact[];
 }

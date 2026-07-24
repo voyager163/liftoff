@@ -87,7 +87,7 @@ The system SHALL publish npm metadata that identifies `voyager163/liftoff` as th
 - **THEN** the attestation identifies the public Liftoff repository and its release workflow
 
 ### Requirement: Documentation presents the global install path
-The system SHALL document global npm installation as the primary user setup path for Liftoff.
+The system SHALL document global npm installation as the primary user setup path for Liftoff and SHALL present `liftoff init` as the project initialization command.
 
 #### Scenario: Developer reads install instructions
 - **WHEN** a developer opens the Mission Control or Liftoff README
@@ -101,7 +101,12 @@ The system SHALL document global npm installation as the primary user setup path
 
 #### Scenario: Developer reads first-use instructions
 - **WHEN** a developer reviews the Liftoff installation documentation
-- **THEN** the documentation shows a first-use command such as `liftoff help` or `liftoff create`
+- **THEN** the documentation shows `liftoff help`, `liftoff plan`, and `liftoff init`
+- **AND** it does not present `liftoff create` as a supported command
+
+#### Scenario: Developer reads runtime requirements
+- **WHEN** a developer reviews the Liftoff installation documentation
+- **THEN** it states that Liftoff requires Node.js 20.19 or newer before global installation
 
 ### Requirement: Release version identity is coherent before publication
 The system SHALL require root package metadata, root lockfile metadata, a tag-triggered release's Git tag, packed package metadata, and the installed CLI version output to identify the same semantic version before publishing a new Liftoff package. A mismatch in any required identity SHALL fail the release workflow before `npm publish`.
@@ -138,3 +143,30 @@ The system SHALL treat a registry path as ready for version-command-based onboar
 - **WHEN** an approved managed registry resolves `@latest` to an older release, rejects explicit `@0.3.4`, or installs a CLI that does not report `Liftoff 0.3.4`
 - **THEN** version-command-based onboarding through that registry remains blocked
 - **AND** Liftoff does not modify npm configuration or silently install from another registry
+
+### Requirement: Published Liftoff requires Node.js 20.19 or newer
+The system SHALL declare Node.js `>=20.19` in published package engine metadata and SHALL fail startup with concise upgrade guidance when the running Node.js version is unsupported.
+
+#### Scenario: Install with a supported Node.js runtime
+- **WHEN** a developer installs and runs the published package with Node.js 20.19 or newer
+- **THEN** the Liftoff command can start and render help
+
+#### Scenario: Run with an unsupported Node.js runtime
+- **WHEN** a developer starts Liftoff with a Node.js version below 20.19
+- **THEN** Liftoff exits 1 before parsing project commands or performing side effects
+- **AND** it reports the observed and minimum supported versions
+
+### Requirement: Package smoke testing verifies the init command surface
+The system SHALL smoke-test the installed package's renamed initialization surface without changing the test workstation. The smoke test SHALL verify `init` help and planning behavior and SHALL verify that `create` is rejected with migration guidance.
+
+#### Scenario: Installed init command is available
+- **WHEN** release automation installs the packed package in an isolated location
+- **THEN** `liftoff init --help` exits 0 and documents the init-specific arguments and consent flags
+
+#### Scenario: Installed create command is absent
+- **WHEN** release automation runs `liftoff create` from the isolated installation
+- **THEN** the command exits 1, recommends `liftoff init`, and creates no project files
+
+#### Scenario: Installed plan remains side-effect free
+- **WHEN** release automation runs a fully specified `liftoff plan`
+- **THEN** it exits successfully without installing tools or creating a project directory

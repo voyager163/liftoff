@@ -1,0 +1,30 @@
+{
+  "artifactVersion": 3,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.4.0",
+  "project": {
+    "name": "Frozen V3 Fixture",
+    "projectType": "standard",
+    "apiStack": "node-fastify",
+    "cloud": "azure",
+    "region": "eastus",
+    "frontend": false,
+    "specWorkflow": "spec-kit",
+    "agents": [
+      "github-copilot",
+      "claude"
+    ],
+    "defaultAgent": "claude",
+    "environments": [
+      "dev",
+      "test",
+      "prod"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "spec-kit",
+    "contractVersion": "0.14.1"
+  },
+  "artifacts": []
+}

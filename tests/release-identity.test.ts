@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { verifyReleaseIdentity } from '../src/release-identity.js';
 
 const packageName = '@msn-control/liftoff';
-const packageVersion = '0.3.4';
+const packageVersion = '0.4.0';
 
 interface IdentityOverrides {
   packageName?: string;
@@ -68,26 +68,26 @@ describe('release identity verifier', () => {
   });
 
   it('rejects a lockfile-version mismatch with expected and observed values', async () => {
-    await withReleaseRoot({ lockVersion: '0.3.3' }, async (packageRoot) => {
+    await withReleaseRoot({ lockVersion: '0.3.4' }, async (packageRoot) => {
       await expect(verifyReleaseIdentity({ packageRoot })).rejects.toThrow(
-        'Release identity mismatch for package-lock.json version: expected "0.3.4", observed "0.3.3".'
+        'Release identity mismatch for package-lock.json version: expected "0.4.0", observed "0.3.4".'
       );
     });
   });
 
   it('accepts a matching release tag', async () => {
     await withReleaseRoot({}, async (packageRoot) => {
-      await expect(verifyReleaseIdentity({ packageRoot, releaseTag: 'v0.3.4' })).resolves.toMatchObject({
-        expectedTag: 'v0.3.4',
-        releaseTag: 'v0.3.4'
+      await expect(verifyReleaseIdentity({ packageRoot, releaseTag: 'v0.4.0' })).resolves.toMatchObject({
+        expectedTag: 'v0.4.0',
+        releaseTag: 'v0.4.0'
       });
     });
   });
 
   it('rejects a mismatched release tag with expected and observed values', async () => {
     await withReleaseRoot({}, async (packageRoot) => {
-      await expect(verifyReleaseIdentity({ packageRoot, releaseTag: 'v0.3.3' })).rejects.toThrow(
-        'Release identity mismatch for Git release tag: expected "v0.3.4", observed "v0.3.3".'
+      await expect(verifyReleaseIdentity({ packageRoot, releaseTag: 'v0.3.4' })).rejects.toThrow(
+        'Release identity mismatch for Git release tag: expected "v0.4.0", observed "v0.3.4".'
       );
     });
   });
@@ -96,7 +96,7 @@ describe('release identity verifier', () => {
     await withReleaseRoot({}, async (packageRoot) => {
       const result = await verifyReleaseIdentity({ packageRoot });
       expect(result.releaseTag).toBeUndefined();
-      expect(result.expectedTag).toBe('v0.3.4');
+      expect(result.expectedTag).toBe('v0.4.0');
     });
   });
 });

@@ -7,7 +7,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, doctorExitCode, runCommand } from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
-import { CaptureStream } from './helpers.js';
+import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
@@ -77,10 +77,14 @@ async function standardFixtureProject(apiStack: string): Promise<string> {
   return projectRoot;
 }
 
-async function run(args: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
+async function run(
+  args: string[],
+  cwd: string,
+  runner = new ReadyInitRunner()
+): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr });
+  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr, runner });
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
@@ -119,6 +123,8 @@ describe('doctor command', () => {
     expect(result.out).toContain('Runtime');
     expect(result.out).toContain('Cloud - azure');
     expect(result.out).toMatch(/manifest: valid, \d+ artifacts present/);
+    expect(result.out).toContain('framework contract: OpenSpec 1.6.0');
+    expect(result.out).toContain('framework markers: 1 selected integration verified');
     expect(result.out).toContain('scaffold drift: project matches the current templates');
     expect(result.out).not.toContain('cli freshness');
   }, 30_000);
@@ -145,6 +151,129 @@ describe('doctor command', () => {
       expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
       expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
     });
+  }, 30_000);
+
+  it('reports shared requirement identifiers, states, severities, and authentication health', async () => {
+    const root = await fixtureProject();
+    const result = await run(['doctor', '--json'], root);
+    const report = JSON.parse(result.out);
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    const byId = new Map(environment.checks.map((check: { id: string }) => [check.id, check]));
+
+    expect(byId.get('node')).toMatchObject({
+      id: 'node',
+      severity: 'ok',
+      state: 'ready',
+      requirementSeverity: 'blocking'
+    });
+    expect(byId.get('openspec')).toMatchObject({
+      state: 'ready',
+      requirementSeverity: 'blocking'
+    });
+    expect(byId.get('github-copilot:github-copilot-authentication')).toMatchObject({
+      severity: 'warn',
+      state: 'not-observable',
+      requirementSeverity: 'advisory'
+    });
+    expect(report.schemaVersion).toBe(1);
+  }, 30_000);
+
+  it('fails blocking readiness and warns for advisory readiness from the shared probes', async () => {
+    const root = await fixtureProject();
+    const result = await run(
+      ['doctor', '--json'],
+      root,
+      new ReadyInitRunner({ missing: ['openspec', 'docker'] })
+    );
+    const report = JSON.parse(result.out);
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    const byId = new Map(environment.checks.map((check: { id: string }) => [check.id, check]));
+
+    expect(result.code).toBe(1);
+    expect(byId.get('openspec')).toMatchObject({
+      severity: 'fail',
+      state: 'missing',
+      requirementSeverity: 'blocking'
+    });
+    expect(byId.get('docker')).toMatchObject({
+      severity: 'warn',
+      state: 'missing',
+      requirementSeverity: 'advisory'
+    });
+  }, 30_000);
+
+  it('checks the v3 framework contract and selected integration markers explicitly', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.framework.contractVersion = '1.5.0';
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    await rm(path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md'));
+
+    const report = JSON.parse((await run(['doctor', '--json'], root)).out);
+    const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+    const contract = project.checks.find((check: { id: string }) => check.id === 'framework-contract');
+    const markers = project.checks.find((check: { id: string }) => check.id === 'framework-markers');
+    expect(contract).toMatchObject({ severity: 'fail', state: 'outdated' });
+    expect(markers).toMatchObject({ severity: 'fail', state: 'unhealthy' });
+    expect(markers.detail).toContain('Missing framework marker');
+  }, 30_000);
+
+  it('checks Spec Kit with both selected agents and its explicit default integration', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Spec Kit Doctor App',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['dev'],
+      specWorkflow: 'spec-kit',
+      agents: ['copilot', 'claude'],
+      defaultAgent: 'claude',
+      includeFrontend: false
+    });
+    cleanups.push(path.dirname(root));
+
+    const report = JSON.parse((await run(['doctor', '--json'], root)).out);
+    const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    expect(project.checks.find((check: { id: string }) => check.id === 'framework-contract')).toMatchObject({
+      severity: 'ok',
+      detail: 'Spec Kit 0.14.1'
+    });
+    expect(project.checks.find((check: { id: string }) => check.id === 'selected-agents')).toMatchObject({
+      detail: 'github-copilot, claude'
+    });
+    expect(environment.checks.map((check: { id: string }) => check.id)).toEqual(expect.arrayContaining([
+      'spec-kit',
+      'github-copilot',
+      'claude'
+    ]));
+  }, 30_000);
+
+  it('warns about legacy framework uncertainty without inferring agents or framework ownership', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.artifactVersion = 2;
+    delete manifest.project.agents;
+    delete manifest.project.defaultAgent;
+    delete manifest.framework;
+    await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+    const before = await readFile(manifestPath, 'utf8');
+
+    const result = await run(['doctor', '--json'], root);
+    const report = JSON.parse(result.out);
+    const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    const legacy = project.checks.find((check: { id: string }) => check.id === 'framework-legacy-state');
+
+    expect(legacy).toMatchObject({ severity: 'warn', state: 'not-observable' });
+    expect(legacy.detail).toContain('does not prove');
+    expect(project.checks.some((check: { id: string }) => check.id === 'selected-agents')).toBe(false);
+    expect(environment.checks.some((check: { id: string }) => check.id === 'github-copilot')).toBe(false);
+    expect(environment.checks.some((check: { id: string }) => check.id === 'openspec')).toBe(false);
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
   }, 30_000);
 
   it('ignores and preserves stale managed-registry configuration', async () => {

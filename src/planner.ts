@@ -2,9 +2,12 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   apiStacks,
+  canonicalizeCodingAgents,
   environments,
   getApiStack,
+  getCodingAgent,
   getEnvironment,
+  getFrameworkDefinition,
   getPattern,
   getProvider,
   getProjectType,
@@ -34,7 +37,9 @@ const CONFIG_FIELDS = new Set([
   'region',
   'includeFrontend',
   'environments',
-  'specWorkflow'
+  'specWorkflow',
+  'agents',
+  'defaultAgent'
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -104,6 +109,7 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
   const pattern = resolveConfigCatalogValue(parsed, 'pattern', getPattern);
   const cloud = resolveConfigCatalogValue(parsed, 'cloud', getProvider);
   const specWorkflow = resolveConfigCatalogValue(parsed, 'specWorkflow', getSpecWorkflow);
+  const defaultAgent = resolveConfigCatalogValue(parsed, 'defaultAgent', getCodingAgent);
 
   const includeFrontendValue = parsed.includeFrontend;
   if (includeFrontendValue !== undefined && typeof includeFrontendValue !== 'boolean') {
@@ -130,6 +136,26 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
     }
   }
 
+  let selectedAgents: string[] | undefined;
+  if (parsed.agents !== undefined) {
+    if (!Array.isArray(parsed.agents) || parsed.agents.length === 0) {
+      throw new PlanValidationError(['Configuration field agents must be a non-empty string array.']);
+    }
+    const values = parsed.agents.map((value, index) => {
+      if (typeof value !== 'string') {
+        throw new PlanValidationError([`Configuration field agents[${index}] must be a string.`]);
+      }
+      return value;
+    });
+    const resolved = canonicalizeCodingAgents(values);
+    if (resolved.unknown.length > 0) {
+      throw new PlanValidationError([
+        `Configuration field agents contains unsupported value ${JSON.stringify(resolved.unknown[0])}.`
+      ]);
+    }
+    selectedAgents = resolved.agents.map((agent) => agent.id);
+  }
+
   let region = optionalConfigString(parsed, 'region');
   const provider = cloud ? getProvider(cloud) : getProvider('azure');
   if (region && provider?.status === 'available') {
@@ -153,7 +179,9 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
     region,
     includeFrontend: includeFrontendValue,
     environments: selectedEnvironments,
-    specWorkflow
+    specWorkflow,
+    agents: selectedAgents,
+    defaultAgent
   };
 }
 
@@ -218,6 +246,35 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     issues.push(`Unknown spec-driven workflow: ${input.specWorkflow}.`);
   }
 
+  const selectedAgents = canonicalizeCodingAgents(input.agents);
+  if (input.agents?.length === 0) {
+    issues.push('At least one AI coding agent is required.');
+  }
+  if (selectedAgents.unknown.length > 0) {
+    issues.push(`Unknown AI coding agent${selectedAgents.unknown.length === 1 ? '' : 's'}: ${selectedAgents.unknown.join(', ')}.`);
+  }
+  if (selectedAgents.agents.length === 0) {
+    issues.push('At least one supported AI coding agent is required.');
+  }
+
+  const requestedDefaultAgent = input.defaultAgent ? getCodingAgent(input.defaultAgent) : undefined;
+  if (input.defaultAgent && !requestedDefaultAgent) {
+    issues.push(`Unknown default AI coding agent: ${input.defaultAgent}.`);
+  }
+  let defaultAgent = requestedDefaultAgent;
+  if (specWorkflow?.id === 'spec-kit') {
+    if (selectedAgents.agents.length === 1 && !defaultAgent) {
+      defaultAgent = selectedAgents.agents[0];
+    } else if (!defaultAgent) {
+      issues.push('Spec Kit requires --default-agent when multiple AI coding agents are selected.');
+    }
+    if (defaultAgent && !selectedAgents.agents.some((agent) => agent.id === defaultAgent?.id)) {
+      issues.push('The Spec Kit default agent must also be present in the selected agents.');
+    }
+  } else if (input.defaultAgent) {
+    issues.push('--default-agent is only valid with Spec Kit.');
+  }
+
   const selectedEnvironments = resolveEnvironments(input.environments);
   if (selectedEnvironments.issues.length > 0) {
     issues.push(...selectedEnvironments.issues);
@@ -238,6 +295,7 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     projectType.id === 'genai' && !pattern ||
     !provider ||
     !specWorkflow ||
+    selectedAgents.agents.length === 0 ||
     provider.status !== 'available' ||
     !regionResolution ||
     regionResolution.status !== 'resolved'
@@ -261,6 +319,9 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     frontendStarter: pattern?.frontendStarter ?? 'API starter',
     environments: selectedEnvironments.values,
     specWorkflow,
+    agents: selectedAgents.agents,
+    ...(defaultAgent ? { defaultAgent } : {}),
+    framework: getFrameworkDefinition(specWorkflow.id),
     approvedStack: approvedStackFor(projectType.id, apiStack.id)
   };
 }
@@ -346,6 +407,8 @@ export function formatProjectPlan(plan: ProjectPlan): string {
     `Region: ${plan.region.displayName} / ${plan.region.slug}`,
     `Frontend: ${frontendLine}`,
     `Spec workflow: ${plan.specWorkflow.label}`,
+    `Coding agents: ${plan.agents.map((agent) => agent.label).join(', ')}`,
+    ...(plan.defaultAgent ? [`Default agent: ${plan.defaultAgent.label}`] : []),
     `Environments: ${plan.environments.map((environment) => environment.id).join(', ')}`,
     `Approved stack: ${plan.approvedStack.join(', ')}`,
     plan.projectType.id === 'genai'

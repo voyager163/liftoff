@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -101,6 +101,8 @@ try {
   assertPackageContains(packResult, 'dist/genai-templates.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
+  assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
+  assertPackageContains(packResult, 'assets/locks/frontend/package-lock.json');
   assertPackageExcludes(packResult, 'src');
   assertPackageExcludes(packResult, 'tests');
   assertPackageExcludes(packResult, 'node_modules');
@@ -141,12 +143,36 @@ try {
     throw new Error(`Installed liftoff reported an unexpected version: ${version.stdout.trim()}`);
   }
 
-  const createHelp = run(process.execPath, [liftoffEntrypoint, 'create', '--help'], {
+  const initHelp = run(process.execPath, [liftoffEntrypoint, 'init', '--help'], {
     cwd: outsideDirectory,
     env: npmEnv
   });
-  if (!createHelp.stdout.includes('Usage: liftoff create [project-name]')) {
-    throw new Error('Installed liftoff command help did not include create usage');
+  if (!initHelp.stdout.includes('Usage: liftoff init [project-name]') || !initHelp.stdout.includes('--install-tools')) {
+    throw new Error('Installed liftoff command help did not include init usage and consent flags');
+  }
+
+  const beforePlan = await readdir(outsideDirectory);
+  const plan = run(process.execPath, [
+    liftoffEntrypoint, 'plan', '--no-genai', '--api', 'node', '--cloud', 'azure',
+    '--region', 'eastus', '--spec', 'openspec', '--agents', 'copilot', '--no-frontend'
+  ], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (!plan.stdout.includes('Artifacts') || !plan.stdout.includes('Workstation requirements:')) {
+    throw new Error('Installed liftoff plan did not render artifacts and requirements');
+  }
+  const afterPlan = await readdir(outsideDirectory);
+  if (JSON.stringify(afterPlan) !== JSON.stringify(beforePlan)) {
+    throw new Error(`Installed liftoff plan changed the working directory: ${afterPlan.join(', ')}`);
+  }
+
+  const obsoleteCreate = runFailure(process.execPath, [liftoffEntrypoint, 'create', 'obsolete-app'], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (!obsoleteCreate.stderr.includes('replaced by `liftoff init`') || existsSync(path.join(outsideDirectory, 'obsolete-app'))) {
+    throw new Error('Installed liftoff did not reject the obsolete create command with init guidance');
   }
 
   const missingValue = runFailure(process.execPath, [liftoffEntrypoint, 'plan', '--pattern'], {
@@ -160,13 +186,13 @@ try {
   const typo = runFailure(
     process.execPath,
     [
-      liftoffEntrypoint, 'create', 'typo-app', '--no-genai', '--api', 'node', '--cluod', 'aws',
+      liftoffEntrypoint, 'init', 'typo-app', '--no-genai', '--api', 'node', '--cluod', 'aws',
       '--region', 'eastus', '--spec', 'openspec', '--frontned', '--environments', 'dev', '--yes'
     ],
     { cwd: outsideDirectory, env: npmEnv }
   );
-  if (!typo.stderr.includes('Unknown flag for create: --cluod') || existsSync(path.join(outsideDirectory, 'typo-app'))) {
-    throw new Error('Installed liftoff did not reject a mistyped create flag before generation');
+  if (!typo.stderr.includes('Unknown flag for init: --cluod') || existsSync(path.join(outsideDirectory, 'typo-app'))) {
+    throw new Error('Installed liftoff did not reject a mistyped init flag before generation');
   }
 
   const badSubcommand = runFailure(process.execPath, [liftoffEntrypoint, 'dev', 'destroy'], {

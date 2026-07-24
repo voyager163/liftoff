@@ -3,7 +3,13 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { apiStacks, patterns } from '../src/catalogs.js';
-import { artifactPath, assertNewOrEmptyDirectory, validateGeneratedProject, writeArtifacts } from '../src/file-system.js';
+import {
+  artifactPath,
+  assertNewOrEmptyDirectory,
+  validateGeneratedProject,
+  writeArtifacts,
+  writeProjectFile
+} from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
 
@@ -315,11 +321,37 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('occupied destination');
     expect(readme).toContain('symlink-escaping manifest paths');
     expect(readme).toContain('liftoff <command> --help');
+    expect(readme).toContain('Workflow: OpenSpec 1.6.0');
+    expect(readme).toContain('AI coding agents: GitHub Copilot');
+    expect(readme).toContain('Framework ownership:');
+    expect(readme).toContain('Deferred tools:');
+    expect(readme).toContain('liftoff init --install-dependencies');
+    expect(readme).toContain('npm ci');
+    expect(readme).toContain('liftoff validate');
+    expect(readme).toContain('liftoff doctor');
     expect(tofuReadme).toContain('resource_suffix');
     expect(tofuReadme).toContain('^[a-z0-9]{12}$');
     expect(tofuReadme).toContain('ServiceBusConnection__clientId');
     expect(functionReadme).toContain('AzureWebJobsStorage');
     expect(functionReadme).toContain('python -m pytest -q');
+  });
+
+  it('documents both Spec Kit agents and the selected default integration', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Dual Agent App',
+      projectType: 'standard',
+      apiStack: 'go',
+      cloud: 'azure',
+      specWorkflow: 'spec-kit',
+      agents: ['copilot', 'claude'],
+      defaultAgent: 'claude',
+      includeFrontend: false
+    }, { requireProjectName: true }));
+    const readme = artifacts.find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
+
+    expect(readme).toContain('Workflow: Spec Kit 0.14.1');
+    expect(readme).toContain('GitHub Copilot, Claude Code (default integration)');
+    expect(readme).toContain('go mod download');
   });
 
   it('generates OpenTofu and Docker Compose validation hooks', () => {
@@ -404,6 +436,14 @@ describe('templates and filesystem', () => {
       const plan = buildProjectPlan({ projectName: 'Claims RAG', pattern: 'rag', cloud: 'azure', includeFrontend: true }, { requireProjectName: true });
       await writeArtifacts(targetRoot, buildArtifacts(plan));
 
+      expect(await validateGeneratedProject(targetRoot)).toContain(
+        'Missing framework marker: .github/skills/openspec-apply-change/SKILL.md'
+      );
+      await writeProjectFile(
+        targetRoot,
+        ['.github', 'skills', 'openspec-apply-change', 'SKILL.md'],
+        'fixture marker\n'
+      );
       expect(await validateGeneratedProject(targetRoot)).toEqual([]);
       expect(await readFile(path.join(targetRoot, 'backend', 'apis', 'main.py'), 'utf8')).toContain('/scalar');
     } finally {
