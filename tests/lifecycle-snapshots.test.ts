@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Readable } from 'node:stream';
@@ -45,7 +45,9 @@ async function runScreen(
     runner: options.runner ?? new ReadyInitRunner(),
     terminal: { snapshot: true, columns }
   });
-  const normalize = (value: string) => value.replaceAll(cwd, '<workspace>');
+  const canonicalCwd = await realpath(cwd);
+  const normalize = (value: string) =>
+    value.replaceAll(canonicalCwd, '<workspace>').replaceAll(cwd, '<workspace>');
   return { code, out: normalize(stdout.text()), err: normalize(stderr.text()) };
 }
 

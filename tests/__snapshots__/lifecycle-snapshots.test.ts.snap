@@ -151,7 +151,7 @@ OpenSpec 1.6.0
 $ openspec init --tools github-copilot --profile core
 ◆: Validate staged project
 ◆: Merge staged project
-/private<workspace>/snapshot-app
+<workspace>/snapshot-app
 Configured integrations
 ───────────────────────
 - OpenSpec 1.6.0
@@ -165,18 +165,18 @@ credentials. Remedy: Run \`copilot\` and sign in if prompted.
 Deferred project dependencies
 ─────────────────────────────
 - Download backend Go modules:
-/private<workspace>/snapshot-app/backend
+<workspace>/snapshot-app/backend
 -> go mod download
 
-✓ Initialized snapshot-app: /private<workspace>/snapshot-app
+✓ Initialized snapshot-app: <workspace>/snapshot-app
 Completion
 ──────────
 Target
-/private<workspace>/snapshot-app
+<workspace>/snapshot-app
 Spec workflow  OpenSpec
 Coding agents  GitHub Copilot
 
-$ liftoff validate "/private<workspace>/snapshot-app"
+$ liftoff validate "<workspace>/snapshot-app"
 ",
 }
 `;
@@ -493,7 +493,7 @@ OpenSpec 1.6.0
 $ openspec init --tools github-copilot --profile core
 Stage: Validate staged project
 Stage: Merge staged project
-/private<workspace>/snapshot-app
+<workspace>/snapshot-app
 Configured integrations
 - OpenSpec 1.6.0
 - GitHub Copilot
@@ -502,15 +502,15 @@ Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
-- Download backend Go modules: /private<workspace>/snapshot-app/backend -> go mod download
+- Download backend Go modules: <workspace>/snapshot-app/backend -> go mod download
 
-[ok] Initialized snapshot-app: /private<workspace>/snapshot-app
+[ok] Initialized snapshot-app: <workspace>/snapshot-app
 Completion
-Target: /private<workspace>/snapshot-app
+Target: <workspace>/snapshot-app
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 
-$ liftoff validate "/private<workspace>/snapshot-app"
+$ liftoff validate "<workspace>/snapshot-app"
 ",
 }
 `;
@@ -820,7 +820,7 @@ OpenSpec 1.6.0
 $ openspec init --tools github-copilot --profile core
 ◆: Validate staged project
 ◆: Merge staged project
-/private<workspace>/snapshot-app
+<workspace>/snapshot-app
 ┌─ Configured integrations ────────────────────────────────────────────────────────────────────┐
 │ • OpenSpec 1.6.0                                                                             │
 │ • GitHub Copilot                                                                             │
@@ -831,18 +831,18 @@ $ openspec init --tools github-copilot --profile core
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred project dependencies ──────────────────────────────────────────────────────────────┐
 │ • Download backend Go modules:                                                               │
-│ /private<workspace>/snapshot │
+│ <workspace>/snapshot │
 │ -app/backend -> go mod download                                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-✓ Initialized snapshot-app: /private<workspace>/snapshot-app
+✓ Initialized snapshot-app: <workspace>/snapshot-app
 ┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
 │ Target                                                                                       │
-│ /private<workspace>/snapshot │
+│ <workspace>/snapshot │
 │ -app                                                                                         │
 │ Spec workflow  OpenSpec                                                                      │
 │ Coding agents  GitHub Copilot                                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-$ liftoff validate "/private<workspace>/snapshot-app"
+$ liftoff validate "<workspace>/snapshot-app"
 ",
 }
 `;

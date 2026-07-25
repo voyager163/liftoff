@@ -1565,11 +1565,14 @@ function binaryPresent(command: string): boolean {
   return spawnSync(probe, [command], { encoding: 'utf8' }).status === 0;
 }
 
-function azureCloudChecks(): DoctorCheck[] {
-  if (!binaryPresent('az')) {
+async function azureCloudChecks(runner: CommandRunner): Promise<DoctorCheck[]> {
+  const auth = await runner.run(
+    { executable: 'az', args: ['account', 'show', '-o', 'none', '--only-show-errors'] },
+    { timeoutMs: 15_000 }
+  );
+  if (auth.errorCode === 'ENOENT') {
     return [{ label: 'az', severity: 'warn', detail: 'Azure CLI not found', remedy: 'install the Azure CLI' }];
   }
-  const auth = spawnSync('az', ['account', 'show', '-o', 'none', '--only-show-errors'], { encoding: 'utf8' });
   if (auth.status === 0) {
     return [{ label: 'azure auth', severity: 'ok', detail: 'authenticated' }];
   }
@@ -1577,13 +1580,13 @@ function azureCloudChecks(): DoctorCheck[] {
 }
 
 // ponytail: provider-keyed map so aws/gcp checks slot in when their adapters land
-const CLOUD_CHECKS: Record<string, () => DoctorCheck[]> = {
+const CLOUD_CHECKS: Record<string, (runner: CommandRunner) => Promise<DoctorCheck[]>> = {
   azure: azureCloudChecks
 };
 
-function cloudLayer(cloud: string): DoctorLayer {
+async function cloudLayer(cloud: string, runner: CommandRunner): Promise<DoctorLayer> {
   const checks = CLOUD_CHECKS[cloud]
-    ? CLOUD_CHECKS[cloud]()
+    ? await CLOUD_CHECKS[cloud](runner)
     : [{ label: cloud, severity: 'skipped' as const, detail: `${cloud} provider checks are not available yet` }];
   return { title: `Cloud - ${cloud}`, checks };
 }
@@ -1689,7 +1692,11 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
   return { title: 'Project', checks };
 }
 
-async function runtimeLayer(projectRoot: string, dockerAvailable: boolean): Promise<DoctorLayer> {
+async function runtimeLayer(
+  projectRoot: string,
+  dockerAvailable: boolean,
+  runner: CommandRunner
+): Promise<DoctorLayer> {
   const checks: DoctorCheck[] = [];
 
   if (existsSync(path.join(projectRoot, '.env.example'))) {
@@ -1707,7 +1714,10 @@ async function runtimeLayer(projectRoot: string, dockerAvailable: boolean): Prom
   } else if (!dockerAvailable) {
     checks.push({ label: 'compose', severity: 'skipped', detail: 'docker is not installed, compose config not checked' });
   } else {
-    const result = spawnSync('docker', ['compose', 'config', '-q'], { cwd: projectRoot, encoding: 'utf8' });
+    const result = await runner.run(
+      { executable: 'docker', args: ['compose', 'config', '-q'] },
+      { cwd: projectRoot, timeoutMs: 15_000 }
+    );
     if (result.status === 0) {
       checks.push({ label: 'compose', severity: 'ok', detail: 'docker compose config is valid' });
     } else {
@@ -1785,10 +1795,10 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
     if (manifest) {
       layers.push(await projectLayer(projectRoot, manifest));
-      layers.push(await runtimeLayer(projectRoot, dockerAvailable));
+      layers.push(await runtimeLayer(projectRoot, dockerAvailable, runner));
 
       const cloud = cloudOverride ?? manifest.project.cloud;
-      const cloudChecks = cloudLayer(cloud);
+      const cloudChecks = await cloudLayer(cloud, runner);
       const pattern = patterns.find((candidate) => candidate.id === manifest.project.pattern);
       if (pattern?.worker && cloud === 'azure') {
         cloudChecks.checks.push(
@@ -1800,7 +1810,7 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       layers.push(cloudChecks);
     }
   } else if (cloudOverride) {
-    layers.push(cloudLayer(cloudOverride));
+    layers.push(await cloudLayer(cloudOverride, runner));
   }
 
   const failures = layers.reduce((count, layer) => count + layer.checks.filter((check) => check.severity === 'fail').length, 0);

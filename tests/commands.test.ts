@@ -243,7 +243,10 @@ describe('commands', () => {
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Project dependencies');
       expect(stdout.text()).not.toContain('Deferred project dependencies');
-      expect(runner.calls).toContainEqual({ executable: 'npm', args: ['ci'] });
+      expect(runner.calls).toContainEqual({
+        executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        args: ['ci']
+      });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
