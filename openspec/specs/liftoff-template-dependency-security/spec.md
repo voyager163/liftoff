@@ -1,0 +1,135 @@
+## Purpose
+
+Define security controls for npm dependency templates packaged into generated Liftoff projects, including minimal remediation, reviewed exceptions, deterministic validation, and isolated live auditing.
+
+## Requirements
+
+### Requirement: Every packaged npm template is explicitly audited
+The system SHALL maintain an explicit inventory of every npm lockfile packaged for generated projects and SHALL provide a read-only audit command that checks each inventory entry against canonical npm advisory data. Inventory paths SHALL be represented as portable path parts and resolved with platform-native path handling rather than discovered through recursive pattern matching.
+
+#### Scenario: Audit all current packaged templates
+- **WHEN** the template dependency audit runs
+- **THEN** it checks the standard Node.js backend lockfile, standard frontend lockfile, and current commit-addressed Power Apps starter lockfile
+- **AND** it reports the stable logical name and repository-relative path for each audited template
+
+#### Scenario: Run the audit on a supported operating system
+- **WHEN** a maintainer runs the audit on Windows, macOS, or Linux
+- **THEN** the same logical inventory entries are resolved with platform-correct filesystem paths
+- **AND** no path depends on a hardcoded operating-system separator
+
+#### Scenario: Encounter an untracked packaged lockfile
+- **WHEN** package inspection finds an npm lockfile intended for generated output that is absent from the explicit audit inventory
+- **THEN** verification fails and identifies the untracked packaged path
+
+### Requirement: Fixable template advisories use compatible patched dependencies
+The system SHALL update a packaged template dependency when a compatible patched release exists and SHALL select the smallest supported upgrade line that resolves the advisory without unrelated major-version migration. The package manifest and deterministic lockfile MUST remain coherent.
+
+#### Scenario: Remediate the Node.js backend SQL injection advisory
+- **WHEN** the Node.js backend template is refreshed for the Drizzle ORM identifier-escaping advisory
+- **THEN** its manifest requires a patched Drizzle ORM release
+- **AND** its lockfile resolves that patched release without changing the approved Fastify, TypeScript, PostgreSQL, or Drizzle stack
+
+#### Scenario: Remediate the standard frontend development-server advisories
+- **WHEN** the standard frontend template is refreshed for its Vite and esbuild advisories
+- **THEN** its manifest selects the compatible patched Vite 6 line
+- **AND** its lockfile contains patched Vite and esbuild releases without requiring a Vite 8 or Vue plugin major upgrade
+
+#### Scenario: No compatible patch exists
+- **WHEN** an advisory has no compatible verified patch
+- **THEN** the system does not apply an automatic major upgrade, downgrade, or transitive override
+- **AND** the finding remains blocking unless it has a valid reviewed exception
+
+### Requirement: Unresolved advisories require exact time-bounded exceptions
+The system SHALL permit an unresolved template advisory only when checked-in structured policy contains an exact exception for the advisory identifier, package, manifest path parts, and complete reviewed dependency-chain set. Every exception MUST record a constrained disposition, technical rationale, mitigation, owner, review date, expiry date, and upstream reference when applicable.
+
+#### Scenario: Accept a non-reachable advisory
+- **WHEN** live audit output contains a finding whose vulnerable API is demonstrably not invoked by the generated template
+- **THEN** the audit accepts it only when an unexpired exact exception records the non-reachability evidence and mitigation
+- **AND** every reported dependency chain matches the exception's reviewed chain set
+- **AND** the report identifies the finding as reviewed rather than fixed
+
+#### Scenario: Reject an unreviewed advisory
+- **WHEN** live audit output contains a finding with no exact policy entry
+- **THEN** the audit exits unsuccessfully
+- **AND** it reports the manifest, advisory identifier, package, severity, and affected dependency path
+
+#### Scenario: Reject an expired or overlong exception
+- **WHEN** an exception has expired or exceeds the allowed review window for the finding severity
+- **THEN** the audit exits unsuccessfully and identifies the owner and required review date
+
+#### Scenario: Reject a stale exception
+- **WHEN** policy contains an exception that no longer corresponds to a current finding or an inventoried manifest
+- **THEN** the audit exits unsuccessfully and requires the stale entry to be removed or re-established through a new review
+
+#### Scenario: Distinguish the same advisory across templates
+- **WHEN** one advisory affects more than one packaged lockfile
+- **THEN** each affected manifest requires its own exact remediation or exception
+- **AND** an exception for one template does not authorize the finding in another
+
+### Requirement: Upstream-derived templates preserve verified provenance
+The system SHALL NOT alter a hash-verified upstream starter, inject a dependency override, or relabel upstream bytes solely to silence a finding that is covered by a valid non-reachability exception. Exceptions for an upstream-derived template SHALL bind to its commit-addressed manifest and SHALL be re-evaluated whenever that upstream snapshot changes.
+
+#### Scenario: Review a Power Apps advisory in unused code
+- **WHEN** a Power Apps dependency advisory affects an API not used by the generated SPA or its supported tooling flow
+- **THEN** Liftoff preserves the recorded Microsoft starter files and catalog hashes
+- **AND** policy records the complete dependency-chain set, evidence, upstream owner, and bounded review date
+
+#### Scenario: Refresh the official Power Apps starter
+- **WHEN** maintainers select a newer verified Microsoft starter commit
+- **THEN** the template audit treats its new lockfile path and dependency graph as a new review boundary
+- **AND** exceptions tied to the previous commit do not carry forward automatically
+
+#### Scenario: Discover reachable vulnerable behavior
+- **WHEN** review determines that an affected upstream API is reachable through generated or documented behavior
+- **THEN** a non-reachability exception is rejected
+- **AND** the template remains blocked until a verified patch or concrete mitigation is provided
+
+### Requirement: Live advisory retrieval is isolated and actionable
+The system SHALL run live template advisory retrieval in a dedicated weekly and manually dispatchable workflow using canonical npm. The audit SHALL accept npm's documented finding exit code, distinguish retrieval or parse failures, avoid dependency installation and metadata mutation, and emit an actionable result for every finding.
+
+#### Scenario: Scheduled audit finds only valid exceptions
+- **WHEN** the weekly workflow detects no fixable findings and every unresolved finding has a valid exception
+- **THEN** it succeeds with counts for clean, fixed, and reviewed template findings
+
+#### Scenario: Scheduled audit finds a new advisory
+- **WHEN** canonical npm reports an advisory not represented by a valid exception
+- **THEN** the workflow fails and reports the affected template and dependency chain
+- **AND** it does not rewrite the package manifest or lockfile
+
+#### Scenario: Canonical advisory retrieval fails
+- **WHEN** npm returns an infrastructure exit code, malformed JSON, or an unavailable registry response
+- **THEN** the workflow fails as an audit infrastructure error
+- **AND** it does not report the templates as secure or silently reuse stale output
+
+### Requirement: Pull-request checks remain deterministic
+The system SHALL test inventory validation, audit-result normalization, exception matching, review-window enforcement, and report formatting in ordinary CI using committed fixtures rather than mutable live advisory responses.
+
+#### Scenario: Run ordinary pull-request CI
+- **WHEN** a pull request does not invoke the dedicated live audit workflow
+- **THEN** security policy tests use committed audit fixtures and a controlled review date
+- **AND** results do not change because an external advisory database changed during the run
+
+#### Scenario: Normalize npm audit findings
+- **WHEN** fixture output represents direct, transitive, duplicate, or chained vulnerability nodes
+- **THEN** the policy engine resolves leaf advisory identifiers and affected manifests deterministically
+- **AND** duplicate dependency nodes do not produce ambiguous exception matches
+
+### Requirement: Security refreshes preserve generated-project behavior
+The system SHALL validate each dependency refresh through deterministic scaffold generation and the affected template's lockfile-preserving install, build, lint, or test commands. Logical output and audit inventory behavior SHALL remain consistent across Windows, macOS, and Linux.
+
+#### Scenario: Validate the standard Node.js backend refresh
+- **WHEN** the backend dependency template is updated
+- **THEN** a generated Node.js standard backend completes `npm ci`, TypeScript build, and its generated tests
+- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release npm 11 line
+- **AND** its database schema and migration contract remain unchanged
+
+#### Scenario: Validate the standard frontend refresh
+- **WHEN** the frontend dependency template is updated
+- **THEN** a generated frontend completes `npm ci` and a Vite production build
+- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release npm 11 line
+- **AND** its Vue application and static deployment boundary remain unchanged
+
+#### Scenario: Validate unchanged Power Apps provenance
+- **WHEN** Power Apps advisories are handled through reviewed exceptions
+- **THEN** catalog hash validation still proves the packaged starter bytes
+- **AND** the generated starter completes its supported install, lint, and build verification
