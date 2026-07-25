@@ -174,7 +174,10 @@ Target         <workspace>/snapshot-app
 Spec workflow  OpenSpec
 Coding agents  GitHub Copilot
 
+Next recommended command
+────────────────────────
 $ liftoff validate "<workspace>/snapshot-app"
+
 ",
 }
 `;
@@ -268,7 +271,10 @@ Target    <workspace>/legacy-node-liftoff
 Source    <workspace>/legacy-node (not modified)
 Rollback  Delete <workspace>/legacy-node-liftoff
 
+Next recommended command
+────────────────────────
 $ liftoff validate && liftoff doctor
+
 ",
 }
 `;
@@ -501,7 +507,9 @@ Target: <workspace>/snapshot-app
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 
+Next recommended command
 $ liftoff validate "<workspace>/snapshot-app"
+
 ",
 }
 `;
@@ -574,7 +582,9 @@ Target: <workspace>/legacy-node-liftoff
 Source: <workspace>/legacy-node (not modified)
 Rollback: Delete <workspace>/legacy-node-liftoff
 
+Next recommended command
 $ liftoff validate && liftoff doctor
+
 ",
 }
 `;
@@ -829,7 +839,10 @@ $ openspec init --tools github-copilot --profile core
 │ Spec workflow  OpenSpec                                                                      │
 │ Coding agents  GitHub Copilot                                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+Next recommended command
+────────────────────────
 $ liftoff validate "<workspace>/snapshot-app"
+
 ",
 }
 `;
@@ -920,7 +933,10 @@ $ openspec init --tools github-copilot --profile core
 │ Source    <workspace>/legacy-node (not modified)                                             │
 │ Rollback  Delete <workspace>/legacy-node-liftoff                                             │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+Next recommended command
+────────────────────────
 $ liftoff validate && liftoff doctor
+
 ",
 }
 `;

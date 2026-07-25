@@ -53,12 +53,14 @@ async function run(
     answers?: string;
     color?: boolean;
     snapshot?: boolean;
+    runner?: ReadyInitRunner;
   } = {}
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = options.answers === undefined
     ? new CaptureStream()
     : ttyCaptureStream();
   const stderr = new CaptureStream();
+  const normalize = (value: string) => value.replaceAll(cwd, '<project>');
   const code = await runCommand(parseArgs(args), {
     cwd,
     ...(options.answers === undefined
@@ -66,15 +68,20 @@ async function run(
       : { stdin: scriptedTtyInput(options.answers) }),
     stdout,
     stderr,
-    runner: new ReadyInitRunner(),
+    runner: options.runner ?? new ReadyInitRunner(),
     terminal: {
       snapshot: options.snapshot ?? true,
       columns,
       ...(options.color === undefined ? {} : { color: options.color }),
-      env: {}
+      env: {},
+      normalize
     }
   });
-  return { code, out: stdout.text(), err: stderr.text() };
+  return {
+    code,
+    out: normalize(stdout.text()),
+    err: normalize(stderr.text())
+  };
 }
 
 async function addDrift(projectRoot: string): Promise<void> {
@@ -104,6 +111,25 @@ describe('maintenance presentation', () => {
       expect(result.out).toContain('.env');
       expect(result.out).toContain('copy .env.example to .env');
       expect(result.err).toBe('');
+      expect(result).toMatchSnapshot();
+    });
+
+    it(`snapshots ${name} update completion recommendation`, async () => {
+      const projectRoot = await fixture();
+      await addDrift(projectRoot);
+      const runner = new ReadyInitRunner();
+      const result = await run(
+        ['update', '--apply'],
+        projectRoot,
+        columns,
+        { runner }
+      );
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('Next recommended command');
+      expect(result.out).toContain('$ liftoff validate && liftoff doctor');
+      expect(result.err).toBe('');
+      expect(runner.calls).toEqual([]);
       expect(result).toMatchSnapshot();
     });
   }

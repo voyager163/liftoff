@@ -122,6 +122,10 @@ the first question.
 - Narrow or redirected output is deterministic plain text without ANSI
   sequences or decorative borders.
 
+Successful completion may include a section labeled `Next recommended command`.
+The `$`-prefixed command is a suggested next action for the developer to review
+and run; Liftoff has not executed it automatically.
+
 Set `NO_COLOR=1` to keep the selected layout without ANSI color:
 
 ```bash

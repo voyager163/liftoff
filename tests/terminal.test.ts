@@ -176,6 +176,77 @@ describe('terminal renderer', () => {
     expect(output).not.toMatch(/\u001B\[/);
   });
 
+  it('labels completion recommendations without changing or executing the command', () => {
+    const command = 'liftoff validate "C:\\app" && liftoff doctor';
+    const longCommand =
+      'liftoff validate "C:\\Program Files\\two  spaces\\application" && liftoff doctor --project "C:\\Program Files\\two  spaces\\application"';
+
+    for (const width of [100, 80, 50, 23, 20]) {
+      const renderer = terminal(width);
+      const output = renderer.completion(
+        'Updated project',
+        'ready',
+        [],
+        command
+      );
+      const visible = stripAnsi(output);
+      const visibleLabel = width < 'Next recommended command'.length
+        ? 'Next recommended\ncommand'
+        : 'Next recommended command';
+
+      expect(visible.indexOf(visibleLabel))
+        .toBeLessThan(visible.indexOf(`$ ${command}`));
+      expect(visible).toContain(`$ ${command}`);
+      expect(visible.match(/Next recommended(?: command|\ncommand)/g))
+        .toHaveLength(1);
+      const longOutput = stripAnsi(renderer.completion(
+        'Updated project',
+        undefined,
+        [],
+        longCommand
+      ));
+      expect(longOutput.split('\n')).toContain(`$ ${longCommand}`);
+      expect(longOutput).toContain('"C:\\Program Files\\two  spaces\\application"');
+      expect(longOutput.indexOf(visibleLabel))
+        .toBeLessThan(longOutput.indexOf(`$ ${longCommand}`));
+
+      const visibleLines = visible.split('\n');
+      const headingStart = visibleLines.findIndex((line) =>
+        line === 'Next recommended command' || line === 'Next recommended'
+      );
+      const commandIndex = visibleLines.indexOf(`$ ${command}`);
+      expect(headingStart).toBeGreaterThan(-1);
+      expect(commandIndex).toBeGreaterThan(headingStart);
+      expect(visibleLines
+        .slice(headingStart, commandIndex)
+        .every((line) => visibleLength(line) <= width)).toBe(true);
+    }
+
+    const colored = terminal(100, { color: true }).completion(
+      'Updated project',
+      undefined,
+      [],
+      command
+    );
+    const noColor = terminal(100, { color: false }).completion(
+      'Updated project',
+      undefined,
+      [],
+      command
+    );
+    expect(colored).toMatch(/\u001B\[/);
+    expect(stripAnsi(colored)).toBe(noColor);
+
+    const withoutRecommendation = terminal(100).completion('Updated project');
+    expect(withoutRecommendation).not.toContain('Next recommended command');
+    expect(terminal(100, { json: true }).completion(
+      'Updated project',
+      undefined,
+      [],
+      command
+    )).toBe('');
+  });
+
   it('keeps redirected presentation deterministic, ASCII-only, and copyable', () => {
     const renderer = terminal(40, { tty: false, snapshot: false, color: false });
     const output = [

@@ -174,6 +174,8 @@ describe('public documentation', () => {
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
     expect(cli).toContain('Safe managed changes use a default-No confirmation');
     expect(cli).toMatch(/Liftoff retains no backup after a\s+successful overwrite/);
+    expect(cli).toContain('Next recommended command');
+    expect(cli).toContain('Liftoff has not executed it automatically');
     expect(safety).toContain('Safe-update consent does not authorize conflicts');
     expect(safety).toMatch(/update never installs\s+dependencies/);
     expect(existing).toMatch(/Redirected and\s+JSON checks remain read-only/);

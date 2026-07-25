@@ -102,6 +102,29 @@ Cloud - azure
 }
 `;
 
+exports[`maintenance presentation > snapshots plain update completion recommendation 1`] = `
+{
+  "code": 0,
+  "err": "",
+  "out": "LIFTOFF / UPDATE - Reconcile the project with current Liftoff templates
+
+Stage: Apply safe template changes
+<project>
+Applied changes
+- wrote environments/test/backend.env
+- wrote infrastructure/opentofu/azure/environments/test.tfvars
+
+[ok] Updated project: 2 written, 0 skipped, 0 orphan(s)
+Completion
+Manifest version: 0.6.0
+
+Next recommended command
+$ liftoff validate && liftoff doctor
+
+",
+}
+`;
+
 exports[`maintenance presentation > snapshots plain update drift 1`] = `
 {
   "code": 2,
@@ -230,6 +253,31 @@ exports[`maintenance presentation > snapshots rich no-color interactive update i
 │ Liftoff backup after success  No; rollback is available only if the transaction fails        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ? Apply these 2 safe update actions now? [y/N]: i Cancelled: Update declined; no project files were changed.
+",
+}
+`;
+
+exports[`maintenance presentation > snapshots rich update completion recommendation 1`] = `
+{
+  "code": 0,
+  "err": "",
+  "out": "┌─ LIFTOFF / UPDATE ───────────────────────────────────────────────────────────────────────────┐
+│ Reconcile the project with current Liftoff templates                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+◆: Apply safe template changes
+<project>
+┌─ Applied changes ────────────────────────────────────────────────────────────────────────────┐
+│ • wrote environments/test/backend.env                                                        │
+│ • wrote infrastructure/opentofu/azure/environments/test.tfvars                               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+✓ Updated project: 2 written, 0 skipped, 0 orphan(s)
+┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
+│ Manifest version  0.6.0                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+Next recommended command
+────────────────────────
+$ liftoff validate && liftoff doctor
+
 ",
 }
 `;

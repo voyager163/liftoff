@@ -576,6 +576,20 @@ export class TerminalRenderer {
       : `${this.style('command', '$')} ${this.colors.bold(value)}\n`;
   }
 
+  recommendedCommand(value: string): string {
+    const rendered = this.command(value);
+    if (!rendered) {
+      return '';
+    }
+    const title = 'Next recommended command';
+    const heading = this.layout === 'plain'
+      ? `${wrapVisible(title, this.columns)
+          .map((line) => this.colors.bold(line))
+          .join('\n')}\n`
+      : this.heading(title);
+    return `${heading}${rendered}\n`;
+  }
+
   prompt(label: string, defaultValue?: string): string {
     if (this.jsonMode) {
       return '';
@@ -630,12 +644,14 @@ export class TerminalRenderer {
     label: string,
     detail?: string,
     items: readonly DefinitionItem[] = [],
-    nextCommand?: string
+    recommendedCommand?: string
   ): string {
     return [
       this.status('success', label, detail),
       ...(items.length > 0 ? [this.definitionList('Completion', items)] : []),
-      ...(nextCommand ? [this.command(nextCommand)] : [])
+      ...(recommendedCommand
+        ? [this.recommendedCommand(recommendedCommand)]
+        : [])
     ].join('');
   }
 
@@ -726,9 +742,11 @@ export class PresentationSession {
     label: string,
     detail?: string,
     items: readonly DefinitionItem[] = [],
-    nextCommand?: string
+    recommendedCommand?: string
   ): void {
-    this.stdout.write(this.stdout.completion(label, detail, items, nextCommand));
+    this.stdout.write(
+      this.stdout.completion(label, detail, items, recommendedCommand)
+    );
   }
 
   error(message: string, remedy?: string): void {
