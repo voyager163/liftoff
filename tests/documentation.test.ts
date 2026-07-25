@@ -36,6 +36,24 @@ describe('installation and release documentation', () => {
     expect(bashExamples).not.toContain('liftoff create');
   });
 
+  it('documents the responsive terminal interface and machine-output exceptions', async () => {
+    const [readme, contributing] = await Promise.all([
+      repositoryFile('README.md'),
+      repositoryFile('CONTRIBUTING.md')
+    ]);
+
+    expect(readme).toContain('## Terminal Interface');
+    expect(readme).toContain('TTYs at least 96 columns');
+    expect(readme).toContain('64 through 95 columns');
+    expect(readme).toContain('NO_COLOR=1');
+    expect(readme).toContain('deterministic plain text');
+    expect(readme).toContain('liftoff doctor --json');
+    expect(readme).toContain('liftoff update --json');
+    expect(readme).toContain('forwards child stdout and stderr unchanged');
+    expect(contributing).toContain('rich, compact, plain, `NO_COLOR`, JSON, version');
+    expect(contributing).toContain('tests/__snapshots__');
+  });
+
   it('documents canonical recovery, mirror readiness, and non-destructive deprecation', async () => {
     const [contributing, security] = await Promise.all([
       repositoryFile('CONTRIBUTING.md'),

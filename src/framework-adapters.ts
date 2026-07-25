@@ -11,12 +11,16 @@ import {
   frameworkSelectionFromPlan,
   validateFrameworkInstallation
 } from './framework-validation.js';
-import type { CommandRunner, RunCommandOptions } from './process-runner.js';
+import { formatCommand, type CommandRunner, type RunCommandOptions } from './process-runner.js';
 import type { ExternalCommand, ProjectPlan } from './types.js';
 
 export interface FrameworkInitializationResult {
   commands: string[];
   changedPaths: string[];
+}
+
+export interface FrameworkInitializationOptions extends Pick<RunCommandOptions, 'stdout' | 'stderr'> {
+  onCommand?: (displayCommand: string) => void;
 }
 
 export interface FrameworkAdapter {
@@ -112,17 +116,19 @@ export async function initializeFramework(
   area: StagingArea,
   plan: ProjectPlan,
   runner: CommandRunner,
-  streamOptions: Pick<RunCommandOptions, 'stdout' | 'stderr'> = {}
+  options: FrameworkInitializationOptions = {}
 ): Promise<FrameworkInitializationResult> {
   const before = await captureTreeState(area.root);
   const commands = frameworkAdapters[plan.specWorkflow.id].buildCommands(plan);
   const displayed: string[] = [];
   for (const command of commands) {
+    options.onCommand?.(formatCommand(command));
     const result = await runner.run(command, {
       cwd: area.root,
       timeoutMs: 5 * 60_000,
       stream: true,
-      ...streamOptions
+      stdout: options.stdout,
+      stderr: options.stderr
     });
     displayed.push(result.displayCommand);
     if (result.status !== 0 || result.timedOut) {

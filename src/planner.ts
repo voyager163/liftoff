@@ -391,29 +391,42 @@ export function toSafeProjectName(projectName: string): string {
   return safe || 'liftoff-project';
 }
 
-export function formatProjectPlan(plan: ProjectPlan): string {
+export interface ProjectPlanEntry {
+  label: string;
+  value: string;
+}
+
+export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
   const frontendLine = plan.includeFrontend ? `Vue 3 + Tailwind (${plan.frontendStarter})` : 'Not generated';
   if (plan.projectType.id === 'genai' && !plan.pattern) {
     throw new Error('GenAI project plan is missing its pattern.');
   }
-  const typeSpecificLine = plan.pattern
-    ? `Pattern: ${plan.pattern.label} (${plan.pattern.scaffoldStatus})`
-    : `API stack: ${plan.apiStack.label}`;
   return [
-    `Project: ${plan.projectName}`,
-    `Project type: ${plan.projectType.label}`,
-    typeSpecificLine,
-    `Cloud: ${plan.provider.label}`,
-    `Region: ${plan.region.displayName} / ${plan.region.slug}`,
-    `Frontend: ${frontendLine}`,
-    `Spec workflow: ${plan.specWorkflow.label}`,
-    `Coding agents: ${plan.agents.map((agent) => agent.label).join(', ')}`,
-    ...(plan.defaultAgent ? [`Default agent: ${plan.defaultAgent.label}`] : []),
-    `Environments: ${plan.environments.map((environment) => environment.id).join(', ')}`,
-    `Approved stack: ${plan.approvedStack.join(', ')}`,
-    plan.projectType.id === 'genai'
-      ? 'Local development: Docker Compose with PostgreSQL/pgvector as required, Redis, Azurite, Mailpit, and optional Langfuse profile'
-      : 'Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit',
-    'Infrastructure: OpenTofu for Azure'
-  ].join('\n');
+    { label: 'Project', value: plan.projectName },
+    { label: 'Project type', value: plan.projectType.label },
+    plan.pattern
+      ? { label: 'Pattern', value: `${plan.pattern.label} (${plan.pattern.scaffoldStatus})` }
+      : { label: 'API stack', value: plan.apiStack.label },
+    { label: 'Cloud', value: plan.provider.label },
+    { label: 'Region', value: `${plan.region.displayName} / ${plan.region.slug}` },
+    { label: 'Frontend', value: frontendLine },
+    { label: 'Spec workflow', value: plan.specWorkflow.label },
+    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
+    { label: 'Environments', value: plan.environments.map((environment) => environment.id).join(', ') },
+    { label: 'Approved stack', value: plan.approvedStack.join(', ') },
+    {
+      label: 'Local development',
+      value: plan.projectType.id === 'genai'
+        ? 'Docker Compose with PostgreSQL/pgvector as required, Redis, Azurite, Mailpit, and optional Langfuse profile'
+        : 'Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit'
+    },
+    { label: 'Infrastructure', value: 'OpenTofu for Azure' }
+  ];
+}
+
+export function formatProjectPlan(plan: ProjectPlan): string {
+  return projectPlanEntries(plan)
+    .map((entry) => `${entry.label}: ${entry.value}`)
+    .join('\n');
 }

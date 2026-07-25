@@ -18,9 +18,45 @@ export interface CommandDefinition {
   usage: string;
   group: CommandGroup;
   flags: Readonly<Record<string, FlagDefinition>>;
+  arguments?: readonly ArgumentDefinition[];
   subcommands?: readonly string[];
   defaultMaxPositionals: number;
   subcommandMaxPositionals?: Readonly<Record<string, number>>;
+}
+
+export interface ArgumentDefinition {
+  syntax: string;
+  description: string;
+}
+
+export interface HelpEntry {
+  syntax: string;
+  description: string;
+  defaultValue?: string;
+}
+
+export interface HelpGroup {
+  title: string;
+  entries: HelpEntry[];
+}
+
+export interface GeneralHelpModel {
+  version: string;
+  title: string;
+  subtitle: string;
+  usage: string;
+  globalOptions: HelpEntry[];
+  commandGroups: HelpGroup[];
+  hint: string;
+}
+
+export interface CommandHelpModel {
+  command: string;
+  description: string;
+  usage: string;
+  arguments: HelpEntry[];
+  subcommands: string[];
+  optionGroups: HelpGroup[];
 }
 
 const booleanFlag = (
@@ -58,6 +94,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     usage: '[command]',
     group: 'Reference',
     flags: helpFlag,
+    arguments: [{ syntax: 'command', description: 'Command to describe' }],
     defaultMaxPositionals: 1
   },
   init: {
@@ -72,6 +109,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       'install-dependencies': booleanFlag('Authorize project-local dependency installation', 'Consent'),
       ...helpFlag
     },
+    arguments: [{ syntax: 'project-name', description: 'Project identity or child directory name' }],
     defaultMaxPositionals: 1
   },
   plan: {
@@ -105,6 +143,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       ...helpFlag
     },
     subcommands: ['search'],
+    arguments: [{ syntax: 'query', description: 'Region name, slug, geography, or alias to search' }],
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: { search: 1 }
   },
@@ -113,6 +152,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     usage: '[project-path]',
     group: 'Maintenance',
     flags: { project: valueFlag('Project path', 'Project', 'path'), ...helpFlag },
+    arguments: [{ syntax: 'project-path', description: 'Generated project to validate' }],
     defaultMaxPositionals: 1
   },
   update: {
@@ -126,6 +166,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag
     },
+    arguments: [{ syntax: 'project-path', description: 'Generated project to reconcile' }],
     defaultMaxPositionals: 1
   },
   migrate: {
@@ -140,6 +181,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
       'install-dependencies': booleanFlag('Authorize project-local dependency installation', 'Consent'),
       ...helpFlag
     },
+    arguments: [{ syntax: 'source-path', description: 'Existing application to migrate without modifying it' }],
     defaultMaxPositionals: 1
   },
   doctor: {
@@ -310,18 +352,16 @@ export function parseArgs(argv: string[]): ParsedArgs {
   return { command, subcommand, positional, flags };
 }
 
-export function formatCommandHelp(command: string): string {
+function flagSyntax(name: string, flag: FlagDefinition): string {
+  const value = flag.kind === 'value' ? ` <${flag.metavar ?? 'value'}>` : '';
+  const negated = flag.negatable ? ` / --no-${name}` : '';
+  return `--${name}${value}${negated}`;
+}
+
+export function getCommandHelp(command: string): CommandHelpModel {
   const definition = commandDefinitions[command];
   if (!definition) {
     throw new UsageError(`Unknown command for help: ${command}.`);
-  }
-  const lines = [
-    `${command} - ${definition.description}`,
-    '',
-    `Usage: liftoff ${command}${definition.usage ? ` ${definition.usage}` : ''}`
-  ];
-  if (definition.subcommands) {
-    lines.push('', `Subcommands: ${definition.subcommands.join(', ')}`);
   }
   const groupedFlags = Object.entries(definition.flags).reduce((groups, entry) => {
     const group = entry[1].group;
@@ -330,46 +370,102 @@ export function formatCommandHelp(command: string): string {
     groups.set(group, entries);
     return groups;
   }, new Map<FlagGroup, Array<[string, FlagDefinition]>>());
-  for (const [group, entries] of groupedFlags) {
-    lines.push('', `${group} options:`);
-    const names = entries.map(([name, flag]) => {
-      const value = flag.kind === 'value' ? ` <${flag.metavar ?? 'value'}>` : '';
-      const negated = flag.negatable ? ` / --no-${name}` : '';
-      return `--${name}${value}${negated}`;
-    });
-    const width = Math.max(...names.map((name) => name.length));
-    for (const [index, [, flag]] of entries.entries()) {
-      const defaultValue = flag.defaultValue ? ` (default: ${flag.defaultValue})` : '';
-      lines.push(`  ${names[index].padEnd(width)}  ${flag.description}${defaultValue}`);
+  return {
+    command,
+    description: definition.description,
+    usage: `liftoff ${command}${definition.usage ? ` ${definition.usage}` : ''}`,
+    arguments: (definition.arguments ?? []).map((argument) => ({
+      syntax: argument.syntax,
+      description: argument.description
+    })),
+    subcommands: [...(definition.subcommands ?? [])],
+    optionGroups: [...groupedFlags].map(([group, entries]) => ({
+      title: `${group} options`,
+      entries: entries.map(([name, flag]) => ({
+        syntax: flagSyntax(name, flag),
+        description: flag.description,
+        ...(flag.defaultValue ? { defaultValue: flag.defaultValue } : {})
+      }))
+    }))
+  };
+}
+
+export function formatCommandHelp(command: string): string {
+  const help = getCommandHelp(command);
+  const lines = [
+    `${help.command} - ${help.description}`,
+    '',
+    `Usage: ${help.usage}`
+  ];
+  if (help.arguments.length > 0) {
+    lines.push('', 'Arguments:');
+    const width = Math.max(...help.arguments.map((argument) => argument.syntax.length));
+    for (const argument of help.arguments) {
+      lines.push(`  ${argument.syntax.padEnd(width)}  ${argument.description}`);
+    }
+  }
+  if (help.subcommands.length > 0) {
+    lines.push('', `Subcommands: ${help.subcommands.join(', ')}`);
+  }
+  for (const group of help.optionGroups) {
+    lines.push('', `${group.title}:`);
+    const width = Math.max(...group.entries.map((entry) => entry.syntax.length));
+    for (const entry of group.entries) {
+      const defaultValue = entry.defaultValue ? ` (default: ${entry.defaultValue})` : '';
+      lines.push(`  ${entry.syntax.padEnd(width)}  ${entry.description}${defaultValue}`);
     }
   }
   return `${lines.join('\n')}\n`;
 }
 
+const commandGroupOrder: CommandGroup[] = ['Onboarding', 'Maintenance', 'Reference', 'Operations'];
+
+export function getGeneralHelp(version: string): GeneralHelpModel {
+  const commandGroups = commandGroupOrder.flatMap((group): HelpGroup[] => {
+    const entries = Object.entries(commandDefinitions)
+      .filter(([, definition]) => definition.group === group)
+      .map(([command, definition]) => ({
+        syntax: command,
+        description: definition.description
+      }));
+    return entries.length > 0 ? [{ title: group, entries }] : [];
+  });
+  return {
+    version,
+    title: `Mission Control Liftoff ${version}`,
+    subtitle: 'Initialize a governed application and prepare its local workstation.',
+    usage: 'liftoff <command> [options]',
+    globalOptions: [
+      { syntax: '--version', description: 'Show the installed Liftoff version' },
+      { syntax: '--help', description: 'Show general help' }
+    ],
+    commandGroups,
+    hint: 'Run `liftoff help <command>` for command-specific usage.'
+  };
+}
+
 export function formatGeneralHelp(version: string): string {
+  const help = getGeneralHelp(version);
   const lines = [
-    `Mission Control Liftoff ${version}`,
-    'Initialize a governed application and prepare its local workstation.',
+    help.title,
+    help.subtitle,
     '',
-    'Usage: liftoff <command> [options]',
+    `Usage: ${help.usage}`,
     '',
-    'Global options:',
-    '  --version  Show the installed Liftoff version',
-    '  --help     Show general help'
+    'Global options:'
   ];
-  const groups: CommandGroup[] = ['Onboarding', 'Maintenance', 'Reference', 'Operations'];
-  for (const group of groups) {
-    const entries = Object.entries(commandDefinitions).filter(([, definition]) => definition.group === group);
-    if (entries.length === 0) {
-      continue;
-    }
-    const width = Math.max(...entries.map(([command]) => command.length));
-    lines.push('', `${group}:`);
-    for (const [command, definition] of entries) {
-      lines.push(`  ${command.padEnd(width)}  ${definition.description}`);
+  const globalWidth = Math.max(...help.globalOptions.map((option) => option.syntax.length));
+  for (const option of help.globalOptions) {
+    lines.push(`  ${option.syntax.padEnd(globalWidth)}  ${option.description}`);
+  }
+  for (const group of help.commandGroups) {
+    const width = Math.max(...group.entries.map((entry) => entry.syntax.length));
+    lines.push('', `${group.title}:`);
+    for (const entry of group.entries) {
+      lines.push(`  ${entry.syntax.padEnd(width)}  ${entry.description}`);
     }
   }
-  lines.push('', 'Run `liftoff help <command>` for command-specific usage.');
+  lines.push('', help.hint);
   return `${lines.join('\n')}\n`;
 }
 

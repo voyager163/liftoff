@@ -1,6 +1,7 @@
 import { access, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { Writable } from 'node:stream';
 import { afterEach, describe, expect, it } from 'vitest';
 import { formatCommand, NodeCommandRunner } from '../src/process-runner.js';
 import { CaptureStream } from './helpers.js';
@@ -40,6 +41,26 @@ describe('external command runner', () => {
     expect(result).toMatchObject({ status: 0, stdout: 'out', stderr: 'err', timedOut: false });
     expect(stdout.text()).toBe('out');
     expect(stderr.text()).toBe('err');
+  });
+
+  it('preserves streamed bytes while decoding UTF-8 split across child chunks', async () => {
+    const chunks: Buffer[] = [];
+    const stdout = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(Buffer.from(chunk));
+        callback();
+      }
+    });
+    const result = await new NodeCommandRunner().run({
+      executable: process.execPath,
+      args: [
+        '-e',
+        'process.stdout.write(Buffer.from([0xe2])); setTimeout(() => process.stdout.write(Buffer.from([0x82, 0xac])), 30)'
+      ]
+    }, { stream: true, stdout });
+
+    expect(result).toMatchObject({ status: 0, stdout: '€', timedOut: false });
+    expect(Buffer.concat(chunks)).toEqual(Buffer.from('€'));
   });
 
   it('terminates timed-out probes and records the timeout', async () => {

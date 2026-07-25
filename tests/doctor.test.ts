@@ -295,7 +295,7 @@ describe('doctor command', () => {
 
     const missing = await run(['doctor'], root);
     expect(missing.code).toBe(1);
-    expect(missing.out).toMatch(/\[fail\]\s+\.env: missing - copy \.env\.example to \.env/);
+    expect(missing.out).toMatch(/\[error\]\s+\.env: missing - copy \.env\.example to \.env/);
 
     await writeFile(path.join(root, '.env'), (await readFile(path.join(root, '.env.example'), 'utf8')), 'utf8');
     const present = await run(['doctor'], root);

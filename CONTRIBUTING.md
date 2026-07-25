@@ -30,6 +30,8 @@ npm run smoke:package
 
 Filesystem and manifest changes must remain portable across Windows, macOS, and Linux. Use Node.js path utilities rather than hardcoded separators, and preserve append-only manifest logical names and catalog identifiers.
 
+Terminal presentation changes must preserve the rich, compact, plain, `NO_COLOR`, JSON, version, and stdout/stderr contracts. Update the focused renderer and complete-screen snapshots under `tests/__snapshots__/`, review every changed screen intentionally, and keep raw installer or dependency output outside Liftoff-owned borders.
+
 ## Release verification
 
 The public release authority is `https://registry.npmjs.org`. The release workflow performs local package checks before publishing and strict canonical verification afterward. The post-publish verifier must remain after `npm publish`, must receive the selected `latest` or `next` dist-tag, and must not use `continue-on-error` or legacy compatibility mode.
@@ -38,7 +40,7 @@ Before tagging a release, verify that root package and lockfile metadata agree. 
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.4.0
+npm run verify:release-identity -- v0.4.1
 ```
 
 The release tag, root package metadata, root lockfile metadata, packed package version, and installed `liftoff --version` output must all identify the same release.

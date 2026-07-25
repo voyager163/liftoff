@@ -15,7 +15,14 @@ import {
 } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { formatCommandHelp, formatGeneralHelp, readBooleanFlag, readListFlag, readStringFlag } from './args.js';
+import type { Readable } from 'node:stream';
+import {
+  getCommandHelp,
+  getGeneralHelp,
+  readBooleanFlag,
+  readListFlag,
+  readStringFlag
+} from './args.js';
 import {
   getCodingAgent,
   getFrameworkDefinition,
@@ -41,11 +48,7 @@ import {
   writeProjectFile
 } from './file-system.js';
 import {
-  confirmDependencyInstallation,
-  confirmFileReplacements,
-  confirmPlan,
-  confirmToolInstallation,
-  promptForInitOptions
+  InteractivePrompter
 } from './interactive.js';
 import {
   applyMergePreflight,
@@ -62,7 +65,13 @@ import {
   type StagingArea
 } from './init-filesystem.js';
 import { renderMigrationChecklist, renderMigrationProposal, renderMigrationTasks, seedMigrationGroups } from './migrate-plan.js';
-import { buildProjectPlan, formatProjectPlan, loadConfigOptions, mergeOptions, PlanValidationError } from './planner.js';
+import {
+  buildProjectPlan,
+  loadConfigOptions,
+  mergeOptions,
+  PlanValidationError,
+  projectPlanEntries
+} from './planner.js';
 import { buildDependencySetupPlan, runDependencySetup } from './project-dependencies.js';
 import { formatCommand, NodeCommandRunner, type CommandRunner } from './process-runner.js';
 import { scanDefaults, scanLegacyProject } from './scan.js';
@@ -70,7 +79,10 @@ import { hasDrift, reconcileProject } from './reconcile.js';
 import type { ReconcileEntry } from './reconcile.js';
 import { compareSemver } from './semver.js';
 import { buildArtifacts, buildManifest, partitionGeneratedArtifacts } from './templates.js';
-import { TerminalRenderer } from './terminal.js';
+import {
+  PresentationSession,
+  type PresentationSessionOptions
+} from './terminal.js';
 import type {
   ApiStackId,
   GeneratedArtifact,
@@ -95,13 +107,32 @@ export interface CommandContext {
   cwd: string;
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
+  stdin?: Readable;
   runner?: CommandRunner;
+  terminal?: Pick<
+    PresentationSessionOptions,
+    'columns' | 'color' | 'snapshot' | 'env' | 'layout'
+  >;
+}
+
+interface ExecutionContext extends CommandContext {
+  presentation: PresentationSession;
 }
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+  const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
+  const jsonMode = !helpRequested && (parsed.command === 'doctor' || parsed.command === 'update') &&
+    readBooleanFlag(parsed.flags, 'json') === true;
+  const presentation = new PresentationSession({
+    stdout: context.stdout,
+    stderr: context.stderr,
+    ...context.terminal,
+    json: jsonMode
+  });
+  const executionContext: ExecutionContext = { ...context, presentation };
   try {
     if (parsed.command && readBooleanFlag(parsed.flags, 'help')) {
-      context.stdout.write(formatCommandHelp(parsed.command));
+      renderCommandHelp(parsed.command, presentation);
       return 0;
     }
     switch (parsed.command) {
@@ -109,167 +140,237 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
       case 'help':
       case '--help':
         if (parsed.positional[0]) {
-          context.stdout.write(formatCommandHelp(parsed.positional[0]));
+          renderCommandHelp(parsed.positional[0], presentation);
         } else {
-          printHelp(context.stdout);
+          renderGeneralHelp(presentation);
         }
         return 0;
       case 'version':
-        context.stdout.write(`Liftoff ${liftoffVersion}\n`);
+        presentation.rawStdout(`Liftoff ${liftoffVersion}\n`);
         return 0;
       case 'init':
-        return await initCommand(parsed, context);
+        return await initCommand(parsed, executionContext);
       case 'plan':
-        return await planCommand(parsed, context);
+        return await planCommand(parsed, executionContext);
       case 'patterns':
-        return patternsCommand(context);
+        return patternsCommand(executionContext);
       case 'providers':
-        return providersCommand(context);
+        return providersCommand(executionContext);
       case 'regions':
-        return regionsCommand(parsed, context);
+        return regionsCommand(parsed, executionContext);
       case 'validate':
-        return await validateCommand(parsed, context);
+        return await validateCommand(parsed, executionContext);
       case 'update':
-        return await updateCommand(parsed, context);
+        return await updateCommand(parsed, executionContext);
       case 'migrate':
-        return await migrateCommand(parsed, context);
+        return await migrateCommand(parsed, executionContext);
       case 'doctor':
-        return await doctorCommand(parsed, context);
+        return await doctorCommand(parsed, executionContext);
       case 'dev':
-        return helperCommand(parsed, context, 'docker compose');
+        return helperCommand(parsed, executionContext, 'docker compose');
       case 'infra':
-        return helperCommand(parsed, context, 'tofu');
+        return helperCommand(parsed, executionContext, 'tofu');
       default:
-        context.stderr.write(`Unknown command: ${parsed.command}\n\n`);
-        printHelp(context.stderr);
+        presentation.error(
+          `Unknown command: ${parsed.command}`,
+          'Run `liftoff help` to list available commands.'
+        );
         return 1;
     }
   } catch (error) {
     if (error instanceof PlanValidationError) {
-      context.stderr.write(`${error.issues.join('\n')}\n`);
+      presentation.error(
+        error.issues.join('\n'),
+        parsed.command ? `Run \`liftoff ${parsed.command} --help\` to review accepted values.` : undefined
+      );
       return 1;
     }
-    context.stderr.write(`${(error as Error).message}\n`);
+    presentation.error(error instanceof Error ? error.message : String(error));
     return 1;
   }
 }
 
-async function initCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
+  const { presentation } = context;
+  presentation.identity('Initialize the project and prepare its workstation');
   const runner = context.runner ?? new NodeCommandRunner();
+  presentation.stage('Discover project context');
   const git = await discoverGitRoot(context.cwd, runner);
   let initial = await optionsFromParsedArgs(parsed, context.cwd, true);
   if (!initial.projectName && git.exact && git.root) {
     initial = { ...initial, projectName: path.basename(git.root) };
   }
-  const needsPrompts = !initial.yes && hasMissingInitInputs(initial);
-  const options = needsPrompts ? await promptForInitOptions(initial) : initial;
-  const plan = buildProjectPlan(options, { requireProjectName: true });
-  const confirmed = await confirmPlan(plan, options.yes);
-  if (!confirmed) {
-    context.stdout.write('Initialization cancelled.\n');
-    return 0;
-  }
-
-  const target = resolveInitTargetFromDiscovery(git, plan.safeProjectName);
-  await assertSafeInitTarget(target, target.mode === 'named-child' ? git.canonicalCwd : undefined);
-  const renderer = new TerminalRenderer({ stream: context.stdout });
-  renderer.write(renderer.banner('Initialize the project and prepare its workstation'));
-
-  const readiness = await ensureWorkstationReady(plan, options, context, runner, renderer);
-  if (!readiness.ready) {
-    return 1;
-  }
-
-  const staged = await withStagingArea(async (area): Promise<
-    { status: 'applied'; merge: MergeResult } | { status: 'authorization-required' | 'declined' }
-  > => {
-    const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
-    await writeStagedArtifacts(area, partition.durable, 'liftoff');
-    await initializeFramework(area, plan, runner, { stdout: context.stdout, stderr: context.stderr });
-    await writeStagedArtifacts(area, partition.seed, 'seed');
-    await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
-    await validateStagedTree(area);
-    const stagedIssues = await validateGeneratedProject(area.root);
-    if (stagedIssues.length > 0) {
-      throw new Error(`Staged project validation failed:\n${stagedIssues.join('\n')}`);
+  const interactive = initial.yes !== true;
+  const prompter = interactive
+    ? new InteractivePrompter({
+        input: context.stdin,
+        output: context.stdout,
+        presentation
+      })
+    : undefined;
+  try {
+    const needsPrompts = interactive && hasMissingInitInputs(initial);
+    if (needsPrompts) {
+      presentation.stage('Configure project');
+    }
+    const options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
+    const plan = buildProjectPlan(options, { requireProjectName: true });
+    presentation.stage('Review resolved plan');
+    const confirmed = options.yes === true
+      ? (presentation.definitions('Resolved project plan', projectPlanEntries(plan)), true)
+      : await prompter!.confirmPlan(plan);
+    if (!confirmed) {
+      presentation.cancellation('Initialization stopped; no destination files were changed.');
+      return 0;
     }
 
-    const preflight = await buildMergePreflight(area, target.root);
-    const interactive = options.yes !== true;
-    const authorized = await authorizeMergePreflight(
-      preflight,
-      options.force === true,
-      interactive ? confirmFileReplacements : undefined
+    presentation.stage('Resolve destination');
+    const target = resolveInitTargetFromDiscovery(git, plan.safeProjectName);
+    await assertSafeInitTarget(target, target.mode === 'named-child' ? git.canonicalCwd : undefined);
+
+    presentation.stage('Check workstation readiness');
+    const readiness = await ensureWorkstationReady(
+      plan,
+      options,
+      context,
+      runner,
+      presentation,
+      prompter
     );
-    if (!authorized) {
-      return {
-        status: interactive ? 'declined' : 'authorization-required'
-      };
+    if (!readiness.ready) {
+      return 1;
     }
-    return { status: 'applied', merge: await applyMergePreflight(authorized) };
-  });
 
-  if (staged.status === 'declined') {
-    context.stdout.write('Initialization cancelled; no destination files were changed.\n');
+    presentation.stage('Stage project files');
+    const staged = await withStagingArea(async (area): Promise<
+      { status: 'applied'; merge: MergeResult } | { status: 'authorization-required' | 'declined' }
+    > => {
+      const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
+      await writeStagedArtifacts(area, partition.durable, 'liftoff');
+      presentation.stage(
+        'Initialize spec-driven framework',
+        `${plan.specWorkflow.label} ${plan.framework.version}`
+      );
+      await initializeFramework(area, plan, runner, {
+        ...presentation.childStreams(),
+        onCommand: (command) => presentation.command(command)
+      });
+      await writeStagedArtifacts(area, partition.seed, 'seed');
+      await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
+      presentation.stage('Validate staged project');
+      await validateStagedTree(area);
+      const stagedIssues = await validateGeneratedProject(area.root);
+      if (stagedIssues.length > 0) {
+        throw new Error(`Staged project validation failed:\n${stagedIssues.join('\n')}`);
+      }
+
+      const preflight = await buildMergePreflight(area, target.root);
+      const authorized = await authorizeMergePreflight(
+        preflight,
+        options.force === true,
+        interactive ? (paths) => prompter!.confirmFileReplacements(paths) : undefined
+      );
+      if (!authorized) {
+        return {
+          status: interactive ? 'declined' : 'authorization-required'
+        };
+      }
+      presentation.stage('Merge staged project', target.root);
+      return { status: 'applied', merge: await applyMergePreflight(authorized) };
+    });
+
+    if (staged.status === 'declined') {
+      presentation.cancellation('No destination files were changed.');
+      return 0;
+    }
+    if (staged.status === 'authorization-required') {
+      presentation.error(
+        'Existing regular-file conflicts require --force in non-interactive mode.',
+        'Review the listed conflicts, then rerun with `--force` only if every replacement is intended.'
+      );
+      return 1;
+    }
+
+    const issues = await validateGeneratedProject(target.root);
+    if (issues.length > 0) {
+      presentation.error(`Initialized project validation failed:\n${issues.join('\n')}`);
+      return 1;
+    }
+
+    const dependencyPhase = await handleProjectDependencies(
+      plan,
+      target.root,
+      options,
+      readiness.probes,
+      context,
+      runner,
+      presentation,
+      prompter
+    );
+    if (!dependencyPhase.success) {
+      return 1;
+    }
+
+    presentation.bullets('Configured integrations', [
+      `${plan.specWorkflow.label} ${plan.framework.version}`,
+      ...plan.agents.map((agent) =>
+        `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
+      )
+    ]);
+    if (readiness.deferred.length > 0) {
+      presentation.bullets('Deferred advisory checks', readiness.deferred);
+    }
+    if (dependencyPhase.deferred.length > 0) {
+      presentation.bullets('Deferred project dependencies', dependencyPhase.deferred);
+    }
+    presentation.completion(
+      `Initialized ${plan.projectName}`,
+      target.root,
+      [
+        { label: 'Target', value: target.root },
+        { label: 'Spec workflow', value: plan.specWorkflow.label },
+        { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') }
+      ],
+      `liftoff validate ${JSON.stringify(target.root)}`
+    );
     return 0;
+  } finally {
+    prompter?.close();
   }
-  if (staged.status === 'authorization-required') {
-    context.stderr.write('Existing regular-file conflicts require --force in non-interactive mode.\n');
-    return 1;
-  }
-
-  const issues = await validateGeneratedProject(target.root);
-  if (issues.length > 0) {
-    context.stderr.write(`Initialized project validation failed:\n${issues.join('\n')}\n`);
-    return 1;
-  }
-
-  const dependencyPhase = await handleProjectDependencies(
-    plan,
-    target.root,
-    options,
-    readiness.probes,
-    context,
-    runner,
-    renderer
-  );
-  if (!dependencyPhase.success) {
-    return 1;
-  }
-
-  renderer.write(renderer.status('success', `Initialized ${plan.projectName}`, target.root));
-  renderer.write(renderer.panel('Configured integrations', [
-    `${plan.specWorkflow.label} ${plan.framework.version}`,
-    ...plan.agents.map((agent) =>
-      `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
-    )
-  ]));
-  if (readiness.deferred.length > 0) {
-    renderer.write(renderer.panel('Deferred advisory checks', readiness.deferred));
-  }
-  if (dependencyPhase.deferred.length > 0) {
-    renderer.write(renderer.panel('Deferred project dependencies', dependencyPhase.deferred));
-  }
-  renderer.write(renderer.command(`liftoff validate ${JSON.stringify(target.root)}`));
-  return 0;
 }
 
-async function planCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function planCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
+  const { presentation } = context;
+  presentation.identity('Preview project decisions, artifacts, and workstation requirements');
   const options = await optionsFromParsedArgs(parsed, context.cwd, false);
   const plan = buildProjectPlan(options, { requireProjectName: false });
   const artifacts = buildArtifacts(plan);
-  context.stdout.write(`${formatProjectPlan(plan)}\n\nArtifacts (${artifacts.length}):\n`);
-  for (const artifact of artifacts) {
-    context.stdout.write(`- ${artifact.logicalName}: ${artifact.pathParts.join('/')}\n`);
-  }
-  context.stdout.write('\nWorkstation requirements:\n');
-  for (const requirement of selectWorkstationRequirements(plan)) {
-    const version = requirement.exactVersion
+  presentation.definitions('Project decisions', projectPlanEntries(plan));
+  presentation.table(
+    `Artifacts (${artifacts.length})`,
+    ['Artifact', 'Path'],
+    artifacts.map((artifact) => [artifact.logicalName, artifact.pathParts.join('/')])
+  );
+  const workstationRows = selectWorkstationRequirements(plan).map((requirement) => [
+    requirement.definition.label,
+    requirement.exactVersion
       ? `exactly ${requirement.exactVersion}`
       : requirement.minimumVersion
         ? `${requirement.minimumVersion}+`
-        : 'available';
-    context.stdout.write(`- ${requirement.definition.label}: ${version} [${requirement.severity}]\n`);
+        : 'available',
+    requirement.severity
+  ]);
+  if (presentation.stdout.layout === 'plain') {
+    presentation.section(
+      'Workstation requirements',
+      workstationRows.map(([label, version, severity]) => `${label}: ${version} [${severity}]`)
+    );
+  } else {
+    presentation.table(
+      'Workstation requirements',
+      ['Requirement', 'Version', 'Level'],
+      workstationRows
+    );
   }
   return 0;
 }
@@ -277,16 +378,17 @@ async function planCommand(parsed: ParsedArgs, context: CommandContext): Promise
 async function ensureWorkstationReady(
   plan: ProjectPlan,
   options: ProjectOptions,
-  context: CommandContext,
+  context: ExecutionContext,
   runner: CommandRunner,
-  renderer: TerminalRenderer,
+  presentation: PresentationSession,
+  prompter?: InteractivePrompter,
   resumeInvocation = 'liftoff init',
   commandCwd?: string
 ): Promise<{ ready: boolean; deferred: string[]; probes: RequirementProbeResult[] }> {
   const requirements = selectWorkstationRequirements(plan);
   let probes = await probeWorkstation(requirements, runner, { cwd: commandCwd });
-  renderer.write(renderer.heading('Workstation readiness'));
-  renderer.write(renderer.table(
+  presentation.table(
+    'Workstation readiness',
     ['Requirement', 'Level', 'State', 'Detail'],
     probes.map((probe) => [
       probe.requirement.definition.label,
@@ -294,7 +396,7 @@ async function ensureWorkstationReady(
       probe.state,
       probe.detail
     ])
-  ));
+  );
 
   const actionable = probes.filter((probe) => probe.state !== 'ready');
   const host = await detectHostEnvironment();
@@ -332,17 +434,16 @@ async function ensureWorkstationReady(
         : probe.requirement.minimumVersion
           ? `required ${probe.requirement.minimumVersion} or newer`
           : 'required to be available';
-      const action = automatic
-        ? `Command: ${formatCommand(recipe.command)}`
-        : `Manual remedy: ${installInstruction(probe)}`;
-      const detail = [
-        `${probe.requirement.definition.label} [${probe.requirement.severity}]`,
-        `Purpose: ${probe.requirement.reasons.join('; ')}`,
-        `Requirement: ${constraint}`,
-        `Observed: ${probe.state} - ${probe.detail}`,
-        action
-      ].map((line) => `  ${line}`).join('\n');
-      if (await confirmToolInstallation(detail)) {
+      if (await prompter!.confirmToolInstallation({
+        label: probe.requirement.definition.label,
+        severity: probe.requirement.severity,
+        purpose: probe.requirement.reasons.join('; '),
+        requirement: constraint,
+        observed: `${probe.state} - ${probe.detail}`,
+        ...(automatic
+          ? { command: formatCommand(recipe.command) }
+          : { remedy: installInstruction(probe) })
+      })) {
         authorizedInstallations.add(probe.requirement.id);
       }
     }
@@ -354,12 +455,20 @@ async function ensureWorkstationReady(
       if (!authorizedInstallations.has(probe.requirement.id)) {
         continue;
       }
+      presentation.stage(
+        `Install ${probe.requirement.definition.label}`,
+        `${probe.state} - ${probe.detail}`
+      );
+      const recipe = probe.requirement.definition.install[host.platform];
+      if (recipe && (host.platform !== 'linux' || recipe.manager === 'npm' || recipe.manager === 'uv')) {
+        presentation.command(formatCommand(recipe.command));
+      }
       const installation = await installRequirement(probe.requirement, probe, {
         authorized: true,
         host,
         runner,
         cwd: commandCwd,
-        streamOptions: { stdout: context.stdout, stderr: context.stderr }
+        streamOptions: presentation.childStreams()
       });
       updates.set(probe.requirement.id, installation.probe);
       const kind = installation.state === 'installed'
@@ -367,9 +476,9 @@ async function ensureWorkstationReady(
         : probe.requirement.severity === 'blocking'
           ? 'error'
           : 'warning';
-      renderer.write(renderer.status(kind, probe.requirement.definition.label, installation.detail));
+      presentation.status(kind, probe.requirement.definition.label, installation.detail);
       if (installation.remedy) {
-        renderer.write(renderer.command(installation.remedy));
+        presentation.command(installation.remedy);
       }
     }
     probes = probes.map((probe) => updates.get(probe.requirement.id) ?? probe);
@@ -378,15 +487,16 @@ async function ensureWorkstationReady(
   const blockers = blockingReadinessFailures(probes);
   if (blockers.length > 0) {
     for (const blocker of blockers) {
-      context.stderr.write(
-        `${blocker.requirement.definition.label}: ${blocker.detail}` +
-        `\nRemedy: ${installInstruction(blocker)}\n`
+      presentation.error(
+        `${blocker.requirement.definition.label}: ${blocker.detail}`,
+        installInstruction(blocker)
       );
     }
-    context.stderr.write(
+    presentation.error(
+      'Workstation readiness is incomplete.',
       options.installTools
-        ? `Open a new terminal if PATH changed, then rerun \`${resumeInvocation}\` with the same project options.\n`
-        : `Resume with \`${resumeInvocation} --install-tools\` plus the same project options after reviewing the commands.\n`
+        ? `Open a new terminal if PATH changed, then rerun \`${resumeInvocation}\` with the same project options.`
+        : `Resume with \`${resumeInvocation} --install-tools\` plus the same project options after reviewing the commands.`
     );
     return { ready: false, deferred: [], probes };
   }
@@ -411,9 +521,10 @@ async function handleProjectDependencies(
   projectRoot: string,
   options: ProjectOptions,
   probes: RequirementProbeResult[],
-  context: CommandContext,
+  context: ExecutionContext,
   runner: CommandRunner,
-  renderer: TerminalRenderer
+  presentation: PresentationSession,
+  prompter?: InteractivePrompter
 ): Promise<{ success: boolean; deferred: string[] }> {
   const dependencyPlan = buildDependencySetupPlan(plan, projectRoot, probes);
   let installDependencies = options.installDependencies === true;
@@ -422,7 +533,7 @@ async function handleProjectDependencies(
     options.yes !== true &&
     dependencyPlan.commands.length > 0
   ) {
-    installDependencies = await confirmDependencyInstallation(dependencyPlan.commands);
+    installDependencies = await prompter!.confirmDependencyInstallation(dependencyPlan.commands);
   }
   if (!installDependencies) {
     return {
@@ -433,77 +544,98 @@ async function handleProjectDependencies(
     };
   }
 
+  presentation.stage('Install project dependencies');
   const result = await runDependencySetup(dependencyPlan, projectRoot, runner, {
-    stdout: context.stdout,
-    stderr: context.stderr
+    ...presentation.childStreams(),
+    onCommand: (command) => {
+      presentation.status('pending', command.label, command.cwd);
+      presentation.command(formatCommand(command.command));
+    }
   });
   if (!result.success) {
-    renderer.write(renderer.status(
-      'error',
+    presentation.error(
       'Project dependencies failed',
       `${result.failed?.label ?? 'dependency command'}: ${result.detail ?? 'unknown failure'}`
-    ));
-    renderer.write(renderer.status('info', 'Scaffold preserved', projectRoot));
+    );
+    presentation.status('info', 'Scaffold preserved', projectRoot);
     if (result.restoredMutations.length > 0) {
-      renderer.write(renderer.warning(
+      presentation.warning(
         `Restored protected files: ${result.restoredMutations.join(', ')}`
-      ));
+      );
     }
     if (result.resumeCommand) {
-      renderer.write(renderer.command(result.resumeCommand));
+      presentation.command(result.resumeCommand);
     }
     return { success: false, deferred: [] };
   }
-  renderer.write(renderer.status(
+  presentation.status(
     'success',
     'Project dependencies',
     `${result.completed.length} command${result.completed.length === 1 ? '' : 's'} completed`
-  ));
+  );
   return { success: true, deferred: [] };
 }
 
-function patternsCommand(context: CommandContext): number {
-  context.stdout.write('Patterns:\n');
-  for (const pattern of patterns) {
-    context.stdout.write(`- ${pattern.id}: ${pattern.label} [${pattern.scaffoldStatus}]\n`);
-  }
+function patternsCommand(context: ExecutionContext): number {
+  context.presentation.commandIdentity('patterns', 'Available GenAI application patterns');
+  context.presentation.table(
+    'Patterns',
+    ['Identifier', 'Pattern', 'Scaffold'],
+    patterns.map((pattern) => [pattern.id, pattern.label, pattern.scaffoldStatus])
+  );
   return 0;
 }
 
-function providersCommand(context: CommandContext): number {
-  context.stdout.write('Providers:\n');
-  for (const provider of providers) {
-    context.stdout.write(`- ${provider.id}: ${provider.label} [${provider.status}]\n`);
-  }
+function providersCommand(context: ExecutionContext): number {
+  context.presentation.commandIdentity('providers', 'Cloud provider availability');
+  context.presentation.table(
+    'Providers',
+    ['Identifier', 'Provider', 'Availability'],
+    providers.map((provider) => [provider.id, provider.label, provider.status])
+  );
   return 0;
 }
 
-function regionsCommand(parsed: ParsedArgs, context: CommandContext): number {
+function regionsCommand(parsed: ParsedArgs, context: ExecutionContext): number {
   const cloud = readStringFlag(parsed.flags, 'cloud') ?? 'azure';
+  context.presentation.commandIdentity('regions', 'Cloud deployment regions');
   if (cloud !== 'azure') {
-    context.stderr.write(`${cloud} regions are not available until the provider adapter is implemented.\n`);
+    context.presentation.error(
+      `${cloud} regions are not available until the provider adapter is implemented.`,
+      'Run `liftoff providers` to review currently available providers.'
+    );
     return 1;
   }
 
   const query = parsed.positional[0] ?? readStringFlag(parsed.flags, 'region');
   const regions = parsed.subcommand === 'search' && query ? searchRegions('azure', query) : listRegions('azure');
-  for (const region of regions) {
-    context.stdout.write(`${region.slug}\t${region.displayName}\t${region.geography}\n`);
+  if (regions.length === 0) {
+    context.presentation.warning(`No Azure regions matched ${JSON.stringify(query ?? '')}.`);
+    return 0;
   }
+  context.presentation.table(
+    query ? `Azure region matches for ${JSON.stringify(query)}` : 'Azure regions',
+    ['Identifier', 'Region', 'Geography'],
+    regions.map((region) => [region.slug, region.displayName, region.geography])
+  );
   return 0;
 }
 
-async function validateCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function validateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
+  context.presentation.commandIdentity('validate', 'Validate a generated Liftoff project');
   const explicit = parsed.positional[0] ?? readStringFlag(parsed.flags, 'project');
   const projectRoot = explicit
     ? path.resolve(context.cwd, explicit)
     : (await findProjectRoot(context.cwd)) ?? context.cwd;
   const issues = await validateGeneratedProject(projectRoot);
   if (issues.length > 0) {
-    context.stderr.write(`${issues.join('\n')}\n`);
+    context.presentation.error(
+      issues.join('\n'),
+      'Restore invalid generated files or the manifest from version control, then rerun validation.'
+    );
     return 1;
   }
-  context.stdout.write('Generated project manifest is valid.\n');
+  context.presentation.status('success', 'Generated project manifest is valid', projectRoot);
   return 0;
 }
 
@@ -632,16 +764,27 @@ function migrationPlanArtifacts(
 
 async function executeMigration(
   parsed: ParsedArgs,
-  context: CommandContext,
+  context: ExecutionContext,
   sourceRoot: string
 ): Promise<number> {
+  const { presentation } = context;
+  presentation.stage('Scan legacy project', sourceRoot);
   const inventory = await scanLegacyProject(sourceRoot);
   const { options: defaults, provenance } = scanDefaults(inventory);
-  context.stdout.write('Scan defaults (override in prompts or with flags):\n');
-  for (const item of provenance) {
-    context.stdout.write(`  - ${item.field}: ${item.value}  (detected: ${item.evidence})\n`);
+  if (presentation.stdout.layout === 'plain') {
+    presentation.section(
+      'Scan defaults (override in prompts or with flags)',
+      provenance.map((item) =>
+        `${item.field}: ${String(item.value)}  (detected: ${item.evidence})`
+      )
+    );
+  } else {
+    presentation.table(
+      'Scan defaults (override in prompts or with flags)',
+      ['Decision', 'Detected value', 'Evidence'],
+      provenance.map((item) => [item.field, String(item.value), item.evidence])
+    );
   }
-  context.stdout.write('\n');
 
   const flagOptions = await optionsFromParsedArgs(parsed, context.cwd, false);
   const initial = mergeOptions(defaults, flagOptions);
@@ -660,124 +803,164 @@ async function executeMigration(
   if (flagOptions.projectType === 'genai' && flagOptions.apiStack === undefined) {
     initial.apiStack = undefined;
   }
-  const needsPrompts = !initial.yes && hasMissingInitInputs(initial);
-  const options = needsPrompts ? await promptForInitOptions(initial) : initial;
-  const plan = buildProjectPlan(options, { requireProjectName: true });
-  const confirmed = await confirmPlan(plan, options.yes);
-  if (!confirmed) {
-    context.stdout.write('Migration cancelled.\n');
-    return 0;
-  }
-
-  const parentDir = path.dirname(sourceRoot);
-  let targetRoot = path.resolve(parentDir, plan.safeProjectName);
-  if (targetRoot === sourceRoot) {
-    targetRoot = path.resolve(parentDir, `${plan.safeProjectName}-liftoff`);
-  }
-  const target = { root: targetRoot, mode: 'named-child' as const };
-  await assertSafeInitTarget(target, parentDir);
-  await assertNewOrEmptyDirectory(targetRoot);
-
-  const runner = context.runner ?? new NodeCommandRunner();
-  const renderer = new TerminalRenderer({ stream: context.stdout });
-  renderer.write(renderer.banner('Migrate into a fresh Liftoff project'));
-  const readinessRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-migrate-readiness-'));
-  const readiness = await (async () => {
-    try {
-      return await ensureWorkstationReady(
-        plan,
-        options,
-        context,
-        runner,
-        renderer,
-        `liftoff migrate ${JSON.stringify(sourceRoot)}`,
-        readinessRoot
-      );
-    } finally {
-      await rm(readinessRoot, { recursive: true, force: true });
+  const interactive = initial.yes !== true;
+  const prompter = interactive
+    ? new InteractivePrompter({
+        input: context.stdin,
+        output: context.stdout,
+        presentation
+      })
+    : undefined;
+  try {
+    const needsPrompts = interactive && hasMissingInitInputs(initial);
+    if (needsPrompts) {
+      presentation.stage('Configure migrated project');
     }
-  })();
-  if (!readiness.ready) {
-    return 1;
-  }
+    const options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
+    const plan = buildProjectPlan(options, { requireProjectName: true });
+    presentation.stage('Review migration plan');
+    const confirmed = options.yes === true
+      ? (presentation.definitions('Resolved migration plan', projectPlanEntries(plan)), true)
+      : await prompter!.confirmPlan(plan, undefined, 'Migrate project?');
+    if (!confirmed) {
+      presentation.cancellation('Migration stopped; the source and destination were not modified.');
+      return 0;
+    }
 
-  const migrationPlan = migrationPlanArtifacts(plan, inventory);
-  await withStagingArea(async (area) => {
-    const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
-    await writeStagedArtifacts(area, partition.durable, 'liftoff');
-    await initializeFramework(area, plan, runner, {
-      stdout: context.stdout,
-      stderr: context.stderr
+    presentation.stage('Resolve fresh migration target');
+    const parentDir = path.dirname(sourceRoot);
+    let targetRoot = path.resolve(parentDir, plan.safeProjectName);
+    if (targetRoot === sourceRoot) {
+      targetRoot = path.resolve(parentDir, `${plan.safeProjectName}-liftoff`);
+    }
+    const target = { root: targetRoot, mode: 'named-child' as const };
+    await assertSafeInitTarget(target, parentDir);
+    await assertNewOrEmptyDirectory(targetRoot);
+
+    const runner = context.runner ?? new NodeCommandRunner();
+    presentation.stage('Check workstation readiness');
+    const readinessRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-migrate-readiness-'));
+    const readiness = await (async () => {
+      try {
+        return await ensureWorkstationReady(
+          plan,
+          options,
+          context,
+          runner,
+          presentation,
+          prompter,
+          `liftoff migrate ${JSON.stringify(sourceRoot)}`,
+          readinessRoot
+        );
+      } finally {
+        await rm(readinessRoot, { recursive: true, force: true });
+      }
+    })();
+    if (!readiness.ready) {
+      return 1;
+    }
+
+    const migrationPlan = migrationPlanArtifacts(plan, inventory);
+    presentation.stage('Stage fresh migration project');
+    await withStagingArea(async (area) => {
+      const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
+      await writeStagedArtifacts(area, partition.durable, 'liftoff');
+      presentation.stage(
+        'Initialize spec-driven framework',
+        `${plan.specWorkflow.label} ${plan.framework.version}`
+      );
+      await initializeFramework(area, plan, runner, {
+        ...presentation.childStreams(),
+        onCommand: (command) => presentation.command(command)
+      });
+      await writeStagedArtifacts(area, partition.seed, 'seed');
+      presentation.stage('Copy filtered legacy source', sourceRoot);
+      await stageMigrationSource(area, sourceRoot);
+      await writeStagedArtifacts(area, migrationPlan.artifacts, 'seed');
+      await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
+      presentation.stage('Validate staged migration');
+      await validateStagedTree(area);
+      const stagedIssues = await validateGeneratedProject(area.root);
+      if (stagedIssues.length > 0) {
+        throw new Error(`Staged migration project validation failed:\n${stagedIssues.join('\n')}`);
+      }
+
+      const preflight = await buildMergePreflight(area, targetRoot);
+      const existing = preflight.entries.filter((entry) => entry.destination.type !== 'missing');
+      if (existing.length > 0) {
+        throw new Error(
+          `Migration target must remain new or empty; --force cannot replace existing content:\n` +
+          existing.map((entry) => `- ${entry.relativePath}`).join('\n')
+        );
+      }
+      const authorized = await authorizeMergePreflight(preflight, false);
+      if (!authorized) {
+        throw new Error('Migration target authorization failed.');
+      }
+      presentation.stage('Merge fresh migration target', targetRoot);
+      await applyMergePreflight(authorized, { requireEmptyTarget: true });
     });
-    await writeStagedArtifacts(area, partition.seed, 'seed');
-    await stageMigrationSource(area, sourceRoot);
-    await writeStagedArtifacts(area, migrationPlan.artifacts, 'seed');
-    await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
-    await validateStagedTree(area);
-    const stagedIssues = await validateGeneratedProject(area.root);
-    if (stagedIssues.length > 0) {
-      throw new Error(`Staged migration project validation failed:\n${stagedIssues.join('\n')}`);
+
+    const issues = await validateGeneratedProject(targetRoot);
+    if (issues.length > 0) {
+      presentation.error(`Migrated project validation failed:\n${issues.join('\n')}`);
+      return 1;
     }
 
-    const preflight = await buildMergePreflight(area, targetRoot);
-    const existing = preflight.entries.filter((entry) => entry.destination.type !== 'missing');
-    if (existing.length > 0) {
-      throw new Error(
-        `Migration target must remain new or empty; --force cannot replace existing content:\n` +
-        existing.map((entry) => `- ${entry.relativePath}`).join('\n')
-      );
+    const dependencyPhase = await handleProjectDependencies(
+      plan,
+      targetRoot,
+      options,
+      readiness.probes,
+      context,
+      runner,
+      presentation,
+      prompter
+    );
+    if (!dependencyPhase.success) {
+      return 1;
     }
-    const authorized = await authorizeMergePreflight(preflight, false);
-    if (!authorized) {
-      throw new Error('Migration target authorization failed.');
+
+    presentation.bullets('Configured integrations', [
+      `${plan.specWorkflow.label} ${plan.framework.version}`,
+      ...plan.agents.map((agent) =>
+        `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
+      )
+    ]);
+    if (readiness.deferred.length > 0) {
+      presentation.bullets('Deferred advisory checks', readiness.deferred);
     }
-    await applyMergePreflight(authorized, { requireEmptyTarget: true });
-  });
-
-  const issues = await validateGeneratedProject(targetRoot);
-  if (issues.length > 0) {
-    context.stderr.write(`Migrated project validation failed:\n${issues.join('\n')}\n`);
-    return 1;
+    if (dependencyPhase.deferred.length > 0) {
+      presentation.bullets('Deferred project dependencies', dependencyPhase.deferred);
+    }
+    presentation.bullets('Next steps', [
+      `Optional - preserve history: copy the .git directory from ${sourceRoot} into ${targetRoot}, then commit the migration on top (git rename detection preserves file history).`,
+      `Execute the migration plan: ${migrationPlan.location}`,
+      'Verify compliance: liftoff validate && liftoff doctor'
+    ]);
+    presentation.completion(
+      `Migrated ${plan.projectName}`,
+      targetRoot,
+      [
+        { label: 'Target', value: targetRoot },
+        { label: 'Source', value: `${sourceRoot} (not modified)` },
+        { label: 'Rollback', value: `Delete ${targetRoot}` }
+      ],
+      'liftoff validate && liftoff doctor'
+    );
+    return 0;
+  } finally {
+    prompter?.close();
   }
-
-  const dependencyPhase = await handleProjectDependencies(
-    plan,
-    targetRoot,
-    options,
-    readiness.probes,
-    context,
-    runner,
-    renderer
-  );
-  if (!dependencyPhase.success) {
-    return 1;
-  }
-
-  renderer.write(renderer.status('success', `Migrated ${plan.projectName}`, targetRoot));
-  renderer.write(renderer.panel('Configured integrations', [
-    `${plan.specWorkflow.label} ${plan.framework.version}`,
-    ...plan.agents.map((agent) =>
-      `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
-    )
-  ]));
-  if (readiness.deferred.length > 0) {
-    renderer.write(renderer.panel('Deferred advisory checks', readiness.deferred));
-  }
-  if (dependencyPhase.deferred.length > 0) {
-    renderer.write(renderer.panel('Deferred project dependencies', dependencyPhase.deferred));
-  }
-  context.stdout.write('Next steps:\n');
-  context.stdout.write(`  1. Optional - preserve history: copy the .git directory from ${sourceRoot} into ${targetRoot}, then commit the migration on top (git rename detection preserves file history).\n`);
-  context.stdout.write(`  2. Execute the migration plan: ${migrationPlan.location}\n`);
-  context.stdout.write('  3. Verify compliance: liftoff validate && liftoff doctor\n');
-  context.stdout.write(`The source project was not modified. Rolling back is deleting ${targetRoot}.\n`);
-  return 0;
 }
 
-async function migrateCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function migrateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const sourceArg = parsed.positional[0];
   if (!sourceArg) {
-    context.stderr.write('Usage: liftoff migrate <path-to-existing-project>\n');
+    context.presentation.error(
+      'Usage: liftoff migrate <path-to-existing-project>',
+      'Run `liftoff migrate --help` for accepted migration options.'
+    );
     return 1;
   }
   const sourceRoot = path.resolve(context.cwd, sourceArg);
@@ -785,17 +968,21 @@ async function migrateCommand(parsed: ParsedArgs, context: CommandContext): Prom
   try {
     sourceDetails = await stat(sourceRoot);
   } catch {
-    context.stderr.write(`Source project not found: ${sourceRoot}\n`);
+    context.presentation.error(`Source project not found: ${sourceRoot}`);
     return 1;
   }
   if (!sourceDetails.isDirectory()) {
-    context.stderr.write(`Source path is not a directory: ${sourceRoot}\n`);
+    context.presentation.error(`Source path is not a directory: ${sourceRoot}`);
     return 1;
   }
   if (existsSync(path.join(sourceRoot, 'liftoff.manifest.json'))) {
-    context.stderr.write(`${sourceRoot} is already a Liftoff project. Use liftoff update instead.\n`);
+    context.presentation.error(
+      `${sourceRoot} is already a Liftoff project.`,
+      'Use `liftoff update` instead.'
+    );
     return 1;
   }
+  context.presentation.identity('Migrate an existing application into a fresh Liftoff project');
   return withUnchangedMigrationSource(sourceRoot, () => executeMigration(parsed, context, sourceRoot));
 }
 
@@ -888,26 +1075,35 @@ async function preflightUpdate(
   await resolveProjectPath(projectRoot, ['liftoff.manifest.json']);
 }
 
-async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
+  const { presentation } = context;
   const apply = readBooleanFlag(parsed.flags, 'apply') ?? false;
   const force = readBooleanFlag(parsed.flags, 'force') ?? false;
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
+  presentation.commandIdentity('update', 'Reconcile the project with current Liftoff templates');
   if (force && !apply) {
-    context.stderr.write('--force requires --apply.\n');
+    presentation.error(
+      '--force requires --apply.',
+      'Run `liftoff update --apply --force` only after reviewing the reported conflicts.'
+    );
     return 1;
   }
 
   const explicit = parsed.positional[0] ?? readStringFlag(parsed.flags, 'project');
   const projectRoot = explicit ? path.resolve(context.cwd, explicit) : await findProjectRoot(context.cwd);
   if (!projectRoot) {
-    context.stderr.write(`No liftoff.manifest.json found in ${context.cwd} or any parent directory.\n`);
+    presentation.error(
+      `No liftoff.manifest.json found in ${context.cwd} or any parent directory.`,
+      'Run this command inside a Liftoff project or provide its path explicitly.'
+    );
     return 1;
   }
 
   const manifest = await loadManifest(projectRoot);
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
-    context.stderr.write(
-      `This project was written by Liftoff ${manifest.liftoffVersion}, which is newer than this CLI (${liftoffVersion}). Upgrade the CLI first.\n`
+    presentation.error(
+      `This project was written by Liftoff ${manifest.liftoffVersion}, which is newer than this CLI (${liftoffVersion}).`,
+      'Upgrade the CLI first.'
     );
     return 1;
   }
@@ -915,26 +1111,30 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
   const config = await loadConfigOptions('liftoff.config.json', projectRoot);
   const plan = buildProjectPlan(config, { requireProjectName: true });
   if (plan.projectType.id !== manifest.project.projectType) {
-    context.stderr.write(
-      `Project type changes (${manifest.project.projectType} -> ${plan.projectType.id}) are a migration, not an update. Run liftoff migrate instead.\n`
+    presentation.error(
+      `Project type changes (${manifest.project.projectType} -> ${plan.projectType.id}) are a migration, not an update.`,
+      'Run `liftoff migrate` instead.'
     );
     return 1;
   }
   if (plan.apiStack.id !== manifest.project.apiStack) {
-    context.stderr.write(
-      `API stack changes (${manifest.project.apiStack} -> ${plan.apiStack.id}) are a migration, not an update. Run liftoff migrate instead.\n`
+    presentation.error(
+      `API stack changes (${manifest.project.apiStack} -> ${plan.apiStack.id}) are a migration, not an update.`,
+      'Run `liftoff migrate` instead.'
     );
     return 1;
   }
   if (plan.pattern?.id !== manifest.project.pattern) {
-    context.stderr.write(
-      `Pattern changes (${manifest.project.pattern ?? 'none'} -> ${plan.pattern?.id ?? 'none'}) are a migration, not an update. Run liftoff migrate instead.\n`
+    presentation.error(
+      `Pattern changes (${manifest.project.pattern ?? 'none'} -> ${plan.pattern?.id ?? 'none'}) are a migration, not an update.`,
+      'Run `liftoff migrate` instead.'
     );
     return 1;
   }
   if (plan.specWorkflow.id !== manifest.project.specWorkflow) {
-    context.stderr.write(
-      `Spec workflow changes (${manifest.project.specWorkflow} -> ${plan.specWorkflow.id}) require official framework initialization and are not supported by liftoff update.\n`
+    presentation.error(
+      `Spec workflow changes (${manifest.project.specWorkflow} -> ${plan.specWorkflow.id}) require official framework initialization and are not supported by liftoff update.`,
+      'Restore the workflow recorded in liftoff.manifest.json or migrate into a fresh project.'
     );
     return 1;
   }
@@ -946,8 +1146,9 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
       plan.defaultAgent?.id !== manifest.project.defaultAgent
     )
   ) {
-    context.stderr.write(
-      'AI agent or default-agent changes require official framework initialization and are not supported by liftoff update. Restore liftoff.config.json to the integrations recorded in liftoff.manifest.json.\n'
+    presentation.error(
+      'AI agent or default-agent changes require official framework initialization and are not supported by liftoff update.',
+      'Restore liftoff.config.json to the integrations recorded in liftoff.manifest.json.'
     );
     return 1;
   }
@@ -960,7 +1161,7 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
 
   if (!apply) {
     if (jsonMode) {
-      context.stdout.write(`${JSON.stringify({
+      presentation.rawStdout(`${JSON.stringify({
         schemaVersion: 1,
         mode: 'check',
         cliVersion: liftoffVersion,
@@ -977,25 +1178,44 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
       return drift ? 2 : 0;
     }
 
-    context.stdout.write(`Liftoff ${liftoffVersion} - project generated by ${manifest.liftoffVersion}\n\n`);
+    presentation.definitions('Project versions', [
+      { label: 'Liftoff CLI', value: liftoffVersion },
+      { label: 'Project generated by', value: manifest.liftoffVersion }
+    ]);
     if (!drift) {
-      context.stdout.write(`No drift: ${summary.unchanged} artifacts match the current templates and configuration.\n`);
+      presentation.status(
+        'success',
+        'No drift',
+        `${summary.unchanged} artifacts match the current templates and configuration`
+      );
       return 0;
     }
-    for (const entry of visible) {
-      context.stdout.write(`  ${entryMarker(entry)} ${entryDisplay(entry)}  ${entry.reason}\n`);
+    if (presentation.stdout.layout === 'plain') {
+      presentation.section(
+        'Template drift',
+        visible.map((entry) => `${entryMarker(entry)} ${entryDisplay(entry)}  ${entry.reason}`)
+      );
+    } else {
+      presentation.table(
+        'Template drift',
+        ['Change', 'Artifact', 'Reason'],
+        visible.map((entry) => [entryMarker(entry), entryDisplay(entry), entry.reason])
+      );
     }
     const toWrite = summary.new + summary.missing + summary.upgrade + summary.moved + summary.refresh;
-    context.stdout.write(
-      `\n  ${toWrite} to write, ${summary.conflict} conflict(s), ${summary.orphan} orphan(s), ${summary.unchanged} unchanged\n`
+    presentation.status(
+      'warning',
+      'Drift detected',
+      `${toWrite} to write, ${summary.conflict} conflict(s), ${summary.orphan} orphan(s), ${summary.unchanged} unchanged`
     );
-    context.stdout.write('  Run `liftoff update --apply` to apply the safe changes.\n');
+    presentation.command('liftoff update --apply');
     return 2;
   }
 
   if (isDirtyGitWorktree(projectRoot)) {
-    context.stdout.write('Hint: the project worktree has uncommitted changes - consider committing before applying.\n');
+    presentation.warning('The project worktree has uncommitted changes; consider committing before applying.');
   }
+  presentation.stage('Apply safe template changes', projectRoot);
   await preflightUpdate(projectRoot, entries, force);
 
   const written: ReconcileEntry[] = [];
@@ -1072,7 +1292,7 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
   await writeProjectFile(projectRoot, ['liftoff.manifest.json'], `${JSON.stringify(nextManifest, null, 2)}\n`);
 
   if (jsonMode) {
-    context.stdout.write(`${JSON.stringify({
+    presentation.rawStdout(`${JSON.stringify({
       schemaVersion: 1,
       mode: 'apply',
       cliVersion: liftoffVersion,
@@ -1084,18 +1304,33 @@ async function updateCommand(parsed: ParsedArgs, context: CommandContext): Promi
     return 0;
   }
 
-  for (const entry of written) {
-    context.stdout.write(`  wrote ${entryDisplay(entry)}\n`);
+  if (written.length > 0) {
+    presentation.bullets(
+      'Applied changes',
+      written.map((entry) => `wrote ${entryDisplay(entry)}`)
+    );
   }
-  for (const entry of skipped) {
-    context.stdout.write(`  skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --apply --force to overwrite)'}\n`);
+  if (skipped.length > 0) {
+    presentation.bullets(
+      'Skipped conflicts',
+      skipped.map((entry) =>
+        `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --apply --force to overwrite)'}`
+      )
+    );
   }
-  for (const entry of entries) {
-    if (entry.status === 'orphan') {
-      context.stdout.write(`  orphan ${entryDisplay(entry)}  ${entry.reason}\n`);
-    }
+  const orphans = entries.filter((entry) => entry.status === 'orphan');
+  if (orphans.length > 0) {
+    presentation.bullets(
+      'Orphaned artifacts',
+      orphans.map((entry) => `orphan ${entryDisplay(entry)}  ${entry.reason}`)
+    );
   }
-  context.stdout.write(`Updated: ${written.length} written, ${skipped.length} skipped, ${summary.orphan} orphan(s). Manifest recorded at ${liftoffVersion}.\n`);
+  presentation.completion(
+    'Updated project',
+    `${written.length} written, ${skipped.length} skipped, ${summary.orphan} orphan(s)`,
+    [{ label: 'Manifest version', value: liftoffVersion }],
+    'liftoff validate && liftoff doctor'
+  );
   return 0;
 }
 
@@ -1488,20 +1723,21 @@ async function runtimeLayer(projectRoot: string, dockerAvailable: boolean): Prom
   return { title: 'Runtime', checks };
 }
 
-const severityMarker: Record<DoctorCheck['severity'], string> = {
-  ok: '[ok]',
-  warn: '[warn]',
-  fail: '[fail]',
-  skipped: '[skip]'
-};
-
-function renderDoctorLayers(layers: DoctorLayer[], stream: NodeJS.WritableStream): void {
+function renderDoctorLayers(layers: DoctorLayer[], presentation: PresentationSession): void {
+  const statusKind = {
+    ok: 'success',
+    warn: 'warning',
+    fail: 'error',
+    skipped: 'pending'
+  } as const;
   for (const layer of layers) {
-    stream.write(`${layer.title}\n`);
-    for (const check of layer.checks) {
+    presentation.section(layer.title, layer.checks.flatMap((check) => {
       const remedy = check.remedy ? ` - ${check.remedy}` : '';
-      stream.write(`  ${severityMarker[check.severity].padEnd(6)} ${check.label}: ${check.detail}${remedy}\n`);
-    }
+      return presentation.stdout
+        .status(statusKind[check.severity], check.label, `${check.detail}${remedy}`)
+        .trimEnd()
+        .split('\n');
+    }));
   }
 }
 
@@ -1509,10 +1745,11 @@ export function doctorExitCode(layers: DoctorLayer[]): number {
   return layers.some((layer) => layer.checks.some((check) => check.severity === 'fail')) ? 1 : 0;
 }
 
-async function doctorCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
+async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
   const cloudOverride = readStringFlag(parsed.flags, 'cloud');
   const layers: DoctorLayer[] = [];
+  context.presentation.commandIdentity('doctor', 'Inspect CLI, workstation, project, runtime, and cloud readiness');
 
   const projectRoot = await findProjectRoot(context.cwd);
   let manifest: LiftoffManifest | undefined;
@@ -1570,18 +1807,29 @@ async function doctorCommand(parsed: ParsedArgs, context: CommandContext): Promi
   const warnings = layers.reduce((count, layer) => count + layer.checks.filter((check) => check.severity === 'warn').length, 0);
 
   if (jsonMode) {
-    context.stdout.write(`${JSON.stringify({ schemaVersion: 1, layers, summary: { failures, warnings } }, null, 2)}\n`);
+    context.presentation.rawStdout(
+      `${JSON.stringify({ schemaVersion: 1, layers, summary: { failures, warnings } }, null, 2)}\n`
+    );
   } else {
-    renderDoctorLayers(layers, context.stdout);
-    context.stdout.write(`${failures} failure(s), ${warnings} warning(s)\n`);
+    renderDoctorLayers(layers, context.presentation);
+    context.presentation.status(
+      failures > 0 ? 'error' : warnings > 0 ? 'warning' : 'success',
+      'Doctor summary',
+      `${failures} failure(s), ${warnings} warning(s)`
+    );
   }
 
   return doctorExitCode(layers);
 }
 
-function helperCommand(parsed: ParsedArgs, context: CommandContext, tool: 'docker compose' | 'tofu'): number {
+function helperCommand(parsed: ParsedArgs, context: ExecutionContext, tool: 'docker compose' | 'tofu'): number {
   const command = parsed.command === 'dev' ? buildDevCommand(parsed) : buildInfraCommand(parsed);
-  context.stdout.write(`${tool} helper command:\n${command}\n`);
+  context.presentation.commandIdentity(
+    parsed.command ?? tool,
+    `${tool} helper command`
+  );
+  context.presentation.section(`${tool} helper command`, []);
+  context.presentation.command(command);
   return 0;
 }
 
@@ -1659,10 +1907,51 @@ function hasMissingInitInputs(options: ProjectOptions): boolean {
     !options.environments;
 }
 
-function printHelp(stream: NodeJS.WritableStream): void {
-  const renderer = new TerminalRenderer({ stream });
-  renderer.write(renderer.banner('Project workstation and scaffold initializer'));
-  stream.write(formatGeneralHelp(liftoffVersion));
+function renderGeneralHelp(presentation: PresentationSession): void {
+  const help = getGeneralHelp(liftoffVersion);
+  presentation.identity(`${help.title} - ${help.subtitle}`);
+  presentation.section('Usage', [help.usage]);
+  presentation.table(
+    'Global options',
+    ['Option', 'Description'],
+    help.globalOptions.map((option) => [option.syntax, option.description])
+  );
+  for (const group of help.commandGroups) {
+    presentation.table(
+      group.title,
+      ['Command', 'Description'],
+      group.entries.map((entry) => [entry.syntax, entry.description])
+    );
+  }
+  presentation.status('info', 'Tip', help.hint);
+}
+
+function renderCommandHelp(command: string, presentation: PresentationSession): void {
+  const help = getCommandHelp(command);
+  presentation.commandIdentity(help.command, help.description);
+  presentation.section('Usage', [
+    presentation.stdout.layout === 'plain' ? `Usage: ${help.usage}` : help.usage
+  ]);
+  if (help.arguments.length > 0) {
+    presentation.table(
+      'Arguments',
+      ['Argument', 'Description'],
+      help.arguments.map((argument) => [argument.syntax, argument.description])
+    );
+  }
+  if (help.subcommands.length > 0) {
+    presentation.bullets('Subcommands', help.subcommands);
+  }
+  for (const group of help.optionGroups) {
+    presentation.table(
+      group.title,
+      ['Option', 'Description'],
+      group.entries.map((entry) => [
+        entry.syntax,
+        `${entry.description}${entry.defaultValue ? ` (default: ${entry.defaultValue})` : ''}`
+      ])
+    );
+  }
 }
 
 export async function createFixtureProject(options: ProjectOptions): Promise<string> {

@@ -1,4 +1,5 @@
 import spawn from 'cross-spawn';
+import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from './types.js';
 
 export interface RunCommandOptions {
@@ -52,6 +53,8 @@ export class NodeCommandRunner implements CommandRunner {
       let stderr = '';
       let errorCode: string | undefined;
       let errorMessage: string | undefined;
+      const stdoutDecoder = new StringDecoder('utf8');
+      const stderrDecoder = new StringDecoder('utf8');
       const child = spawn(command.executable, command.args, {
         cwd: options.cwd,
         env: options.env ? { ...process.env, ...options.env } : process.env,
@@ -68,6 +71,8 @@ export class NodeCommandRunner implements CommandRunner {
         if (timer) {
           clearTimeout(timer);
         }
+        stdout += stdoutDecoder.end();
+        stderr += stderrDecoder.end();
         resolve({
           command,
           displayCommand,
@@ -82,17 +87,15 @@ export class NodeCommandRunner implements CommandRunner {
       };
 
       child.stdout?.on('data', (chunk: Buffer | string) => {
-        const text = chunk.toString();
-        stdout += text;
+        stdout += typeof chunk === 'string' ? chunk : stdoutDecoder.write(chunk);
         if (options.stream) {
-          (options.stdout ?? process.stdout).write(text);
+          (options.stdout ?? process.stdout).write(chunk);
         }
       });
       child.stderr?.on('data', (chunk: Buffer | string) => {
-        const text = chunk.toString();
-        stderr += text;
+        stderr += typeof chunk === 'string' ? chunk : stderrDecoder.write(chunk);
         if (options.stream) {
-          (options.stderr ?? process.stderr).write(text);
+          (options.stderr ?? process.stderr).write(chunk);
         }
       });
       child.on('error', (error: NodeJS.ErrnoException) => {

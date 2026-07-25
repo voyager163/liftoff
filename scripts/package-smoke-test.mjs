@@ -159,7 +159,7 @@ try {
     cwd: outsideDirectory,
     env: npmEnv
   });
-  if (!plan.stdout.includes('Artifacts') || !plan.stdout.includes('Workstation requirements:')) {
+  if (!plan.stdout.includes('Artifacts') || !plan.stdout.includes('Workstation requirements')) {
     throw new Error('Installed liftoff plan did not render artifacts and requirements');
   }
   const afterPlan = await readdir(outsideDirectory);

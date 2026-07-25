@@ -59,6 +59,38 @@ For an existing application, migration creates a fresh sibling scaffold, runs th
 liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 ```
 
+## Terminal Interface
+
+Interactive `init`, `migrate`, and `plan` sessions open with the Liftoff identity before discovery or the first question. Human-readable help, prompts, plans, readiness checks, consent details, maintenance results, catalogs, errors, remedies, and completion summaries use the same presentation hierarchy:
+
+```text
+┌──────────────────────────────────────────────────────────────────────────────┐
+│ ██╗     ██╗███████╗████████╗ ██████╗ ███████╗███████╗                      │
+│ ██║     ██║██╔════╝╚══██╔══╝██╔═══██╗██╔════╝██╔════╝                      │
+│ ██║     ██║█████╗     ██║   ██║   ██║█████╗  █████╗                        │
+│ ██║     ██║██╔══╝     ██║   ██║   ██║██╔══╝  ██╔══╝                        │
+│ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                           │
+│ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                           │
+└──────────────────────────────────────────────────────────────────────────────┘
+◆ Configure project
+┌─ Resolved project plan ──────────────────────────────────────────────────────┐
+│ Project       claims-copilot                                                │
+│ Spec workflow OpenSpec                                                      │
+│ Coding agents GitHub Copilot, Claude Code                                   │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+TTYs at least 96 columns receive the rich wordmark, Unicode sections, aligned tables, and restrained semantic color. Widths from 64 through 95 columns use the compact identity and wrapped sections. Narrow or redirected output is deterministic plain text with no ANSI sequences or decorative borders, so paths, commands, labels, values, and remedies remain copyable.
+
+Set `NO_COLOR=1` to retain the selected layout and hierarchy without ANSI color:
+
+```bash
+NO_COLOR=1 liftoff init
+liftoff doctor > readiness.txt
+```
+
+Machine contracts bypass presentation. `liftoff doctor --json` and `liftoff update --json` emit only their documented JSON values, while `liftoff --version` remains exactly one line. Liftoff labels installer, framework, and dependency stages, then forwards child stdout and stderr unchanged.
+
 ## Lifecycle
 
 ```text

@@ -27,6 +27,12 @@ export interface DependencySetupResult {
   resumeCommand?: string;
 }
 
+export interface DependencySetupExecutionOptions {
+  stdout: NodeJS.WritableStream;
+  stderr: NodeJS.WritableStream;
+  onCommand?: (command: DependencyCommandPlan) => void;
+}
+
 function npmExecutable(platform: NodeJS.Platform): string {
   return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
@@ -167,17 +173,18 @@ export async function runDependencySetup(
   setup: DependencySetupPlan,
   projectRoot: string,
   runner: CommandRunner,
-  streams: { stdout: NodeJS.WritableStream; stderr: NodeJS.WritableStream }
+  options: DependencySetupExecutionOptions
 ): Promise<DependencySetupResult> {
   const snapshots = await captureProtectedFiles(projectRoot, setup.protectedPaths);
   const completed: DependencyCommandPlan[] = [];
   for (const command of setup.commands) {
+    options.onCommand?.(command);
     const result = await runner.run(command.command, {
       cwd: command.cwd,
       timeoutMs: 15 * 60_000,
       stream: true,
-      stdout: streams.stdout,
-      stderr: streams.stderr
+      stdout: options.stdout,
+      stderr: options.stderr
     });
     if (result.status !== 0 || result.timedOut) {
       const restoredMutations = await restoreMutations(projectRoot, snapshots);

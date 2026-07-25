@@ -76,6 +76,22 @@ describe('commands', () => {
     expect(stderr.text()).toBe('');
   });
 
+  it('keeps command help human-readable when a JSON flag is also present', async () => {
+    for (const command of ['doctor', 'update']) {
+      const stdout = new CaptureStream();
+      const stderr = new CaptureStream();
+      const code = await runCommand(parseArgs([command, '--json', '--help']), {
+        cwd: process.cwd(),
+        stdout,
+        stderr
+      });
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain(`Usage: liftoff ${command}`);
+      expect(stdout.text()).toContain('Output options');
+      expect(stderr.text()).toBe('');
+    }
+  });
+
   it('reports the installed version and includes it in general help outside a project', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-version-'));
     try {
@@ -158,7 +174,7 @@ describe('commands', () => {
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Artifacts');
       expect(stdout.text()).toContain('Coding agents: GitHub Copilot');
-      expect(stdout.text()).toContain('Workstation requirements:');
+      expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.6.0 [blocking]');
       expect(await readdir(tempRoot)).toEqual([]);
     } finally {
