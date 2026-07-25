@@ -53,6 +53,9 @@ jobs:
       - name: Run package smoke test
         run: npm run smoke:package
 
+      - name: Verify standard Node.js templates
+        run: npm run verify:standard-node-templates
+
   power-apps-starter:
     name: Power Apps starter (${{ matrix.os }}, Node 22)
     runs-on: ${{ matrix.os }}

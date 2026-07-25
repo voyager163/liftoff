@@ -4,6 +4,10 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import {
+  templateDependencyInventory,
+  validateTemplateDependencyInventory
+} from './template-dependency-security.mjs';
 
 const packageRoot = process.cwd();
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
@@ -119,7 +123,9 @@ try {
   assertPackageContains(packResult, 'dist/power-apps-templates.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
+  assertPackageContains(packResult, 'assets/locks/node-backend/package.json');
   assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
+  assertPackageContains(packResult, 'assets/locks/frontend/package.json');
   assertPackageContains(packResult, 'assets/locks/frontend/package-lock.json');
   assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/catalog.json');
   assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/UPSTREAM_LICENSE.txt');
@@ -133,7 +139,14 @@ try {
   assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/.gitignore');
   assertPackageExcludes(packResult, 'src');
   assertPackageExcludes(packResult, 'tests');
+  assertPackageExcludes(packResult, 'scripts');
+  assertPackageExcludes(packResult, 'security');
   assertPackageExcludes(packResult, 'node_modules');
+  await validateTemplateDependencyInventory(
+    packageRoot,
+    templateDependencyInventory,
+    packResult.files.map((file) => file.path)
+  );
   if (packResult.unpackedSize > 5 * 1024 * 1024) {
     throw new Error(`Packed package unexpectedly exceeds the 5 MiB unpacked-size budget: ${packResult.unpackedSize}`);
   }

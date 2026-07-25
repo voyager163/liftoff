@@ -44,8 +44,10 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "audit:template-dependencies": "node scripts/audit-template-dependencies.mjs",
     "refresh:power-apps-starter": "node scripts/refresh-power-apps-starter.mjs",
     "smoke:package": "npm run build && node scripts/package-smoke-test.mjs",
+    "verify:standard-node-templates": "npm run build && node scripts/verify-standard-node-templates.mjs",
     "verify:power-apps-starter": "npm run build && node scripts/verify-power-apps-starter.mjs",
     "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
     "verify:published": "npm run build && node scripts/verify-published-package.mjs",

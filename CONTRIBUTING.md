@@ -33,11 +33,15 @@ Before a change is release-ready, also verify the packed artifact:
 
 ```bash
 npm run smoke:package
+npm run verify:standard-node-templates
 ```
 
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
-executes the installed CLI.
+executes the installed CLI. The standard template verifier generates a Node.js
+backend with its Vue frontend, runs both locked installs, builds both projects,
+and runs the generated backend tests without permitting package metadata
+changes.
 
 Changes to the Power Apps renderer, dependencies, lockfile, or assets also
 require Node.js 22:
@@ -105,6 +109,57 @@ After the script completes:
 
 Do not edit vendored starter bytes or catalog hashes by hand to bypass a failed
 integrity check.
+
+## Audit packaged template dependencies
+
+Liftoff ships npm lockfiles for the standard Node.js backend, standard frontend,
+and pinned Power Apps starter. Run their live canonical-registry audit
+separately from the root package audit:
+
+```bash
+npm run audit:template-dependencies
+```
+
+The command is read-only: it must not install dependencies, create
+`node_modules`, or modify package metadata. The `Template dependency audit`
+workflow runs the same command weekly and through manual dispatch. Ordinary
+pull-request CI uses committed fixtures so new registry advisories or registry
+outages do not make unrelated test runs nondeterministic.
+
+The explicit inventory and audit engine live under `scripts/`.
+`security/template-dependency-exceptions.json` records findings that have been
+reviewed but cannot yet be removed safely. Each exception is scoped to one
+advisory, package, exact manifest path, and complete dependency-chain set. It requires
+technical evidence, mitigation, an owner, and bounded review dates:
+
+- high and critical findings expire within 30 days;
+- moderate and lower findings expire within 90 days.
+
+Do not renew an exception automatically. Reconfirm the vulnerable API remains
+unreachable, update its evidence and upstream reference, then set a new review
+window. Remove stale exceptions immediately after a dependency refresh.
+
+Refresh Liftoff-owned standard lockfiles on Linux x64. Resolve with Node.js 22
+and pinned npm 11.7.0, then normalize the final lockfile with the oldest
+supported Node.js 20 package-manager baseline, npm 10.8.2. Update the narrow
+manifest range first, then run from the affected asset directory:
+
+```bash
+npx --yes npm@11.7.0 install --package-lock-only --ignore-scripts --no-audit --no-fund
+npx --yes npm@10.8.2 install --package-lock-only --ignore-scripts --no-audit --no-fund
+npx --yes npm@10.8.2 ci --ignore-scripts --no-audit --no-fund
+```
+
+Prefer the smallest compatible patched line. Do not use `npm audit fix`, force
+an unrelated major upgrade, downgrade a dependency to hide an advisory, or add
+an unverified transitive override. The npm 10 pass is required because newer
+npm releases can omit nested optional-peer records that the supported baseline
+still requires. Afterward run the focused security tests, the standard template
+verifier, package smoke, and the live audit.
+
+For the Power Apps starter, use the immutable refresh procedure above rather
+than editing package metadata or lockfile bytes. A new starter commit changes
+the audit inventory path and requires every exception to be reviewed again.
 
 ## Propose behavior changes
 

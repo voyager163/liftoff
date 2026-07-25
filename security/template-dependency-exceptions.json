@@ -1,0 +1,117 @@
+{
+  "schemaVersion": 1,
+  "exceptions": [
+    {
+      "advisoryId": "GHSA-67mh-4wv8-2f99",
+      "package": "esbuild",
+      "manifestPathParts": [
+        "assets",
+        "locks",
+        "node-backend",
+        "package-lock.json"
+      ],
+      "dependencyChains": [
+        [
+          "drizzle-kit",
+          "@esbuild-kit/esm-loader",
+          "@esbuild-kit/core-utils",
+          "esbuild"
+        ]
+      ],
+      "disposition": "vulnerable-code-not-used",
+      "rationale": "The affected esbuild development server is present only through drizzle-kit tooling. Generated commands use drizzle-kit generate and migrate and never invoke esbuild serve.",
+      "mitigation": "Keep the development server API unexposed and re-evaluate the chain whenever drizzle-kit or its loader dependencies change.",
+      "owner": "voyager163",
+      "reviewedAt": "2026-07-25",
+      "reviewBy": "2026-10-23",
+      "upstreamReference": "https://github.com/advisories/GHSA-67mh-4wv8-2f99"
+    },
+    {
+      "advisoryId": "GHSA-qwww-vcr4-c8h2",
+      "package": "react-router",
+      "manifestPathParts": [
+        "assets",
+        "power-apps-code-app",
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "starter",
+        "package-lock.json"
+      ],
+      "dependencyChains": [
+        [
+          "react-router-dom",
+          "react-router"
+        ]
+      ],
+      "disposition": "vulnerable-code-not-used",
+      "rationale": "The advisory affects unstable React Server Components APIs. The official Power Apps starter is a Vite browser SPA that uses createBrowserRouter and does not enable RSC mode.",
+      "mitigation": "Keep unstable RSC APIs outside generated and documented behavior and adopt the official compatible React Router fix when react-router-dom exposes it.",
+      "owner": "voyager163",
+      "reviewedAt": "2026-07-25",
+      "reviewBy": "2026-08-24",
+      "upstreamReference": "https://github.com/advisories/GHSA-qwww-vcr4-c8h2"
+    },
+    {
+      "advisoryId": "GHSA-w5hq-g745-h8pq",
+      "package": "uuid",
+      "manifestPathParts": [
+        "assets",
+        "power-apps-code-app",
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "starter",
+        "package-lock.json"
+      ],
+      "dependencyChains": [
+        [
+          "@microsoft/power-apps",
+          "@microsoft/power-apps-cli",
+          "@azure/msal-node",
+          "uuid"
+        ]
+      ],
+      "disposition": "vulnerable-code-not-used",
+      "rationale": "The affected uuid APIs are buffered v3, v5, and v6 calls. The pinned MSAL implementation imports uuid v4 only.",
+      "mitigation": "Do not introduce buffered uuid calls and adopt the Microsoft Power Apps CLI update when it moves to an MSAL release without the affected uuid dependency.",
+      "owner": "voyager163",
+      "reviewedAt": "2026-07-25",
+      "reviewBy": "2026-10-23",
+      "upstreamReference": "https://github.com/advisories/GHSA-w5hq-g745-h8pq"
+    },
+    {
+      "advisoryId": "GHSA-mh99-v99m-4gvg",
+      "package": "brace-expansion",
+      "manifestPathParts": [
+        "assets",
+        "power-apps-code-app",
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "starter",
+        "package-lock.json"
+      ],
+      "dependencyChains": [
+        [
+          "eslint",
+          "minimatch",
+          "brace-expansion"
+        ],
+        [
+          "eslint",
+          "@eslint/config-array",
+          "minimatch",
+          "brace-expansion"
+        ],
+        [
+          "eslint",
+          "@eslint/eslintrc",
+          "minimatch",
+          "brace-expansion"
+        ]
+      ],
+      "disposition": "vulnerable-code-not-used",
+      "rationale": "The dependency is development-only and the official starter invokes ESLint with the fixed literal path argument '.', not an attacker-controlled brace or glob pattern.",
+      "mitigation": "Keep lint arguments maintainer-controlled and adopt the official starter's compatible ESLint toolchain update when available.",
+      "owner": "voyager163",
+      "reviewedAt": "2026-07-25",
+      "reviewBy": "2026-08-24",
+      "upstreamReference": "https://github.com/advisories/GHSA-mh99-v99m-4gvg"
+    }
+  ]
+}

@@ -54,6 +54,9 @@ jobs:
       - name: Run package smoke test
         run: npm run smoke:package
 
+      - name: Verify standard Node.js templates
+        run: npm run verify:standard-node-templates
+
       - name: Inspect publish package
         run: npm pack --dry-run --json
 
