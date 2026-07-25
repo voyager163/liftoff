@@ -50,24 +50,39 @@ Individual project files use temporary-file replacement. Initialization keeps
 backups for replaced files and records created files and directories. A handled
 merge failure restores or removes those entries in reverse order.
 
-`liftoff update --apply` preflights all affected paths and applies generated
-file, move, delete, and manifest mutations as one rollback-capable
-transaction. Schema upgrades are committed only after the other mutations
-succeed. A corrected retry converges from the restored state.
+An accepted interactive update or `liftoff update --apply` preflights all
+affected paths and applies generated file, move, delete, and manifest mutations
+as one rollback-capable transaction. Schema upgrades are committed only after
+the other mutations succeed. A corrected retry converges from the restored
+state.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
 overwriting unknown bytes.
 
+Update snapshots exist only for rollback after a failed transaction. Liftoff
+does not retain them as backups after success.
+
 ## Update ownership
 
-`liftoff update` is read-only by default:
+Plain `liftoff update` always reports drift before any write:
 
 - Clean generated files remain unchanged.
-- New, missing, untouched-upgrade, and clean-move states can be applied.
+- In an interactive terminal, new, missing, untouched-upgrade, clean-move, and
+  recorded-state changes are summarized and offered through a default-No
+  confirmation.
+- With redirected input or output, or with `--json`, update remains a
+  prompt-free read-only check unless `--apply` is explicitly supplied.
 - Developer edits that also differ from the current template are conflicts.
-- Conflicts are skipped unless `--apply --force` is explicitly supplied.
+- Safe-update consent does not authorize conflicts. Interactive conflicts are
+  listed by portable relative path and require a separate default-No overwrite
+  confirmation; automation uses `--apply --force`.
 - Orphans are reported and left on disk for manual review.
+- Dependency definitions may be updated, but update never installs
+  dependencies.
+
+All interactive decisions are collected before preflight or mutation.
+Declining the safe update changes nothing and leaves drift exit code 2.
 
 Power Apps reconciliation reads only the packaged immutable starter. It does
 not fetch the upstream repository. Workload kind and user-edited starter

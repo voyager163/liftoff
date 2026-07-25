@@ -654,7 +654,9 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 function renderGeneratedUpdateGuide(): string {
   return `## Safe Liftoff Updates
 
-\`liftoff update\` is a read-only drift check; \`liftoff update --apply\` writes only preflighted changes. An occupied destination with different user bytes is reported and skipped, while an identical destination is adopted without rewriting it. Use \`--force\` only after reviewing each conflict.
+\`liftoff update\` reports drift and, in an interactive terminal, shows the overwrite impact before a default-No prompt for safe managed changes. Local or user-owned conflicts require a separate default-No confirmation. With redirected input or output, or with \`--json\`, update remains a prompt-free read-only check; \`liftoff update --apply\` and \`liftoff update --apply --force\` provide explicit automation consent.
+
+An occupied destination with different user bytes is reported and preserved without conflict consent, while an identical destination is adopted without rewriting it. Update never deletes orphans or installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful overwrite, so commit or copy local work first.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 `;

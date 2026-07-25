@@ -789,13 +789,13 @@ export async function deleteProjectFile(projectRoot: string, pathParts: string[]
   }
 }
 
-interface ProjectFileSnapshot {
+export interface ProjectFileSnapshot {
   pathParts: string[];
   content?: Buffer;
   mode?: number;
 }
 
-async function captureProjectFileSnapshot(
+export async function captureProjectFileSnapshot(
   projectRoot: string,
   pathParts: string[]
 ): Promise<ProjectFileSnapshot> {
@@ -831,7 +831,7 @@ async function assertProjectFileSnapshot(
     snapshot.content?.equals(current.content!) === false
   ) {
     throw new FileSystemError(
-      `Project update target changed after preflight: ${snapshot.pathParts.join('/')}`
+      `Project update target changed after review: ${snapshot.pathParts.join('/')}`
     );
   }
 }
@@ -890,10 +890,21 @@ export async function applyProjectFileTransaction(
   mutations: readonly ProjectFileMutation[],
   options: {
     onBeforeMutation?: (mutation: ProjectFileMutation, index: number) => Promise<void>;
+    preconditions?: readonly ProjectFileSnapshot[];
   } = {}
 ): Promise<void> {
   const snapshots = new Map<string, ProjectFileSnapshot>();
+  const preconditions = new Map<string, ProjectFileSnapshot>();
   const missingParents = new Map<string, string[]>();
+  for (const snapshot of options.preconditions ?? []) {
+    const key = snapshot.pathParts.join('\0');
+    if (preconditions.has(key)) {
+      throw new FileSystemError(
+        `Project update contains duplicate preconditions for ${snapshot.pathParts.join('/')}.`
+      );
+    }
+    preconditions.set(key, snapshot);
+  }
   for (const mutation of mutations) {
     const key = mutation.pathParts.join('\0');
     if (snapshots.has(key)) {
@@ -901,12 +912,19 @@ export async function applyProjectFileTransaction(
         `Project update contains duplicate mutations for ${mutation.pathParts.join('/')}.`
       );
     }
-    snapshots.set(key, await captureProjectFileSnapshot(projectRoot, mutation.pathParts));
+    snapshots.set(
+      key,
+      preconditions.get(key) ??
+        await captureProjectFileSnapshot(projectRoot, mutation.pathParts)
+    );
     if (mutation.type === 'write') {
       for (const parentParts of await missingMutationParents(projectRoot, mutation.pathParts)) {
         missingParents.set(parentParts.join('\0'), parentParts);
       }
     }
+  }
+  for (const snapshot of preconditions.values()) {
+    await assertProjectFileSnapshot(projectRoot, snapshot);
   }
 
   const applied: ProjectFileMutation[] = [];

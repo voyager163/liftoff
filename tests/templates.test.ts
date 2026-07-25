@@ -380,7 +380,11 @@ describe('templates and filesystem', () => {
 
     expect(readme).toContain('PYDANTIC_AI_MODEL');
     expect(readme).toContain('VITE_API_BASE_URL');
+    expect(readme).toContain('shows the overwrite impact');
+    expect(readme).toContain('separate default-No confirmation');
     expect(readme).toContain('occupied destination');
+    expect(readme).toContain('never deletes orphans or installs dependencies');
+    expect(readme).toContain('retains no backup after a successful overwrite');
     expect(readme).toContain('symlink-escaping manifest paths');
     expect(readme).toContain('liftoff <command> --help');
     expect(readme).toContain('Workflow: OpenSpec 1.6.0');

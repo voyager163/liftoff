@@ -24,6 +24,7 @@ import type { DependencyCommandPlan } from './project-dependencies.js';
 import { projectPlanEntries } from './planner.js';
 import { formatCommand, type CommandRunner } from './process-runner.js';
 import { PresentationSession } from './terminal.js';
+import type { UpdateImpact } from './update-impact.js';
 import type {
   CodingAgentId,
   ProjectOptions,
@@ -103,6 +104,22 @@ function isPromptCancellation(error: unknown): boolean {
     error.name === 'AbortPromptError' ||
     error.message.includes('User force closed the prompt')
   );
+}
+
+export function isInteractiveTerminal(
+  input: Readable | undefined = processInput,
+  output: NodeJS.WritableStream = processOutput
+): boolean {
+  const resolvedInput = input ?? processInput;
+  const ttyInput = resolvedInput as Readable & { isTTY?: boolean };
+  const ttyOutput = output as NodeJS.WritableStream & { isTTY?: boolean };
+  return ttyInput.isTTY === true && ttyOutput.isTTY === true;
+}
+
+function supportsRawMode(input: Readable): boolean {
+  return typeof (input as Readable & {
+    setRawMode?: (mode: boolean) => void;
+  }).setRawMode === 'function';
 }
 
 export class InteractivePrompter {
@@ -256,6 +273,82 @@ export class InteractivePrompter {
     return this.confirm('Replace every listed file?', false);
   }
 
+  presentUpdateImpact(impact: UpdateImpact): void {
+    const safeParts = [
+      this.impactPart(impact.creates.length, 'create', 'creates'),
+      this.impactPart(impact.restores.length, 'restore', 'restores'),
+      this.impactPart(impact.replacements.length, 'replace', 'replaces'),
+      this.impactPart(impact.moves.length, 'move', 'moves'),
+      this.impactPart(
+        impact.recordedStateRefreshes.length,
+        'recorded-state refresh',
+        'recorded-state refreshes'
+      )
+    ].filter((part): part is string => part !== undefined);
+    const removedPaths = impact.managedPathsRemovedOnOverwrite.length > 0
+      ? `${impact.managedPathsRemoved.length} safe, ${impact.managedPathsRemovedOnOverwrite.length} more if conflicts are approved`
+      : `${impact.managedPathsRemoved.length}`;
+
+    this.presentation.definitions('Update impact', [
+      {
+        label: 'Safe actions',
+        value: impact.safeActionCount > 0
+          ? `${impact.safeActionCount} (${safeParts.join(', ')})`
+          : 'None'
+      },
+      {
+        label: 'Local or user-owned files at risk',
+        value: impact.localOrUserOwnedFilesAtRisk > 0
+          ? `${impact.localOrUserOwnedFilesAtRisk} (requires separate consent)`
+          : '0'
+      },
+      { label: 'Managed old paths removed', value: removedPaths },
+      {
+        label: 'Orphans preserved',
+        value: `${impact.orphansPreserved.length} (never deleted automatically)`
+      },
+      {
+        label: 'Manifest updated',
+        value: impact.manifestWillUpdate ? 'Yes, after an accepted update' : 'No'
+      },
+      {
+        label: 'Dependency definitions',
+        value: impact.dependencyDefinitions.length > 0
+          ? impact.dependencyDefinitions.join(', ')
+          : 'None'
+      },
+      { label: 'Dependencies installed', value: 'No' },
+      {
+        label: 'Liftoff backup after success',
+        value: 'No; rollback is available only if the transaction fails'
+      }
+    ]);
+  }
+
+  async confirmSafeUpdate(actionCount: number): Promise<boolean> {
+    const noun = actionCount === 1 ? 'action' : 'actions';
+    return this.confirm(`Apply these ${actionCount} safe update ${noun} now?`, false);
+  }
+
+  async confirmConflictOverwrite(
+    paths: readonly string[],
+    managedPathsRemoved: readonly string[]
+  ): Promise<boolean> {
+    this.presentation.bullets('Local or user-owned files at risk', paths);
+    if (managedPathsRemoved.length > 0) {
+      this.presentation.bullets(
+        'Managed old paths removed on overwrite',
+        managedPathsRemoved
+      );
+    }
+    this.presentation.warning(
+      'A successful overwrite permanently replaces the listed local content. ' +
+      'Liftoff keeps no backup after success; commit or copy local work first.'
+    );
+    const noun = paths.length === 1 ? 'conflict' : 'conflicts';
+    return this.confirm(`Overwrite all ${paths.length} listed ${noun}?`, false);
+  }
+
   async confirmDependencyInstallation(commands: DependencyCommandPlan[]): Promise<boolean> {
     this.presentation.table(
       'Project dependency commands',
@@ -367,7 +460,10 @@ export class InteractivePrompter {
 
   private async askAgents(specWorkflow: SpecWorkflowId): Promise<string[]> {
     const discovery = await this.discoverAgents(specWorkflow);
-    if (this.isRealTty()) {
+    if (
+      isInteractiveTerminal(this.input, this.output) &&
+      supportsRawMode(this.input)
+    ) {
       return this.askAgentsWithCheckbox(discovery);
     }
     return this.askAgentsWithLines(discovery);
@@ -490,10 +586,15 @@ export class InteractivePrompter {
     return `${agent.label} (${states.length > 0 ? states.join(', ') : 'not observable'})`;
   }
 
-  private isRealTty(): boolean {
-    const input = this.input as Readable & { isTTY?: boolean; setRawMode?: (mode: boolean) => void };
-    const output = this.output as NodeJS.WritableStream & { isTTY?: boolean };
-    return input.isTTY === true && typeof input.setRawMode === 'function' && output.isTTY === true;
+  private impactPart(
+    count: number,
+    singular: string,
+    plural: string
+  ): string | undefined {
+    if (count === 0) {
+      return undefined;
+    }
+    return `${count} ${count === 1 ? singular : plural}`;
   }
 
   private async question(label: string, defaultValue?: string): Promise<string> {

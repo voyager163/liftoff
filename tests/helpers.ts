@@ -1,6 +1,6 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { Writable } from 'node:stream';
+import { Readable, Writable } from 'node:stream';
 import type {
   CommandResult,
   CommandRunner,
@@ -19,6 +19,24 @@ export class CaptureStream extends Writable {
   text(): string {
     return this.chunks.join('');
   }
+}
+
+export type ScriptedTtyInput = Readable & {
+  isTTY: true;
+  setRawMode: (mode: boolean) => ScriptedTtyInput;
+};
+
+export function scriptedTtyInput(answers: string): ScriptedTtyInput {
+  const input = Readable.from(answers ? [answers] : []) as ScriptedTtyInput;
+  input.isTTY = true;
+  input.setRawMode = () => input;
+  return input;
+}
+
+export function ttyCaptureStream(): CaptureStream & { isTTY: true } {
+  const output = new CaptureStream() as CaptureStream & { isTTY: true };
+  output.isTTY = true;
+  return output;
 }
 
 export class ReadyInitRunner implements CommandRunner {

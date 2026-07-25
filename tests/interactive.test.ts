@@ -8,6 +8,7 @@ import { runCommand } from '../src/commands.js';
 import {
   InteractiveCancelledError,
   InteractivePrompter,
+  isInteractiveTerminal,
   type AgentCheckboxPrompt
 } from '../src/interactive.js';
 import { buildProjectPlan } from '../src/planner.js';
@@ -16,7 +17,13 @@ import {
   stripAnsi,
   type TerminalLayout
 } from '../src/terminal.js';
-import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { buildUpdateImpact } from '../src/update-impact.js';
+import {
+  CaptureStream,
+  ReadyInitRunner,
+  scriptedTtyInput,
+  ttyCaptureStream
+} from './helpers.js';
 
 function scriptedPrompter(answers: string): {
   prompter: InteractivePrompter;
@@ -40,6 +47,15 @@ function scriptedPrompter(answers: string): {
 }
 
 describe('interactive presentation', () => {
+  it('requires TTY input and output without requiring raw mode for line prompts', () => {
+    const input = scriptedTtyInput('');
+    const output = ttyCaptureStream();
+
+    expect(isInteractiveTerminal(input, output)).toBe(true);
+    expect(isInteractiveTerminal(Readable.from([]), output)).toBe(false);
+    expect(isInteractiveTerminal(input, new CaptureStream())).toBe(false);
+  });
+
   it('handles defaults, invalid choices, disabled providers, ambiguous regions, and multi-agent selection', async () => {
     const { prompter, output } = scriptedPrompter(
       '\nlaunch-app\n\n99\n1\n2\n1\nkorea\n2\n\n2\n9\n1,2\n2\n\n'
@@ -493,6 +509,48 @@ describe('interactive presentation', () => {
       expect(dependencyPrompt.output.text()).toContain('npm.cmd ci');
     } finally {
       dependencyPrompt.prompter.close();
+    }
+  });
+
+  it('renders update impact and keeps safe and conflict consent independent', async () => {
+    const prompt = scriptedPrompter('\nn\n');
+    const impact = buildUpdateImpact([
+      {
+        logicalName: 'frontend-package',
+        status: 'upgrade',
+        pathParts: ['frontend', 'package.json'],
+        reason: 'fixture'
+      },
+      {
+        logicalName: 'root-readme',
+        status: 'conflict',
+        pathParts: ['README.md'],
+        reason: 'fixture'
+      },
+      {
+        logicalName: 'retired',
+        status: 'orphan',
+        pathParts: ['retired.txt'],
+        reason: 'fixture'
+      }
+    ]);
+    try {
+      prompt.prompter.presentUpdateImpact(impact);
+      expect(await prompt.prompter.confirmSafeUpdate(impact.safeActionCount)).toBe(false);
+      expect(await prompt.prompter.confirmConflictOverwrite(
+        impact.conflicts,
+        impact.managedPathsRemovedOnOverwrite
+      )).toBe(false);
+
+      expect(prompt.output.text()).toContain('Update impact');
+      expect(prompt.output.text()).toContain('frontend/package.json');
+      expect(prompt.output.text()).toContain('Dependencies installed');
+      expect(prompt.output.text()).toContain('Apply these 1 safe update action now?');
+      expect(prompt.output.text()).toContain('README.md');
+      expect(prompt.output.text()).toContain('keeps no backup after success');
+      expect(prompt.output.text()).toContain('Overwrite all 1 listed conflict?');
+    } finally {
+      prompt.prompter.close();
     }
   });
 

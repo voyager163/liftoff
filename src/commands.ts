@@ -42,6 +42,7 @@ import {
   artifactPath,
   applyProjectFileTransaction,
   assertNewOrEmptyDirectory,
+  captureProjectFileSnapshot,
   findProjectRoot,
   loadManifest,
   manifestDisplayPath,
@@ -50,11 +51,13 @@ import {
   validateGeneratedProject,
   writeArtifacts,
   writeProjectFile,
-  type ProjectFileMutation
+  type ProjectFileMutation,
+  type ProjectFileSnapshot
 } from './file-system.js';
 import {
   InteractiveCancelledError,
-  InteractivePrompter
+  InteractivePrompter,
+  isInteractiveTerminal
 } from './interactive.js';
 import {
   applyMergePreflight,
@@ -94,6 +97,7 @@ import {
   PresentationSession,
   type PresentationSessionOptions
 } from './terminal.js';
+import { buildUpdateImpact } from './update-impact.js';
 import type {
   ApiStackId,
   ApiProjectPlan,
@@ -1177,11 +1181,89 @@ async function preflightUpdate(
   await resolveProjectPath(projectRoot, ['liftoff.manifest.json']);
 }
 
+function updateSnapshotKey(pathParts: readonly string[]): string {
+  return pathParts.join('\0');
+}
+
+function reconciliationSignature(entries: readonly ReconcileEntry[]): string {
+  return JSON.stringify(entries.map((entry) => ({
+    logicalName: entry.logicalName,
+    status: entry.status,
+    pathParts: entry.pathParts,
+    previousPathParts: entry.previousPathParts,
+    reason: entry.reason,
+    cleanMove: entry.cleanMove,
+    sourceModified: entry.sourceModified,
+    destinationOccupied: entry.destinationOccupied,
+    refreshHash: entry.refreshHash,
+    destinationMatches: entry.destinationMatches
+  })));
+}
+
+async function captureInteractiveUpdateSnapshots(
+  projectRoot: string,
+  entries: readonly ReconcileEntry[],
+  inputSnapshots: readonly ProjectFileSnapshot[]
+): Promise<Map<string, ProjectFileSnapshot>> {
+  const snapshots = new Map(
+    inputSnapshots.map((snapshot) => [updateSnapshotKey(snapshot.pathParts), snapshot])
+  );
+  for (const entry of entries) {
+    const actionable =
+      entry.status !== 'orphan' &&
+      (entry.status !== 'unchanged' || entry.refreshHash === true);
+    if (!actionable) {
+      continue;
+    }
+    for (const pathParts of [entry.pathParts, entry.previousPathParts]) {
+      if (!pathParts) {
+        continue;
+      }
+      const key = updateSnapshotKey(pathParts);
+      if (!snapshots.has(key)) {
+        snapshots.set(
+          key,
+          await captureProjectFileSnapshot(projectRoot, pathParts)
+        );
+      }
+    }
+  }
+  return snapshots;
+}
+
+function authorizedInteractiveSnapshotKeys(
+  entries: readonly ReconcileEntry[],
+  force: boolean
+): Set<string> {
+  const keys = new Set([
+    updateSnapshotKey(['liftoff.config.json']),
+    updateSnapshotKey(['liftoff.manifest.json'])
+  ]);
+  for (const entry of entries) {
+    const authorized =
+      entry.status === 'new' ||
+      entry.status === 'missing' ||
+      entry.status === 'upgrade' ||
+      entry.status === 'unchanged' && entry.refreshHash === true ||
+      entry.status === 'moved' && (entry.cleanMove === true || force) ||
+      entry.status === 'conflict' && force;
+    if (!authorized) {
+      continue;
+    }
+    keys.add(updateSnapshotKey(entry.pathParts));
+    if (entry.previousPathParts) {
+      keys.add(updateSnapshotKey(entry.previousPathParts));
+    }
+  }
+  return keys;
+}
+
 async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const { presentation } = context;
-  const apply = readBooleanFlag(parsed.flags, 'apply') ?? false;
-  const force = readBooleanFlag(parsed.flags, 'force') ?? false;
+  let apply = readBooleanFlag(parsed.flags, 'apply') ?? false;
+  let force = readBooleanFlag(parsed.flags, 'force') ?? false;
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
+  let dirtyWorktreeWarningShown = false;
   presentation.commandIdentity('update', 'Reconcile the project with current Liftoff templates');
   if (force && !apply) {
     presentation.error(
@@ -1201,6 +1283,16 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     return 1;
   }
 
+  const interactiveReview =
+    !apply &&
+    !jsonMode &&
+    isInteractiveTerminal(context.stdin, context.stdout);
+  const interactiveInputSnapshots = interactiveReview
+    ? await Promise.all([
+        captureProjectFileSnapshot(projectRoot, ['liftoff.manifest.json']),
+        captureProjectFileSnapshot(projectRoot, ['liftoff.config.json'])
+      ])
+    : [];
   const manifest = await loadManifest(projectRoot);
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
     presentation.error(
@@ -1283,6 +1375,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const summary = summarizeEntries(entries);
   const drift = hasDrift(entries);
   const visible = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash);
+  const impact = buildUpdateImpact(entries);
+  let interactiveSnapshots: Map<string, ProjectFileSnapshot> | undefined;
 
   if (!apply) {
     if (jsonMode) {
@@ -1333,11 +1427,77 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       'Drift detected',
       `${toWrite} to write, ${summary.conflict} conflict(s), ${summary.orphan} orphan(s), ${summary.unchanged} unchanged`
     );
-    presentation.command('liftoff update --apply');
-    return 2;
+    if (
+      !impact.hasActionableChanges ||
+      !interactiveReview
+    ) {
+      if (impact.hasActionableChanges) {
+        presentation.command('liftoff update --apply');
+      }
+      return 2;
+    }
+
+    if (isDirtyGitWorktree(projectRoot)) {
+      presentation.warning(
+        'The project worktree has uncommitted changes; commit or back up local work before accepting an update.'
+      );
+      dirtyWorktreeWarningShown = true;
+    }
+
+    interactiveSnapshots = await captureInteractiveUpdateSnapshots(
+      projectRoot,
+      entries,
+      interactiveInputSnapshots
+    );
+    const reviewedEntries = await reconcileProject(manifest, render, projectRoot);
+    if (reconciliationSignature(reviewedEntries) !== reconciliationSignature(entries)) {
+      presentation.error(
+        'The project changed while Liftoff prepared the update.',
+        'Run `liftoff update` again to review the current state.'
+      );
+      return 1;
+    }
+
+    const prompter = new InteractivePrompter({
+      input: context.stdin,
+      output: context.stdout,
+      presentation,
+      cwd: projectRoot
+    });
+    try {
+      prompter.presentUpdateImpact(impact);
+      if (impact.hasSafeActions) {
+        const safeAccepted = await prompter.confirmSafeUpdate(impact.safeActionCount);
+        if (!safeAccepted) {
+          presentation.cancellation('Update declined; no project files were changed.');
+          return 2;
+        }
+      }
+      if (impact.conflicts.length > 0) {
+        force = await prompter.confirmConflictOverwrite(
+          impact.conflicts,
+          impact.managedPathsRemovedOnOverwrite
+        );
+        if (!impact.hasSafeActions && !force) {
+          presentation.cancellation('Update declined; no project files were changed.');
+          return 2;
+        }
+      }
+      apply = true;
+    } catch (error) {
+      if (error instanceof InteractiveCancelledError) {
+        presentation.cancellation(
+          'Update stopped before authorization; no project files were changed.'
+        );
+        return 0;
+      }
+      throw error;
+    } finally {
+      prompter.close();
+    }
   }
 
-  if (isDirtyGitWorktree(projectRoot)) {
+  if (!dirtyWorktreeWarningShown && isDirtyGitWorktree(projectRoot)) {
     presentation.warning('The project worktree has uncommitted changes; consider committing before applying.');
   }
   presentation.stage('Apply safe template changes', projectRoot);
@@ -1432,7 +1592,17 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     pathParts: ['liftoff.manifest.json'],
     content: `${JSON.stringify(nextManifest, null, 2)}\n`
   });
-  await applyProjectFileTransaction(projectRoot, mutations);
+  const authorizedSnapshotKeys = interactiveSnapshots
+    ? authorizedInteractiveSnapshotKeys(entries, force)
+    : undefined;
+  const transactionPreconditions = interactiveSnapshots && authorizedSnapshotKeys
+    ? [...interactiveSnapshots.values()].filter((snapshot) =>
+        authorizedSnapshotKeys.has(updateSnapshotKey(snapshot.pathParts))
+      )
+    : undefined;
+  await applyProjectFileTransaction(projectRoot, mutations, {
+    ...(transactionPreconditions ? { preconditions: transactionPreconditions } : {})
+  });
 
   if (jsonMode) {
     presentation.rawStdout(`${JSON.stringify({

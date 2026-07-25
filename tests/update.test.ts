@@ -1,13 +1,19 @@
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { PassThrough, Readable } from 'node:stream';
 import { mkdtemp } from 'node:fs/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
 import { compareSemver } from '../src/semver.js';
-import { CaptureStream } from './helpers.js';
+import {
+  CaptureStream,
+  scriptedTtyInput,
+  ttyCaptureStream
+} from './helpers.js';
 
 const sha = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 
@@ -18,7 +24,7 @@ afterEach(async () => {
   }
 });
 
-async function fixtureProject(): Promise<string> {
+async function fixtureProject(includeFrontend = false): Promise<string> {
   const projectRoot = await createFixtureProject({
     projectName: 'Update App',
     pattern: 'prompt',
@@ -26,7 +32,7 @@ async function fixtureProject(): Promise<string> {
     region: 'eastus',
     environments: ['dev'],
     specWorkflow: 'openspec',
-    includeFrontend: false
+    includeFrontend
   });
   cleanups.push(path.dirname(projectRoot));
   return projectRoot;
@@ -66,10 +72,41 @@ async function run(args: string[], cwd: string): Promise<{ code: number; out: st
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
+async function runInteractive(
+  args: string[],
+  cwd: string,
+  answers: string
+): Promise<{ code: number; out: string; err: string }> {
+  const stdout = ttyCaptureStream();
+  const stderr = new CaptureStream();
+  const code = await runCommand(parseArgs(args), {
+    cwd,
+    stdin: scriptedTtyInput(answers),
+    stdout,
+    stderr
+  });
+  return { code, out: stdout.text(), err: stderr.text() };
+}
+
 async function editJson(filePath: string, mutate: (value: any) => void): Promise<void> {
   const value = JSON.parse(await readFile(filePath, 'utf8'));
   mutate(value);
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function simulateManagedUpgrade(
+  projectRoot: string,
+  logicalName: string,
+  pathParts: string[],
+  previousContent: string
+): Promise<void> {
+  await writeFile(path.join(projectRoot, ...pathParts), previousContent, 'utf8');
+  await editJson(path.join(projectRoot, 'liftoff.manifest.json'), (manifest) => {
+    const artifact = manifest.artifacts.find(
+      (entry: { logicalName: string }) => entry.logicalName === logicalName
+    );
+    artifact.contentHash = sha(previousContent);
+  });
 }
 
 async function downgradeApiManifest(
@@ -144,6 +181,378 @@ describe('update command', () => {
     }
   });
 
+  describe('interactive consent', () => {
+    it('explains and applies safe dependency updates in the same invocation', async () => {
+      const root = await fixtureProject(true);
+      const oldPackage = '{"name":"old-frontend"}\n';
+      const oldLock = '{"name":"old-frontend","lockfileVersion":3}\n';
+      await simulateManagedUpgrade(
+        root,
+        'frontend-package',
+        ['frontend', 'package.json'],
+        oldPackage
+      );
+      await simulateManagedUpgrade(
+        root,
+        'frontend-lock',
+        ['frontend', 'package-lock.json'],
+        oldLock
+      );
+
+      const result = await runInteractive(['update'], root, 'y\n');
+
+      expect(result.code).toBe(0);
+      expect(result.err).toBe('');
+      expect(result.out).toContain('Update impact');
+      expect(result.out).toContain('2 (2 replaces)');
+      expect(result.out).toContain('Local or user-owned files at risk');
+      expect(result.out).toContain('frontend/package.json');
+      expect(result.out).toContain('frontend/package-lock.json');
+      expect(result.out).toContain('Dependencies installed');
+      expect(result.out).toContain('No');
+      expect(result.out).toContain('Apply these 2 safe update actions now?');
+      expect(await readFile(path.join(root, 'frontend', 'package.json'), 'utf8'))
+        .not.toBe(oldPackage);
+      expect(await readFile(path.join(root, 'frontend', 'package-lock.json'), 'utf8'))
+        .not.toBe(oldLock);
+    });
+
+    it('leaves every byte unchanged when safe updates are declined', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      const manifestPath = path.join(root, 'liftoff.manifest.json');
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+      const beforeManifest = await readFile(manifestPath, 'utf8');
+
+      const result = await runInteractive(['update'], root, '\n');
+
+      expect(result.code).toBe(2);
+      expect(result.out).toContain('Update declined; no project files were changed');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).toBe(previous);
+      expect(await readFile(manifestPath, 'utf8')).toBe(beforeManifest);
+    });
+
+    it('applies safe changes while preserving separately declined conflicts', async () => {
+      const root = await fixtureProject();
+      const oldDockerfile = '# previous template\n';
+      const localReadme = '# local readme\n';
+      await simulateManagedUpgrade(
+        root,
+        'backend-dockerfile',
+        ['Dockerfile'],
+        oldDockerfile
+      );
+      await writeFile(path.join(root, 'README.md'), localReadme, 'utf8');
+
+      const result = await runInteractive(['update'], root, 'y\nn\n');
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('Local or user-owned files at risk');
+      expect(result.out).toContain('README.md');
+      expect(result.out).toContain('keeps no backup after success');
+      expect(result.out).toContain('Overwrite all 1 listed conflict?');
+      expect(result.out).toContain('skipped README.md');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8'))
+        .not.toBe(oldDockerfile);
+      expect(await readFile(path.join(root, 'README.md'), 'utf8')).toBe(localReadme);
+    });
+
+    it('reviews conflict-only drift and overwrites only after explicit consent', async () => {
+      const declinedRoot = await fixtureProject();
+      const declinedPath = path.join(declinedRoot, 'README.md');
+      const original = await readFile(declinedPath, 'utf8');
+      const local = '# local conflict\n';
+      await writeFile(declinedPath, local, 'utf8');
+
+      const declined = await runInteractive(['update'], declinedRoot, 'n\n');
+      expect(declined.code).toBe(2);
+      expect(declined.out).not.toContain('Apply these');
+      expect(declined.out).toContain('Overwrite all 1 listed conflict?');
+      expect(await readFile(declinedPath, 'utf8')).toBe(local);
+
+      const accepted = await runInteractive(['update'], declinedRoot, 'y\n');
+      expect(accepted.code).toBe(0);
+      expect(await readFile(declinedPath, 'utf8')).toBe(original);
+    });
+
+    it('aborts before preflight when interactive input closes', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      const manifestPath = path.join(root, 'liftoff.manifest.json');
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+      const beforeManifest = await readFile(manifestPath, 'utf8');
+
+      const result = await runInteractive(['update'], root, '');
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('stopped before authorization');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).toBe(previous);
+      expect(await readFile(manifestPath, 'utf8')).toBe(beforeManifest);
+    });
+
+    it('collects conflict consent before applying an accepted safe subset', async () => {
+      const root = await fixtureProject();
+      const oldDockerfile = '# previous template\n';
+      const localReadme = '# local readme\n';
+      const manifestPath = path.join(root, 'liftoff.manifest.json');
+      await simulateManagedUpgrade(
+        root,
+        'backend-dockerfile',
+        ['Dockerfile'],
+        oldDockerfile
+      );
+      await writeFile(path.join(root, 'README.md'), localReadme, 'utf8');
+      const beforeManifest = await readFile(manifestPath, 'utf8');
+
+      const result = await runInteractive(['update'], root, 'y\n');
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('stopped before authorization');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).toBe(oldDockerfile);
+      expect(await readFile(path.join(root, 'README.md'), 'utf8')).toBe(localReadme);
+      expect(await readFile(manifestPath, 'utf8')).toBe(beforeManifest);
+    });
+
+    it('aborts if a reviewed target changes while consent is pending', async () => {
+      const root = await fixtureProject();
+      const dockerfilePath = path.join(root, 'Dockerfile');
+      const previous = '# previous template\n';
+      const changedDuringPrompt = '# changed while prompt was open\n';
+      const manifestPath = path.join(root, 'liftoff.manifest.json');
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+      const beforeManifest = await readFile(manifestPath, 'utf8');
+      const input = new PassThrough() as PassThrough & {
+        isTTY: true;
+        setRawMode: (mode: boolean) => PassThrough;
+      };
+      input.isTTY = true;
+      input.setRawMode = () => input;
+      const stdout = ttyCaptureStream();
+      const stderr = new CaptureStream();
+
+      const command = runCommand(parseArgs(['update']), {
+        cwd: root,
+        stdin: input,
+        stdout,
+        stderr
+      });
+      await vi.waitFor(() => {
+        expect(stdout.text()).toContain('Apply these 1 safe update action now?');
+      });
+      await writeFile(dockerfilePath, changedDuringPrompt, 'utf8');
+      input.end('y\n');
+
+      expect(await command).toBe(1);
+      expect(stderr.text()).toContain('changed after review');
+      expect(await readFile(dockerfilePath, 'utf8')).toBe(changedDuringPrompt);
+      expect(await readFile(manifestPath, 'utf8')).toBe(beforeManifest);
+    });
+
+    it('discloses both physical files at risk for a modified move collision', async () => {
+      const root = await fixtureProject();
+      const destinationPath = path.join(root, 'README.md');
+      const oldParts = ['legacy', 'README.md'];
+      const oldPath = path.join(root, ...oldParts);
+      await mkdir(path.dirname(oldPath), { recursive: true });
+      await rename(destinationPath, oldPath);
+      await writeFile(oldPath, '# modified source\n', 'utf8');
+      await writeFile(destinationPath, '# occupied destination\n', 'utf8');
+      await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+        manifest.artifacts.find(
+          (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'
+        ).pathParts = oldParts;
+      });
+
+      const result = await runInteractive(['update'], root, 'n\n');
+
+      expect(result.code).toBe(2);
+      expect(result.out).toContain('Local or user-owned files at risk');
+      expect(result.out).toContain('2 (requires separate consent)');
+      expect(result.out).toContain('legacy/README.md');
+      expect(result.out).toContain('README.md');
+      expect(result.out).toContain('Overwrite all 2 listed conflicts?');
+      expect(await readFile(oldPath, 'utf8')).toBe('# modified source\n');
+      expect(await readFile(destinationPath, 'utf8')).toBe('# occupied destination\n');
+    });
+
+    it('does not prompt or mutate for orphan-only drift', async () => {
+      const root = await fixtureProject();
+      const orphanPath = path.join(root, 'retired.txt');
+      const orphanContent = 'retired template\n';
+      await writeFile(orphanPath, orphanContent, 'utf8');
+      await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+        manifest.artifacts.push({
+          logicalName: 'retired-template',
+          category: 'backend',
+          pathParts: ['retired.txt'],
+          contentHash: sha(orphanContent)
+        });
+      });
+      const beforeManifest = await readFile(
+        path.join(root, 'liftoff.manifest.json'),
+        'utf8'
+      );
+
+      const result = await runInteractive(['update'], root, 'y\n');
+
+      expect(result.code).toBe(2);
+      expect(result.out).not.toContain('Apply these');
+      expect(result.out).not.toContain('Overwrite all');
+      expect(result.out).not.toContain('liftoff update --apply');
+      expect(await readFile(orphanPath, 'utf8')).toBe(orphanContent);
+      expect(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'))
+        .toBe(beforeManifest);
+    });
+
+    it('prompts for a recorded-state-only refresh', async () => {
+      const root = await fixtureProject();
+      await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+        manifest.artifacts.find(
+          (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'
+        ).contentHash = `sha256:${'0'.repeat(64)}`;
+      });
+
+      const result = await runInteractive(['update'], root, 'y\n');
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('1 recorded-state refresh');
+      expect(result.out).toContain('Apply these 1 safe update action now?');
+      expect((await run(['update'], root)).code).toBe(0);
+    });
+
+    it('guards a reviewed hash-refresh file even when it needs no content write', async () => {
+      const root = await fixtureProject();
+      const readmePath = path.join(root, 'README.md');
+      const manifestPath = path.join(root, 'liftoff.manifest.json');
+      await editJson(manifestPath, (manifest) => {
+        manifest.artifacts.find(
+          (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'
+        ).contentHash = `sha256:${'0'.repeat(64)}`;
+      });
+      const beforeManifest = await readFile(manifestPath, 'utf8');
+      const changedDuringPrompt = '# changed during hash refresh consent\n';
+      const input = new PassThrough() as PassThrough & {
+        isTTY: true;
+        setRawMode: (mode: boolean) => PassThrough;
+      };
+      input.isTTY = true;
+      input.setRawMode = () => input;
+      const stdout = ttyCaptureStream();
+      const stderr = new CaptureStream();
+
+      const command = runCommand(parseArgs(['update']), {
+        cwd: root,
+        stdin: input,
+        stdout,
+        stderr
+      });
+      await vi.waitFor(() => {
+        expect(stdout.text()).toContain('Apply these 1 safe update action now?');
+      });
+      await writeFile(readmePath, changedDuringPrompt, 'utf8');
+      input.end('y\n');
+
+      expect(await command).toBe(1);
+      expect(stderr.text()).toContain('changed after review');
+      expect(await readFile(readmePath, 'utf8')).toBe(changedDuringPrompt);
+      expect(await readFile(manifestPath, 'utf8')).toBe(beforeManifest);
+    });
+
+    it('never prompts when either input or output is redirected', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+
+      const ttyOutput = ttyCaptureStream();
+      const redirectedInputError = new CaptureStream();
+      const redirectedInputCode = await runCommand(parseArgs(['update']), {
+        cwd: root,
+        stdin: Readable.from(['y\n']),
+        stdout: ttyOutput,
+        stderr: redirectedInputError
+      });
+      expect(redirectedInputCode).toBe(2);
+      expect(ttyOutput.text()).not.toContain('Apply these');
+
+      const redirectedOutput = new CaptureStream();
+      const redirectedOutputError = new CaptureStream();
+      const redirectedOutputCode = await runCommand(parseArgs(['update']), {
+        cwd: root,
+        stdin: scriptedTtyInput('y\n'),
+        stdout: redirectedOutput,
+        stderr: redirectedOutputError
+      });
+      expect(redirectedOutputCode).toBe(2);
+      expect(redirectedOutput.text()).not.toContain('Apply these');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).toBe(previous);
+    });
+
+    it('keeps explicit apply prompt-free in a TTY', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+
+      const result = await runInteractive(['update', '--apply'], root, '');
+
+      expect(result.code).toBe(0);
+      expect(result.out).not.toContain('Update impact');
+      expect(result.out).not.toContain('Apply these');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).not.toBe(previous);
+    });
+
+    it('keeps JSON check output byte-pure and prompt-free in a TTY', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+      const stdout = ttyCaptureStream();
+      const stderr = new CaptureStream();
+
+      const code = await runCommand(parseArgs(['update', '--json']), {
+        cwd: root,
+        stdin: scriptedTtyInput('y\n'),
+        stdout,
+        stderr
+      });
+
+      expect(code).toBe(2);
+      expect(JSON.parse(stdout.text())).toMatchObject({
+        schemaVersion: 1,
+        mode: 'check'
+      });
+      expect(stdout.text()).not.toContain('Apply these');
+      expect(stderr.text()).toBe('');
+      expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).toBe(previous);
+    });
+
+    it('applies standard API config drift interactively', async () => {
+      const root = await standardFixtureProject();
+      await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+        config.environments = ['dev', 'test'];
+      });
+
+      const result = await runInteractive(['update'], root, 'y\n');
+
+      expect(result.code).toBe(0);
+      expect(result.out).toContain('Update impact');
+      await access(path.join(root, 'environments', 'test', 'backend.env'));
+      expect((await run(['update'], root)).code).toBe(0);
+    });
+
+    it('shows the dirty-worktree warning before impact and consent', async () => {
+      const root = await fixtureProject();
+      const previous = '# previous template\n';
+      await simulateManagedUpgrade(root, 'backend-dockerfile', ['Dockerfile'], previous);
+      expect(spawnSync('git', ['init', '--quiet'], { cwd: root }).status).toBe(0);
+
+      const result = await runInteractive(['update'], root, 'n\n');
+
+      expect(result.code).toBe(2);
+      expect(result.out.indexOf('uncommitted changes')).toBeGreaterThan(-1);
+      expect(result.out.indexOf('uncommitted changes'))
+        .toBeLessThan(result.out.indexOf('Update impact'));
+    });
+  });
+
   it('rejects Power Apps workload and immutable starter identity edits before artifact access', async () => {
     const sourceRoot = await powerAppsFixtureProject();
     const appPath = path.join(sourceRoot, 'src', 'App.tsx');
@@ -185,7 +594,7 @@ describe('update command', () => {
     expect(check.out).not.toContain('backend/');
     expect(check.out).not.toContain('infrastructure/');
 
-    const apply = await run(['update', '--apply'], root);
+    const apply = await runInteractive(['update'], root, 'y\n');
     expect(apply.code).toBe(0);
     const readme = await readFile(path.join(root, 'README.md'), 'utf8');
     expect(readme).toContain('/plugin marketplace add microsoft/power-platform-skills');
@@ -242,7 +651,7 @@ describe('update command', () => {
     expect(states.get('power-apps-starter-src-main-tsx')).toBe('moved');
     expect(states.get('power-apps-retired-starter-file')).toBe('orphan');
 
-    const apply = await run(['update', '--apply'], root);
+    const apply = await runInteractive(['update'], root, 'y\n');
     expect(apply.code).toBe(0);
     expect(await readFile(path.join(root, 'src', 'App.tsx'), 'utf8')).not.toBe(oldApp);
     await access(path.join(root, 'src', 'index.css'));

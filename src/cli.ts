@@ -12,6 +12,7 @@ try {
   const parsed = parseArgs(process.argv.slice(2));
   process.exitCode = await runCommand(parsed, {
     cwd: process.cwd(),
+    stdin: process.stdin,
     stdout: process.stdout,
     stderr: process.stderr
   });

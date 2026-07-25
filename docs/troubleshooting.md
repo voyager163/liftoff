@@ -67,14 +67,21 @@ hand-edited unsafe path.
 
 ## Update reports conflicts or orphans
 
-`liftoff update` does not write. Review the report:
+In an interactive terminal, `liftoff update` shows an impact summary and asks
+before applying safe managed changes. The default answer is No.
 
-- Apply safe changes with `liftoff update --apply`.
-- Developer conflicts remain untouched unless you explicitly use
-  `liftoff update --apply --force`.
+- Local or user-owned conflicts are listed separately and require their own
+  default-No overwrite confirmation.
+- With redirected input or output, review the report and apply safe changes
+  with `liftoff update --apply`.
+- For prompt-free conflict replacement, use `liftoff update --apply --force`
+  only after reviewing every listed path.
 - Orphans are never deleted automatically.
+- Update reports dependency-definition impact but does not install
+  dependencies.
 
-Commit local work before applying when possible.
+Commit or copy local work before overwriting. Transaction rollback protects a
+failed update, but Liftoff keeps no backup after success.
 
 ## Power Apps dependencies or CLI are missing
 

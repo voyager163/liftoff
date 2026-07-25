@@ -3,7 +3,12 @@ import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
-import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import {
+  CaptureStream,
+  ReadyInitRunner,
+  scriptedTtyInput,
+  ttyCaptureStream
+} from './helpers.js';
 
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
@@ -43,16 +48,31 @@ async function fixture(): Promise<string> {
 async function run(
   args: string[],
   cwd: string,
-  columns: number
+  columns: number,
+  options: {
+    answers?: string;
+    color?: boolean;
+    snapshot?: boolean;
+  } = {}
 ): Promise<{ code: number; out: string; err: string }> {
-  const stdout = new CaptureStream();
+  const stdout = options.answers === undefined
+    ? new CaptureStream()
+    : ttyCaptureStream();
   const stderr = new CaptureStream();
   const code = await runCommand(parseArgs(args), {
     cwd,
+    ...(options.answers === undefined
+      ? {}
+      : { stdin: scriptedTtyInput(options.answers) }),
     stdout,
     stderr,
     runner: new ReadyInitRunner(),
-    terminal: { snapshot: true, columns }
+    terminal: {
+      snapshot: options.snapshot ?? true,
+      columns,
+      ...(options.color === undefined ? {} : { color: options.color }),
+      env: {}
+    }
   });
   return { code, out: stdout.text(), err: stderr.text() };
 }
@@ -84,6 +104,35 @@ describe('maintenance presentation', () => {
       expect(result.out).toContain('.env');
       expect(result.out).toContain('copy .env.example to .env');
       expect(result.err).toBe('');
+      expect(result).toMatchSnapshot();
+    });
+  }
+
+  for (const [name, columns, color] of [
+    ['rich color', 100, true],
+    ['rich no-color', 100, false],
+    ['narrow color', 50, true],
+    ['narrow no-color', 50, false]
+  ] as const) {
+    it(`snapshots ${name} interactive update impact and decline`, async () => {
+      const projectRoot = await fixture();
+      await addDrift(projectRoot);
+      const result = await run(['update'], projectRoot, columns, {
+        answers: 'n\n',
+        color,
+        snapshot: false
+      });
+
+      expect(result.code).toBe(2);
+      expect(result.out).toContain('Update impact');
+      expect(result.out).toContain('Apply these 2 safe update actions now?');
+      expect(result.out).toContain('no project files were changed');
+      expect(result.err).toBe('');
+      if (color) {
+        expect(result.out).toMatch(/\u001B\[/);
+      } else {
+        expect(result.out).not.toMatch(/\u001B\[/);
+      }
       expect(result).toMatchSnapshot();
     });
   }

@@ -135,13 +135,24 @@ describe('public documentation', () => {
   });
 
   it('moves detailed installation, target, consent, readiness, and terminal contracts into guides', async () => {
-    const [gettingStarted, existing, prerequisites, safety, cli, integrations] = await Promise.all([
+    const [
+      gettingStarted,
+      existing,
+      prerequisites,
+      safety,
+      cli,
+      integrations,
+      troubleshooting,
+      manifests
+    ] = await Promise.all([
       repositoryFile('docs/getting-started.md'),
       repositoryFile('docs/existing-repositories.md'),
       repositoryFile('docs/prerequisites.md'),
       repositoryFile('docs/safety-and-consent.md'),
       repositoryFile('docs/cli-reference.md'),
-      repositoryFile('docs/spec-workflows-and-agents.md')
+      repositoryFile('docs/spec-workflows-and-agents.md'),
+      repositoryFile('docs/troubleshooting.md'),
+      repositoryFile('docs/configuration-and-manifests.md')
     ]);
 
     expect(gettingStarted).toContain('Versions before 0.3.0 are unsupported');
@@ -161,6 +172,13 @@ describe('public documentation', () => {
     expect(cli).toContain('deterministic plain text');
     expect(cli).toMatch(/child stdout and stderr are forwarded\s+unchanged/);
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
+    expect(cli).toContain('Safe managed changes use a default-No confirmation');
+    expect(cli).toMatch(/Liftoff retains no backup after a\s+successful overwrite/);
+    expect(safety).toContain('Safe-update consent does not authorize conflicts');
+    expect(safety).toMatch(/update never installs\s+dependencies/);
+    expect(existing).toMatch(/Redirected and\s+JSON checks remain read-only/);
+    expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
+    expect(manifests).toContain('declined interactive update');
   });
 
   it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {

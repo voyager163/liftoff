@@ -24,7 +24,7 @@ plan -> init or migrate -> validate and doctor -> update -> dev and infra helper
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, durable files, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
-| `liftoff update [project]` | Reports template and configuration drift without writing |
+| `liftoff update [project]` | Reports drift and, in an interactive terminal, explains impact and asks before applying |
 | `liftoff update --apply` | Applies safe changes, preserves unforced conflicts, and records the resulting manifest |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for API workloads and reports infrastructure as not applicable for Power Apps |
@@ -69,6 +69,22 @@ liftoff update --apply
 liftoff update --apply --force
 ```
 
+With interactive input and output, plain `liftoff update` first reports drift
+and its impact. Safe managed changes use a default-No confirmation. Local or
+user-owned conflicts are listed separately and require another default-No
+confirmation before replacement. Liftoff collects both decisions before any
+preflight or write.
+
+With redirected input or output, plain update remains a read-only check and
+prints the explicit apply command. `--json` also remains prompt-free and
+read-only unless combined with `--apply`. Explicit `--apply` and
+`--apply --force` bypass prompts for automation.
+
+The impact summary identifies affected dependency definitions, but update does
+not install dependencies. Orphans are reported without deletion. Transaction
+snapshots restore a failed update, but Liftoff retains no backup after a
+successful overwrite; commit or copy local work first.
+
 `--force` is valid only with `--apply`. It overwrites reported file conflicts;
 it does not permit workload, API stack, GenAI pattern, framework, selected
 agent, or user-supplied Power Apps starter identity changes.
@@ -89,7 +105,7 @@ Exit codes:
 
 - `0`: success or a clean check.
 - `1`: invalid input, unsafe state, or command failure.
-- `2`: a read-only check found drift.
+- `2`: a read-only check or declined interactive update found drift.
 
 Raw installer, framework, and dependency child stdout and stderr are forwarded
 unchanged.

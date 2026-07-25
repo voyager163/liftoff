@@ -68,7 +68,11 @@ liftoff update
 liftoff update --apply
 ```
 
-Update is a read-only drift check unless `--apply` is present.
+In an interactive terminal, plain update reports drift and impact, then asks
+with a default of No before applying safe managed changes. Local or user-owned
+conflicts require a separate default-No overwrite decision. Redirected and
+JSON checks remain read-only and prompt-free; use `--apply` for explicit
+automation consent.
 
 ## Existing non-Liftoff application
 
