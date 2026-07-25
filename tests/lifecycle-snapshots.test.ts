@@ -47,6 +47,7 @@ async function runScreen(
         .replaceAll(root, '<workspace>');
     }
     return normalized
+      .replaceAll('cd /d ', 'cd ')
       .replaceAll('npm.cmd', 'npm')
       .replaceAll('\\\\', '/')
       .replaceAll('\\', '/');

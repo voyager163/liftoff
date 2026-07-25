@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import spawn from 'cross-spawn';
@@ -9,7 +9,7 @@ import { writeArtifacts } from '../dist/file-system.js';
 import { verifyPowerAppsPackageMetadata } from '../dist/project-dependencies.js';
 
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-starter-'));
-const projectRoot = path.join(tempRoot, 'verified-power-app');
+const projectRoot = path.join(await realpath(tempRoot), 'verified-power-app');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function runNpm(args) {
