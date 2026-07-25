@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
+import { dependencyResumeCommand } from '../src/project-dependencies.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type {
@@ -401,7 +402,15 @@ describe('commands', () => {
       expect(stdout.text()).toContain('code-apps-preview@power-platform-skills');
       expect(stdout.text()).toContain('Do not run `/create-code-app`');
       expect(stdout.text()).toContain(
-        `${path.sep}field-service" && npm ci`
+        dependencyResumeCommand({
+          id: 'power-apps-root',
+          label: 'Install Power Apps code app dependencies',
+          command: {
+            executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+            args: ['ci']
+          },
+          cwd: await realpath(path.join(tempRoot, 'field-service'))
+        })
       );
       expect(runner.calls).toContainEqual({
         executable: 'copilot',

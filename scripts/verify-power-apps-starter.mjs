@@ -2,7 +2,7 @@
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import spawn from 'cross-spawn';
 import { buildProjectPlan } from '../dist/planner.js';
 import { buildArtifacts } from '../dist/templates.js';
 import { writeArtifacts } from '../dist/file-system.js';
@@ -13,13 +13,18 @@ const projectRoot = path.join(tempRoot, 'verified-power-app');
 const npmExecutable = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 
 function runNpm(args) {
-  const result = spawnSync(npmExecutable, args, {
+  const result = spawn.sync(npmExecutable, args, {
     cwd: projectRoot,
     encoding: 'utf8',
     shell: false,
     timeout: 15 * 60_000,
     maxBuffer: 10 * 1024 * 1024
   });
+  if (result.error) {
+    throw new Error(
+      `${npmExecutable} ${args.join(' ')} could not start: ${result.error.message}`
+    );
+  }
   if (result.status !== 0) {
     throw new Error(
       `${npmExecutable} ${args.join(' ')} failed\n${result.stdout ?? ''}\n${result.stderr ?? ''}`
