@@ -32,5 +32,5 @@
 
 - [x] 5.1 Run the targeted impact, update, interactive, terminal presentation, generated-template, and documentation tests together.
 - [x] 5.2 Run the repository type-check, lint, full test suite, package smoke, and generated-project verification commands already defined by the project.
-- [ ] 5.3 Run the existing Windows CI coverage and confirm TTY gating, portable displayed paths, and platform-correct filesystem resolution match macOS and Linux.
+- [x] 5.3 Run the existing Windows CI coverage and confirm TTY gating, portable displayed paths, and platform-correct filesystem resolution match macOS and Linux.
 - [x] 5.4 Validate `add-interactive-update-consent` and all main OpenSpec specifications in strict mode.
