@@ -197,7 +197,7 @@ Before tagging, update package and lockfile metadata together and run:
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.5.1
+npm run verify:release-identity -- v0.6.0
 ```
 
 Replace the example tag with the intended release. The Git tag, root package

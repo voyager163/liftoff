@@ -250,9 +250,14 @@ The system SHALL expose commands for project initialization, planning, project u
 - **WHEN** a developer runs `liftoff doctor`
 - **THEN** the system reports local readiness for the context-selected runtimes, spec framework, coding agents, Docker, and OpenTofu without modifying the project or workstation
 
-#### Scenario: Check a project for drift
-- **WHEN** a developer runs `liftoff update` inside a generated project
-- **THEN** the system reports scaffold drift between the project and the current CLI templates without writing files
+#### Scenario: Check a project for drift non-interactively
+- **WHEN** a developer or automation runs `liftoff update` without interactive input or output
+- **THEN** the system reports scaffold drift between the project and the current CLI templates without requesting input or writing files
+
+#### Scenario: Review and apply drift interactively
+- **WHEN** a developer runs `liftoff update` in an interactive terminal and actionable drift exists
+- **THEN** the system reports the drift and its overwrite impact and asks whether to apply it in the same invocation
+- **AND** safe managed updates and replacement of local conflicts require distinct consent
 
 #### Scenario: Migrate an existing project
 - **WHEN** a developer runs `liftoff migrate ../legacy-app`
@@ -277,11 +282,11 @@ The system SHALL provide a public repository root `README.md` included with the 
 
 #### Scenario: Understand update safety
 - **WHEN** a developer needs update behavior
-- **THEN** linked documentation states that `liftoff update` checks without writing, `--apply` writes safe changes, `--force` is required for conflicts, and orphans are not automatically deleted
+- **THEN** linked documentation states that interactive `liftoff update` discloses impact and asks before applying, redirected and JSON checks do not write or prompt, `--apply` explicitly writes safe changes, conflict overwrite requires separate interactive consent or `--apply --force`, successful overwrites retain no Liftoff backup, dependencies are not installed, and orphans are not automatically deleted
 
 #### Scenario: Understand machine-readable and exit-code behavior
 - **WHEN** a developer reads the linked CLI contract documentation
-- **THEN** it states that check-mode drift uses exit code 2 and JSON-capable commands emit a top-level numeric `schemaVersion`
+- **THEN** it states that check-mode or declined interactive drift uses exit code 2 and JSON-capable commands emit a top-level numeric `schemaVersion`
 
 #### Scenario: Review contributor workflow
 - **WHEN** a contributor follows the README contribution link
