@@ -1,3 +1,5 @@
+import { access } from 'node:fs/promises';
+import path from 'node:path';
 import { stdin as processInput, stdout as processOutput } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import type { Readable } from 'node:stream';
@@ -7,25 +9,56 @@ import {
   environments,
   getApiStack,
   getCodingAgent,
+  getFrameworkDefinition,
   getPattern,
   getProjectType,
   getProvider,
   getSpecWorkflow,
   patterns,
+  projectTypes,
   providers,
   resolveRegion,
   specWorkflows
 } from './catalogs.js';
 import type { DependencyCommandPlan } from './project-dependencies.js';
 import { projectPlanEntries } from './planner.js';
-import { formatCommand } from './process-runner.js';
+import { formatCommand, type CommandRunner } from './process-runner.js';
 import { PresentationSession } from './terminal.js';
-import type { ProjectOptions, ProjectPlan, RegionDefinition } from './types.js';
+import type {
+  CodingAgentId,
+  ProjectOptions,
+  ProjectPlan,
+  RegionDefinition,
+  SpecWorkflowId
+} from './types.js';
+
+interface AgentCheckboxChoice {
+  name: string;
+  value: CodingAgentId;
+  checked: boolean;
+}
+
+export type AgentCheckboxPrompt = (
+  config: {
+    message: string;
+    choices: AgentCheckboxChoice[];
+    required: boolean;
+    validate: (selected: readonly CodingAgentId[]) => true | string;
+  },
+  context: {
+    input: Readable;
+    output: NodeJS.WritableStream;
+  }
+) => Promise<CodingAgentId[]>;
 
 export interface InteractiveDependencies {
   input?: Readable;
   output?: NodeJS.WritableStream;
   presentation?: PresentationSession;
+  cwd?: string;
+  configuredRoot?: string;
+  runner?: CommandRunner;
+  checkboxPrompt?: AgentCheckboxPrompt;
 }
 
 export interface ToolInstallationPrompt {
@@ -44,32 +77,73 @@ interface SelectableChoice {
   disabled: boolean;
 }
 
+interface AgentDiscovery {
+  configured: Set<CodingAgentId>;
+  detected: Set<CodingAgentId>;
+  defaults: CodingAgentId[];
+}
+
+export class InteractiveCancelledError extends Error {
+  constructor(message = 'Interactive initialization was cancelled.') {
+    super(message);
+    this.name = 'InteractiveCancelledError';
+  }
+}
+
+function errorCode(error: unknown): string | undefined {
+  return typeof error === 'object' && error !== null && 'code' in error &&
+    typeof (error as { code?: unknown }).code === 'string'
+    ? (error as { code: string }).code
+    : undefined;
+}
+
+function isPromptCancellation(error: unknown): boolean {
+  return error instanceof Error && (
+    error.name === 'ExitPromptError' ||
+    error.name === 'AbortPromptError' ||
+    error.message.includes('User force closed the prompt')
+  );
+}
+
 export class InteractivePrompter {
+  private readonly input: Readable;
   private readonly output: NodeJS.WritableStream;
   private readonly presentation: PresentationSession;
-  private readonly rl: ReturnType<typeof createInterface>;
-  private readonly lines: AsyncIterator<string>;
+  private readonly cwd: string;
+  private readonly configuredRoot?: string;
+  private readonly runner?: CommandRunner;
+  private readonly checkboxPrompt?: AgentCheckboxPrompt;
+  private rl?: ReturnType<typeof createInterface>;
+  private lines?: AsyncIterator<string>;
+  private closed = false;
 
   constructor(dependencies: InteractiveDependencies = {}) {
-    const input = dependencies.input ?? processInput;
+    this.input = dependencies.input ?? processInput;
     this.output = dependencies.output ?? processOutput;
     this.presentation = dependencies.presentation ?? new PresentationSession({
       stdout: this.output,
       stderr: this.output
     });
-    this.rl = createInterface({ input, terminal: false });
-    this.lines = this.rl[Symbol.asyncIterator]();
+    this.cwd = dependencies.cwd ?? process.cwd();
+    this.configuredRoot = dependencies.configuredRoot;
+    this.runner = dependencies.runner;
+    this.checkboxPrompt = dependencies.checkboxPrompt;
   }
 
   close(): void {
-    this.rl.close();
+    this.closed = true;
+    this.releaseLineInput();
   }
 
   async promptForInitOptions(initial: ProjectOptions): Promise<ProjectOptions> {
     const projectName = initial.projectName ?? await this.askRequired('Project name');
     const inferredProjectType = initial.projectType ?? (initial.pattern ? 'genai' : initial.apiStack ? 'standard' : undefined);
     const projectType = inferredProjectType ??
-      (await this.confirm('Is this a GenAI project?', true) ? 'genai' : 'standard');
+      await this.choose('Select workload', projectTypes.map((workload) => ({
+        value: workload.id,
+        label: workload.label,
+        disabled: false
+      })), 'genai');
     const pattern = projectType === 'genai'
       ? initial.pattern ?? await this.choose('Select GenAI pattern', patterns.map((pattern) => ({
           value: pattern.id,
@@ -83,15 +157,22 @@ export class InteractivePrompter {
           label: `${stack.label} (${stack.databaseTooling})`,
           disabled: false
         })), 'python-fastapi')
-      : initial.apiStack ?? 'python-fastapi';
-    const cloud = initial.cloud ?? await this.choose('Target cloud', providers.map((provider) => ({
-      value: provider.id,
-      label: `${provider.label}${provider.status === 'planned' ? ' - planned' : ''}`,
-      disabled: provider.status === 'planned'
-    })));
-    const region = initial.region ?? await this.promptForRegion(cloud);
-    const includeFrontend = initial.includeFrontend ??
-      await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
+      : projectType === 'genai'
+        ? initial.apiStack ?? 'python-fastapi'
+        : initial.apiStack;
+    const cloud = projectType === 'power-apps-code-app'
+      ? initial.cloud
+      : initial.cloud ?? await this.choose('Target cloud', providers.map((provider) => ({
+          value: provider.id,
+          label: `${provider.label}${provider.status === 'planned' ? ' - planned' : ''}`,
+          disabled: provider.status === 'planned'
+        })));
+    const region = projectType === 'power-apps-code-app'
+      ? initial.region
+      : initial.region ?? await this.promptForRegion(cloud!);
+    const includeFrontend = projectType === 'power-apps-code-app'
+      ? initial.includeFrontend
+      : initial.includeFrontend ?? await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
     const specWorkflow = initial.specWorkflow ?? await this.choose(
       'Select spec-driven workflow',
       specWorkflows.map((workflow) => ({
@@ -101,7 +182,7 @@ export class InteractivePrompter {
       })),
       'openspec'
     );
-    const selectedAgents = initial.agents ?? await this.askAgents();
+    const selectedAgents = initial.agents ?? await this.askAgents(specWorkflow as SpecWorkflowId);
     const normalizedAgents = selectedAgents
       .map((agent) => getCodingAgent(agent)?.id)
       .filter((agent): agent is NonNullable<typeof agent> => agent !== undefined);
@@ -116,7 +197,13 @@ export class InteractivePrompter {
       : specWorkflow === 'spec-kit'
         ? normalizedAgents[0]
         : undefined;
-    const selectedEnvironments = initial.environments ?? await this.askEnvironments();
+    const codeAppsPlugin = projectType === 'power-apps-code-app'
+      ? initial.codeAppsPlugin ??
+        await this.confirm('Include Microsoft Code Apps preview plugin guidance?', false)
+      : initial.codeAppsPlugin;
+    const selectedEnvironments = projectType === 'power-apps-code-app'
+      ? initial.environments
+      : initial.environments ?? await this.askEnvironments();
 
     return {
       ...initial,
@@ -130,7 +217,8 @@ export class InteractivePrompter {
       specWorkflow,
       agents: normalizedAgents,
       ...(defaultAgent ? { defaultAgent } : {}),
-      environments: selectedEnvironments
+      ...(selectedEnvironments ? { environments: selectedEnvironments } : {}),
+      ...(codeAppsPlugin !== undefined ? { codeAppsPlugin } : {})
     };
   }
 
@@ -277,14 +365,29 @@ export class InteractivePrompter {
     return answer.split(',').map((value) => value.trim()).filter(Boolean);
   }
 
-  private async askAgents(): Promise<string[]> {
+  private async askAgents(specWorkflow: SpecWorkflowId): Promise<string[]> {
+    const discovery = await this.discoverAgents(specWorkflow);
+    if (this.isRealTty()) {
+      return this.askAgentsWithCheckbox(discovery);
+    }
+    return this.askAgentsWithLines(discovery);
+  }
+
+  private async askAgentsWithLines(discovery: AgentDiscovery): Promise<string[]> {
     while (true) {
       this.presentation.choices('Select one or more AI coding agents', codingAgents.map((agent) => ({
-        label: agent.label,
+        label: this.agentChoiceLabel(agent.id, discovery),
         value: agent.id,
-        default: agent.id === 'github-copilot'
+        default: discovery.defaults.includes(agent.id),
+        selected: discovery.defaults.includes(agent.id)
       })));
-      const answer = (await this.question('Select comma-separated options', '1')).trim() || '1';
+      const defaultSelection = discovery.defaults
+        .map((agentId) => `${codingAgents.findIndex((agent) => agent.id === agentId) + 1}`)
+        .join(',');
+      const answer = (await this.question(
+        'Select comma-separated options',
+        defaultSelection
+      )).trim() || defaultSelection;
       const selected = answer.split(',').map((value) => value.trim()).filter(Boolean);
       const resolved = selected.map((value) => {
         const byIndex = codingAgents[Number(value) - 1];
@@ -300,13 +403,126 @@ export class InteractivePrompter {
     }
   }
 
+  private async askAgentsWithCheckbox(discovery: AgentDiscovery): Promise<CodingAgentId[]> {
+    this.releaseLineInput();
+    try {
+      const checkbox = this.checkboxPrompt ?? (await import('@inquirer/prompts')).checkbox;
+      const selected = await checkbox({
+        message: 'Select one or more AI coding agents',
+        choices: codingAgents.map((agent) => ({
+          name: this.agentChoiceLabel(agent.id, discovery),
+          value: agent.id,
+          checked: discovery.defaults.includes(agent.id)
+        })),
+        required: true,
+        validate: (values) => values.length > 0 || 'Select at least one AI coding agent.'
+      }, {
+        input: this.input,
+        output: this.output
+      });
+      return codingAgents
+        .filter((agent) => selected.includes(agent.id))
+        .map((agent) => agent.id);
+    } catch (error) {
+      if (isPromptCancellation(error)) {
+        throw new InteractiveCancelledError();
+      }
+      throw error;
+    }
+  }
+
+  private async discoverAgents(specWorkflow: SpecWorkflowId): Promise<AgentDiscovery> {
+    const configured = new Set<CodingAgentId>();
+    const detected = new Set<CodingAgentId>();
+    const framework = getFrameworkDefinition(specWorkflow);
+
+    await Promise.all(codingAgents.map(async (agent) => {
+      if (this.configuredRoot) {
+        const markerStates = await Promise.all(framework.agentMarkers[agent.id].map(
+          async (pathParts) => this.pathExists(path.join(this.configuredRoot!, ...pathParts))
+        ));
+        if (markerStates.some(Boolean)) {
+          configured.add(agent.id);
+        }
+      }
+      if (this.runner) {
+        const probe = await this.runner.run(
+          { executable: agent.executable, args: ['--version'] },
+          { cwd: this.cwd, timeoutMs: 10_000 }
+        );
+        if (probe.status === 0 && !probe.timedOut) {
+          detected.add(agent.id);
+        }
+      }
+    }));
+
+    const defaults = codingAgents
+      .filter((agent) => configured.size > 0
+        ? configured.has(agent.id)
+        : detected.size > 0
+          ? detected.has(agent.id)
+          : agent.id === 'github-copilot')
+      .map((agent) => agent.id);
+    return { configured, detected, defaults };
+  }
+
+  private async pathExists(file: string): Promise<boolean> {
+    try {
+      await access(file);
+      return true;
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
+        return false;
+      }
+      throw error;
+    }
+  }
+
+  private agentChoiceLabel(agentId: CodingAgentId, discovery: AgentDiscovery): string {
+    const agent = codingAgents.find((candidate) => candidate.id === agentId);
+    if (!agent) {
+      throw new Error(`Unknown coding agent: ${agentId}`);
+    }
+    const states = [
+      discovery.configured.has(agentId) ? 'configured' : undefined,
+      discovery.detected.has(agentId) ? 'detected' : undefined
+    ].filter((state): state is string => state !== undefined);
+    return `${agent.label} (${states.length > 0 ? states.join(', ') : 'not observable'})`;
+  }
+
+  private isRealTty(): boolean {
+    const input = this.input as Readable & { isTTY?: boolean; setRawMode?: (mode: boolean) => void };
+    const output = this.output as NodeJS.WritableStream & { isTTY?: boolean };
+    return input.isTTY === true && typeof input.setRawMode === 'function' && output.isTTY === true;
+  }
+
   private async question(label: string, defaultValue?: string): Promise<string> {
     this.presentation.prompt(label, defaultValue);
-    const answer = await this.lines.next();
+    const answer = await this.lineIterator().next();
     if (answer.done) {
-      throw new Error(`Interactive input closed before answering: ${label}.`);
+      throw new InteractiveCancelledError(
+        `Interactive input closed before answering: ${label}.`
+      );
     }
     return answer.value;
+  }
+
+  private lineIterator(): AsyncIterator<string> {
+    if (this.closed) {
+      throw new InteractiveCancelledError();
+    }
+    if (!this.rl || !this.lines) {
+      this.rl = createInterface({ input: this.input, terminal: false });
+      this.rl.on('SIGINT', () => this.rl?.close());
+      this.lines = this.rl[Symbol.asyncIterator]();
+    }
+    return this.lines;
+  }
+
+  private releaseLineInput(): void {
+    this.rl?.close();
+    this.rl = undefined;
+    this.lines = undefined;
   }
 }
 

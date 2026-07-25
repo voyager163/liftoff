@@ -1,0 +1,31 @@
+{
+  "artifactVersion": 4,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.4.1",
+  "project": {
+    "name": "Frozen V4 GenAI Fixture",
+    "workload": {
+      "kind": "genai",
+      "apiStack": "python-fastapi",
+      "pattern": "rag",
+      "cloud": "azure",
+      "region": "eastus",
+      "frontend": true,
+      "environments": [
+        "dev",
+        "test",
+        "prod"
+      ]
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.6.0"
+  },
+  "artifacts": []
+}

@@ -1,5 +1,5 @@
 import type { LegacyInventory, ScanFinding } from './scan.js';
-import type { ProjectPlan } from './types.js';
+import type { ApiProjectPlan } from './types.js';
 
 export interface SeededGroup {
   title: string;
@@ -8,7 +8,7 @@ export interface SeededGroup {
 
 const staged = (sourcePath: string) => `migration/legacy/${sourcePath}`;
 
-export function seedMigrationGroups(inventory: LegacyInventory, plan: ProjectPlan): SeededGroup[] {
+export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProjectPlan): SeededGroup[] {
   const byKind = (kind: ScanFinding['kind']) => inventory.findings.filter((finding) => finding.kind === kind);
   const groups: SeededGroup[] = [];
   const dependencyFile = plan.apiStack.id === 'python-fastapi'
@@ -105,8 +105,8 @@ export function renderMigrationTasks(groups: SeededGroup[]): string {
   return `${lines.join('\n').trimEnd()}\n`;
 }
 
-export function renderMigrationProposal(plan: ProjectPlan, inventory: LegacyInventory): string {
-  const typeSpecific = plan.pattern
+export function renderMigrationProposal(plan: ApiProjectPlan, inventory: LegacyInventory): string {
+  const typeSpecific = plan.workload === 'genai'
     ? `- Pattern: ${plan.pattern.label}`
     : `- API stack: ${plan.apiStack.label}`;
   return `# Proposal: migrate-to-liftoff
@@ -135,6 +135,6 @@ ${typeSpecific}
 `;
 }
 
-export function renderMigrationChecklist(plan: ProjectPlan, inventory: LegacyInventory, groups: SeededGroup[]): string {
+export function renderMigrationChecklist(plan: ApiProjectPlan, inventory: LegacyInventory, groups: SeededGroup[]): string {
   return `${renderMigrationProposal(plan, inventory)}\n${renderMigrationTasks(groups)}`;
 }

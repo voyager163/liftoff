@@ -9,6 +9,7 @@ describe('planner', () => {
     const plan = buildProjectPlan({ projectName: 'Claims Assistant', pattern: 'rag', cloud: 'azure' }, { requireProjectName: true });
 
     expect(plan.safeProjectName).toBe('claims-assistant');
+    expect(plan.workload).toBe('genai');
     expect(plan.region.slug).toBe('eastus');
     expect(plan.specWorkflow.id).toBe('openspec');
     expect(plan.environments.map((environment) => environment.id)).toEqual(['dev', 'test', 'prod']);
@@ -41,6 +42,51 @@ describe('planner', () => {
   it('infers project type from compatible legacy and standard inputs', () => {
     expect(buildProjectPlan({ projectName: 'Legacy', pattern: 'rag', cloud: 'azure' }, { requireProjectName: true }).projectType.id).toBe('genai');
     expect(buildProjectPlan({ projectName: 'Standard', apiStack: 'node', cloud: 'azure' }, { requireProjectName: true }).projectType.id).toBe('standard');
+  });
+
+  it('builds a Power Apps code app plan without API or cloud identity', () => {
+    const plan = buildProjectPlan({
+      projectName: 'Field Service',
+      projectType: 'power-apps-code-app',
+      codeAppsPlugin: true
+    }, { requireProjectName: true });
+
+    expect(plan.workload).toBe('power-apps-code-app');
+    if (plan.workload !== 'power-apps-code-app') {
+      throw new Error('Expected a Power Apps code app plan.');
+    }
+    expect(plan.starter).toEqual({
+      repository: 'https://github.com/microsoft/PowerAppsCodeApps',
+      path: 'templates/starter',
+      commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+    });
+    expect(plan.codeAppsPlugin).toBe(true);
+    expect('apiStack' in plan).toBe(false);
+    expect('provider' in plan).toBe(false);
+    expect(plan.approvedStack).toContain('Power Apps SDK');
+  });
+
+  it.each([
+    [{ apiStack: 'node' }, '--api'],
+    [{ pattern: 'rag' }, '--pattern'],
+    [{ cloud: 'azure' }, '--cloud'],
+    [{ region: 'eastus' }, '--region'],
+    [{ includeFrontend: false }, '--frontend'],
+    [{ environments: ['dev'] }, '--environments']
+  ])('rejects inapplicable Power Apps options %j', (extra, expected) => {
+    expect(() => buildProjectPlan({
+      projectName: 'Invalid Power App',
+      projectType: 'power-apps-code-app',
+      ...extra
+    }, { requireProjectName: true })).toThrow(expected);
+  });
+
+  it('rejects conflicting explicit and legacy workload selectors', () => {
+    expect(() => buildProjectPlan({
+      projectName: 'Conflict',
+      projectType: 'power-apps-code-app',
+      genai: false
+    }, { requireProjectName: true })).toThrow(/conflicts with legacy/);
   });
 
   it('rejects contradictory project identity inputs', () => {
@@ -142,6 +188,37 @@ describe('planner', () => {
 
       await writeFile(path.join(root, 'invalid.json'), JSON.stringify({ force: true }));
       await expect(loadConfigOptions('invalid.json', root)).rejects.toThrow(/Unknown configuration field: force/);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('loads only applicable Power Apps configuration fields', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-config-power-apps-'));
+    try {
+      await writeFile(path.join(root, 'valid.json'), JSON.stringify({
+        projectName: 'Power App',
+        projectType: 'power-apps-code-app',
+        codeAppsPlugin: false,
+        specWorkflow: 'openspec',
+        agents: ['copilot']
+      }));
+      expect(await loadConfigOptions('valid.json', root)).toMatchObject({
+        projectType: 'power-apps-code-app',
+        codeAppsPlugin: false
+      });
+
+      await writeFile(path.join(root, 'api-field.json'), JSON.stringify({
+        projectType: 'power-apps-code-app',
+        cloud: 'azure'
+      }));
+      await expect(loadConfigOptions('api-field.json', root)).rejects.toThrow(/cannot include: cloud/);
+
+      await writeFile(path.join(root, 'bad-plugin.json'), JSON.stringify({
+        projectType: 'power-apps-code-app',
+        codeAppsPlugin: 'yes'
+      }));
+      await expect(loadConfigOptions('bad-plugin.json', root)).rejects.toThrow(/must be a boolean/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

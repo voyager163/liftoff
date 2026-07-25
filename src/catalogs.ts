@@ -7,6 +7,7 @@ import type {
   EnvironmentId,
   PatternDefinition,
   PatternId,
+  PowerAppsStarterSource,
   ProviderDefinition,
   ProviderId,
   ProjectTypeDefinition,
@@ -14,7 +15,8 @@ import type {
   RegionDefinition,
   FrameworkDefinition,
   SpecWorkflowDefinition,
-  SpecWorkflowId
+  SpecWorkflowId,
+  CodeAppsPluginDefinition
 } from './types.js';
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
@@ -45,8 +47,33 @@ export const projectTypes: ProjectTypeDefinition[] = [
     id: 'standard',
     label: 'Standard application',
     description: 'Non-GenAI API application using an approved Python, Node.js, or Go stack.'
+  },
+  {
+    id: 'power-apps-code-app',
+    label: 'Power Apps code app',
+    description: 'React and TypeScript application hosted by Microsoft Power Apps.'
   }
 ];
+
+export const powerAppsCodeAppStarter: PowerAppsStarterSource = {
+  repository: 'https://github.com/microsoft/PowerAppsCodeApps',
+  path: 'templates/starter',
+  commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+};
+
+export const codeAppsPlugin: CodeAppsPluginDefinition = {
+  id: 'code-apps-preview',
+  label: 'Microsoft Power Apps Code Apps plugin (Preview)',
+  version: '1.0.0',
+  marketplace: 'power-platform-skills',
+  repository: 'https://github.com/microsoft/power-platform-skills',
+  path: 'plugins/code-apps',
+  preview: true,
+  probes: {
+    'github-copilot': { executable: 'copilot', args: ['plugin', 'list'] },
+    claude: { executable: 'claude', args: ['plugin', 'list', '--json'] }
+  }
+};
 
 export const apiStacks: ApiStackDefinition[] = [
   {

@@ -1,8 +1,8 @@
 import type { AddArtifact } from './template-types.js';
-import type { ApiStackId, ProjectPlan } from './types.js';
+import type { ApiStackId, StandardApiProjectPlan } from './types.js';
 import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
 
-type StackBuilder = (add: AddArtifact, plan: ProjectPlan) => void;
+type StackBuilder = (add: AddArtifact, plan: StandardApiProjectPlan) => void;
 
 const stackBuilders: Record<ApiStackId, StackBuilder> = {
   'python-fastapi': addPythonArtifacts,
@@ -16,11 +16,11 @@ const escapeHtml = (value: string) =>
 const localPostgresUrl = (host: string, database: string) =>
   `postgresql:${'//'}postgres:postgres@${host}:5432/${database}`;
 
-export function addStandardStackArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+export function addStandardStackArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   stackBuilders[plan.apiStack.id](add, plan);
 }
 
-export function renderStandardDockerfile(plan: ProjectPlan): string {
+export function renderStandardDockerfile(plan: StandardApiProjectPlan): string {
   switch (plan.apiStack.id) {
     case 'python-fastapi':
       return `FROM python:3.12-slim
@@ -82,7 +82,7 @@ CMD ["/app/api"]
   }
 }
 
-export function renderStandardEnv(plan: ProjectPlan, environment = 'dev'): string {
+export function renderStandardEnv(plan: StandardApiProjectPlan, environment = 'dev'): string {
   const local = environment === 'dev';
   const databaseUrl = localPostgresUrl('postgres', plan.safeProjectName.replace(/-/g, '_'));
   return `APP_ENV=${environment}
@@ -98,7 +98,7 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 `;
 }
 
-function addPythonArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addPythonArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('backend-pyproject', 'backend', ['backend', 'pyproject.toml'], renderPythonPyproject(plan));
   add('backend-package', 'backend', ['backend', '__init__.py'], '');
   add('backend-api-package', 'backend', ['backend', 'apis', '__init__.py'], '');
@@ -117,7 +117,7 @@ function addPythonArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function renderPythonPyproject(plan: ProjectPlan): string {
+function renderPythonPyproject(plan: StandardApiProjectPlan): string {
   return `[project]
 name = "${plan.safeProjectName}-backend"
 version = "0.1.0"
@@ -154,7 +154,7 @@ testpaths = ["tests"]
 `;
 }
 
-function renderPythonMain(plan: ProjectPlan): string {
+function renderPythonMain(plan: StandardApiProjectPlan): string {
   return `from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -226,7 +226,7 @@ async def get_current_user() -> CurrentUser:
 `;
 }
 
-function renderPythonSettings(plan: ProjectPlan): string {
+function renderPythonSettings(plan: StandardApiProjectPlan): string {
   return `from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -350,7 +350,7 @@ def downgrade():
 `;
 }
 
-function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addNodeArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('node-backend-package', 'backend', ['backend', 'package.json'], renderNodePackage(plan));
   add('node-backend-lock', 'backend', ['backend', 'package-lock.json'], renderNpmLock('node-backend', `${plan.safeProjectName}-backend`));
   add('node-backend-tsconfig', 'backend', ['backend', 'tsconfig.json'], renderNodeTsconfig());
@@ -367,7 +367,7 @@ function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function renderNodePackage(plan: ProjectPlan): string {
+function renderNodePackage(plan: StandardApiProjectPlan): string {
   return renderNpmPackage('node-backend', `${plan.safeProjectName}-backend`);
 }
 
@@ -402,7 +402,7 @@ export default defineConfig({
 `;
 }
 
-function renderNodeConfig(plan: ProjectPlan): string {
+function renderNodeConfig(plan: StandardApiProjectPlan): string {
   return `export interface AppConfig {
   appName: string;
   appEnv: string;
@@ -436,7 +436,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 `;
 }
 
-function renderNodeApp(plan: ProjectPlan): string {
+function renderNodeApp(plan: StandardApiProjectPlan): string {
   const scalarPage = `<!doctype html><html><head><title>${escapeHtml(plan.projectName)} API</title></head><body><script id="api-reference" data-url="/openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>`;
   return `import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -631,7 +631,7 @@ function renderNodeMigrationSnapshot(): string {
   }, null, 2);
 }
 
-function addGoArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addGoArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('go-backend-module', 'backend', ['backend', 'go.mod'], renderGoModule(plan));
   add('go-backend-checksums', 'backend', ['backend', 'go.sum'], renderGoChecksums());
   add('go-backend-makefile', 'backend', ['backend', 'Makefile'], renderGoMakefile());
@@ -644,11 +644,11 @@ function addGoArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function goModule(plan: ProjectPlan): string {
+function goModule(plan: StandardApiProjectPlan): string {
   return `example.com/${plan.packageName}/backend`;
 }
 
-function renderGoModule(plan: ProjectPlan): string {
+function renderGoModule(plan: StandardApiProjectPlan): string {
   return `module ${goModule(plan)}
 
 go 1.23
@@ -721,7 +721,7 @@ migrate:
 `;
 }
 
-function renderGoMain(plan: ProjectPlan): string {
+function renderGoMain(plan: StandardApiProjectPlan): string {
   return `package main
 
 import (
@@ -743,7 +743,7 @@ func main() {
 `;
 }
 
-function renderGoApi(plan: ProjectPlan): string {
+function renderGoApi(plan: StandardApiProjectPlan): string {
   return `package api
 
 import (
@@ -836,7 +836,7 @@ func scalarReference(response http.ResponseWriter, _ *http.Request) {
 `;
 }
 
-function renderGoConfig(plan: ProjectPlan): string {
+function renderGoConfig(plan: StandardApiProjectPlan): string {
   return `package config
 
 import (
@@ -899,7 +899,7 @@ func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 `;
 }
 
-function renderGoHealthTest(plan: ProjectPlan): string {
+function renderGoHealthTest(plan: StandardApiProjectPlan): string {
   return `package api
 
 import (
@@ -950,7 +950,7 @@ DROP TABLE app_records;
 `;
 }
 
-function renderStandardSchema(plan: ProjectPlan): string {
+function renderStandardSchema(plan: StandardApiProjectPlan): string {
   return `-- ${plan.safeProjectName} standard application schema
 CREATE TABLE IF NOT EXISTS app_records (
   id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

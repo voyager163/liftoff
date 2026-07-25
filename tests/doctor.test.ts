@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -8,6 +8,11 @@ import { parseArgs } from '../src/args.js';
 import { createFixtureProject, doctorExitCode, runCommand } from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import type {
+  CommandResult,
+  RunCommandOptions
+} from '../src/process-runner.js';
+import type { ExternalCommand } from '../src/types.js';
 
 const cleanups: string[] = [];
 const previousRegistry = process.env.LIFTOFF_REGISTRY;
@@ -75,6 +80,37 @@ async function standardFixtureProject(apiStack: string): Promise<string> {
   });
   cleanups.push(path.dirname(projectRoot));
   return projectRoot;
+}
+
+async function powerAppsFixtureProject(
+  codeAppsPlugin = false,
+  agents: Array<'copilot' | 'claude'> = ['copilot']
+): Promise<string> {
+  const projectRoot = await createFixtureProject({
+    projectName: 'Power Apps Doctor App',
+    projectType: 'power-apps-code-app',
+    specWorkflow: 'openspec',
+    agents,
+    codeAppsPlugin
+  });
+  cleanups.push(path.dirname(projectRoot));
+  return projectRoot;
+}
+
+class PluginDoctorRunner extends ReadyInitRunner {
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    const result = await super.run(command, options);
+    if (command.executable === 'copilot' && command.args.join(' ') === 'plugin list') {
+      return { ...result, stdout: 'code-apps-preview 1.0.0 enabled\n' };
+    }
+    if (command.executable === 'claude' && command.args.join(' ') === 'plugin list --json') {
+      return { ...result, status: 2, stdout: '', stderr: 'plugin listing unavailable\n' };
+    }
+    return result;
+  }
 }
 
 async function run(
@@ -251,13 +287,116 @@ describe('doctor command', () => {
     ]));
   }, 30_000);
 
+  it('derives Power Apps doctor checks without API, cloud, or global CLI requirements', async () => {
+    const root = await powerAppsFixtureProject();
+    const runner = new ReadyInitRunner();
+    const result = await run(['doctor', '--json'], root, runner);
+    const report = JSON.parse(result.out);
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+    const runtime = report.layers.find((layer: { title: string }) => layer.title === 'Runtime');
+
+    expect(environment.checks.map((check: { id: string }) => check.id)).toEqual(
+      expect.arrayContaining(['node', 'openspec', 'github-copilot'])
+    );
+    expect(environment.checks.map((check: { id: string }) => check.id)).not.toEqual(
+      expect.arrayContaining(['python', 'go', 'docker', 'opentofu', 'azure-cli'])
+    );
+    expect(project.checks.find((check: { id: string }) => check.id === 'power-apps-project'))
+      .toMatchObject({ severity: 'ok', state: 'ready' });
+    expect(project.checks.find((check: { id: string }) => check.id === 'power-apps-starter'))
+      .toMatchObject({
+        severity: 'ok',
+        state: 'ready',
+        detail: expect.stringContaining('3438c352483e40982f6c5c0fc36fd71f8e7adbbb')
+      });
+    expect(runtime.checks.find((check: { id: string }) => check.id === 'power-apps-cli'))
+      .toMatchObject({
+        severity: 'skipped',
+        state: 'not-observable',
+        remedy: 'run npm ci, then rerun liftoff doctor'
+      });
+    expect(report.layers.some((layer: { title: string }) => layer.title.startsWith('Cloud -'))).toBe(false);
+    expect(report.layers.some((layer: { title: string }) => layer.title === 'Optional Code Apps plugin')).toBe(false);
+    expect(runner.calls.some((command) =>
+      command.executable === 'pac' || command.executable === 'power-apps'
+    )).toBe(false);
+  }, 30_000);
+
+  it('reports requested Code Apps plugin state per host as advisory JSON', async () => {
+    const root = await powerAppsFixtureProject(true, ['copilot', 'claude']);
+    const result = await run(['doctor', '--json'], root, new PluginDoctorRunner());
+    const report = JSON.parse(result.out);
+    const plugin = report.layers.find(
+      (layer: { title: string }) => layer.title === 'Optional Code Apps plugin'
+    );
+    const byId = new Map(plugin.checks.map((check: { id: string }) => [check.id, check]));
+
+    expect(result.code).toBe(0);
+    expect(byId.get('code-apps-plugin:github-copilot')).toMatchObject({
+      severity: 'ok',
+      state: 'ready',
+      requirementSeverity: 'advisory'
+    });
+    expect(byId.get('code-apps-plugin:claude')).toMatchObject({
+      severity: 'warn',
+      state: 'not-observable',
+      requirementSeverity: 'advisory',
+      remedy: expect.stringContaining('code-apps-preview@power-platform-skills')
+    });
+  }, 30_000);
+
+  it('probes only the installed project-local Power Apps CLI without downloads', async () => {
+    const root = await powerAppsFixtureProject();
+    await mkdir(path.join(root, 'node_modules'));
+    const runner = new ReadyInitRunner();
+    const report = JSON.parse((await run(['doctor', '--json'], root, runner)).out);
+    const runtime = report.layers.find((layer: { title: string }) => layer.title === 'Runtime');
+
+    expect(runtime.checks.find((check: { id: string }) => check.id === 'power-apps-cli'))
+      .toMatchObject({ severity: 'ok', state: 'ready' });
+    expect(runner.calls).toContainEqual({
+      executable: process.platform === 'win32' ? 'npx.cmd' : 'npx',
+      args: ['--no-install', 'power-apps', '--version']
+    });
+  }, 30_000);
+
+  it('reports corrupted Power Apps package identity as a project failure', async () => {
+    const root = await powerAppsFixtureProject();
+    const lockPath = path.join(root, 'package-lock.json');
+    const lock = JSON.parse(await readFile(lockPath, 'utf8'));
+    lock.name = 'different-project';
+    await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+
+    const result = await run(['doctor', '--json'], root);
+    const report = JSON.parse(result.out);
+    const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+    expect(result.code).toBe(1);
+    expect(project.checks.find((check: { id: string }) => check.id === 'power-apps-project'))
+      .toMatchObject({
+        severity: 'fail',
+        state: 'unhealthy',
+        detail: 'package.json and package-lock.json must record the same project name.'
+      });
+  }, 30_000);
+
   it('warns about legacy framework uncertainty without inferring agents or framework ownership', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const workload = manifest.project.workload;
     manifest.artifactVersion = 2;
-    delete manifest.project.agents;
-    delete manifest.project.defaultAgent;
+    manifest.project = {
+      name: manifest.project.name,
+      projectType: workload.kind,
+      apiStack: workload.apiStack,
+      pattern: workload.pattern,
+      cloud: workload.cloud,
+      region: workload.region,
+      frontend: workload.frontend,
+      environments: workload.environments,
+      specWorkflow: manifest.project.specWorkflow
+    };
     delete manifest.framework;
     await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
     const before = await readFile(manifestPath, 'utf8');

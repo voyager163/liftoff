@@ -12,10 +12,16 @@ import {
   getProvider,
   getProjectType,
   getSpecWorkflow,
+  powerAppsCodeAppStarter,
   resolveRegion,
   specWorkflows
 } from './catalogs.js';
-import type { EnvironmentDefinition, ProjectOptions, ProjectPlan } from './types.js';
+import type {
+  EnvironmentDefinition,
+  ProjectOptions,
+  ProjectPlan,
+  WorkloadPlan
+} from './types.js';
 
 export class PlanValidationError extends Error {
   constructor(public readonly issues: string[]) {
@@ -39,7 +45,8 @@ const CONFIG_FIELDS = new Set([
   'environments',
   'specWorkflow',
   'agents',
-  'defaultAgent'
+  'defaultAgent',
+  'codeAppsPlugin'
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -115,6 +122,24 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
   if (includeFrontendValue !== undefined && typeof includeFrontendValue !== 'boolean') {
     throw new PlanValidationError(['Configuration field includeFrontend must be a boolean.']);
   }
+  const codeAppsPluginValue = parsed.codeAppsPlugin;
+  if (codeAppsPluginValue !== undefined && typeof codeAppsPluginValue !== 'boolean') {
+    throw new PlanValidationError(['Configuration field codeAppsPlugin must be a boolean.']);
+  }
+
+  if (projectType === 'power-apps-code-app') {
+    const inapplicable = ['apiStack', 'pattern', 'cloud', 'region', 'includeFrontend', 'environments']
+      .filter((field) => Object.hasOwn(parsed, field));
+    if (inapplicable.length > 0) {
+      throw new PlanValidationError([
+        `Power Apps code app configuration cannot include: ${inapplicable.join(', ')}.`
+      ]);
+    }
+  } else if (projectType && Object.hasOwn(parsed, 'codeAppsPlugin')) {
+    throw new PlanValidationError([
+      'Configuration field codeAppsPlugin is only valid for Power Apps code apps.'
+    ]);
+  }
 
   let selectedEnvironments: string[] | undefined;
   if (parsed.environments !== undefined) {
@@ -181,7 +206,8 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
     environments: selectedEnvironments,
     specWorkflow,
     agents: selectedAgents,
-    defaultAgent
+    defaultAgent,
+    codeAppsPlugin: codeAppsPluginValue
   };
 }
 
@@ -205,10 +231,35 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     issues.push('Project name is required.');
   }
 
-  const inferredProjectType = input.projectType ?? (input.pattern ? 'genai' : input.apiStack ? 'standard' : undefined);
+  const explicitProjectType = input.projectType ? getProjectType(input.projectType) : undefined;
+  if (input.projectType && !explicitProjectType) {
+    issues.push(`Unknown project type: ${input.projectType}.`);
+  }
+  const inferredTypeSignals = [
+    input.genai === undefined ? undefined : input.genai ? 'genai' : 'standard',
+    input.pattern ? 'genai' : undefined,
+    input.apiStack && !input.pattern && input.genai !== true && explicitProjectType?.id !== 'genai'
+      ? 'standard'
+      : undefined
+  ].filter((value): value is 'genai' | 'standard' => value !== undefined);
+  const uniqueTypeSignals = [...new Set(inferredTypeSignals)];
+  if (uniqueTypeSignals.length > 1) {
+    issues.push('Project type inputs conflict: GenAI pattern/flags cannot be combined with standard API inputs.');
+  }
+  if (
+    explicitProjectType &&
+    uniqueTypeSignals.some((signal) => signal !== explicitProjectType.id)
+  ) {
+    issues.push(
+      `Project type ${explicitProjectType.id} conflicts with legacy project-type, pattern, or API-stack inputs.`
+    );
+  }
+  const inferredProjectType = explicitProjectType?.id ?? uniqueTypeSignals[0];
   const projectType = inferredProjectType ? getProjectType(inferredProjectType) : undefined;
   if (!projectType) {
-    issues.push(inferredProjectType ? `Unknown project type: ${inferredProjectType}.` : 'Project type is required.');
+    if (!input.projectType) {
+      issues.push('Project type is required.');
+    }
   }
 
   const pattern = input.pattern ? getPattern(input.pattern) : undefined;
@@ -232,13 +283,35 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     if (!apiStack) {
       issues.push('API stack is required for standard projects.');
     }
+  } else if (projectType?.id === 'power-apps-code-app') {
+    const inapplicable = [
+      input.apiStack ? '--api' : undefined,
+      input.pattern ? '--pattern' : undefined,
+      input.cloud ? '--cloud' : undefined,
+      input.region ? '--region' : undefined,
+      input.includeFrontend !== undefined ? '--frontend/--no-frontend' : undefined,
+      input.environments !== undefined ? '--environments' : undefined
+    ].filter((value): value is string => value !== undefined);
+    if (inapplicable.length > 0) {
+      issues.push(
+        `Power Apps code apps do not use API, cloud, frontend, or API-environment options. Remove: ${inapplicable.join(', ')}.`
+      );
+    }
+    apiStack = undefined;
+  }
+  if (projectType?.id !== 'power-apps-code-app' && input.codeAppsPlugin !== undefined) {
+    issues.push('The Code Apps plugin preference is only valid for Power Apps code apps.');
   }
 
-  const provider = getProvider(input.cloud ?? 'azure');
-  if (!provider) {
-    issues.push(`Unknown cloud provider: ${input.cloud}.`);
-  } else if (provider.status !== 'available') {
-    issues.push(`${provider.label} is a planned provider adapter and is not available in V1.`);
+  const provider = projectType?.id === 'power-apps-code-app'
+    ? undefined
+    : getProvider(input.cloud ?? 'azure');
+  if (projectType?.id !== 'power-apps-code-app') {
+    if (!provider) {
+      issues.push(`Unknown cloud provider: ${input.cloud}.`);
+    } else if (provider.status !== 'available') {
+      issues.push(`${provider.label} is a planned provider adapter and is not available in V1.`);
+    }
   }
 
   const specWorkflow = getSpecWorkflow(input.specWorkflow ?? specWorkflows.find((workflow) => workflow.default)?.id ?? 'openspec');
@@ -275,12 +348,16 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     issues.push('--default-agent is only valid with Spec Kit.');
   }
 
-  const selectedEnvironments = resolveEnvironments(input.environments);
-  if (selectedEnvironments.issues.length > 0) {
+  const selectedEnvironments = projectType?.id === 'power-apps-code-app'
+    ? undefined
+    : resolveEnvironments(input.environments);
+  if (selectedEnvironments?.issues.length) {
     issues.push(...selectedEnvironments.issues);
   }
 
-  const regionResolution = provider && provider.status === 'available' ? resolveRegion(provider.id, input.region) : undefined;
+  const regionResolution = provider?.status === 'available'
+    ? resolveRegion(provider.id, input.region)
+    : undefined;
   if (regionResolution?.status === 'ambiguous') {
     issues.push(`Region "${input.region}" is ambiguous for ${provider?.label}. Use one of: ${regionResolution.matches.map((region) => region.slug).join(', ')}.`);
   } else if (regionResolution?.status === 'unknown') {
@@ -291,14 +368,17 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     issues.length > 0 ||
     !projectName && options.requireProjectName ||
     !projectType ||
-    !apiStack ||
-    projectType.id === 'genai' && !pattern ||
-    !provider ||
     !specWorkflow ||
     selectedAgents.agents.length === 0 ||
-    provider.status !== 'available' ||
-    !regionResolution ||
-    regionResolution.status !== 'resolved'
+    projectType.id !== 'power-apps-code-app' && (
+      !apiStack ||
+      projectType.id === 'genai' && !pattern ||
+      !provider ||
+      provider.status !== 'available' ||
+      !selectedEnvironments ||
+      !regionResolution ||
+      regionResolution.status !== 'resolved'
+    )
   ) {
     throw new PlanValidationError(issues);
   }
@@ -306,28 +386,76 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
   const effectiveProjectName = projectName || 'liftoff-preview';
   const safeProjectName = toSafeProjectName(effectiveProjectName);
 
+  let workload: WorkloadPlan;
+  if (projectType.id === 'power-apps-code-app') {
+    workload = {
+      workload: 'power-apps-code-app',
+      starter: powerAppsCodeAppStarter,
+      codeAppsPlugin: input.codeAppsPlugin ?? false
+    };
+  } else {
+    if (
+      !apiStack ||
+      !provider ||
+      !selectedEnvironments ||
+      !regionResolution ||
+      regionResolution.status !== 'resolved'
+    ) {
+      throw new PlanValidationError(['API workload planning did not resolve all required fields.']);
+    }
+    if (projectType.id === 'genai') {
+      if (!pattern) {
+        throw new PlanValidationError(['GenAI pattern is required.']);
+      }
+      workload = {
+        workload: 'genai',
+        apiStack,
+        pattern,
+        provider,
+        region: regionResolution.region,
+        includeFrontend: input.includeFrontend ?? false,
+        frontendStarter: pattern.frontendStarter,
+        environments: selectedEnvironments.values
+      };
+    } else {
+      workload = {
+        workload: 'standard',
+        apiStack,
+        provider,
+        region: regionResolution.region,
+        includeFrontend: input.includeFrontend ?? false,
+        frontendStarter: 'API starter',
+        environments: selectedEnvironments.values
+      };
+    }
+  }
+
   return {
     projectName: effectiveProjectName,
     safeProjectName,
     packageName: safeProjectName.replace(/_/g, '-'),
     projectType,
-    apiStack,
-    pattern,
-    provider,
-    region: regionResolution.region,
-    includeFrontend: input.includeFrontend ?? false,
-    frontendStarter: pattern?.frontendStarter ?? 'API starter',
-    environments: selectedEnvironments.values,
+    ...workload,
     specWorkflow,
     agents: selectedAgents.agents,
     ...(defaultAgent ? { defaultAgent } : {}),
     framework: getFrameworkDefinition(specWorkflow.id),
-    approvedStack: approvedStackFor(projectType.id, apiStack.id)
+    approvedStack: approvedStackFor(workload)
   };
 }
 
-function approvedStackFor(projectType: 'genai' | 'standard', apiStack: 'python-fastapi' | 'node-fastify' | 'go-huma'): string[] {
-  if (projectType === 'genai') {
+function approvedStackFor(workload: WorkloadPlan): string[] {
+  if (workload.workload === 'power-apps-code-app') {
+    return [
+      'React',
+      'Vite',
+      'TypeScript',
+      'Tailwind CSS',
+      'Power Apps SDK',
+      'Power Apps Vite plugin'
+    ];
+  }
+  if (workload.workload === 'genai') {
     return [
       'FastAPI',
       'PydanticAI',
@@ -345,13 +473,13 @@ function approvedStackFor(projectType: 'genai' | 'standard', apiStack: 'python-f
     ];
   }
 
-  const stackSpecific: Record<typeof apiStack, string[]> = {
+  const stackSpecific: Record<typeof workload.apiStack.id, string[]> = {
     'python-fastapi': ['FastAPI', 'Pydantic settings', 'SQLAlchemy', 'Alembic', 'pytest'],
     'node-fastify': ['Fastify', 'TypeScript', 'Drizzle', 'Vitest'],
     'go-huma': ['Huma v2', 'Chi', 'pgx', 'Goose', 'go test']
   };
   return [
-    ...stackSpecific[apiStack],
+    ...stackSpecific[workload.apiStack.id],
     'Scalar',
     'PostgreSQL',
     'Redis',
@@ -397,27 +525,50 @@ export interface ProjectPlanEntry {
 }
 
 export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
-  const frontendLine = plan.includeFrontend ? `Vue 3 + Tailwind (${plan.frontendStarter})` : 'Not generated';
-  if (plan.projectType.id === 'genai' && !plan.pattern) {
-    throw new Error('GenAI project plan is missing its pattern.');
-  }
-  return [
+  const common = [
     { label: 'Project', value: plan.projectName },
-    { label: 'Project type', value: plan.projectType.label },
-    plan.pattern
+    { label: 'Project type', value: plan.projectType.label }
+  ];
+  const integrations = [
+    { label: 'Spec workflow', value: plan.specWorkflow.label },
+    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : [])
+  ];
+  if (plan.workload === 'power-apps-code-app') {
+    return [
+      ...common,
+      {
+        label: 'Official starter',
+        value: `${plan.starter.repository}/${plan.starter.path} @ ${plan.starter.commit}`
+      },
+      { label: 'Root application stack', value: plan.approvedStack.join(', ') },
+      ...integrations,
+      {
+        label: 'Code Apps plugin',
+        value: plan.codeAppsPlugin ? 'Requested (Preview)' : 'Not requested'
+      },
+      { label: 'Project dependencies', value: 'npm ci' },
+      { label: 'Environment binding', value: 'Deferred: npx --no-install power-apps init' },
+      { label: 'Infrastructure', value: 'Managed by Power Platform; no Liftoff-owned API or Azure infrastructure' }
+    ];
+  }
+  const frontendLine = plan.includeFrontend
+    ? `Vue 3 + Tailwind (${plan.frontendStarter})`
+    : 'Not generated';
+  return [
+    ...common,
+    plan.workload === 'genai'
       ? { label: 'Pattern', value: `${plan.pattern.label} (${plan.pattern.scaffoldStatus})` }
       : { label: 'API stack', value: plan.apiStack.label },
     { label: 'Cloud', value: plan.provider.label },
     { label: 'Region', value: `${plan.region.displayName} / ${plan.region.slug}` },
     { label: 'Frontend', value: frontendLine },
-    { label: 'Spec workflow', value: plan.specWorkflow.label },
-    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
-    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
+    ...integrations,
     { label: 'Environments', value: plan.environments.map((environment) => environment.id).join(', ') },
     { label: 'Approved stack', value: plan.approvedStack.join(', ') },
     {
       label: 'Local development',
-      value: plan.projectType.id === 'genai'
+      value: plan.workload === 'genai'
         ? 'Docker Compose with PostgreSQL/pgvector as required, Redis, Azurite, Mailpit, and optional Langfuse profile'
         : 'Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit'
     },

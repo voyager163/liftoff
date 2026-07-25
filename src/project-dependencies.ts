@@ -6,6 +6,8 @@ import { readProjectFile, writeProjectFile } from './file-system.js';
 import type { ExternalCommand, ProjectPlan } from './types.js';
 import type { RequirementProbeResult } from './workstation.js';
 
+export { verifyPowerAppsPackageMetadata } from './power-apps-validation.js';
+
 export interface DependencyCommandPlan {
   id: string;
   label: string;
@@ -54,6 +56,16 @@ export function buildDependencySetupPlan(
 ): DependencySetupPlan {
   const commands: DependencyCommandPlan[] = [];
   const protectedPaths: string[][] = [];
+  if (plan.workload === 'power-apps-code-app') {
+    commands.push({
+      id: 'power-apps-root',
+      label: 'Install Power Apps code app dependencies',
+      command: { executable: npmExecutable(platform), args: ['ci'] },
+      cwd: projectRoot
+    });
+    protectedPaths.push(['package.json'], ['package-lock.json']);
+    return { commands, protectedPaths };
+  }
   if (plan.apiStack.id === 'python-fastapi') {
     const python = pythonCommand(probes);
     const virtualPython = platform === 'win32'
@@ -77,7 +89,7 @@ export function buildDependencySetupPlan(
       cwd: projectRoot
     });
     protectedPaths.push(['backend', 'pyproject.toml']);
-    if (plan.projectType.id === 'genai' && plan.pattern?.worker) {
+    if (plan.workload === 'genai' && plan.pattern.worker) {
       const requirements = ['functions', `${plan.pattern.id}-worker`, 'requirements.txt'];
       commands.push({
         id: 'python-function-worker',

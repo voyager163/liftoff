@@ -75,6 +75,7 @@ const helpFlag = { help: booleanFlag('Show command-specific help', 'General') };
 
 const projectFlags = {
   project: valueFlag('Project name or project path', 'Project', 'path'),
+  type: valueFlag('Project workload type', 'Project', 'workload'),
   genai: booleanFlag('Create a GenAI project; use --no-genai for a standard API', 'Project', true),
   api: valueFlag('Backend API stack', 'Project', 'stack'),
   pattern: valueFlag('GenAI application pattern', 'Project', 'pattern'),
@@ -85,6 +86,7 @@ const projectFlags = {
   spec: valueFlag('Spec-driven framework', 'Framework', 'framework', 'openspec'),
   agents: valueFlag('Comma-separated AI coding agents', 'Framework', 'list', 'copilot'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
+  'code-apps-plugin': booleanFlag('Request the Microsoft Code Apps agent plugin (Preview)', 'Framework', true, 'false'),
   config: valueFlag('Load deterministic project options from JSON', 'Project', 'file')
 } as const;
 
@@ -151,7 +153,11 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     description: 'Validate a generated project manifest',
     usage: '[project-path]',
     group: 'Maintenance',
-    flags: { project: valueFlag('Project path', 'Project', 'path'), ...helpFlag },
+    flags: {
+      project: valueFlag('Project path', 'Project', 'path'),
+      json: booleanFlag('Emit machine-readable JSON', 'Output'),
+      ...helpFlag
+    },
     arguments: [{ syntax: 'project-path', description: 'Generated project to validate' }],
     defaultMaxPositionals: 1
   },

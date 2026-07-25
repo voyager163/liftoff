@@ -41,17 +41,22 @@ The system SHALL expose the running package version through `liftoff --version` 
 - **THEN** the reported version exactly matches the packed package version
 
 ### Requirement: CLI captures required project decisions
-The system SHALL capture the project name, project type, target cloud provider, deployment region, frontend selection, environment selection, spec-driven workflow, and one or more AI coding agents before generating files. For GenAI projects the system SHALL also capture the GenAI application pattern and use the approved Python/FastAPI/PydanticAI stack. For standard projects the system SHALL capture one approved API stack and SHALL NOT require a GenAI pattern. When Spec Kit has multiple selected agents, the system SHALL also capture exactly one default agent.
+The system SHALL capture the project name, project type, spec-driven workflow, and one or more AI coding agents before generating files. For GenAI projects it SHALL also capture the GenAI pattern, target cloud provider, deployment region, frontend selection, and environment selection while using the approved Python/FastAPI/PydanticAI stack. For standard projects it SHALL capture one approved API stack, target cloud provider, deployment region, frontend selection, and environment selection without requiring a GenAI pattern. For Power Apps code apps it SHALL capture the optional Microsoft Code Apps plugin preference without requiring API, GenAI, cloud, region, frontend, or API environment decisions. When Spec Kit has multiple selected agents, the system SHALL also capture exactly one default agent.
 
 #### Scenario: Interactive GenAI project decisions
 - **WHEN** a developer runs `liftoff init` without all required options and selects a GenAI project
-- **THEN** the system prompts for missing common decisions, the GenAI pattern, and one or more coding agents
-- **AND** the system defaults the spec-driven workflow to OpenSpec and the selected agent set to GitHub Copilot
+- **THEN** the system prompts for missing common decisions, the GenAI pattern, cloud decisions, and one or more coding agents
+- **AND** the system defaults the spec-driven workflow to OpenSpec
 
 #### Scenario: Interactive standard project decisions
 - **WHEN** a developer runs `liftoff init` without all required options and selects a standard project
-- **THEN** the system prompts for missing common decisions, the standard API stack, and one or more coding agents
+- **THEN** the system prompts for missing common decisions, the standard API stack, cloud decisions, and one or more coding agents
 - **AND** the system does not prompt for a GenAI pattern
+
+#### Scenario: Interactive Power Apps project decisions
+- **WHEN** a developer runs `liftoff init` without all required options and selects a Power Apps code app
+- **THEN** the system prompts for the common spec workflow and coding agents followed by the optional preview-plugin preference
+- **AND** it does not prompt for an API stack, GenAI pattern, cloud, region, frontend, or API environments
 
 #### Scenario: Approved GenAI stack is not prompted
 - **WHEN** the CLI prompts for a GenAI project's decisions
@@ -63,7 +68,7 @@ The system SHALL capture the project name, project type, target cloud provider, 
 - **AND** the system does not ask a separate framework-selection question
 
 #### Scenario: Both agents are selected for Spec Kit
-- **WHEN** a developer selects GitHub Copilot and Claude Code with Spec Kit
+- **WHEN** a developer selects GitHub Copilot and Claude Code with Spec Kit for any workload
 - **THEN** the system asks which selected agent is the default integration before generation
 
 ### Requirement: CLI supports all approved GenAI patterns
@@ -104,7 +109,7 @@ The system SHALL resolve exact cloud region slugs and human-friendly region alia
 - **THEN** the system uses East US with the slug `eastus`
 
 ### Requirement: CLI previews generation before writing files
-The system SHALL provide a project plan preview before writing files in interactive init flows and through a standalone plan command. The preview SHALL include selected coding agents and the plan-derived workstation requirement summary without installing or writing anything.
+The system SHALL provide a workload-aware project plan preview before writing files in interactive init flows and through a standalone plan command. The preview SHALL include selected coding agents, the applicable default agent and optional plugin preference, generated boundaries, and the plan-derived workstation requirement summary without installing or writing anything.
 
 #### Scenario: Interactive GenAI plan confirmation
 - **WHEN** a developer completes the interactive prompts for a GenAI project
@@ -114,6 +119,11 @@ The system SHALL provide a project plan preview before writing files in interact
 - **WHEN** a developer completes the interactive prompts for a standard project
 - **THEN** the system displays the project type, API stack, provider, region, environments, frontend choice, local development stack, infrastructure output, spec workflow, coding agents, and required workstation tools without displaying a GenAI pattern
 
+#### Scenario: Interactive Power Apps plan confirmation
+- **WHEN** a developer completes the interactive prompts for a Power Apps code app
+- **THEN** the system displays the Power Apps starter identity, root application stack, spec workflow, coding agents, optional plugin preference, project dependency command, deferred environment-binding action, and required workstation tools
+- **AND** it does not display an API backend, Azure provider, region, Docker, or OpenTofu output
+
 #### Scenario: Standalone GenAI plan command
 - **WHEN** a developer runs `liftoff plan --pattern rag --cloud azure --frontend --agents copilot,claude`
 - **THEN** the system displays the files, major components, selected agents, and workstation requirements without creating the project directory or installing tools
@@ -122,8 +132,12 @@ The system SHALL provide a project plan preview before writing files in interact
 - **WHEN** a developer runs `liftoff plan --no-genai --api node --cloud azure`
 - **THEN** the system displays the standard Node.js/Fastify files, major components, default Copilot integration, and workstation requirements without creating files
 
+#### Scenario: Standalone Power Apps plan command
+- **WHEN** a developer runs `liftoff plan --type power-apps-code-app --agents copilot,claude`
+- **THEN** the system displays the pinned starter files, both integrations, relevant readiness, and deferred Power Platform setup without creating files or contacting Power Platform
+
 ### Requirement: CLI supports compatible non-interactive project-type inputs
-The system SHALL support explicit standard-project and API-stack flags, SHALL infer GenAI project type when an existing GenAI pattern flag is provided without a project type, SHALL accept a comma-separated selected-agent list, and SHALL reject contradictory project-type, pattern, API-stack, workflow, selected-agent, and default-agent combinations before generation.
+The system SHALL accept `--type genai|standard|power-apps-code-app`, SHALL retain existing `--genai`, `--no-genai`, pattern, and API-stack inference, SHALL accept a comma-separated selected-agent list, and SHALL reject contradictory or inapplicable project-type, pattern, API-stack, cloud, region, frontend, environment, workflow, selected-agent, default-agent, and Code Apps plugin combinations before generation.
 
 #### Scenario: Existing GenAI options remain valid under init
 - **WHEN** a developer runs `liftoff init my-app --pattern rag --cloud azure --region eastus --spec openspec --no-frontend --yes`
@@ -133,6 +147,10 @@ The system SHALL support explicit standard-project and API-stack flags, SHALL in
 #### Scenario: Initialize a standard Node.js project non-interactively
 - **WHEN** a developer runs `liftoff init my-api --no-genai --api node --cloud azure --region eastus --spec openspec --agents copilot,claude --no-frontend --yes`
 - **THEN** the system resolves `node` to the approved Node.js/Fastify API stack and selects both coding agents without project-decision prompts
+
+#### Scenario: Initialize a Power Apps project noninteractively
+- **WHEN** a developer runs `liftoff init my-code-app --type power-apps-code-app --spec openspec --agents copilot,claude --yes`
+- **THEN** the system resolves the Power Apps workload and both agents without API-oriented project-decision prompts
 
 #### Scenario: Select a Spec Kit default agent non-interactively
 - **WHEN** a developer selects Spec Kit with `--agents copilot,claude --default-agent claude`
@@ -145,6 +163,19 @@ The system SHALL support explicit standard-project and API-stack flags, SHALL in
 #### Scenario: Reject conflicting project decisions
 - **WHEN** a developer supplies `--no-genai` together with a GenAI pattern
 - **THEN** the system stops before generation and explains that standard projects cannot select a GenAI pattern
+
+#### Scenario: Reject an inapplicable Power Apps option
+- **WHEN** a developer selects `--type power-apps-code-app` together with `--api`, `--pattern`, `--cloud`, `--region`, `--frontend`, or `--environments`
+- **THEN** Liftoff exits 1 before probes or writes and identifies the inapplicable option
+
+#### Scenario: Reject Code Apps plugin for another workload
+- **WHEN** a developer enables the Code Apps plugin preference for a GenAI or standard project
+- **THEN** Liftoff exits 1 before probes or writes and explains that the option applies only to Power Apps code apps
+
+#### Scenario: Reject Power Apps migration in this release
+- **WHEN** a developer requests `liftoff migrate` with `--type power-apps-code-app`
+- **THEN** Liftoff exits 1 before source copying or destination writes
+- **AND** it directs the developer to initialize a fresh Power Apps project
 
 #### Scenario: Reject an inapplicable default agent
 - **WHEN** a developer supplies `--default-agent` for OpenSpec or names an agent not present in `--agents`
@@ -228,32 +259,33 @@ The system SHALL expose commands for project initialization, planning, project u
 - **THEN** the system scans the source project, generates a fresh Liftoff scaffold beside it, and emits a migration plan without modifying the source project
 
 ### Requirement: Packaged README documents the current CLI lifecycle
-The system SHALL document the current Liftoff CLI lifecycle in the public repository root `README.md` included with the npm package, including first-use commands, project initialization and migration flows, target and overwrite safety, workstation readiness and consent flags, coding-agent selection, project validation and diagnostics, update reconciliation, local development/infrastructure helper commands, and standalone contributor commands.
+The system SHALL provide a public repository root `README.md` included with the npm package that gives a concise first-use path, supported workloads, spec and agent integrations, exact-Git-root behavior, safety summary, validation and diagnostics entry points, and links to packaged detailed documentation. Detailed command lifecycle, consent, machine-output, generated-structure, and contributor contracts SHALL remain available through those links instead of requiring every contract to appear inline.
 
 #### Scenario: Review first-use workflow
 - **WHEN** a developer reads the Liftoff CLI README after installing or inspecting `@msn-control/liftoff`
-- **THEN** the README shows a quick-start path that includes previewing or initializing a project, selecting coding agents, validating it, running diagnostics, and starting local development
+- **THEN** the README leads with installation and interactive `liftoff init`
+- **AND** it introduces GenAI, API, and Power Apps workloads plus OpenSpec, Spec Kit, Copilot, and Claude Code
 
 #### Scenario: Review command lifecycle
-- **WHEN** a developer reads the command workflow documentation
-- **THEN** the README explains the roles of `plan`, `init`, `migrate`, `validate`, `doctor`, `update`, `dev`, and `infra`
-- **AND** it states that `create` was removed in favor of `init`
+- **WHEN** a developer needs the roles of `plan`, `init`, `migrate`, `validate`, `doctor`, `update`, `dev`, and `infra`
+- **THEN** the README links to packaged CLI lifecycle documentation that describes those commands
+- **AND** the documentation states that `create` was removed in favor of `init`
 
 #### Scenario: Understand initialization safety
-- **WHEN** a developer reads the initialization documentation
-- **THEN** the README explains exact-Git-root in-place behavior, existing-directory conflict disclosure, the non-overridable manifest guard, and the separate meanings of `--yes`, `--force`, `--install-tools`, and `--install-dependencies`
+- **WHEN** a developer needs complete initialization safety details
+- **THEN** the README summarizes transactional staging and links to documentation covering exact-Git-root behavior, conflict disclosure, the manifest guard, and the separate meanings of `--yes`, `--force`, `--install-tools`, and `--install-dependencies`
 
 #### Scenario: Understand update safety
-- **WHEN** a developer reads the update documentation
-- **THEN** the README states that `liftoff update` checks for drift without writing by default, `liftoff update --apply` writes safe changes, conflicts require `--force` to overwrite, and orphaned files are not automatically deleted
+- **WHEN** a developer needs update behavior
+- **THEN** linked documentation states that `liftoff update` checks without writing, `--apply` writes safe changes, `--force` is required for conflicts, and orphans are not automatically deleted
 
 #### Scenario: Understand machine-readable and exit-code behavior
-- **WHEN** a developer reads the lifecycle or contract documentation
-- **THEN** the README states that check-mode drift uses exit code 2 and that JSON-capable commands emit a top-level numeric `schemaVersion`
+- **WHEN** a developer reads the linked CLI contract documentation
+- **THEN** it states that check-mode drift uses exit code 2 and JSON-capable commands emit a top-level numeric `schemaVersion`
 
 #### Scenario: Review contributor workflow
-- **WHEN** a contributor reads the public repository development instructions
-- **THEN** the README documents root-level build, test, check, and package smoke commands
+- **WHEN** a contributor follows the README contribution link
+- **THEN** `CONTRIBUTING.md` documents root-level build, test, check, package smoke, and release procedures
 - **AND** none of those commands require a Mission Control workspace selector
 
 ### Requirement: CLI syntax is command-specific and strict
@@ -288,11 +320,11 @@ The system SHALL validate commands, subcommands, positional arguments, and flags
 - **THEN** Liftoff exits 0 and prints that command's supported arguments, flags, and subcommands without validating required project options or probing tools
 
 ### Requirement: Configuration files are runtime-validated
-The system SHALL validate JSON configuration values by field name and runtime type before merging them with flags. Catalog-backed strings MUST resolve through existing catalog lookups, booleans MUST be JSON booleans, lists MUST contain strings, and invalid configuration MUST exit 1 before planning or generation.
+The system SHALL validate JSON configuration values by field name, runtime type, selected workload, and applicability before merging them with flags. Catalog-backed strings MUST resolve through existing catalog lookups, booleans MUST be JSON booleans, lists MUST contain strings, and invalid or workload-inapplicable configuration MUST exit 1 before planning or generation.
 
 #### Scenario: Reject a string boolean
-- **WHEN** `liftoff.config.json` contains `"includeFrontend": "false"`
-- **THEN** Liftoff reports that `includeFrontend` must be a boolean and does not generate a frontend
+- **WHEN** `liftoff.config.json` contains `"includeFrontend": "false"` or a non-boolean Code Apps plugin preference
+- **THEN** Liftoff reports that the named field must be a boolean and does not generate a project
 
 #### Scenario: Reject a non-string catalog value
 - **WHEN** a configuration supplies a non-string project type, API stack, pattern, provider, region, or spec workflow
@@ -301,6 +333,10 @@ The system SHALL validate JSON configuration values by field name and runtime ty
 #### Scenario: Reject an invalid environment list
 - **WHEN** a configuration environment value is not an array of supported environment strings
 - **THEN** Liftoff reports the invalid field and performs no write
+
+#### Scenario: Reject Power Apps API fields
+- **WHEN** a Power Apps configuration contains an API stack, GenAI pattern, cloud, region, frontend, or API environment field
+- **THEN** Liftoff identifies the inapplicable field and performs no probe or write
 
 #### Scenario: Flags override a valid configuration
 - **WHEN** a valid command flag overrides a compatible value from a valid configuration file
@@ -322,7 +358,7 @@ The system SHALL keep project-default acceptance, destination overwrite authoriz
 - **THEN** Liftoff does not run stack package installation in the generated project without the separate interactive confirmation
 
 ### Requirement: Interactive workflows use a consistent visual lifecycle
-The system SHALL present interactive `init` and `migrate` workflows as ordered Liftoff-owned stages using the same responsive terminal presentation as help and status output. It SHALL preserve all existing questions, defaults, disabled choices, consent boundaries, cancellation behavior, and command execution semantics.
+The system SHALL present interactive `init` and `migrate` workflows as ordered Liftoff-owned stages using the same responsive terminal presentation as help and status output. It SHALL preserve all common consent boundaries, cancellation behavior, and command execution semantics while allowing workload-specific questions and a TTY-native coding-agent multi-select.
 
 #### Scenario: Init opens with the Liftoff identity
 - **WHEN** a developer runs interactive `liftoff init`
@@ -334,9 +370,13 @@ The system SHALL present interactive `init` and `migrate` workflows as ordered L
 - **THEN** Liftoff renders the responsive branded identity before scan provenance or migration questions
 
 #### Scenario: Prompt choices use shared presentation
-- **WHEN** Liftoff asks for a project type, pattern, API stack, provider, region, spec framework, coding agents, default agent, frontend, or environments
+- **WHEN** Liftoff asks for a project type, pattern, API stack, provider, region, spec framework, default agent, frontend, environments, or optional plugin
 - **THEN** the prompt, available choices, default, disabled state, and validation feedback use shared prompt and choice-list primitives
-- **AND** the accepted values and defaults remain unchanged
+
+#### Scenario: Coding agents use the TTY multi-select
+- **WHEN** Liftoff asks for coding agents with interactive TTY input and output
+- **THEN** the prompt states that Up and Down navigate, Space toggles, and Enter confirms
+- **AND** it displays selected, configured, detected, and not-observable states without disabling a missing agent
 
 #### Scenario: Plan confirmation is visually distinct
 - **WHEN** interactive initialization or migration reaches plan confirmation
@@ -428,3 +468,45 @@ The system SHALL render every human-readable CLI surface through one shared sema
 #### Scenario: Deterministic snapshots can select every layout
 - **WHEN** terminal tests request rich, compact, plain, no-color, or JSON snapshot mode
 - **THEN** rendering depends only on the supplied stream capabilities and options rather than the host terminal
+
+### Requirement: Interactive agent selection supports keyboard multi-selection
+The system SHALL use a checkbox-style selector when both input and output are real interactive TTYs. Configured integrations SHALL be preselected when present; otherwise observable installed agents SHALL be preselected, falling back to GitHub Copilot when none is observable. At least one agent SHALL be required, and the resolved result SHALL use canonical catalog order.
+
+#### Scenario: Select both agents with Space
+- **WHEN** a developer toggles GitHub Copilot and Claude Code with Space and presses Enter
+- **THEN** the project plan contains both agents in canonical catalog order
+
+#### Scenario: Empty selection is rejected
+- **WHEN** a developer deselects every agent and presses Enter
+- **THEN** the prompt remains active and states that at least one agent is required
+
+#### Scenario: Redirected input uses the line fallback
+- **WHEN** interactive answers come from redirected input or an injected non-TTY stream
+- **THEN** Liftoff uses the deterministic comma-separated selector
+- **AND** existing scripted input and snapshot behavior remain supported
+
+#### Scenario: Agent flag bypasses the selector
+- **WHEN** `--agents` or valid configured agents already provide the selection
+- **THEN** Liftoff does not start either interactive agent selector
+
+#### Scenario: Ctrl+C cancels before writes
+- **WHEN** the developer presses Ctrl+C in the TTY multi-select
+- **THEN** Liftoff restores terminal state, cancels initialization, and makes no destination change
+
+### Requirement: Project-scoped helpers are workload-aware
+The system SHALL derive validation and helper behavior from normalized workload identity. Existing GenAI and standard API projects SHALL retain their Docker Compose and OpenTofu helper contracts. Power Apps code apps SHALL receive root application development guidance and SHALL NOT receive Docker or OpenTofu commands for infrastructure they do not contain.
+
+#### Scenario: Show Power Apps development command
+- **WHEN** a developer runs `liftoff dev` inside a Power Apps project
+- **THEN** Liftoff prints the documented root application development command and dependency prerequisite
+- **AND** it does not print a Docker Compose command
+
+#### Scenario: Power Apps infrastructure is not applicable
+- **WHEN** a developer runs `liftoff infra` inside a Power Apps project
+- **THEN** Liftoff reports that Liftoff-managed OpenTofu infrastructure is not applicable to the Power Platform-hosted workload
+- **AND** it does not print or execute an OpenTofu command
+
+#### Scenario: Validate a Power Apps project
+- **WHEN** a developer runs `liftoff validate` inside a fresh Power Apps project
+- **THEN** validation checks schema-v4 workload identity, named starter artifacts, package metadata, and selected framework markers
+- **AND** it does not require API, Docker, or infrastructure files

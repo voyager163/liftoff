@@ -236,6 +236,68 @@ describe('templates and filesystem', () => {
     expect(tofuReadme).toContain('Persist the deployed images');
   });
 
+  it('renders the complete Power Apps starter at the project root without API infrastructure', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Claims Workspace',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot', 'claude']
+    }, { requireProjectName: true }));
+    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
+    const contentAt = (artifactPath: string) =>
+      artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
+
+    expect(paths).toContain('src/App.tsx');
+    expect(paths).toContain('src/providers/query-provider.tsx');
+    expect(paths).toContain('public/power-apps.svg');
+    expect(paths).toContain('package.json');
+    expect(paths).toContain('package-lock.json');
+    expect(paths).toContain('openspec/config.yaml');
+    expect(paths).toContain('THIRD_PARTY_NOTICES.md');
+    expect(paths).toContain('liftoff.manifest.json');
+    expect(paths).not.toContain('power.config.json');
+    expect(paths).not.toContain('.env');
+    expect(paths).not.toContain('.env.example');
+    expect(paths.some((artifactPath) => artifactPath.startsWith('backend/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('frontend/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('infrastructure/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('environments/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('functions/'))).toBe(false);
+    expect(paths).not.toContain('docker-compose.yml');
+
+    const packageJson = JSON.parse(contentAt('package.json'));
+    const packageLock = JSON.parse(contentAt('package-lock.json'));
+    expect(packageJson.name).toBe('claims-workspace');
+    expect(packageLock.name).toBe('claims-workspace');
+    expect(packageLock.packages[''].name).toBe('claims-workspace');
+    expect(packageJson.scripts.lint).toContain('react-refresh/only-export-components: off');
+    expect(contentAt('src/App.tsx')).not.toContain('Claims Workspace');
+    expect(contentAt('README.md')).toContain('npx --no-install power-apps init');
+    expect(contentAt('README.md')).toContain('GitHub Copilot, Claude Code');
+    expect(contentAt('THIRD_PARTY_NOTICES.md')).toContain(
+      '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+    );
+  });
+
+  it('renders Spec Kit governance for Power Apps without OpenSpec ownership overlap', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Canvas Companion',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'spec-kit',
+      agents: ['copilot']
+    }, { requireProjectName: true }));
+    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
+    const constitution = artifacts.find(
+      (artifact) => artifact.pathParts.join('/') === '.specify/memory/constitution.md'
+    )?.content ?? '';
+
+    expect(paths).toContain('.specify/memory/constitution.md');
+    expect(paths).not.toContain('openspec/config.yaml');
+    expect(constitution).toContain('Power Apps code app');
+    expect(constitution).not.toContain('backend/');
+    expect(constitution).not.toContain('infrastructure/');
+  });
+
   it('escapes project names embedded in generated frontend scripts', () => {
     const artifacts = buildArtifacts(buildProjectPlan({
       projectName: '</script><script>alert("x")</script>',

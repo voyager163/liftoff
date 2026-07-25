@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
+  applyProjectFileTransaction,
   deleteProjectFile,
   loadManifest,
   resolveProjectPath,
@@ -48,12 +49,102 @@ async function manifestRoot(mutate?: (manifest: TestManifest) => void): Promise<
   return root;
 }
 
+async function namedManifestRoot(
+  fixtureName: string,
+  mutate?: (manifest: Record<string, unknown>) => void
+): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-named-'));
+  cleanups.push(root);
+  const parsed = JSON.parse(await readFile(path.join(fixturesDir, fixtureName), 'utf8')) as unknown;
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error(`Fixture ${fixtureName} must contain an object.`);
+  }
+  const manifest = parsed as Record<string, unknown>;
+  mutate?.(manifest);
+  await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return root;
+}
+
 describe('manifest validation', () => {
   it('loads the supported frozen manifest', async () => {
     const root = await manifestRoot();
     const manifest = await loadManifest(root);
-    expect(manifest.project.projectType).toBe('genai');
+    expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.artifacts.length).toBeGreaterThan(0);
+  });
+
+  it.each([
+    ['manifest-v2.json', 'genai'],
+    ['manifest-v3.json', 'standard'],
+    ['manifest-v4-genai.json', 'genai'],
+    ['manifest-v4-standard.json', 'standard'],
+    ['manifest-v4-power-apps.json', 'power-apps-code-app']
+  ])('normalizes %s into workload %s', async (fixtureName, expectedKind) => {
+    const root = await namedManifestRoot(fixtureName);
+    const manifest = await loadManifest(root);
+    expect(manifest.project.workload.kind).toBe(expectedKind);
+  });
+
+  it('loads immutable Power Apps starter identity and plugin preference from v4', async () => {
+    const root = await namedManifestRoot('manifest-v4-power-apps.json');
+    const manifest = await loadManifest(root);
+    expect(manifest.project.workload).toEqual({
+      kind: 'power-apps-code-app',
+      starter: {
+        repository: 'https://github.com/microsoft/PowerAppsCodeApps',
+        path: 'templates/starter',
+        commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+      },
+      codeAppsPlugin: false
+    });
+  });
+
+  it.each([
+    [
+      'unknown manifest version',
+      (manifest: Record<string, unknown>) => {
+        manifest.artifactVersion = 5;
+      },
+      /Unsupported manifest artifactVersion 5/
+    ],
+    [
+      'mutable Power Apps starter ref',
+      (manifest: Record<string, unknown>) => {
+        const project = manifest.project as { workload: { starter: { commit: string } } };
+        project.workload.starter.commit = 'main';
+      },
+      /40-character lowercase Git commit/
+    ],
+    [
+      'missing Power Apps starter path',
+      (manifest: Record<string, unknown>) => {
+        const project = manifest.project as { workload: { starter: Record<string, unknown> } };
+        delete project.workload.starter.path;
+      },
+      /starter\.path must be a non-empty string/
+    ],
+    [
+      'Power Apps API field',
+      (manifest: Record<string, unknown>) => {
+        const project = manifest.project as { workload: Record<string, unknown> };
+        project.workload.apiStack = 'node-fastify';
+      },
+      /inapplicable or unknown field: apiStack/
+    ],
+    [
+      'standard GenAI field',
+      (manifest: Record<string, unknown>) => {
+        const project = manifest.project as { workload: Record<string, unknown> };
+        project.workload.pattern = 'rag';
+      },
+      /inapplicable or unknown field: pattern/
+    ]
+  ])('rejects malformed v4 state: %s', async (_label, mutate, expected) => {
+    const fixture = _label === 'standard GenAI field'
+      ? 'manifest-v4-standard.json'
+      : 'manifest-v4-power-apps.json';
+    const root = await namedManifestRoot(fixture, mutate);
+    await expect(loadManifest(root)).rejects.toThrow(expected);
   });
 
   it.each<Array<[string[], string]>>([
@@ -172,5 +263,31 @@ describe('project-confined paths', () => {
     await writeProjectFile(root, ['README.md'], 'second\n');
     expect(await readFile(path.join(root, 'README.md'), 'utf8')).toBe('second\n');
     expect((await readdir(root)).filter((name) => name.includes('.liftoff-'))).toEqual([]);
+  });
+
+  it('rolls back applied project mutations and created directories after a failure', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-transaction-'));
+    cleanups.push(root);
+    const original = Buffer.from([0, 1, 2, 255]);
+    await writeFile(path.join(root, 'existing.bin'), original);
+    await writeFile(path.join(root, 'remove.txt'), 'restore me\n', 'utf8');
+
+    await expect(applyProjectFileTransaction(root, [
+      { type: 'write', pathParts: ['existing.bin'], content: 'replacement\n' },
+      { type: 'delete', pathParts: ['remove.txt'] },
+      { type: 'write', pathParts: ['generated', 'new.txt'], content: 'new\n' },
+      { type: 'write', pathParts: ['liftoff.manifest.json'], content: '{}\n' }
+    ], {
+      onBeforeMutation: async (_mutation, index) => {
+        if (index === 3) {
+          throw new Error('simulated manifest failure');
+        }
+      }
+    })).rejects.toThrow('All applied changes were rolled back');
+
+    expect(await readFile(path.join(root, 'existing.bin'))).toEqual(original);
+    expect(await readFile(path.join(root, 'remove.txt'), 'utf8')).toBe('restore me\n');
+    await expect(access(path.join(root, 'generated'))).rejects.toThrow();
+    await expect(access(path.join(root, 'liftoff.manifest.json'))).rejects.toThrow();
   });
 });

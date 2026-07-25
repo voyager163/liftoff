@@ -1,11 +1,48 @@
 import path from 'node:path';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
+import { createFixtureProject, runCommand } from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import type {
+  CommandResult,
+  RunCommandOptions
+} from '../src/process-runner.js';
+import type { ExternalCommand } from '../src/types.js';
+
+class FrameworkFailureRunner extends ReadyInitRunner {
+  stagedRoot?: string;
+
+  constructor(
+    private readonly behavior: 'failure' | 'missing-marker',
+    gitRoot: string
+  ) {
+    super({ gitRoot });
+  }
+
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (command.executable !== 'openspec' || command.args[0] !== 'init') {
+      return super.run(command, options);
+    }
+    this.calls.push(command);
+    this.callDetails.push({ command, options });
+    this.stagedRoot = options?.cwd;
+    return {
+      command,
+      displayCommand: [command.executable, ...command.args].join(' '),
+      status: this.behavior === 'failure' ? 1 : 0,
+      signal: null,
+      stdout: '',
+      stderr: this.behavior === 'failure' ? 'initializer failed\n' : '',
+      timedOut: false
+    };
+  }
+}
 
 describe('commands', () => {
   it('parses init positional arguments without treating them as subcommands', () => {
@@ -22,6 +59,19 @@ describe('commands', () => {
 
     expect(parsed.flags.genai).toBe(false);
     expect(parsed.flags.api).toBe('node');
+  });
+
+  it('parses the explicit Power Apps workload and preview plugin preference', () => {
+    const parsed = parseArgs([
+      'init',
+      'field-service',
+      '--type',
+      'power-apps-code-app',
+      '--code-apps-plugin'
+    ]);
+
+    expect(parsed.flags.type).toBe('power-apps-code-app');
+    expect(parsed.flags['code-apps-plugin']).toBe(true);
   });
 
   it('parses multi-agent and independent consent flags strictly', () => {
@@ -202,6 +252,222 @@ describe('commands', () => {
     }
   });
 
+  it('previews a Power Apps code app without API or infrastructure artifacts', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plan-'));
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(
+        parseArgs(['plan', '--type', 'power-apps-code-app']),
+        { cwd: tempRoot, stdout, stderr }
+      );
+
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain('Power Apps code app');
+      expect(stdout.text()).toContain('power-apps-package');
+      expect(stdout.text()).toContain('Project dependencies: npm ci');
+      expect(stdout.text()).toContain('npx --no-install power-apps init');
+      expect(stdout.text()).toContain('Node.js: 22.12.0+ [blocking]');
+      expect(stdout.text()).toContain('Code Apps plugin: Not requested');
+      expect(stdout.text()).not.toContain('docker-compose');
+      expect(stdout.text()).not.toContain('opentofu');
+      expect(stderr.text()).toBe('');
+      expect(await readdir(tempRoot)).toEqual([]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('shows workload-aware Power Apps development and infrastructure helpers', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Helper App',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot']
+    });
+    try {
+      const devOut = new CaptureStream();
+      expect(await runCommand(parseArgs(['dev']), {
+        cwd: root,
+        stdout: devOut,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(devOut.text()).toContain('Dependency prerequisite');
+      expect(devOut.text()).toContain('$ npm ci');
+      expect(devOut.text()).toContain('$ npm run dev');
+      expect(devOut.text()).not.toContain('docker compose');
+
+      const infraOut = new CaptureStream();
+      expect(await runCommand(parseArgs(['infra']), {
+        cwd: root,
+        stdout: infraOut,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(infraOut.text()).toContain('Not applicable');
+      expect(infraOut.text()).toContain('hosted by Power Platform');
+      expect(infraOut.text()).not.toContain('tofu');
+    } finally {
+      await rm(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+
+  it('validates Power Apps identity, named artifacts, package metadata, and framework markers', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Validate App',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot']
+    });
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const lockPath = path.join(root, 'package-lock.json');
+    const markerPath = path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md');
+    try {
+      const ready = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: ready,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(JSON.parse(ready.text())).toMatchObject({
+        schemaVersion: 1,
+        projectRoot: root,
+        valid: true,
+        issues: []
+      });
+
+      const manifestText = await readFile(manifestPath, 'utf8');
+      const manifest = JSON.parse(manifestText);
+      manifest.artifacts = manifest.artifacts.filter(
+        (artifact: { logicalName: string }) => artifact.logicalName !== 'power-apps-package'
+      );
+      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const missingArtifact = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: missingArtifact,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(missingArtifact.text()).issues).toContain(
+        'Missing required Power Apps manifest artifact power-apps-package at package.json'
+      );
+      await writeFile(manifestPath, manifestText);
+
+      const lockText = await readFile(lockPath, 'utf8');
+      const lock = JSON.parse(lockText);
+      lock.name = 'wrong-project';
+      await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+      const badMetadata = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: badMetadata,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(badMetadata.text()).issues).toContain(
+        'package.json and package-lock.json must record the same project name.'
+      );
+      await writeFile(lockPath, lockText);
+
+      await rm(markerPath);
+      const missingMarker = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: missingMarker,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(missingMarker.text()).issues[0]).toContain('Missing framework marker');
+    } finally {
+      await rm(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+
+  it('keeps requested Code Apps plugin setup advisory even with --install-tools', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plugin-'));
+    const stdout = new CaptureStream();
+    const runner = new ReadyInitRunner();
+    try {
+      const code = await runCommand(parseArgs([
+        'init', 'field-service', '--type', 'power-apps-code-app',
+        '--spec', 'openspec', '--agents', 'copilot,claude',
+        '--code-apps-plugin', '--yes', '--install-tools'
+      ]), {
+        cwd: tempRoot,
+        stdout,
+        stderr: new CaptureStream(),
+        runner
+      });
+
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain('Optional Code Apps plugin');
+      expect(stdout.text()).toContain('code-apps-preview@power-platform-skills');
+      expect(stdout.text()).toContain('Do not run `/create-code-app`');
+      expect(stdout.text()).toContain(
+        `${path.sep}field-service" && npm ci`
+      );
+      expect(runner.calls).toContainEqual({
+        executable: 'copilot',
+        args: ['plugin', 'list']
+      });
+      expect(runner.calls).toContainEqual({
+        executable: 'claude',
+        args: ['plugin', 'list', '--json']
+      });
+      expect(runner.calls.some((command) =>
+        command.args[0] === 'plugin' && command.args[1] === 'install'
+      )).toBe(false);
+      expect(runner.calls.some((command) => command.executable === 'curl')).toBe(false);
+      expect(runner.calls.some((command) => command.args[0] === 'ci')).toBe(false);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['failure', 'initializer failed'],
+    ['missing-marker', 'did not produce the tested contract']
+  ] as const)('removes staging and preserves an exact Git root after framework %s', async (
+    behavior,
+    expected
+  ) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-framework-'));
+    const sentinelPath = path.join(root, 'developer.txt');
+    await mkdir(path.join(root, '.git'));
+    await writeFile(sentinelPath, 'preserve\n');
+    const runner = new FrameworkFailureRunner(behavior, root);
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(parseArgs([
+        'init', '--type', 'power-apps-code-app', '--spec', 'openspec',
+        '--agents', 'copilot', '--yes'
+      ]), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr,
+        runner
+      });
+
+      expect(code).toBe(1);
+      expect(stderr.text()).toContain(expected);
+      expect(await readFile(sentinelPath, 'utf8')).toBe('preserve\n');
+      await expect(access(path.join(root, 'package.json'))).rejects.toThrow();
+      expect(runner.stagedRoot).toBeDefined();
+      await expect(access(runner.stagedRoot!)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsupported Power Apps migration before inspecting the source', async () => {
+    const stderr = new CaptureStream();
+    const code = await runCommand(
+      parseArgs(['migrate', 'missing-source', '--type', 'power-apps-code-app', '--yes']),
+      { cwd: process.cwd(), stdout: new CaptureStream(), stderr }
+    );
+
+    expect(code).toBe(1);
+    expect(stderr.text()).toContain('Power Apps code app migration is not supported');
+    expect(stderr.text()).not.toContain('Source project not found');
+  });
+
   it('creates and validates a backend-only project non-interactively', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-create-'));
     const stdout = new CaptureStream();
@@ -337,7 +603,7 @@ describe('commands', () => {
         expect(doctor.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
 
         const manifest = JSON.parse(await readFile(path.join(projectRoot, 'liftoff.manifest.json'), 'utf8'));
-        expect(manifest.project.apiStack).toBe(stackId);
+        expect(manifest.project.workload).toMatchObject({ kind: 'standard', apiStack: stackId });
       }
     } finally {
       if (previousRegistry === undefined) {

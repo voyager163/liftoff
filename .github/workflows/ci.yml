@@ -45,10 +45,32 @@ jobs:
 
       - name: Run Windows initialization safety coverage
         if: runner.os == 'Windows'
-        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/commands.test.ts
+        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts
 
       - name: Run package check
         run: npm run check
 
       - name: Run package smoke test
         run: npm run smoke:package
+
+  power-apps-starter:
+    name: Power Apps starter (${{ matrix.os }}, Node 22)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.12"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Verify starter install, lint, and build
+        run: npm run verify:power-apps-starter

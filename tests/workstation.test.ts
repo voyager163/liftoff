@@ -104,6 +104,37 @@ describe('workstation requirement graph', () => {
     expect(requirements.find((item) => item.id === 'spec-kit')?.exactVersion).toBe('0.14.1');
   });
 
+  it('selects only the Power Apps Node, framework, and chosen agent requirements', async () => {
+    const plan = buildProjectPlan({
+      projectName: 'Code App',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['claude', 'copilot']
+    }, { requireProjectName: true });
+    const requirements = selectWorkstationRequirements(plan);
+
+    expect(requirements.map((item) => item.id)).toEqual([
+      'node',
+      'openspec',
+      'github-copilot',
+      'claude'
+    ]);
+    const node = requirements.find((item) => item.id === 'node')!;
+    expect(node.minimumVersion).toBe('22.12.0');
+    expect(await probeRequirement(
+      node,
+      new FakeRunner(() => ({ stdout: 'v22.11.0' }))
+    )).toMatchObject({ state: 'outdated', detectedVersion: '22.11.0' });
+    expect(await probeRequirement(
+      node,
+      new FakeRunner(() => ({
+        status: null,
+        errorCode: 'ENOENT',
+        errorMessage: 'node not found'
+      }))
+    )).toMatchObject({ state: 'missing' });
+  });
+
   it.each([
     ['1.6.0', 'ready'],
     ['1.5.9', 'outdated'],

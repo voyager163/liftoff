@@ -1,0 +1,188 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > doctor JSON states 1`] = `
+{
+  "layers": [
+    {
+      "checks": [
+        {
+          "id": undefined,
+          "label": "version",
+          "severity": "ok",
+          "state": undefined,
+        },
+      ],
+      "title": "CLI",
+    },
+    {
+      "checks": [
+        {
+          "id": "node",
+          "label": "node",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "openspec",
+          "label": "openspec",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "github-copilot",
+          "label": "github-copilot",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "github-copilot:github-copilot-authentication",
+          "label": "GitHub Copilot authentication",
+          "severity": "warn",
+          "state": "not-observable",
+        },
+        {
+          "id": "claude",
+          "label": "claude",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "claude:claude-code-doctor",
+          "label": "Claude Code doctor",
+          "severity": "ok",
+          "state": "ready",
+        },
+      ],
+      "title": "Environment",
+    },
+    {
+      "checks": [
+        {
+          "id": undefined,
+          "label": "manifest",
+          "severity": "ok",
+          "state": undefined,
+        },
+        {
+          "id": undefined,
+          "label": "version",
+          "severity": "ok",
+          "state": undefined,
+        },
+        {
+          "id": "framework-contract",
+          "label": "framework contract",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "selected-agents",
+          "label": "selected agents",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "framework-markers",
+          "label": "framework markers",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "power-apps-starter",
+          "label": "Power Apps starter",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": "power-apps-project",
+          "label": "Power Apps project",
+          "severity": "ok",
+          "state": "ready",
+        },
+        {
+          "id": undefined,
+          "label": "scaffold drift",
+          "severity": "ok",
+          "state": undefined,
+        },
+      ],
+      "title": "Project",
+    },
+    {
+      "checks": [
+        {
+          "id": "power-apps-cli",
+          "label": "Power Apps CLI",
+          "severity": "skipped",
+          "state": "not-observable",
+        },
+      ],
+      "title": "Runtime",
+    },
+    {
+      "checks": [
+        {
+          "id": "code-apps-plugin:github-copilot",
+          "label": "GitHub Copilot",
+          "severity": "warn",
+          "state": "missing",
+        },
+        {
+          "id": "code-apps-plugin:claude",
+          "label": "Claude Code",
+          "severity": "warn",
+          "state": "missing",
+        },
+      ],
+      "title": "Optional Code Apps plugin",
+    },
+  ],
+  "summary": {
+    "failures": 0,
+    "warnings": 3,
+  },
+}
+`;
+
+exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > doctor human states 1`] = `
+[
+  "[ok] Power Apps starter: https://github.com/microsoft/PowerAppsCodeApps/templates/starter @ 3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+  "[ok] Power Apps project: SDK, Vite plugin, and deterministic lockfile metadata are valid",
+  "Runtime",
+  "[....] Power Apps CLI: project dependencies are not installed - run npm ci, then rerun liftoff doctor",
+  "Optional Code Apps plugin",
+  "[warn] GitHub Copilot: code-apps-preview@power-platform-skills is not listed by GitHub Copilot. - Open GitHub Copilot and add the marketplace with \`/plugin marketplace add microsoft/power-platform-skills\`, then install \`/plugin install code-apps-preview@power-platform-skills\`. Do not run \`/create-code-app\` in this project; use the connector and deployment skills after Liftoff creates the application.",
+  "[warn] Claude Code: code-apps-preview@power-platform-skills is not listed by Claude Code. - Open Claude Code and add the marketplace with \`/plugin marketplace add microsoft/power-platform-skills\`, then install \`/plugin install code-apps-preview@power-platform-skills\`. Do not run \`/create-code-app\` in this project; use the connector and deployment skills after Liftoff creates the application.",
+  "[warn] Doctor summary: 0 failure(s), 3 warning(s)",
+]
+`;
+
+exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > validate malformed states 1`] = `
+{
+  "human": {
+    "code": 1,
+    "stderr": [
+      "[error] Error: package.json and package-lock.json must record the same project name.",
+      "Remedy: Restore invalid generated files or the manifest from version control, then rerun validation.",
+    ],
+    "stdout": [
+      "LIFTOFF / VALIDATE - Validate a generated Liftoff project",
+    ],
+  },
+  "json": {
+    "code": 1,
+    "issues": [
+      "package.json and package-lock.json must record the same project name.",
+    ],
+    "valid": false,
+  },
+}
+`;
+
+exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > validate ready JSON 1`] = `
+{
+  "code": 0,
+  "issues": [],
+  "valid": true,
+}
+`;

@@ -93,8 +93,12 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(3);
-    expect(manifest.project.pattern).toBe('rag');
+    expect(manifest.artifactVersion).toBe(4);
+    expect(manifest.project.workload).toMatchObject({
+      kind: 'genai',
+      apiStack: 'python-fastapi',
+      pattern: 'rag'
+    });
     expect(manifest.framework).toMatchObject({
       state: 'initialized',
       adapter: 'openspec',
@@ -154,8 +158,10 @@ describe('migrate command', () => {
 
       const target = path.join(parent, `${fixture.name}-liftoff`);
       const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-      expect(manifest.project.projectType).toBe('standard');
-      expect(manifest.project.apiStack).toBe(fixture.stack);
+      expect(manifest.project.workload).toMatchObject({
+        kind: 'standard',
+        apiStack: fixture.stack
+      });
       await access(path.join(target, ...fixture.expectedPath));
 
       const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
@@ -205,9 +211,11 @@ describe('migrate command', () => {
     expect(result.code).toBe(0);
     const target = path.join(parent, 'legacy-app-liftoff');
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.project.projectType).toBe('standard');
-    expect(manifest.project.apiStack).toBe('node-fastify');
-    expect(manifest.project.pattern).toBeUndefined();
+    expect(manifest.project.workload).toMatchObject({
+      kind: 'standard',
+      apiStack: 'node-fastify'
+    });
+    expect(manifest.project.workload.pattern).toBeUndefined();
 
     const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
     expect(tasks).not.toContain('backend/orchestration/retrieval');

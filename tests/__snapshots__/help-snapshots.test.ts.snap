@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.4.1 - Initialize a governed application and prepare
+Mission Control Liftoff 0.5.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -131,6 +131,7 @@ Project options
 Option                      Description
 ──────────────────────────  ────────────────────────────────────────────────────
 --project <path>            Project name or project path
+--type <workload>           Project workload type
 --genai / --no-genai        Create a GenAI project; use --no-genai for a
                             standard API
 --api <stack>               Backend API stack
@@ -144,12 +145,16 @@ Option                      Description
 
 Framework options
 ─────────────────
-Option                   Description
-───────────────────────  ───────────────────────────────────────────────────────
---spec <framework>       Spec-driven framework (default: openspec)
---agents <list>          Comma-separated AI coding agents (default: copilot)
---default-agent <agent>  Primary agent for Spec Kit when multiple agents are
-                         selected
+Option                                   Description
+───────────────────────────────────────  ───────────────────────────────────────
+--spec <framework>                       Spec-driven framework (default:
+                                         openspec)
+--agents <list>                          Comma-separated AI coding agents
+                                         (default: copilot)
+--default-agent <agent>                  Primary agent for Spec Kit when
+                                         multiple agents are selected
+--code-apps-plugin /                     Request the Microsoft Code Apps agent
+--no-code-apps-plugin                    plugin (Preview) (default: false)
 
 Consent options
 ───────────────
@@ -243,7 +248,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.4.1 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.5.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -287,6 +292,7 @@ Argument: project-name | Description: Project identity or child directory name
 
 Project options
 Option: --project <path> | Description: Project name or project path
+Option: --type <workload> | Description: Project workload type
 Option: --genai / --no-genai | Description: Create a GenAI project; use --no-genai for a standard API
 Option: --api <stack> | Description: Backend API stack
 Option: --pattern <pattern> | Description: GenAI application pattern
@@ -300,6 +306,7 @@ Framework options
 Option: --spec <framework> | Description: Spec-driven framework (default: openspec)
 Option: --agents <list> | Description: Comma-separated AI coding agents (default: copilot)
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
+Option: --code-apps-plugin / --no-code-apps-plugin | Description: Request the Microsoft Code Apps agent plugin (Preview) (default: false)
 
 Consent options
 Option: --yes | Description: Accept project defaults and plan confirmation
@@ -395,7 +402,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.4.1 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.5.0 - Initialize a governed application and prepare its local      │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -455,6 +462,7 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │ Option                      Description                                                      │
 │ ──────────────────────────  ─────────────────────────────────────────────────────────        │
 │ --project <path>            Project name or project path                                     │
+│ --type <workload>           Project workload type                                            │
 │ --genai / --no-genai        Create a GenAI project; use --no-genai for a standard API        │
 │ --api <stack>               Backend API stack                                                │
 │ --pattern <pattern>         GenAI application pattern                                        │
@@ -465,11 +473,15 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │ --config <file>             Load deterministic project options from JSON                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
-│ Option                   Description                                                         │
-│ ───────────────────────  ────────────────────────────────────────────────────────────        │
-│ --spec <framework>       Spec-driven framework (default: openspec)                           │
-│ --agents <list>          Comma-separated AI coding agents (default: copilot)                 │
-│ --default-agent <agent>  Primary agent for Spec Kit when multiple agents are selected        │
+│ Option                                      Description                                      │
+│ ──────────────────────────────────────────  ──────────────────────────────────────────────── │
+│ --spec <framework>                          Spec-driven framework (default: openspec)        │
+│ --agents <list>                             Comma-separated AI coding agents (default:       │
+│                                             copilot)                                         │
+│ --default-agent <agent>                     Primary agent for Spec Kit when multiple agents  │
+│                                             are selected                                     │
+│ --code-apps-plugin / --no-code-apps-plugin  Request the Microsoft Code Apps agent plugin     │
+│                                             (Preview) (default: false)                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                  Description                                                          │

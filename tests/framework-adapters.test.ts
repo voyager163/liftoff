@@ -124,6 +124,16 @@ function plan(values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}): Pro
   }, { requireProjectName: true });
 }
 
+function powerAppsPlan(
+  values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}
+): ProjectPlan {
+  return buildProjectPlan({
+    projectName: 'Power Apps Framework App',
+    projectType: 'power-apps-code-app',
+    ...values
+  }, { requireProjectName: true });
+}
+
 describe('official framework commands', () => {
   it('maps every selected agent into one pinned OpenSpec core initialization', () => {
     expect(buildOpenSpecInitCommand(plan({ agents: ['claude', 'copilot'] }))).toEqual({
@@ -145,6 +155,37 @@ describe('official framework commands', () => {
       {
         executable: 'specify',
         args: ['integration', 'install', 'copilot', '--force', '--integration-options=--skills']
+      }
+    ]);
+  });
+
+  it('uses the same official multi-agent adapters for the Power Apps workload', () => {
+    expect(buildOpenSpecInitCommand(powerAppsPlan({
+      agents: ['copilot', 'claude']
+    }))).toEqual({
+      executable: 'openspec',
+      args: ['init', '--tools', 'github-copilot,claude', '--profile', 'core']
+    });
+    expect(buildSpecKitInitCommands(powerAppsPlan({
+      specWorkflow: 'spec-kit',
+      agents: ['copilot', 'claude'],
+      defaultAgent: 'copilot'
+    }))).toEqual([
+      {
+        executable: 'specify',
+        args: [
+          'init',
+          '--here',
+          '--force',
+          '--ignore-agent-tools',
+          '--integration',
+          'copilot',
+          '--integration-options=--skills'
+        ]
+      },
+      {
+        executable: 'specify',
+        args: ['integration', 'install', 'claude', '--force']
       }
     ]);
   });
@@ -178,6 +219,37 @@ describe('framework adapter lifecycle', () => {
 
       expect(initialized.commands).toHaveLength(workflow === 'openspec' || agents.length === 1 ? 1 : 2);
       expect(files.filter((file) => file.origin === 'framework').length).toBeGreaterThan(0);
+      expect(await validateFrameworkInstallation(area.root, {
+        workflow,
+        agents: selectedPlan.agents.map((agent) => agent.id),
+        ...(selectedPlan.defaultAgent ? { defaultAgent: selectedPlan.defaultAgent.id } : {})
+      })).toEqual([]);
+    });
+  });
+
+  it.each([
+    ['openspec', ['copilot'], undefined],
+    ['openspec', ['claude'], undefined],
+    ['openspec', ['copilot', 'claude'], undefined],
+    ['spec-kit', ['copilot'], 'copilot'],
+    ['spec-kit', ['claude'], 'claude'],
+    ['spec-kit', ['copilot', 'claude'], 'copilot'],
+    ['spec-kit', ['copilot', 'claude'], 'claude']
+  ] as const)('initializes Power Apps with %s, agents %j, and default %s', async (
+    workflow,
+    agents,
+    defaultAgent
+  ) => {
+    const selectedPlan = powerAppsPlan({
+      specWorkflow: workflow,
+      agents: [...agents],
+      ...(defaultAgent ? { defaultAgent } : {})
+    });
+    const runner = new FrameworkRunner();
+    await withStagingArea(async (area) => {
+      const initialized = await initializeFramework(area, selectedPlan, runner);
+
+      expect(initialized.commands).toHaveLength(workflow === 'openspec' || agents.length === 1 ? 1 : 2);
       expect(await validateFrameworkInstallation(area.root, {
         workflow,
         agents: selectedPlan.agents.map((agent) => agent.id),

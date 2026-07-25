@@ -1,0 +1,520 @@
+{
+  "schemaVersion": 1,
+  "source": {
+    "repository": "https://github.com/microsoft/PowerAppsCodeApps",
+    "path": "templates/starter",
+    "commit": "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+    "archiveSha256": "sha256:2b004d782470e862e6ae858709cd7a083731d21257982192537a1f182946f3f4"
+  },
+  "license": {
+    "spdx": "MIT",
+    "assetPath": "UPSTREAM_LICENSE.txt",
+    "sha256": "sha256:fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"
+  },
+  "lockfile": {
+    "nodeBaseline": "22.x",
+    "npmVersion": "11.7.0",
+    "sha256": "sha256:f1f8a6ecae29d57044070348eebb4aad10eb7b2e7509d4d163e50cd6eba45d3b"
+  },
+  "files": [
+    {
+      "logicalName": "power-apps-gitignore",
+      "pathParts": [
+        ".gitignore"
+      ],
+      "assetPath": "packaged/gitignore",
+      "sha256": "sha256:f609f4bf6cd7129f8dbced50555548654ba81722ef53f4b33ead6ed76d0ac9ac",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-components-json",
+      "pathParts": [
+        "components.json"
+      ],
+      "assetPath": "starter/components.json",
+      "sha256": "sha256:b08f7d9041f8796656aa56722c74d1712c34bf7df4acbf981f973842b09d4424",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-eslint-config-js",
+      "pathParts": [
+        "eslint.config.js"
+      ],
+      "assetPath": "starter/eslint.config.js",
+      "sha256": "sha256:088e9031a1668aacb8163463e8c1238c82f9188075c4216b04a615e7ad4c92d4",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-index-html",
+      "pathParts": [
+        "index.html"
+      ],
+      "assetPath": "starter/index.html",
+      "sha256": "sha256:aa9bb1ea3a07505abf48c5d64df20cb1fb1dc2780f84fd1135829d4ba665754c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-lock",
+      "pathParts": [
+        "package-lock.json"
+      ],
+      "assetPath": "starter/package-lock.json",
+      "sha256": "sha256:f1f8a6ecae29d57044070348eebb4aad10eb7b2e7509d4d163e50cd6eba45d3b",
+      "provenance": "generated-lockfile"
+    },
+    {
+      "logicalName": "power-apps-package",
+      "pathParts": [
+        "package.json"
+      ],
+      "assetPath": "starter/package.json",
+      "sha256": "sha256:7b180a3099802fe38387772498b514e04dec8a6fb69f6ebf98c3f46894b0386e",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-public-power-apps-svg",
+      "pathParts": [
+        "public",
+        "power-apps.svg"
+      ],
+      "assetPath": "starter/public/power-apps.svg",
+      "sha256": "sha256:061f718cd0eedfc04e2a6408b3ef1ea95d6ab979dd6be18d6d5afd9350bd3ab4",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-readme",
+      "pathParts": [
+        "README.md"
+      ],
+      "assetPath": "starter/README.md",
+      "sha256": "sha256:5bfb0804bfd06bcb780983910a5467495d336bf531eda2333349ec07748bb140",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-app-tsx",
+      "pathParts": [
+        "src",
+        "App.tsx"
+      ],
+      "assetPath": "starter/src/App.tsx",
+      "sha256": "sha256:1adef81292bf49a7465d58cd8eec09ffb7a271750264646ddd90345c3ef9536c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-assets-react-svg",
+      "pathParts": [
+        "src",
+        "assets",
+        "react.svg"
+      ],
+      "assetPath": "starter/src/assets/react.svg",
+      "sha256": "sha256:35ef61ed53b323ae94a16a8ec659b3d0af3880698791133f23b084085ab1c2e5",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-mode-toggle-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "mode-toggle.tsx"
+      ],
+      "assetPath": "starter/src/components/mode-toggle.tsx",
+      "sha256": "sha256:fafa0b97d19fa15a53dd6c3c35dcdfe8206f0537b6b8af7021751f71f675372c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-badge-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "badge.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/badge.tsx",
+      "sha256": "sha256:e7455feb113b38c59456ba29a9ec264b5ffa1daae8883866332ad637ffd57c31",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-button-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "button.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/button.tsx",
+      "sha256": "sha256:8116b8529db6dc4e3c04bd5ebdd223a38535dcc737830d12ec4b290433d469d8",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-calendar-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "calendar.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/calendar.tsx",
+      "sha256": "sha256:8954e535da7c6dedf0e162b19ef227efb8b4006c4c4c45716b9b39ea00368431",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-card-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "card.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/card.tsx",
+      "sha256": "sha256:2040cdff27cd1ed771e0ebbd15abcd73d31f2f1e4be6664bd6816fffd2a87476",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-chart-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "chart.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/chart.tsx",
+      "sha256": "sha256:ae171f02a6cc4310fd76ee191e594c4a5c43edfd37e2e25f01a5921350fc6720",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-checkbox-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "checkbox.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/checkbox.tsx",
+      "sha256": "sha256:a8292972a5b81eff164f621ac0bb66f4ed4419d1599e2d4901968e216574677f",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-command-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "command.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/command.tsx",
+      "sha256": "sha256:4fb4f8f95dfbe884ae598661b80e541d62eacdfe2101beab58819ab58b96c2ea",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-dialog-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "dialog.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/dialog.tsx",
+      "sha256": "sha256:eacce7500508317e3b31f6d071ac99a20d7f3f8dfc6119ffa6fe0ee8a194a6e0",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-dropdown-menu-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "dropdown-menu.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/dropdown-menu.tsx",
+      "sha256": "sha256:e1564b0912361081da39e1ee61d5759a75aa4e2e8d28a90f5e229921addb4083",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-input-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "input.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/input.tsx",
+      "sha256": "sha256:56b7fd30208addbcc2468cfda4f5bc0a55342211deaab61ee35b1c352b1622f1",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-label-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "label.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/label.tsx",
+      "sha256": "sha256:70d2b90324e521926a48678ce5329446caaed155c6e5954a454499d5b67a014c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-popover-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "popover.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/popover.tsx",
+      "sha256": "sha256:00702c92103d2bf0752fac030c9fc6f671c55a5732534a6fc306df618f30e652",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-progress-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "progress.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/progress.tsx",
+      "sha256": "sha256:9e36ca3f10bc56b69058d8edd342832b72c8c1b2d36cd142a0decb2445c3b724",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-select-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "select.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/select.tsx",
+      "sha256": "sha256:b21245a179f8a32bc48ac7b32dfce7b1e57e2e5032356595a6fdc4ba05aa5216",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-separator-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "separator.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/separator.tsx",
+      "sha256": "sha256:18e5bf93682eb91864d9a1b8c0a09e46ad15d6ef1ffe97b3ccf9e4697756b6e2",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-skeleton-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "skeleton.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/skeleton.tsx",
+      "sha256": "sha256:f2aea81d8baf2b621945382aabac150e3db40f20d19ac1abea7aff805f1dc33c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-table-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "table.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/table.tsx",
+      "sha256": "sha256:95e3ef5db88b3bbfb68eed12f341fb942e40ca815f4342e1d5dbc8c8d47c783d",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-tabs-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "tabs.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/tabs.tsx",
+      "sha256": "sha256:e8469e599381cf021ce751c27cca3d8cb06440a45665ca9c2ef2efb0acef1fd9",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-textarea-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "textarea.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/textarea.tsx",
+      "sha256": "sha256:de4e9fb0fd8e8ed10ea2e475ffe202a922ffe77e3f3edb2c517b0781447ad1b4",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-components-ui-tooltip-tsx",
+      "pathParts": [
+        "src",
+        "components",
+        "ui",
+        "tooltip.tsx"
+      ],
+      "assetPath": "starter/src/components/ui/tooltip.tsx",
+      "sha256": "sha256:cbc12f4086448f8a307ed5fbb160f79467c84a44c48ca0dbd2c62e39a2db6f5d",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-hooks-use-theme-ts",
+      "pathParts": [
+        "src",
+        "hooks",
+        "use-theme.ts"
+      ],
+      "assetPath": "starter/src/hooks/use-theme.ts",
+      "sha256": "sha256:b5b03760cb043fb0fb0820314da1a5283aabcde1cab16fea2c547aa3dee50dd1",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-index-css",
+      "pathParts": [
+        "src",
+        "index.css"
+      ],
+      "assetPath": "starter/src/index.css",
+      "sha256": "sha256:401c0c516e22d8eea06d410cd8ddca32c6e54c70858fc6c4939eafc03cb84a23",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-lib-utils-ts",
+      "pathParts": [
+        "src",
+        "lib",
+        "utils.ts"
+      ],
+      "assetPath": "starter/src/lib/utils.ts",
+      "sha256": "sha256:7c8c3dfc0cdd370d44932828eb067ef771c8fe7996693221d5d4b90af6d54f2d",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-main-tsx",
+      "pathParts": [
+        "src",
+        "main.tsx"
+      ],
+      "assetPath": "starter/src/main.tsx",
+      "sha256": "sha256:716f174e96ced2b19f2e5f96d460ca60eb119d88e6658892258bc4e4e298f1d4",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-pages-layout-tsx",
+      "pathParts": [
+        "src",
+        "pages",
+        "_layout.tsx"
+      ],
+      "assetPath": "starter/src/pages/_layout.tsx",
+      "sha256": "sha256:dee4d237dce3856825460a51e233c55130d4871916f47fb1c987240fced87592",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-pages-home-tsx",
+      "pathParts": [
+        "src",
+        "pages",
+        "home.tsx"
+      ],
+      "assetPath": "starter/src/pages/home.tsx",
+      "sha256": "sha256:1d67b58be040d1b1d97c3fe24cf910fc342be46414d809b35541f3421788ca01",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-pages-not-found-tsx",
+      "pathParts": [
+        "src",
+        "pages",
+        "not-found.tsx"
+      ],
+      "assetPath": "starter/src/pages/not-found.tsx",
+      "sha256": "sha256:1c52863228c6ec51bcb9a9417f15d414c882cad0322962afc78a37b7b8770170",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-providers-query-provider-tsx",
+      "pathParts": [
+        "src",
+        "providers",
+        "query-provider.tsx"
+      ],
+      "assetPath": "starter/src/providers/query-provider.tsx",
+      "sha256": "sha256:0106d9861ef211fa2bd76dcea6a47a9d8031d63db11b01d30acd5aadee847ee2",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-providers-sonner-provider-tsx",
+      "pathParts": [
+        "src",
+        "providers",
+        "sonner-provider.tsx"
+      ],
+      "assetPath": "starter/src/providers/sonner-provider.tsx",
+      "sha256": "sha256:2538a1f0f93ea8840823ff78077bc1a725a49fe5d09a7e9d5ab2bd7bd7f78a0c",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-providers-theme-provider-tsx",
+      "pathParts": [
+        "src",
+        "providers",
+        "theme-provider.tsx"
+      ],
+      "assetPath": "starter/src/providers/theme-provider.tsx",
+      "sha256": "sha256:4bcdab9ae334d4ef513e24d0443f6280f12de23d0e8b23e533521375e93f6f72",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-src-router-tsx",
+      "pathParts": [
+        "src",
+        "router.tsx"
+      ],
+      "assetPath": "starter/src/router.tsx",
+      "sha256": "sha256:082a2185adf7bf385f26a9bcd3bfd35dac7228dcf2f032ec842cb2e8516d23d0",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-tsconfig-app-json",
+      "pathParts": [
+        "tsconfig.app.json"
+      ],
+      "assetPath": "starter/tsconfig.app.json",
+      "sha256": "sha256:b5753c005cde40fb3ab4b66e39b087694e69f2ac98bbc27e01dcd6f9a076b2b7",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-tsconfig-json",
+      "pathParts": [
+        "tsconfig.json"
+      ],
+      "assetPath": "starter/tsconfig.json",
+      "sha256": "sha256:3a8c0ce7d538f1c330907529a1dc9f666bec3b86f75623e432a3ca81f03b8486",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-tsconfig-node-json",
+      "pathParts": [
+        "tsconfig.node.json"
+      ],
+      "assetPath": "starter/tsconfig.node.json",
+      "sha256": "sha256:c3dd0fb522feba3596713f51b95bd53d781d845d24aedbfa2ac093d8b39c5120",
+      "provenance": "upstream"
+    },
+    {
+      "logicalName": "power-apps-starter-vite-config-ts",
+      "pathParts": [
+        "vite.config.ts"
+      ],
+      "assetPath": "starter/vite.config.ts",
+      "sha256": "sha256:ead4c562a8dc1d5fd1dbd3eff641d60136e8a9321c817eaf78211cc125fde37f",
+      "provenance": "upstream"
+    }
+  ]
+}

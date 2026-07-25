@@ -22,7 +22,8 @@ const matrix: Array<{ key: string; options: ProjectOptions }> = [
   { key: 'standard-go', options: { projectName: 'Standard Go', projectType: 'standard', apiStack: 'go', cloud: 'azure' } },
   { key: 'standard-node+frontend', options: { projectName: 'Standard Node UI', projectType: 'standard', apiStack: 'node', cloud: 'azure', includeFrontend: true } },
   { key: 'rag+frontend', options: { projectName: 'rag Frontend App', pattern: 'rag', cloud: 'azure', includeFrontend: true } },
-  { key: 'workflow+spec-kit', options: { projectName: 'workflow Kit App', pattern: 'workflow', cloud: 'azure', specWorkflow: 'spec-kit' } }
+  { key: 'workflow+spec-kit', options: { projectName: 'workflow Kit App', pattern: 'workflow', cloud: 'azure', specWorkflow: 'spec-kit' } },
+  { key: 'power-apps-code-app', options: { projectName: 'Power Apps Code App', projectType: 'power-apps-code-app' } }
 ];
 
 const renderMatrixEntry = (options: ProjectOptions) =>
@@ -80,9 +81,11 @@ describe('manifest contract', () => {
 
       const manifest = await loadManifest(tempRoot);
       expect(manifest.artifactVersion).toBe(2);
-      expect(manifest.project.projectType).toBe('genai');
-      expect(manifest.project.apiStack).toBe('python-fastapi');
-      expect(manifest.project.pattern).toBe('rag');
+      expect(manifest.project.workload).toMatchObject({
+        kind: 'genai',
+        apiStack: 'python-fastapi',
+        pattern: 'rag'
+      });
       expect(manifest.project.agents).toEqual([]);
       expect(manifest.framework).toEqual({ state: 'legacy', adapter: 'openspec' });
       expect(typeof manifest.liftoffVersion).toBe('string');
@@ -117,7 +120,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('writes schema v3 with the exact tested framework contract', async () => {
+  it('writes schema v4 with the exact tested framework contract', async () => {
     const artifacts = renderMatrixEntry({
       projectName: 'Manifest V3',
       pattern: 'rag',
@@ -127,11 +130,12 @@ describe('manifest contract', () => {
     const manifestArtifact = artifacts.find((artifact) => artifact.logicalName === 'manifest');
     const manifest = JSON.parse(manifestArtifact?.content ?? '{}') as {
       artifactVersion: number;
-      project: { agents: string[] };
+      project: { agents: string[]; workload: { kind: string } };
       framework: { state: string; adapter: string; contractVersion: string };
     };
 
-    expect(manifest.artifactVersion).toBe(3);
+    expect(manifest.artifactVersion).toBe(4);
+    expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
     expect(manifest.framework).toEqual({
       state: 'initialized',
@@ -153,9 +157,42 @@ describe('manifest contract', () => {
       await writeArtifacts(projectRoot, artifacts);
 
       const manifest = await loadManifest(projectRoot);
-      expect(manifest.project.projectType).toBe('standard');
-      expect(manifest.project.apiStack).toBe('node-fastify');
-      expect(manifest.project.pattern).toBeUndefined();
+      expect(manifest.project.workload).toEqual({
+        kind: 'standard',
+        apiStack: 'node-fastify',
+        cloud: 'azure',
+        region: 'eastus',
+        frontend: false,
+        environments: ['dev', 'test', 'prod']
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('records Power Apps starter identity without API fields', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-contract-'));
+    const projectRoot = path.join(tempRoot, 'power-apps-code-app');
+    try {
+      await writeArtifacts(projectRoot, renderMatrixEntry({
+        projectName: 'Power Apps Code App',
+        projectType: 'power-apps-code-app',
+        codeAppsPlugin: true
+      }));
+
+      const manifest = await loadManifest(projectRoot);
+      expect(manifest.project.workload).toEqual({
+        kind: 'power-apps-code-app',
+        starter: {
+          repository: 'https://github.com/microsoft/PowerAppsCodeApps',
+          path: 'templates/starter',
+          commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+        },
+        codeAppsPlugin: true
+      });
+      expect('apiStack' in manifest.project.workload).toBe(false);
+      expect('cloud' in manifest.project.workload).toBe(false);
+      expect('environments' in manifest.project.workload).toBe(false);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

@@ -96,16 +96,47 @@ try {
   assertPackageContains(packResult, 'package.json');
   assertPackageContains(packResult, 'README.md');
   assertPackageContains(packResult, 'LICENSE');
+  for (const documentationPath of [
+    'docs/getting-started.md',
+    'docs/workloads.md',
+    'docs/spec-workflows-and-agents.md',
+    'docs/existing-repositories.md',
+    'docs/prerequisites.md',
+    'docs/safety-and-consent.md',
+    'docs/cli-reference.md',
+    'docs/project-structure.md',
+    'docs/configuration-and-manifests.md',
+    'docs/azure-deployment.md',
+    'docs/troubleshooting.md',
+    'docs/assets/liftoff-terminal.svg'
+  ]) {
+    assertPackageContains(packResult, documentationPath);
+  }
   assertPackageContains(packResult, 'dist/cli.js');
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/genai-templates.js');
+  assertPackageContains(packResult, 'dist/power-apps-assets.js');
+  assertPackageContains(packResult, 'dist/power-apps-templates.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
   assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
   assertPackageContains(packResult, 'assets/locks/frontend/package-lock.json');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/catalog.json');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/UPSTREAM_LICENSE.txt');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/packaged/gitignore');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/package.json');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/package-lock.json');
+  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/src/App.tsx');
+  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/node_modules');
+  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/dist');
+  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/power.config.json');
+  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/.gitignore');
   assertPackageExcludes(packResult, 'src');
   assertPackageExcludes(packResult, 'tests');
   assertPackageExcludes(packResult, 'node_modules');
+  if (packResult.unpackedSize > 5 * 1024 * 1024) {
+    throw new Error(`Packed package unexpectedly exceeds the 5 MiB unpacked-size budget: ${packResult.unpackedSize}`);
+  }
 
   const tarballPath = path.join(packDirectory, packResult.filename);
   const npmEnv = {
@@ -165,6 +196,21 @@ try {
   const afterPlan = await readdir(outsideDirectory);
   if (JSON.stringify(afterPlan) !== JSON.stringify(beforePlan)) {
     throw new Error(`Installed liftoff plan changed the working directory: ${afterPlan.join(', ')}`);
+  }
+
+  const powerAppsPlan = run(process.execPath, [
+    liftoffEntrypoint, 'plan', '--type', 'power-apps-code-app',
+    '--spec', 'openspec', '--agents', 'copilot'
+  ], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (
+    !powerAppsPlan.stdout.includes('Power Apps code app') ||
+    !powerAppsPlan.stdout.includes('power-apps-package') ||
+    powerAppsPlan.stdout.includes('docker-compose')
+  ) {
+    throw new Error('Installed Liftoff did not render the packaged Power Apps workload correctly');
   }
 
   const obsoleteCreate = runFailure(process.execPath, [liftoffEntrypoint, 'create', 'obsolete-app'], {

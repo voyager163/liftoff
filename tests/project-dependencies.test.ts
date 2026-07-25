@@ -6,15 +6,18 @@ import {
   buildDependencySetupPlan,
   dependencyResumeCommand,
   runDependencySetup,
+  verifyPowerAppsPackageMetadata,
   verifyDependencyLockPair,
   type DependencySetupPlan
 } from '../src/project-dependencies.js';
+import { writeArtifacts } from '../src/file-system.js';
 import type {
   CommandResult,
   CommandRunner,
   RunCommandOptions
 } from '../src/process-runner.js';
 import { buildProjectPlan } from '../src/planner.js';
+import { buildArtifacts } from '../src/templates.js';
 import type { ExternalCommand } from '../src/types.js';
 import {
   selectWorkstationRequirements,
@@ -121,6 +124,28 @@ describe('project dependency setup', () => {
       command: { executable: 'go', args: ['mod', 'download'] },
       cwd: path.join(root, 'backend')
     }]);
+
+    const powerApps = buildProjectPlan({
+      projectName: 'code-app',
+      projectType: 'power-apps-code-app'
+    }, { requireProjectName: true });
+    const powerAppsSetup = buildDependencySetupPlan(
+      powerApps,
+      root,
+      readyProbes(powerApps),
+      'win32'
+    );
+    expect(powerAppsSetup).toEqual({
+      commands: [{
+        id: 'power-apps-root',
+        label: 'Install Power Apps code app dependencies',
+        command: { executable: 'npm.cmd', args: ['ci'] },
+        cwd: root
+      }],
+      protectedPaths: [['package.json'], ['package-lock.json']]
+    });
+    expect(dependencyResumeCommand(powerAppsSetup.commands[0]!, 'win32'))
+      .toBe(`cd /d ${JSON.stringify(root)} && npm.cmd ci`);
   });
 
   it('runs commands in order with streaming and the planned working directories', async () => {
@@ -250,6 +275,47 @@ describe('project dependency setup', () => {
         path.resolve('assets', 'locks', directory, 'package.json'),
         path.resolve('assets', 'locks', directory, 'package-lock.json')
       )).toBe(true);
+    }
+  });
+
+  it('validates the Power Apps SDK, Vite plugin, CLI, and lock identity', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-metadata-'));
+    try {
+      const plan = buildProjectPlan({
+        projectName: 'Metadata App',
+        projectType: 'power-apps-code-app'
+      }, { requireProjectName: true });
+      await writeArtifacts(tempRoot, buildArtifacts(plan));
+      expect(await verifyPowerAppsPackageMetadata(tempRoot)).toEqual([]);
+
+      const packagePath = path.join(tempRoot, 'package.json');
+      const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
+        dependencies: Record<string, string>;
+      };
+      delete packageJson.dependencies['@microsoft/power-apps'];
+      await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+      expect(await verifyPowerAppsPackageMetadata(tempRoot)).toContain(
+        'package.json must declare @microsoft/power-apps.'
+      );
+
+      const lockPath = path.join(tempRoot, 'package-lock.json');
+      const lockJson = JSON.parse(await readFile(lockPath, 'utf8')) as {
+        name: string;
+        packages: Record<string, {
+          name?: string;
+          bin?: Record<string, string>;
+        }>;
+      };
+      lockJson.name = 'different-project';
+      delete lockJson.packages['node_modules/@microsoft/power-apps-cli']?.bin?.['power-apps'];
+      await writeFile(lockPath, `${JSON.stringify(lockJson, null, 2)}\n`);
+      const issues = await verifyPowerAppsPackageMetadata(tempRoot);
+      expect(issues).toContain('package.json and package-lock.json must record the same project name.');
+      expect(issues).toContain(
+        'package-lock.json must include the project-local power-apps CLI declaration.'
+      );
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
     }
   });
 });

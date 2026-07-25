@@ -1,13 +1,21 @@
-import { readdir, mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, readdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { Readable } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import { PassThrough, Readable } from 'node:stream';
+import { describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
-import { InteractivePrompter } from '../src/interactive.js';
+import {
+  InteractiveCancelledError,
+  InteractivePrompter,
+  type AgentCheckboxPrompt
+} from '../src/interactive.js';
 import { buildProjectPlan } from '../src/planner.js';
-import { PresentationSession } from '../src/terminal.js';
+import {
+  PresentationSession,
+  stripAnsi,
+  type TerminalLayout
+} from '../src/terminal.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 function scriptedPrompter(answers: string): {
@@ -64,7 +72,7 @@ describe('interactive presentation', () => {
 
   it('handles the standard API branch and accepted default values', async () => {
     const { prompter, output } = scriptedPrompter(
-      'n\n\n1\n\ny\n\n\ndev,prod\n'
+      '2\n\n1\n\ny\n\n\ndev,prod\n'
     );
     try {
       const options = await prompter.promptForInitOptions({ projectName: 'standard-api' });
@@ -85,6 +93,347 @@ describe('interactive presentation', () => {
     } finally {
       prompter.close();
     }
+  });
+
+  it('routes Power Apps directly into the shared workflow and agent tail', async () => {
+    const { prompter, output } = scriptedPrompter('3\n\n1,2\ny\n');
+    try {
+      const options = await prompter.promptForInitOptions({
+        projectName: 'power-workspace'
+      });
+
+      expect(options).toMatchObject({
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec',
+        agents: ['github-copilot', 'claude'],
+        codeAppsPlugin: true
+      });
+      expect(options.apiStack).toBeUndefined();
+      expect(options.pattern).toBeUndefined();
+      expect(options.cloud).toBeUndefined();
+      expect(options.region).toBeUndefined();
+      expect(options.includeFrontend).toBeUndefined();
+      expect(options.environments).toBeUndefined();
+      expect(output.text()).toContain('Power Apps code app');
+      expect(output.text()).toContain('Microsoft Code Apps preview plugin guidance');
+      expect(output.text()).not.toContain('Target cloud');
+    } finally {
+      prompter.close();
+    }
+  });
+
+  it('uses configured markers before detected agents and resumes line input after the checkbox', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-agent-discovery-'));
+    const marker = path.join(
+      root,
+      '.github',
+      'skills',
+      'openspec-apply-change',
+      'SKILL.md'
+    );
+    await mkdir(path.dirname(marker), { recursive: true });
+    await writeFile(marker, 'configured\n');
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      setRawMode: ReturnType<typeof vi.fn>;
+    };
+    input.isTTY = true;
+    input.setRawMode = vi.fn();
+    const output = new CaptureStream() as CaptureStream & { isTTY: boolean };
+    output.isTTY = true;
+    const runner = new ReadyInitRunner({ missing: ['copilot'] });
+    const checkboxPrompt = vi.fn<AgentCheckboxPrompt>(async (config, context) => {
+      expect(context).toMatchObject({ input, output });
+      expect(config.required).toBe(true);
+      expect(config.validate([])).toBe('Select at least one AI coding agent.');
+      expect(config.choices).toEqual([
+        expect.objectContaining({
+          name: 'GitHub Copilot (configured)',
+          value: 'github-copilot',
+          checked: true
+        }),
+        expect.objectContaining({
+          name: 'Claude Code (detected)',
+          value: 'claude',
+          checked: false
+        })
+      ]);
+      setTimeout(() => input.end('n\n'), 0);
+      return ['claude', 'github-copilot'];
+    });
+    const prompter = new InteractivePrompter({
+      input,
+      output,
+      cwd: root,
+      configuredRoot: root,
+      runner,
+      checkboxPrompt
+    });
+    try {
+      setTimeout(() => input.write('configured-app\n'), 0);
+      const options = await prompter.promptForInitOptions({
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec'
+      });
+
+      expect(options.agents).toEqual(['github-copilot', 'claude']);
+      expect(options.codeAppsPlugin).toBe(false);
+      expect(checkboxPrompt).toHaveBeenCalledOnce();
+      expect(runner.calls).toEqual([
+        { executable: 'copilot', args: ['--version'] },
+        { executable: 'claude', args: ['--version'] }
+      ]);
+    } finally {
+      prompter.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not treat general .github or .claude directories as configured integrations', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-agent-unconfigured-'));
+    await mkdir(path.join(root, '.github'), { recursive: true });
+    await mkdir(path.join(root, '.claude'), { recursive: true });
+    await writeFile(path.join(root, '.github', 'README.md'), 'general GitHub configuration\n');
+    await writeFile(path.join(root, '.claude', 'settings.json'), '{}\n');
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      setRawMode: ReturnType<typeof vi.fn>;
+    };
+    input.isTTY = true;
+    input.setRawMode = vi.fn();
+    const output = new CaptureStream() as CaptureStream & { isTTY: boolean };
+    output.isTTY = true;
+    const runner = new ReadyInitRunner({ missing: ['copilot', 'claude'] });
+    const checkboxPrompt = vi.fn<AgentCheckboxPrompt>(async (config) => {
+      expect(config.choices).toEqual([
+        expect.objectContaining({
+          name: 'GitHub Copilot (not observable)',
+          value: 'github-copilot',
+          checked: true
+        }),
+        expect.objectContaining({
+          name: 'Claude Code (not observable)',
+          value: 'claude',
+          checked: false
+        })
+      ]);
+      setTimeout(() => input.end('n\n'), 0);
+      return ['github-copilot'];
+    });
+    const prompter = new InteractivePrompter({
+      input,
+      output,
+      cwd: root,
+      configuredRoot: root,
+      runner,
+      checkboxPrompt
+    });
+    try {
+      setTimeout(() => input.write('unconfigured-app\n'), 0);
+      const options = await prompter.promptForInitOptions({
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec'
+      });
+
+      expect(options.agents).toEqual(['github-copilot']);
+      expect(checkboxPrompt).toHaveBeenCalledOnce();
+    } finally {
+      prompter.close();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('bypasses discovery and selectors when agents are already configured', async () => {
+    const runner = new ReadyInitRunner();
+    const checkboxPrompt = vi.fn<AgentCheckboxPrompt>();
+    const prompter = new InteractivePrompter({
+      input: Readable.from([]),
+      output: new CaptureStream(),
+      runner,
+      checkboxPrompt
+    });
+    try {
+      const options = await prompter.promptForInitOptions({
+        projectName: 'configured-options',
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec',
+        agents: ['claude'],
+        codeAppsPlugin: false
+      });
+
+      expect(options.agents).toEqual(['claude']);
+      expect(runner.calls).toEqual([]);
+      expect(checkboxPrompt).not.toHaveBeenCalled();
+    } finally {
+      prompter.close();
+    }
+  });
+
+  it('normalizes checkbox cancellation and line-input EOF', async () => {
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      setRawMode: ReturnType<typeof vi.fn>;
+    };
+    input.isTTY = true;
+    input.setRawMode = vi.fn();
+    const output = new CaptureStream() as CaptureStream & { isTTY: boolean };
+    output.isTTY = true;
+    const exitError = new Error('User force closed the prompt');
+    exitError.name = 'ExitPromptError';
+    const checkboxPrompt: AgentCheckboxPrompt = async () => {
+      throw exitError;
+    };
+    const ttyPrompter = new InteractivePrompter({
+      input,
+      output,
+      checkboxPrompt
+    });
+    await expect(ttyPrompter.promptForInitOptions({
+      projectName: 'cancelled-app',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec'
+    })).rejects.toBeInstanceOf(InteractiveCancelledError);
+    ttyPrompter.close();
+
+    const eofPrompter = new InteractivePrompter({
+      input: Readable.from([]),
+      output: new CaptureStream()
+    });
+    await expect(eofPrompter.promptForInitOptions({}))
+      .rejects.toThrow(/Interactive input closed before answering: Project name/);
+    eofPrompter.close();
+  });
+
+  it('accepts Windows Terminal navigation, Space, and Enter through the real checkbox', async () => {
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      setRawMode: ReturnType<typeof vi.fn>;
+    };
+    input.isTTY = true;
+    input.setRawMode = vi.fn();
+    const output = new CaptureStream() as CaptureStream & {
+      isTTY: boolean;
+      columns: number;
+    };
+    output.isTTY = true;
+    output.columns = 100;
+    const prompter = new InteractivePrompter({ input, output });
+    try {
+      const pending = prompter.promptForInitOptions({
+        projectName: 'keyboard-app',
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec',
+        codeAppsPlugin: false
+      });
+      setTimeout(() => input.write('\u001B[B \r'), 50);
+
+      const options = await pending;
+
+      expect(options.agents).toEqual(['github-copilot', 'claude']);
+      expect(input.setRawMode).toHaveBeenCalledWith(true);
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false);
+      expect(output.text()).toContain('Select one or more AI coding agents');
+    } finally {
+      input.end();
+      prompter.close();
+    }
+  });
+
+  it('restores raw mode when Ctrl+C cancels the real checkbox', async () => {
+    const input = new PassThrough() as PassThrough & {
+      isTTY: boolean;
+      setRawMode: ReturnType<typeof vi.fn>;
+    };
+    input.isTTY = true;
+    input.setRawMode = vi.fn();
+    const output = new CaptureStream() as CaptureStream & {
+      isTTY: boolean;
+      columns: number;
+    };
+    output.isTTY = true;
+    output.columns = 100;
+    const prompter = new InteractivePrompter({ input, output });
+    try {
+      const pending = prompter.promptForInitOptions({
+        projectName: 'cancel-keyboard-app',
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec',
+        codeAppsPlugin: false
+      });
+      setTimeout(() => input.write('\u0003'), 50);
+
+      await expect(pending).rejects.toBeInstanceOf(InteractiveCancelledError);
+      expect(input.setRawMode).toHaveBeenLastCalledWith(false);
+    } finally {
+      input.end();
+      prompter.close();
+    }
+  });
+
+  it('keeps fallback agent selection stable across terminal layouts and NO_COLOR', async () => {
+    const render = async (layout: TerminalLayout, noColor = false) => {
+      const output = new CaptureStream();
+      const presentation = new PresentationSession({
+        stdout: output,
+        stderr: output,
+        layout,
+        columns: layout === 'full' ? 100 : 72,
+        snapshot: !noColor,
+        color: true,
+        env: noColor ? { NO_COLOR: '1' } : {}
+      });
+      const prompter = new InteractivePrompter({
+        input: Readable.from(['\n']),
+        output,
+        presentation
+      });
+      try {
+        await prompter.promptForInitOptions({
+          projectName: 'layout-app',
+          projectType: 'power-apps-code-app',
+          specWorkflow: 'openspec',
+          codeAppsPlugin: false
+        });
+        return output.text();
+      } finally {
+        prompter.close();
+      }
+    };
+
+    const snapshots = {
+      rich: await render('full'),
+      compact: await render('compact'),
+      plain: await render('plain'),
+      noColor: await render('compact', true)
+    };
+
+    expect(snapshots).toMatchInlineSnapshot(`
+      {
+        "compact": "Select one or more AI coding agents
+      ───────────────────────────────────
+      ● GitHub Copilot (not observable) (github-copilot) [default]
+      2. Claude Code (not observable) (claude)
+
+      ? Select comma-separated options [1]: ",
+        "noColor": "Select one or more AI coding agents
+      ───────────────────────────────────
+      ● GitHub Copilot (not observable) (github-copilot) [default]
+      2. Claude Code (not observable) (claude)
+
+      ? Select comma-separated options [1]: ",
+        "plain": "Select one or more AI coding agents
+      ● GitHub Copilot (not observable) (github-copilot) [default]
+      2. Claude Code (not observable) (claude)
+
+      ? Select comma-separated options [1]: ",
+        "rich": "┌─ Select one or more AI coding agents ────────────────────────────────────────────────────────┐
+      │ ● 1. GitHub Copilot (not observable) (github-copilot) [default]                              │
+      │ ○ 2. Claude Code (not observable) (claude)                                                   │
+      └──────────────────────────────────────────────────────────────────────────────────────────────┘
+      ? Select comma-separated options [1]: ",
+      }
+    `);
+    expect(stripAnsi(snapshots.noColor)).toBe(snapshots.noColor);
   });
 
   it('renders independent plan, file, machine-tool, and dependency consent details', async () => {
@@ -178,6 +527,28 @@ describe('interactive presentation', () => {
 
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Liftoff - Initialize the project');
+      expect(stdout.text()).toContain('[info] Cancelled');
+      expect(await readdir(root)).toEqual([]);
+      expect(stderr.text()).toBe('');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('treats interactive EOF as cancellation before destination writes', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-interactive-eof-'));
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(parseArgs(['init']), {
+        cwd: root,
+        stdin: Readable.from([]),
+        stdout,
+        stderr,
+        runner: new ReadyInitRunner()
+      });
+
+      expect(code).toBe(0);
       expect(stdout.text()).toContain('[info] Cancelled');
       expect(await readdir(root)).toEqual([]);
       expect(stderr.text()).toBe('');

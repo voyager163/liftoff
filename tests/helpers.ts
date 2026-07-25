@@ -69,7 +69,7 @@ export class ReadyInitRunner implements CommandRunner {
       }
 
       const key = `${command.executable} ${command.args.join(' ')}`;
-      if (key.startsWith('node ')) return this.result(command, { stdout: 'v20.19.0\n' });
+      if (key.startsWith('node ')) return this.result(command, { stdout: 'v22.12.0\n' });
       if (key.startsWith('python3 ') || key.startsWith('python ') || key.startsWith('py ')) {
         return this.result(command, { stdout: 'Python 3.12.0\n' });
       }

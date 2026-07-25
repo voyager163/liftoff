@@ -1,0 +1,28 @@
+{
+  "artifactVersion": 4,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.4.1",
+  "project": {
+    "name": "Frozen V4 Power Apps Fixture",
+    "workload": {
+      "kind": "power-apps-code-app",
+      "starter": {
+        "repository": "https://github.com/microsoft/PowerAppsCodeApps",
+        "path": "templates/starter",
+        "commit": "3438c352483e40982f6c5c0fc36fd71f8e7adbbb"
+      },
+      "codeAppsPlugin": false
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot",
+      "claude"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.6.0"
+  },
+  "artifacts": []
+}

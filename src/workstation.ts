@@ -48,10 +48,15 @@ export interface RequirementProbeResult {
 }
 
 export interface WorkstationRequirementSelection {
-  apiStack: { id: ApiStackId };
+  workload:
+    | {
+        kind: 'genai' | 'standard';
+        apiStack: { id: ApiStackId };
+        provider: { id: ProviderId };
+      }
+    | { kind: 'power-apps-code-app' };
   specWorkflow: { id: SpecWorkflowId };
   framework: { version: string };
-  provider: { id: ProviderId };
   agents: Array<{ id: CodingAgentId; label: string }>;
 }
 
@@ -154,11 +159,24 @@ export function selectWorkstationRequirements(
     });
   };
 
-  add('node', 'Liftoff runtime', { minimumVersion: '20.19.0' });
-  if (plan.apiStack.id === 'python-fastapi') {
-    add('python', 'selected Python API stack', { minimumVersion: '3.12.0' });
-  } else if (plan.apiStack.id === 'go-huma') {
-    add('go', 'selected Go API stack', { minimumVersion: '1.23.0' });
+  const workload = typeof plan.workload === 'string'
+    ? plan.workload === 'power-apps-code-app'
+      ? { kind: plan.workload } as const
+      : {
+          kind: plan.workload,
+          apiStack: { id: plan.apiStack.id },
+          provider: { id: plan.provider.id }
+        }
+    : plan.workload;
+  add('node', 'Liftoff runtime', {
+    minimumVersion: workload.kind === 'power-apps-code-app' ? '22.12.0' : '20.19.0'
+  });
+  if (workload.kind !== 'power-apps-code-app') {
+    if (workload.apiStack.id === 'python-fastapi') {
+      add('python', 'selected Python API stack', { minimumVersion: '3.12.0' });
+    } else if (workload.apiStack.id === 'go-huma') {
+      add('go', 'selected Go API stack', { minimumVersion: '1.23.0' });
+    }
   }
 
   if (plan.specWorkflow.id === 'openspec') {
@@ -174,10 +192,12 @@ export function selectWorkstationRequirements(
     }
   }
 
-  add('docker', 'generated local development stack');
-  add('opentofu', 'generated infrastructure');
-  if (plan.provider.id === 'azure') {
-    add('azure-cli', 'selected Azure cloud');
+  if (workload.kind !== 'power-apps-code-app') {
+    add('docker', 'generated local development stack');
+    add('opentofu', 'generated infrastructure');
+    if (workload.provider.id === 'azure') {
+      add('azure-cli', 'selected Azure cloud');
+    }
   }
   for (const agent of plan.agents) {
     add(agent.id, `selected ${agent.label} coding agent`);

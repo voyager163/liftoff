@@ -31,8 +31,13 @@ describe('release workflow', () => {
   it('keeps package and smoke verification on Linux, macOS, and Windows CI', async () => {
     const workflow = await readFile(path.join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8');
 
-    expect(workflow).toContain('os: [ubuntu-latest, macos-latest, windows-latest]');
+    expect(workflow.match(/os: \[ubuntu-latest, macos-latest, windows-latest]/g)).toHaveLength(2);
     expect(workflow).toContain('run: npm run check');
     expect(workflow).toContain('run: npm run smoke:package');
+    expect(workflow).toContain('tests/interactive.test.ts');
+    expect(workflow).toContain('tests/project-dependencies.test.ts');
+    expect(workflow).toContain('tests/power-apps-assets.test.ts');
+    expect(workflow).toContain('node-version: "22.12"');
+    expect(workflow).toContain('run: npm run verify:power-apps-starter');
   });
 });

@@ -1,0 +1,33 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="560" viewBox="0 0 1000 560" role="img" aria-labelledby="title description">
+  <title id="title">Liftoff interactive initialization</title>
+  <desc id="description">A terminal preview showing workload, spec workflow, coding agent, readiness, and safe completion choices in Liftoff.</desc>
+  <rect width="1000" height="560" rx="18" fill="#0d1117"/>
+  <rect x="1" y="1" width="998" height="558" rx="17" fill="none" stroke="#6e7681" stroke-width="2"/>
+  <circle cx="32" cy="30" r="7" fill="#ff7b72"/>
+  <circle cx="56" cy="30" r="7" fill="#d29922"/>
+  <circle cx="80" cy="30" r="7" fill="#3fb950"/>
+  <text x="116" y="38" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17">liftoff init</text>
+
+  <text x="42" y="94" fill="#58a6ff" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="32" font-weight="700" letter-spacing="5">LIFTOFF</text>
+  <text x="42" y="122" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">Project workstation and scaffold initializer</text>
+
+  <rect x="32" y="146" width="936" height="92" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="52" y="176" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700">Choose workload</text>
+  <text x="52" y="207" fill="#8c959f" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[ ] GenAI application    [ ] API application</text>
+  <text x="520" y="207" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[x] Power Apps code app</text>
+
+  <rect x="32" y="250" width="936" height="92" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="52" y="280" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700">Choose spec workflow</text>
+  <text x="52" y="311" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">(*) OpenSpec</text>
+  <text x="235" y="311" fill="#8c959f" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">( ) Spec Kit</text>
+
+  <rect x="32" y="354" width="936" height="92" rx="8" fill="#161b22" stroke="#30363d"/>
+  <text x="52" y="384" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700">Select coding agents</text>
+  <text x="273" y="384" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="14">Space toggles, Enter confirms</text>
+  <text x="52" y="415" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[x] GitHub Copilot</text>
+  <text x="322" y="415" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[x] Claude Code</text>
+
+  <text x="42" y="486" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17">PASS  Workstation and framework ready</text>
+  <text x="42" y="516" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17">DONE  Initialized the current Git root safely</text>
+  <text x="42" y="544" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="15">Next: liftoff validate &amp;&amp; liftoff doctor</text>
+</svg>

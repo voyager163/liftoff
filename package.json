@@ -1,7 +1,7 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.4.1",
-  "description": "Mission Control Liftoff CLI for scaffolding governed GenAI and standard API applications.",
+  "version": "0.5.0",
+  "description": "Interactive CLI for governed GenAI, API, and Power Apps code app projects.",
   "type": "module",
   "license": "GPL-3.0-only",
   "homepage": "https://github.com/voyager163/liftoff#readme",
@@ -21,6 +21,7 @@
     "fastify",
     "golang",
     "pydanticai",
+    "power-apps",
     "opentofu",
     "openspec",
     "mission-control"
@@ -31,6 +32,8 @@
   "files": [
     "dist",
     "assets/locks",
+    "assets/power-apps-code-app",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -41,7 +44,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "refresh:power-apps-starter": "node scripts/refresh-power-apps-starter.mjs",
     "smoke:package": "npm run build && node scripts/package-smoke-test.mjs",
+    "verify:power-apps-starter": "npm run build && node scripts/verify-power-apps-starter.mjs",
     "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
     "verify:published": "npm run build && node scripts/verify-published-package.mjs",
     "check": "npm run build && npm test"
@@ -56,6 +61,7 @@
     "vitest": "^4.1.9"
   },
   "dependencies": {
+    "@inquirer/prompts": "^7.10.1",
     "cross-spawn": "^7.0.6",
     "picocolors": "^1.1.1"
   }

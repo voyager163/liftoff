@@ -16,6 +16,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { CommandResult, CommandRunner } from '../src/process-runner.js';
 import type { ExternalCommand, GeneratedArtifact } from '../src/types.js';
+import { buildProjectPlan } from '../src/planner.js';
+import { buildArtifacts } from '../src/templates.js';
 import {
   applyMergePreflight,
   assertSafeInitTarget,
@@ -91,6 +93,106 @@ describe('Git-aware init targeting', () => {
     expect(await resolveInitTarget(nested, 'new-app', new GitRunner())).toEqual({
       root: path.join(canonicalNested, 'new-app'),
       mode: 'named-child'
+    });
+  });
+
+  describe('Power Apps init staging', () => {
+    const powerAppsArtifacts = () => buildArtifacts(buildProjectPlan({
+      projectName: 'Power Workspace',
+      projectType: 'power-apps-code-app',
+      agents: ['copilot']
+    }, { requireProjectName: true }));
+
+    it('creates a complete named child outside an exact Git root', async () => {
+      const parent = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-child-'));
+      cleanups.push(parent);
+      const target = await resolveInitTarget(parent, 'power-workspace', new GitRunner());
+
+      expect(target).toMatchObject({
+        root: path.join(await realpath(parent), 'power-workspace'),
+        mode: 'named-child'
+      });
+      await assertSafeInitTarget(target, parent);
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        const preflight = await authorizeMergePreflight(
+          await buildMergePreflight(area, target.root),
+          false
+        );
+        await applyMergePreflight(preflight!, { requireEmptyTarget: true });
+      });
+
+      expect(await readFile(path.join(target.root, 'package.json'), 'utf8')).toContain(
+        '"name": "power-workspace"'
+      );
+      expect(await readFile(path.join(target.root, 'src', 'App.tsx'), 'utf8')).toContain(
+        'RouterProvider'
+      );
+      await expect(access(path.join(target.root, 'power-workspace'))).rejects.toThrow();
+    });
+
+    it('requires one overwrite decision and stages directly into an exact Git root', async () => {
+      const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-root-'));
+      cleanups.push(root);
+      await writeFile(path.join(root, 'README.md'), 'existing readme\n');
+      await writeFile(path.join(root, 'keep.txt'), 'preserve\n');
+      const target = await resolveInitTarget(root, 'power-workspace', new GitRunner(root));
+
+      expect(target).toMatchObject({ root: await realpath(root), mode: 'in-place' });
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        const preflight = await buildMergePreflight(area, target.root);
+        const decline = vi.fn(async () => false);
+        expect(await authorizeMergePreflight(preflight, false, decline)).toBeUndefined();
+        expect(decline).toHaveBeenCalledWith(['README.md']);
+        await expect(access(path.join(root, 'package.json'))).rejects.toThrow();
+
+        const confirm = vi.fn(async () => true);
+        const authorized = await authorizeMergePreflight(preflight, false, confirm);
+        await applyMergePreflight(authorized!);
+        expect(confirm).toHaveBeenCalledOnce();
+      });
+
+      expect(await readFile(path.join(root, 'README.md'), 'utf8')).toContain(
+        'Power Apps code app'
+      );
+      expect(await readFile(path.join(root, 'keep.txt'), 'utf8')).toBe('preserve\n');
+      await expect(access(path.join(root, 'power-workspace'))).rejects.toThrow();
+    });
+
+    it('blocks structural conflicts and rolls back a failed Power Apps merge', async () => {
+      const blockedRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-blocked-'));
+      cleanups.push(blockedRoot);
+      await mkdir(path.join(blockedRoot, 'package.json'));
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        const preflight = await buildMergePreflight(area, blockedRoot);
+        await expect(authorizeMergePreflight(preflight, true)).rejects.toThrow(
+          /structural or symlink conflicts/
+        );
+      });
+
+      const rollbackRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-rollback-'));
+      cleanups.push(rollbackRoot);
+      await writeFile(path.join(rollbackRoot, 'README.md'), 'original\n');
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        const preflight = await authorizeMergePreflight(
+          await buildMergePreflight(area, rollbackRoot),
+          true
+        );
+        await expect(applyMergePreflight(preflight!, {
+          onBeforeMutation: async (entry) => {
+            if (entry.relativePath === 'src/App.tsx') {
+              throw new Error('injected Power Apps failure');
+            }
+          }
+        })).rejects.toBeInstanceOf(MergeApplyError);
+      });
+
+      expect(await readFile(path.join(rollbackRoot, 'README.md'), 'utf8')).toBe('original\n');
+      await expect(access(path.join(rollbackRoot, 'package.json'))).rejects.toThrow();
+      await expect(access(path.join(rollbackRoot, 'liftoff.manifest.json'))).rejects.toThrow();
     });
   });
 

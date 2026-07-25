@@ -32,12 +32,16 @@ import {
   providers,
   searchRegions
 } from './catalogs.js';
+import {
+  probeCodeAppsPlugin,
+  type CodeAppsPluginProbe
+} from './code-apps-plugin.js';
 import { initializeFramework } from './framework-adapters.js';
 import { validateFrameworkInstallation } from './framework-validation.js';
 import {
   artifactPath,
+  applyProjectFileTransaction,
   assertNewOrEmptyDirectory,
-  deleteProjectFile,
   findProjectRoot,
   loadManifest,
   manifestDisplayPath,
@@ -45,9 +49,11 @@ import {
   resolveTargetRoot,
   validateGeneratedProject,
   writeArtifacts,
-  writeProjectFile
+  writeProjectFile,
+  type ProjectFileMutation
 } from './file-system.js';
 import {
+  InteractiveCancelledError,
   InteractivePrompter
 } from './interactive.js';
 import {
@@ -72,7 +78,12 @@ import {
   PlanValidationError,
   projectPlanEntries
 } from './planner.js';
-import { buildDependencySetupPlan, runDependencySetup } from './project-dependencies.js';
+import {
+  buildDependencySetupPlan,
+  dependencyResumeCommand,
+  runDependencySetup,
+  verifyPowerAppsPackageMetadata
+} from './project-dependencies.js';
 import { formatCommand, NodeCommandRunner, type CommandRunner } from './process-runner.js';
 import { scanDefaults, scanLegacyProject } from './scan.js';
 import { hasDrift, reconcileProject } from './reconcile.js';
@@ -85,6 +96,7 @@ import {
 } from './terminal.js';
 import type {
   ApiStackId,
+  ApiProjectPlan,
   GeneratedArtifact,
   LiftoffManifest,
   ParsedArgs,
@@ -121,7 +133,11 @@ interface ExecutionContext extends CommandContext {
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
-  const jsonMode = !helpRequested && (parsed.command === 'doctor' || parsed.command === 'update') &&
+  const jsonMode = !helpRequested && (
+    parsed.command === 'doctor' ||
+    parsed.command === 'update' ||
+    parsed.command === 'validate'
+  ) &&
     readBooleanFlag(parsed.flags, 'json') === true;
   const presentation = new PresentationSession({
     stdout: context.stdout,
@@ -178,6 +194,10 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return 1;
     }
   } catch (error) {
+    if (error instanceof InteractiveCancelledError) {
+      presentation.cancellation('Interactive operation stopped.');
+      return 0;
+    }
     if (error instanceof PlanValidationError) {
       presentation.error(
         error.issues.join('\n'),
@@ -205,7 +225,10 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
     ? new InteractivePrompter({
         input: context.stdin,
         output: context.stdout,
-        presentation
+        presentation,
+        cwd: context.cwd,
+        configuredRoot: git.exact ? git.root : undefined,
+        runner
       })
     : undefined;
   try {
@@ -213,12 +236,23 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
     if (needsPrompts) {
       presentation.stage('Configure project');
     }
-    const options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
-    const plan = buildProjectPlan(options, { requireProjectName: true });
-    presentation.stage('Review resolved plan');
-    const confirmed = options.yes === true
-      ? (presentation.definitions('Resolved project plan', projectPlanEntries(plan)), true)
-      : await prompter!.confirmPlan(plan);
+    let options: ProjectOptions;
+    let plan: ProjectPlan;
+    let confirmed: boolean;
+    try {
+      options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
+      plan = buildProjectPlan(options, { requireProjectName: true });
+      presentation.stage('Review resolved plan');
+      confirmed = options.yes === true
+        ? (presentation.definitions('Resolved project plan', projectPlanEntries(plan)), true)
+        : await prompter!.confirmPlan(plan);
+    } catch (error) {
+      if (error instanceof InteractiveCancelledError) {
+        presentation.cancellation('Initialization stopped; no destination files were changed.');
+        return 0;
+      }
+      throw error;
+    }
     if (!confirmed) {
       presentation.cancellation('Initialization stopped; no destination files were changed.');
       return 0;
@@ -315,6 +349,9 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
       `${plan.specWorkflow.label} ${plan.framework.version}`,
       ...plan.agents.map((agent) =>
         `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
+      ),
+      ...readiness.pluginProbes.map((probe) =>
+        `Code Apps plugin for ${probe.agent.label}: ${probe.state}`
       )
     ]);
     if (readiness.deferred.length > 0) {
@@ -375,6 +412,13 @@ async function planCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
   return 0;
 }
 
+interface WorkstationReadinessResult {
+  ready: boolean;
+  deferred: string[];
+  probes: RequirementProbeResult[];
+  pluginProbes: CodeAppsPluginProbe[];
+}
+
 async function ensureWorkstationReady(
   plan: ProjectPlan,
   options: ProjectOptions,
@@ -384,9 +428,15 @@ async function ensureWorkstationReady(
   prompter?: InteractivePrompter,
   resumeInvocation = 'liftoff init',
   commandCwd?: string
-): Promise<{ ready: boolean; deferred: string[]; probes: RequirementProbeResult[] }> {
+): Promise<WorkstationReadinessResult> {
   const requirements = selectWorkstationRequirements(plan);
-  let probes = await probeWorkstation(requirements, runner, { cwd: commandCwd });
+  const [initialProbes, pluginProbes] = await Promise.all([
+    probeWorkstation(requirements, runner, { cwd: commandCwd }),
+    plan.workload === 'power-apps-code-app' && plan.codeAppsPlugin
+      ? probeCodeAppsPlugin(plan.agents, runner, commandCwd)
+      : Promise.resolve([])
+  ]);
+  let probes = initialProbes;
   presentation.table(
     'Workstation readiness',
     ['Requirement', 'Level', 'State', 'Detail'],
@@ -397,6 +447,13 @@ async function ensureWorkstationReady(
       probe.detail
     ])
   );
+  if (pluginProbes.length > 0) {
+    presentation.table(
+      'Optional Code Apps plugin',
+      ['Agent', 'State', 'Detail'],
+      pluginProbes.map((probe) => [probe.agent.label, probe.state, probe.detail])
+    );
+  }
 
   const actionable = probes.filter((probe) => probe.state !== 'ready');
   const host = await detectHostEnvironment();
@@ -498,7 +555,7 @@ async function ensureWorkstationReady(
         ? `Open a new terminal if PATH changed, then rerun \`${resumeInvocation}\` with the same project options.`
         : `Resume with \`${resumeInvocation} --install-tools\` plus the same project options after reviewing the commands.`
     );
-    return { ready: false, deferred: [], probes };
+    return { ready: false, deferred: [], probes, pluginProbes };
   }
 
   const deferred = [
@@ -511,9 +568,14 @@ async function ensureWorkstationReady(
       .filter((notice) => notice.state !== 'ready')
       .map((notice) =>
         `${notice.label}: ${notice.detail}${notice.remedy ? ` Remedy: ${notice.remedy}` : ''}`
-      ))
+      )),
+    ...pluginProbes
+      .filter((probe) => probe.state !== 'ready')
+      .map((probe) =>
+        `${probe.agent.label} Code Apps plugin: ${probe.detail}${probe.remedy ? ` Remedy: ${probe.remedy}` : ''}`
+      )
   ];
-  return { ready: true, deferred, probes };
+  return { ready: true, deferred, probes, pluginProbes };
 }
 
 async function handleProjectDependencies(
@@ -539,9 +601,20 @@ async function handleProjectDependencies(
     return {
       success: true,
       deferred: dependencyPlan.commands.map((command) =>
-        `${command.label}: ${command.cwd} -> ${formatCommand(command.command)}`
+        `${command.label}: ${dependencyResumeCommand(command)}`
       )
     };
+  }
+
+  if (plan.workload === 'power-apps-code-app') {
+    const issues = await verifyPowerAppsPackageMetadata(projectRoot);
+    if (issues.length > 0) {
+      presentation.error(
+        'Power Apps dependency installation blocked',
+        `${issues.join(' ')} Restore package.json and package-lock.json or run \`liftoff update --apply\`.`
+      );
+      return { success: false, deferred: [] };
+    }
   }
 
   presentation.stage('Install project dependencies');
@@ -623,11 +696,23 @@ function regionsCommand(parsed: ParsedArgs, context: ExecutionContext): number {
 
 async function validateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   context.presentation.commandIdentity('validate', 'Validate a generated Liftoff project');
+  const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
   const explicit = parsed.positional[0] ?? readStringFlag(parsed.flags, 'project');
   const projectRoot = explicit
     ? path.resolve(context.cwd, explicit)
     : (await findProjectRoot(context.cwd)) ?? context.cwd;
   const issues = await validateGeneratedProject(projectRoot);
+  if (jsonMode) {
+    context.presentation.rawStdout(
+      `${JSON.stringify({
+        schemaVersion: 1,
+        projectRoot,
+        valid: issues.length === 0,
+        issues
+      }, null, 2)}\n`
+    );
+    return issues.length === 0 ? 0 : 1;
+  }
   if (issues.length > 0) {
     context.presentation.error(
       issues.join('\n'),
@@ -728,7 +813,7 @@ async function stageMigrationSource(area: StagingArea, sourceRoot: string): Prom
 }
 
 function migrationPlanArtifacts(
-  plan: ProjectPlan,
+  plan: ApiProjectPlan,
   inventory: Awaited<ReturnType<typeof scanLegacyProject>>
 ): { artifacts: GeneratedArtifact[]; location: string } {
   const groups = seedMigrationGroups(inventory, plan);
@@ -803,12 +888,15 @@ async function executeMigration(
   if (flagOptions.projectType === 'genai' && flagOptions.apiStack === undefined) {
     initial.apiStack = undefined;
   }
+  const runner = context.runner ?? new NodeCommandRunner();
   const interactive = initial.yes !== true;
   const prompter = interactive
     ? new InteractivePrompter({
         input: context.stdin,
         output: context.stdout,
-        presentation
+        presentation,
+        cwd: context.cwd,
+        runner
       })
     : undefined;
   try {
@@ -818,6 +906,13 @@ async function executeMigration(
     }
     const options = needsPrompts ? await prompter!.promptForInitOptions(initial) : initial;
     const plan = buildProjectPlan(options, { requireProjectName: true });
+    if (plan.workload === 'power-apps-code-app') {
+      presentation.error(
+        'Power Apps code app migration is not supported.',
+        'Initialize a fresh Power Apps code app, then move application changes intentionally.'
+      );
+      return 1;
+    }
     presentation.stage('Review migration plan');
     const confirmed = options.yes === true
       ? (presentation.definitions('Resolved migration plan', projectPlanEntries(plan)), true)
@@ -837,7 +932,6 @@ async function executeMigration(
     await assertSafeInitTarget(target, parentDir);
     await assertNewOrEmptyDirectory(targetRoot);
 
-    const runner = context.runner ?? new NodeCommandRunner();
     presentation.stage('Check workstation readiness');
     const readinessRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-migrate-readiness-'));
     const readiness = await (async () => {
@@ -960,6 +1054,14 @@ async function migrateCommand(parsed: ParsedArgs, context: ExecutionContext): Pr
     context.presentation.error(
       'Usage: liftoff migrate <path-to-existing-project>',
       'Run `liftoff migrate --help` for accepted migration options.'
+    );
+    return 1;
+  }
+  const migrationOptions = await optionsFromParsedArgs(parsed, context.cwd, false);
+  if (migrationOptions.projectType === 'power-apps-code-app') {
+    context.presentation.error(
+      'Power Apps code app migration is not supported.',
+      'Initialize a fresh Power Apps code app with `liftoff init --type power-apps-code-app`, then move application changes intentionally.'
     );
     return 1;
   }
@@ -1110,26 +1212,49 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
   const config = await loadConfigOptions('liftoff.config.json', projectRoot);
   const plan = buildProjectPlan(config, { requireProjectName: true });
-  if (plan.projectType.id !== manifest.project.projectType) {
+  const recordedWorkload = manifest.project.workload;
+  if (plan.workload !== recordedWorkload.kind) {
+    const involvesPowerApps =
+      plan.workload === 'power-apps-code-app' ||
+      recordedWorkload.kind === 'power-apps-code-app';
     presentation.error(
-      `Project type changes (${manifest.project.projectType} -> ${plan.projectType.id}) are a migration, not an update.`,
-      'Run `liftoff migrate` instead.'
+      `Project type changes (${recordedWorkload.kind} -> ${plan.workload}) are not supported by update.`,
+      involvesPowerApps
+        ? 'Initialize a fresh project for the new workload.'
+        : 'Run `liftoff migrate` instead.'
     );
     return 1;
   }
-  if (plan.apiStack.id !== manifest.project.apiStack) {
-    presentation.error(
-      `API stack changes (${manifest.project.apiStack} -> ${plan.apiStack.id}) are a migration, not an update.`,
-      'Run `liftoff migrate` instead.'
-    );
-    return 1;
-  }
-  if (plan.pattern?.id !== manifest.project.pattern) {
-    presentation.error(
-      `Pattern changes (${manifest.project.pattern ?? 'none'} -> ${plan.pattern?.id ?? 'none'}) are a migration, not an update.`,
-      'Run `liftoff migrate` instead.'
-    );
-    return 1;
+  if (plan.workload === 'power-apps-code-app' && recordedWorkload.kind === 'power-apps-code-app') {
+    const recordedStarter = recordedWorkload.starter;
+    if (
+      plan.starter.repository !== recordedStarter.repository ||
+      plan.starter.path !== recordedStarter.path ||
+      plan.starter.commit !== recordedStarter.commit
+    ) {
+      presentation.error(
+        'The Power Apps starter repository, path, or commit differs from the recorded immutable source.',
+        'Restore the recorded source identity or initialize a fresh project.'
+      );
+      return 1;
+    }
+  } else if (plan.workload !== 'power-apps-code-app' && recordedWorkload.kind !== 'power-apps-code-app') {
+    if (plan.apiStack.id !== recordedWorkload.apiStack) {
+      presentation.error(
+        `API stack changes (${recordedWorkload.apiStack} -> ${plan.apiStack.id}) are a migration, not an update.`,
+        'Run `liftoff migrate` instead.'
+      );
+      return 1;
+    }
+    const recordedPattern = recordedWorkload.kind === 'genai' ? recordedWorkload.pattern : undefined;
+    const desiredPattern = plan.workload === 'genai' ? plan.pattern.id : undefined;
+    if (desiredPattern !== recordedPattern) {
+      presentation.error(
+        `Pattern changes (${recordedPattern ?? 'none'} -> ${desiredPattern ?? 'none'}) are a migration, not an update.`,
+        'Run `liftoff migrate` instead.'
+      );
+      return 1;
+    }
   }
   if (plan.specWorkflow.id !== manifest.project.specWorkflow) {
     presentation.error(
@@ -1220,20 +1345,29 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
   const written: ReconcileEntry[] = [];
   const skipped: ReconcileEntry[] = [];
+  const mutations: ProjectFileMutation[] = [];
   for (const entry of entries) {
     switch (entry.status) {
       case 'new':
       case 'missing':
       case 'upgrade':
-        await writeProjectFile(projectRoot, entry.pathParts, entry.rendered!.content);
+        mutations.push({
+          type: 'write',
+          pathParts: entry.pathParts,
+          content: entry.rendered!.content
+        });
         written.push(entry);
         break;
       case 'moved':
         if (entry.cleanMove || force) {
           if (!entry.destinationMatches) {
-            await writeProjectFile(projectRoot, entry.pathParts, entry.rendered!.content);
+            mutations.push({
+              type: 'write',
+              pathParts: entry.pathParts,
+              content: entry.rendered!.content
+            });
           }
-          await deleteProjectFile(projectRoot, entry.previousPathParts!);
+          mutations.push({ type: 'delete', pathParts: entry.previousPathParts! });
           written.push(entry);
         } else {
           skipped.push(entry);
@@ -1241,9 +1375,13 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         break;
       case 'conflict':
         if (force) {
-          await writeProjectFile(projectRoot, entry.pathParts, entry.rendered!.content);
+          mutations.push({
+            type: 'write',
+            pathParts: entry.pathParts,
+            content: entry.rendered!.content
+          });
           if (entry.previousPathParts) {
-            await deleteProjectFile(projectRoot, entry.previousPathParts);
+            mutations.push({ type: 'delete', pathParts: entry.previousPathParts });
           }
           written.push(entry);
         } else {
@@ -1289,7 +1427,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       nextManifest.artifacts.push(oldByName.get(entry.logicalName)!);
     }
   }
-  await writeProjectFile(projectRoot, ['liftoff.manifest.json'], `${JSON.stringify(nextManifest, null, 2)}\n`);
+  mutations.push({
+    type: 'write',
+    pathParts: ['liftoff.manifest.json'],
+    content: `${JSON.stringify(nextManifest, null, 2)}\n`
+  });
+  await applyProjectFileTransaction(projectRoot, mutations);
 
   if (jsonMode) {
     presentation.rawStdout(`${JSON.stringify({
@@ -1429,11 +1572,17 @@ function workstationLayer(probes: RequirementProbeResult[]): DoctorLayer {
 
 function workstationSelectionFromManifest(manifest: LiftoffManifest): WorkstationRequirementSelection {
   const framework = getFrameworkDefinition(manifest.project.specWorkflow);
+  const workload = manifest.project.workload;
   return {
-    apiStack: { id: manifest.project.apiStack },
+    workload: workload.kind === 'power-apps-code-app'
+      ? { kind: 'power-apps-code-app' }
+      : {
+          kind: workload.kind,
+          apiStack: { id: workload.apiStack },
+          provider: { id: workload.cloud }
+        },
     specWorkflow: { id: manifest.project.specWorkflow },
     framework: { version: framework.version },
-    provider: { id: manifest.project.cloud },
     agents: manifest.framework.state === 'initialized'
       ? manifest.project.agents.map((id) => {
           const agent = getCodingAgent(id);
@@ -1522,6 +1671,7 @@ function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorChe
         if (!python) {
           return { label: 'python project', severity: 'skipped', detail: 'python is unavailable' };
         }
+
         result = runReadOnly(
           python.command,
           [...python.commandArgs, '-c', 'from pathlib import Path; p=Path("backend/apis/main.py"); compile(p.read_text(), str(p), "exec")'],
@@ -1552,6 +1702,27 @@ function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorChe
     severity: 'fail',
     detail: (result.stderr || result.stdout || 'stack validation failed').split('\n')[0],
     remedy: `repair the generated ${apiStack} backend configuration`
+  };
+}
+
+async function powerAppsProjectCheck(projectRoot: string): Promise<DoctorCheck> {
+  const issues = await verifyPowerAppsPackageMetadata(projectRoot);
+  if (issues.length === 0) {
+    return {
+      id: 'power-apps-project',
+      label: 'Power Apps project',
+      severity: 'ok',
+      state: 'ready',
+      detail: 'SDK, Vite plugin, and deterministic lockfile metadata are valid'
+    };
+  }
+  return {
+    id: 'power-apps-project',
+    label: 'Power Apps project',
+    severity: 'fail',
+    state: 'unhealthy',
+    detail: issues[0],
+    remedy: 'restore package.json and package-lock.json or run liftoff update --apply'
   };
 }
 
@@ -1662,7 +1833,19 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
   }
 
   checks.push(...await frameworkDoctorChecks(projectRoot, manifest));
-  checks.push(stackProjectCheck(projectRoot, manifest.project.apiStack));
+  if (manifest.project.workload.kind === 'power-apps-code-app') {
+    const starter = manifest.project.workload.starter;
+    checks.push({
+      id: 'power-apps-starter',
+      label: 'Power Apps starter',
+      severity: 'ok',
+      state: 'ready',
+      detail: `${starter.repository}/${starter.path} @ ${starter.commit}`
+    });
+    checks.push(await powerAppsProjectCheck(projectRoot));
+  } else {
+    checks.push(stackProjectCheck(projectRoot, manifest.project.workload.apiStack));
+  }
 
   try {
     const config = await loadConfigOptions('liftoff.config.json', projectRoot);
@@ -1695,9 +1878,45 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
 async function runtimeLayer(
   projectRoot: string,
   dockerAvailable: boolean,
-  runner: CommandRunner
+  runner: CommandRunner,
+  manifest: LiftoffManifest
 ): Promise<DoctorLayer> {
   const checks: DoctorCheck[] = [];
+  if (manifest.project.workload.kind === 'power-apps-code-app') {
+    if (!existsSync(path.join(projectRoot, 'node_modules'))) {
+      checks.push({
+        id: 'power-apps-cli',
+        label: 'Power Apps CLI',
+        severity: 'skipped',
+        state: 'not-observable',
+        detail: 'project dependencies are not installed',
+        remedy: 'run npm ci, then rerun liftoff doctor'
+      });
+      return { title: 'Runtime', checks };
+    }
+    const executable = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+    const result = await runner.run(
+      { executable, args: ['--no-install', 'power-apps', '--version'] },
+      { cwd: projectRoot, timeoutMs: 15_000 }
+    );
+    checks.push(result.status === 0
+      ? {
+          id: 'power-apps-cli',
+          label: 'Power Apps CLI',
+          severity: 'ok',
+          state: 'ready',
+          detail: result.stdout.trim() || 'local CLI is available'
+        }
+      : {
+          id: 'power-apps-cli',
+          label: 'Power Apps CLI',
+          severity: 'fail',
+          state: 'unhealthy',
+          detail: (result.stderr || 'local CLI probe failed').trim().split('\n')[0],
+          remedy: 'run npm ci and verify @microsoft/power-apps before binding the environment'
+        });
+    return { title: 'Runtime', checks };
+  }
 
   if (existsSync(path.join(projectRoot, '.env.example'))) {
     if (existsSync(path.join(projectRoot, '.env'))) {
@@ -1731,6 +1950,33 @@ async function runtimeLayer(
   }
 
   return { title: 'Runtime', checks };
+}
+
+async function codeAppsPluginLayer(
+  projectRoot: string,
+  manifest: LiftoffManifest,
+  runner: CommandRunner
+): Promise<DoctorLayer> {
+  const agents = manifest.project.agents.map((id) => {
+    const agent = getCodingAgent(id);
+    if (!agent) {
+      throw new Error(`Manifest references unknown coding agent ${id}.`);
+    }
+    return agent;
+  });
+  const probes = await probeCodeAppsPlugin(agents, runner, projectRoot);
+  return {
+    title: 'Optional Code Apps plugin',
+    checks: probes.map((probe): DoctorCheck => ({
+      id: probe.id,
+      label: probe.agent.label,
+      severity: probe.state === 'ready' ? 'ok' : 'warn',
+      state: probe.state,
+      requirementSeverity: 'advisory',
+      detail: probe.detail,
+      ...(probe.remedy ? { remedy: probe.remedy } : {})
+    }))
+  };
 }
 
 function renderDoctorLayers(layers: DoctorLayer[], presentation: PresentationSession): void {
@@ -1795,19 +2041,28 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
     if (manifest) {
       layers.push(await projectLayer(projectRoot, manifest));
-      layers.push(await runtimeLayer(projectRoot, dockerAvailable, runner));
+      layers.push(await runtimeLayer(projectRoot, dockerAvailable, runner, manifest));
 
-      const cloud = cloudOverride ?? manifest.project.cloud;
-      const cloudChecks = await cloudLayer(cloud, runner);
-      const pattern = patterns.find((candidate) => candidate.id === manifest.project.pattern);
-      if (pattern?.worker && cloud === 'azure') {
-        cloudChecks.checks.push(
-          binaryPresent('func')
-            ? { label: 'functions tooling', severity: 'ok', detail: 'Azure Functions Core Tools installed' }
-            : { label: 'functions tooling', severity: 'warn', detail: 'Azure Functions Core Tools not found', remedy: 'npm install -g azure-functions-core-tools@4' }
-        );
+      if (manifest.project.workload.kind === 'power-apps-code-app') {
+        if (manifest.project.workload.codeAppsPlugin) {
+          layers.push(await codeAppsPluginLayer(projectRoot, manifest, runner));
+        }
+      } else {
+        const workload = manifest.project.workload;
+        const cloud = cloudOverride ?? workload.cloud;
+        const cloudChecks = await cloudLayer(cloud, runner);
+        const pattern = workload.kind === 'genai'
+          ? patterns.find((candidate) => candidate.id === workload.pattern)
+          : undefined;
+        if (pattern?.worker && cloud === 'azure') {
+          cloudChecks.checks.push(
+            binaryPresent('func')
+              ? { label: 'functions tooling', severity: 'ok', detail: 'Azure Functions Core Tools installed' }
+              : { label: 'functions tooling', severity: 'warn', detail: 'Azure Functions Core Tools not found', remedy: 'npm install -g azure-functions-core-tools@4' }
+          );
+        }
+        layers.push(cloudChecks);
       }
-      layers.push(cloudChecks);
     }
   } else if (cloudOverride) {
     layers.push(await cloudLayer(cloudOverride, runner));
@@ -1832,7 +2087,36 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   return doctorExitCode(layers);
 }
 
-function helperCommand(parsed: ParsedArgs, context: ExecutionContext, tool: 'docker compose' | 'tofu'): number {
+async function helperCommand(
+  parsed: ParsedArgs,
+  context: ExecutionContext,
+  tool: 'docker compose' | 'tofu'
+): Promise<number> {
+  const projectRoot = await findProjectRoot(context.cwd);
+  if (projectRoot) {
+    const manifest = await loadManifest(projectRoot);
+    if (manifest.project.workload.kind === 'power-apps-code-app') {
+      if (parsed.command === 'dev') {
+        context.presentation.commandIdentity('dev', 'Power Apps local development');
+        context.presentation.section(
+          'Dependency prerequisite',
+          ['Install the root lockfile before starting or after dependency changes.']
+        );
+        context.presentation.command('npm ci');
+        context.presentation.section('Development server', []);
+        context.presentation.command('npm run dev');
+        return 0;
+      }
+      context.presentation.commandIdentity('infra', 'Power Apps hosting responsibility');
+      context.presentation.status(
+        'info',
+        'Not applicable',
+        'Power Apps code apps are hosted by Power Platform; Liftoff-managed OpenTofu infrastructure is not generated.'
+      );
+      return 0;
+    }
+  }
+
   const command = parsed.command === 'dev' ? buildDevCommand(parsed) : buildInfraCommand(parsed);
   context.presentation.commandIdentity(
     parsed.command ?? tool,
@@ -1879,9 +2163,8 @@ async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includePro
   const configOptions = configPath ? await loadConfigOptions(configPath, cwd) : {};
   const flagOptions: ProjectOptions = {
     projectName: includeProjectName ? parsed.positional[0] ?? readStringFlag(parsed.flags, 'project') : readStringFlag(parsed.flags, 'project'),
-    projectType: readBooleanFlag(parsed.flags, 'genai') === undefined
-      ? undefined
-      : readBooleanFlag(parsed.flags, 'genai') ? 'genai' : 'standard',
+    projectType: readStringFlag(parsed.flags, 'type'),
+    genai: readBooleanFlag(parsed.flags, 'genai'),
     apiStack: readStringFlag(parsed.flags, 'api'),
     pattern: readStringFlag(parsed.flags, 'pattern'),
     cloud: readStringFlag(parsed.flags, 'cloud'),
@@ -1891,6 +2174,7 @@ async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includePro
     specWorkflow: readStringFlag(parsed.flags, 'spec'),
     agents: readListFlag(parsed.flags, 'agents'),
     defaultAgent: readStringFlag(parsed.flags, 'default-agent'),
+    codeAppsPlugin: readBooleanFlag(parsed.flags, 'code-apps-plugin'),
     configPath,
     yes: readBooleanFlag(parsed.flags, 'yes') ?? false,
     force: readBooleanFlag(parsed.flags, 'force'),
@@ -1902,19 +2186,27 @@ async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includePro
 }
 
 function hasMissingInitInputs(options: ProjectOptions): boolean {
-  const projectType = options.projectType ?? (options.pattern ? 'genai' : options.apiStack ? 'standard' : undefined);
-  const missingTypeSpecific = projectType === 'genai' ? !options.pattern : projectType === 'standard' ? !options.apiStack : true;
+  const projectType = options.projectType ??
+    (options.genai === undefined ? undefined : options.genai ? 'genai' : 'standard') ??
+    (options.pattern ? 'genai' : options.apiStack ? 'standard' : undefined);
+  const missingTypeSpecific = projectType === 'genai'
+    ? !options.pattern
+    : projectType === 'standard'
+      ? !options.apiStack
+      : projectType === 'power-apps-code-app'
+        ? options.codeAppsPlugin === undefined
+        : true;
   const missingDefaultAgent = options.specWorkflow === 'spec-kit' &&
     (options.agents?.length ?? 0) > 1 &&
     !options.defaultAgent;
   return !options.projectName ||
     missingTypeSpecific ||
-    !options.cloud ||
-    options.includeFrontend === undefined ||
+    projectType !== 'power-apps-code-app' && !options.cloud ||
+    projectType !== 'power-apps-code-app' && options.includeFrontend === undefined ||
     !options.specWorkflow ||
     !options.agents ||
     missingDefaultAgent ||
-    !options.environments;
+    projectType !== 'power-apps-code-app' && !options.environments;
 }
 
 function renderGeneralHelp(presentation: PresentationSession): void {

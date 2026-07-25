@@ -3,7 +3,7 @@ import { access, mkdir, readFile, rename, rm, unlink, writeFile } from 'node:fs/
 import os from 'node:os';
 import path from 'node:path';
 import { mkdtemp } from 'node:fs/promises';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
 import { compareSemver } from '../src/semver.js';
@@ -47,6 +47,18 @@ async function standardFixtureProject(apiStack = 'node'): Promise<string> {
   return projectRoot;
 }
 
+async function powerAppsFixtureProject(codeAppsPlugin = false): Promise<string> {
+  const projectRoot = await createFixtureProject({
+    projectName: 'Power Apps Update App',
+    projectType: 'power-apps-code-app',
+    specWorkflow: 'openspec',
+    agents: ['copilot'],
+    codeAppsPlugin
+  });
+  cleanups.push(path.dirname(projectRoot));
+  return projectRoot;
+}
+
 async function run(args: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
@@ -58,6 +70,34 @@ async function editJson(filePath: string, mutate: (value: any) => void): Promise
   const value = JSON.parse(await readFile(filePath, 'utf8'));
   mutate(value);
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+async function downgradeApiManifest(
+  projectRoot: string,
+  artifactVersion: 2 | 3
+): Promise<void> {
+  await editJson(path.join(projectRoot, 'liftoff.manifest.json'), (manifest) => {
+    const project = manifest.project;
+    const workload = project.workload;
+    manifest.artifactVersion = artifactVersion;
+    manifest.project = {
+      name: project.name,
+      ...(artifactVersion === 3 ? { projectType: workload.kind, apiStack: workload.apiStack } : {}),
+      ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {}),
+      cloud: workload.cloud,
+      region: workload.region,
+      frontend: workload.frontend,
+      environments: workload.environments,
+      specWorkflow: project.specWorkflow,
+      ...(artifactVersion === 3 ? {
+        agents: project.agents,
+        ...(project.defaultAgent ? { defaultAgent: project.defaultAgent } : {})
+      } : {})
+    };
+    if (artifactVersion === 2) {
+      delete manifest.framework;
+    }
+  });
 }
 
 describe('semver comparison', () => {
@@ -85,6 +125,157 @@ describe('update command', () => {
     const result = await run(['update'], root);
     expect(result.code).toBe(0);
     expect(result.out).toContain('No drift');
+  });
+
+  it('reconciles a clean Power Apps starter entirely from packaged offline assets', async () => {
+    const root = await powerAppsFixtureProject();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
+    try {
+      const check = await run(['update'], root);
+      expect(check.code).toBe(0);
+      expect(check.out).toContain('No drift');
+
+      const apply = await run(['update', '--apply'], root);
+      expect(apply.code).toBe(0);
+      expect(fetchSpy).not.toHaveBeenCalled();
+      expect(await run(['validate'], root)).toMatchObject({ code: 0 });
+    } finally {
+      fetchSpy.mockRestore();
+    }
+  });
+
+  it('rejects Power Apps workload and immutable starter identity edits before artifact access', async () => {
+    const sourceRoot = await powerAppsFixtureProject();
+    const appPath = path.join(sourceRoot, 'src', 'App.tsx');
+    await rm(appPath);
+    await mkdir(appPath);
+    await editJson(path.join(sourceRoot, 'liftoff.manifest.json'), (manifest) => {
+      manifest.project.workload.starter.commit = 'a'.repeat(40);
+    });
+
+    const sourceResult = await run(['update'], sourceRoot);
+    expect(sourceResult.code).toBe(1);
+    expect(sourceResult.err).toContain('recorded immutable source');
+    expect(sourceResult.err).not.toContain('Unable to read src/App.tsx');
+
+    const typeRoot = await powerAppsFixtureProject();
+    await editJson(path.join(typeRoot, 'liftoff.config.json'), (config) => {
+      config.projectType = 'standard';
+      delete config.codeAppsPlugin;
+      config.apiStack = 'node-fastify';
+      config.cloud = 'azure';
+      config.region = 'eastus';
+      config.includeFrontend = false;
+      config.environments = ['dev'];
+    });
+    const typeResult = await run(['update'], typeRoot);
+    expect(typeResult.code).toBe(1);
+    expect(typeResult.err).toContain('Project type changes');
+  });
+
+  it('reconciles the Power Apps plugin preference through guidance and manifest intent only', async () => {
+    const root = await powerAppsFixtureProject();
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.codeAppsPlugin = true;
+    });
+
+    const check = await run(['update'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('README.md');
+    expect(check.out).not.toContain('backend/');
+    expect(check.out).not.toContain('infrastructure/');
+
+    const apply = await run(['update', '--apply'], root);
+    expect(apply.code).toBe(0);
+    const readme = await readFile(path.join(root, 'README.md'), 'utf8');
+    expect(readme).toContain('/plugin marketplace add microsoft/power-platform-skills');
+    expect(readme).toContain('/plugin install code-apps-preview@power-platform-skills');
+    const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    expect(manifest.project.workload.codeAppsPlugin).toBe(true);
+    await expect(access(path.join(root, 'backend'))).rejects.toThrow();
+    await expect(access(path.join(root, 'infrastructure'))).rejects.toThrow();
+    expect((await run(['update'], root)).code).toBe(0);
+  });
+
+  it('classifies Power Apps starter upgrade, missing, new, moved, and orphan states by logical name', async () => {
+    const root = await powerAppsFixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const oldApp = '// simulated older starter App\n';
+    await writeFile(path.join(root, 'src', 'App.tsx'), oldApp);
+    await unlink(path.join(root, 'src', 'index.css'));
+    await unlink(path.join(root, 'src', 'assets', 'react.svg'));
+    const movedParts = ['legacy', 'main.tsx'];
+    await mkdir(path.join(root, 'legacy'));
+    await rename(path.join(root, 'src', 'main.tsx'), path.join(root, ...movedParts));
+    const orphanContent = 'retired starter file\n';
+    await writeFile(path.join(root, 'retired.txt'), orphanContent);
+    await editJson(manifestPath, (manifest) => {
+      manifest.artifacts.find(
+        (entry: { logicalName: string }) => entry.logicalName === 'power-apps-starter-src-app-tsx'
+      ).contentHash = sha(oldApp);
+      manifest.artifacts = manifest.artifacts.filter(
+        (entry: { logicalName: string }) =>
+          entry.logicalName !== 'power-apps-starter-src-assets-react-svg'
+      );
+      manifest.artifacts.find(
+        (entry: { logicalName: string }) => entry.logicalName === 'power-apps-starter-src-main-tsx'
+      ).pathParts = movedParts;
+      manifest.artifacts.push({
+        logicalName: 'power-apps-retired-starter-file',
+        category: 'power-apps-starter',
+        pathParts: ['retired.txt'],
+        contentHash: sha(orphanContent)
+      });
+    });
+
+    const check = await run(['update', '--json'], root);
+    expect(check.code).toBe(2);
+    const report = JSON.parse(check.out);
+    const states = new Map(
+      report.entries.map((entry: { logicalName: string; status: string }) =>
+        [entry.logicalName, entry.status]
+      )
+    );
+    expect(states.get('power-apps-starter-src-app-tsx')).toBe('upgrade');
+    expect(states.get('power-apps-starter-src-index-css')).toBe('missing');
+    expect(states.get('power-apps-starter-src-assets-react-svg')).toBe('new');
+    expect(states.get('power-apps-starter-src-main-tsx')).toBe('moved');
+    expect(states.get('power-apps-retired-starter-file')).toBe('orphan');
+
+    const apply = await run(['update', '--apply'], root);
+    expect(apply.code).toBe(0);
+    expect(await readFile(path.join(root, 'src', 'App.tsx'), 'utf8')).not.toBe(oldApp);
+    await access(path.join(root, 'src', 'index.css'));
+    await access(path.join(root, 'src', 'assets', 'react.svg'));
+    await access(path.join(root, 'src', 'main.tsx'));
+    await expect(access(path.join(root, ...movedParts))).rejects.toThrow();
+    await access(path.join(root, 'retired.txt'));
+  });
+
+  it('preserves Power Apps conflicts without force, replaces them with force, and retries after failure', async () => {
+    const root = await powerAppsFixtureProject();
+    const appPath = path.join(root, 'src', 'App.tsx');
+    const localEdit = '// developer-owned App edit\n';
+    await writeFile(appPath, localEdit);
+
+    const check = await run(['update'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toMatch(/! src\/App\.tsx.*modified locally/);
+    expect((await run(['update', '--apply'], root)).code).toBe(0);
+    expect(await readFile(appPath, 'utf8')).toBe(localEdit);
+
+    const forced = await run(['update', '--apply', '--force'], root);
+    expect(forced.code).toBe(0);
+    expect(await readFile(appPath, 'utf8')).not.toBe(localEdit);
+
+    await unlink(path.join(root, 'src', 'index.css'));
+    await mkdir(path.join(root, 'src', 'index.css'));
+    const failed = await run(['update', '--apply'], root);
+    expect(failed.code).toBe(1);
+    expect(failed.err).toContain('Unable to read src/index.css');
+    await rm(path.join(root, 'src', 'index.css'), { recursive: true });
+    expect((await run(['update', '--apply'], root)).code).toBe(0);
+    expect((await run(['update'], root)).code).toBe(0);
   });
 
   it('rejects --force without --apply', async () => {
@@ -464,20 +655,29 @@ describe('update command', () => {
     expect(stackResult.err).toContain('liftoff migrate');
   });
 
-  it('normalizes legacy GenAI identity during update', async () => {
+  it('upgrades schema-v3 manifests to schema v4 on apply', async () => {
     const root = await fixtureProject();
-    await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
-      delete manifest.project.projectType;
-      delete manifest.project.apiStack;
-    });
-    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
-      delete config.projectType;
-      delete config.apiStack;
-    });
+    await downgradeApiManifest(root, 3);
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const v3Manifest = await readFile(manifestPath, 'utf8');
 
-    const result = await run(['update'], root);
+    const check = await run(['update'], root);
+    expect(check.code).toBe(0);
+    expect(await readFile(manifestPath, 'utf8')).toBe(v3Manifest);
+
+    const result = await run(['update', '--apply'], root);
     expect(result.code).toBe(0);
-    expect(result.out).toContain('No drift');
+    const manifest = JSON.parse(
+      await readFile(manifestPath, 'utf8')
+    );
+    expect(manifest).toMatchObject({
+      artifactVersion: 4,
+      project: {
+        workload: { kind: 'genai', apiStack: 'python-fastapi' },
+        agents: ['github-copilot']
+      },
+      framework: { state: 'initialized', adapter: 'openspec' }
+    });
   });
 
   it('preserves legacy framework uncertainty without fabricating ownership during validate and update', async () => {
@@ -485,12 +685,13 @@ describe('update command', () => {
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const configPath = path.join(root, 'liftoff.config.json');
     const frameworkMarker = path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md');
-    await editJson(manifestPath, (manifest) => {
-      manifest.artifactVersion = 2;
-      delete manifest.project.agents;
-      delete manifest.project.defaultAgent;
-      delete manifest.framework;
-    });
+    const originalManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    const recordedReadmeHash = originalManifest.artifacts.find(
+      (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'
+    ).contentHash;
+    const localReadme = '# developer-owned legacy README\n';
+    await writeFile(path.join(root, 'README.md'), localReadme);
+    await downgradeApiManifest(root, 2);
     await editJson(configPath, (config) => {
       delete config.agents;
       delete config.defaultAgent;
@@ -505,10 +706,17 @@ describe('update command', () => {
     expect(apply.code).toBe(0);
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(manifest).toMatchObject({
-      artifactVersion: 3,
-      project: { agents: [] },
+      artifactVersion: 4,
+      project: {
+        workload: { kind: 'genai', apiStack: 'python-fastapi' },
+        agents: []
+      },
       framework: { state: 'legacy', adapter: 'openspec' }
     });
+    expect(manifest.artifacts.find(
+      (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'
+    ).contentHash).toBe(recordedReadmeHash);
+    expect(await readFile(path.join(root, 'README.md'), 'utf8')).toBe(localReadme);
     await expect(access(frameworkMarker)).rejects.toMatchObject({ code: 'ENOENT' });
 
     const after = await run(['validate'], root);
