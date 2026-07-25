@@ -66,6 +66,6 @@
 - [x] 9.1 Run the targeted security-policy tests, repository build and tests, package smoke test, generated standard-project verification, and Power Apps starter verification.
 - [x] 9.2 Run the live audit and confirm every fixable current finding is removed and every remaining finding matches exactly one valid non-expired exception.
 - [x] 9.3 Confirm Liftoff's root dependency audit remains clean and no package or lockfile changed during the read-only template audit.
-- [ ] 9.4 Rebase or supersede Dependabot PR #9 and close duplicate Vite major-upgrade PRs #10 and #11 after the targeted replacements are available.
-- [ ] 9.5 Confirm the five fixable GitHub alerts close after default-branch scanning and disposition the remaining non-reachable alerts consistently with the checked-in exception policy.
+- [x] 9.4 Rebase or supersede Dependabot PR #9 and close duplicate Vite major-upgrade PRs #10 and #11 after the targeted replacements are available.
+- [x] 9.5 Confirm the five fixable GitHub alerts close after default-branch scanning and disposition the remaining non-reachable alerts consistently with the checked-in exception policy.
 - [x] 9.6 Run strict OpenSpec validation and reconcile any implementation or documentation drift before verification.
