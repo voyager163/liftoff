@@ -21,5 +21,5 @@
 
 - [x] 4.1 Run targeted terminal, lifecycle, update, maintenance-presentation, and documentation tests together.
 - [x] 4.2 Run the repository build, full test suite, package smoke, and generated-project verification commands already defined by the project.
-- [ ] 4.3 Run the existing Windows CI coverage and confirm recommendation labels, quoted paths, and terminal widths match macOS and Linux.
+- [x] 4.3 Run the existing Windows CI coverage and confirm recommendation labels, quoted paths, and terminal widths match macOS and Linux.
 - [x] 4.4 Validate `clarify-next-command-guidance` and all main OpenSpec specifications in strict mode.
