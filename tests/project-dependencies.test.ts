@@ -193,7 +193,7 @@ describe('project dependency setup', () => {
         restoredMutations: []
       });
       expect(setupResult.resumeCommand).toBe(
-        `cd ${JSON.stringify(path.join(tempRoot, 'backend'))} && npm ci`
+        `cd${process.platform === 'win32' ? ' /d' : ''} ${JSON.stringify(path.join(tempRoot, 'backend'))} && npm ci`
       );
       expect(await readFile(path.join(tempRoot, 'README.md'), 'utf8')).toBe('scaffold\n');
       expect(await readFile(path.join(tempRoot, 'backend', 'package.json'), 'utf8')).toBe('{"name":"app"}\n');

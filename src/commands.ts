@@ -111,7 +111,7 @@ export interface CommandContext {
   runner?: CommandRunner;
   terminal?: Pick<
     PresentationSessionOptions,
-    'columns' | 'color' | 'snapshot' | 'env' | 'layout'
+    'columns' | 'color' | 'snapshot' | 'env' | 'layout' | 'normalize'
   >;
 }
 

@@ -164,15 +164,13 @@ credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
 ─────────────────────────────
-- Download backend Go modules:
-<workspace>/snapshot-app/backend
--> go mod download
+- Download backend Go modules: <workspace>/snapshot-app/backend -> go mod
+download
 
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 Completion
 ──────────
-Target
-<workspace>/snapshot-app
+Target         <workspace>/snapshot-app
 Spec workflow  OpenSpec
 Coding agents  GitHub Copilot
 
@@ -251,17 +249,14 @@ credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
 ─────────────────────────────
-- Install backend Node.js dependencies:
-<workspace>/legacy-node-liftoff/backend
+- Install backend Node.js dependencies: <workspace>/legacy-node-liftoff/backend
 -> npm ci
 
 Next steps
 ──────────
 - Optional - preserve history: copy the .git directory from
-<workspace>/legacy-node
-into
-<workspace>/legacy-node-liftoff,
-then commit the migration on top (git rename detection preserves file history).
+<workspace>/legacy-node into <workspace>/legacy-node-liftoff, then commit the
+migration on top (git rename detection preserves file history).
 - Execute the migration plan: openspec/changes/migrate-to-liftoff/ (run it with
 your agent workflow, e.g. /opsx:apply migrate-to-liftoff)
 - Verify compliance: liftoff validate && liftoff doctor
@@ -269,13 +264,9 @@ your agent workflow, e.g. /opsx:apply migrate-to-liftoff)
 ✓ Migrated legacy-node: <workspace>/legacy-node-liftoff
 Completion
 ──────────
-Target
-<workspace>/legacy-node-liftoff
-Source
-<workspace>/legacy-node
-(not modified)
-Rollback Delete
-<workspace>/legacy-node-liftoff
+Target    <workspace>/legacy-node-liftoff
+Source    <workspace>/legacy-node (not modified)
+Rollback  Delete <workspace>/legacy-node-liftoff
 
 $ liftoff validate && liftoff doctor
 ",
@@ -830,15 +821,11 @@ $ openspec init --tools github-copilot --profile core
 │ Remedy: Run \`copilot\` and sign in if prompted.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred project dependencies ──────────────────────────────────────────────────────────────┐
-│ • Download backend Go modules:                                                               │
-│ <workspace>/snapshot │
-│ -app/backend -> go mod download                                                              │
+│ • Download backend Go modules: <workspace>/snapshot-app/backend -> go mod download           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 ┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
-│ Target                                                                                       │
-│ <workspace>/snapshot │
-│ -app                                                                                         │
+│ Target         <workspace>/snapshot-app                                                      │
 │ Spec workflow  OpenSpec                                                                      │
 │ Coding agents  GitHub Copilot                                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -916,31 +903,21 @@ $ openspec init --tools github-copilot --profile core
 │ Remedy: Run \`copilot\` and sign in if prompted.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred project dependencies ──────────────────────────────────────────────────────────────┐
-│ • Install backend Node.js dependencies:                                                      │
-│ <workspace>/legacy-node │
-│ -liftoff/backend -> npm ci                                                                   │
+│ • Install backend Node.js dependencies: <workspace>/legacy-node-liftoff/backend -> npm ci    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Next steps ─────────────────────────────────────────────────────────────────────────────────┐
-│ • Optional - preserve history: copy the .git directory from                                  │
-│ <workspace>/legacy-node │
-│ into                                                                                         │
-│ <workspace>/legacy-node │
-│ -liftoff, then commit the migration on top (git rename detection preserves file history).    │
+│ • Optional - preserve history: copy the .git directory from <workspace>/legacy-node into     │
+│ <workspace>/legacy-node-liftoff, then commit the migration on top (git rename detection      │
+│ preserves file history).                                                                     │
 │ • Execute the migration plan: openspec/changes/migrate-to-liftoff/ (run it with your agent   │
 │ workflow, e.g. /opsx:apply migrate-to-liftoff)                                               │
 │ • Verify compliance: liftoff validate && liftoff doctor                                      │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ✓ Migrated legacy-node: <workspace>/legacy-node-liftoff
 ┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
-│ Target                                                                                       │
-│ <workspace>/legacy-node │
-│ -liftoff                                                                                     │
-│ Source                                                                                       │
-│ <workspace>/legacy-node │
-│ (not modified)                                                                               │
-│ Rollback Delete                                                                              │
-│ <workspace>/legacy-node │
-│ -liftoff                                                                                     │
+│ Target    <workspace>/legacy-node-liftoff                                                    │
+│ Source    <workspace>/legacy-node (not modified)                                             │
+│ Rollback  Delete <workspace>/legacy-node-liftoff                                             │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 $ liftoff validate && liftoff doctor
 ",

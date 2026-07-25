@@ -22,6 +22,7 @@ export interface TerminalRendererOptions {
   json?: boolean;
   env?: NodeJS.ProcessEnv;
   layout?: TerminalLayout;
+  normalize?: (value: string) => string;
 }
 
 export interface PresentationSessionOptions {
@@ -33,6 +34,7 @@ export interface PresentationSessionOptions {
   json?: boolean;
   env?: NodeJS.ProcessEnv;
   layout?: TerminalLayout;
+  normalize?: (value: string) => string;
 }
 
 export interface DefinitionItem {
@@ -351,6 +353,10 @@ export class TerminalRenderer {
     );
   }
 
+  private normalize(value: string): string {
+    return this.options.normalize?.(value) ?? value;
+  }
+
   banner(subtitle = 'Project workstation and scaffold initializer'): string {
     if (this.jsonMode) {
       return '';
@@ -426,16 +432,17 @@ export class TerminalRenderer {
     if (this.jsonMode) {
       return '';
     }
-    const bodyLines = lines.length > 0 ? lines : [''];
+    const normalizedTitle = this.normalize(title);
+    const bodyLines = (lines.length > 0 ? lines : ['']).map((line) => this.normalize(line));
     if (this.layout === 'plain') {
-      return `${this.heading(title)}${bodyLines.flatMap((line) => line.split(/\r?\n/)).map((line) => `${line}\n`).join('')}\n`;
+      return `${this.heading(normalizedTitle)}${bodyLines.flatMap((line) => line.split(/\r?\n/)).map((line) => `${line}\n`).join('')}\n`;
     }
     if (this.layout === 'compact') {
-      return `${this.heading(title)}${bodyLines.flatMap((line) => wrapVisible(line, this.columns)).map((line) => `${line}\n`).join('')}\n`;
+      return `${this.heading(normalizedTitle)}${bodyLines.flatMap((line) => wrapVisible(line, this.columns)).map((line) => `${line}\n`).join('')}\n`;
     }
     const width = this.contentWidth();
     const wrapped = bodyLines.flatMap((line) => wrapVisible(line, width, true));
-    const safeTitle = truncateVisible(title, Math.max(1, width - 2));
+    const safeTitle = truncateVisible(normalizedTitle, Math.max(1, width - 2));
     const styledTitle = this.colors.bold(this.style('brand', safeTitle));
     const topPrefix = `${TERMINAL_GLYPHS.horizontal} ${styledTitle} `;
     const top = `${TERMINAL_GLYPHS.topLeft}${topPrefix}${TERMINAL_GLYPHS.horizontal.repeat(
@@ -498,14 +505,16 @@ export class TerminalRenderer {
     if (this.jsonMode || headers.length === 0) {
       return '';
     }
+    const normalizedHeaders = headers.map((header) => this.normalize(header));
+    const normalizedRows = rows.map((row) => row.map((cell) => this.normalize(cell)));
     if (this.layout === 'plain') {
-      return rows.map((row) =>
-        row.map((cell, index) => `${headers[index] ?? `Column ${index + 1}`}: ${cell}`).join(' | ')
+      return normalizedRows.map((row) =>
+        row.map((cell, index) => `${normalizedHeaders[index] ?? `Column ${index + 1}`}: ${cell}`).join(' | ')
       ).join('\n') + (rows.length > 0 ? '\n' : '');
     }
-    const natural = headers.map((header, index) => Math.max(
+    const natural = normalizedHeaders.map((header, index) => Math.max(
       visibleLength(header),
-      ...rows.map((row) => visibleLength(row[index] ?? ''))
+      ...normalizedRows.map((row) => visibleLength(row[index] ?? ''))
     ));
     const separator = '  ';
     const available = (this.layout === 'full' ? this.contentWidth() : this.columns) -
@@ -518,12 +527,12 @@ export class TerminalRenderer {
         wrapped.map((cell, index) => padVisible(cell[lineIndex] ?? '', widths[index])).join(separator).trimEnd()
       );
     };
-    const header = renderPhysicalRow(headers).map((line) => this.colors.bold(line));
+    const header = renderPhysicalRow(normalizedHeaders).map((line) => this.colors.bold(line));
     const separatorLine = widths.map((width) => TERMINAL_GLYPHS.horizontal.repeat(width)).join(separator);
     return [
       ...header,
       this.style('metadata', separatorLine),
-      ...rows.flatMap(renderPhysicalRow),
+      ...normalizedRows.flatMap(renderPhysicalRow),
       ''
     ].join('\n');
   }
@@ -650,7 +659,8 @@ export class PresentationSession {
       snapshot: options.snapshot,
       json: options.json,
       env: options.env,
-      layout: options.layout
+      layout: options.layout,
+      normalize: options.normalize
     };
     this.stdout = new TerminalRenderer({ stream: options.stdout, ...rendererOptions });
     this.stderr = new TerminalRenderer({ stream: options.stderr, ...rendererOptions });

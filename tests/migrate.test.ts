@@ -340,7 +340,7 @@ describe('migrate command', () => {
     expect(result.code).toBe(0);
     const target = path.join(parent, 'legacy-node-dependencies-liftoff');
     expect(runner.callDetails.some(({ command, options }) =>
-      command.executable === 'npm' &&
+      command.executable === (process.platform === 'win32' ? 'npm.cmd' : 'npm') &&
       command.args[0] === 'ci' &&
       options?.cwd === path.join(target, 'backend')
     )).toBe(true);

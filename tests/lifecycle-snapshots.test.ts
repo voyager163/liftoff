@@ -37,17 +37,28 @@ async function runScreen(
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
+  const canonicalCwd = await realpath(cwd);
+  const roots = [...new Set([canonicalCwd, cwd])].sort((left, right) => right.length - left.length);
+  const normalize = (value: string) => {
+    let normalized = value;
+    for (const root of roots) {
+      normalized = normalized
+        .replaceAll(JSON.stringify(root).slice(1, -1), '<workspace>')
+        .replaceAll(root, '<workspace>');
+    }
+    return normalized
+      .replaceAll('npm.cmd', 'npm')
+      .replaceAll('\\\\', '/')
+      .replaceAll('\\', '/');
+  };
   const code = await runCommand(parseArgs(args), {
     cwd,
     ...(options.input ? { stdin: Readable.from([options.input]) } : {}),
     stdout,
     stderr,
     runner: options.runner ?? new ReadyInitRunner(),
-    terminal: { snapshot: true, columns }
+    terminal: { snapshot: true, columns, normalize }
   });
-  const canonicalCwd = await realpath(cwd);
-  const normalize = (value: string) =>
-    value.replaceAll(canonicalCwd, '<workspace>').replaceAll(cwd, '<workspace>');
   return { code, out: normalize(stdout.text()), err: normalize(stderr.text()) };
 }
 
