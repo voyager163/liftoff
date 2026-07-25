@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import { powerAppsCodeAppStarter } from '../src/catalogs.js';
 import {
@@ -7,6 +8,12 @@ import {
 } from '../src/power-apps-assets.js';
 
 describe('packaged Power Apps starter assets', () => {
+  it('preserves cataloged bytes when Git checks out the asset tree on Windows', () => {
+    const attributes = readFileSync(new URL('../.gitattributes', import.meta.url), 'utf8');
+
+    expect(attributes).toContain('/assets/power-apps-code-app/** text eol=lf');
+  });
+
   it('loads the immutable catalog only after validating paths, provenance, and hashes', () => {
     const paths = powerAppsStarterCatalog.files.map((file) => file.pathParts.join('/'));
     const logicalNames = powerAppsStarterCatalog.files.map((file) => file.logicalName);

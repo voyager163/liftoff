@@ -1,0 +1,2 @@
+# Preserve hash-verified Power Apps source bytes on every host.
+/assets/power-apps-code-app/** text eol=lf
