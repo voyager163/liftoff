@@ -35,6 +35,8 @@ export interface AzureTelemetryIngestionConfig {
   managedIdentityClientId: string;
 }
 
+export const azureMonitorScope = 'https://monitor.azure.com/.default';
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -190,10 +192,16 @@ export function readAzureTelemetryIngestionConfig(
 
 export function createAzureTelemetryIngestionDependencies(
   config: AzureTelemetryIngestionConfig
-): TelemetryIngestionDependencies {
+): TelemetryIngestionDependencies & { warmUp(): Promise<void> } {
   const credential = new ManagedIdentityCredential({ clientId: config.managedIdentityClientId });
   const client = new LogsIngestionClient(config.endpoint, credential);
   return {
+    warmUp: async () => {
+      const token = await credential.getToken(azureMonitorScope);
+      if (!token) {
+        throw new Error('Unable to acquire the Azure Monitor managed-identity token.');
+      }
+    },
     now: () => new Date(),
     upload: async (record) => {
       const azureRecord: Record<string, unknown> = {

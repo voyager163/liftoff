@@ -54,6 +54,10 @@ resource "azapi_resource" "telemetry_image_build_task" {
       timeout = 1800
     }
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "azurerm_container_registry_task_schedule_run_now" "telemetry_image" {

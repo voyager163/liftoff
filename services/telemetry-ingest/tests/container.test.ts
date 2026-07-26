@@ -30,4 +30,12 @@ describe('telemetry container contract', () => {
       code: 'ENOENT'
     });
   });
+
+  it('warms managed identity before opening the production listener', async () => {
+    const index = await readFile(path.join(serviceRoot, 'src', 'index.ts'), 'utf8');
+    const warmUp = index.indexOf('await dependencies.warmUp()');
+    const listen = index.indexOf('await listenTelemetryServer(server)');
+    expect(warmUp).toBeGreaterThan(-1);
+    expect(listen).toBeGreaterThan(warmUp);
+  });
 });

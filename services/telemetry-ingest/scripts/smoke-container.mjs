@@ -60,15 +60,26 @@ try {
     '/tmp:rw,noexec,nosuid,size=16m',
     '--publish',
     '127.0.0.1::8080',
-    '--env',
-    'AZURE_CLIENT_ID=container-smoke-client',
-    '--env',
-    'TELEMETRY_DCE_ENDPOINT=https://example.ingest.monitor.azure.com',
-    '--env',
-    'TELEMETRY_DCR_IMMUTABLE_ID=dcr-container-smoke',
-    '--env',
-    'TELEMETRY_STREAM_NAME=Custom-LiftoffCommandEvents',
-    image
+    image,
+    'node',
+    '--input-type=module',
+    '--eval',
+    `
+      const gateway = await import('./dist/services/telemetry-ingest/src/server.js');
+      const server = gateway.createTelemetryServer(() => ({
+        now: () => new Date(),
+        upload: async () => undefined
+      }));
+      await gateway.listenTelemetryServer(server);
+      let shuttingDown = false;
+      const shutdown = () => {
+        if (shuttingDown) return;
+        shuttingDown = true;
+        void gateway.closeTelemetryServer(server);
+      };
+      process.once('SIGINT', shutdown);
+      process.once('SIGTERM', shutdown);
+    `
   ]);
   containerId = run.stdout.trim();
 

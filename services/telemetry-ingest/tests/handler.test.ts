@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
+  azureMonitorScope,
   handleTelemetryRequest,
   maximumTelemetryBodyBytes,
   parseTelemetryEvent,
@@ -145,6 +146,7 @@ describe('telemetry ingestion handler', () => {
   });
 
   it('requires HTTPS and every managed-identity ingestion setting', () => {
+    expect(azureMonitorScope).toBe('https://monitor.azure.com/.default');
     expect(readAzureTelemetryIngestionConfig({
       TELEMETRY_DCE_ENDPOINT: 'https://example.ingest.monitor.azure.com',
       TELEMETRY_DCR_IMMUTABLE_ID: 'dcr-123',

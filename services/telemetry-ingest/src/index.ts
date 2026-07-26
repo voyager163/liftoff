@@ -8,18 +8,11 @@ import {
   listenTelemetryServer
 } from './server.js';
 
-let dependencies:
-  | ReturnType<typeof createAzureTelemetryIngestionDependencies>
-  | undefined;
-
-function ingestionDependencies(): ReturnType<typeof createAzureTelemetryIngestionDependencies> {
-  dependencies ??= createAzureTelemetryIngestionDependencies(
-    readAzureTelemetryIngestionConfig()
-  );
-  return dependencies;
-}
-
-const server = createTelemetryServer(ingestionDependencies);
+const dependencies = createAzureTelemetryIngestionDependencies(
+  readAzureTelemetryIngestionConfig()
+);
+await dependencies.warmUp();
+const server = createTelemetryServer(() => dependencies);
 await listenTelemetryServer(server);
 
 let shuttingDown = false;
