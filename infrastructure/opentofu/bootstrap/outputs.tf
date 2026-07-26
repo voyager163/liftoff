@@ -19,6 +19,6 @@ output "network_security_perimeter_id" {
 }
 
 output "network_security_perimeter_profile_id" {
-  description = "Enforced profile used by both Liftoff storage accounts."
+  description = "Enforced profile used by Liftoff state storage."
   value       = azurerm_network_security_perimeter_profile.telemetry_storage.id
 }

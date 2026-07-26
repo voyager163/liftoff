@@ -29,7 +29,7 @@ describe('telemetry OpenTofu backend bootstrap', () => {
     expect(source).toContain('isVersioningEnabled = true');
   });
 
-  it('enforces one storage perimeter with subscription and operator rules', async () => {
+  it('enforces one state-storage perimeter with only operator rules', async () => {
     const [source, variables, outputs] = await Promise.all([
       bootstrapSource(),
       readFile(path.join(bootstrapRoot, 'variables.tf'), 'utf8'),
@@ -37,13 +37,8 @@ describe('telemetry OpenTofu backend bootstrap', () => {
     ]);
     expect(source).toContain('resource "azurerm_network_security_perimeter" "telemetry"');
     expect(source).toContain('resource "azurerm_network_security_perimeter_profile" "telemetry_storage"');
-    expect(source).toContain('subscription_ids                      = ["/subscriptions/${var.subscription_id}"]');
     expect(source).toContain('address_prefixes                      = var.operator_cidrs');
-    expect(source).toContain('data "azurerm_network_service_tags" "onedeploy"');
-    expect(source).toContain('service         = "AppService"');
-    expect(source).toContain('location_filter = var.location');
-    expect(source).toContain('address_prefixes                      = data.azurerm_network_service_tags.onedeploy.ipv4_cidrs');
-    expect(source).toContain('name                                  = "onedeploy-appservice-koreacentral"');
+    expect(source).not.toMatch(/approved-subscription|onedeploy|AppService|network_service_tags/i);
     expect(source).toContain('publicNetworkAccess          = "SecuredByPerimeter"');
     expect(source).toMatch(
       /resource "azurerm_network_security_perimeter_association" "state_storage"[\s\S]*?access_mode\s*=\s*"Enforced"/

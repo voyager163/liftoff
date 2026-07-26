@@ -33,8 +33,7 @@ provider "registry.opentofu.org/azure/azapi" {
 }
 
 provider "registry.opentofu.org/hashicorp/archive" {
-  version     = "2.8.0"
-  constraints = "2.8.0"
+  version = "2.8.0"
   hashes = [
     "h1:4a8R2WlgZ3LUBXqR2/LqeAu5Q9Unjsh1jbc1XLbQW2I=",
     "h1:5Rcf7ostJMCWpo0EYrldMu+Fq1T23ldisLXGfv4SZmE=",

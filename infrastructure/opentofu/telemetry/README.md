@@ -25,8 +25,6 @@ Before applying, review:
 - The six-column `LiftoffCommandEvents_CL` table and 180-day retention.
 - The Log Analytics daily quota and absence of Application Insights, ingress
   diagnostics, registry credentials, storage credentials, and secret outputs.
-- The migration guards that freeze the legacy package blob and keep OneDeploy
-  disabled until the superseded Function resources are separately removed.
 
 ## Build and validate
 
@@ -82,11 +80,6 @@ or place a GitHub token, registry password, storage key, SAS token, endpoint key
 or Azure Monitor credential in variables, state configuration, source, or
 outputs.
 
-For the first migration apply, inspect the saved plan and require zero destroys.
-It may create the ACR, task/run, `AcrPull` role, Container Apps environment, and
-Container App while preserving the existing Function, plan, package storage,
-and perimeter association. Do not combine legacy cleanup with this rollout.
-
 ## Verification
 
 Before compiling the endpoint into a Liftoff release:
@@ -111,17 +104,8 @@ compute was approximately USD 4.29 per 730-hour month, plus roughly USD 5 per
 month for ACR Basic. Actual cost depends on current rates and subscription-wide
 free-grant usage.
 
-## Staged legacy cleanup
-
-Only after live endpoint and data-boundary verification, generate a separate
-plan that removes the Function App, FC1 plan, OneDeploy action, package
-blob/container, product storage account and association, and obsolete storage
-roles. A destructive apply requires explicit approval. Preserve
-`rg-liftoff-prod`, remote state, the workspace/table, DCE/DCR, accepted events,
-ACR, Container App, state perimeter, and operator rules.
-
-After production cleanup, separately reconcile the bootstrap to remove the
-approved-subscription and regional OneDeploy rules. The state account remains
+The final architecture contains no Function App, FC1 plan, product storage,
+OneDeploy action, or storage-specific production role. State storage remains
 `SecuredByPerimeter` and reachable only from ignored operator `/32` inputs with
 Entra/RBAC authorization.
 

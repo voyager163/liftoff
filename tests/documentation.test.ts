@@ -196,7 +196,7 @@ describe('public documentation', () => {
     expect(telemetry).toContain('one minimum replica');
     expect(telemetry).toMatch(/persistent platform logs\s+disabled/);
     expect(telemetry).toMatch(/full public Git commit\s+SHA/);
-    expect(telemetry).toContain('zero-destroy plan');
+    expect(telemetry).toContain('final production architecture contains no Function App');
     expect(telemetry).toContain('Standard GitHub-hosted runners run static validation only');
     expect(telemetry).toContain('tofu -chdir=infrastructure/opentofu/telemetry');
     expect(telemetry).not.toMatch(/\bterraform (?:apply|plan|destroy)\b/i);

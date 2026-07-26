@@ -59,28 +59,6 @@ variable "ingestion_enabled" {
   default     = true
 }
 
-variable "legacy_onedeploy_enabled" {
-  description = "Temporary migration switch for the superseded Flex OneDeploy action. Keep false."
-  type        = bool
-  default     = false
-
-  validation {
-    condition     = !var.legacy_onedeploy_enabled
-    error_message = "legacy_onedeploy_enabled must remain false; OneDeploy is blocked by the enforced storage perimeter."
-  }
-}
-
-variable "maximum_instance_count" {
-  description = "Temporary scale ceiling retained for the superseded Flex Function during migration."
-  type        = number
-  default     = 5
-
-  validation {
-    condition     = var.maximum_instance_count >= 1 && var.maximum_instance_count <= 10
-    error_message = "maximum_instance_count must be between 1 and 10."
-  }
-}
-
 variable "daily_quota_gb" {
   description = "Daily Log Analytics ingestion quota in GB."
   type        = number

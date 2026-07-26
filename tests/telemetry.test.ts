@@ -7,6 +7,7 @@ import { CaptureStream } from './helpers.js';
 import {
   isTelemetryEnabled,
   maybeShowTelemetryNotice,
+  productionTelemetryEndpoint,
   telemetryNotice,
   trackCommand,
   type TelemetryFetch
@@ -26,6 +27,12 @@ afterEach(async () => {
 });
 
 describe('telemetry client', () => {
+  it('uses only the verified production HTTPS endpoint', () => {
+    expect(productionTelemetryEndpoint).toBe(
+      'https://ca-liftoff-telemetry-f5be1618.politetree-7a65ae27.koreacentral.azurecontainerapps.io/api/events'
+    );
+  });
+
   it('honors product, DNT, and CI disablement', () => {
     expect(isTelemetryEnabled({})).toBe(true);
     expect(isTelemetryEnabled({ LIFTOFF_TELEMETRY: '0' })).toBe(false);

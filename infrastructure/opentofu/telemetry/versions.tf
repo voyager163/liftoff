@@ -2,10 +2,6 @@ terraform {
   required_version = ">= 1.9.0, < 2.0.0"
 
   required_providers {
-    archive = {
-      source  = "hashicorp/archive"
-      version = "2.8.0"
-    }
     azapi = {
       source  = "Azure/azapi"
       version = "2.11.0"

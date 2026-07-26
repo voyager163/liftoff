@@ -11,7 +11,8 @@ import {
   type TelemetryConfigOptions
 } from './config.js';
 
-export const productionTelemetryEndpoint: string | undefined = undefined;
+export const productionTelemetryEndpoint =
+  'https://ca-liftoff-telemetry-f5be1618.politetree-7a65ae27.koreacentral.azurecontainerapps.io/api/events';
 export const telemetryRequestTimeoutMs = 1_000;
 export const telemetryNotice =
   'Telemetry: Liftoff sends command name, CLI version, and zero/nonzero outcome with no persistent identifier. ' +

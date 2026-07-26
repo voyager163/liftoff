@@ -42,31 +42,11 @@ resource "azurerm_network_security_perimeter_profile" "telemetry_storage" {
   }
 }
 
-resource "azurerm_network_security_perimeter_access_rule" "approved_subscription" {
-  name                                  = "approved-subscription"
-  network_security_perimeter_profile_id = azurerm_network_security_perimeter_profile.telemetry_storage.id
-  direction                             = "Inbound"
-  subscription_ids                      = ["/subscriptions/${var.subscription_id}"]
-}
-
 resource "azurerm_network_security_perimeter_access_rule" "operators" {
   name                                  = "operator-cidrs"
   network_security_perimeter_profile_id = azurerm_network_security_perimeter_profile.telemetry_storage.id
   direction                             = "Inbound"
   address_prefixes                      = var.operator_cidrs
-}
-
-data "azurerm_network_service_tags" "onedeploy" {
-  location        = var.location
-  service         = "AppService"
-  location_filter = var.location
-}
-
-resource "azurerm_network_security_perimeter_access_rule" "onedeploy" {
-  name                                  = "onedeploy-appservice-koreacentral"
-  network_security_perimeter_profile_id = azurerm_network_security_perimeter_profile.telemetry_storage.id
-  direction                             = "Inbound"
-  address_prefixes                      = data.azurerm_network_service_tags.onedeploy.ipv4_cidrs
 }
 
 resource "azapi_resource" "state_storage" {
@@ -115,8 +95,6 @@ resource "azurerm_network_security_perimeter_association" "state_storage" {
   resource_id                           = azapi_resource.state_storage.id
 
   depends_on = [
-    azurerm_network_security_perimeter_access_rule.approved_subscription,
-    azurerm_network_security_perimeter_access_rule.onedeploy,
     azurerm_network_security_perimeter_access_rule.operators
   ]
 }

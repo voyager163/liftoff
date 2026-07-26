@@ -148,18 +148,15 @@ Standard GitHub-hosted runners run static validation only. They do not plan or
 apply production because their dynamic networks are not admitted to the
 perimeter.
 
-The first Container App rollout must be a zero-destroy plan that preserves the
-partially deployed Function resources. After apply, operators must verify the
-registry identity boundary, one ready replica, sub-second endpoint response,
-synthetic allowlisted event, six Liftoff-defined columns, expected Azure system
-columns, server time, retention, and absence of request, IP, geolocation,
-Container Apps platform/console, or Application Insights records before
-compiling the endpoint into a Liftoff release.
+After apply, operators must verify the registry identity boundary, one ready
+replica, sub-second endpoint response, synthetic allowlisted event, six
+Liftoff-defined columns, expected Azure system columns, server time, retention,
+and absence of request, IP, geolocation, Container Apps platform/console, or
+Application Insights records before compiling the endpoint into a Liftoff
+release.
 
-Legacy Function, FC1, OneDeploy, package-storage, production-storage-association,
-and obsolete perimeter-rule cleanup requires a later separately reviewed plan
-and explicit approval. Cleanup preserves `rg-liftoff-prod`, remote state, the
-Log Analytics data path, accepted events, ACR, and the Container App.
+The final production architecture contains no Function App, FC1 plan, product
+storage, OneDeploy action, or production storage-perimeter association.
 
 For emergency disablement, apply the OpenTofu configuration with
 `ingestion_enabled=false`, then publish a patch with client delivery disabled.

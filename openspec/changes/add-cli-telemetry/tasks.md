@@ -74,25 +74,25 @@
 - [x] 8.7 Ensure the Container App revision depends on successful image build and propagated `AcrPull`, supplies only the DCE/DCR/stream and identity settings, and contains no registry, storage, or ingestion credential.
 - [x] 8.8 Replace Function-specific endpoint outputs with the fully qualified Container App `/api/events` URL while keeping all outputs non-sensitive.
 - [x] 8.9 Add static tests that reject Functions/OneDeploy in the target architecture, ACR admin or anonymous access, mutable image tags, product storage, persistent Container Apps logs, zero minimum replicas, more than five replicas, oversized compute, broad RBAC, and non-OpenTofu deployment paths.
-- [ ] 8.10 Preserve the currently deployed Function resources in the first migration plan so Container App creation can be reviewed and applied with zero destroys.
+- [x] 8.10 Preserve the currently deployed Function resources in the first migration plan so Container App creation can be reviewed and applied with zero destroys.
 
 ## 9. Documentation, Validation, and Non-Destructive Rollout
 
 - [x] 9.1 Revise public and operator documentation for the plain Container App, warm-replica cost trade-off, ACR image privacy boundary, immutable revision input, managed-identity pull, disabled persistent logs, state-only NSP, and staged migration.
 - [x] 9.2 Update CI to build and smoke-test the container and run backend-free ACR/Container Apps OpenTofu validation while standard GitHub-hosted runners remain unable to plan or apply production.
 - [x] 9.3 Run targeted gateway/container/infrastructure/documentation/package checks, the full repository check, strict OpenSpec validation, OpenTofu formatting/init/validation, and diff hygiene.
-- [ ] 9.4 Re-run Azure preparation and validation for the revised architecture, confirm regional availability and quotas, and record current ACR Basic plus one-warm-replica cost evidence.
-- [ ] 9.5 Generate a fresh production plan from remote state and assert it creates the ACR, build task/run, Container Apps environment/app, and roles with no changes or destroys to legacy resources or retained telemetry data.
-- [ ] 9.6 Apply only the validated non-destructive plan from the admitted operator network and verify every new production resource is in `rg-liftoff-prod`.
-- [ ] 9.7 Verify the registry has admin and anonymous access disabled, the image tag equals the pinned commit, the Container App uses managed-identity pull, and exactly one idle replica remains ready.
-- [ ] 9.8 Verify `/api/events` stays within the one-second client budget, accepts a synthetic allowlisted event, and rejects wrong-method, malformed, extra-field, and oversized requests.
-- [ ] 9.9 Query the custom table and verify the six approved Liftoff-defined columns plus only expected Azure system columns, server time, and no request, IP, geolocation, Container Apps platform, console, or Application Insights records.
-- [ ] 9.10 Set the reviewed Container App endpoint constant, rerun offline/failure/package tests, and confirm a release cannot enable telemetry before the live privacy gate passes.
+- [x] 9.4 Re-run Azure preparation and validation for the revised architecture, confirm regional availability and quotas, and record current ACR Basic plus one-warm-replica cost evidence.
+- [x] 9.5 Generate a fresh production plan from remote state and assert it creates the ACR, build task/run, Container Apps environment/app, and roles with no changes or destroys to legacy resources or retained telemetry data.
+- [x] 9.6 Apply only the validated non-destructive plan from the admitted operator network and verify every new production resource is in `rg-liftoff-prod`.
+- [x] 9.7 Verify the registry has admin and anonymous access disabled, the image tag equals the pinned commit, the Container App uses managed-identity pull, and exactly one idle replica remains ready.
+- [x] 9.8 Verify `/api/events` stays within the one-second client budget, accepts a synthetic allowlisted event, and rejects wrong-method, malformed, extra-field, and oversized requests.
+- [x] 9.9 Query the custom table and verify the six approved Liftoff-defined columns plus only expected Azure system columns, server time, and no request, IP, geolocation, Container Apps platform, console, or Application Insights records.
+- [x] 9.10 Set the reviewed Container App endpoint constant, rerun offline/failure/package tests, and confirm a release cannot enable telemetry before the live privacy gate passes.
 
 ## 10. Legacy Cleanup and Release Gate
 
-- [ ] 10.1 Remove the Azure Functions adapter, Function package scripts, and superseded Function-specific documentation only after the Container App endpoint and data boundary are verified.
-- [ ] 10.2 Generate a separate destructive production plan limited to the Function App, FC1 plan, OneDeploy action, package blob/container, product storage account and association, and obsolete storage roles.
+- [x] 10.1 Remove the Azure Functions adapter, Function package scripts, and superseded Function-specific documentation only after the Container App endpoint and data boundary are verified.
+- [x] 10.2 Generate a separate destructive production plan limited to the Function App, FC1 plan, OneDeploy action, package blob/container, product storage account and association, and obsolete storage roles.
 - [ ] 10.3 Obtain explicit approval for the reviewed destructive plan before applying it; preserve `rg-liftoff-prod`, remote state, workspace, custom table, DCE, DCR, gateway identity, accepted events, ACR, and Container App.
 - [ ] 10.4 Apply the approved legacy cleanup and verify the production state contains no Function, OneDeploy, package-storage, or Azure Files resources.
 - [ ] 10.5 Remove the approved-subscription and regional OneDeploy rules from bootstrap OpenTofu through a separate reviewed plan while preserving the perimeter, profile, operator CIDRs, state account, enforced association, shared-key disablement, and data role.

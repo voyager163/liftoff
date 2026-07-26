@@ -24,7 +24,7 @@ async function tofuFile(name: string): Promise<string> {
 describe('telemetry OpenTofu privacy contract', () => {
   it('owns the exact protected production resource group', async () => {
     const source = await tofuSource();
-    expect(source).toContain('resource_group_name       = "rg-liftoff-prod"');
+    expect(source).toMatch(/resource_group_name\s*=\s*"rg-liftoff-prod"/);
     expect(source).toMatch(/resource "azurerm_resource_group" "telemetry"[\s\S]*?prevent_destroy = true/);
     for (const resource of [
       'azurerm_user_assigned_identity',
@@ -137,20 +137,16 @@ describe('telemetry OpenTofu privacy contract', () => {
     );
   });
 
-  it('isolates and freezes the superseded Function path during migration', async () => {
-    const [target, legacy, variables] = await Promise.all([
-      tofuFile('container-app.tf'),
-      tofuFile('main.tf'),
+  it('contains no superseded Function, product storage, or OneDeploy path', async () => {
+    const [source, variables] = await Promise.all([
+      tofuSource(),
       tofuFile('variables.tf')
     ]);
-    expect(target).not.toMatch(/Microsoft\.Web|Function|OneDeploy|AzureWebJobsStorage|storage_account/i);
-    expect(legacy).toMatch(
-      /resource "azurerm_storage_blob" "function_package"[\s\S]*?ignore_changes = \[[\s\S]*?name,[\s\S]*?source/
+    expect(source).not.toMatch(
+      /Microsoft\.Web|Function|OneDeploy|AzureWebJobsStorage|azurerm_service_plan|azurerm_storage_blob|telemetry_storage|storage_blob_owner|deployment_blob_contributor/i
     );
-    expect(legacy).toContain('count = var.legacy_onedeploy_enabled ? 1 : 0');
-    expect(variables).toMatch(
-      /variable "legacy_onedeploy_enabled"[\s\S]*?default\s*=\s*false[\s\S]*?condition\s*=\s*!var\.legacy_onedeploy_enabled/
-    );
+    expect(variables).not.toMatch(/legacy_onedeploy_enabled|maximum_instance_count/);
+    expect(source).not.toMatch(/Storage Blob Data (?:Owner|Contributor)/);
   });
 
   it('pins providers and exposes no sensitive outputs', async () => {
@@ -160,7 +156,6 @@ describe('telemetry OpenTofu privacy contract', () => {
       tofuFile('variables.tf')
     ]);
     expect(source).toContain('version = "4.81.0"');
-    expect(source).toContain('version = "2.8.0"');
     expect(source).toContain('version = "2.11.0"');
     expect(source).toContain('version = "0.14.0"');
     expect(source).toMatch(/daily_quota_gb\s*=\s*var\.daily_quota_gb/);
@@ -197,7 +192,7 @@ describe('telemetry OpenTofu privacy contract', () => {
       'location',
       'resource_suffix',
       'source_revision',
-      'maximum_instance_count',
+      'retained_image_revisions',
       'daily_quota_gb'
     ]) {
       expect(example).toContain(input);

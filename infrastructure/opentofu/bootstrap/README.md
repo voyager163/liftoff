@@ -9,13 +9,6 @@ state storage. Explicit operator IPv4 `/32` CIDRs are the target architecture's
 only inbound exceptions. Storage keys remain disabled; perimeter admission does
 not replace Entra authentication or resource-scoped RBAC.
 
-During the staged migration from the failed Flex deployment, the bootstrap state
-temporarily retains the approved-subscription and regional
-`AppService.KoreaCentral` rules, and production Function storage remains
-associated. Remove those legacy rules and association only through separately
-reviewed OpenTofu plans after the replacement Container App passes live
-verification.
-
 The bootstrap uses the ARM control plane for the storage account and container,
 so provider refresh does not materialize storage keys in state. The local state
 still contains subscription, tenant, object, and resource metadata. Treat it as
@@ -39,8 +32,8 @@ The apply creates:
 - `stliftofftfstatef5be1618` through AzAPI with shared keys disabled, blob
   versioning, infrastructure encryption, and 30-day delete retention;
 - private `tfstate` container through the ARM control plane; and
-- protected NSP, profile, the temporary migration rules, operator-CIDR rule, and
-  enforced state-storage association; and
+- protected NSP, profile, operator-CIDR rule, and enforced state-storage
+  association; and
 - storage-account-scoped Blob Data Contributor for the deploying principal.
 
 The role propagation gate waits before the apply completes. Production may then
