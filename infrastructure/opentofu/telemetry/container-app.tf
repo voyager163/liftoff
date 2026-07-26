@@ -7,8 +7,7 @@ locals {
   image_repository        = "telemetry-ingest"
   image_tag               = var.source_revision
   image_name              = "${local.image_repository}:${local.image_tag}"
-  image_source_context    = "https://github.com/voyager163/liftoff.git#${var.source_revision}"
-  image_build_task_name   = "build-${substr(var.source_revision, 0, 12)}"
+  image_build_revisions   = setunion(var.retained_image_revisions, toset([var.source_revision]))
 }
 
 resource "azurerm_container_registry" "telemetry" {
@@ -23,8 +22,10 @@ resource "azurerm_container_registry" "telemetry" {
 }
 
 resource "azapi_resource" "telemetry_image_build_task" {
+  for_each = local.image_build_revisions
+
   type      = "Microsoft.ContainerRegistry/registries/tasks@2019-04-01"
-  name      = local.image_build_task_name
+  name      = "build-${substr(each.value, 0, 12)}"
   parent_id = azurerm_container_registry.telemetry.id
   location  = var.location
   tags      = local.common_tags
@@ -44,9 +45,9 @@ resource "azapi_resource" "telemetry_image_build_task" {
       }
       status = "Enabled"
       step = {
-        contextPath    = local.image_source_context
+        contextPath    = "https://github.com/voyager163/liftoff.git#${each.value}"
         dockerFilePath = "services/telemetry-ingest/Dockerfile"
-        imageNames     = [local.image_name]
+        imageNames     = ["${local.image_repository}:${each.value}"]
         isPushEnabled  = true
         noCache        = false
         type           = "Docker"
@@ -61,7 +62,9 @@ resource "azapi_resource" "telemetry_image_build_task" {
 }
 
 resource "azurerm_container_registry_task_schedule_run_now" "telemetry_image" {
-  container_registry_task_id = azapi_resource.telemetry_image_build_task.id
+  for_each = local.image_build_revisions
+
+  container_registry_task_id = azapi_resource.telemetry_image_build_task[each.value].id
 
   timeouts {
     create = "45m"
@@ -195,4 +198,14 @@ resource "azurerm_container_app" "telemetry" {
   lifecycle {
     ignore_changes = [workload_profile_name]
   }
+}
+
+moved {
+  from = azapi_resource.telemetry_image_build_task
+  to   = azapi_resource.telemetry_image_build_task["78ac523032d098ab301c3bc9c74380672382f7db"]
+}
+
+moved {
+  from = azurerm_container_registry_task_schedule_run_now.telemetry_image
+  to   = azurerm_container_registry_task_schedule_run_now.telemetry_image["78ac523032d098ab301c3bc9c74380672382f7db"]
 }

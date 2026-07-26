@@ -88,13 +88,15 @@ describe('telemetry OpenTofu privacy contract', () => {
       tofuFile('variables.tf')
     ]);
     expect(variables).toContain('variable "source_revision"');
+    expect(variables).toContain('variable "retained_image_revisions"');
     expect(variables).toContain('^[0-9a-f]{40}$');
     expect(target).toContain('image_tag               = var.source_revision');
-    expect(target).toContain('https://github.com/voyager163/liftoff.git#${var.source_revision}');
+    expect(target).toContain('https://github.com/voyager163/liftoff.git#${each.value}');
     expect(target).toContain('Microsoft.ContainerRegistry/registries/tasks@2019-04-01');
     expect(target).toContain('dockerFilePath = "services/telemetry-ingest/Dockerfile"');
-    expect(target).toContain('imageNames     = [local.image_name]');
+    expect(target).toContain('imageNames     = ["${local.image_repository}:${each.value}"]');
     expect(target).toContain('resource "azurerm_container_registry_task_schedule_run_now" "telemetry_image"');
+    expect(target).toContain('for_each = local.image_build_revisions');
     expect(target).toContain('create = "45m"');
     expect(target).not.toMatch(/:latest|image_tag\s*=\s*"(?:main|master|latest)"/i);
   });

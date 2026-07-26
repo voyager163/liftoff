@@ -39,6 +39,20 @@ variable "source_revision" {
   }
 }
 
+variable "retained_image_revisions" {
+  description = "Previously deployed image revisions retained during non-destructive migration."
+  type        = set(string)
+  default     = []
+
+  validation {
+    condition = alltrue([
+      for revision in var.retained_image_revisions :
+      can(regex("^[0-9a-f]{40}$", revision))
+    ])
+    error_message = "Every retained image revision must be a full 40-character lowercase Git commit SHA."
+  }
+}
+
 variable "ingestion_enabled" {
   description = "Enables public Container App ingress. Set false for emergency disablement."
   type        = bool
