@@ -103,10 +103,12 @@ describe('telemetry OpenTofu privacy contract', () => {
     const target = await tofuFile('container-app.tf');
     expect(target).toContain('logs_destination    = ""');
     expect(target).not.toContain('log_analytics_workspace_id');
+    expect(target).toContain('ignore_changes = [workload_profile]');
     expect(target).toContain('allow_insecure_connections = false');
     expect(target).toContain('external_enabled           = var.ingestion_enabled');
     expect(target).toContain('target_port                = local.container_port');
     expect(target).toContain('revision_mode                = "Single"');
+    expect(target).toContain('ignore_changes = [workload_profile_name]');
     expect(target).toContain('min_replicas                     = 1');
     expect(target).toContain('max_replicas                     = 5');
     expect(target).toContain('cpu    = 0.25');

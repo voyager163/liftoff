@@ -87,6 +87,10 @@ resource "azurerm_container_app_environment" "telemetry" {
   location            = var.location
   logs_destination    = ""
   tags                = local.common_tags
+
+  lifecycle {
+    ignore_changes = [workload_profile]
+  }
 }
 
 resource "azurerm_container_app" "telemetry" {
@@ -187,4 +191,8 @@ resource "azurerm_container_app" "telemetry" {
     azurerm_role_assignment.monitor_ingestion,
     time_sleep.container_registry_pull_propagation
   ]
+
+  lifecycle {
+    ignore_changes = [workload_profile_name]
+  }
 }
