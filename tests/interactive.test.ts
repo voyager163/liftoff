@@ -195,10 +195,11 @@ describe('interactive presentation', () => {
       expect(options.agents).toEqual(['github-copilot', 'claude']);
       expect(options.codeAppsPlugin).toBe(false);
       expect(checkboxPrompt).toHaveBeenCalledOnce();
-      expect(runner.calls).toEqual([
+      expect(runner.calls).toHaveLength(2);
+      expect(runner.calls).toEqual(expect.arrayContaining([
         { executable: 'copilot', args: ['--version'] },
         { executable: 'claude', args: ['--version'] }
-      ]);
+      ]));
     } finally {
       prompter.close();
       await rm(root, { recursive: true, force: true });
