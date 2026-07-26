@@ -98,6 +98,23 @@ does not claim framework-owned files in durable artifact hashes.
 One-time seed content is also omitted from durable hashes so it can follow its
 own lifecycle after generation.
 
+## Telemetry boundary
+
+Liftoff sends only a recognized command name, CLI version, and zero/nonzero
+outcome after a command completes. It creates no persistent installation or
+session identifier and sends no arguments, paths, project data, errors, timing,
+or host details.
+
+Telemetry is enabled by default after a one-time disclosure. Set
+`LIFTOFF_TELEMETRY=0` or `DO_NOT_TRACK=1` to disable it; `CI=true` disables it
+automatically. Delivery is one bounded HTTPS attempt and cannot change command
+output or exit status.
+
+Azure necessarily handles a source network address while routing HTTPS, but
+Liftoff does not include it in the event, derive geolocation from it, or persist
+it in the product telemetry table. See [telemetry and privacy](telemetry.md) for
+the exact fields, Azure boundary, OpenTofu deployment, and 180-day retention.
+
 ## Credentials and external actions
 
 Generated files contain configuration boundaries, not real credentials.

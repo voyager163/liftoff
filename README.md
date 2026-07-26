@@ -68,6 +68,7 @@ write failures.
 | [Existing repositories](docs/existing-repositories.md) | Understand in-place, child-directory, and migration behavior |
 | [Prerequisites](docs/prerequisites.md) | Review plan-derived runtimes, tools, authentication, and dependency setup |
 | [Safety and consent](docs/safety-and-consent.md) | Review staging, overwrite, install, rollback, and ownership guarantees |
+| [Telemetry and privacy](docs/telemetry.md) | Review collected fields, opt-outs, Azure processing, and retention |
 | [CLI reference](docs/cli-reference.md) | Find commands, flags, terminal modes, JSON, and exit-code contracts |
 | [Generated project structure](docs/project-structure.md) | Locate workload-specific and conditional generated areas |
 | [Configuration and manifests](docs/configuration-and-manifests.md) | Edit desired state and understand manifest schema v4 |

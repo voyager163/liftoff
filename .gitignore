@@ -3,8 +3,23 @@ node_modules/
 
 # Build outputs
 dist/
+services/telemetry-ingest/build/
 *.tsbuildinfo
 *.tgz
+
+# OpenTofu local state and provider cache
+**/.terraform/
+**/.bootstrap/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+
+# Local Azure deployment inputs
+/.azure/*.hcl
+/.azure/*.tfvars
+/.azure/*.tfplan
+/.azure/deployment-plan.md
 
 # Test and coverage output
 coverage/

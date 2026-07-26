@@ -1,0 +1,79 @@
+variable "subscription_id" {
+  description = "Azure subscription that owns rg-liftoff-prod."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", var.subscription_id))
+    error_message = "subscription_id must be a UUID."
+  }
+}
+
+variable "location" {
+  description = "Azure region for telemetry resources."
+  type        = string
+  default     = "eastus"
+
+  validation {
+    condition     = can(regex("^[a-z0-9]+$", var.location))
+    error_message = "location must be a lowercase Azure region slug."
+  }
+}
+
+variable "resource_suffix" {
+  description = "Globally unique lowercase suffix used by bounded Azure resource names."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{6,8}$", var.resource_suffix))
+    error_message = "resource_suffix must contain 6-8 lowercase letters or digits."
+  }
+}
+
+variable "source_revision" {
+  description = "Full public Git commit SHA used for the immutable telemetry gateway image."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[0-9a-f]{40}$", var.source_revision))
+    error_message = "source_revision must be a full 40-character lowercase Git commit SHA."
+  }
+}
+
+variable "ingestion_enabled" {
+  description = "Enables public Container App ingress. Set false for emergency disablement."
+  type        = bool
+  default     = true
+}
+
+variable "legacy_onedeploy_enabled" {
+  description = "Temporary migration switch for the superseded Flex OneDeploy action. Keep false."
+  type        = bool
+  default     = false
+
+  validation {
+    condition     = !var.legacy_onedeploy_enabled
+    error_message = "legacy_onedeploy_enabled must remain false; OneDeploy is blocked by the enforced storage perimeter."
+  }
+}
+
+variable "maximum_instance_count" {
+  description = "Temporary scale ceiling retained for the superseded Flex Function during migration."
+  type        = number
+  default     = 5
+
+  validation {
+    condition     = var.maximum_instance_count >= 1 && var.maximum_instance_count <= 10
+    error_message = "maximum_instance_count must be between 1 and 10."
+  }
+}
+
+variable "daily_quota_gb" {
+  description = "Daily Log Analytics ingestion quota in GB."
+  type        = number
+  default     = 0.1
+
+  validation {
+    condition     = var.daily_quota_gb > 0 && var.daily_quota_gb <= 1
+    error_message = "daily_quota_gb must be greater than 0 and no more than 1."
+  }
+}

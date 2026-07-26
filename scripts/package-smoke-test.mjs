@@ -107,6 +107,7 @@ try {
     'docs/existing-repositories.md',
     'docs/prerequisites.md',
     'docs/safety-and-consent.md',
+    'docs/telemetry.md',
     'docs/cli-reference.md',
     'docs/project-structure.md',
     'docs/configuration-and-manifests.md',
@@ -141,6 +142,8 @@ try {
   assertPackageExcludes(packResult, 'tests');
   assertPackageExcludes(packResult, 'scripts');
   assertPackageExcludes(packResult, 'security');
+  assertPackageExcludes(packResult, 'services');
+  assertPackageExcludes(packResult, 'infrastructure');
   assertPackageExcludes(packResult, 'node_modules');
   await validateTemplateDependencyInventory(
     packageRoot,
@@ -155,6 +158,7 @@ try {
   const npmEnv = {
     ...process.env,
     HOME: homeDirectory,
+    LIFTOFF_TELEMETRY: '0',
     npm_config_cache: npmCache
   };
   runNpm(['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {

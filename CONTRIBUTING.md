@@ -36,6 +36,20 @@ npm run smoke:package
 npm run verify:standard-node-templates
 ```
 
+Changes to the telemetry gateway, container, or Azure service also require:
+
+```bash
+npm ci --prefix services/telemetry-ingest
+npm run check --prefix services/telemetry-ingest
+npm run package --prefix services/telemetry-ingest
+npm run smoke:container --prefix services/telemetry-ingest
+tofu -chdir=infrastructure/opentofu/telemetry init -backend=false
+tofu -chdir=infrastructure/opentofu/telemetry validate
+```
+
+The container smoke test requires a running Docker daemon. Standard hosted CI
+performs these static and local checks but never plans or applies production.
+
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
 executes the installed CLI. The standard template verifier generates a Node.js

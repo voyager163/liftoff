@@ -24,6 +24,9 @@ jobs:
         with:
           node-version: "20.19"
           cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
 
       - uses: actions/setup-python@v7
         with:
@@ -43,18 +46,66 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
       - name: Run Windows initialization safety coverage
         if: runner.os == 'Windows'
-        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts
+        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
 
       - name: Run package check
         run: npm run check
+
+      - name: Run telemetry gateway check
+        run: npm run check --prefix services/telemetry-ingest
 
       - name: Run package smoke test
         run: npm run smoke:package
 
       - name: Verify standard Node.js templates
         run: npm run verify:standard-node-templates
+
+  telemetry-infrastructure:
+    name: Telemetry OpenTofu
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.12"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - uses: opentofu/setup-opentofu@v2
+        with:
+          tofu_version: 1.12.5
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install and check telemetry gateway
+        run: |
+          npm ci --prefix services/telemetry-ingest
+          npm run check --prefix services/telemetry-ingest
+
+      - name: Build and smoke-test telemetry container
+        run: npm run smoke:container --prefix services/telemetry-ingest
+
+      - name: Check telemetry OpenTofu formatting
+        run: tofu -chdir=infrastructure/opentofu/telemetry fmt -check
+
+      - name: Initialize telemetry OpenTofu without a backend
+        run: tofu -chdir=infrastructure/opentofu/telemetry init -backend=false
+
+      - name: Validate telemetry OpenTofu
+        run: tofu -chdir=infrastructure/opentofu/telemetry validate
+
+      - name: Check telemetry infrastructure privacy contract
+        run: npx vitest run tests/telemetry-infrastructure.test.ts
 
   power-apps-starter:
     name: Power Apps starter (${{ matrix.os }}, Node 22)
