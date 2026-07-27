@@ -130,7 +130,7 @@ resource "azurerm_container_app" "telemetry" {
     max_replicas                     = 5
     polling_interval_in_seconds      = 15
     cooldown_period_in_seconds       = 300
-    revision_suffix                  = substr(var.source_revision, 0, 12)
+    revision_suffix                  = substr(trimprefix(var.image_digest, "sha256:"), 0, 12)
     termination_grace_period_seconds = 30
 
     container {

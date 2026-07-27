@@ -115,6 +115,7 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(target).toContain('ignore_changes = [workload_profile_name]');
     expect(target).toContain('min_replicas                     = 1');
     expect(target).toContain('max_replicas                     = 5');
+    expect(target).toContain('revision_suffix                  = substr(trimprefix(var.image_digest, "sha256:"), 0, 12)');
     expect(target).toContain('cpu    = 0.25');
     expect(target).toContain('memory = "0.5Gi"');
     expect(target).toContain('termination_grace_period_seconds = 30');
