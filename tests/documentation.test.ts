@@ -10,6 +10,7 @@ const requiredDocs = [
   'docs/existing-repositories.md',
   'docs/prerequisites.md',
   'docs/safety-and-consent.md',
+  'docs/telemetry.md',
   'docs/cli-reference.md',
   'docs/project-structure.md',
   'docs/configuration-and-manifests.md',
@@ -140,6 +141,7 @@ describe('public documentation', () => {
       existing,
       prerequisites,
       safety,
+      telemetry,
       cli,
       integrations,
       troubleshooting,
@@ -149,6 +151,7 @@ describe('public documentation', () => {
       repositoryFile('docs/existing-repositories.md'),
       repositoryFile('docs/prerequisites.md'),
       repositoryFile('docs/safety-and-consent.md'),
+      repositoryFile('docs/telemetry.md'),
       repositoryFile('docs/cli-reference.md'),
       repositoryFile('docs/spec-workflows-and-agents.md'),
       repositoryFile('docs/troubleshooting.md'),
@@ -178,6 +181,25 @@ describe('public documentation', () => {
     expect(cli).toContain('Liftoff has not executed it automatically');
     expect(safety).toContain('Safe-update consent does not authorize conflicts');
     expect(safety).toMatch(/update never installs\s+dependencies/);
+    expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
+    expect(telemetry).toContain('DO_NOT_TRACK=1');
+    expect(telemetry).toContain('no persistent installation or session identifier');
+    expect(telemetry).toContain('source network address while routing');
+    expect(telemetry).toContain('180 days');
+    expect(telemetry).toContain('rg-liftoff-prod');
+    expect(telemetry).toContain('Azure Monitor adds standard workspace system columns');
+    expect(telemetry).toMatch(/same\s+reviewed production variable file/);
+    expect(telemetry).toMatch(/Azure Network Security\s+Perimeter/);
+    expect(telemetry).toContain('explicit operator IPv4 `/32` CIDRs');
+    expect(telemetry).toMatch(/Azure Container\s+Apps/);
+    expect(telemetry).toMatch(/Administrator\s+credentials and anonymous pull are disabled/);
+    expect(telemetry).toContain('one minimum replica');
+    expect(telemetry).toMatch(/persistent platform logs\s+disabled/);
+    expect(telemetry).toMatch(/full public Git commit\s+SHA/);
+    expect(telemetry).toContain('final production architecture contains no Function App');
+    expect(telemetry).toContain('Standard GitHub-hosted runners run static validation only');
+    expect(telemetry).toContain('tofu -chdir=infrastructure/opentofu/telemetry');
+    expect(telemetry).not.toMatch(/\bterraform (?:apply|plan|destroy)\b/i);
     expect(existing).toMatch(/Redirected and\s+JSON checks remain read-only/);
     expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
     expect(manifests).toContain('declined interactive update');
@@ -191,6 +213,7 @@ describe('public documentation', () => {
 
     expect(contributing).toContain('npm run check');
     expect(contributing).toContain('npm run smoke:package');
+    expect(contributing).toContain('npm run smoke:container --prefix services/telemetry-ingest');
     expect(contributing).toContain('npm run verify:power-apps-starter');
     expect(contributing).toContain('npm run refresh:power-apps-starter');
     expect(contributing).toContain('Node.js 22 on Linux x64');

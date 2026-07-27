@@ -1,0 +1,4 @@
+subscription_id = "<subscription-id>"
+location        = "koreacentral"
+resource_suffix = "<unique-suffix>"
+operator_cidrs  = ["203.0.113.10/32"]
