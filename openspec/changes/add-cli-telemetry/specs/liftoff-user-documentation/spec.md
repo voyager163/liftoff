@@ -22,7 +22,7 @@ The system SHALL document the telemetry service's review, plan, apply, verificat
 #### Scenario: Maintainer prepares the Azure service
 - **WHEN** a maintainer follows telemetry deployment guidance
 - **THEN** all infrastructure lifecycle examples use `tofu`
-- **AND** the guidance requires review of `rg-liftoff-prod` ownership and deletion protection, the enforced state-storage perimeter, ignored operator CIDRs, ACR administrator and anonymous-access disablement, the pinned source revision and immutable image tag, the ACR task run, one-to-five Container App replica bounds, disabled persistent platform logs, managed-identity roles, approved table schema, region, retention, and remote state before apply
+- **AND** the guidance requires review of `rg-liftoff-prod` ownership and deletion protection, state-container deletion protection, the enforced state-storage perimeter, ignored operator CIDRs, ACR administrator and anonymous-access disablement, the pinned source revision and immutable image digest, the ACR task run, one-to-five Container App replica bounds, disabled persistent platform logs, managed-identity roles, approved table schema, region, retention, and remote state before apply
 
 #### Scenario: Operator network changes
 - **WHEN** the maintainer's public IP no longer matches an approved perimeter CIDR

@@ -4,7 +4,7 @@ import {
   canonicalTelemetryCommand,
   createTelemetryEvent,
   createTelemetryStorageRecord,
-  isSemanticVersion,
+  isTelemetryCliVersion,
   telemetryClientFields,
   telemetryCommands,
   telemetryStorageFields
@@ -70,14 +70,17 @@ describe('telemetry contract', () => {
     expect(Object.keys(record)).toEqual(telemetryStorageFields);
   });
 
-  it('accepts semantic versions and rejects identifying free-form values', () => {
-    expect(isSemanticVersion('0.6.1')).toBe(true);
-    expect(isSemanticVersion('1.2.3-beta.1+build.5')).toBe(true);
-    expect(isSemanticVersion('1.2.3-0')).toBe(true);
-    expect(isSemanticVersion('1.2.3+build.01')).toBe(true);
-    expect(isSemanticVersion('1.2.3-01')).toBe(false);
-    expect(isSemanticVersion('01.2.3')).toBe(false);
-    expect(isSemanticVersion('v1.2.3')).toBe(false);
-    expect(isSemanticVersion('/private/project')).toBe(false);
+  it('accepts bounded release versions and rejects identifier-bearing metadata', () => {
+    expect(isTelemetryCliVersion('0.6.1')).toBe(true);
+    expect(isTelemetryCliVersion('1.2.3-beta')).toBe(true);
+    expect(isTelemetryCliVersion('1.2.3-beta.1')).toBe(true);
+    expect(isTelemetryCliVersion('1.2.3-rc.0')).toBe(true);
+    expect(isTelemetryCliVersion('1.2.3+build.01')).toBe(false);
+    expect(isTelemetryCliVersion('1.2.3+install-550e8400-e29b-41d4-a716-446655440000')).toBe(false);
+    expect(isTelemetryCliVersion('1.2.3-preview.private')).toBe(false);
+    expect(isTelemetryCliVersion('1.2.3-01')).toBe(false);
+    expect(isTelemetryCliVersion('01.2.3')).toBe(false);
+    expect(isTelemetryCliVersion('v1.2.3')).toBe(false);
+    expect(isTelemetryCliVersion('/private/project')).toBe(false);
   });
 });

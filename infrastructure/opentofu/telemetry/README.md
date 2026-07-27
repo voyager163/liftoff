@@ -15,8 +15,9 @@ Before applying, review:
   disabled. Its endpoint is public, but it contains only already-public
   application image bytes and requires Entra authentication.
 - The tokenless ACR task context pinned to
-  `https://github.com/voyager163/liftoff.git#<source_revision>`, immutable image
-  tag, successful run-now build, and reviewed digest-pinned Dockerfile.
+  `https://github.com/voyager163/liftoff.git#<source_revision>`, commit-tagged
+  build, resolved manifest digest, successful run-now build, and reviewed
+  digest-pinned Dockerfile.
 - The user-assigned identity with registry-scoped `AcrPull` and DCR-scoped
   `Monitoring Metrics Publisher`.
 - The Container Apps environment with persistent platform logs disabled.
@@ -84,8 +85,9 @@ outputs.
 
 Before compiling the endpoint into a Liftoff release:
 
-1. Confirm ACR administrator and anonymous access are disabled, the image tag
-   equals `source_revision`, and the Container App pulls with managed identity.
+1. Confirm ACR administrator and anonymous access are disabled, the build tag
+   equals `source_revision`, the configured `image_digest` resolves from that
+   tag, and the Container App pulls the digest with managed identity.
 2. Confirm exactly one idle 0.25-vCPU/0.5-GiB replica is ready and repeated
    `/api/events` requests complete within the client's one-second budget.
 3. Submit one synthetic event that uses an allowlisted command and verify wrong

@@ -131,6 +131,10 @@ resource "azapi_resource" "state_container" {
     }
   }
 
+  lifecycle {
+    prevent_destroy = true
+  }
+
   depends_on = [
     azapi_update_resource.blob_service
   ]

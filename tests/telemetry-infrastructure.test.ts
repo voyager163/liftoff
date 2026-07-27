@@ -88,9 +88,11 @@ describe('telemetry OpenTofu privacy contract', () => {
       tofuFile('variables.tf')
     ]);
     expect(variables).toContain('variable "source_revision"');
+    expect(variables).toContain('variable "image_digest"');
     expect(variables).toContain('variable "retained_image_revisions"');
     expect(variables).toContain('^[0-9a-f]{40}$');
     expect(target).toContain('image_tag               = var.source_revision');
+    expect(target).toContain('${local.image_repository}@${var.image_digest}');
     expect(target).toContain('https://github.com/voyager163/liftoff.git#${each.value}');
     expect(target).toContain('Microsoft.ContainerRegistry/registries/tasks@2019-04-01');
     expect(target).toContain('dockerFilePath = "services/telemetry-ingest/Dockerfile"');
@@ -192,6 +194,7 @@ describe('telemetry OpenTofu privacy contract', () => {
       'location',
       'resource_suffix',
       'source_revision',
+      'image_digest',
       'retained_image_revisions',
       'daily_quota_gb'
     ]) {

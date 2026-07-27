@@ -39,6 +39,16 @@ variable "source_revision" {
   }
 }
 
+variable "image_digest" {
+  description = "Immutable sha256 manifest digest for the production telemetry gateway image."
+  type        = string
+
+  validation {
+    condition     = can(regex("^sha256:[0-9a-f]{64}$", var.image_digest))
+    error_message = "image_digest must be a lowercase sha256 container manifest digest."
+  }
+}
+
 variable "retained_image_revisions" {
   description = "Previously deployed image revisions retained during non-destructive migration."
   type        = set(string)

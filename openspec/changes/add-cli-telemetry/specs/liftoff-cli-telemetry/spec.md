@@ -91,7 +91,7 @@ The system SHALL store only a numeric telemetry notice version in platform-appro
 - **THEN** the command and telemetry transport remain usable, the invalid file is not overwritten, and the disclosure is shown again on a later eligible run
 
 ### Requirement: The ingestion gateway enforces the public event contract
-The system SHALL expose `/api/events` through an HTTPS-only Azure Container App that accepts only POST requests with JSON no larger than 1 KiB and validates exact property names, types, schema version, event name, explicit command allowlist, semantic CLI version, and outcome before ingestion. The gateway SHALL count streamed request bytes before parsing and SHALL NOT depend on the Azure Functions host.
+The system SHALL expose `/api/events` through an HTTPS-only Azure Container App that accepts only POST requests with JSON no larger than 1 KiB and validates exact property names, types, schema version, event name, explicit command allowlist, bounded CLI release version, and outcome before ingestion. Accepted CLI versions SHALL be stable semantic versions or `alpha`, `beta`, or `rc` prereleases with an optional numeric suffix; build metadata and arbitrary prerelease labels SHALL be rejected. The gateway SHALL count streamed request bytes before parsing and SHALL NOT depend on the Azure Functions host.
 
 #### Scenario: Valid event is accepted
 - **WHEN** a request exactly matches the supported event contract
@@ -150,7 +150,7 @@ The system SHALL run the gateway on the Azure Container Apps Consumption plan wi
 - **THEN** it specifies the Consumption workload profile, 0.25 vCPU, 0.5 GiB, one minimum replica, and five maximum replicas
 
 ### Requirement: Container image delivery is immutable and identity-authenticated
-The system SHALL use an Azure Container Registry Basic registry with administrator credentials and anonymous pull disabled. An OpenTofu-managed ACR task SHALL build the gateway from a full 40-character commit SHA reachable in the public Liftoff repository, SHALL tag the image with that SHA, and SHALL complete before the Container App revision uses the image. Production SHALL NOT use branch, `latest`, date-only, or mutable image references.
+The system SHALL use an Azure Container Registry Basic registry with administrator credentials and anonymous pull disabled. An OpenTofu-managed ACR task SHALL build the gateway from a full 40-character commit SHA reachable in the public Liftoff repository and SHALL tag the image with that SHA. The built tag SHALL be resolved to a `sha256` manifest digest, and the Container App SHALL reference that digest through OpenTofu. Production SHALL NOT run from branch, `latest`, date-only, or tag-only image references.
 
 #### Scenario: Production source is selected
 - **WHEN** a maintainer supplies a source revision for deployment
@@ -160,7 +160,8 @@ The system SHALL use an Azure Container Registry Basic registry with administrat
 #### Scenario: Image is built
 - **WHEN** the OpenTofu ACR task run completes
 - **THEN** it pushes an image whose tag equals the pinned source revision
-- **AND** the Container App references that exact image tag
+- **AND** the operator resolves that tag to its manifest digest
+- **AND** the Container App references the exact `sha256` digest
 
 #### Scenario: Container App pulls the image
 - **WHEN** Azure starts a gateway replica

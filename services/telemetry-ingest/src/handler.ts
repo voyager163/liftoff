@@ -2,8 +2,8 @@ import { ManagedIdentityCredential } from '@azure/identity';
 import { LogsIngestionClient } from '@azure/monitor-ingestion';
 import {
   createTelemetryStorageRecord,
-  isSemanticVersion,
   isTelemetryCommand,
+  isTelemetryCliVersion,
   telemetryClientFields,
   telemetryEventName,
   telemetrySchemaVersion,
@@ -56,7 +56,7 @@ export function parseTelemetryEvent(value: unknown): TelemetryEvent | undefined 
     value.schemaVersion !== telemetrySchemaVersion ||
     value.event !== telemetryEventName ||
     !isTelemetryCommand(value.command) ||
-    !isSemanticVersion(value.cliVersion) ||
+    !isTelemetryCliVersion(value.cliVersion) ||
     (value.outcome !== 'success' && value.outcome !== 'failure')
   ) {
     return undefined;

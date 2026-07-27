@@ -69,25 +69,15 @@ export interface TelemetryCommandInput {
 }
 
 const telemetryCommandSet: ReadonlySet<string> = new Set(telemetryCommands);
-const semverPattern =
-  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const telemetryCliVersionPattern =
+  /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:alpha|beta|rc)(?:\.(0|[1-9]\d*))?)?$/;
 
 export function isTelemetryCommand(value: unknown): value is TelemetryCommand {
   return typeof value === 'string' && telemetryCommandSet.has(value);
 }
 
-export function isSemanticVersion(value: unknown): value is string {
-  if (typeof value !== 'string') {
-    return false;
-  }
-  const match = semverPattern.exec(value);
-  if (!match) {
-    return false;
-  }
-  const prerelease = match[4];
-  return prerelease === undefined || prerelease
-    .split('.')
-    .every((identifier) => !/^\d+$/.test(identifier) || identifier === '0' || !identifier.startsWith('0'));
+export function isTelemetryCliVersion(value: unknown): value is string {
+  return typeof value === 'string' && telemetryCliVersionPattern.test(value);
 }
 
 export function canonicalTelemetryCommand(input: TelemetryCommandInput): TelemetryCommand | undefined {

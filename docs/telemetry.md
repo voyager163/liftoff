@@ -103,8 +103,9 @@ custom table, data collection endpoint, and data collection rule.
 
 The registry contains only the already-public gateway image. Administrator
 credentials and anonymous pull are disabled; the Container App uses its
-resource-scoped `AcrPull` identity. The image tag is the full public Git commit
-SHA supplied in the reviewed production inputs, never a branch or `latest`.
+resource-scoped `AcrPull` identity. A full public Git commit SHA identifies the
+build tag; the running Container App is pinned to the resolved `sha256` manifest
+digest, never a branch, `latest`, or tag-only reference.
 
 OpenTofu state storage remains in a separate enforced Azure Network Security
 Perimeter. Its explicit operator IPv4 `/32` CIDRs live only in ignored local
@@ -131,7 +132,7 @@ tofu -chdir=infrastructure/opentofu/telemetry validate
 
 Real environments must use access-controlled remote state and Entra
 authentication. Before apply, review the subscription, region, unique resource
-suffix, full public source revision, immutable image tag,
+suffix, full public source revision, immutable image digest,
 `rg-liftoff-prod` deletion protection, ACR administrator and anonymous-access
 disablement, managed-identity roles, one-to-five replica bounds, disabled
 persistent platform logs, six-column schema, 180-day retention, ingestion

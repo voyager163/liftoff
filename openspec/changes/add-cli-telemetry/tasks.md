@@ -65,15 +65,15 @@
 
 ## 8. ACR and Container Apps OpenTofu
 
-- [x] 8.1 Add a validated full 40-character public source revision input and derive one immutable image name/tag from that revision without accepting branches, `latest`, or date-only tags.
+- [x] 8.1 Add validated full public source-revision and image-digest inputs, derive a commit-tagged build, and reject branches, `latest`, date-only tags, and non-sha256 runtime references.
 - [x] 8.2 Add an ACR Basic registry in `rg-liftoff-prod` with administrator credentials and anonymous pull disabled and no secret-bearing outputs.
-- [x] 8.3 Add an OpenTofu-managed ACR task and immediate run that build from the public Liftoff repository at the pinned revision, use the reviewed Dockerfile, push the immutable image, and block apply on build failure.
+- [x] 8.3 Add an OpenTofu-managed ACR task and immediate run that build from the public Liftoff repository at the pinned revision, use the reviewed Dockerfile, push a commit-tagged image, and block apply on build failure.
 - [ ] 8.4 Reuse the gateway user-assigned identity, grant only registry-scoped `AcrPull` and DCR-scoped ingestion access, and remove storage roles from the final architecture.
 - [x] 8.5 Add a Consumption Container Apps environment in `rg-liftoff-prod` with persistent platform log storage disabled and no diagnostic setting that routes ingress or console logs.
-- [x] 8.6 Add the plain Container App with HTTPS-only external ingress, single-revision mode, 0.25 vCPU, 0.5 GiB, one minimum replica, five maximum replicas, HTTP autoscaling, TCP probes, and the exact immutable ACR image.
+- [x] 8.6 Add the plain Container App with HTTPS-only external ingress, single-revision mode, 0.25 vCPU, 0.5 GiB, one minimum replica, five maximum replicas, HTTP autoscaling, TCP probes, and the exact immutable ACR manifest digest.
 - [x] 8.7 Ensure the Container App revision depends on successful image build and propagated `AcrPull`, supplies only the DCE/DCR/stream and identity settings, and contains no registry, storage, or ingestion credential.
 - [x] 8.8 Replace Function-specific endpoint outputs with the fully qualified Container App `/api/events` URL while keeping all outputs non-sensitive.
-- [x] 8.9 Add static tests that reject Functions/OneDeploy in the target architecture, ACR admin or anonymous access, mutable image tags, product storage, persistent Container Apps logs, zero minimum replicas, more than five replicas, oversized compute, broad RBAC, and non-OpenTofu deployment paths.
+- [x] 8.9 Add static tests that reject Functions/OneDeploy in the target architecture, ACR admin or anonymous access, mutable runtime image references, product storage, persistent Container Apps logs, zero minimum replicas, more than five replicas, oversized compute, broad RBAC, and non-OpenTofu deployment paths.
 - [x] 8.10 Preserve the currently deployed Function resources in the first migration plan so Container App creation can be reviewed and applied with zero destroys.
 
 ## 9. Documentation, Validation, and Non-Destructive Rollout
@@ -84,7 +84,7 @@
 - [x] 9.4 Re-run Azure preparation and validation for the revised architecture, confirm regional availability and quotas, and record current ACR Basic plus one-warm-replica cost evidence.
 - [x] 9.5 Generate a fresh production plan from remote state and assert it creates the ACR, build task/run, Container Apps environment/app, and roles with no changes or destroys to legacy resources or retained telemetry data.
 - [x] 9.6 Apply only the validated non-destructive plan from the admitted operator network and verify every new production resource is in `rg-liftoff-prod`.
-- [x] 9.7 Verify the registry has admin and anonymous access disabled, the image tag equals the pinned commit, the Container App uses managed-identity pull, and exactly one idle replica remains ready.
+- [x] 9.7 Verify the registry has admin and anonymous access disabled, the build tag equals the pinned commit, the Container App uses the verified manifest digest and managed-identity pull, and exactly one idle replica remains ready.
 - [x] 9.8 Verify `/api/events` stays within the one-second client budget, accepts a synthetic allowlisted event, and rejects wrong-method, malformed, extra-field, and oversized requests.
 - [x] 9.9 Query the custom table and verify the six approved Liftoff-defined columns plus only expected Azure system columns, server time, and no request, IP, geolocation, Container Apps platform, console, or Application Insights records.
 - [x] 9.10 Set the reviewed Container App endpoint constant, rerun offline/failure/package tests, and confirm a release cannot enable telemetry before the live privacy gate passes.

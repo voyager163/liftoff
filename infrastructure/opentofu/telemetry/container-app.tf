@@ -135,7 +135,7 @@ resource "azurerm_container_app" "telemetry" {
 
     container {
       name   = local.container_name
-      image  = "${azurerm_container_registry.telemetry.login_server}/${local.image_name}"
+      image  = "${azurerm_container_registry.telemetry.login_server}/${local.image_repository}@${var.image_digest}"
       cpu    = 0.25
       memory = "0.5Gi"
 

@@ -159,14 +159,14 @@ Repository-owned configuration under `infrastructure/opentofu/telemetry` provisi
 - an Azure Container Registry Basic registry with administrator credentials and anonymous pull disabled;
 - an ACR build task and immediate task run whose public Git context is pinned to a validated 40-character commit SHA and whose output image uses that immutable SHA as its tag;
 - a Consumption Container Apps environment with persistent platform logging disabled;
-- a plain Node.js Container App with one warm 0.25-vCPU/0.5-GiB replica, a five-replica ceiling, HTTPS-only external ingress, and the exact immutable image tag;
+- a plain Node.js Container App with one warm 0.25-vCPU/0.5-GiB replica, a five-replica ceiling, HTTPS-only external ingress, and the verified immutable image manifest digest;
 - a user-assigned managed identity with only `AcrPull` on the registry and the ingestion role on the DCR;
 - a Log Analytics workspace and explicit custom table schema;
 - a data collection endpoint and data collection rule;
 - budget or ingestion-cap controls; and
 - the container image build and Container App revision dependency chain.
 
-The public repository is the ACR task's source context, so no GitHub token is required. Production input must identify a commit that is already reachable from the public repository; uncommitted or unpushed local code cannot become a production image. The Docker build uses a reviewed Node.js 22 runtime base pinned by digest, installs production dependencies from the lockfile, runs as a non-root user, and contains no credentials or telemetry data. The run-now resource waits for the ACR task to succeed before the Container App revision can reference the image.
+The public repository is the ACR task's source context, so no GitHub token is required. Production input must identify a commit that is already reachable from the public repository; uncommitted or unpushed local code cannot become a production image. The Docker build uses a reviewed Node.js 22 runtime base pinned by digest, installs production dependencies from the lockfile, runs as a non-root user, and contains no credentials or telemetry data. The run-now resource waits for the ACR task to succeed. The operator then resolves the built tag to its `sha256` manifest digest through a read-only query, and OpenTofu pins the Container App to that digest rather than the mutable tag.
 
 The registry's public endpoint remains network-reachable because ACR Basic does not support Private Link, but it is not public data: anonymous pull and administrator credentials are disabled, the image contains only already-public source/build output, and the Container App must authenticate with its user-assigned identity and resource-scoped `AcrPull` role. No registry password, storage key, SAS token, Azure Monitor credential, or endpoint key is committed, stored in application settings, or exposed as an output. Moving the registry to ACR Premium and Private Link would be a separate cost and networking change.
 
@@ -209,7 +209,7 @@ Infrastructure validation runs `tofu fmt -check`, `tofu init -backend=false`, an
 - **A zero-replica gateway could miss requests during cold start** -> Keep exactly one minimum replica and verify the live endpoint stays within the client's one-second budget.
 - **A warm replica adds idle cost** -> Use the smallest Consumption allocation; current Korea Central retail rates put the post-free-grant idle compute near US$4.29 per 730-hour month, subject to subscription-wide grant usage and price changes.
 - **ACR Basic has a public data-plane endpoint** -> Store only already-public build output, disable anonymous/admin access, require Entra `AcrPull`, and never send telemetry events or credentials to the registry.
-- **A public Git source could move after review** -> Require a full commit SHA reachable from the public repository, tag the image with that SHA, and prohibit branch, `latest`, or date-only production tags.
+- **A public Git source or registry tag could move after review** -> Require a full public commit SHA, tag the build with that SHA, resolve its manifest digest, and pin the running Container App to `@sha256`.
 - **Container base images require patching** -> Pin a reviewed digest for reproducibility and regularly update that digest through a tested change.
 - **Disabling persistent platform logs reduces diagnosis data** -> Prefer privacy; use control-plane health and short-lived live log streaming without recording request content when troubleshooting.
 - **Standard hosted CI cannot enter the perimeter** -> Restrict CI to static validation and require an explicitly allowed operator network for production plan/apply.
@@ -221,14 +221,14 @@ Infrastructure validation runs `tofu fmt -check`, `tofu init -backend=false`, an
 
 1. Convert the gateway registration layer to a plain Node.js HTTP server, add the reviewed container build, and validate exact contract, streaming-size, non-root, and shutdown behavior with client delivery still disabled.
 2. Extend production OpenTofu alongside the existing Function resources to create ACR Basic, the commit-pinned ACR task/run, the no-log Container Apps environment, managed-identity roles, and the one-warm-replica Container App.
-3. From the admitted operator network, review and apply a non-destructive plan that builds the immutable image and creates the Container App without removing the Function, OneDeploy resources, product storage, or its perimeter association.
-4. Verify the Container App remains ready, responds within the one-second client budget, rejects malformed and oversized input, and accepts a synthetic allowlisted event.
+3. From the admitted operator network, apply a non-destructive image-build plan, resolve the resulting commit tag to its manifest digest through a read-only ACR query, set the reviewed digest input, and apply the Container App revision without removing existing service or data resources.
+4. Verify the digest-pinned Container App remains ready, responds within the one-second client budget, rejects malformed and oversized input, and accepts a synthetic allowlisted event.
 5. Verify the six approved Liftoff-defined columns reach the custom table alongside only expected Azure system columns and that no request, IP, geolocation, Container Apps platform, console, or Application Insights records are persisted.
 6. Set the reviewed Container App endpoint constant, run CLI contract and package tests, and publish the telemetry-enabled release documentation.
 7. Remove the legacy Function, FC1 plan, OneDeploy action, package blob/container, product storage account and association, approved-subscription rule, and regional OneDeploy rule only through a separately generated destructive OpenTofu plan with explicit approval. Preserve `rg-liftoff-prod`, the Log Analytics data path, the state account, perimeter, profile, and operator rules.
 8. Reconcile state and confirm the final plan is empty, the registry permits only Entra-authenticated pulls, one gateway replica remains available, and budget/retention controls remain active.
 
-For emergency rollback, change the immutable image SHA to the last verified image through OpenTofu or disable external ingress; released clients will fail silently if the endpoint is disabled. Follow with a patch release that disables client delivery when needed. Preserve or remove stored events according to the 180-day policy and the reviewed OpenTofu plan, but do not destroy `rg-liftoff-prod`.
+For emergency rollback, change the immutable image digest to the last verified image through OpenTofu or disable external ingress; released clients will fail silently if the endpoint is disabled. Follow with a patch release that disables client delivery when needed. Preserve or remove stored events according to the 180-day policy and the reviewed OpenTofu plan, but do not destroy `rg-liftoff-prod`.
 
 ## Open Questions
 

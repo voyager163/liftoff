@@ -56,6 +56,9 @@ describe('telemetry OpenTofu backend bootstrap', () => {
     expect(source).toContain('resource "azapi_update_resource" "blob_service"');
     expect(source).toContain('/blobServices/default"');
     expect(source).toContain('publicAccess = "None"');
+    expect(source).toMatch(
+      /resource "azapi_resource" "state_container"[\s\S]*?prevent_destroy = true/
+    );
     expect(source).toContain('role_definition_name = "Storage Blob Data Contributor"');
     expect(source).toContain('scope                = azapi_resource.state_storage.id');
     expect(source).toContain('create_duration = "10m"');
