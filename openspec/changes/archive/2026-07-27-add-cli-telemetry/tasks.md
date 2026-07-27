@@ -68,7 +68,7 @@
 - [x] 8.1 Add validated full public source-revision and image-digest inputs, derive a commit-tagged build, and reject branches, `latest`, date-only tags, and non-sha256 runtime references.
 - [x] 8.2 Add an ACR Basic registry in `rg-liftoff-prod` with administrator credentials and anonymous pull disabled and no secret-bearing outputs.
 - [x] 8.3 Add an OpenTofu-managed ACR task and immediate run that build from the public Liftoff repository at the pinned revision, use the reviewed Dockerfile, push a commit-tagged image, and block apply on build failure.
-- [ ] 8.4 Reuse the gateway user-assigned identity, grant only registry-scoped `AcrPull` and DCR-scoped ingestion access, and remove storage roles from the final architecture.
+- [x] 8.4 Reuse the gateway user-assigned identity, grant only registry-scoped `AcrPull` and DCR-scoped ingestion access, and remove storage roles from the final architecture.
 - [x] 8.5 Add a Consumption Container Apps environment in `rg-liftoff-prod` with persistent platform log storage disabled and no diagnostic setting that routes ingress or console logs.
 - [x] 8.6 Add the plain Container App with HTTPS-only external ingress, single-revision mode, 0.25 vCPU, 0.5 GiB, one minimum replica, five maximum replicas, HTTP autoscaling, TCP probes, and the exact immutable ACR manifest digest.
 - [x] 8.7 Ensure the Container App revision depends on successful image build and propagated `AcrPull`, supplies only the DCE/DCR/stream and identity settings, and contains no registry, storage, or ingestion credential.
@@ -93,9 +93,9 @@
 
 - [x] 10.1 Remove the Azure Functions adapter, Function package scripts, and superseded Function-specific documentation only after the Container App endpoint and data boundary are verified.
 - [x] 10.2 Generate a separate destructive production plan limited to the Function App, FC1 plan, OneDeploy action, package blob/container, product storage account and association, and obsolete storage roles.
-- [ ] 10.3 Obtain explicit approval for the reviewed destructive plan before applying it; preserve `rg-liftoff-prod`, remote state, workspace, custom table, DCE, DCR, gateway identity, accepted events, ACR, and Container App.
-- [ ] 10.4 Apply the approved legacy cleanup and verify the production state contains no Function, OneDeploy, package-storage, or Azure Files resources.
-- [ ] 10.5 Remove the approved-subscription and regional OneDeploy rules from bootstrap OpenTofu through a separate reviewed plan while preserving the perimeter, profile, operator CIDRs, state account, enforced association, shared-key disablement, and data role.
-- [ ] 10.6 Regenerate both OpenTofu plans and confirm they are empty, state storage remains `SecuredByPerimeter`, and no operator CIDR appears in tracked files, outputs, logs, or review evidence.
-- [ ] 10.7 Review the final diff for payload expansion, identifiers, credentials, secret state/output, operator CIDR exposure, mutable images, registry admin access, persistent request logs, incorrect resource-group placement, missing deletion protection, non-OpenTofu Azure paths, and documentation accuracy.
-- [ ] 10.8 Run final root, gateway, container, package, OpenSpec, and OpenTofu validation and record the fully qualified production endpoint and release gate outcome.
+- [x] 10.3 Obtain explicit approval for the reviewed destructive plan before applying it; preserve `rg-liftoff-prod`, remote state, workspace, custom table, DCE, DCR, gateway identity, accepted events, ACR, and Container App.
+- [x] 10.4 Apply the approved legacy cleanup and verify the production state contains no Function, OneDeploy, package-storage, or Azure Files resources.
+- [x] 10.5 Remove the approved-subscription and regional OneDeploy rules from bootstrap OpenTofu through a separate reviewed plan while preserving the perimeter, profile, operator CIDRs, state account, enforced association, shared-key disablement, and data role.
+- [x] 10.6 Regenerate both OpenTofu plans and confirm they are empty, state storage remains `SecuredByPerimeter`, and no operator CIDR appears in tracked files, outputs, logs, or review evidence.
+- [x] 10.7 Review the final diff for payload expansion, identifiers, credentials, secret state/output, operator CIDR exposure, mutable images, registry admin access, persistent request logs, incorrect resource-group placement, missing deletion protection, non-OpenTofu Azure paths, and documentation accuracy.
+- [x] 10.8 Run final root, gateway, container, package, OpenSpec, and OpenTofu validation and record the fully qualified production endpoint and release gate outcome.
