@@ -67,10 +67,9 @@ Readers support schemas v2, v3, and v4:
 - V3 normalizes flat GenAI or API identity plus framework and agent metadata.
 - V4 represents the discriminated workload model, including Power Apps.
 
-A non-interactive or JSON check, or a declined interactive update, leaves an
-old manifest byte-for-byte unchanged. A successful explicit or interactively
-accepted apply writes v4 only after the file transaction succeeds. Skipped
-conflicts retain their recorded hashes.
+`liftoff update --check`, including `--check --json`, leaves an old manifest
+byte-for-byte unchanged. A successful plain update writes v4 only after the
+file transaction succeeds. Skipped conflicts retain their recorded hashes.
 
 ## Artifact ownership
 

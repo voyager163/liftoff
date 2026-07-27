@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -174,6 +174,7 @@ try {
   if (!existsSync(liftoffEntrypoint)) {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
+  const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
 
   const help = run(process.execPath, [liftoffEntrypoint, 'help'], {
     cwd: outsideDirectory,
@@ -197,6 +198,61 @@ try {
   });
   if (!initHelp.stdout.includes('Usage: liftoff init [project-name]') || !initHelp.stdout.includes('--install-tools')) {
     throw new Error('Installed liftoff command help did not include init usage and consent flags');
+  }
+
+  const updateHelp = run(process.execPath, [liftoffEntrypoint, 'update', '--help'], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (
+    !updateHelp.stdout.includes('--check') ||
+    !updateHelp.stdout.includes('--force') ||
+    updateHelp.stdout.includes('--apply')
+  ) {
+    throw new Error('Installed liftoff update help did not expose the imperative mode matrix');
+  }
+
+  const removedApply = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--apply'], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (
+    !removedApply.stderr.includes('Flag --apply was removed') ||
+    !removedApply.stderr.includes('liftoff update --check') ||
+    removedApply.stderr.includes('No liftoff.manifest.json found')
+  ) {
+    throw new Error('Installed liftoff did not reject --apply before project discovery');
+  }
+
+  for (const currentInstructionPath of [
+    'README.md',
+    'docs/getting-started.md',
+    'docs/workloads.md',
+    'docs/spec-workflows-and-agents.md',
+    'docs/existing-repositories.md',
+    'docs/prerequisites.md',
+    'docs/safety-and-consent.md',
+    'docs/telemetry.md',
+    'docs/project-structure.md',
+    'docs/configuration-and-manifests.md',
+    'docs/azure-deployment.md',
+    'docs/troubleshooting.md',
+    'dist/templates.js'
+  ]) {
+    const content = await readFile(path.join(installedPackageRoot, currentInstructionPath), 'utf8');
+    if (content.includes('liftoff update --apply')) {
+      throw new Error(`Packed ${currentInstructionPath} contains removed active update syntax`);
+    }
+  }
+  const cliReference = await readFile(
+    path.join(installedPackageRoot, 'docs', 'cli-reference.md'),
+    'utf8'
+  );
+  if (
+    !cliReference.includes('These are historical 0.6.x commands') ||
+    [...cliReference.matchAll(/liftoff update --apply/g)].length !== 2
+  ) {
+    throw new Error('Packed CLI reference does not isolate removed syntax to migration history');
   }
 
   const beforePlan = await readdir(outsideDirectory);

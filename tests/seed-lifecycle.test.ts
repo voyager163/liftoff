@@ -66,11 +66,11 @@ describe('seed artifact lifecycle', () => {
     const root = await fixtureProject();
     await archiveSeedChange(root);
 
-    const check = await run(['update'], root);
+    const check = await run(['update', '--check'], root);
     expect(check.code).toBe(0);
     expect(check.out).toContain('No drift');
 
-    const apply = await run(['update', '--apply'], root);
+    const apply = await run(['update'], root);
     expect(apply.code).toBe(0);
     await expect(access(path.join(root, ...SEED_DIR))).rejects.toThrow();
 
@@ -103,14 +103,14 @@ describe('seed artifact lifecycle', () => {
 
     await archiveSeedChange(root);
 
-    const check = await run(['update'], root);
-    expect(check.code).toBe(0);
-    expect(check.out).toContain('No drift');
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('Manifest maintenance');
 
     const validate = await run(['validate'], root);
     expect(validate.code).toBe(0);
 
-    await run(['update', '--apply'], root);
+    await run(['update'], root);
     const rewritten = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(
       rewritten.artifacts.filter((artifact: { logicalName: string }) => artifact.logicalName.startsWith('openspec-seed'))
@@ -134,7 +134,7 @@ describe('seed artifact lifecycle', () => {
       path.join(target, 'openspec', 'changes', 'archive', 'done-migrate-to-liftoff')
     );
 
-    const check = await run(['update'], target);
+    const check = await run(['update', '--check'], target);
     expect(check.code).toBe(0);
     expect(check.out).toContain('No drift');
 

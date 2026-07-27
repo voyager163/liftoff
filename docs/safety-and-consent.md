@@ -8,7 +8,7 @@ project dependencies. No one permission implies another.
 | Flag | Authorizes | Does not authorize |
 | --- | --- | --- |
 | `--yes` | Project defaults and plan confirmation | File replacement, machine installs, or project dependencies |
-| `--force` | Only listed and validated regular-file replacements | Manifest guards, symlinks, structural collisions, tools, dependencies, or non-empty migration targets |
+| `--force` | During init, listed regular-file replacements; during update, exact reported conflicts | Manifest guards, symlinks, structural collisions, tools, dependencies, or non-empty migration targets |
 | `--install-tools` | Allowlisted workstation installation commands | Project decisions, overwrites, or project dependencies |
 | `--install-dependencies` | Locked project-local dependency commands after a successful merge | Machine tools, project decisions, or overwrites |
 
@@ -50,11 +50,10 @@ Individual project files use temporary-file replacement. Initialization keeps
 backups for replaced files and records created files and directories. A handled
 merge failure restores or removes those entries in reverse order.
 
-An accepted interactive update or `liftoff update --apply` preflights all
-affected paths and applies generated file, move, delete, and manifest mutations
-as one rollback-capable transaction. Schema upgrades are committed only after
-the other mutations succeed. A corrected retry converges from the restored
-state.
+Plain `liftoff update` preflights all affected paths and applies generated file,
+move, delete, and manifest mutations as one rollback-capable transaction.
+Schema upgrades are committed only after the other mutations succeed. A
+corrected retry converges from the restored state.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
@@ -65,24 +64,25 @@ does not retain them as backups after success.
 
 ## Update ownership
 
-Plain `liftoff update` always reports drift before any write:
+Update mode is selected explicitly rather than from terminal interactivity:
 
 - Clean generated files remain unchanged.
-- In an interactive terminal, new, missing, untouched-upgrade, clean-move, and
-  recorded-state changes are summarized and offered through a default-No
-  confirmation.
-- With redirected input or output, or with `--json`, update remains a
-  prompt-free read-only check unless `--apply` is explicitly supplied.
+- Plain `liftoff update` immediately applies safe new, missing,
+  untouched-upgrade, clean-move, and recorded-state changes without prompting,
+  including with redirected input or output.
+- `liftoff update --check` is read-only and performs no preflight or mutation.
+- `liftoff update --json` applies safe changes and returns an apply result;
+  `liftoff update --check --json` is the read-only machine drift gate.
 - Developer edits that also differ from the current template are conflicts.
-- Safe-update consent does not authorize conflicts. Interactive conflicts are
-  listed by portable relative path and require a separate default-No overwrite
-  confirmation; automation uses `--apply --force`.
+- Default update skips conflicts and lists them by portable relative path.
+  After reviewing every listed overwrite, `liftoff update --force` extends the
+  transaction only to those guarded conflicts.
 - Orphans are reported and left on disk for manual review.
 - Dependency definitions may be updated, but update never installs
   dependencies.
 
-All interactive decisions are collected before preflight or mutation.
-Declining the safe update changes nothing and leaves drift exit code 2.
+`--force` cannot be combined with `--check` and cannot weaken project-boundary,
+symlink, collision, manifest, or transaction guards.
 
 Power Apps reconciliation reads only the packaged immutable starter. It does
 not fetch the upstream repository. Workload kind and user-edited starter

@@ -67,15 +67,13 @@ hand-edited unsafe path.
 
 ## Update reports conflicts or orphans
 
-In an interactive terminal, `liftoff update` shows an impact summary and asks
-before applying safe managed changes. The default answer is No.
+`liftoff update` applies safe managed changes immediately and skips conflicts.
 
-- Local or user-owned conflicts are listed separately and require their own
-  default-No overwrite confirmation.
-- With redirected input or output, review the report and apply safe changes
-  with `liftoff update --apply`.
-- For prompt-free conflict replacement, use `liftoff update --apply --force`
-  only after reviewing every listed path.
+- Use `liftoff update --check` for a read-only human report or
+  `liftoff update --check --json` for an automation drift gate.
+- Local or user-owned conflicts remain untouched by default.
+- Use `liftoff update --force` only after reviewing every listed path and
+  deciding that each overwrite is intended.
 - Orphans are never deleted automatically.
 - Update reports dependency-definition impact but does not install
   dependencies.

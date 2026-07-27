@@ -88,5 +88,6 @@ invoke `/create-code-app`. The plugin's connector and deployment skills remain
 available for post-creation work.
 
 Changing the valid plugin preference in `liftoff.config.json` is reconciled by
-`liftoff update`; it updates generated guidance and manifest intent without
-creating API or infrastructure artifacts.
+plain `liftoff update`; it immediately updates generated guidance and manifest
+intent without creating API or infrastructure artifacts. Use
+`liftoff update --check` to inspect that drift without writing.

@@ -380,8 +380,11 @@ describe('templates and filesystem', () => {
 
     expect(readme).toContain('PYDANTIC_AI_MODEL');
     expect(readme).toContain('VITE_API_BASE_URL');
-    expect(readme).toContain('shows the overwrite impact');
-    expect(readme).toContain('separate default-No confirmation');
+    expect(readme).toContain('immediately applies safe managed changes');
+    expect(readme).toContain('liftoff update --check --json');
+    expect(readme).toContain('conflicts are skipped by default');
+    expect(readme).toContain('liftoff update --force');
+    expect(readme).not.toContain('liftoff update --apply');
     expect(readme).toContain('occupied destination');
     expect(readme).toContain('never deletes orphans or installs dependencies');
     expect(readme).toContain('retains no backup after a successful overwrite');

@@ -126,3 +126,7 @@ created the application.
 workload. It does not convert among GenAI, API, and Power Apps or change an API
 stack, GenAI pattern, or user-supplied starter identity. Initialize a fresh
 project or use a supported migration flow instead.
+
+Plain update applies safe changes immediately for every workload. Use
+`liftoff update --check` for read-only inspection and review all reported
+conflicts before using `liftoff update --force`; orphans remain untouched.

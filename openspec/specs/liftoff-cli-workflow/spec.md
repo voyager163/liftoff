@@ -236,7 +236,7 @@ The system SHALL initialize at the current directory only when that directory is
 - **AND** manifest path semantics remain identical to macOS and Linux
 
 ### Requirement: CLI exposes discovery and validation commands
-The system SHALL expose commands for project initialization, planning, project update, project migration, pattern discovery, provider discovery, region discovery, validation, local development helpers, infrastructure helpers, and environment diagnostics.
+The system SHALL expose commands for project initialization, planning, imperative project update, explicit project update checks, project migration, pattern discovery, provider discovery, region discovery, validation, local development helpers, infrastructure helpers, and environment diagnostics.
 
 #### Scenario: List supported patterns
 - **WHEN** a developer runs `liftoff patterns`
@@ -250,14 +250,14 @@ The system SHALL expose commands for project initialization, planning, project u
 - **WHEN** a developer runs `liftoff doctor`
 - **THEN** the system reports local readiness for the context-selected runtimes, spec framework, coding agents, Docker, and OpenTofu without modifying the project or workstation
 
-#### Scenario: Check a project for drift non-interactively
-- **WHEN** a developer or automation runs `liftoff update` without interactive input or output
-- **THEN** the system reports scaffold drift between the project and the current CLI templates without requesting input or writing files
+#### Scenario: Check a project for drift
+- **WHEN** a developer or automation runs `liftoff update --check`
+- **THEN** the system reports scaffold drift between the project and current CLI templates without requesting input or writing files
 
-#### Scenario: Review and apply drift interactively
-- **WHEN** a developer runs `liftoff update` in an interactive terminal and actionable drift exists
-- **THEN** the system reports the drift and its overwrite impact and asks whether to apply it in the same invocation
-- **AND** safe managed updates and replacement of local conflicts require distinct consent
+#### Scenario: Apply safe drift by default
+- **WHEN** a developer or automation runs plain `liftoff update` and actionable safe drift exists
+- **THEN** the system applies the safe managed changes without requesting input
+- **AND** local conflicts remain untouched unless `--force` is supplied
 
 #### Scenario: Migrate an existing project
 - **WHEN** a developer runs `liftoff migrate ../legacy-app`
@@ -282,11 +282,11 @@ The system SHALL provide a public repository root `README.md` included with the 
 
 #### Scenario: Understand update safety
 - **WHEN** a developer needs update behavior
-- **THEN** linked documentation states that interactive `liftoff update` discloses impact and asks before applying, redirected and JSON checks do not write or prompt, `--apply` explicitly writes safe changes, conflict overwrite requires separate interactive consent or `--apply --force`, successful overwrites retain no Liftoff backup, dependencies are not installed, and orphans are not automatically deleted
+- **THEN** linked documentation states that plain `liftoff update` applies safe managed changes without prompts, `--check` is read-only, `--force` explicitly overwrites conflicts, `--check --json` is the machine-readable check, `--apply` was removed, successful overwrites retain no Liftoff backup, dependencies are not installed, and orphans are not automatically deleted
 
 #### Scenario: Understand machine-readable and exit-code behavior
 - **WHEN** a developer reads the linked CLI contract documentation
-- **THEN** it states that check-mode or declined interactive drift uses exit code 2 and JSON-capable commands emit a top-level numeric `schemaVersion`
+- **THEN** it states that check-mode drift uses exit code 2, successful apply mode uses exit code 0, and JSON-capable commands emit a top-level numeric `schemaVersion`
 
 #### Scenario: Review contributor workflow
 - **WHEN** a contributor follows the README contribution link
@@ -294,7 +294,7 @@ The system SHALL provide a public repository root `README.md` included with the 
 - **AND** none of those commands require a Mission Control workspace selector
 
 ### Requirement: CLI syntax is command-specific and strict
-The system SHALL validate commands, subcommands, positional arguments, and flags against an explicit command definition before executing command behavior. Unknown flags, unsupported subcommands, missing values, invalid boolean forms, invalid agent lists, and unexpected positional arguments MUST exit 1, identify the invalid token, and produce no project, workstation, or cloud side effects.
+The system SHALL validate commands, subcommands, positional arguments, and flags against an explicit command definition before executing command behavior. Unknown or removed flags, incompatible flag combinations, unsupported subcommands, missing values, invalid boolean forms, invalid agent lists, and unexpected positional arguments MUST exit 1, identify the invalid token or combination, and produce no project, workstation, or cloud side effects.
 
 #### Scenario: Reject a misspelled init flag
 - **WHEN** a developer supplies an unknown flag such as `--cluod` or `--frontned`
@@ -303,6 +303,14 @@ The system SHALL validate commands, subcommands, positional arguments, and flags
 #### Scenario: Reject the removed command
 - **WHEN** a developer supplies `liftoff create`
 - **THEN** Liftoff exits 1, recommends `liftoff init`, and does not run readiness probes that can mutate state
+
+#### Scenario: Reject removed update apply flag
+- **WHEN** a developer supplies `liftoff update --apply`
+- **THEN** Liftoff exits 1, recommends plain `liftoff update`, and performs no project read or write
+
+#### Scenario: Reject force in check mode
+- **WHEN** a developer supplies `liftoff update --check --force`
+- **THEN** Liftoff exits 1 with guidance to use either `--check` or `--force`, and performs no project write
 
 #### Scenario: Reject an unsupported helper subcommand
 - **WHEN** a developer runs a helper with an unsupported subcommand such as `liftoff dev destroy`
