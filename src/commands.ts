@@ -45,6 +45,7 @@ import {
   captureProjectFileSnapshot,
   findProjectRoot,
   loadManifest,
+  manifestHadFilteredLegacySeedOwnership,
   manifestDisplayPath,
   resolveProjectPath,
   resolveTargetRoot,
@@ -97,7 +98,6 @@ import {
   PresentationSession,
   type PresentationSessionOptions
 } from './terminal.js';
-import { buildUpdateImpact } from './update-impact.js';
 import type {
   ApiStackId,
   ApiProjectPlan,
@@ -615,7 +615,7 @@ async function handleProjectDependencies(
     if (issues.length > 0) {
       presentation.error(
         'Power Apps dependency installation blocked',
-        `${issues.join(' ')} Restore package.json and package-lock.json or run \`liftoff update --apply\`.`
+        `${issues.join(' ')} Restore package.json and package-lock.json or run \`liftoff update\`.`
       );
       return { success: false, deferred: [] };
     }
@@ -1185,90 +1185,74 @@ function updateSnapshotKey(pathParts: readonly string[]): string {
   return pathParts.join('\0');
 }
 
-function reconciliationSignature(entries: readonly ReconcileEntry[]): string {
-  return JSON.stringify(entries.map((entry) => ({
-    logicalName: entry.logicalName,
-    status: entry.status,
-    pathParts: entry.pathParts,
-    previousPathParts: entry.previousPathParts,
-    reason: entry.reason,
-    cleanMove: entry.cleanMove,
-    sourceModified: entry.sourceModified,
-    destinationOccupied: entry.destinationOccupied,
-    refreshHash: entry.refreshHash,
-    destinationMatches: entry.destinationMatches
-  })));
-}
-
-async function captureInteractiveUpdateSnapshots(
+async function captureUpdateSnapshots(
   projectRoot: string,
-  entries: readonly ReconcileEntry[],
-  inputSnapshots: readonly ProjectFileSnapshot[]
-): Promise<Map<string, ProjectFileSnapshot>> {
+  manifest: LiftoffManifest,
+  render: readonly GeneratedArtifact[],
+  initialSnapshots: readonly ProjectFileSnapshot[]
+): Promise<ProjectFileSnapshot[]> {
   const snapshots = new Map(
-    inputSnapshots.map((snapshot) => [updateSnapshotKey(snapshot.pathParts), snapshot])
+    initialSnapshots.map((snapshot) => [updateSnapshotKey(snapshot.pathParts), snapshot])
   );
-  for (const entry of entries) {
-    const actionable =
-      entry.status !== 'orphan' &&
-      (entry.status !== 'unchanged' || entry.refreshHash === true);
-    if (!actionable) {
-      continue;
-    }
-    for (const pathParts of [entry.pathParts, entry.previousPathParts]) {
-      if (!pathParts) {
-        continue;
-      }
-      const key = updateSnapshotKey(pathParts);
-      if (!snapshots.has(key)) {
-        snapshots.set(
-          key,
-          await captureProjectFileSnapshot(projectRoot, pathParts)
-        );
-      }
+  const seenKeys = new Set(snapshots.keys());
+  const candidates = [
+    ...manifest.artifacts.map((artifact) => artifact.pathParts),
+    ...render
+      .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
+      .map((artifact) => artifact.pathParts)
+  ];
+  const uncaptured: string[][] = [];
+  for (const pathParts of candidates) {
+    const key = updateSnapshotKey(pathParts);
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uncaptured.push(pathParts);
     }
   }
-  return snapshots;
+  for (const snapshot of await Promise.all(
+    uncaptured.map((pathParts) => captureProjectFileSnapshot(projectRoot, pathParts))
+  )) {
+    snapshots.set(updateSnapshotKey(snapshot.pathParts), snapshot);
+  }
+  return [...snapshots.values()];
 }
 
-function authorizedInteractiveSnapshotKeys(
+function selectUpdatePreconditions(
+  snapshots: readonly ProjectFileSnapshot[],
   entries: readonly ReconcileEntry[],
-  force: boolean
-): Set<string> {
-  const keys = new Set([
+  mutations: readonly ProjectFileMutation[]
+): ProjectFileSnapshot[] {
+  const requiredKeys = new Set([
     updateSnapshotKey(['liftoff.config.json']),
-    updateSnapshotKey(['liftoff.manifest.json'])
+    ...mutations.map((mutation) => updateSnapshotKey(mutation.pathParts))
   ]);
   for (const entry of entries) {
-    const authorized =
-      entry.status === 'new' ||
-      entry.status === 'missing' ||
-      entry.status === 'upgrade' ||
-      entry.status === 'unchanged' && entry.refreshHash === true ||
-      entry.status === 'moved' && (entry.cleanMove === true || force) ||
-      entry.status === 'conflict' && force;
-    if (!authorized) {
+    const adoptsExistingDestination =
+      entry.status === 'moved' && entry.destinationMatches === true;
+    if (
+      !(entry.status === 'unchanged' && entry.refreshHash) &&
+      !adoptsExistingDestination
+    ) {
       continue;
     }
-    keys.add(updateSnapshotKey(entry.pathParts));
+    requiredKeys.add(updateSnapshotKey(entry.pathParts));
     if (entry.previousPathParts) {
-      keys.add(updateSnapshotKey(entry.previousPathParts));
+      requiredKeys.add(updateSnapshotKey(entry.previousPathParts));
     }
   }
-  return keys;
+  return snapshots.filter((snapshot) => requiredKeys.has(updateSnapshotKey(snapshot.pathParts)));
 }
 
 async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const { presentation } = context;
-  let apply = readBooleanFlag(parsed.flags, 'apply') ?? false;
-  let force = readBooleanFlag(parsed.flags, 'force') ?? false;
+  const check = readBooleanFlag(parsed.flags, 'check') ?? false;
+  const force = readBooleanFlag(parsed.flags, 'force') ?? false;
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
-  let dirtyWorktreeWarningShown = false;
   presentation.commandIdentity('update', 'Reconcile the project with current Liftoff templates');
-  if (force && !apply) {
+  if (force && check) {
     presentation.error(
-      '--force requires --apply.',
-      'Run `liftoff update --apply --force` only after reviewing the reported conflicts.'
+      '--force cannot be combined with --check.',
+      'Run `liftoff update --check` to inspect drift or `liftoff update --force` to overwrite conflicts.'
     );
     return 1;
   }
@@ -1283,16 +1267,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     return 1;
   }
 
-  const interactiveReview =
-    !apply &&
-    !jsonMode &&
-    isInteractiveTerminal(context.stdin, context.stdout);
-  const interactiveInputSnapshots = interactiveReview
-    ? await Promise.all([
+  const initialUpdateSnapshots = check
+    ? []
+    : await Promise.all([
         captureProjectFileSnapshot(projectRoot, ['liftoff.manifest.json']),
         captureProjectFileSnapshot(projectRoot, ['liftoff.config.json'])
-      ])
-    : [];
+      ]);
   const manifest = await loadManifest(projectRoot);
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
     presentation.error(
@@ -1371,14 +1351,61 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   }
 
   const render = buildArtifacts(plan);
+  const updateSnapshots = check
+    ? []
+    : await captureUpdateSnapshots(projectRoot, manifest, render, initialUpdateSnapshots);
   const entries = await reconcileProject(manifest, render, projectRoot);
   const summary = summarizeEntries(entries);
-  const drift = hasDrift(entries);
+  const manifestUpgradePending = manifest.artifactVersion !== 4;
+  const nonDurableNames = new Set(
+    render
+      .filter((artifact) => artifact.category === 'seed' || artifact.category === 'framework')
+      .map((artifact) => artifact.logicalName)
+  );
+  const manifestOwnershipCleanupPending = manifest.artifacts.some((artifact) =>
+    nonDurableNames.has(artifact.logicalName)
+  ) || manifestHadFilteredLegacySeedOwnership(manifest);
+  const manifestRewritePending = manifestUpgradePending || manifestOwnershipCleanupPending;
+  const drift = hasDrift(entries) || manifestRewritePending;
   const visible = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash);
-  const impact = buildUpdateImpact(entries);
-  let interactiveSnapshots: Map<string, ProjectFileSnapshot> | undefined;
 
-  if (!apply) {
+  if (!drift) {
+    if (jsonMode) {
+      presentation.rawStdout(`${JSON.stringify(check ? {
+        schemaVersion: 1,
+        mode: 'check',
+        cliVersion: liftoffVersion,
+        projectVersion: manifest.liftoffVersion,
+        entries: [],
+        manifestUpgradePending,
+        manifestOwnershipCleanupPending,
+        summary
+      } : {
+        schemaVersion: 1,
+        mode: 'apply',
+        cliVersion: liftoffVersion,
+        projectVersion: manifest.liftoffVersion,
+        written: [],
+        skipped: [],
+        manifestUpgradePending,
+        manifestOwnershipCleanupPending,
+        summary
+      }, null, 2)}\n`);
+      return 0;
+    }
+    presentation.definitions('Project versions', [
+      { label: 'Liftoff CLI', value: liftoffVersion },
+      { label: 'Project generated by', value: manifest.liftoffVersion }
+    ]);
+    presentation.status(
+      'success',
+      'No drift',
+      `${summary.unchanged} artifacts match the current templates and configuration`
+    );
+    return 0;
+  }
+
+  if (check) {
     if (jsonMode) {
       presentation.rawStdout(`${JSON.stringify({
         schemaVersion: 1,
@@ -1392,113 +1419,69 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           previousPath: entry.previousPathParts ? manifestDisplayPath(entry.previousPathParts) : undefined,
           reason: entry.reason
         })),
+        manifestUpgradePending,
+        manifestOwnershipCleanupPending,
         summary
       }, null, 2)}\n`);
-      return drift ? 2 : 0;
+      return 2;
     }
 
     presentation.definitions('Project versions', [
       { label: 'Liftoff CLI', value: liftoffVersion },
       { label: 'Project generated by', value: manifest.liftoffVersion }
     ]);
-    if (!drift) {
-      presentation.status(
-        'success',
-        'No drift',
-        `${summary.unchanged} artifacts match the current templates and configuration`
-      );
-      return 0;
+    if (visible.length > 0) {
+      if (presentation.stdout.layout === 'plain') {
+        presentation.section(
+          'Template drift',
+          visible.map((entry) => `${entryMarker(entry)} ${entryDisplay(entry)}  ${entry.reason}`)
+        );
+      } else {
+        presentation.table(
+          'Template drift',
+          ['Change', 'Artifact', 'Reason'],
+          visible.map((entry) => [entryMarker(entry), entryDisplay(entry), entry.reason])
+        );
+      }
     }
-    if (presentation.stdout.layout === 'plain') {
-      presentation.section(
-        'Template drift',
-        visible.map((entry) => `${entryMarker(entry)} ${entryDisplay(entry)}  ${entry.reason}`)
-      );
-    } else {
-      presentation.table(
-        'Template drift',
-        ['Change', 'Artifact', 'Reason'],
-        visible.map((entry) => [entryMarker(entry), entryDisplay(entry), entry.reason])
-      );
+    const manifestMaintenance = [
+      manifestUpgradePending ? 'upgrade liftoff.manifest.json to schema v4' : undefined,
+      manifestOwnershipCleanupPending
+        ? 'remove obsolete seed or framework entries from durable manifest ownership'
+        : undefined
+    ].filter((item): item is string => item !== undefined);
+    if (manifestMaintenance.length > 0) {
+      presentation.bullets('Manifest maintenance', manifestMaintenance);
     }
-    const toWrite = summary.new + summary.missing + summary.upgrade + summary.moved + summary.refresh;
+    const toWrite =
+      summary.new +
+      summary.missing +
+      summary.upgrade +
+      summary.moved +
+      summary.refresh +
+      (manifestRewritePending ? 1 : 0);
     presentation.status(
       'warning',
       'Drift detected',
       `${toWrite} to write, ${summary.conflict} conflict(s), ${summary.orphan} orphan(s), ${summary.unchanged} unchanged`
     );
-    if (
-      !impact.hasActionableChanges ||
-      !interactiveReview
-    ) {
-      if (impact.hasActionableChanges) {
-        presentation.command('liftoff update --apply');
-      }
-      return 2;
+    if (toWrite > 0) {
+      presentation.command('liftoff update');
     }
-
-    if (isDirtyGitWorktree(projectRoot)) {
-      presentation.warning(
-        'The project worktree has uncommitted changes; commit or back up local work before accepting an update.'
-      );
-      dirtyWorktreeWarningShown = true;
+    if (summary.conflict > 0) {
+      presentation.command('liftoff update --force');
     }
-
-    interactiveSnapshots = await captureInteractiveUpdateSnapshots(
-      projectRoot,
-      entries,
-      interactiveInputSnapshots
-    );
-    const reviewedEntries = await reconcileProject(manifest, render, projectRoot);
-    if (reconciliationSignature(reviewedEntries) !== reconciliationSignature(entries)) {
-      presentation.error(
-        'The project changed while Liftoff prepared the update.',
-        'Run `liftoff update` again to review the current state.'
-      );
-      return 1;
-    }
-
-    const prompter = new InteractivePrompter({
-      input: context.stdin,
-      output: context.stdout,
-      presentation,
-      cwd: projectRoot
-    });
-    try {
-      prompter.presentUpdateImpact(impact);
-      if (impact.hasSafeActions) {
-        const safeAccepted = await prompter.confirmSafeUpdate(impact.safeActionCount);
-        if (!safeAccepted) {
-          presentation.cancellation('Update declined; no project files were changed.');
-          return 2;
-        }
-      }
-      if (impact.conflicts.length > 0) {
-        force = await prompter.confirmConflictOverwrite(
-          impact.conflicts,
-          impact.managedPathsRemovedOnOverwrite
-        );
-        if (!impact.hasSafeActions && !force) {
-          presentation.cancellation('Update declined; no project files were changed.');
-          return 2;
-        }
-      }
-      apply = true;
-    } catch (error) {
-      if (error instanceof InteractiveCancelledError) {
-        presentation.cancellation(
-          'Update stopped before authorization; no project files were changed.'
-        );
-        return 0;
-      }
-      throw error;
-    } finally {
-      prompter.close();
-    }
+    return 2;
   }
 
-  if (!dirtyWorktreeWarningShown && isDirtyGitWorktree(projectRoot)) {
-    presentation.warning('The project worktree has uncommitted changes; consider committing before applying.');
+  if (isDirtyGitWorktree(projectRoot)) {
+    const warning =
+      'The project worktree has uncommitted changes; consider committing before applying.';
+    if (jsonMode) {
+      presentation.rawStderr(`Warning: ${warning}\n`);
+    } else {
+      presentation.warning(warning);
+    }
   }
   presentation.stage('Apply safe template changes', projectRoot);
   await preflightUpdate(projectRoot, entries, force);
@@ -1592,16 +1575,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     pathParts: ['liftoff.manifest.json'],
     content: `${JSON.stringify(nextManifest, null, 2)}\n`
   });
-  const authorizedSnapshotKeys = interactiveSnapshots
-    ? authorizedInteractiveSnapshotKeys(entries, force)
-    : undefined;
-  const transactionPreconditions = interactiveSnapshots && authorizedSnapshotKeys
-    ? [...interactiveSnapshots.values()].filter((snapshot) =>
-        authorizedSnapshotKeys.has(updateSnapshotKey(snapshot.pathParts))
-      )
-    : undefined;
   await applyProjectFileTransaction(projectRoot, mutations, {
-    ...(transactionPreconditions ? { preconditions: transactionPreconditions } : {})
+    preconditions: selectUpdatePreconditions(updateSnapshots, entries, mutations)
   });
 
   if (jsonMode) {
@@ -1612,6 +1587,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       projectVersion: manifest.liftoffVersion,
       written: written.map((entry) => manifestDisplayPath(entry.pathParts)),
       skipped: skipped.map((entry) => ({ path: manifestDisplayPath(entry.pathParts), reason: entry.reason })),
+      manifestUpgradePending,
+      manifestOwnershipCleanupPending,
       summary
     }, null, 2)}\n`);
     return 0;
@@ -1627,7 +1604,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Skipped conflicts',
       skipped.map((entry) =>
-        `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --apply --force to overwrite)'}`
+        `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
       )
     );
   }
@@ -1892,7 +1869,7 @@ async function powerAppsProjectCheck(projectRoot: string): Promise<DoctorCheck> 
     severity: 'fail',
     state: 'unhealthy',
     detail: issues[0],
-    remedy: 'restore package.json and package-lock.json or run liftoff update --apply'
+    remedy: 'restore package.json and package-lock.json or run liftoff update'
   };
 }
 
@@ -1985,7 +1962,7 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
       label: 'manifest',
       severity: 'fail',
       detail: `${issues.length} issue(s): ${issues[0]}${issues.length > 1 ? ' ...' : ''}`,
-      remedy: 'restore missing artifacts or run liftoff update --apply'
+      remedy: 'restore missing artifacts or run liftoff update'
     });
   } else {
     checks.push({ label: 'manifest', severity: 'ok', detail: `valid, ${manifest.artifacts.length} artifacts present` });

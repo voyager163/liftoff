@@ -25,7 +25,12 @@ it writes. After initialization:
 ```bash
 liftoff validate
 liftoff doctor
+liftoff update --check
 ```
+
+Plain `liftoff update` applies safe managed changes immediately and skips
+conflicts. Use `liftoff update --check --json` for a read-only CI drift gate,
+and review every reported path before choosing `liftoff update --force`.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 

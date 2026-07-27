@@ -17,7 +17,6 @@ import {
   stripAnsi,
   type TerminalLayout
 } from '../src/terminal.js';
-import { buildUpdateImpact } from '../src/update-impact.js';
 import {
   CaptureStream,
   ReadyInitRunner,
@@ -510,48 +509,6 @@ describe('interactive presentation', () => {
       expect(dependencyPrompt.output.text()).toContain('npm.cmd ci');
     } finally {
       dependencyPrompt.prompter.close();
-    }
-  });
-
-  it('renders update impact and keeps safe and conflict consent independent', async () => {
-    const prompt = scriptedPrompter('\nn\n');
-    const impact = buildUpdateImpact([
-      {
-        logicalName: 'frontend-package',
-        status: 'upgrade',
-        pathParts: ['frontend', 'package.json'],
-        reason: 'fixture'
-      },
-      {
-        logicalName: 'root-readme',
-        status: 'conflict',
-        pathParts: ['README.md'],
-        reason: 'fixture'
-      },
-      {
-        logicalName: 'retired',
-        status: 'orphan',
-        pathParts: ['retired.txt'],
-        reason: 'fixture'
-      }
-    ]);
-    try {
-      prompt.prompter.presentUpdateImpact(impact);
-      expect(await prompt.prompter.confirmSafeUpdate(impact.safeActionCount)).toBe(false);
-      expect(await prompt.prompter.confirmConflictOverwrite(
-        impact.conflicts,
-        impact.managedPathsRemovedOnOverwrite
-      )).toBe(false);
-
-      expect(prompt.output.text()).toContain('Update impact');
-      expect(prompt.output.text()).toContain('frontend/package.json');
-      expect(prompt.output.text()).toContain('Dependencies installed');
-      expect(prompt.output.text()).toContain('Apply these 1 safe update action now?');
-      expect(prompt.output.text()).toContain('README.md');
-      expect(prompt.output.text()).toContain('keeps no backup after success');
-      expect(prompt.output.text()).toContain('Overwrite all 1 listed conflict?');
-    } finally {
-      prompt.prompter.close();
     }
   });
 

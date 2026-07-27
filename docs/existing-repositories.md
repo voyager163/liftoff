@@ -64,15 +64,15 @@ Use:
 
 ```bash
 liftoff validate
+liftoff update --check
 liftoff update
-liftoff update --apply
 ```
 
-In an interactive terminal, plain update reports drift and impact, then asks
-with a default of No before applying safe managed changes. Local or user-owned
-conflicts require a separate default-No overwrite decision. Redirected and
-JSON checks remain read-only and prompt-free; use `--apply` for explicit
-automation consent.
+Use `--check` first when the invocation must be read-only. Plain update applies
+safe managed changes immediately and without prompting in terminals and
+automation, while preserving conflicts and orphans. Review every reported
+conflict and commit or copy local work before choosing `liftoff update --force`.
+For CI drift gates, use `liftoff update --check --json`.
 
 ## Existing non-Liftoff application
 

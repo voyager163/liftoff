@@ -654,9 +654,9 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 function renderGeneratedUpdateGuide(): string {
   return `## Safe Liftoff Updates
 
-\`liftoff update\` reports drift and, in an interactive terminal, shows the overwrite impact before a default-No prompt for safe managed changes. Local or user-owned conflicts require a separate default-No confirmation. With redirected input or output, or with \`--json\`, update remains a prompt-free read-only check; \`liftoff update --apply\` and \`liftoff update --apply --force\` provide explicit automation consent.
+\`liftoff update\` immediately applies safe managed changes without prompting in interactive, redirected, and automated environments. Use \`liftoff update --check\` for a read-only human drift report, or \`liftoff update --check --json\` as an automation gate that exits 0 when clean and 2 when drift exists.
 
-An occupied destination with different user bytes is reported and preserved without conflict consent, while an identical destination is adopted without rewriting it. Update never deletes orphans or installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful overwrite, so commit or copy local work first.
+Local or user-owned conflicts are skipped by default. Review the reported paths, commit or copy local work, and use \`liftoff update --force\` only when every listed overwrite is intended. An occupied destination with different user bytes remains preserved without force, while an identical destination is adopted without rewriting it. Update never deletes orphans or installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful overwrite.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 `;

@@ -199,6 +199,11 @@ const LEGACY_SEED_LOGICAL_NAMES = new Set([
   'openspec-seed-design',
   'openspec-seed-tasks'
 ]);
+const manifestsWithFilteredLegacySeedOwnership = new WeakSet<LiftoffManifest>();
+
+export function manifestHadFilteredLegacySeedOwnership(manifest: LiftoffManifest): boolean {
+  return manifestsWithFilteredLegacySeedOwnership.has(manifest);
+}
 
 export async function loadManifest(projectRoot: string): Promise<LiftoffManifest> {
   let raw: unknown;
@@ -237,10 +242,10 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
 
   const project = normalizeManifestProject(raw.project, artifactVersion);
   const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
-  const artifacts = normalizeManifestArtifacts(raw.artifacts)
+  const normalizedArtifacts = normalizeManifestArtifacts(raw.artifacts);
+  const artifacts = normalizedArtifacts
     .filter((artifact) => !LEGACY_SEED_LOGICAL_NAMES.has(artifact.logicalName));
-
-  return {
+  const manifest: LiftoffManifest = {
     artifactVersion: artifactVersion as 2 | 3 | 4,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
@@ -248,6 +253,10 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
     framework,
     artifacts
   };
+  if (artifacts.length !== normalizedArtifacts.length) {
+    manifestsWithFilteredLegacySeedOwnership.add(manifest);
+  }
+  return manifest;
 }
 
 function requiredString(record: Record<string, unknown>, key: string, scope: string): string {

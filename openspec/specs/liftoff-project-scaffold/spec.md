@@ -343,7 +343,7 @@ The system SHALL distinguish Liftoff durable artifacts, framework-owned output, 
 
 #### Scenario: Update excludes framework-owned core files
 - **WHEN** a framework CLI created scripts, commands, skills, or core templates that are not named Liftoff durable artifacts
-- **THEN** `liftoff update --apply` does not overwrite or delete those files
+- **THEN** plain `liftoff update` does not overwrite or delete those files
 
 #### Scenario: Validation checks framework integration markers
 - **WHEN** `liftoff validate` runs on a new project

@@ -24,7 +24,6 @@ import type { DependencyCommandPlan } from './project-dependencies.js';
 import { projectPlanEntries } from './planner.js';
 import { formatCommand, type CommandRunner } from './process-runner.js';
 import { PresentationSession } from './terminal.js';
-import type { UpdateImpact } from './update-impact.js';
 import type {
   CodingAgentId,
   ProjectOptions,
@@ -273,82 +272,6 @@ export class InteractivePrompter {
     return this.confirm('Replace every listed file?', false);
   }
 
-  presentUpdateImpact(impact: UpdateImpact): void {
-    const safeParts = [
-      this.impactPart(impact.creates.length, 'create', 'creates'),
-      this.impactPart(impact.restores.length, 'restore', 'restores'),
-      this.impactPart(impact.replacements.length, 'replace', 'replaces'),
-      this.impactPart(impact.moves.length, 'move', 'moves'),
-      this.impactPart(
-        impact.recordedStateRefreshes.length,
-        'recorded-state refresh',
-        'recorded-state refreshes'
-      )
-    ].filter((part): part is string => part !== undefined);
-    const removedPaths = impact.managedPathsRemovedOnOverwrite.length > 0
-      ? `${impact.managedPathsRemoved.length} safe, ${impact.managedPathsRemovedOnOverwrite.length} more if conflicts are approved`
-      : `${impact.managedPathsRemoved.length}`;
-
-    this.presentation.definitions('Update impact', [
-      {
-        label: 'Safe actions',
-        value: impact.safeActionCount > 0
-          ? `${impact.safeActionCount} (${safeParts.join(', ')})`
-          : 'None'
-      },
-      {
-        label: 'Local or user-owned files at risk',
-        value: impact.localOrUserOwnedFilesAtRisk > 0
-          ? `${impact.localOrUserOwnedFilesAtRisk} (requires separate consent)`
-          : '0'
-      },
-      { label: 'Managed old paths removed', value: removedPaths },
-      {
-        label: 'Orphans preserved',
-        value: `${impact.orphansPreserved.length} (never deleted automatically)`
-      },
-      {
-        label: 'Manifest updated',
-        value: impact.manifestWillUpdate ? 'Yes, after an accepted update' : 'No'
-      },
-      {
-        label: 'Dependency definitions',
-        value: impact.dependencyDefinitions.length > 0
-          ? impact.dependencyDefinitions.join(', ')
-          : 'None'
-      },
-      { label: 'Dependencies installed', value: 'No' },
-      {
-        label: 'Liftoff backup after success',
-        value: 'No; rollback is available only if the transaction fails'
-      }
-    ]);
-  }
-
-  async confirmSafeUpdate(actionCount: number): Promise<boolean> {
-    const noun = actionCount === 1 ? 'action' : 'actions';
-    return this.confirm(`Apply these ${actionCount} safe update ${noun} now?`, false);
-  }
-
-  async confirmConflictOverwrite(
-    paths: readonly string[],
-    managedPathsRemoved: readonly string[]
-  ): Promise<boolean> {
-    this.presentation.bullets('Local or user-owned files at risk', paths);
-    if (managedPathsRemoved.length > 0) {
-      this.presentation.bullets(
-        'Managed old paths removed on overwrite',
-        managedPathsRemoved
-      );
-    }
-    this.presentation.warning(
-      'A successful overwrite permanently replaces the listed local content. ' +
-      'Liftoff keeps no backup after success; commit or copy local work first.'
-    );
-    const noun = paths.length === 1 ? 'conflict' : 'conflicts';
-    return this.confirm(`Overwrite all ${paths.length} listed ${noun}?`, false);
-  }
-
   async confirmDependencyInstallation(commands: DependencyCommandPlan[]): Promise<boolean> {
     this.presentation.table(
       'Project dependency commands',
@@ -584,17 +507,6 @@ export class InteractivePrompter {
       discovery.detected.has(agentId) ? 'detected' : undefined
     ].filter((state): state is string => state !== undefined);
     return `${agent.label} (${states.length > 0 ? states.join(', ') : 'not observable'})`;
-  }
-
-  private impactPart(
-    count: number,
-    singular: string,
-    plural: string
-  ): string | undefined {
-    if (count === 0) {
-      return undefined;
-    }
-    return `${count} ${count === 1 ? singular : plural}`;
   }
 
   private async question(label: string, defaultValue?: string): Promise<string> {

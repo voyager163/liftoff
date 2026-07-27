@@ -81,6 +81,7 @@ describe('public documentation', () => {
     expect(readme).toContain('Claude Code');
     expect(readme).toContain('exact current Git root');
     expect(readme).toContain('docs/safety-and-consent.md');
+    expect(readme).toContain('liftoff update --check --json');
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
       .map((match) => match[1])
@@ -175,11 +176,13 @@ describe('public documentation', () => {
     expect(cli).toContain('deterministic plain text');
     expect(cli).toMatch(/child stdout and stderr are forwarded\s+unchanged/);
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
-    expect(cli).toContain('Safe managed changes use a default-No confirmation');
+    expect(cli).toContain('Plain `liftoff update` is imperative and prompt-free');
+    expect(cli).toContain('liftoff update --check --json');
+    expect(cli).toContain('Migration from 0.6.x');
     expect(cli).toMatch(/Liftoff retains no backup after a\s+successful overwrite/);
     expect(cli).toContain('Next recommended command');
     expect(cli).toContain('Liftoff has not executed it automatically');
-    expect(safety).toContain('Safe-update consent does not authorize conflicts');
+    expect(safety).toContain('Default update skips conflicts');
     expect(safety).toMatch(/update never installs\s+dependencies/);
     expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
     expect(telemetry).toContain('DO_NOT_TRACK=1');
@@ -200,9 +203,19 @@ describe('public documentation', () => {
     expect(telemetry).toContain('Standard GitHub-hosted runners run static validation only');
     expect(telemetry).toContain('tofu -chdir=infrastructure/opentofu/telemetry');
     expect(telemetry).not.toMatch(/\bterraform (?:apply|plan|destroy)\b/i);
-    expect(existing).toMatch(/Redirected and\s+JSON checks remain read-only/);
+    expect(existing).toContain('For CI drift gates, use `liftoff update --check --json`');
     expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
-    expect(manifests).toContain('declined interactive update');
+    expect(manifests).toContain('`liftoff update --check`');
+  });
+
+  it('keeps removed update apply syntax only in labeled migration history', async () => {
+    for (const file of ['README.md', ...requiredDocs.filter((file) => file !== 'docs/cli-reference.md')]) {
+      expect(await repositoryFile(file)).not.toContain('liftoff update --apply');
+    }
+
+    const cli = await repositoryFile('docs/cli-reference.md');
+    expect(cli).toContain('These are historical 0.6.x commands');
+    expect(cli.match(/liftoff update --apply/g)).toHaveLength(2);
   });
 
   it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {

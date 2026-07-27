@@ -167,7 +167,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     group: 'Maintenance',
     flags: {
       project: valueFlag('Project path', 'Project', 'path'),
-      apply: booleanFlag('Apply the proposed reconciliation', 'Consent'),
+      check: booleanFlag('Report drift without changing project files', 'Command'),
       force: booleanFlag('Replace modified managed files', 'Consent'),
       json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag
@@ -310,6 +310,20 @@ export function parseArgs(argv: string[]): ParsedArgs {
     const name = negated ? rawName.slice(3) : rawName;
     const flagDefinition = definition.flags[name];
     if (!flagDefinition) {
+      if (command === 'update' && name === 'apply') {
+        const legacyForceRequested =
+          flags.force === true ||
+          tokens.slice(index + 1).some((candidate) =>
+            candidate === '--force' || candidate === '--force=true'
+          );
+        throw new UsageError(
+          legacyForceRequested
+            ? 'Flag --apply was removed. Replace this command with `liftoff update --force`, ' +
+              'or use `liftoff update --check` for a read-only drift check.'
+            : 'Flag --apply was removed. Run `liftoff update` to apply safe changes or ' +
+              '`liftoff update --check` for a read-only drift check.'
+        );
+      }
       throw new UsageError(`Unknown flag for ${command}: --${rawName}.`);
     }
 
@@ -340,6 +354,13 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
     assignFlag(flags, name, next);
     index += 1;
+  }
+
+  if (command === 'update' && flags.check === true && flags.force === true) {
+    throw new UsageError(
+      'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
+        'to inspect drift or `liftoff update --force` to overwrite conflicts.'
+    );
   }
 
   const maxPositionals = subcommand

@@ -96,7 +96,7 @@ describe('maintenance presentation', () => {
     it(`snapshots ${name} update drift`, async () => {
       const projectRoot = await fixture();
       await addDrift(projectRoot);
-      const result = await run(['update'], projectRoot, columns);
+      const result = await run(['update', '--check'], projectRoot, columns);
 
       expect(result.code).toBe(2);
       expect(result.err).toBe('');
@@ -119,7 +119,7 @@ describe('maintenance presentation', () => {
       await addDrift(projectRoot);
       const runner = new ReadyInitRunner();
       const result = await run(
-        ['update', '--apply'],
+        ['update'],
         projectRoot,
         columns,
         { runner }
@@ -140,19 +140,19 @@ describe('maintenance presentation', () => {
     ['narrow color', 50, true],
     ['narrow no-color', 50, false]
   ] as const) {
-    it(`snapshots ${name} interactive update impact and decline`, async () => {
+    it(`snapshots ${name} prompt-free update check`, async () => {
       const projectRoot = await fixture();
       await addDrift(projectRoot);
-      const result = await run(['update'], projectRoot, columns, {
-        answers: 'n\n',
+      const result = await run(['update', '--check'], projectRoot, columns, {
+        answers: 'y\n',
         color,
         snapshot: false
       });
 
       expect(result.code).toBe(2);
-      expect(result.out).toContain('Update impact');
-      expect(result.out).toContain('Apply these 2 safe update actions now?');
-      expect(result.out).toContain('no project files were changed');
+      expect(result.out).toContain('Drift detected');
+      expect(result.out).not.toContain('Update impact');
+      expect(result.out).not.toContain('Apply these');
       expect(result.err).toBe('');
       if (color) {
         expect(result.out).toMatch(/\u001B\[/);
@@ -165,12 +165,15 @@ describe('maintenance presentation', () => {
 
   it('keeps expected update failures on stderr and informational identity on stdout', async () => {
     const projectRoot = await fixture();
-    const result = await run(['update', '--force'], projectRoot, 100);
+    const manifestPath = path.join(projectRoot, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.liftoffVersion = '99.0.0';
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const result = await run(['update'], projectRoot, 100);
 
     expect(result.code).toBe(1);
     expect(result.out).toContain('LIFTOFF / UPDATE');
-    expect(result.out).not.toContain('--force requires --apply');
-    expect(result.err).toContain('--force requires --apply');
+    expect(result.err).toContain('newer than this CLI');
     expect(result.err).toContain('Remedy');
   });
 
@@ -178,7 +181,7 @@ describe('maintenance presentation', () => {
     const projectRoot = await fixture();
     await addDrift(projectRoot);
 
-    for (const command of [['update', '--json'], ['doctor', '--json']]) {
+    for (const command of [['update', '--check', '--json'], ['doctor', '--json']]) {
       const result = await run(command, projectRoot, 100);
       const parsed = JSON.parse(result.out);
       expect(parsed.schemaVersion).toBe(1);
@@ -192,11 +195,15 @@ describe('maintenance presentation', () => {
 
   it('reports JSON-mode failures on plain stderr without contaminating stdout', async () => {
     const projectRoot = await fixture();
-    const result = await run(['update', '--json', '--force'], projectRoot, 100);
+    const manifestPath = path.join(projectRoot, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.liftoffVersion = '99.0.0';
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const result = await run(['update', '--json'], projectRoot, 100);
 
     expect(result.code).toBe(1);
     expect(result.out).toBe('');
-    expect(result.err).toContain('--force requires --apply');
+    expect(result.err).toContain('newer than this CLI');
     expect(result.err).not.toMatch(/\u001B\[/);
     expect(result.err).not.toMatch(/[┌┐└┘│]/);
   });

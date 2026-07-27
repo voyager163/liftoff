@@ -1,8 +1,4 @@
-## Purpose
-
-Define the `liftoff update` command that reconciles generated projects against the current CLI templates and configuration: state classification, safe apply semantics, guards, manifest rewrite, and project-root discovery for project-scoped commands.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Update reconciles a generated project against a fresh render
 The system SHALL provide a `liftoff update` command that loads `liftoff.config.json` as desired state, renders all artifacts with the current CLI templates, joins the render against `liftoff.manifest.json` on `logicalName`, and classifies every artifact into exactly one of: unchanged, new, missing, upgrade, conflict, moved, or orphan. Plain `liftoff update` SHALL apply safe managed changes immediately in interactive, redirected, and non-interactive environments; it SHALL skip conflicts unless `--force` is supplied and SHALL leave orphans untouched. `liftoff update --check` SHALL be the explicit read-only mode, SHALL print each non-unchanged artifact with its state and a one-line reason, and SHALL exit 0 when no drift exists and 2 when drift exists.
@@ -63,25 +59,6 @@ The system SHALL, when plain `liftoff update` runs, write artifacts classified a
 - **WHEN** an artifact exists in the manifest but is no longer produced by the render
 - **THEN** update leaves the file on disk and reports it as orphaned with guidance to delete manually if unwanted
 
-### Requirement: Apply failures are observable and recoverable
-The system SHALL preflight all artifact paths and destinations before mutation, SHALL treat only a confirmed missing path as absent, and SHALL stop with exit code 1 when a write, atomic replacement, move cleanup, or manifest write fails. A failed apply MUST name the affected artifact and operation, MUST NOT print a successful completion summary, and MUST NOT record a failed mutation as completed.
-
-#### Scenario: Destination write fails
-- **WHEN** apply cannot write an artifact because of permissions, path type, storage, or another filesystem error
-- **THEN** it exits 1 with the artifact path and underlying operation, and the manifest does not claim that write succeeded
-
-#### Scenario: Move cleanup fails
-- **WHEN** apply writes a moved artifact destination but cannot remove the verified old managed path
-- **THEN** it exits 1, reports the cleanup failure, and does not silently report a completed move
-
-#### Scenario: Preflight rejects every unsafe mutation before writes
-- **WHEN** any planned artifact path or destination fails project-boundary or collision validation
-- **THEN** apply performs no artifact mutation and reports the preflight failure
-
-#### Scenario: Retry after a partial filesystem failure
-- **WHEN** a developer corrects the filesystem problem and reruns update after a failed apply
-- **THEN** reconciliation detects the actual bytes on disk and can safely converge the project without manual manifest editing
-
 ### Requirement: Force extends apply to conflicted files
 The system SHALL accept `--force` directly on plain `liftoff update` and SHALL overwrite conflicted files with the current template version only after the existing conflict, path, and transaction guards pass. It SHALL identify exactly which files can be overwritten, preserve every unlisted conflict, and print a commit-first warning when the project is a Git repository with uncommitted changes. The system SHALL reject `--force` together with `--check`.
 
@@ -121,33 +98,6 @@ The system SHALL treat `liftoff.config.json` as user-owned desired state that th
 - **WHEN** a Power Apps configuration adds an API stack, pattern, cloud, region, frontend, or API environment field
 - **THEN** update exits 1 before rendering or writing and identifies the inapplicable field
 
-### Requirement: Update refuses unsafe reconciliations
-The system SHALL refuse to run when configured workload kind or immutable workload identity differs from the corresponding normalized identity recorded by the manifest, directing the developer to a supported migration or fresh initialization. For API workloads it SHALL continue refusing API-stack or GenAI-pattern changes. For Power Apps it SHALL refuse starter repository, template path, or commit changes outside a Liftoff release-driven template upgrade. The system SHALL also refuse when the manifest's `liftoffVersion` is newer than the running CLI, using semver-aware comparison that orders prerelease versions correctly and directing the developer to upgrade the CLI.
-
-#### Scenario: Workload-kind change is refused
-- **WHEN** a developer changes a generated project's configured type among GenAI, standard, and Power Apps and runs `liftoff update`
-- **THEN** the command fails with a message that workload changes require migration or fresh initialization
-
-#### Scenario: API-stack change is refused
-- **WHEN** a developer changes a standard project's configured API stack and runs `liftoff update`
-- **THEN** the command fails with a message that API-stack changes require a migration
-
-#### Scenario: Pattern change is refused
-- **WHEN** a developer changes a GenAI project's configured pattern and runs `liftoff update`
-- **THEN** the command fails with a message that pattern changes require a migration
-
-#### Scenario: User-supplied starter source change is refused
-- **WHEN** a Power Apps configuration or manifest is manually changed to a different repository, path, or commit
-- **THEN** update fails before artifact access with guidance to restore the manifest or use a matching Liftoff version
-
-#### Scenario: Legacy identity is compared after normalization
-- **WHEN** a legacy manifest omits project type and API stack but records a GenAI pattern matching the configuration
-- **THEN** update treats the identity as GenAI with Python/FastAPI and continues normal reconciliation
-
-#### Scenario: Newer-generated project is refused
-- **WHEN** the manifest records a `liftoffVersion` greater than the running CLI version
-- **THEN** the command fails with a message to upgrade the CLI first
-
 ### Requirement: Apply rewrites the manifest as the recorded state
 The system SHALL, after a successful default update, rewrite `liftoff.manifest.json` at the latest supported schema with the current CLI version and fresh content hashes for every artifact it wrote, while skipped conflicts retain their previously recorded hash so drift remains visible on subsequent checks.
 
@@ -158,21 +108,6 @@ The system SHALL, after a successful default update, rewrite `liftoff.manifest.j
 #### Scenario: Skipped conflict stays visible
 - **WHEN** a conflict was skipped during update and the developer runs `liftoff update --check`
 - **THEN** the file is still reported as a conflict
-
-### Requirement: Project-scoped commands resolve the project root by walking up
-The system SHALL resolve the project root for project-scoped commands (`update`, `validate`, `doctor`) by using an explicit path argument when given, and otherwise walking parent directories from the current directory to the nearest `liftoff.manifest.json`, without assuming the project root equals the repository root.
-
-#### Scenario: Update from a subdirectory
-- **WHEN** a developer runs `liftoff update` from a subdirectory of a generated project
-- **THEN** the command locates the project root by finding the nearest ancestor containing `liftoff.manifest.json`
-
-#### Scenario: Explicit path wins
-- **WHEN** a developer runs `liftoff validate ./some-project`
-- **THEN** the command operates on the given path without walking up from the current directory
-
-#### Scenario: Doctor discovers project context
-- **WHEN** a developer runs `liftoff doctor` from a subdirectory of a generated project
-- **THEN** doctor locates the project root and runs its project-aware layers against it
 
 ### Requirement: Seed content is excluded from reconciliation and recorded state
 The system SHALL treat seed-category artifacts as one-time gifted content: they SHALL NOT be reconciled in either direction (never classified, restored, upgraded, or reported), and manifest readers SHALL drop legacy seed entries recorded by earlier CLI versions so that archiving or removing seed content is a non-event for `validate`, `update`, and `doctor`.
@@ -238,3 +173,10 @@ The system SHALL normalize supported v2 and v3 manifests into the internal GenAI
 #### Scenario: Legacy framework state remains uncertain
 - **WHEN** a v2 manifest without official framework metadata is rewritten to v4
 - **THEN** the new manifest records legacy framework state without fabricating selected-agent integrations
+
+## REMOVED Requirements
+
+### Requirement: Interactive update discloses impact and obtains tiered consent
+**Reason**: Update becomes an imperative command. Safe changes apply immediately, conflicts require explicit `--force`, and read-only review moves to `--check`.
+
+**Migration**: Replace interactive preview with `liftoff update --check`; run `liftoff update` for safe reconciliation or `liftoff update --force` after reviewing conflicts.
