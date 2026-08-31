@@ -64,7 +64,7 @@ describe('manifest contract', () => {
 
   it('keeps host-specific tool versions out of deterministic rendering', () => {
     const options: ProjectOptions = { projectName: 'Portable App', pattern: 'rag', cloud: 'azure' };
-    vi.stubEnv('PATH', '/mock/node-20.19:/mock/openspec-1.6.0');
+    vi.stubEnv('PATH', '/mock/node-24.20:/mock/openspec-1.11.0');
     const first = renderMatrixEntry(options);
     vi.stubEnv('PATH', '/mock/node-99:/mock/openspec-99');
     const second = renderMatrixEntry(options);
@@ -88,6 +88,10 @@ describe('manifest contract', () => {
       });
       expect(manifest.project.agents).toEqual([]);
       expect(manifest.framework).toEqual({ state: 'legacy', adapter: 'openspec' });
+      expect(manifest.governance).toEqual({
+        profile: 'unspecified',
+        state: 'unspecified'
+      });
       expect(typeof manifest.liftoffVersion).toBe('string');
       expect(manifest.liftoffVersion.length).toBeGreaterThan(0);
       expect(manifest.artifacts.length).toBeGreaterThan(0);
@@ -120,7 +124,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('writes schema v4 with the exact tested framework contract', async () => {
+  it('writes schema v5 with framework and local governance identity', async () => {
     const artifacts = renderMatrixEntry({
       projectName: 'Manifest V3',
       pattern: 'rag',
@@ -132,15 +136,21 @@ describe('manifest contract', () => {
       artifactVersion: number;
       project: { agents: string[]; workload: { kind: string } };
       framework: { state: string; adapter: string; contractVersion: string };
+      governance: { profile: string; policyVersion: string; state: string };
     };
 
-    expect(manifest.artifactVersion).toBe(4);
+    expect(manifest.artifactVersion).toBe(5);
     expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
     expect(manifest.framework).toEqual({
       state: 'initialized',
       adapter: 'openspec',
-      contractVersion: '1.6.0'
+      contractVersion: '1.11.0'
+    });
+    expect(manifest.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-generated'
     });
   });
 

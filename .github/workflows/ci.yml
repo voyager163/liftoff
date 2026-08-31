@@ -18,30 +18,34 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "20.19"
+          node-version: "24.20.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
             services/telemetry-ingest/package-lock.json
 
-      - uses: actions/setup-python@v7
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
-          python-version: "3.12"
-          cache: pip
-          cache-dependency-path: src/templates.ts
+          python-version: "3.14.7"
 
-      - uses: actions/setup-go@v7
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
-          go-version: "1.23"
+          go-version: "1.27.0"
           cache-dependency-path: src/standard-templates.ts
 
-      - uses: opentofu/setup-opentofu@v2
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
         with:
-          tofu_version: 1.12.5
+          tofu_version: 1.12.6
+
+      - name: Install uv
+        run: python -m pip install uv==0.12.7
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
 
       - name: Install dependencies
         run: npm ci
@@ -62,27 +66,31 @@ jobs:
       - name: Run package smoke test
         run: npm run smoke:package
 
-      - name: Verify standard Node.js templates
-        run: npm run verify:standard-node-templates
+      - name: Verify generated containers
+        if: runner.os == 'Linux'
+        run: npm run verify:generated-containers
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "22.12"
+          node-version: "24.20.0"
           cache: npm
           cache-dependency-path: |
             package-lock.json
             services/telemetry-ingest/package-lock.json
 
-      - uses: opentofu/setup-opentofu@v2
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
         with:
-          tofu_version: 1.12.5
+          tofu_version: 1.12.6
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
 
       - name: Install dependencies
         run: npm ci
@@ -108,7 +116,7 @@ jobs:
         run: npx vitest run tests/telemetry-infrastructure.test.ts
 
   power-apps-starter:
-    name: Power Apps starter (${{ matrix.os }}, Node 22)
+    name: Power Apps starter (${{ matrix.os }}, Node 24)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     strategy:
@@ -116,15 +124,51 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
-          node-version: "22.12"
+          node-version: "24.20.0"
           cache: npm
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
 
       - name: Install dependencies
         run: npm ci
 
       - name: Verify starter install, lint, and build
         run: npm run verify:power-apps-starter
+
+  standard-node-templates:
+    name: Standard Node templates (npm ${{ matrix.npm-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - node-version: "22.12.0"
+            npm-version: "10.9.4"
+          - node-version: "24.20.0"
+            npm-version: "12.0.2"
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: npm
+
+      - name: Select npm compatibility lane
+        run: npm install --global "npm@${{ matrix.npm-version }}"
+
+      - name: Install Liftoff dependencies
+        env:
+          npm_config_engine_strict: "false"
+        run: npm ci
+
+      - name: Verify standard Node.js templates
+        env:
+          npm_config_engine_strict: "false"
+        run: npm run verify:standard-node-templates

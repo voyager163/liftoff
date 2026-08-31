@@ -70,6 +70,12 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
           "state": undefined,
         },
         {
+          "id": "repository-governance",
+          "label": "repository governance",
+          "severity": "ok",
+          "state": "handoff-generated",
+        },
+        {
           "id": "framework-contract",
           "label": "framework contract",
           "severity": "ok",

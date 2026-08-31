@@ -5,8 +5,8 @@ standard APIs, and Power Apps code apps.
 
 ## 1. Install the CLI
 
-Liftoff requires Node.js 20.19 or newer. Power Apps code app projects require
-Node.js 22.12 or newer for their generated framework.
+Liftoff and generated Node.js workloads require Node.js 24.20 or newer.
+Python workloads use Python 3.14 with frozen `uv` dependency locks.
 
 The canonical release registry is `https://registry.npmjs.org`:
 
@@ -23,6 +23,18 @@ canonical npm. Stop if the mirror is older or rejects the explicit current
 version; ask the mirror owner to synchronize or approve the release. Liftoff
 does not modify `.npmrc` or bypass registry policy.
 
+Versions predating the self-upgrade command require that manual global install
+once. After a capable version is installed globally with npm, use:
+
+```bash
+liftoff upgrade --check
+liftoff upgrade
+```
+
+`upgrade` replaces only the supported global CLI installation. It does not read
+or update a generated project; inspect project template changes separately with
+`liftoff update --check`.
+
 See [prerequisites](prerequisites.md) for the complete plan-derived tool model.
 
 ## 2. Start interactive initialization
@@ -37,16 +49,20 @@ The guided flow asks for:
 
 1. Project identity and workload: GenAI, API, or Power Apps code app.
 2. Only the architecture choices applicable to that workload.
-3. OpenSpec or Spec Kit.
-4. One or both coding agents. On a real TTY, Space toggles agents and Enter
+3. Whether to generate the default single-maintainer GitFlow repository-
+   governance handoff. Accepting it creates local files only.
+4. OpenSpec or Spec Kit.
+5. One or both coding agents. On a real TTY, Space toggles agents and Enter
    confirms the selection.
-5. A Spec Kit default agent when both agents are selected.
-6. The optional Preview Code Apps plugin preference for Power Apps projects.
-7. Plan confirmation, workstation readiness, and any separate install or
+6. A Spec Kit default agent when both agents are selected.
+7. The optional Preview Code Apps plugin preference for Power Apps projects.
+8. Plan confirmation, workstation readiness, and any separate install or
    overwrite permissions that are needed.
 
 Liftoff renders into temporary staging, runs the official framework initializer
 there, validates the complete result, and only then merges it into the target.
+Governance activation is a later selected-agent action after commit and push;
+see [repository governance](repository-governance.md).
 
 ## 3. Understand the target
 

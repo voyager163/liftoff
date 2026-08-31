@@ -1,0 +1,705 @@
+---
+schemaVersion: 1
+profile: single-maintainer-gitflow
+policyVersion: "1"
+state: handoff-generated
+---
+
+# Repository bootstrap standard — GitFlow, governance, and security
+
+Set up GitFlow branching, repository governance, and the security pipeline in this repository.
+This is my standard for every new repository, so implement it as a repeatable baseline rather than a
+one-off.
+
+## Fixed context — these are settled, do not re-litigate them
+
+- **Single-maintainer repositories, by design.** Each developer owns their own repository and is its
+  sole maintainer. There is no second reviewer, and none is wanted. **No change in this repository
+  requires another person's approval — including changes to workflows, rulesets and governance files.**
+  The repository owner merges their own pull requests. Automated checks are the entire gate, so they
+  must be strict and must fail closed. Never design anything that depends on someone else reviewing it,
+  and never treat the absence of peer review as a gap to be closed.
+- **Do not require human approval anywhere.** Specifically: set
+  `required_approving_review_count: 0`, `require_code_owner_review: false` and
+  `require_last_push_approval: false`. Do not create a `CODEOWNERS` file. Do not add required
+  reviewers to any GitHub Environment. Do not add a manual approval step to any workflow. If a
+  best-practice default would introduce a human approver, override it and say so.
+  To be precise: me approving *your plan* in this conversation is expected and required. What is
+  forbidden is any *merge or deploy gate that waits on a person* once the automation is in place.
+- **Repository-scoped only. Org-level rulesets are out of scope and will not be set up.** I am a
+  repository admin, not an org owner. Every control must be applied per-repository and must work
+  standalone in a single repository. Do not propose, recommend, or design around org-level rulesets,
+  org-level required workflows, or org-wide GitHub App installations — not even as a "better
+  alternative" or a future phase. Do not treat the per-repository approach as a limitation to be
+  worked around; it is the deliberate design. If a control genuinely cannot be enforced at repository
+  scope, say so plainly and leave it out rather than proposing an org-level substitute.
+- **Automation identity is the built-in `GITHUB_TOKEN`.** Set the **GitHub Actions app** as the bypass
+  actor where automation must act on a protected ref — no custom GitHub App is available, since
+  installing one requires org ownership. Note that pushes made with `GITHUB_TOKEN` do not trigger
+  further workflows: never rely on a tag-push trigger, and do the follow-on work in the same workflow
+  run.
+- **GitHub Advanced Security is licensed org-wide.** Use Secret Protection, CodeQL and Copilot Autofix.
+  Do not add third-party equivalents such as Gitleaks or Semgrep — they would duplicate licensed
+  capability.
+- **Staging sits behind private networking.** DAST must run on a self-hosted runner with access to it.
+- **The GitHub Release plus attestations are the audit record.** There is no external GRC or
+  change-management system to integrate with.
+
+## Basis
+
+The branching model is Vincent Driessen's original GitFlow:
+https://nvie.com/posts/a-successful-git-branching-model/
+Follow its branch roles and merge directions faithfully. Note Driessen's own 2020 addendum — GitFlow
+suits versioned releases rather than continuous delivery. If this repository genuinely ships
+continuously, say so and tell me where you are deviating and why, rather than forcing the full model.
+
+## Phase 0 — Classify the repository first
+
+Report before you change anything.
+
+1. What kind of artifact does this repo produce — container image, mobile app, library, static site,
+   infrastructure only? This determines which parts of the standard apply.
+2. Language(s), package managers, and the build and test commands that genuinely work today.
+3. Anything already present: branches, workflows and their exact job names, rulesets, tags, releases,
+   environments, deployment pipelines, security scanning.
+4. Whether a self-hosted runner group with Staging access exists. If it does not, say so plainly —
+   DAST cannot run without it, and the release lane will be unable to qualify a candidate.
+5. What monitoring and alerting already exists — alert rules, action groups, where they route, and
+   which components have no coverage at all. Name the gaps explicitly.
+6. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
+   (dependencies are reachable). A shallow check reported as health is a gap, not coverage.
+
+Then state the gap and your proposed order of work, and **get my approval before making changes.**
+
+**Adapt honestly.** Container scanning is meaningless for a mobile app; SBOM and image digests do not
+apply to a library the same way. Implement what is real for this repo and tell me explicitly what you
+skipped and why. Never ship a workflow that cannot pass.
+
+## Phase 1 — Branching model
+
+- `develop` is the integration branch and the **default branch**. Feature branches (`feat/`, `fix/`,
+  `chore/`, `ci/`, `docs/`) branch from `develop` and merge back into `develop` by pull request only.
+- `main` is production truth. Every commit on it is a released version. It only ever receives merges
+  from `release/**` or `hotfix/**`.
+- `release/X.Y.Z` branches from `develop` — cut only by `workflow_dispatch` from an exact named healthy
+  SHA, never from a local checkout. Only stabilisation fixes land on it. On completion it merges to
+  `main` and back into `develop` so fixes are never lost.
+- `hotfix/X.Y.Z` branches from `main`, requires an incident reference, and merges to both `main` and
+  `develop` — or into the open release branch if one exists.
+- Nobody pushes directly to any protected branch, including me.
+
+## Phase 2 — Release versioning on `main`
+
+Every production merge must produce a real, visible version.
+
+- Semantic versioning. The `release/X.Y.Z` or `hotfix/X.Y.Z` branch name is the single source of truth
+  for the version; nothing else declares it.
+- Merges into `main` are true merge commits, never squashed, so both parents stay traceable.
+- After a successful production deploy — and only then — automation creates an annotated `vX.Y.Z` tag
+  on that exact `main` merge commit and a matching **GitHub Release** targeting `main`.
+- The Release body must contain: the changelog between the previous tag and this one, the deployed
+  artifact digest, the source `develop` SHA the release was cut from, a link to the staging
+  qualification run, the **evidence bundle digest** and links to the SBOM and scan reports, the
+  **expected signer identity and OIDC issuer** an auditor should pin when verifying, and an AI
+  Acceptable Use Policy attestation record. For a hotfix, include the incident reference. Attach the
+  **SBOM, the full evidence bundle, the attestation bundle and `trusted_root.jsonl`** as Release
+  assets — these are the durable audit record and must not live only in expiring workflow artifacts.
+  Publishing the trusted root alongside the bundle is what makes offline, air-gapped verification
+  possible; without it an auditor with no network access to Sigstore cannot verify anything.
+- Before tagging, validate: the version is valid semver, is strictly greater than the latest tag, does
+  not already exist as a tag or Release, and the commit is on `main` and actually deployed. Fail rather
+  than tag speculatively.
+- Only automation creates `v*` tags. Tags are immutable — never deleted, moved or force-updated. A
+  mistaken release is corrected by publishing the next patch version.
+- A failed production deploy creates no tag and no Release. That version is burnt; the repair path uses
+  the next patch version. Never reuse a burnt version.
+- Any commit on `main` without a corresponding `vX.Y.Z` tag is an anomaly — add a check that reports it.
+
+## Phase 3 — Promotion: build once, promote the identical artifact
+
+The artifact is built once per candidate and recorded in a release manifest with its digest, SBOM
+digest, provenance attestation and scan results. Dev, Staging and Production all deploy that same
+digest. Never rebuild per environment; never resolve a floating tag like `latest`. Configuration
+differs per environment; the artifact does not.
+
+- **Dev** — every push to `develop` deploys automatically. No gate.
+- **Staging** — a push to `release/**` or `hotfix/**` builds the candidate, scans it, generates its
+  SBOM, deploys to Staging, then runs the qualification suite and DAST. It records a qualification
+  record bound to that exact digest and commit.
+- **Production** — merging into `main` promotes. The workflow resolves the already-qualified digest,
+  verifies the attestation and qualification record bind to that exact commit and digest, and refuses
+  to proceed on any mismatch. Deployment is recorded through a GitHub Environment for the deployment
+  history and audit trail only — configure it with **no required reviewers**, so promotion is never
+  blocked waiting on a person.
+- Promotion is strictly forward. Rollback redeploys a previous release manifest **by digest**, never a
+  rebuild, and records which version it rolled back to. Rollback is never gated — see "Roll back
+  first, debug later" below.
+
+### Deployment strategy — blue-green mechanism, canary exposure
+
+Two separate decisions, often conflated. Be explicit about both.
+
+**1. Mechanism — how a version replaces another within one deployment unit. Always blue-green.**
+
+- Run the platform in a mode that supports parallel versions (for Azure Container Apps, `Multiple`
+  revision mode; for App Service, deployment slots; for Kubernetes, a parallel deployment behind a
+  switchable service).
+- Deploy the new version alongside the current one at **zero traffic**.
+- Qualify it on a **version-specific origin** — its own revision URL or slot hostname — while it still
+  serves no users. This is the step that makes the model work: verification happens before any user is
+  exposed, not after.
+- Only then switch traffic **atomically** to 100% of the new version, setting all prior versions to 0.
+- Run post-switch smoke checks. On failure, **restore the previous traffic weights** and set the
+  failed version to 0. Rollback is a traffic change measured in seconds, not a redeploy.
+- Never leave a deployment unit in a mixed-version state. Two versions may exist simultaneously, but
+  only one serves traffic. That guarantee is what lets an auditor ask "what was running at 14:32" and
+  get exactly one answer — the attestation and evidence chain depends on it.
+- Do **not** use rolling in-place updates. They create a mixed-version window, make rollback slow, and
+  break that guarantee.
+
+**2. Exposure — how much traffic sees the new version, and when. Canary before full traffic.**
+
+The Dev → Staging → Production path is already progressive exposure. Canary extends it *inside*
+production so that a defect which survived Staging is caught by a small fraction of real users rather
+than all of them.
+
+Canary runs **on top of** the blue-green mechanism above — they are complementary, not alternatives.
+Blue-green is how a version gets deployed and rolled back; canary is how traffic reaches it.
+
+**The canary sequence:**
+
+1. Deploy the new version at **zero traffic** and qualify it on its version-specific origin, exactly
+   as above. Nothing reaches a user until this passes.
+2. Deploy a **fresh baseline revision of the current version** alongside it. Compare the canary
+   against this baseline, **never against the existing production fleet** — the running fleet has
+   warmed caches, longer uptime and settled runtime state, which makes it an invalid control and
+   produces false signals in both directions. This is the detail that makes canary analysis
+   trustworthy, and the one most often got wrong.
+3. **Experiment phase.** Shift a small slice of traffic to the canary and an **equal slice to the
+   fresh baseline** — for example 10% canary, 10% baseline, with the remaining 80% still served by the
+   current fleet. Equal slices are what make the comparison fair.
+4. Hold for a defined **bake window** and run automated analysis over it.
+5. **Promotion phase.** On a passing analysis, switch **atomically to 100% canary** and retire both
+   the baseline and the old revision.
+
+**Do not ramp the canary and baseline through intermediate steps such as 50/50.** Two reasons. First,
+traffic weights sum to 100, so canary 50 plus baseline 50 leaves the original revision at zero — that
+moves every user onto two freshly deployed, cold revisions and abandons the warm, proven fleet you
+would otherwise fall back to. Second, the baseline is a *control*, not a rollout vehicle; its only job
+is to match the canary's slice size. The comparison is either statistically valid at the experiment
+slice or it is not, and a larger slice does not rescue an invalid one — it only exposes more users.
+Go from the experiment slice straight to the atomic switch.
+
+**Analysis and gating:**
+
+- Compare error rate, latency (p50, p95, p99) and saturation between canary and baseline over the
+  bake window, against explicit, committed thresholds.
+- **Advancement must be fully automated.** There is no reviewer on these repositories, so a canary
+  that waits for a human to click "promote" is not a control — it is a pause. Encode the decision.
+- **Fail closed.** If metrics are missing, the analysis cannot reach a conclusion, or the bake window
+  times out, **roll back** — never advance on absent evidence. A canary that proceeds when it cannot
+  measure anything is the fail-open pattern in a different costume.
+- Any threshold breach triggers an **immediate rollback to 100% previous version** — restore the
+  original revision's weight and set canary and baseline to 0.
+- Record the canary analysis result — thresholds, observed values, decision — in the evidence bundle
+  for that release.
+
+**Size the canary to the traffic that actually exists.** The bake window must be long enough for the
+slice to produce a meaningful sample; a five-minute window on a service with a handful of requests
+proves nothing and merely delays the release. State the assumed traffic volume and the resulting bake
+window explicitly, and if the service is too quiet for a canary slice to be meaningful, say so and use
+a single atomic switch with instant rollback instead — but say it, rather than shipping a canary that
+is statistically empty.
+
+Where more than one region or deployment unit exists, prefer making the **first unit** the canary
+(Microsoft's Azure Safe Deployment Practices model — Canary → Pilot → Broad, each a region with its
+own bake time) over splitting traffic within a single unit. A failure is then contained to one unit,
+and rollback is a traffic switch you have already tested.
+
+### Roll back first, debug later
+
+This is the single most valuable deployment practice at any scale, and it is policy here, not advice.
+
+- When canary analysis fails or post-switch checks fail, **restore traffic to the previous version
+  immediately.** Do not investigate first. Do not "just check one thing." The rollback is a
+  traffic-weight change measured in seconds — it costs almost nothing, and the exposure window while
+  you diagnose costs users.
+- **Retain the failed revision at zero traffic** for forensics. It serves nobody but remains available
+  for inspection, along with logs and telemetry captured during the exposure.
+- **Never forward-fix under pressure.** The next patch version, through the normal gated path, is the
+  only route back. A hotfix that skips the gates to resolve an incident faster is how an incident
+  becomes two incidents.
+- **Rollback must never be gated.** It requires no approval, no qualification record, and no ruleset
+  bypass — it redeploys an artifact that already passed every gate. Verify that the rollback path
+  genuinely works, and rehearse it, before requiring anything that depends on it.
+- Automated rollback is the default path; a manual rollback workflow exists as a backstop and takes an
+  incident reference.
+
+If the target platform cannot support parallel versions, say so plainly and describe what you
+implemented instead — do not silently fall back to an in-place update and call it a deployment.
+
+### Runtime monitoring and alerting
+
+The security pipeline proves the artifact was sound when it shipped. Monitoring is what tells you the
+running system is sound now. Both are required; neither substitutes for the other.
+
+**Alerting is infrastructure as code.** Define every alert rule, action group and routing target in
+the same IaC as the resources they watch, reviewed and versioned alongside them. Never configure an
+alert by hand in a portal — a hand-made alert is invisible to review, absent from a rebuilt
+environment, and lost when a resource is recreated.
+
+**Route everything to Slack, and route by severity.** Use a single action group per environment with
+a Slack webhook receiver, and separate channels by severity so that noise and urgency do not share a
+destination:
+
+- **Sev 1 — service down or failing.** Sustained 5xx rate, container restart loop, health probe
+  failing, database unreachable. Goes to an alerting channel that is expected to interrupt someone.
+- **Sev 2 — degraded or trending toward failure.** Saturation (CPU, memory, storage, connection
+  pool), elevated latency, queue depth growing, certificate or secret expiring within a defined
+  window. Goes to a lower-urgency channel.
+- **Sev 3 — informational.** Deployment started and finished, canary promoted or rolled back,
+  scheduled re-scan found a new CVE in a released artifact. Goes to a log channel — useful context,
+  never an interruption.
+
+Include environment, resource, severity, the firing condition with its observed value, and a direct
+link to the resource and to the relevant dashboard in every message. An alert that says only
+"something is wrong" costs more time than it saves.
+
+**Cover every component that can fail independently**, not just the application:
+
+- **Web / frontend** — availability from outside the network, 5xx rate, and a synthetic check of the
+  real user-facing hostname rather than an internal origin.
+- **API / backend** — 5xx rate, p95 latency, restart count, health and readiness endpoint failures.
+- **Database** — availability, storage percentage, CPU, connection saturation, replication lag,
+  and **backup success**. A failed backup is silent until the day it matters.
+- **Cache / session store** — memory saturation and error rate. Where sessions or sign-in depend on
+  it, treat its failure as Sev 1: cache availability *is* authentication availability.
+- **Messaging and communication services** (managed email/SMS/push services such as Azure
+  Communication Services, and message brokers such as Service Bus, Event Hubs, SQS or Kafka) —
+  delivery failure rate, queue depth, dead-letter count, and throttling. These fail quietly and are
+  usually discovered by a user reporting a message that never arrived, which is far too late.
+- **Ingress / CDN / gateway** — origin health, TLS certificate expiry, and 4xx/5xx at the edge, which
+  catches failures that never reach the application at all.
+- **Identity and secrets** — secret, certificate and credential expiry, with enough lead time to act.
+- **Cost** — a budget threshold alert. A runaway cost is an incident, and it is often the first
+  visible symptom of a runaway process.
+
+**Alert on symptoms, not causes.** Alert on what a user would notice — requests failing, requests
+slow, messages not delivered. Resource-level signals belong to dashboards and to Sev 2 at most. A page
+per underlying cause produces a flood during a single incident.
+
+**Every alert must be actionable.** If nobody would do anything when it fires, it is a dashboard
+metric, not an alert. Thresholds should be deliberately loose enough that a normal day is quiet: an
+alert that fires routinely gets muted, and a muted alert is worse than no alert because it looks like
+coverage while providing none.
+
+**Alerting must not fail open** — the same defect class as a fail-open CI check, and considerably
+harder to notice, because an environment with no alerts looks exactly like an environment with no
+problems:
+
+- Never make alert creation conditional on an optional variable being set. A pattern such as
+  `count = var.alert_webhook != "" ? 1 : 0` means a missing value silently produces an environment
+  with no alerts at all. Make the routing target **required**, and fail the deployment if it is
+  absent.
+- Verify after deploy that the expected alert rules exist and are enabled, and fail the deployment if
+  any are missing. Treat a missing alert rule as a failed deployment.
+- **Add a heartbeat.** Emit a scheduled signal that proves the whole path — metric to rule to action
+  group to Slack — is alive, and alert on its *absence*. Without one, a broken webhook is
+  indistinguishable from a healthy system.
+- **Test that each alert fires**, exactly as required checks must be proven to go red. An alert that
+  has only ever been seen quiet has never been shown to work. Record the test.
+
+**Wire alerting into the deployment path.** The canary analysis in the previous section reads the same
+signals: use one definition of healthy so that the thresholds gating a canary and the thresholds
+paging a human cannot drift apart. Announce deployment start, canary decision and rollback to Slack —
+correlating "it broke" with "we shipped" is the single most useful piece of incident context.
+Alert noise should be suppressed for the deploying resource during an expected restart, but never
+suppressed globally.
+
+Feed Defender for Cloud and Microsoft Sentinel where configured, and route their high-severity
+findings to the same Slack destinations, so security and availability alerts reach one place rather
+than two.
+
+#### Service health model — know the state of everything, to recover quickly
+
+Alerting tells you something broke. A health model tells you **what state every component is in right
+now**, which is what recovery actually requires. Build both.
+
+- Give **every component a machine-readable health state** — the web frontend, each API, the
+  database, the cache, messaging and communication services, storage, ingress, and every managed
+  cloud dependency. Not just "the app is up".
+- Distinguish **shallow from deep checks**. A liveness endpoint that returns 200 from the process
+  proves the process is running. A readiness or deep check must exercise the real dependency path —
+  a database round trip, a cache read, a token acquisition — because "the API is up but cannot reach
+  the database" is the state you most need to see, and the one a shallow check hides.
+- **Aggregate into one view** showing, per environment, every component and its state, the deployed
+  version and artifact digest, and when it was last checked. During an incident the first question is
+  always "what is broken and what is fine", and answering it by opening six consoles costs the
+  minutes that matter.
+- **Record dependencies** so the view shows blast radius and recovery order. If the database is down,
+  the APIs depending on it are *consequences*, not separate incidents. Without this, one failure
+  presents as ten alerts and the actual cause is guesswork.
+- Report each component's **currently deployed version and digest** alongside its health. Recovery
+  decisions turn on whether a component is running what you think it is running, and this is also
+  what makes "roll back first" actionable.
+- The health view must be **queryable when things are broken**. Do not host it inside the system it
+  monitors, and do not let it depend on that system's database or identity provider. A status page
+  that goes down with the service is worse than none, because its silence is ambiguous.
+- Expose it as **structured data, not only a dashboard**, so the deployment pipeline, the canary
+  analysis and the alert rules can all consume the same health definition rather than each
+  maintaining a private one.
+- Also surface **cloud provider platform status** for the regions and services you depend on. A
+  provider-side incident needs a different response from a defect you shipped, and telling them apart
+  early prevents a pointless rollback.
+
+#### Delivery performance — the DORA four keys
+
+Measure delivery performance using Google's DORA metrics, and derive them from the events this
+pipeline already emits rather than from a separate system:
+
+| Metric | Derive from |
+| --- | --- |
+| **Deployment frequency** | Successful production deployments recorded through the GitHub Environment |
+| **Lead time for changes** | Commit timestamp on `develop` → production deployment of the release containing it |
+| **Change failure rate** | Releases that triggered a rollback, a canary failure, or a hotfix, over total releases |
+| **Failed deployment recovery time** | Failure detected → traffic restored to the previous version |
+
+Every input already exists: GitHub deployments and Releases, the tag and its timestamp, canary
+analysis decisions, rollback records with their incident references, and alert firing and resolution
+times. Nothing new needs instrumenting — the work is to make those events queryable and to publish the
+trend. Compute the metrics on a schedule and post the trend to the Slack log channel.
+
+Note the current definitions: **Failed Deployment Recovery Time** is DORA's renaming of what was
+called MTTR, and it deliberately scopes to recovery from a failed deployment rather than to all
+incidents. Track recovery from non-deployment incidents too, but do not conflate the two.
+
+**Change failure rate and failed deployment recovery time are the pair that matters most here.**
+They are DORA's stability measures, and they are exactly what the blue-green, canary and instant
+rollback design exists to improve. A rising change failure rate means the Staging gate is not
+catching what it should; a rising recovery time means the rollback path has decayed. Both are early
+warnings that a control has stopped working, visible long before an incident proves it.
+
+**Use these as trend indicators for this repository, not as targets or as comparisons between teams
+or people.** DORA's own 2025 guidance dropped the Elite/High/Medium/Low ranking in favour of context —
+and a metric that becomes a target gets gamed. Deployment frequency in particular is trivially
+inflated and means nothing on its own; it is only informative alongside the stability pair.
+
+## Phase 4 — Security pipeline
+
+Pipeline stages: Secret Scanning → SCA → SAST → IaC → Container → DAST → Continuous → Compliance.
+Implement every stage that applies, mapped to the trigger where it can actually run.
+
+**Use exactly these tools. Do not add alternatives that duplicate them.**
+
+| Job | Tool |
+| --- | --- |
+| Secrets | GitHub Secret Protection — push protection, Copilot secret scanning, custom patterns |
+| SCA | Dependabot + Dependency Review |
+| SAST | CodeQL + Copilot Autofix |
+| IaC | Checkov — covers Terraform, Kubernetes, Dockerfiles, Actions, ARM/Bicep |
+| Container + SBOM | Trivy — image scanning and CycloneDX SBOM. **This is the blocking gate.** |
+| Risk prioritisation | Grype (pin >= v0.88.0) — consumes the SBOM, ranks by CVSS + EPSS + CISA KEV. **Never gates.** |
+| DAST | OWASP ZAP |
+| Provenance | GitHub artifact attestations (L2) and `slsa-github-generator` (L3) |
+| Posture | OSSF Scorecard |
+
+Explicitly excluded as duplicates — do not reintroduce: tfsec (deprecated, merged into Trivy),
+Terrascan, Kics, Template Analyzer, IaCFileScanner, Kubesec, Syft, Microsoft sbom-tool, Gitleaks,
+Semgrep, Burp Suite (no CLI, cannot be automated), and the MSDO wrapper (it re-runs Checkov and Trivy
+a second time). **Keep `trivy config` disabled** — Checkov owns IaC, Trivy owns images.
+
+**Trivy and Grype are not duplicates and must not be run as two gates.** Trivy core has no EPSS or
+CISA KEV support and its maintainers consider it out of scope, so exploitability-based ranking is a
+genuine capability gap rather than overlap. Give them strictly separate roles: Trivy is the blocking
+gate; Grype is a non-gating prioritiser that consumes the SBOM Trivy produced and reports what is
+actually being exploited in the wild. Maintain exactly one allowlist, owned by Trivy. If Grype ever
+starts failing builds, the design has been broken — two gates means double triage, and with no
+reviewer that is how a gate gets disabled.
+
+Stage mapping:
+
+- **PR into `develop`** — secret scanning, dependency review, CodeQL, Checkov, and an action
+  SHA-pinning check. Source-level only. Keep it fast; a slow PR gate gets worked around.
+- **Push to `develop`** — the above, plus build the artifact, generate its SBOM from the built image
+  rather than the source tree, scan the image with Trivy, and attest provenance at **SLSA Build L2**
+  using `actions/attest-build-provenance`.
+- **`release/**` and `hotfix/**`** — the full gate, all bound to the promoted digest: Trivy scan of
+  that exact digest, SBOM, **SLSA Build L3** provenance via `slsa-github-generator`, OSSF Scorecard,
+  deploy to Staging, then OWASP ZAP against the deployed instance on a self-hosted runner. DAST needs a
+  running application and belongs here and nowhere else. Also run Grype against the candidate SBOM to
+  produce an exploitability-ranked risk report for the Release body — report only, never blocking. The
+  qualification record must not be issuable if any of the gating checks fail.
+- **`main`** — verification only. Verify the L3 attestation, SBOM digest and qualification record all
+  bind to the digest being promoted. No new scans; re-scanning would describe a rebuilt artifact.
+- **Scheduled** — re-scan released artifacts by running Grype against their **stored SBOMs**, which
+  needs no rebuild and no image pull, and re-scan the live production digest with Trivy. A CVE
+  published after release makes the deployed artifact vulnerable with no code change. Raise an issue on
+  new CISA KEV entries, high-EPSS findings, or new HIGH/CRITICAL severities. Feed Defender for Cloud and
+  Sentinel if configured.
+
+Gating and evidence:
+
+- Fail on **fixable** HIGH and CRITICAL findings. Upload SARIF from every scanner so results appear in
+  the Security tab rather than buried in logs.
+- Suppressions are explicit and expiring: a committed allowlist with a reason and expiry per entry, and
+  the pipeline fails when an entry expires. Never suppress by lowering the global severity threshold.
+  With no reviewer, an unbounded allowlist is how a gate quietly becomes decorative.
+- Commit an **AI Acceptable Use Policy** document. It is a documented policy and an attestation
+  recorded in the Release, not an automated check.
+- Every scan emits a stable, named status check suitable for requiring by ruleset.
+
+### Audit evidence — every stage must produce a durable, reviewable report
+
+An auditor must be able to answer, years after the fact: what was scanned, when, with which tool and
+which vulnerability database, what was found, what was accepted and on whose authority, and proof that
+the report describes the artifact that actually shipped. Design for that, not for a dashboard.
+
+Three tiers, because retention and mutability differ:
+
+1. **Live triage — code scanning.** Every scanner uploads SARIF to GitHub code scanning. This is the
+   working view for fixing things. It is mutable live state — alerts get dismissed and resolved — so
+   it is never sufficient as the audit record on its own.
+2. **Run evidence — job summaries and workflow artifacts.** Every security job writes a rendered
+   human-readable summary to `$GITHUB_STEP_SUMMARY` and uploads its raw output as a workflow artifact.
+   Useful for debugging. Actions artifacts expire, so never treat them as the audit record.
+3. **Release evidence — the durable record.** For every release candidate, assemble one **evidence
+   bundle** and attach it to the GitHub Release. Release assets do not expire. This is the audit record.
+
+The evidence bundle contains, for each pipeline stage:
+
+- The raw machine-readable output exactly as the tool produced it (SARIF, CycloneDX, JSON).
+- A rendered human-readable summary an auditor can read without tooling.
+- A metadata record: tool name, **tool version, vulnerability database version and its timestamp**,
+  the exact command line, start and end time, exit status, and the workflow run URL. A finding count
+  is meaningless without the database version behind it — always record it.
+
+And at bundle level:
+
+- The artifact digest, source commit SHA, release version and branch.
+- A `manifest.json` listing every file with its SHA-256.
+- The suppression allowlist exactly as it stood at that moment, with each entry's reason, expiry and
+  the commit that introduced it.
+- The DAST result, the Grype exploitability report, and the staging qualification record.
+- The **attestation bundle** and **`trusted_root.jsonl`**, so the bundle carries everything needed to
+  verify itself without network access to GitHub or Sigstore.
+- A `VERIFY.md` giving the expected OIDC issuer and certificate identity pattern, plus the exact
+  commands for both verification paths. The bundle must be self-describing: an auditor who receives
+  it on a USB stick, with no other context, should be able to verify it.
+
+**Bind the bundle to the artifact.** Attest it with GitHub artifact attestations so
+`gh attestation verify` proves the bundle belongs to that exact digest. An unbound report proves
+nothing — an auditor cannot otherwise tell whether it describes what shipped. Record the bundle's own
+digest in the release manifest and in the Release body.
+
+**Point the gate at the evidence.** The staging qualification record must reference the evidence
+bundle digest, so the single check that permits production is traceable to the complete evidence set.
+
+**Do not archive every pull request scan.** That is noise and it is not what auditors ask for. That the
+gate was continuously enforced is evidenced by the rulesets in git, the committed observed-contexts
+file, and GitHub's own check-run history. Permanent evidence is required for what shipped.
+
+**Scheduled re-scans produce dated reports too.** When Grype re-scans a stored SBOM and finds a new
+CVE, file that report against the release it affects, so the record distinguishes what was known at
+release time from what emerged later. An auditor reads that as diligence, not as a failure.
+
+**External auditors have no GitHub access.** Evidence must therefore be independently verifiable by
+someone outside the organisation, and by someone who cannot be given a GitHub account:
+
+- Publish the **attestation bundle itself** as a downloadable Release asset, not only through the
+  GitHub attestation API, which requires authentication. GitHub attestations are recorded in
+  Sigstore's public transparency log, so an auditor holding the bundle and the artifact digest can
+  verify the whole chain against public infrastructure with no access to this repository and no
+  account here. Preserve that property deliberately — it means the auditor never has to trust any
+  system of ours, including any portal we build.
+- Also publish **`trusted_root.jsonl`** (from `gh attestation trusted-root`) as a Release asset.
+  Without it, offline and air-gapped verification is impossible, which is exactly the environment a
+  defence-sector auditor is likely to be working in.
+- **Document the expected signer identity** in `docs/security/audit-evidence.md`: the OIDC issuer
+  (`https://token.actions.githubusercontent.com`) and the exact certificate identity pattern for the
+  workflow that signs. A verification that does not pin the expected identity proves only that
+  *somebody* signed something — an auditor could accept a perfectly valid signature from an unrelated
+  repository. Pinning the identity is what makes the check meaningful.
+- Give auditors **both** verification paths, since they will not all have the same tooling:
+    - `gh attestation verify <artifact> --bundle <bundle> --custom-trusted-root trusted_root.jsonl`
+    - `cosign verify-blob-attestation --bundle <bundle> --new-bundle-format --certificate-oidc-issuer <issuer> --certificate-identity-regexp <pattern> <artifact>`
+  The cosign path needs no GitHub tooling or account at all and is the vendor-neutral option. Note
+  that cosign is **not** used in the pipeline itself — signing is handled by the GitHub attestation
+  actions, and cosign is purely an auditor-side verification tool. Do not add a cosign installer to CI.
+- Give the evidence bundle a **stable, versioned schema** — include `schema_version` in
+  `manifest.json` — so a downstream reader can parse releases from different points in time without
+  special-casing each one.
+- Assume the bundle will be mirrored into a read-only auditor portal. That portal is a **projection**;
+  this repository's Releases and attestations remain the system of record, and the portal must be
+  fully rebuildable from them at any time. Never make the pipeline push findings into an external
+  database as their primary home, and never make a green portal a precondition for release.
+
+## Phase 5 — Governance as code
+
+Commit each ruleset as JSON under `governance/rulesets/`, each the exact payload accepted by
+`POST /repos/{owner}/{repo}/rulesets`. These files are the reviewable source of truth.
+
+1. **Protected branches** — `develop`, `main`, `release/**`, `hotfix/**`: `bypass_actors: []`, deletion
+   and non-fast-forward blocked, required status checks with `strict_required_status_checks_policy: true`
+   and `do_not_enforce_on_create: true`, and a pull request rule configured for a single maintainer —
+   `required_approving_review_count: 0`, `require_code_owner_review: false`,
+   `require_last_push_approval: false`, `dismiss_stale_reviews_on_push: true`. The pull request
+   requirement exists to force the checks to run, **not** to obtain anyone's approval. Do not raise the
+   approval count.
+2. **Main release gate** — a `main`-only ruleset requiring the staging qualification check, kept
+   separate so it is not demanded of `develop` or the release branches.
+3. **Release tag creation** — `refs/tags/v*`, creation restricted, with the **GitHub Actions app** as
+   the only bypass actor.
+4. **Release tag immutability** — `refs/tags/v*`, deletion and non-fast-forward blocked, no bypass
+   actors.
+
+Add an idempotent script that applies these via `gh api`, resolving actor IDs at run time rather than
+hard-coding them. Running it twice must be a no-op.
+
+**Fail-closed sequencing.** Required status checks must be real job names you have already observed run
+green. Author the workflows, merge them, confirm the exact context strings from
+`gh api repos/{owner}/{repo}/commits/{sha}/check-runs --jq '.check_runs[].name'`, and only then install
+the rulesets. Requiring a context that has never appeared blocks every merge including the fix — and
+with no reviewer and no bypass actors, there is no manual escape. Commit the observed contexts as
+evidence.
+
+A required check that is skipped stays pending forever and deadlocks the ruleset. Every required job
+must reach a terminal conclusion on every triggering event, including a deliberate successful
+"nothing to do" path. **If the self-hosted runner group is unavailable, DAST must fail loudly with a
+clear message rather than hang pending.**
+
+**No required check may fail open.** A check that reports success when it could not actually do its
+job is worse than no check at all, because it manufactures false assurance and nothing ever looks
+wrong. Audit every required check against these patterns and fix any you find:
+
+- `continue-on-error: true` on a job or step that a required check depends on.
+- `|| true`, `|| echo`, or a trailing `exit 0` on a command whose failure is the thing being detected.
+  These are legitimate for diagnostics and cleanup; they are never acceptable on a validating command.
+- Missing `set -euo pipefail` in a validation script, or a pipeline whose real exit status is masked
+  by a later command in the pipe.
+- **Vacuous passes** — the most common and least visible case. A validation that iterates over files
+  and finds none, a `grep` that matches nothing, or a check guarded by `if [ -f ... ]` that silently
+  skips when the input is absent, all report success while having verified nothing. Every such check
+  must assert that it actually found something to inspect, and fail if its input set is unexpectedly
+  empty.
+- An aggregator job using `if: always()` that tests only for `failure`. A dependency that is
+  `skipped` or `cancelled` is not `success` — compare explicitly against `success` for every needed
+  job, never against `failure`.
+
+**Prove each check fails.** Observing a check run green establishes only that it can pass; it does not
+establish that it can fail. Before requiring a check, run it once against a deliberate violation and
+confirm it goes red — a malformed branch name, an unpinned action, a known-vulnerable dependency, a
+planted dummy secret. Record that negative result alongside the observed contexts. A check that has
+only ever been seen passing has never been shown to work at all.
+
+Treat a discovered fail-open as a real defect even when nothing is currently broken, because by
+definition it produces no symptom until the moment it matters. If changing `.github/workflows/` is
+itself gated and you cannot land the fix in this session, **file a GitHub issue describing the exact
+defect, the affected checks, and the reproduction — do not silently leave it undocumented.**
+
+## Phase 6 — Documentation
+
+- `docs/operations/github-governance.md` — the exact required contexts, which ruleset requires what,
+  and why. Keep it in step with the JSON.
+- `CONTRIBUTING.md` — branching model, branch naming, commit and PR conventions, how to cut a release.
+- `docs/security/scanning.md` — the tool set, the stage mapping, and the suppression policy.
+- `docs/operations/alerting.md` — every alert rule, its severity, its threshold and the reasoning
+  behind it, the Slack routing per severity, and how to verify the alert path end to end.
+- `docs/operations/service-health.md` — every component, its health endpoint, what its deep check
+  actually exercises, its dependencies, and the recovery order implied by them. This is read during
+  an incident, so write it to be scanned under pressure, not studied.
+- `docs/security/audit-evidence.md` — where evidence lives, what the evidence bundle contains, the
+  **expected OIDC issuer and certificate identity pattern**, and the exact commands an auditor runs to
+  retrieve a release's bundle and verify its attestation independently, without needing me. Give both
+  the `gh attestation verify` and the `cosign verify-blob-attestation` paths, and state explicitly
+  that verification which does not pin the expected identity proves only that *somebody* signed
+  *something* — a valid signature from an unrelated repository would otherwise pass.
+- `docs/ai-acceptable-use.md` — the AI acceptable use policy.
+- `docs/runbooks/` — break-glass, production rollback, failed-release repair, and canary failure. The
+  rollback runbook must state that rollback is ungated and requires no approval, and must have been
+  rehearsed rather than merely written. The break-glass runbook matters most: with no reviewer and no
+  bypass actors, I need a written, logged way back in.
+
+## Deliverables
+
+1. Phase 0 classification and proposed plan — **stop and get my approval.**
+2. A PR adding workflows, `governance/rulesets/*.json`, the apply script, docs and runbooks.
+3. Evidence every required context ran green, with the exact context strings quoted, **and evidence
+   that each one goes red against a deliberate violation.**
+4. Rulesets installed only after (3), then re-verified by reading the live rulesets back.
+5. A summary of what is enforced, what is advisory, and what was skipped for this repo and why.
+
+## Constraints
+
+- Never weaken or delete an existing protection to make something pass. Raise it with me instead.
+- Never force-push, delete or rewrite a protected branch or an existing tag.
+- Never enable a ruleset whose required contexts have not been observed green.
+- Never propose org-level rulesets, org-level required workflows, or org-wide App installations.
+  Everything is repository-scoped by design.
+- Prefer fewer genuinely enforced controls over a large set that gets bypassed. Tell me honestly which
+  controls would be theatre in this repository.
+
+## Liftoff activation protocol
+
+This policy is a generated local handoff. Its presence does not mean that any
+branch, check, ruleset, security feature, environment, deployment, monitor, or
+alert is active.
+
+### Prerequisites
+
+Do not begin activation until the repository is committed, pushed, and
+resolvable as a GitHub repository. If any prerequisite is missing, report it and
+stop without mutation.
+
+### Read-only Phase 0
+
+Inspect and report all of the following with evidence before changing anything:
+
+1. Repository owner/name, remote identity, visibility, default branch, current
+   local branch, working-tree state, and current `main` tip.
+2. Artifact forms, languages, package managers, manifests, locks, build
+   commands, test commands, lint commands, generated environments, health
+   endpoints, and operations or infrastructure files.
+3. Existing local and remote refs, GitFlow compatibility, workflows, exact job
+   and check-run names, rulesets, tags, releases, GitHub Environments, deployment
+   history, and rollback paths.
+4. Secret Protection, Dependabot, Dependency Review, CodeQL, Copilot Autofix,
+   Checkov, Trivy, Grype, ZAP, attestations, SLSA, Scorecard, licenses, and every
+   required input or suppression policy.
+5. GitHub Actions runner labels and whether a private-network runner can reach
+   Staging.
+6. Live deployment mechanisms, parallel-version support, version-specific
+   origins, traffic volume, statistically valid canary capacity, and provider
+   status sources.
+7. Monitoring signals, alert rules, severity routing, Slack delivery,
+   heartbeat coverage, alert-fire tests, dashboards, shallow/deep component
+   health, dependency graph, recovery order, deployed versions/digests, and DORA
+   event sources.
+
+Report every gap, blocker, inapplicable control, and GitFlow-versus-continuous-
+delivery conflict. Propose the current `main` SHA as the activation baseline for
+an existing repository and provide an ordered implementation plan.
+
+**STOP FOR EXPLICIT USER APPROVAL.** Phase 0 is read-only. Before approval, do
+not write files, create a framework change, branch, commit, tag, release,
+workflow, environment, ruleset, issue, deployment, cloud resource, monitor,
+alert, or Slack route.
+
+### Post-approval implementation
+
+After approval, create a new governance change using the project's selected
+OpenSpec or Spec Kit workflow. The generated Liftoff policy remains an input;
+Liftoff does not own, name, restore, or recreate that active change.
+
+Author workflows, exact ruleset payloads, runbooks, and documentation first.
+Observe every proposed required context green on all applicable paths, then
+prove that exact context deliberately red with a controlled violation. Treat
+skipped or cancelled dependencies as not successful. Apply repository-scoped
+rulesets idempotently last, then read the live rulesets and required contexts
+back from GitHub.
+
+Record the explicitly approved pre-governance `main` SHA in the user-owned
+`governance/activation-baseline.json`. If `main` advanced since Phase 0, stop
+and obtain a newly discovered and approved baseline. Apply release/tag anomaly
+checks only to governed production commits after that SHA. Never invent a
+historical release, move a tag, rewrite history, or treat the activation record
+as Liftoff-owned.

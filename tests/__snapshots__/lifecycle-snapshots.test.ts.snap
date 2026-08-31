@@ -9,48 +9,31 @@ exports[`complete onboarding screens > snapshots the compact conflict consent an
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
 Initialize the project and prepare its workstation
 ◆: Discover project context
-◆: Review resolved plan
+◆: Configure project
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project            snapshot-app
-Project type       Standard application
-API stack          Go / Huma / Chi
-Cloud              Azure
-Region             East US / eastus
-Frontend           Not generated
-Spec workflow      OpenSpec
-Coding agents      GitHub Copilot
-Environments       dev
+Project                snapshot-app
+Project type           Standard application
+API stack              Go / Huma / Chi
+Cloud                  Azure
+Region                 East US / eastus
+Frontend               Not generated
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance  Single-maintainer GitFlow policy 1
+Governance handoff     Local handoff generated; live enforcement is not active
+Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation Deferred until commit, push, read-only Phase 0, and
+explicit plan approval
+Environments           dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
-Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure     OpenTofu for Azure
+Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
+Infrastructure         OpenTofu for Azure
 
-? Initialize project? [Y/n]: ◆: Resolve destination
-◆: Check workstation readiness
-Workstation readiness
-─────────────────────
-Requirement     Level     State  Detail
-──────────────  ────────  ─────  ───────────────
-Node.js         blocking  ready  Version 22.12.0
-Go              blocking  ready  Version 1.23.0
-Docker          advisory  ready  Version 27.0.0
-OpenTofu        advisory  ready  Version 1.9.0
-Azure CLI       advisory  ready  Version 2.70.0
-OpenSpec        blocking  ready  Version 1.6.0
-GitHub Copilot  blocking  ready  Version 1.0.0
-
-◆: Stage project files
-◆: Initialize spec-driven framework
-OpenSpec 1.6.0
-$ openspec init --tools github-copilot --profile core
-◆: Validate staged project
-Existing regular files with different content
-─────────────────────────────────────────────
-- README.md
-
-? Replace every listed file? [y/N]: i Cancelled: No destination files were changed.
+? Initialize project? [Y/n]: i Cancelled: Initialization stopped; no destination files were changed.
 ",
 }
 `;
@@ -59,7 +42,7 @@ exports[`complete onboarding screens > snapshots the compact handled readiness f
 {
   "code": 1,
   "err": "× Error: OpenSpec: command not found
-Remedy: npm install -g @fission-ai/openspec@1.6.0
+Remedy: npm install -g @fission-ai/openspec@1.11.0
 × Error: Workstation readiness is incomplete.
 Remedy: Resume with \`liftoff init --install-tools\` plus the same project options after reviewing the commands.
 ",
@@ -71,20 +54,25 @@ Initialize the project and prepare its workstation
 ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project            snapshot-app
-Project type       Standard application
-API stack          Go / Huma / Chi
-Cloud              Azure
-Region             East US / eastus
-Frontend           Not generated
-Spec workflow      OpenSpec
-Coding agents      GitHub Copilot
-Environments       dev
+Project                snapshot-app
+Project type           Standard application
+API stack              Go / Huma / Chi
+Cloud                  Azure
+Region                 East US / eastus
+Frontend               Not generated
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance  Single-maintainer GitFlow policy 1
+Governance handoff     Local handoff generated; live enforcement is not active
+Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation Deferred until commit, push, read-only Phase 0, and
+explicit plan approval
+Environments           dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
-Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure     OpenTofu for Azure
+Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
+Infrastructure         OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -92,10 +80,10 @@ Workstation readiness
 ─────────────────────
 Requirement     Level     State    Detail
 ──────────────  ────────  ───────  ─────────────────
-Node.js         blocking  ready    Version 22.12.0
-Go              blocking  ready    Version 1.23.0
+Node.js         blocking  ready    Version 24.20.0
+Go              blocking  ready    Version 1.27.0
 Docker          advisory  ready    Version 27.0.0
-OpenTofu        advisory  ready    Version 1.9.0
+OpenTofu        advisory  ready    Version 1.12.6
 Azure CLI       advisory  ready    Version 2.70.0
 OpenSpec        blocking  missing  command not found
 GitHub Copilot  blocking  ready    Version 1.0.0
@@ -116,20 +104,25 @@ Initialize the project and prepare its workstation
 ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project            snapshot-app
-Project type       Standard application
-API stack          Go / Huma / Chi
-Cloud              Azure
-Region             East US / eastus
-Frontend           Not generated
-Spec workflow      OpenSpec
-Coding agents      GitHub Copilot
-Environments       dev
+Project                snapshot-app
+Project type           Standard application
+API stack              Go / Huma / Chi
+Cloud                  Azure
+Region                 East US / eastus
+Frontend               Not generated
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance  Single-maintainer GitFlow policy 1
+Governance handoff     Local handoff generated; live enforcement is not active
+Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation Deferred until commit, push, read-only Phase 0, and
+explicit plan approval
+Environments           dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
-Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure     OpenTofu for Azure
+Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
+Infrastructure         OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -137,25 +130,27 @@ Workstation readiness
 ─────────────────────
 Requirement     Level     State  Detail
 ──────────────  ────────  ─────  ───────────────
-Node.js         blocking  ready  Version 22.12.0
-Go              blocking  ready  Version 1.23.0
+Node.js         blocking  ready  Version 24.20.0
+Go              blocking  ready  Version 1.27.0
 Docker          advisory  ready  Version 27.0.0
-OpenTofu        advisory  ready  Version 1.9.0
+OpenTofu        advisory  ready  Version 1.12.6
 Azure CLI       advisory  ready  Version 2.70.0
-OpenSpec        blocking  ready  Version 1.6.0
+OpenSpec        blocking  ready  Version 1.11.0
 GitHub Copilot  blocking  ready  Version 1.0.0
 
 ◆: Stage project files
 ◆: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 ◆: Validate staged project
 ◆: Merge staged project
 <workspace>/snapshot-app
 Configured integrations
 ───────────────────────
-- OpenSpec 1.6.0
+- OpenSpec 1.11.0
 - GitHub Copilot
+- Repository governance: Single-maintainer GitFlow policy 1; local handoff
+generated, live activation deferred
 
 Deferred advisory checks
 ────────────────────────
@@ -170,9 +165,11 @@ download
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 Completion
 ──────────
-Target         <workspace>/snapshot-app
-Spec workflow  OpenSpec
-Coding agents  GitHub Copilot
+Target                 <workspace>/snapshot-app
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance Handoff generated; commit and push before read-only Phase
+0
 
 Next recommended command
 ────────────────────────
@@ -203,20 +200,25 @@ apiStack     node-fastify    fastify in package.json
 ◆: Review migration plan
 Resolved migration plan
 ───────────────────────
-Project            legacy-node
-Project type       Standard application
-API stack          Node.js / Fastify / TypeScript
-Cloud              Azure
-Region             East US / eastus
-Frontend           Not generated
-Spec workflow      OpenSpec
-Coding agents      GitHub Copilot
-Environments       dev, test, prod
+Project                legacy-node
+Project type           Standard application
+API stack              Node.js / Fastify / TypeScript
+Cloud                  Azure
+Region                 East US / eastus
+Frontend               Not generated
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance  Single-maintainer GitFlow policy 1
+Governance handoff     Local handoff generated; live enforcement is not active
+Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation Deferred until commit, push, read-only Phase 0, and
+explicit plan approval
+Environments           dev, test, prod
 Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
-Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure     OpenTofu for Azure
+Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
+Infrastructure         OpenTofu for Azure
 
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
@@ -224,16 +226,16 @@ Workstation readiness
 ─────────────────────
 Requirement     Level     State  Detail
 ──────────────  ────────  ─────  ───────────────
-Node.js         blocking  ready  Version 22.12.0
+Node.js         blocking  ready  Version 24.20.0
 Docker          advisory  ready  Version 27.0.0
-OpenTofu        advisory  ready  Version 1.9.0
+OpenTofu        advisory  ready  Version 1.12.6
 Azure CLI       advisory  ready  Version 2.70.0
-OpenSpec        blocking  ready  Version 1.6.0
+OpenSpec        blocking  ready  Version 1.11.0
 GitHub Copilot  blocking  ready  Version 1.0.0
 
 ◆: Stage fresh migration project
 ◆: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 ◆: Copy filtered legacy source
 <workspace>/legacy-node
@@ -242,7 +244,7 @@ $ openspec init --tools github-copilot --profile core
 <workspace>/legacy-node-liftoff
 Configured integrations
 ───────────────────────
-- OpenSpec 1.6.0
+- OpenSpec 1.11.0
 - GitHub Copilot
 
 Deferred advisory checks
@@ -289,76 +291,92 @@ exports[`complete onboarding screens > snapshots the compact plan screen 1`] = `
 Preview project decisions, artifacts, and workstation requirements
 Project decisions
 ─────────────────
-Project            liftoff-preview
-Project type       Standard application
-API stack          Go / Huma / Chi
-Cloud              Azure
-Region             East US / eastus
-Frontend           Not generated
-Spec workflow      OpenSpec
-Coding agents      GitHub Copilot
-Environments       dev
+Project                liftoff-preview
+Project type           Standard application
+API stack              Go / Huma / Chi
+Cloud                  Azure
+Region                 East US / eastus
+Frontend               Not generated
+Spec workflow          OpenSpec
+Coding agents          GitHub Copilot
+Repository governance  Single-maintainer GitFlow policy 1
+Governance handoff     Local handoff generated; live enforcement is not active
+Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation Deferred until commit, push, read-only Phase 0, and
+explicit plan approval
+Environments           dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
-Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure     OpenTofu for Azure
+Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
+Infrastructure         OpenTofu for Azure
 
-Artifacts (33)
+Artifacts (38)
 ──────────────
-Artifact                       Path
-─────────────────────────────  ─────────────────────────────────────────────────
-root-readme                    README.md
-root-gitignore                 .gitignore
-liftoff-config                 liftoff.config.json
-env-example                    .env.example
-backend-dockerfile             Dockerfile
-go-backend-module              backend/go.mod
-go-backend-checksums           backend/go.sum
-go-backend-makefile            backend/Makefile
-go-backend-main                backend/cmd/api/main.go
-go-backend-api                 backend/internal/api/api.go
-go-backend-config              backend/internal/config/config.go
-go-backend-database            backend/internal/database/database.go
-go-backend-test-health         backend/internal/api/api_test.go
-database-go-migration          database/migrations/0001_initial.sql
-database-schema                database/models/schema.sql
-environment-dev-backend        environments/dev/backend.env
-docker-compose                 docker-compose.yml
-opentofu-versions              infrastructure/opentofu/azure/versions.tf
-opentofu-providers             infrastructure/opentofu/azure/providers.tf
-opentofu-variables             infrastructure/opentofu/azure/variables.tf
-opentofu-main                  infrastructure/opentofu/azure/main.tf
-opentofu-outputs               infrastructure/opentofu/azure/outputs.tf
-opentofu-local-state           infrastructure/opentofu/azure/backend.local.tf
-opentofu-remote-state-example  infrastructure/opentofu/azure/backend.remote.exam
-                               ple.tf
-opentofu-readme                infrastructure/opentofu/azure/README.md
-opentofu-dev-tfvars            infrastructure/opentofu/azure/environments/dev.tf
-                               vars
-openspec-config                openspec/config.yaml
-openspec-seed-change-metadata  openspec/changes/bootstrap-liftoff-preview/.opens
-                               pec.yaml
-openspec-seed-proposal         openspec/changes/bootstrap-liftoff-preview/propos
-                               al.md
-openspec-seed-design           openspec/changes/bootstrap-liftoff-preview/design
-                               .md
-openspec-seed-tasks            openspec/changes/bootstrap-liftoff-preview/tasks.
-                               md
-openspec-spec-placeholder      openspec/specs/.gitkeep
-manifest                       liftoff.manifest.json
+Artifact                                Path
+──────────────────────────────────────  ────────────────────────────────────────
+root-readme                             README.md
+root-gitignore                          .gitignore
+liftoff-config                          liftoff.config.json
+env-example                             .env.example
+backend-dockerfile                      Dockerfile
+go-backend-module                       backend/go.mod
+go-backend-checksums                    backend/go.sum
+go-backend-makefile                     backend/Makefile
+go-backend-main                         backend/cmd/api/main.go
+go-backend-api                          backend/internal/api/api.go
+go-backend-config                       backend/internal/config/config.go
+go-backend-database                     backend/internal/database/database.go
+go-backend-test-health                  backend/internal/api/api_test.go
+database-go-migration                   database/migrations/0001_initial.sql
+database-schema                         database/models/schema.sql
+environment-dev-backend                 environments/dev/backend.env
+docker-compose                          docker-compose.yml
+opentofu-versions                       infrastructure/opentofu/azure/versions.t
+                                        f
+opentofu-provider-lock                  infrastructure/opentofu/azure/.terraform
+                                        .lock.hcl
+opentofu-providers                      infrastructure/opentofu/azure/providers.
+                                        tf
+opentofu-variables                      infrastructure/opentofu/azure/variables.
+                                        tf
+opentofu-main                           infrastructure/opentofu/azure/main.tf
+opentofu-outputs                        infrastructure/opentofu/azure/outputs.tf
+opentofu-local-state                    infrastructure/opentofu/azure/backend.lo
+                                        cal.tf
+opentofu-remote-state-example           infrastructure/opentofu/azure/backend.re
+                                        mote.example.tf
+opentofu-readme                         infrastructure/opentofu/azure/README.md
+opentofu-dev-tfvars                     infrastructure/opentofu/azure/environmen
+                                        ts/dev.tfvars
+openspec-config                         openspec/config.yaml
+openspec-seed-change-metadata           openspec/changes/bootstrap-liftoff-previ
+                                        ew/.openspec.yaml
+openspec-seed-proposal                  openspec/changes/bootstrap-liftoff-previ
+                                        ew/proposal.md
+openspec-seed-design                    openspec/changes/bootstrap-liftoff-previ
+                                        ew/design.md
+openspec-seed-tasks                     openspec/changes/bootstrap-liftoff-previ
+                                        ew/tasks.md
+openspec-spec-placeholder               openspec/specs/.gitkeep
+repository-governance-policy            .liftoff/governance/policy.md
+repository-governance-context           .liftoff/governance/context.json
+repository-governance-guide             .liftoff/governance/README.md
+repository-governance-copilot-launcher  .github/prompts/liftoff-repository-gover
+                                        nance.prompt.md
+manifest                                liftoff.manifest.json
 
 Workstation requirements
 ────────────────────────
-Requirement     Version        Level
-──────────────  ─────────────  ────────
-Node.js         20.19.0+       blocking
-Go              1.23.0+        blocking
-Docker          available      advisory
-OpenTofu        available      advisory
-Azure CLI       available      advisory
-OpenSpec        exactly 1.6.0  blocking
-GitHub Copilot  available      blocking
+Requirement     Version         Level
+──────────────  ──────────────  ────────
+Node.js         24.20.0+        blocking
+Go              1.27.0+         blocking
+Docker          available       advisory
+OpenTofu        1.12.6+         advisory
+Azure CLI       available       advisory
+OpenSpec        exactly 1.11.0  blocking
+GitHub Copilot  available       blocking
 
 ",
 }
@@ -371,7 +389,8 @@ exports[`complete onboarding screens > snapshots the plain conflict consent and 
   "out": "Liftoff - Initialize the project and prepare its workstation
 
 Stage: Discover project context
-Stage: Review resolved plan
+Stage: Configure project
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: Stage: Review resolved plan
 Resolved project plan
 Project: snapshot-app
 Project type: Standard application
@@ -381,31 +400,16 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Single-maintainer GitFlow policy 1
+Governance handoff: Local handoff generated; live enforcement is not active
+Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-? Initialize project? [Y/n]: Stage: Resolve destination
-Stage: Check workstation readiness
-Workstation readiness
-Requirement: Node.js | Level: blocking | State: ready | Detail: Version 22.12.0
-Requirement: Go | Level: blocking | State: ready | Detail: Version 1.23.0
-Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
-Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.9.0
-Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
-Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.6.0
-Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
-
-Stage: Stage project files
-Stage: Initialize spec-driven framework
-OpenSpec 1.6.0
-$ openspec init --tools github-copilot --profile core
-Stage: Validate staged project
-Existing regular files with different content
-- README.md
-
-? Replace every listed file? [y/N]: [info] Cancelled: No destination files were changed.
+? Initialize project? [Y/n]: [info] Cancelled: Initialization stopped; no destination files were changed.
 ",
 }
 `;
@@ -414,7 +418,7 @@ exports[`complete onboarding screens > snapshots the plain handled readiness fai
 {
   "code": 1,
   "err": "[error] Error: OpenSpec: command not found
-Remedy: npm install -g @fission-ai/openspec@1.6.0
+Remedy: npm install -g @fission-ai/openspec@1.11.0
 [error] Error: Workstation readiness is incomplete.
 Remedy: Resume with \`liftoff init --install-tools\` plus the same project options after reviewing the commands.
 ",
@@ -431,6 +435,10 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Single-maintainer GitFlow policy 1
+Governance handoff: Local handoff generated; live enforcement is not active
+Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
@@ -439,10 +447,10 @@ Infrastructure: OpenTofu for Azure
 Stage: Resolve destination
 Stage: Check workstation readiness
 Workstation readiness
-Requirement: Node.js | Level: blocking | State: ready | Detail: Version 22.12.0
-Requirement: Go | Level: blocking | State: ready | Detail: Version 1.23.0
+Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
+Requirement: Go | Level: blocking | State: ready | Detail: Version 1.27.0
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
-Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.9.0
+Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
 Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
 Requirement: OpenSpec | Level: blocking | State: missing | Detail: command not found
 Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
@@ -468,6 +476,10 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Single-maintainer GitFlow policy 1
+Governance handoff: Local handoff generated; live enforcement is not active
+Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
@@ -476,24 +488,25 @@ Infrastructure: OpenTofu for Azure
 Stage: Resolve destination
 Stage: Check workstation readiness
 Workstation readiness
-Requirement: Node.js | Level: blocking | State: ready | Detail: Version 22.12.0
-Requirement: Go | Level: blocking | State: ready | Detail: Version 1.23.0
+Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
+Requirement: Go | Level: blocking | State: ready | Detail: Version 1.27.0
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
-Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.9.0
+Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
 Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
-Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.6.0
+Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.11.0
 Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
 
 Stage: Stage project files
 Stage: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 Stage: Validate staged project
 Stage: Merge staged project
 <workspace>/snapshot-app
 Configured integrations
-- OpenSpec 1.6.0
+- OpenSpec 1.11.0
 - GitHub Copilot
+- Repository governance: Single-maintainer GitFlow policy 1; local handoff generated, live activation deferred
 
 Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
@@ -506,6 +519,7 @@ Completion
 Target: <workspace>/snapshot-app
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Handoff generated; commit and push before read-only Phase 0
 
 Next recommended command
 $ liftoff validate "<workspace>/snapshot-app"
@@ -537,6 +551,10 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Single-maintainer GitFlow policy 1
+Governance handoff: Local handoff generated; live enforcement is not active
+Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev, test, prod
 Approved stack: Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
@@ -545,16 +563,16 @@ Infrastructure: OpenTofu for Azure
 Stage: Resolve fresh migration target
 Stage: Check workstation readiness
 Workstation readiness
-Requirement: Node.js | Level: blocking | State: ready | Detail: Version 22.12.0
+Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
-Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.9.0
+Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
 Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
-Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.6.0
+Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.11.0
 Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
 
 Stage: Stage fresh migration project
 Stage: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 Stage: Copy filtered legacy source
 <workspace>/legacy-node
@@ -562,7 +580,7 @@ Stage: Validate staged migration
 Stage: Merge fresh migration target
 <workspace>/legacy-node-liftoff
 Configured integrations
-- OpenSpec 1.6.0
+- OpenSpec 1.11.0
 - GitHub Copilot
 
 Deferred advisory checks
@@ -604,12 +622,16 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+Repository governance: Single-maintainer GitFlow policy 1
+Governance handoff: Local handoff generated; live enforcement is not active
+Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-Artifacts (33)
+Artifacts (38)
 Artifact: root-readme | Path: README.md
 Artifact: root-gitignore | Path: .gitignore
 Artifact: liftoff-config | Path: liftoff.config.json
@@ -628,6 +650,7 @@ Artifact: database-schema | Path: database/models/schema.sql
 Artifact: environment-dev-backend | Path: environments/dev/backend.env
 Artifact: docker-compose | Path: docker-compose.yml
 Artifact: opentofu-versions | Path: infrastructure/opentofu/azure/versions.tf
+Artifact: opentofu-provider-lock | Path: infrastructure/opentofu/azure/.terraform.lock.hcl
 Artifact: opentofu-providers | Path: infrastructure/opentofu/azure/providers.tf
 Artifact: opentofu-variables | Path: infrastructure/opentofu/azure/variables.tf
 Artifact: opentofu-main | Path: infrastructure/opentofu/azure/main.tf
@@ -642,15 +665,19 @@ Artifact: openspec-seed-proposal | Path: openspec/changes/bootstrap-liftoff-prev
 Artifact: openspec-seed-design | Path: openspec/changes/bootstrap-liftoff-preview/design.md
 Artifact: openspec-seed-tasks | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
 Artifact: openspec-spec-placeholder | Path: openspec/specs/.gitkeep
+Artifact: repository-governance-policy | Path: .liftoff/governance/policy.md
+Artifact: repository-governance-context | Path: .liftoff/governance/context.json
+Artifact: repository-governance-guide | Path: .liftoff/governance/README.md
+Artifact: repository-governance-copilot-launcher | Path: .github/prompts/liftoff-repository-governance.prompt.md
 Artifact: manifest | Path: liftoff.manifest.json
 
 Workstation requirements
-Node.js: 20.19.0+ [blocking]
-Go: 1.23.0+ [blocking]
+Node.js: 24.20.0+ [blocking]
+Go: 1.27.0+ [blocking]
 Docker: available [advisory]
-OpenTofu: available [advisory]
+OpenTofu: 1.12.6+ [advisory]
 Azure CLI: available [advisory]
-OpenSpec: exactly 1.6.0 [blocking]
+OpenSpec: exactly 1.11.0 [blocking]
 GitHub Copilot: available [blocking]
 
 ",
@@ -672,44 +699,29 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 │ Initialize the project and prepare its workstation                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Discover project context
-◆: Review resolved plan
+◆: Configure project
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project            snapshot-app                                                              │
-│ Project type       Standard application                                                      │
-│ API stack          Go / Huma / Chi                                                           │
-│ Cloud              Azure                                                                     │
-│ Region             East US / eastus                                                          │
-│ Frontend           Not generated                                                             │
-│ Spec workflow      OpenSpec                                                                  │
-│ Coding agents      GitHub Copilot                                                            │
-│ Environments       dev                                                                       │
+│ Project                snapshot-app                                                          │
+│ Project type           Standard application                                                  │
+│ API stack              Go / Huma / Chi                                                       │
+│ Cloud                  Azure                                                                 │
+│ Region                 East US / eastus                                                      │
+│ Frontend               Not generated                                                         │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Single-maintainer GitFlow policy 1                                    │
+│ Governance handoff     Local handoff generated; live enforcement is not active               │
+│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
+│ approval                                                                                     │
+│ Environments           dev                                                                   │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit               │
-│ Infrastructure     OpenTofu for Azure                                                        │
+│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
+│ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-? Initialize project? [Y/n]: ◆: Resolve destination
-◆: Check workstation readiness
-┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
-│ Requirement     Level     State  Detail                                                      │
-│ ──────────────  ────────  ─────  ───────────────                                             │
-│ Node.js         blocking  ready  Version 22.12.0                                             │
-│ Go              blocking  ready  Version 1.23.0                                              │
-│ Docker          advisory  ready  Version 27.0.0                                              │
-│ OpenTofu        advisory  ready  Version 1.9.0                                               │
-│ Azure CLI       advisory  ready  Version 2.70.0                                              │
-│ OpenSpec        blocking  ready  Version 1.6.0                                               │
-│ GitHub Copilot  blocking  ready  Version 1.0.0                                               │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
-◆: Stage project files
-◆: Initialize spec-driven framework
-OpenSpec 1.6.0
-$ openspec init --tools github-copilot --profile core
-◆: Validate staged project
-┌─ Existing regular files with different content ──────────────────────────────────────────────┐
-│ • README.md                                                                                  │
-└──────────────────────────────────────────────────────────────────────────────────────────────┘
-? Replace every listed file? [y/N]: i Cancelled: No destination files were changed.
+? Initialize project? [Y/n]: i Cancelled: Initialization stopped; no destination files were changed.
 ",
 }
 `;
@@ -719,7 +731,7 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
   "code": 1,
   "err": "┌─ Error ──────────────────────────────────────────────────────────────────────────────────────┐
 │ OpenSpec: command not found                                                                  │
-│ Remedy: npm install -g @fission-ai/openspec@1.6.0                                            │
+│ Remedy: npm install -g @fission-ai/openspec@1.11.0                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Error ──────────────────────────────────────────────────────────────────────────────────────┐
 │ Workstation readiness is incomplete.                                                         │
@@ -740,29 +752,34 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 ◆: Discover project context
 ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project            snapshot-app                                                              │
-│ Project type       Standard application                                                      │
-│ API stack          Go / Huma / Chi                                                           │
-│ Cloud              Azure                                                                     │
-│ Region             East US / eastus                                                          │
-│ Frontend           Not generated                                                             │
-│ Spec workflow      OpenSpec                                                                  │
-│ Coding agents      GitHub Copilot                                                            │
-│ Environments       dev                                                                       │
+│ Project                snapshot-app                                                          │
+│ Project type           Standard application                                                  │
+│ API stack              Go / Huma / Chi                                                       │
+│ Cloud                  Azure                                                                 │
+│ Region                 East US / eastus                                                      │
+│ Frontend               Not generated                                                         │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Single-maintainer GitFlow policy 1                                    │
+│ Governance handoff     Local handoff generated; live enforcement is not active               │
+│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
+│ approval                                                                                     │
+│ Environments           dev                                                                   │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit               │
-│ Infrastructure     OpenTofu for Azure                                                        │
+│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
+│ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State    Detail                                                    │
 │ ──────────────  ────────  ───────  ─────────────────                                         │
-│ Node.js         blocking  ready    Version 22.12.0                                           │
-│ Go              blocking  ready    Version 1.23.0                                            │
+│ Node.js         blocking  ready    Version 24.20.0                                           │
+│ Go              blocking  ready    Version 1.27.0                                            │
 │ Docker          advisory  ready    Version 27.0.0                                            │
-│ OpenTofu        advisory  ready    Version 1.9.0                                             │
+│ OpenTofu        advisory  ready    Version 1.12.6                                            │
 │ Azure CLI       advisory  ready    Version 2.70.0                                            │
 │ OpenSpec        blocking  missing  command not found                                         │
 │ GitHub Copilot  blocking  ready    Version 1.0.0                                             │
@@ -788,43 +805,50 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 ◆: Discover project context
 ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project            snapshot-app                                                              │
-│ Project type       Standard application                                                      │
-│ API stack          Go / Huma / Chi                                                           │
-│ Cloud              Azure                                                                     │
-│ Region             East US / eastus                                                          │
-│ Frontend           Not generated                                                             │
-│ Spec workflow      OpenSpec                                                                  │
-│ Coding agents      GitHub Copilot                                                            │
-│ Environments       dev                                                                       │
+│ Project                snapshot-app                                                          │
+│ Project type           Standard application                                                  │
+│ API stack              Go / Huma / Chi                                                       │
+│ Cloud                  Azure                                                                 │
+│ Region                 East US / eastus                                                      │
+│ Frontend               Not generated                                                         │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Single-maintainer GitFlow policy 1                                    │
+│ Governance handoff     Local handoff generated; live enforcement is not active               │
+│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
+│ approval                                                                                     │
+│ Environments           dev                                                                   │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit               │
-│ Infrastructure     OpenTofu for Azure                                                        │
+│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
+│ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State  Detail                                                      │
 │ ──────────────  ────────  ─────  ───────────────                                             │
-│ Node.js         blocking  ready  Version 22.12.0                                             │
-│ Go              blocking  ready  Version 1.23.0                                              │
+│ Node.js         blocking  ready  Version 24.20.0                                             │
+│ Go              blocking  ready  Version 1.27.0                                              │
 │ Docker          advisory  ready  Version 27.0.0                                              │
-│ OpenTofu        advisory  ready  Version 1.9.0                                               │
+│ OpenTofu        advisory  ready  Version 1.12.6                                              │
 │ Azure CLI       advisory  ready  Version 2.70.0                                              │
-│ OpenSpec        blocking  ready  Version 1.6.0                                               │
+│ OpenSpec        blocking  ready  Version 1.11.0                                              │
 │ GitHub Copilot  blocking  ready  Version 1.0.0                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Stage project files
 ◆: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 ◆: Validate staged project
 ◆: Merge staged project
 <workspace>/snapshot-app
 ┌─ Configured integrations ────────────────────────────────────────────────────────────────────┐
-│ • OpenSpec 1.6.0                                                                             │
+│ • OpenSpec 1.11.0                                                                            │
 │ • GitHub Copilot                                                                             │
+│ • Repository governance: Single-maintainer GitFlow policy 1; local handoff generated, live   │
+│ activation deferred                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
 │ • GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials.   │
@@ -835,9 +859,10 @@ $ openspec init --tools github-copilot --profile core
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 ┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
-│ Target         <workspace>/snapshot-app                                                      │
-│ Spec workflow  OpenSpec                                                                      │
-│ Coding agents  GitHub Copilot                                                                │
+│ Target                 <workspace>/snapshot-app                                              │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Handoff generated; commit and push before read-only Phase 0           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 Next recommended command
 ────────────────────────
@@ -872,35 +897,40 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Review migration plan
 ┌─ Resolved migration plan ────────────────────────────────────────────────────────────────────┐
-│ Project            legacy-node                                                               │
-│ Project type       Standard application                                                      │
-│ API stack          Node.js / Fastify / TypeScript                                            │
-│ Cloud              Azure                                                                     │
-│ Region             East US / eastus                                                          │
-│ Frontend           Not generated                                                             │
-│ Spec workflow      OpenSpec                                                                  │
-│ Coding agents      GitHub Copilot                                                            │
-│ Environments       dev, test, prod                                                           │
+│ Project                legacy-node                                                           │
+│ Project type           Standard application                                                  │
+│ API stack              Node.js / Fastify / TypeScript                                        │
+│ Cloud                  Azure                                                                 │
+│ Region                 East US / eastus                                                      │
+│ Frontend               Not generated                                                         │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Single-maintainer GitFlow policy 1                                    │
+│ Governance handoff     Local handoff generated; live enforcement is not active               │
+│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
+│ approval                                                                                     │
+│ Environments           dev, test, prod                                                       │
 │ Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure        │
 │ Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu      │
-│ Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit               │
-│ Infrastructure     OpenTofu for Azure                                                        │
+│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
+│ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
 ┌─ Workstation readiness ──────────────────────────────────────────────────────────────────────┐
 │ Requirement     Level     State  Detail                                                      │
 │ ──────────────  ────────  ─────  ───────────────                                             │
-│ Node.js         blocking  ready  Version 22.12.0                                             │
+│ Node.js         blocking  ready  Version 24.20.0                                             │
 │ Docker          advisory  ready  Version 27.0.0                                              │
-│ OpenTofu        advisory  ready  Version 1.9.0                                               │
+│ OpenTofu        advisory  ready  Version 1.12.6                                              │
 │ Azure CLI       advisory  ready  Version 2.70.0                                              │
-│ OpenSpec        blocking  ready  Version 1.6.0                                               │
+│ OpenSpec        blocking  ready  Version 1.11.0                                              │
 │ GitHub Copilot  blocking  ready  Version 1.0.0                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Stage fresh migration project
 ◆: Initialize spec-driven framework
-OpenSpec 1.6.0
+OpenSpec 1.11.0
 $ openspec init --tools github-copilot --profile core
 ◆: Copy filtered legacy source
 <workspace>/legacy-node
@@ -908,7 +938,7 @@ $ openspec init --tools github-copilot --profile core
 ◆: Merge fresh migration target
 <workspace>/legacy-node-liftoff
 ┌─ Configured integrations ────────────────────────────────────────────────────────────────────┐
-│ • OpenSpec 1.6.0                                                                             │
+│ • OpenSpec 1.11.0                                                                            │
 │ • GitHub Copilot                                                                             │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
@@ -956,67 +986,82 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Preview project decisions, artifacts, and workstation requirements                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project decisions ──────────────────────────────────────────────────────────────────────────┐
-│ Project            liftoff-preview                                                           │
-│ Project type       Standard application                                                      │
-│ API stack          Go / Huma / Chi                                                           │
-│ Cloud              Azure                                                                     │
-│ Region             East US / eastus                                                          │
-│ Frontend           Not generated                                                             │
-│ Spec workflow      OpenSpec                                                                  │
-│ Coding agents      GitHub Copilot                                                            │
-│ Environments       dev                                                                       │
+│ Project                liftoff-preview                                                       │
+│ Project type           Standard application                                                  │
+│ API stack              Go / Huma / Chi                                                       │
+│ Cloud                  Azure                                                                 │
+│ Region                 East US / eastus                                                      │
+│ Frontend               Not generated                                                         │
+│ Spec workflow          OpenSpec                                                              │
+│ Coding agents          GitHub Copilot                                                        │
+│ Repository governance  Single-maintainer GitFlow policy 1                                    │
+│ Governance handoff     Local handoff generated; live enforcement is not active               │
+│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
+│ approval                                                                                     │
+│ Environments           dev                                                                   │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development  Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit               │
-│ Infrastructure     OpenTofu for Azure                                                        │
+│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
+│ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Artifacts (33) ─────────────────────────────────────────────────────────────────────────────┐
-│ Artifact                       Path                                                          │
-│ ─────────────────────────────  ─────────────────────────────────────────────────────────     │
-│ root-readme                    README.md                                                     │
-│ root-gitignore                 .gitignore                                                    │
-│ liftoff-config                 liftoff.config.json                                           │
-│ env-example                    .env.example                                                  │
-│ backend-dockerfile             Dockerfile                                                    │
-│ go-backend-module              backend/go.mod                                                │
-│ go-backend-checksums           backend/go.sum                                                │
-│ go-backend-makefile            backend/Makefile                                              │
-│ go-backend-main                backend/cmd/api/main.go                                       │
-│ go-backend-api                 backend/internal/api/api.go                                   │
-│ go-backend-config              backend/internal/config/config.go                             │
-│ go-backend-database            backend/internal/database/database.go                         │
-│ go-backend-test-health         backend/internal/api/api_test.go                              │
-│ database-go-migration          database/migrations/0001_initial.sql                          │
-│ database-schema                database/models/schema.sql                                    │
-│ environment-dev-backend        environments/dev/backend.env                                  │
-│ docker-compose                 docker-compose.yml                                            │
-│ opentofu-versions              infrastructure/opentofu/azure/versions.tf                     │
-│ opentofu-providers             infrastructure/opentofu/azure/providers.tf                    │
-│ opentofu-variables             infrastructure/opentofu/azure/variables.tf                    │
-│ opentofu-main                  infrastructure/opentofu/azure/main.tf                         │
-│ opentofu-outputs               infrastructure/opentofu/azure/outputs.tf                      │
-│ opentofu-local-state           infrastructure/opentofu/azure/backend.local.tf                │
-│ opentofu-remote-state-example  infrastructure/opentofu/azure/backend.remote.example.tf       │
-│ opentofu-readme                infrastructure/opentofu/azure/README.md                       │
-│ opentofu-dev-tfvars            infrastructure/opentofu/azure/environments/dev.tfvars         │
-│ openspec-config                openspec/config.yaml                                          │
-│ openspec-seed-change-metadata  openspec/changes/bootstrap-liftoff-preview/.openspec.yaml     │
-│ openspec-seed-proposal         openspec/changes/bootstrap-liftoff-preview/proposal.md        │
-│ openspec-seed-design           openspec/changes/bootstrap-liftoff-preview/design.md          │
-│ openspec-seed-tasks            openspec/changes/bootstrap-liftoff-preview/tasks.md           │
-│ openspec-spec-placeholder      openspec/specs/.gitkeep                                       │
-│ manifest                       liftoff.manifest.json                                         │
+┌─ Artifacts (38) ─────────────────────────────────────────────────────────────────────────────┐
+│ Artifact                                Path                                                 │
+│ ──────────────────────────────────────  ──────────────────────────────────────────────────── │
+│ root-readme                             README.md                                            │
+│ root-gitignore                          .gitignore                                           │
+│ liftoff-config                          liftoff.config.json                                  │
+│ env-example                             .env.example                                         │
+│ backend-dockerfile                      Dockerfile                                           │
+│ go-backend-module                       backend/go.mod                                       │
+│ go-backend-checksums                    backend/go.sum                                       │
+│ go-backend-makefile                     backend/Makefile                                     │
+│ go-backend-main                         backend/cmd/api/main.go                              │
+│ go-backend-api                          backend/internal/api/api.go                          │
+│ go-backend-config                       backend/internal/config/config.go                    │
+│ go-backend-database                     backend/internal/database/database.go                │
+│ go-backend-test-health                  backend/internal/api/api_test.go                     │
+│ database-go-migration                   database/migrations/0001_initial.sql                 │
+│ database-schema                         database/models/schema.sql                           │
+│ environment-dev-backend                 environments/dev/backend.env                         │
+│ docker-compose                          docker-compose.yml                                   │
+│ opentofu-versions                       infrastructure/opentofu/azure/versions.tf            │
+│ opentofu-provider-lock                  infrastructure/opentofu/azure/.terraform.lock.hcl    │
+│ opentofu-providers                      infrastructure/opentofu/azure/providers.tf           │
+│ opentofu-variables                      infrastructure/opentofu/azure/variables.tf           │
+│ opentofu-main                           infrastructure/opentofu/azure/main.tf                │
+│ opentofu-outputs                        infrastructure/opentofu/azure/outputs.tf             │
+│ opentofu-local-state                    infrastructure/opentofu/azure/backend.local.tf       │
+│ opentofu-remote-state-example           infrastructure/opentofu/azure/backend.remote.example │
+│                                         .tf                                                  │
+│ opentofu-readme                         infrastructure/opentofu/azure/README.md              │
+│ opentofu-dev-tfvars                     infrastructure/opentofu/azure/environments/dev.tfvar │
+│                                         s                                                    │
+│ openspec-config                         openspec/config.yaml                                 │
+│ openspec-seed-change-metadata           openspec/changes/bootstrap-liftoff-preview/.openspec │
+│                                         .yaml                                                │
+│ openspec-seed-proposal                  openspec/changes/bootstrap-liftoff-preview/proposal. │
+│                                         md                                                   │
+│ openspec-seed-design                    openspec/changes/bootstrap-liftoff-preview/design.md │
+│ openspec-seed-tasks                     openspec/changes/bootstrap-liftoff-preview/tasks.md  │
+│ openspec-spec-placeholder               openspec/specs/.gitkeep                              │
+│ repository-governance-policy            .liftoff/governance/policy.md                        │
+│ repository-governance-context           .liftoff/governance/context.json                     │
+│ repository-governance-guide             .liftoff/governance/README.md                        │
+│ repository-governance-copilot-launcher  .github/prompts/liftoff-repository-governance.prompt │
+│                                         .md                                                  │
+│ manifest                                liftoff.manifest.json                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Workstation requirements ───────────────────────────────────────────────────────────────────┐
-│ Requirement     Version        Level                                                         │
-│ ──────────────  ─────────────  ────────                                                      │
-│ Node.js         20.19.0+       blocking                                                      │
-│ Go              1.23.0+        blocking                                                      │
-│ Docker          available      advisory                                                      │
-│ OpenTofu        available      advisory                                                      │
-│ Azure CLI       available      advisory                                                      │
-│ OpenSpec        exactly 1.6.0  blocking                                                      │
-│ GitHub Copilot  available      blocking                                                      │
+│ Requirement     Version         Level                                                        │
+│ ──────────────  ──────────────  ────────                                                     │
+│ Node.js         24.20.0+        blocking                                                     │
+│ Go              1.27.0+         blocking                                                     │
+│ Docker          available       advisory                                                     │
+│ OpenTofu        1.12.6+         advisory                                                     │
+│ Azure CLI       available       advisory                                                     │
+│ OpenSpec        exactly 1.11.0  blocking                                                     │
+│ GitHub Copilot  available       blocking                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ",
 }

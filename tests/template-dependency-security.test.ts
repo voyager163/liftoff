@@ -12,6 +12,7 @@ import {
   normalizeNpmAuditReport,
   parseNpmAuditCommandResult,
   parseTemplateDependencyPolicy,
+  resolveTemplateDependencyAuditRegistry,
   resolveTemplateDependencyPath,
   templateDependencyInventory,
   validateTemplateDependencyInventory
@@ -52,6 +53,20 @@ function exceptionFor(
 }
 
 describe('template dependency security', () => {
+  it('defaults audits to canonical npm and validates managed-registry overrides', () => {
+    expect(resolveTemplateDependencyAuditRegistry(undefined))
+      .toBe('https://registry.npmjs.org');
+    expect(resolveTemplateDependencyAuditRegistry(
+      'https://packagefeedproxy.microsoft.io/npm/'
+    )).toBe('https://packagefeedproxy.microsoft.io/npm/');
+    expect(() => resolveTemplateDependencyAuditRegistry(
+      'http://packagefeedproxy.microsoft.io/npm/'
+    )).toThrow(/credential-free HTTPS URL/);
+    expect(() => resolveTemplateDependencyAuditRegistry(
+      'https://token@example.test/npm/'
+    )).toThrow(/credential-free HTTPS URL/);
+  });
+
   it('tracks exactly the packaged npm template lockfiles', async () => {
     const packagedPaths = [
       'assets/locks/node-backend/package-lock.json',
@@ -66,6 +81,8 @@ describe('template dependency security', () => {
     );
 
     expect(resolved.map((entry) => entry.id)).toEqual([
+      'liftoff-cli',
+      'telemetry-ingest',
       'node-backend',
       'standard-frontend',
       'power-apps-code-app'
@@ -94,14 +111,23 @@ describe('template dependency security', () => {
     const policy = parseTemplateDependencyPolicy(source, templateDependencyInventory);
 
     expect(policy.schemaVersion).toBe(1);
-    expect(policy.exceptions).toHaveLength(4);
-    expect(policy.exceptions.map((entry) => entry.advisoryId)).toEqual([
-      'GHSA-67MH-4WV8-2F99',
-      'GHSA-QWWW-VCR4-C8H2',
-      'GHSA-W5HQ-G745-H8PQ',
-      'GHSA-MH99-V99M-4GVG'
+    expect(policy.exceptions).toHaveLength(2);
+    expect(policy.exceptions.map((entry) => ({
+      advisoryId: entry.advisoryId,
+      package: entry.package,
+      disposition: entry.disposition
+    }))).toEqual([
+      {
+        advisoryId: 'GHSA-67MH-4WV8-2F99',
+        package: 'esbuild',
+        disposition: 'vulnerable-code-not-used'
+      },
+      {
+        advisoryId: 'GHSA-W5HQ-G745-H8PQ',
+        package: 'uuid',
+        disposition: 'vulnerable-code-not-used'
+      }
     ]);
-    expect(policy.exceptions.at(-1)?.dependencyChains).toHaveLength(3);
   });
 
   it('rejects malformed, duplicate, and out-of-inventory policy entries', () => {
@@ -401,7 +427,13 @@ describe('template dependency security', () => {
       stdout: '{"error":{"summary":"registry unavailable"}}',
       stderr: '',
       timedOut: false
-    })).toThrow('unsupported response');
+    })).toThrow('unsupported response: registry unavailable');
+    expect(() => parseNpmAuditCommandResult(entry, {
+      status: 1,
+      stdout: '{"message":"request failed","error":{"summary":""}}',
+      stderr: '',
+      timedOut: false
+    })).toThrow('unsupported response: request failed');
     expect(() => parseNpmAuditCommandResult(entry, {
       status: null,
       stdout: '',
@@ -489,7 +521,7 @@ describe('template dependency security', () => {
     }
   });
 
-  it('locks the minimal patched Drizzle and Vite dependency lines', () => {
+  it('locks the reviewed backend and frontend baseline dependency lines', () => {
     const backendPackage = JSON.parse(readFileSync(
       path.join(repositoryRoot, 'assets', 'locks', 'node-backend', 'package.json'),
       'utf8'
@@ -509,11 +541,12 @@ describe('template dependency security', () => {
 
     expect(backendPackage.dependencies['drizzle-orm']).toBe('^0.45.2');
     expect(backendLock.packages['node_modules/drizzle-orm']?.version).toBe('0.45.2');
-    expect(frontendPackage.dependencies.vite).toBe('^6.4.3');
-    expect(frontendPackage.dependencies['@vitejs/plugin-vue']).toBe('^5.0.5');
-    expect(frontendLock.packages['node_modules/vite']?.version).toMatch(/^6\./);
-    expect(frontendLock.packages['node_modules/esbuild']?.version).toMatch(/^0\.(2[5-9]|[3-9]\d)\./);
-    expect(frontendLock.packages['node_modules/@vitejs/plugin-vue']?.version).toMatch(/^5\./);
+    expect(frontendPackage.dependencies.vite).toBe('^8.2.2');
+    expect(frontendPackage.dependencies['@vitejs/plugin-vue']).toBe('^6.0.8');
+    expect(frontendPackage.dependencies.tailwindcss).toBe('^4.3.3');
+    expect(frontendLock.packages['node_modules/vite']?.version).toBe('8.2.2');
+    expect(frontendLock.packages['node_modules/@vitejs/plugin-vue']?.version).toBe('6.0.8');
+    expect(frontendLock.packages['node_modules/tailwindcss']?.version).toBe('4.3.3');
   });
 
   it('formats fixed, reviewed, clean, and failing outcomes distinctly', () => {

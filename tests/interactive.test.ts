@@ -57,7 +57,7 @@ describe('interactive presentation', () => {
 
   it('handles defaults, invalid choices, disabled providers, ambiguous regions, and multi-agent selection', async () => {
     const { prompter, output } = scriptedPrompter(
-      '\nlaunch-app\n\n99\n1\n2\n1\nkorea\n2\n\n2\n9\n1,2\n2\n\n'
+      '\nlaunch-app\n\n99\n1\n2\n1\nkorea\n2\n\n\n\n2\n9\n1,2\n2\n'
     );
     try {
       const options = await prompter.promptForInitOptions({});
@@ -70,6 +70,7 @@ describe('interactive presentation', () => {
         cloud: 'azure',
         region: 'koreasouth',
         includeFrontend: false,
+        governanceProfile: 'single-maintainer-gitflow',
         specWorkflow: 'spec-kit',
         agents: ['github-copilot', 'claude'],
         defaultAgent: 'claude',
@@ -87,7 +88,7 @@ describe('interactive presentation', () => {
 
   it('handles the standard API branch and accepted default values', async () => {
     const { prompter, output } = scriptedPrompter(
-      '2\n\n1\n\ny\n\n\ndev,prod\n'
+      '2\n\n1\n\ny\ndev,prod\n\n\n\n'
     );
     try {
       const options = await prompter.promptForInitOptions({ projectName: 'standard-api' });
@@ -98,6 +99,7 @@ describe('interactive presentation', () => {
         cloud: 'azure',
         region: 'eastus',
         includeFrontend: true,
+        governanceProfile: 'single-maintainer-gitflow',
         specWorkflow: 'openspec',
         agents: ['github-copilot'],
         environments: ['dev', 'prod']
@@ -111,7 +113,7 @@ describe('interactive presentation', () => {
   });
 
   it('routes Power Apps directly into the shared workflow and agent tail', async () => {
-    const { prompter, output } = scriptedPrompter('3\n\n1,2\ny\n');
+    const { prompter, output } = scriptedPrompter('3\ny\n\n\n1,2\n');
     try {
       const options = await prompter.promptForInitOptions({
         projectName: 'power-workspace'
@@ -121,8 +123,10 @@ describe('interactive presentation', () => {
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
         agents: ['github-copilot', 'claude'],
-        codeAppsPlugin: true
+        codeAppsPlugin: true,
+        governanceProfile: 'single-maintainer-gitflow'
       });
+
       expect(options.apiStack).toBeUndefined();
       expect(options.pattern).toBeUndefined();
       expect(options.cloud).toBeUndefined();
@@ -132,6 +136,29 @@ describe('interactive presentation', () => {
       expect(output.text()).toContain('Power Apps code app');
       expect(output.text()).toContain('Microsoft Code Apps preview plugin guidance');
       expect(output.text()).not.toContain('Target cloud');
+    } finally {
+      prompter.close();
+    }
+  });
+
+  it('allows an explicit interactive governance opt-out after architecture choices', async () => {
+    const { prompter, output } = scriptedPrompter('n\n');
+    try {
+      const options = await prompter.promptForInitOptions({
+        projectName: 'opt-out',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
+        specWorkflow: 'openspec',
+        agents: ['copilot']
+      });
+      expect(options.governanceProfile).toBe('none');
+      expect(output.text()).toContain(
+        'Generate the single-maintainer GitFlow governance handoff?'
+      );
     } finally {
       prompter.close();
     }
@@ -188,7 +215,9 @@ describe('interactive presentation', () => {
       setTimeout(() => input.write('configured-app\n'), 0);
       const options = await prompter.promptForInitOptions({
         projectType: 'power-apps-code-app',
-        specWorkflow: 'openspec'
+        specWorkflow: 'openspec',
+        governanceProfile: 'single-maintainer-gitflow',
+        codeAppsPlugin: false
       });
 
       expect(options.agents).toEqual(['github-copilot', 'claude']);
@@ -248,7 +277,9 @@ describe('interactive presentation', () => {
       setTimeout(() => input.write('unconfigured-app\n'), 0);
       const options = await prompter.promptForInitOptions({
         projectType: 'power-apps-code-app',
-        specWorkflow: 'openspec'
+        specWorkflow: 'openspec',
+        governanceProfile: 'single-maintainer-gitflow',
+        codeAppsPlugin: false
       });
 
       expect(options.agents).toEqual(['github-copilot']);
@@ -274,7 +305,8 @@ describe('interactive presentation', () => {
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
         agents: ['claude'],
-        codeAppsPlugin: false
+        codeAppsPlugin: false,
+        governanceProfile: 'single-maintainer-gitflow'
       });
 
       expect(options.agents).toEqual(['claude']);
@@ -307,7 +339,9 @@ describe('interactive presentation', () => {
     await expect(ttyPrompter.promptForInitOptions({
       projectName: 'cancelled-app',
       projectType: 'power-apps-code-app',
-      specWorkflow: 'openspec'
+      specWorkflow: 'openspec',
+      governanceProfile: 'single-maintainer-gitflow',
+      codeAppsPlugin: false
     })).rejects.toBeInstanceOf(InteractiveCancelledError);
     ttyPrompter.close();
 
@@ -339,7 +373,8 @@ describe('interactive presentation', () => {
         projectName: 'keyboard-app',
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
-        codeAppsPlugin: false
+        codeAppsPlugin: false,
+        governanceProfile: 'single-maintainer-gitflow'
       });
       setTimeout(() => input.write('\u001B[B \r'), 50);
 
@@ -374,7 +409,8 @@ describe('interactive presentation', () => {
         projectName: 'cancel-keyboard-app',
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
-        codeAppsPlugin: false
+        codeAppsPlugin: false,
+        governanceProfile: 'single-maintainer-gitflow'
       });
       setTimeout(() => input.write('\u0003'), 50);
 
@@ -408,7 +444,8 @@ describe('interactive presentation', () => {
           projectName: 'layout-app',
           projectType: 'power-apps-code-app',
           specWorkflow: 'openspec',
-          codeAppsPlugin: false
+          codeAppsPlugin: false,
+          governanceProfile: 'single-maintainer-gitflow'
         });
         return output.text();
       } finally {
@@ -487,12 +524,12 @@ describe('interactive presentation', () => {
         label: 'OpenSpec',
         severity: 'blocking',
         purpose: 'selected spec-driven framework',
-        requirement: 'required exactly 1.6.0',
+        requirement: 'required exactly 1.11.0',
         observed: 'missing - command not found',
-        command: 'npm install -g @fission-ai/openspec@1.6.0'
+        command: 'npm install -g @fission-ai/openspec@1.11.0'
       })).toBe(true);
       expect(toolPrompt.output.text()).toContain('selected spec-driven framework');
-      expect(toolPrompt.output.text()).toContain('npm install -g @fission-ai/openspec@1.6.0');
+      expect(toolPrompt.output.text()).toContain('npm install -g @fission-ai/openspec@1.11.0');
     } finally {
       toolPrompt.prompter.close();
     }

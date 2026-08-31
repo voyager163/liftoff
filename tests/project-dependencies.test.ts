@@ -99,16 +99,23 @@ describe('project dependency setup', () => {
       'linux'
     );
     expect(pythonSetup.commands.map((item) => item.id)).toEqual([
-      'python-venv',
       'python-backend',
-      'python-function-worker',
       'node-frontend'
     ]);
     expect(pythonSetup.commands[0]?.command).toEqual({
-      executable: 'python',
-      args: ['-m', 'venv', '.venv']
+      executable: 'uv',
+      args: [
+        'sync',
+        '--frozen',
+        '--project',
+        'backend',
+        '--extra',
+        'test',
+        '--extra',
+        'functions'
+      ]
     });
-    expect(pythonSetup.commands[1]?.command.executable).toBe(path.join(root, '.venv', 'bin', 'python'));
+    expect(pythonSetup.protectedPaths).toContainEqual(['backend', 'uv.lock']);
     expect(pythonSetup.protectedPaths).toContainEqual(['functions', 'rag-worker', 'requirements.txt']);
 
     const nodeSetup = buildDependencySetupPlan(node, root, readyProbes(node), 'win32');

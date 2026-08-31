@@ -37,7 +37,7 @@ function runNpm(cwd, args) {
 
 function requireVersion(lock, packagePath, expected) {
   const version = lock.packages?.[packagePath]?.version;
-  if (!expected.test(version ?? '')) {
+  if (version !== expected) {
     throw new Error(`${packagePath} resolved unexpected version ${String(version)}.`);
   }
 }
@@ -65,11 +65,22 @@ try {
   const before = await Promise.all(metadataPaths.map((filePath) => readFile(filePath)));
   const backendLock = JSON.parse(before[1].toString('utf8'));
   const frontendLock = JSON.parse(before[3].toString('utf8'));
+  const baseline = JSON.parse(
+    await readFile(path.resolve('assets', 'supported-stack.json'), 'utf8')
+  );
 
-  requireVersion(backendLock, 'node_modules/drizzle-orm', /^0\.45\./);
-  requireVersion(frontendLock, 'node_modules/vite', /^6\./);
-  requireVersion(frontendLock, 'node_modules/esbuild', /^0\.(2[5-9]|[3-9]\d)\./);
-  requireVersion(frontendLock, 'node_modules/@vitejs/plugin-vue', /^5\./);
+  requireVersion(
+    backendLock,
+    'node_modules/drizzle-orm',
+    baseline.npmProjects['node-backend'].resolved.dependencies['drizzle-orm']
+  );
+  for (const dependency of ['vite', '@vitejs/plugin-vue', 'tailwindcss']) {
+    requireVersion(
+      frontendLock,
+      `node_modules/${dependency}`,
+      baseline.npmProjects.frontend.resolved.dependencies[dependency]
+    );
+  }
 
   runNpm(backendRoot, ['ci', '--ignore-scripts', '--no-audit', '--no-fund']);
   runNpm(backendRoot, ['run', 'build']);

@@ -1,0 +1,711 @@
+{
+  "schemaVersion": 1,
+  "id": "2026.08.31",
+  "verifiedOn": "2026-08-31",
+  "supportedHostPlatforms": [
+    "darwin/arm64",
+    "darwin/x64",
+    "linux/arm64",
+    "linux/x64",
+    "win32/x64"
+  ],
+  "runtimes": {
+    "node": {
+      "version": "24.20.0",
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+      "channel": "lts",
+      "source": "https://nodejs.org/en/about/previous-releases"
+    },
+    "python": {
+      "version": "3.14.7",
+      "minimumVersion": "3.14.0",
+      "releaseLine": "3.14",
+      "channel": "stable",
+      "source": "https://www.python.org/downloads/"
+    },
+    "go": {
+      "version": "1.27.0",
+      "minimumVersion": "1.27.0",
+      "releaseLine": "1.27",
+      "channel": "stable",
+      "source": "https://go.dev/dl/"
+    },
+    "opentofu": {
+      "version": "1.12.6",
+      "minimumVersion": "1.12.6",
+      "releaseLine": "1.12",
+      "channel": "stable",
+      "source": "https://github.com/opentofu/opentofu/releases/tag/v1.12.6"
+    }
+  },
+  "packageManagers": {
+    "npm": {
+      "version": "12.0.2",
+      "minimumVersion": "12.0.2",
+      "releaseLine": "12",
+      "channel": "stable",
+      "source": "https://www.npmjs.com/package/npm"
+    },
+    "uv": {
+      "version": "0.12.7",
+      "minimumVersion": "0.12.7",
+      "releaseLine": "0.12",
+      "channel": "stable",
+      "source": "https://github.com/astral-sh/uv/releases/tag/0.12.7"
+    }
+  },
+  "frameworks": {
+    "openspec": {
+      "version": "1.11.0",
+      "minimumVersion": "1.11.0",
+      "releaseLine": "1.11",
+      "channel": "stable",
+      "source": "https://www.npmjs.com/package/@fission-ai/openspec"
+    },
+    "spec-kit": {
+      "version": "1.0.1",
+      "minimumVersion": "1.0.1",
+      "releaseLine": "1.0",
+      "channel": "stable",
+      "source": "https://pypi.org/project/specify-cli/1.0.1/"
+    }
+  },
+  "npmProjects": {
+    "liftoff": {
+      "manifestPathParts": [
+        "package.json"
+      ],
+      "lockPathParts": [
+        "package-lock.json"
+      ],
+      "freshnessPolicy": "latest",
+      "requirements": {
+        "dependencies": {
+          "@inquirer/prompts": "^8.6.0",
+          "cross-spawn": "^7.0.6",
+          "picocolors": "^1.1.1"
+        },
+        "devDependencies": {
+          "@types/cross-spawn": "^6.0.6",
+          "@types/node": "^24.6.0",
+          "typescript": "^7.0.2",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      },
+      "resolved": {
+        "dependencies": {
+          "@inquirer/prompts": "8.6.0",
+          "cross-spawn": "7.0.6",
+          "picocolors": "1.1.1"
+        },
+        "devDependencies": {
+          "@types/cross-spawn": "6.0.6",
+          "@types/node": "24.13.3",
+          "typescript": "7.0.2",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      }
+    },
+    "telemetry-ingest": {
+      "manifestPathParts": [
+        "services",
+        "telemetry-ingest",
+        "package.json"
+      ],
+      "lockPathParts": [
+        "services",
+        "telemetry-ingest",
+        "package-lock.json"
+      ],
+      "freshnessPolicy": "latest",
+      "requirements": {
+        "dependencies": {
+          "@azure/identity": "4.13.2",
+          "@azure/monitor-ingestion": "1.2.0"
+        },
+        "devDependencies": {
+          "@types/node": "^24.6.0",
+          "typescript": "^7.0.2",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      },
+      "resolved": {
+        "dependencies": {
+          "@azure/identity": "4.13.2",
+          "@azure/monitor-ingestion": "1.2.0"
+        },
+        "devDependencies": {
+          "@types/node": "24.13.3",
+          "typescript": "7.0.2",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      }
+    },
+    "node-backend": {
+      "manifestPathParts": [
+        "assets",
+        "locks",
+        "node-backend",
+        "package.json"
+      ],
+      "lockPathParts": [
+        "assets",
+        "locks",
+        "node-backend",
+        "package-lock.json"
+      ],
+      "freshnessPolicy": "latest",
+      "requirements": {
+        "dependencies": {
+          "@fastify/cors": "^11.3.0",
+          "@fastify/swagger": "^9.5.2",
+          "drizzle-orm": "^0.45.2",
+          "fastify": "^5.12.1",
+          "pg": "^8.23.0"
+        },
+        "devDependencies": {
+          "@types/node": "^24.6.0",
+          "@types/pg": "^8.15.0",
+          "drizzle-kit": "^0.31.0",
+          "tsx": "^4.20.0",
+          "typescript": "^5.5.4",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      },
+      "resolved": {
+        "dependencies": {
+          "@fastify/cors": "11.3.0",
+          "@fastify/swagger": "9.8.1",
+          "drizzle-orm": "0.45.2",
+          "fastify": "5.12.1",
+          "pg": "8.23.0"
+        },
+        "devDependencies": {
+          "@types/node": "24.13.3",
+          "@types/pg": "8.20.0",
+          "drizzle-kit": "0.31.10",
+          "tsx": "4.23.1",
+          "typescript": "5.9.3",
+          "vite": "8.2.2",
+          "vitest": "4.1.11"
+        }
+      }
+    },
+    "frontend": {
+      "manifestPathParts": [
+        "assets",
+        "locks",
+        "frontend",
+        "package.json"
+      ],
+      "lockPathParts": [
+        "assets",
+        "locks",
+        "frontend",
+        "package-lock.json"
+      ],
+      "freshnessPolicy": "latest",
+      "requirements": {
+        "dependencies": {
+          "@tailwindcss/vite": "^4.3.3",
+          "@vitejs/plugin-vue": "^6.0.8",
+          "tailwindcss": "^4.3.3",
+          "vite": "^8.2.2",
+          "vue": "^3.5.41"
+        },
+        "devDependencies": {}
+      },
+      "resolved": {
+        "dependencies": {
+          "@tailwindcss/vite": "4.3.3",
+          "@vitejs/plugin-vue": "6.0.8",
+          "tailwindcss": "4.3.3",
+          "vite": "8.2.2",
+          "vue": "3.5.41"
+        },
+        "devDependencies": {}
+      }
+    },
+    "power-apps-code-app": {
+      "manifestPathParts": [
+        "assets",
+        "power-apps-code-app",
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "starter",
+        "package.json"
+      ],
+      "lockPathParts": [
+        "assets",
+        "power-apps-code-app",
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "starter",
+        "package-lock.json"
+      ],
+      "freshnessPolicy": "declared-range",
+      "requirements": {
+        "dependencies": {
+          "@microsoft/power-apps": "^1.2.5",
+          "@radix-ui/react-checkbox": "^1.3.3",
+          "@radix-ui/react-dialog": "^1.1.15",
+          "@radix-ui/react-dropdown-menu": "^2.1.16",
+          "@radix-ui/react-label": "^2.1.7",
+          "@radix-ui/react-popover": "^1.1.15",
+          "@radix-ui/react-progress": "^1.1.7",
+          "@radix-ui/react-select": "^2.2.6",
+          "@radix-ui/react-separator": "^1.1.7",
+          "@radix-ui/react-slot": "^1.2.3",
+          "@radix-ui/react-tabs": "^1.1.13",
+          "@radix-ui/react-tooltip": "^1.2.8",
+          "@tailwindcss/vite": "^4.1.16",
+          "@tanstack/react-query": "^5.90.5",
+          "@tanstack/react-table": "^8.21.3",
+          "class-variance-authority": "^0.7.1",
+          "clsx": "^2.1.1",
+          "cmdk": "^1.1.1",
+          "date-fns": "^4.1.0",
+          "lucide-react": "^0.546.0",
+          "react": "^19.1.1",
+          "react-day-picker": "^9.11.1",
+          "react-dom": "^19.1.1",
+          "react-router-dom": "^7.9.4",
+          "recharts": "^2.15.4",
+          "sonner": "^2.0.7",
+          "tailwind-merge": "^3.3.1",
+          "tailwindcss": "^4.1.16",
+          "zustand": "^5.0.10"
+        },
+        "devDependencies": {
+          "@eslint/js": "^9.36.0",
+          "@microsoft/power-apps-vite": "^1.0.2",
+          "@types/node": "^24.6.0",
+          "@types/react": "^19.1.16",
+          "@types/react-dom": "^19.1.9",
+          "@vitejs/plugin-react": "^5.0.4",
+          "eslint": "^9.36.0",
+          "eslint-plugin-react-hooks": "^5.2.0",
+          "eslint-plugin-react-refresh": "^0.4.22",
+          "globals": "^16.4.0",
+          "picocolors": "^1.1.1",
+          "tw-animate-css": "^1.4.0",
+          "typescript": "~5.9.3",
+          "typescript-eslint": "^8.45.0",
+          "vite": "^7.1.7"
+        }
+      },
+      "resolved": {
+        "dependencies": {
+          "@microsoft/power-apps": "1.2.7",
+          "@radix-ui/react-checkbox": "1.3.11",
+          "@radix-ui/react-dialog": "1.1.23",
+          "@radix-ui/react-dropdown-menu": "2.1.24",
+          "@radix-ui/react-label": "2.1.15",
+          "@radix-ui/react-popover": "1.1.23",
+          "@radix-ui/react-progress": "1.1.16",
+          "@radix-ui/react-select": "2.3.7",
+          "@radix-ui/react-separator": "1.1.15",
+          "@radix-ui/react-slot": "1.3.3",
+          "@radix-ui/react-tabs": "1.1.21",
+          "@radix-ui/react-tooltip": "1.2.16",
+          "@tailwindcss/vite": "4.3.3",
+          "@tanstack/react-query": "5.102.2",
+          "@tanstack/react-table": "8.21.3",
+          "class-variance-authority": "0.7.1",
+          "clsx": "2.1.1",
+          "cmdk": "1.1.1",
+          "date-fns": "4.4.0",
+          "lucide-react": "0.546.0",
+          "react": "19.2.8",
+          "react-day-picker": "9.14.0",
+          "react-dom": "19.2.8",
+          "react-router-dom": "7.18.2",
+          "recharts": "2.15.4",
+          "sonner": "2.0.8",
+          "tailwind-merge": "3.6.0",
+          "tailwindcss": "4.3.3",
+          "zustand": "5.0.15"
+        },
+        "devDependencies": {
+          "@eslint/js": "9.39.5",
+          "@microsoft/power-apps-vite": "1.0.2",
+          "@types/node": "24.13.3",
+          "@types/react": "19.2.18",
+          "@types/react-dom": "19.2.5",
+          "@vitejs/plugin-react": "5.2.0",
+          "eslint": "9.39.5",
+          "eslint-plugin-react-hooks": "5.2.0",
+          "eslint-plugin-react-refresh": "0.4.26",
+          "globals": "16.5.0",
+          "picocolors": "1.1.1",
+          "tw-animate-css": "1.4.0",
+          "typescript": "5.9.3",
+          "typescript-eslint": "8.67.0",
+          "vite": "7.3.6"
+        }
+      },
+      "selectionExceptions": {
+        "@microsoft/power-apps": {
+          "selectedVersion": "1.2.7",
+          "reviewedCandidateVersion": "1.3.0",
+          "reason": "Power Apps SDK 1.2.12 and newer remove the project-local power-apps CLI required by the current Liftoff workload contract; adopting the new global pa CLI requires a separate reviewed workload migration."
+        }
+      }
+    }
+  },
+  "pythonProjects": {
+    "genai-backend": {
+      "lockTemplatePathParts": [
+        "assets",
+        "locks",
+        "python-genai",
+        "uv.lock"
+      ],
+      "requiresPython": ">=3.14,<3.15",
+      "dependencies": {
+        "alembic": "1.19.1",
+        "asyncpg": "0.31.0",
+        "azure-communication-email": "1.1.0",
+        "azure-identity": "1.25.3",
+        "azure-servicebus": "7.14.3",
+        "azure-storage-blob": "12.30.1",
+        "fastapi": "0.141.1",
+        "langfuse": "4.14.4",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "pydantic-ai-slim": "2.33.0",
+        "pydantic-settings": "2.15.0",
+        "redis": "8.1.0",
+        "scalar-fastapi": "1.8.2",
+        "sqlalchemy": "2.0.52",
+        "uvicorn": "0.52.4"
+      },
+      "optionalDependencies": {
+        "functions": {
+          "azure-functions": "2.3.0"
+        },
+        "test": {
+          "httpx2": "2.12.0",
+          "pytest": "9.1.1"
+        }
+      }
+    },
+    "standard-backend": {
+      "lockTemplatePathParts": [
+        "assets",
+        "locks",
+        "python-standard",
+        "uv.lock"
+      ],
+      "requiresPython": ">=3.14,<3.15",
+      "dependencies": {
+        "alembic": "1.19.1",
+        "asyncpg": "0.31.0",
+        "azure-communication-email": "1.1.0",
+        "azure-servicebus": "7.14.3",
+        "azure-storage-blob": "12.30.1",
+        "fastapi": "0.141.1",
+        "psycopg": "3.3.4",
+        "pydantic": "2.13.4",
+        "pydantic-settings": "2.15.0",
+        "redis": "8.1.0",
+        "scalar-fastapi": "1.8.2",
+        "sqlalchemy": "2.0.52",
+        "uvicorn": "0.52.4"
+      },
+      "optionalDependencies": {
+        "test": {
+          "httpx2": "2.12.0",
+          "pytest": "9.1.1"
+        }
+      }
+    },
+    "function-worker": {
+      "lockTemplatePathParts": [
+        "assets",
+        "locks",
+        "python-genai",
+        "uv.lock"
+      ],
+      "requiresPython": ">=3.14,<3.15",
+      "dependencies": {
+        "azure-functions": "2.3.0"
+      },
+      "optionalDependencies": {
+        "test": {
+          "pytest": "9.1.1"
+        }
+      }
+    }
+  },
+  "goModules": {
+    "go-backend": {
+      "moduleTemplatePathParts": [
+        "assets",
+        "locks",
+        "go-backend",
+        "go.mod"
+      ],
+      "goVersion": "1.27.0",
+      "dependencies": {
+        "github.com/danielgtaylor/huma/v2": "v2.39.1",
+        "github.com/go-chi/chi/v5": "v5.3.2",
+        "github.com/jackc/pgx/v5": "v5.10.0"
+      },
+      "tools": {
+        "github.com/pressly/goose/v3": "v3.27.3"
+      }
+    }
+  },
+  "opentofu": {
+    "version": {
+      "version": "1.12.6",
+      "minimumVersion": "1.12.6",
+      "releaseLine": "1.12",
+      "channel": "stable",
+      "source": "https://github.com/opentofu/opentofu/releases/tag/v1.12.6"
+    },
+    "lockPlatforms": [
+      "darwin_amd64",
+      "darwin_arm64",
+      "linux_amd64",
+      "linux_arm64",
+      "windows_amd64"
+    ],
+    "providers": {
+      "azapi": {
+        "source": "Azure/azapi",
+        "version": "2.12.0"
+      },
+      "azurerm": {
+        "source": "hashicorp/azurerm",
+        "version": "5.3.0"
+      },
+      "time": {
+        "source": "hashicorp/time",
+        "version": "0.14.1"
+      }
+    }
+  },
+  "githubActions": {
+    "checkout": {
+      "repository": "actions/checkout",
+      "ref": "v7",
+      "commit": "3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "source": "https://github.com/actions/checkout/releases/tag/v7"
+    },
+    "setup-node": {
+      "repository": "actions/setup-node",
+      "ref": "v7",
+      "commit": "820762786026740c76f36085b0efc47a31fe5020",
+      "source": "https://github.com/actions/setup-node/releases/tag/v7"
+    },
+    "setup-python": {
+      "repository": "actions/setup-python",
+      "ref": "v7",
+      "commit": "5fda3b95a4ea91299a34e894583c3862153e4b97",
+      "source": "https://github.com/actions/setup-python/releases/tag/v7"
+    },
+    "setup-go": {
+      "repository": "actions/setup-go",
+      "ref": "v7",
+      "commit": "b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+      "source": "https://github.com/actions/setup-go/releases/tag/v7"
+    },
+    "setup-opentofu": {
+      "repository": "opentofu/setup-opentofu",
+      "ref": "v2",
+      "commit": "a1320f892987e89d278cc92dc5adc984fb93aca4",
+      "source": "https://github.com/opentofu/setup-opentofu/releases/tag/v2"
+    }
+  },
+  "containers": {
+    "python-runtime": {
+      "image": "python",
+      "tag": "3.14-slim",
+      "digest": "sha256:cae66f2ef0ec51a9891263eeee7f987dacf0a9879e8aa9353d5606e0530619a5",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/python"
+    },
+    "uv-tool": {
+      "image": "ghcr.io/astral-sh/uv",
+      "tag": "0.12.7",
+      "digest": "sha256:95f2aa1fe59274951cfe9b0cbc7972e879ff1004bc8945d130a32eb0dbd85945",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://github.com/astral-sh/uv/pkgs/container/uv"
+    },
+    "node-runtime": {
+      "image": "node",
+      "tag": "24-alpine",
+      "digest": "sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/node"
+    },
+    "go-build": {
+      "image": "golang",
+      "tag": "1.27-alpine",
+      "digest": "sha256:4c9fe60190a2a3350ddc51de80d0224b8a6698d12bdfc999fee45ea9d6c46dbc",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/golang"
+    },
+    "alpine-runtime": {
+      "image": "alpine",
+      "tag": "3.24",
+      "digest": "sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/alpine"
+    },
+    "nginx-runtime": {
+      "image": "nginx",
+      "tag": "1.30-alpine",
+      "digest": "sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/nginx"
+    },
+    "postgres": {
+      "image": "postgres",
+      "tag": "18-alpine",
+      "digest": "sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/postgres"
+    },
+    "pgvector": {
+      "image": "pgvector/pgvector",
+      "tag": "pg18",
+      "digest": "sha256:2ba9ca5f2e7daa0f0e7723cba1ee9167bab54efd3640516a44ac1a928dd67e7a",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/pgvector/pgvector"
+    },
+    "redis": {
+      "image": "redis",
+      "tag": "8-alpine",
+      "digest": "sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/redis"
+    },
+    "azurite": {
+      "image": "mcr.microsoft.com/azure-storage/azurite",
+      "tag": "3.37.0",
+      "digest": "sha256:830430c1da1a2d537e08f3e6764dd1f5ae00cf0346bcaf625b968ec3f0971fd5",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://mcr.microsoft.com/v2/azure-storage/azurite/tags/list"
+    },
+    "mailpit": {
+      "image": "axllent/mailpit",
+      "tag": "v1.31.0",
+      "digest": "sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/axllent/mailpit"
+    },
+    "langfuse-web": {
+      "image": "langfuse/langfuse",
+      "tag": "4",
+      "digest": "sha256:d9be058ee32564854bf54ff24a46603701bef96badecd95dab89c17b1d62171b",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/langfuse/langfuse"
+    },
+    "langfuse-worker": {
+      "image": "langfuse/langfuse-worker",
+      "tag": "4",
+      "digest": "sha256:d4cbfe486b0eaaead437f8c5f626420b0275557bf7f89229e4edc8fc6683f01e",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/langfuse/langfuse-worker"
+    },
+    "clickhouse": {
+      "image": "clickhouse/clickhouse-server",
+      "tag": "25.12",
+      "digest": "sha256:8a790dd3468db22b1d4e7b18a176f378ff5ff6053b9c48dd4ea1fa71a24c5ba6",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/clickhouse/clickhouse-server"
+    },
+    "minio": {
+      "image": "minio/minio",
+      "tag": "RELEASE.2025-09-07T16-13-09Z",
+      "digest": "sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/r/minio/minio"
+    },
+    "container-apps-bootstrap": {
+      "image": "nginx",
+      "tag": "1.30-alpine",
+      "digest": "sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/nginx",
+      "selectionReason": "The previous Azure sample image publishes only a mutable latest tag; nginx stable serves an unauthenticated port-80 bootstrap endpoint with an immutable multi-architecture digest."
+    },
+    "telemetry-node": {
+      "image": "node",
+      "tag": "24-bookworm-slim",
+      "digest": "sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e",
+      "platforms": [
+        "linux/amd64",
+        "linux/arm64"
+      ],
+      "source": "https://hub.docker.com/_/node"
+    }
+  },
+  "upstreams": {
+    "power-apps-code-app": {
+      "repository": "https://github.com/microsoft/PowerAppsCodeApps",
+      "path": "templates/starter",
+      "commit": "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+      "compatibleSourceCommits": [
+        "3438c352483e40982f6c5c0fc36fd71f8e7adbbb",
+        "22e5c0bc0ef7ba516d9ad6281d6b0c4eb114df55"
+      ],
+      "source": "https://github.com/microsoft/PowerAppsCodeApps/commit/3438c352483e40982f6c5c0fc36fd71f8e7adbbb"
+    }
+  }
+}

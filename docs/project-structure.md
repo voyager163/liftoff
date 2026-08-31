@@ -14,7 +14,13 @@ project/
 |-- .env.example
 |-- Dockerfile
 |-- docker-compose.yml
+|-- .liftoff/
+|   `-- governance/             # durable local handoff when enabled
+|       |-- policy.md
+|       |-- context.json
+|       `-- README.md
 |-- backend/
+|   `-- uv.lock                 # Python stacks only
 |-- database/
 |   |-- alembic.ini or stack-native migration config
 |   |-- migrations/
@@ -26,7 +32,10 @@ project/
 |-- infrastructure/
 |   `-- opentofu/
 |       `-- azure/
+|           `-- .terraform.lock.hcl
 |-- openspec/ or .specify/
+|-- .github/prompts/liftoff-repository-governance.prompt.md
+|   or .claude/commands/liftoff-repository-governance.md
 |-- frontend/                  # only when selected
 |-- functions/<worker-name>/  # only for worker-enabled GenAI patterns
 `-- migration/legacy/         # only after liftoff migrate
@@ -45,7 +54,11 @@ project/
   Functions settings when a worker is generated.
 - `docker-compose.yml` starts the selected backend, PostgreSQL, Redis,
   Azurite, and Mailpit. GenAI projects use pgvector where needed and include an
-  optional Langfuse profile.
+  optional Langfuse v4 web/worker profile backed by ClickHouse, dedicated Redis,
+  and MinIO.
+- Python Docker builds export the committed `uv.lock` in frozen mode and install
+  only hash-verified requirements. `UV_DEFAULT_INDEX` can select a
+  credential-free managed mirror without changing the lock.
 - `infrastructure/opentofu/azure` contains modules, environment tfvars, local
   state configuration, and a remote-state example.
 - `openspec` is created for OpenSpec. `.specify` and `specs` are created for
@@ -86,6 +99,12 @@ project/
 |   `-- providers/
 `-- openspec/ or .specify/
 ```
+
+The exact selected-agent governance launcher is generated only when the
+repository-governance profile is enabled. It is Liftoff-owned; neighboring
+framework files remain framework-owned. Agent-created governance changes and
+`governance/activation-baseline.json` remain user-owned and are not listed in
+the manifest.
 
 This root follows the pinned official Microsoft starter. It includes the
 Power Apps SDK, Vite plugin, and project-local CLI through locked npm

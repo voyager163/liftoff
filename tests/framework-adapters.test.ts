@@ -150,7 +150,7 @@ describe('official framework commands', () => {
     }))).toEqual([
       {
         executable: 'specify',
-        args: ['init', '--here', '--force', '--ignore-agent-tools', '--integration', 'claude']
+        args: ['init', '--here', '--force', '--ignore-agent-tools', '--non-interactive', '--integration', 'claude']
       },
       {
         executable: 'specify',
@@ -178,6 +178,7 @@ describe('official framework commands', () => {
           '--here',
           '--force',
           '--ignore-agent-tools',
+          '--non-interactive',
           '--integration',
           'copilot',
           '--integration-options=--skills'
@@ -287,6 +288,18 @@ describe('framework ownership boundaries', () => {
       'spec-kit-constitution',
       'specs-placeholder'
     ]);
+    expect(partition.durable.map((item) => item.logicalName)).toEqual(
+      expect.arrayContaining([
+        'repository-governance-policy',
+        'repository-governance-context',
+        'repository-governance-guide',
+        'repository-governance-copilot-launcher'
+      ])
+    );
+    expect(partition.framework.some((item) =>
+      item.pathParts.join('/') ===
+        '.github/prompts/liftoff-repository-governance.prompt.md'
+    )).toBe(false);
     expect(manifest.artifacts.some((item) => item.pathParts[0] === '.specify')).toBe(false);
     expect(manifest.artifacts.some((item) => item.pathParts[0] === 'specs')).toBe(false);
 
@@ -295,6 +308,9 @@ describe('framework ownership boundaries', () => {
       artifacts: Array<{ pathParts: string[] }>;
     };
     expect(openSpecPartition.seed.map((item) => item.logicalName)).toContain('openspec-config');
+    expect(openSpecPartition.durable.some((item) =>
+      item.logicalName === 'repository-governance-copilot-launcher'
+    )).toBe(true);
     expect(openSpecManifest.artifacts.some((item) => item.pathParts[0] === 'openspec')).toBe(false);
   });
 

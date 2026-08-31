@@ -8,8 +8,8 @@ const smoke = process.env.LIFTOFF_FRAMEWORK_SMOKE === '1';
 
 describe.skipIf(!smoke)('pinned framework integration smoke', () => {
   it.each([
-    ['openspec', 'openspec', '1.6.0', undefined],
-    ['spec-kit', 'specify', '0.14.1', 'claude']
+    ['openspec', 'openspec', '1.11.0', undefined],
+    ['spec-kit', 'specify', '1.0.1', 'claude']
   ] as const)('initializes %s in an isolated stage', async (workflow, executable, version, defaultAgent) => {
     const runner = new NodeCommandRunner();
     const versionResult = await runner.run({ executable, args: ['--version'] }, { timeoutMs: 15_000 });

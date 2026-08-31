@@ -557,3 +557,85 @@ The system SHALL derive validation and helper behavior from normalized workload 
 - **WHEN** a developer runs `liftoff validate` inside a fresh Power Apps project
 - **THEN** validation checks schema-v4 workload identity, named starter artifacts, package metadata, and selected framework markers
 - **AND** it does not require API, Docker, or infrastructure files
+
+### Requirement: CLI exposes self-upgrade as a maintenance command
+The system SHALL expose `liftoff upgrade` as an explicit top-level maintenance command that is distinct from project-scoped `liftoff update`. Its command definition SHALL accept only `--check`, `--json`, and command help, require no positional project argument, and reject unsupported flags or arguments before registry lookup or installation.
+
+#### Scenario: Show upgrade help
+- **WHEN** a developer runs `liftoff upgrade --help`
+- **THEN** Liftoff exits 0 and describes CLI replacement, read-only check mode, JSON output, supported global npm installations, and the distinction from project update
+- **AND** performs no installation or registry lookup
+
+#### Scenario: Reject a project argument
+- **WHEN** a developer runs `liftoff upgrade ./project`
+- **THEN** argument parsing exits 1 before filesystem or network side effects
+
+#### Scenario: Reject unrelated consent flags
+- **WHEN** a developer supplies `--force`, `--yes`, `--install-tools`, or `--install-dependencies` to upgrade
+- **THEN** Liftoff rejects the unsupported flag
+- **AND** no flag from another command can authorize self-upgrade
+
+### Requirement: Upgrade follows shared output and exit conventions
+Human upgrade output SHALL use the shared responsive terminal renderer. JSON output SHALL contain a top-level numeric `schemaVersion` and no decorative text. Exit code 0 SHALL mean current or upgraded, exit code 2 SHALL mean read-only check found an installable update, and exit code 1 SHALL mean invalid, blocked, or failed.
+
+#### Scenario: Run in a redirected terminal
+- **WHEN** upgrade output is redirected without `--json`
+- **THEN** Liftoff uses deterministic plain presentation without prompting
+- **AND** apply semantics remain imperative
+
+#### Scenario: Run JSON mode
+- **WHEN** upgrade uses `--json`
+- **THEN** stdout contains only the documented JSON result
+- **AND** diagnostics or child progress use stderr
+
+### Requirement: Upgrade completion keeps project migration separate
+After a successful CLI replacement, human completion SHALL identify the installed target and MAY recommend `liftoff update --check` as the next separately reviewed command. It SHALL NOT execute, confirm, or imply that any generated project was upgraded.
+
+#### Scenario: Upgrade completes inside a project
+- **WHEN** the CLI is upgraded successfully while the current directory is a generated project
+- **THEN** completion labels `liftoff update --check` as a recommendation only
+- **AND** no project discovery or reconciliation occurred
+
+### Requirement: CLI captures the repository-governance profile
+The system SHALL include repository governance among common project decisions for every workload. Interactive initialization SHALL offer the single-maintainer GitFlow profile after workload-specific architecture choices and default it to enabled. Configuration and noninteractive commands SHALL accept the append-only governance profile identifier through `governanceProfile` and `--governance`.
+
+#### Scenario: Configure governance interactively
+- **WHEN** a developer initializes any workload with missing governance input
+- **THEN** Liftoff asks whether to generate the single-maintainer GitFlow governance handoff
+- **AND** the default answer enables it
+
+#### Scenario: Use noninteractive default
+- **WHEN** a fully specified noninteractive `plan` or `init --yes` omits governance input
+- **THEN** the project plan selects `single-maintainer-gitflow`
+- **AND** no remote action is implied
+
+#### Scenario: Load governance from configuration
+- **WHEN** a valid configuration contains `governanceProfile`
+- **THEN** Liftoff resolves it through the governance profile catalog
+- **AND** flags override configuration through the normal defined-value merge
+
+### Requirement: Plan preview distinguishes handoff from enforcement
+The project plan preview SHALL identify the selected governance profile, policy version, durable handoff artifacts, selected-agent launchers, and deferred post-push activation. `liftoff plan` SHALL remain side-effect free and SHALL not require a Git repository, remote, GitHub authentication, or governance platform capability.
+
+#### Scenario: Preview enabled governance
+- **WHEN** a developer runs `liftoff plan` with the profile enabled
+- **THEN** the preview says the local handoff will be generated
+- **AND** says live Phase 0 and enforcement are deferred until after commit and push
+
+#### Scenario: Preview disabled governance
+- **WHEN** the project selects `none`
+- **THEN** the preview reports repository governance as disabled
+- **AND** does not list governance launchers or remote prerequisites
+
+#### Scenario: Plan without GitHub access
+- **WHEN** `liftoff plan` runs with no GitHub remote or credentials
+- **THEN** it completes without attempting a GitHub API call
+
+### Requirement: Governance options preserve independent consent
+Selecting a repository-governance profile or passing `--yes` SHALL authorize only deterministic local planning and generated files. It SHALL NOT authorize agent execution, Git mutation, remote mutation, destination conflict overwrite, machine-tool installation, or project dependency installation.
+
+#### Scenario: Initialize with yes and governance
+- **WHEN** a developer runs a fully specified `liftoff init --yes` with the profile enabled
+- **THEN** Liftoff may write the authorized collision-free local artifacts
+- **AND** every existing independent overwrite and installation consent boundary remains unchanged
+- **AND** no remote governance operation runs

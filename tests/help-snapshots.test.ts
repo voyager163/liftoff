@@ -34,7 +34,7 @@ describe('complete help screens', () => {
       }
     });
 
-    for (const command of ['init', 'update', 'doctor', 'regions', 'dev'] as const) {
+    for (const command of ['init', 'update', 'upgrade', 'doctor', 'regions', 'dev'] as const) {
       it(`snapshots ${layout.name} ${command} command help`, async () => {
         const result = await screen([command, '--help'], layout.columns);
         expect(result.err).toBe('');

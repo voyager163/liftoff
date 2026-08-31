@@ -117,7 +117,7 @@ The system SHALL publish npm metadata that identifies `voyager163/liftoff` as th
 - **THEN** the attestation identifies the public Liftoff repository and its release workflow
 
 ### Requirement: Documentation presents the global install path
-The system SHALL document global npm installation as the primary user setup path for Liftoff, SHALL identify `https://registry.npmjs.org` as the authoritative release registry, and SHALL distinguish canonical installation from installation through a managed registry whose synchronization is externally controlled.
+The system SHALL document global npm installation as the primary user setup path for Liftoff, SHALL identify `https://registry.npmjs.org` as the authoritative release registry, SHALL identify the supported Node.js 24 LTS baseline required by the current release, and SHALL distinguish canonical installation from installation through a managed registry whose synchronization is externally controlled.
 
 #### Scenario: Developer reads install instructions
 - **WHEN** a developer opens the Mission Control or Liftoff README
@@ -147,7 +147,7 @@ The system SHALL document global npm installation as the primary user setup path
 
 #### Scenario: Developer reads runtime requirements
 - **WHEN** a developer reviews the Liftoff installation documentation
-- **THEN** it states that Liftoff requires Node.js 20.19 or newer before global installation
+- **THEN** it states the exact Node.js 24 LTS minimum recorded by the current Liftoff baseline before global installation
 
 ### Requirement: Release version identity is coherent before publication
 The system SHALL require root package metadata, root lockfile metadata, a tag-triggered release's Git tag, packed package metadata, and the installed CLI version output to identify the same semantic version before publishing a new Liftoff package. A mismatch in any required identity SHALL fail the release workflow before `npm publish`.
@@ -185,18 +185,6 @@ The system SHALL treat a registry path as ready for version-command-based onboar
 - **THEN** version-command-based onboarding through that registry remains blocked
 - **AND** Liftoff does not modify npm configuration or silently install from another registry
 
-### Requirement: Published Liftoff requires Node.js 20.19 or newer
-The system SHALL declare Node.js `>=20.19` in published package engine metadata and SHALL fail startup with concise upgrade guidance when the running Node.js version is unsupported.
-
-#### Scenario: Install with a supported Node.js runtime
-- **WHEN** a developer installs and runs the published package with Node.js 20.19 or newer
-- **THEN** the Liftoff command can start and render help
-
-#### Scenario: Run with an unsupported Node.js runtime
-- **WHEN** a developer starts Liftoff with a Node.js version below 20.19
-- **THEN** Liftoff exits 1 before parsing project commands or performing side effects
-- **AND** it reports the observed and minimum supported versions
-
 ### Requirement: Package smoke testing verifies the init command surface
 The system SHALL smoke-test the installed package's renamed initialization surface without changing the test workstation. The smoke test SHALL verify `init` help and planning behavior and SHALL verify that `create` is rejected with migration guidance.
 
@@ -211,3 +199,56 @@ The system SHALL smoke-test the installed package's renamed initialization surfa
 #### Scenario: Installed plan remains side-effect free
 - **WHEN** release automation runs a fully specified `liftoff plan`
 - **THEN** it exits successfully without installing tools or creating a project directory
+
+### Requirement: Published Liftoff requires the supported Node.js LTS baseline
+The system SHALL declare the Node.js 24 LTS floor recorded by the supported-stack baseline in published package engine metadata and SHALL fail startup with concise upgrade guidance when the running Node.js version is unsupported.
+
+#### Scenario: Install with a supported Node.js runtime
+- **WHEN** a developer installs and runs the published package with a Node.js version satisfying the recorded Node.js 24 LTS floor
+- **THEN** the Liftoff command can start and render help
+
+#### Scenario: Run with an unsupported Node.js runtime
+- **WHEN** a developer starts Liftoff with a Node.js version below the recorded Node.js 24 LTS floor
+- **THEN** Liftoff exits 1 before parsing project commands or performing side effects
+- **AND** it reports the observed and minimum supported versions
+
+#### Scenario: Release package and runtime catalog disagree
+- **WHEN** package engine metadata, startup validation, workflow setup, or documentation does not match the named Node.js baseline entry
+- **THEN** release verification fails before publication
+
+### Requirement: A global npm installation can replace itself with a verified stable release
+The published Liftoff package SHALL contain all runtime code needed for a supported global npm installation to discover canonical stable release metadata, verify configured-registry parity, invoke an exact global npm replacement, and verify the replacement outside the source repository.
+
+#### Scenario: Upgrade a canonical global installation
+- **WHEN** a published global npm installation invokes `liftoff upgrade` and a newer stable version is available through its effective registry
+- **THEN** the effective global package is replaced with that exact published version
+- **AND** the replacement command reports the same version
+
+#### Scenario: Inspect a packed package
+- **WHEN** release verification inspects and installs the packed Liftoff artifact in an isolated global prefix
+- **THEN** `liftoff upgrade --help` works outside the repository
+- **AND** self-upgrade runtime modules are included in the published package
+
+### Requirement: Self-upgrade preserves canonical and managed registry boundaries
+Canonical npm SHALL remain the authority for the stable target, while the user's effective npm registry SHALL remain the delivery path. Self-upgrade SHALL require exact-version parity before installation and SHALL not rewrite npm configuration, bypass a stale managed mirror, or install a mirror-specific version not selected by canonical `latest`.
+
+#### Scenario: Approved mirror exposes canonical target
+- **WHEN** a managed registry exposes the exact canonical stable version
+- **THEN** a supported global installation may upgrade through that mirror
+
+#### Scenario: Approved mirror is stale
+- **WHEN** a managed registry does not expose the canonical target
+- **THEN** self-upgrade remains blocked until the mirror synchronizes
+- **AND** canonical availability alone does not authorize bypassing it
+
+### Requirement: Release verification covers the self-upgrade surface safely
+Release automation SHALL verify command help, stable metadata parsing, installation-origin detection, and replacement verification through committed fixtures and isolated temporary global prefixes. It SHALL never invoke self-upgrade apply mode against the release runner's actual global prefix.
+
+#### Scenario: Smoke-test the published command
+- **WHEN** the packed package is installed under an isolated global prefix
+- **THEN** its upgrade help and injected check behavior execute with platform-correct paths
+- **AND** the host installation remains unchanged
+
+#### Scenario: Missing self-upgrade runtime asset
+- **WHEN** the packed package omits a module required by upgrade
+- **THEN** package smoke verification fails before publication

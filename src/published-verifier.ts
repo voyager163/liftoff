@@ -2,8 +2,12 @@ import { spawnSync } from 'node:child_process';
 import { readFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import {
+  canonicalNpmRegistry,
+  liftoffPackageName
+} from './package-identity.js';
 
-export const CANONICAL_NPM_REGISTRY = 'https://registry.npmjs.org';
+export const CANONICAL_NPM_REGISTRY = canonicalNpmRegistry;
 
 interface CommandResult {
   status: number | null;
@@ -127,6 +131,11 @@ export async function verifyPublishedPackage(
 
   const packageJsonPath = path.join(options.packageRoot, 'package.json');
   const identity = packageIdentity(await dependencies.readJson(packageJsonPath), packageJsonPath);
+  if (identity.name !== liftoffPackageName) {
+    throw new Error(
+      `Published package identity must be ${liftoffPackageName}; observed ${identity.name}.`
+    );
+  }
   await waitForPublishedVersion(
     identity,
     options.tag,
@@ -186,6 +195,17 @@ export async function verifyPublishedPackage(
     assertCommand(help, 'Installed command help');
     if (!help.stdout.includes('Mission Control Liftoff')) {
       throw new Error('Installed command help did not contain the Liftoff heading.');
+    }
+    const upgradeHelp = dependencies.runNode(
+      [entrypoint, 'upgrade', '--help'],
+      commandOptions
+    );
+    assertCommand(upgradeHelp, 'Installed upgrade command help');
+    if (
+      !upgradeHelp.stdout.includes('--check') ||
+      !upgradeHelp.stdout.includes('global npm Liftoff CLI')
+    ) {
+      throw new Error('Installed upgrade help did not expose the self-upgrade contract.');
     }
 
     if (!options.allowLegacyVersionCommand) {

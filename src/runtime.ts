@@ -1,6 +1,8 @@
 import { compareSemver } from './semver.js';
+import { supportedStack } from './supported-stack.js';
 
-export const minimumNodeVersion = '20.19.0';
+export const minimumNodeVersion = supportedStack.runtimes.node.minimumVersion ??
+  supportedStack.runtimes.node.version;
 
 export function nodeRuntimeError(observedVersion = process.versions.node): string | undefined {
   if (compareSemver(observedVersion, minimumNodeVersion) >= 0) {

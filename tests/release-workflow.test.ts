@@ -37,7 +37,7 @@ describe('release workflow', () => {
     expect(workflow).toContain('tests/interactive.test.ts');
     expect(workflow).toContain('tests/project-dependencies.test.ts');
     expect(workflow).toContain('tests/power-apps-assets.test.ts');
-    expect(workflow).toContain('node-version: "22.12"');
+    expect(workflow).toContain('node-version: "24.20.0"');
     expect(workflow).toContain('run: npm run verify:power-apps-starter');
   });
 });

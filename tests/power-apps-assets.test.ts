@@ -1,4 +1,6 @@
 import { readFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { powerAppsCodeAppStarter } from '../src/catalogs.js';
 import {
@@ -23,8 +25,8 @@ describe('packaged Power Apps starter assets', () => {
     expect(powerAppsStarterCatalog.license.spdx).toBe('MIT');
     expect(readPowerAppsStarterLicense()).toContain('MIT License');
     expect(powerAppsStarterCatalog.lockfile).toMatchObject({
-      nodeBaseline: '22.x',
-      npmVersion: '11.7.0'
+      nodeBaseline: '24.x',
+      npmVersion: '12.0.2'
     });
     expect(powerAppsStarterCatalog.files).toHaveLength(46);
     expect(new Set(paths).size).toBe(paths.length);
@@ -43,5 +45,20 @@ describe('packaged Power Apps starter assets', () => {
       );
       expect(readPowerAppsStarterAsset(file)).not.toContain('\0');
     }
+  });
+
+  it('loads the supported baseline before validating refresh input', () => {
+    const result = spawnSync(process.execPath, [
+      fileURLToPath(new URL('../scripts/refresh-power-apps-starter.mjs', import.meta.url))
+    ], {
+      encoding: 'utf8',
+      shell: false
+    });
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain(
+      'Usage: npm run refresh:power-apps-starter -- <40-character immutable commit SHA>'
+    );
+    expect(result.stderr).not.toContain('ReferenceError');
   });
 });

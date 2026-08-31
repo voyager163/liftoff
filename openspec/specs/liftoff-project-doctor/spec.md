@@ -53,7 +53,7 @@ The system SHALL read the normalized manifest to configure diagnostics. Cloud ch
 - **AND** it does not claim that Copilot, Claude Code, OpenSpec, or Spec Kit integration was officially initialized
 
 ### Requirement: Doctor reports version freshness and scaffold drift
-The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface scaffold drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's check classification. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result.
+The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface scaffold drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's check classification. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
 
 #### Scenario: Freshness check runs outside a project
 - **WHEN** a developer runs doctor outside a generated project with registry access
@@ -63,17 +63,19 @@ The system SHALL always report the running CLI version and SHALL compare it with
 #### Scenario: Authoritative registry is newer than the running CLI
 - **WHEN** the authoritative registry reports a stable Liftoff version newer than the running CLI
 - **THEN** doctor emits a warning naming both exact versions
-- **AND** the remedy tells the developer to install the exact newer version through an approved registry that exposes it
-- **AND** the remedy identifies the canonical npm registry command for environments where direct public access is permitted
+- **AND** the primary remedy tells the developer to run `liftoff upgrade --check` and then `liftoff upgrade`
+- **AND** it retains an exact manual npm command for unsupported installation origins or explicit recovery
 
 #### Scenario: Configured managed mirror is stale
 - **WHEN** a developer's configured npm mirror exposes an older Liftoff version than the authoritative registry lookup
 - **THEN** doctor does not claim the running CLI is current based on the configured mirror
+- **AND** the remedy states that self-upgrade remains blocked until the approved mirror exposes the canonical target
 - **AND** doctor does not modify npm configuration or perform an automatic update
 
 #### Scenario: Drift warning line
 - **WHEN** doctor runs in a project with four reconcilable differences
 - **THEN** the output contains one warning stating four updates are available and naming `liftoff update`
+- **AND** it does not describe project drift as a CLI self-upgrade
 
 #### Scenario: Offline doctor preserves local version diagnostics
 - **WHEN** doctor runs without network access
@@ -228,3 +230,34 @@ The system SHALL check the preview Code Apps plugin only when the Power Apps man
 #### Scenario: Plugin preference is disabled
 - **WHEN** the Power Apps manifest records the plugin preference disabled
 - **THEN** doctor omits Code Apps plugin checks
+
+### Requirement: Doctor validates locked dependency readiness
+The system SHALL use the supported-stack baseline and explicit workload identity to check that every expected dependency manifest and lock pair exists, agrees on project identity, and can be consumed without mutation. Doctor SHALL remain read-only and SHALL report missing, stale, malformed, or mismatched metadata with the exact frozen install or repair command.
+
+#### Scenario: Check a locked Python project
+- **WHEN** doctor runs inside a Python project with `pyproject.toml` and `uv.lock`
+- **THEN** it verifies the expected lock is present and reports `uv sync --frozen` as the dependency command
+- **AND** it does not run `uv lock` or change either file
+
+#### Scenario: Check npm and Go metadata
+- **WHEN** doctor runs inside a Node.js, frontend, Power Apps, or Go project
+- **THEN** it validates the explicit package-lock or module-checksum pair applicable to that workload
+- **AND** it omits unrelated ecosystem checks
+
+#### Scenario: Lock metadata is missing
+- **WHEN** an expected lockfile or checksum file is absent
+- **THEN** doctor reports a failure naming the missing path and baseline-owned dependency set
+- **AND** it does not report dependency readiness as successful
+
+#### Scenario: Check paths on Windows
+- **WHEN** doctor resolves dependency files in a project on Windows
+- **THEN** it uses the same explicit path-part definitions as generation
+- **AND** produces the same logical check identifiers as macOS and Linux
+
+### Requirement: Doctor reports baseline identity without resolving it
+Doctor SHALL report the current Liftoff supported-stack baseline identity and applicable runtime constraints from packaged state. It MAY perform the existing bounded Liftoff CLI freshness lookup, but SHALL NOT contact dependency registries to replace or rewrite the project's baseline.
+
+#### Scenario: Run doctor offline
+- **WHEN** dependency registries are unavailable
+- **THEN** doctor still reports the packaged baseline and completes every local check
+- **AND** it does not classify the project as upgraded from cached or speculative registry data

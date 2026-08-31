@@ -2,7 +2,13 @@ import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { buildProjectPlan, loadConfigOptions, mergeOptions, PlanValidationError } from '../src/planner.js';
+import {
+  buildProjectPlan,
+  loadConfigOptions,
+  mergeOptions,
+  PlanValidationError,
+  projectPlanEntries
+} from '../src/planner.js';
 
 describe('planner', () => {
   it('builds a default Azure OpenSpec plan', () => {
@@ -18,7 +24,12 @@ describe('planner', () => {
     expect(plan.approvedStack).toContain('PydanticAI');
     expect(plan.agents.map((agent) => agent.id)).toEqual(['github-copilot']);
     expect(plan.defaultAgent).toBeUndefined();
-    expect(plan.framework.version).toBe('1.6.0');
+    expect(plan.framework.version).toBe('1.11.0');
+    expect(plan.governanceProfile).toMatchObject({
+      id: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      default: true
+    });
   });
 
   it.each([
@@ -125,6 +136,39 @@ describe('planner', () => {
     expect(merged.includeFrontend).toBe(true);
   });
 
+  it('supports explicit governance opt-out and rejects unknown profiles', () => {
+    const disabled = buildProjectPlan({
+      projectName: 'Ungoverned',
+      pattern: 'rag',
+      cloud: 'azure',
+      governanceProfile: 'none'
+    }, { requireProjectName: true });
+    expect(disabled.governanceProfile.id).toBe('none');
+    expect(projectPlanEntries(disabled)).toContainEqual({
+      label: 'Repository governance',
+      value: 'Disabled; no local handoff or remote action'
+    });
+    expect(() => buildProjectPlan({
+      projectName: 'Unknown Governance',
+      pattern: 'rag',
+      cloud: 'azure',
+      governanceProfile: 'enterprise-theatre'
+    }, { requireProjectName: true })).toThrow(
+      /Unknown repository governance profile.*single-maintainer-gitflow, none/
+    );
+  });
+
+  it('merges governance configuration only when an override is defined', () => {
+    expect(mergeOptions(
+      { governanceProfile: 'none' },
+      { yes: true }
+    ).governanceProfile).toBe('none');
+    expect(mergeOptions(
+      { governanceProfile: 'none' },
+      { governanceProfile: 'single-maintainer-gitflow' }
+    ).governanceProfile).toBe('single-maintainer-gitflow');
+  });
+
   it('canonicalizes multiple selected agents and records a Spec Kit default', () => {
     const plan = buildProjectPlan({
       projectName: 'Multi Agent',
@@ -137,7 +181,7 @@ describe('planner', () => {
 
     expect(plan.agents.map((agent) => agent.id)).toEqual(['github-copilot', 'claude']);
     expect(plan.defaultAgent?.id).toBe('claude');
-    expect(plan.framework.version).toBe('0.14.1');
+    expect(plan.framework.version).toBe('1.0.1');
   });
 
   it('requires a Spec Kit default for multiple agents', () => {
@@ -179,15 +223,22 @@ describe('planner', () => {
       await writeFile(path.join(root, 'valid.json'), JSON.stringify({
         agents: ['claude-code', 'copilot'],
         specWorkflow: 'spec-kit',
-        defaultAgent: 'claude'
+        defaultAgent: 'claude',
+        governanceProfile: 'none'
       }));
       expect(await loadConfigOptions('valid.json', root)).toMatchObject({
         agents: ['github-copilot', 'claude'],
-        defaultAgent: 'claude'
+        defaultAgent: 'claude',
+        governanceProfile: 'none'
       });
 
       await writeFile(path.join(root, 'invalid.json'), JSON.stringify({ force: true }));
       await expect(loadConfigOptions('invalid.json', root)).rejects.toThrow(/Unknown configuration field: force/);
+      await writeFile(path.join(root, 'bad-governance.json'), JSON.stringify({
+        governanceProfile: 'unknown'
+      }));
+      await expect(loadConfigOptions('bad-governance.json', root)).rejects
+        .toThrow(/governanceProfile has unsupported value/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

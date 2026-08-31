@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import {
   cp,
   lstat,
@@ -93,6 +93,25 @@ import { scanDefaults, scanLegacyProject } from './scan.js';
 import { hasDrift, reconcileProject } from './reconcile.js';
 import type { ReconcileEntry } from './reconcile.js';
 import { compareSemver } from './semver.js';
+import {
+  checkConfiguredRegistryTarget,
+  runSelfUpgrade,
+  selfUpgradeExitCode,
+  selfUpgradeRemedy,
+  selfUpgradeSummary,
+  type ConfiguredRegistryTargetLookup,
+  type SelfUpgradeExecutor,
+  type SelfUpgradeResult
+} from './self-upgrade.js';
+import {
+  canonicalManualInstallCommand,
+  canonicalNpmRegistry,
+} from './package-identity.js';
+import {
+  lookupStableRelease,
+  type StableRelease
+} from './stable-release.js';
+import { supportedStack } from './supported-stack.js';
 import { buildArtifacts, buildManifest, partitionGeneratedArtifacts } from './templates.js';
 import {
   PresentationSession,
@@ -124,7 +143,11 @@ export interface CommandContext {
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
   stdin?: Readable;
+  env?: NodeJS.ProcessEnv;
   runner?: CommandRunner;
+  selfUpgrade?: SelfUpgradeExecutor;
+  stableReleaseLookup?: () => Promise<StableRelease>;
+  configuredRegistryTargetLookup?: ConfiguredRegistryTargetLookup;
   terminal?: Pick<
     PresentationSessionOptions,
     'columns' | 'color' | 'snapshot' | 'env' | 'layout' | 'normalize'
@@ -140,6 +163,7 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
   const jsonMode = !helpRequested && (
     parsed.command === 'doctor' ||
     parsed.command === 'update' ||
+    parsed.command === 'upgrade' ||
     parsed.command === 'validate'
   ) &&
     readBooleanFlag(parsed.flags, 'json') === true;
@@ -182,6 +206,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return await validateCommand(parsed, executionContext);
       case 'update':
         return await updateCommand(parsed, executionContext);
+      case 'upgrade':
+        return await upgradeCommand(parsed, executionContext);
       case 'migrate':
         return await migrateCommand(parsed, executionContext);
       case 'doctor':
@@ -356,7 +382,10 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
       ),
       ...readiness.pluginProbes.map((probe) =>
         `Code Apps plugin for ${probe.agent.label}: ${probe.state}`
-      )
+      ),
+      plan.governanceProfile.id === 'none'
+        ? 'Repository governance: disabled'
+        : `Repository governance: ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}; local handoff generated, live activation deferred`
     ]);
     if (readiness.deferred.length > 0) {
       presentation.bullets('Deferred advisory checks', readiness.deferred);
@@ -370,7 +399,13 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
       [
         { label: 'Target', value: target.root },
         { label: 'Spec workflow', value: plan.specWorkflow.label },
-        { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') }
+        { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+        {
+          label: 'Repository governance',
+          value: plan.governanceProfile.id === 'none'
+            ? 'Disabled'
+            : 'Handoff generated; commit and push before read-only Phase 0'
+        }
       ],
       `liftoff validate ${JSON.stringify(target.root)}`
     );
@@ -1299,14 +1334,17 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   }
   if (plan.workload === 'power-apps-code-app' && recordedWorkload.kind === 'power-apps-code-app') {
     const recordedStarter = recordedWorkload.starter;
+    const starterBaseline = supportedStack.upstreams['power-apps-code-app'];
     if (
-      plan.starter.repository !== recordedStarter.repository ||
-      plan.starter.path !== recordedStarter.path ||
-      plan.starter.commit !== recordedStarter.commit
+      plan.starter.repository !== starterBaseline.repository ||
+      plan.starter.path !== starterBaseline.path ||
+      recordedStarter.repository !== starterBaseline.repository ||
+      recordedStarter.path !== starterBaseline.path ||
+      !starterBaseline.compatibleSourceCommits.includes(recordedStarter.commit)
     ) {
       presentation.error(
-        'The Power Apps starter repository, path, or commit differs from the recorded immutable source.',
-        'Restore the recorded source identity or initialize a fresh project.'
+        'The Power Apps starter repository, path, or commit is not represented by this Liftoff release catalog.',
+        'Restore the recorded source identity or use a Liftoff version that catalogs the transition.'
       );
       return 1;
     }
@@ -1350,13 +1388,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     return 1;
   }
 
-  const render = buildArtifacts(plan);
+  const renderPlan = manifest.framework.state === 'legacy'
+    ? { ...plan, agents: [], defaultAgent: undefined }
+    : plan;
+  const render = buildArtifacts(renderPlan);
   const updateSnapshots = check
     ? []
     : await captureUpdateSnapshots(projectRoot, manifest, render, initialUpdateSnapshots);
   const entries = await reconcileProject(manifest, render, projectRoot);
   const summary = summarizeEntries(entries);
-  const manifestUpgradePending = manifest.artifactVersion !== 4;
+  const manifestUpgradePending = manifest.artifactVersion !== 5;
+  const starterUpgradePending =
+    plan.workload === 'power-apps-code-app' &&
+    recordedWorkload.kind === 'power-apps-code-app' &&
+    recordedWorkload.starter.commit !== plan.starter.commit;
   const nonDurableNames = new Set(
     render
       .filter((artifact) => artifact.category === 'seed' || artifact.category === 'framework')
@@ -1365,7 +1410,10 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const manifestOwnershipCleanupPending = manifest.artifacts.some((artifact) =>
     nonDurableNames.has(artifact.logicalName)
   ) || manifestHadFilteredLegacySeedOwnership(manifest);
-  const manifestRewritePending = manifestUpgradePending || manifestOwnershipCleanupPending;
+  const manifestRewritePending =
+    manifestUpgradePending ||
+    manifestOwnershipCleanupPending ||
+    starterUpgradePending;
   const drift = hasDrift(entries) || manifestRewritePending;
   const visible = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash);
 
@@ -1445,9 +1493,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       }
     }
     const manifestMaintenance = [
-      manifestUpgradePending ? 'upgrade liftoff.manifest.json to schema v4' : undefined,
+      manifestUpgradePending ? 'upgrade liftoff.manifest.json to schema v5' : undefined,
       manifestOwnershipCleanupPending
         ? 'remove obsolete seed or framework entries from durable manifest ownership'
+        : undefined,
+      starterUpgradePending
+        ? `record the current packaged Power Apps starter ${plan.starter.commit}`
         : undefined
     ].filter((item): item is string => item !== undefined);
     if (manifestMaintenance.length > 0) {
@@ -1538,6 +1589,11 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
   const oldByName = new Map(manifest.artifacts.map((artifact) => [artifact.logicalName, artifact]));
   const skippedByName = new Map(skipped.map((entry) => [entry.logicalName, entry]));
+  const hasUnrecordedGovernanceConflict = skipped.some((entry) =>
+    entry.status === 'conflict' &&
+    entry.rendered?.category === 'governance' &&
+    !oldByName.has(entry.logicalName)
+  );
   const nextManifest = buildManifest(
     plan,
     render.filter((artifact) => artifact.logicalName !== 'manifest'),
@@ -1550,6 +1606,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     nextManifest.project.defaultAgent = manifest.project.defaultAgent;
   } else {
     delete nextManifest.project.defaultAgent;
+  }
+  if (
+    hasUnrecordedGovernanceConflict &&
+    nextManifest.governance.profile !== 'none'
+  ) {
+    nextManifest.governance.state = 'handoff-partial';
   }
   nextManifest.artifacts = nextManifest.artifacts.flatMap((artifact) => {
     // config is user-owned after create: carry the recorded entry forward untouched
@@ -1567,7 +1629,14 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   });
   for (const entry of entries) {
     if (entry.status === 'orphan') {
-      nextManifest.artifacts.push(oldByName.get(entry.logicalName)!);
+      const previous = oldByName.get(entry.logicalName)!;
+      if (
+        plan.governanceProfile.id === 'none' &&
+        previous.category === 'governance'
+      ) {
+        continue;
+      }
+      nextManifest.artifacts.push(previous);
     }
   }
   mutations.push({
@@ -1624,6 +1693,106 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   return 0;
 }
 
+function renderSelfUpgradeResult(
+  value: SelfUpgradeResult,
+  presentation: PresentationSession
+): void {
+  const details = [
+    { label: 'Current CLI', value: value.currentVersion },
+    ...('targetVersion' in value && value.targetVersion
+      ? [{ label: 'Canonical target', value: value.targetVersion }]
+      : []),
+    ...('registryKind' in value && value.registryKind
+      ? [{ label: 'Delivery registry', value: value.registryKind }]
+      : [])
+  ];
+  presentation.definitions('CLI upgrade result', details);
+  switch (value.status) {
+    case 'current':
+      presentation.status('success', 'CLI is current', selfUpgradeSummary(value));
+      return;
+    case 'update-available':
+      presentation.status('warning', 'CLI update available', selfUpgradeSummary(value));
+      presentation.command('liftoff upgrade');
+      return;
+    case 'upgraded':
+      presentation.completion(
+        'Liftoff CLI upgraded',
+        selfUpgradeSummary(value),
+        [{ label: 'Installed version', value: value.targetVersion }],
+        'liftoff update --check'
+      );
+      return;
+    case 'blocked':
+    case 'failed': {
+      presentation.status(
+        value.status === 'blocked' ? 'warning' : 'error',
+        value.status === 'blocked' ? 'CLI upgrade blocked' : 'CLI upgrade failed',
+        selfUpgradeSummary(value)
+      );
+      const remedy = selfUpgradeRemedy(value);
+      if (remedy) {
+        presentation.remedy(remedy);
+      }
+      return;
+    }
+    default: {
+      const exhaustive: never = value;
+      throw new Error(`Unhandled self-upgrade result: ${String(exhaustive)}`);
+    }
+  }
+}
+
+async function upgradeCommand(
+  parsed: ParsedArgs,
+  context: ExecutionContext
+): Promise<number> {
+  const mode = readBooleanFlag(parsed.flags, 'check') === true ? 'check' : 'apply';
+  const json = readBooleanFlag(parsed.flags, 'json') === true;
+  if (!json) {
+    context.presentation.commandIdentity(
+      'upgrade',
+      'Replace the supported global Liftoff CLI installation'
+    );
+  }
+  const execute = context.selfUpgrade ?? ((request) =>
+    runSelfUpgrade(request, {
+      environment: context.env ?? process.env
+    }));
+  let value: SelfUpgradeResult;
+  try {
+    value = await execute({
+      mode,
+      currentVersion: liftoffVersion,
+      stdout: context.stdout,
+      stderr: context.stderr,
+      json,
+      ...(!json
+        ? {
+            onStage: (stage: Parameters<NonNullable<Parameters<typeof runSelfUpgrade>[0]['onStage']>>[0], detail?: string) =>
+              context.presentation.stage(stage, detail),
+            onInstallCommand: (command: Parameters<NonNullable<Parameters<typeof runSelfUpgrade>[0]['onInstallCommand']>>[0]) =>
+              context.presentation.command(formatCommand(command))
+          }
+        : {})
+    });
+  } catch {
+    value = {
+      schemaVersion: 1,
+      mode,
+      status: 'failed',
+      currentVersion: liftoffVersion,
+      reasonCode: 'verification_failed'
+    };
+  }
+  if (json) {
+    context.presentation.rawStdout(`${JSON.stringify(value, null, 2)}\n`);
+  } else {
+    renderSelfUpgradeResult(value, context.presentation);
+  }
+  return selfUpgradeExitCode(value);
+}
+
 interface DoctorCheck {
   id?: string;
   label: string;
@@ -1664,6 +1833,11 @@ function versionedBinaryCheck(
 }
 
 function pythonRuntime(): { command: string; versionArgs: string[]; commandArgs: string[] } | undefined {
+  const [major, minor] = (
+    supportedStack.runtimes.python.minimumVersion ??
+    supportedStack.runtimes.python.version
+  ).split('.');
+  const minimum: readonly [number, number] = [Number(major), Number(minor)];
   const candidates = process.platform === 'win32'
     ? [
       { command: 'py', versionArgs: ['-3', '--version'], commandArgs: ['-3'] },
@@ -1675,7 +1849,13 @@ function pythonRuntime(): { command: string; versionArgs: string[]; commandArgs:
       { command: 'python', versionArgs: ['--version'], commandArgs: [] }
     ];
   return candidates.find((candidate) =>
-    versionedBinaryCheck('python', candidate.command, candidate.versionArgs, [3, 12], 'install Python 3.12 or newer').severity === 'ok'
+    versionedBinaryCheck(
+      'python',
+      candidate.command,
+      candidate.versionArgs,
+      minimum,
+      `install Python ${major}.${minor} or newer`
+    ).severity === 'ok'
   ) ?? candidates.find((candidate) => binaryPresent(candidate.command));
 }
 
@@ -1810,6 +1990,38 @@ async function frameworkDoctorChecks(
 }
 
 function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorCheck {
+  const requiredMetadata: Record<ApiStackId, string[]> = {
+    'python-fastapi': ['backend/pyproject.toml', 'backend/uv.lock'],
+    'node-fastify': ['backend/package.json', 'backend/package-lock.json'],
+    'go-huma': ['backend/go.mod', 'backend/go.sum']
+  };
+  const missingMetadata = requiredMetadata[apiStack].find(
+    (relativePath) => !existsSync(path.join(projectRoot, ...relativePath.split('/')))
+  );
+  if (missingMetadata) {
+    return {
+      label: `${apiStack} project`,
+      severity: 'fail',
+      detail: `missing locked dependency metadata: ${missingMetadata}`,
+      remedy: `restore ${missingMetadata} or run liftoff update`
+    };
+  }
+  if (apiStack === 'python-fastapi') {
+    const pyproject = readFileSync(path.join(projectRoot, 'backend', 'pyproject.toml'), 'utf8');
+    const lock = readFileSync(path.join(projectRoot, 'backend', 'uv.lock'), 'utf8');
+    const projectName = pyproject.match(/^\s*name\s*=\s*"([^"]+)"/m)?.[1];
+    const lockedProjectName = lock.match(
+      /\[\[package\]\]\s+name\s*=\s*"([^"]+)"\s+version\s*=\s*"[^"]+"\s+source\s*=\s*\{\s*editable\s*=\s*"\."\s*\}/m
+    )?.[1];
+    if (!projectName || lockedProjectName !== projectName) {
+      return {
+        label: `${apiStack} project`,
+        severity: 'fail',
+        detail: 'pyproject.toml and uv.lock do not identify the same project',
+        remedy: 'restore backend/pyproject.toml and backend/uv.lock or run liftoff update'
+      };
+    }
+  }
   let result: { status: number | null; stdout: string; stderr: string };
   switch (apiStack) {
     case 'python-fastapi':
@@ -1909,39 +2121,39 @@ async function cloudLayer(cloud: string, runner: CommandRunner): Promise<DoctorL
   return { title: `Cloud - ${cloud}`, checks };
 }
 
-async function lookupLatestPublishedVersion(): Promise<string | undefined> {
-  const registry = process.env.LIFTOFF_REGISTRY ?? 'https://registry.npmjs.org';
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 2000);
-  try {
-    const response = await fetch(`${registry}/@msn-control%2fliftoff/latest`, { signal: controller.signal });
-    if (!response.ok) {
-      return undefined;
-    }
-    const data = (await response.json()) as { version?: string };
-    return data.version;
-  } catch {
-    return undefined; // offline or unreachable: doctor stays quiet about freshness
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-async function cliLayer(): Promise<DoctorLayer> {
+async function cliLayer(
+  releaseLookup: () => Promise<StableRelease>,
+  configuredRegistryLookup: ConfiguredRegistryTargetLookup
+): Promise<DoctorLayer> {
   const checks: DoctorCheck[] = [
     { label: 'version', severity: 'ok', detail: `Liftoff ${liftoffVersion}` }
   ];
-  const latest = await lookupLatestPublishedVersion();
-  if (!latest) {
+  let latest: string;
+  try {
+    latest = (await releaseLookup()).version;
+  } catch {
     return { title: 'CLI', checks };
   }
 
   if (compareSemver(latest, liftoffVersion) > 0) {
+    let registryState: Awaited<ReturnType<ConfiguredRegistryTargetLookup>> = {
+      status: 'unavailable'
+    };
+    try {
+      registryState = await configuredRegistryLookup(latest);
+    } catch {
+      // Canonical freshness remains useful when local npm registry inspection fails.
+    }
+    const manual = canonicalManualInstallCommand(latest);
     checks.push({
       label: 'cli freshness',
       severity: 'warn',
-      detail: `Liftoff ${latest} is published, this CLI is ${liftoffVersion}`,
-      remedy: `install Liftoff ${latest} from an approved registry that exposes it; where direct public npm access is permitted: npm install -g @msn-control/liftoff@${latest} --registry=https://registry.npmjs.org`
+      detail: registryState.status === 'stale'
+        ? `Liftoff ${latest} is published, but the configured npm registry does not expose it`
+        : `Liftoff ${latest} is published, this CLI is ${liftoffVersion}`,
+      remedy: registryState.status === 'stale'
+        ? 'ask the managed registry owner to synchronize the canonical target, then run liftoff upgrade --check'
+        : `run liftoff upgrade --check, then liftoff upgrade; manual fallback where canonical npm is permitted: ${manual}`
     });
   } else {
     checks.push({
@@ -1973,10 +2185,52 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
       label: 'version',
       severity: 'warn',
       detail: `project written by Liftoff ${manifest.liftoffVersion}, CLI is ${liftoffVersion}`,
-      remedy: 'upgrade the CLI: npm install -g @msn-control/liftoff@latest'
+      remedy: `run liftoff upgrade --check, then liftoff upgrade; manual fallback: ${canonicalManualInstallCommand(manifest.liftoffVersion)}`
     });
   } else {
     checks.push({ label: 'version', severity: 'ok', detail: `generated by ${manifest.liftoffVersion}, CLI ${liftoffVersion}` });
+  }
+
+  if (manifest.governance.profile === 'unspecified') {
+    checks.push({
+      id: 'repository-governance',
+      label: 'repository governance',
+      severity: 'warn',
+      state: 'not-observable',
+      detail: 'manifest predates local governance handoff state',
+      remedy: 'run liftoff update --check to inspect default handoff adoption'
+    });
+  } else if (manifest.governance.profile === 'none') {
+    checks.push({
+      id: 'repository-governance',
+      label: 'repository governance',
+      severity: 'ok',
+      state: 'disabled',
+      detail: 'disabled; no local handoff or live-enforcement claim'
+    });
+  } else {
+    const governanceIssue = issues.find((issue) =>
+      /governance|repository-governance/i.test(issue)
+    );
+    const partialHandoff = manifest.governance.state === 'handoff-partial';
+    const severity = governanceIssue ? 'fail' : partialHandoff ? 'warn' : 'ok';
+    const detail = governanceIssue ??
+      (partialHandoff
+        ? `local ${manifest.governance.profile} policy ${manifest.governance.policyVersion} handoff is incomplete; one or more exact destinations remain outside Liftoff ownership`
+        : `local ${manifest.governance.profile} policy ${manifest.governance.policyVersion} handoff is intact; live enforcement is not inferred`);
+    const remedy = governanceIssue
+      ? 'inspect with liftoff update --check; run liftoff update for safe repairs or use --force only after reviewing exact conflicts; neither activates GitHub governance'
+      : partialHandoff
+        ? 'inspect liftoff update --check; use liftoff update --force only after reviewing each governance conflict'
+        : undefined;
+    checks.push({
+      id: 'repository-governance',
+      label: 'repository governance',
+      severity,
+      state: governanceIssue ? 'unhealthy' : manifest.governance.state,
+      detail,
+      ...(remedy ? { remedy } : {})
+    });
   }
 
   checks.push(...await frameworkDoctorChecks(projectRoot, manifest));
@@ -2153,6 +2407,7 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const cloudOverride = readStringFlag(parsed.flags, 'cloud');
   const layers: DoctorLayer[] = [];
   context.presentation.commandIdentity('doctor', 'Inspect CLI, workstation, project, runtime, and cloud readiness');
+  const runner = context.runner ?? new NodeCommandRunner();
 
   const projectRoot = await findProjectRoot(context.cwd);
   let manifest: LiftoffManifest | undefined;
@@ -2165,8 +2420,19 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     }
   }
 
-  layers.push(await cliLayer());
-  const runner = context.runner ?? new NodeCommandRunner();
+  const releaseLookup = context.stableReleaseLookup ?? (() =>
+    lookupStableRelease({
+      registry: context.env?.LIFTOFF_REGISTRY ??
+        process.env.LIFTOFF_REGISTRY ??
+        canonicalNpmRegistry
+    }));
+  const configuredRegistryLookup =
+    context.configuredRegistryTargetLookup ??
+    ((targetVersion) => checkConfiguredRegistryTarget(targetVersion, {
+      runner,
+      environment: context.env ?? process.env
+    }));
+  layers.push(await cliLayer(releaseLookup, configuredRegistryLookup));
   const requirements = manifest
     ? selectWorkstationRequirements(
         workstationSelectionFromManifest(manifest),
@@ -2322,6 +2588,7 @@ async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includePro
     agents: readListFlag(parsed.flags, 'agents'),
     defaultAgent: readStringFlag(parsed.flags, 'default-agent'),
     codeAppsPlugin: readBooleanFlag(parsed.flags, 'code-apps-plugin'),
+    governanceProfile: readStringFlag(parsed.flags, 'governance'),
     configPath,
     yes: readBooleanFlag(parsed.flags, 'yes') ?? false,
     force: readBooleanFlag(parsed.flags, 'force'),
@@ -2352,6 +2619,7 @@ function hasMissingInitInputs(options: ProjectOptions): boolean {
     projectType !== 'power-apps-code-app' && options.includeFrontend === undefined ||
     !options.specWorkflow ||
     !options.agents ||
+    !options.governanceProfile ||
     missingDefaultAgent ||
     projectType !== 'power-apps-code-app' && !options.environments;
 }

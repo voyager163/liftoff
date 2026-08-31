@@ -13,7 +13,7 @@ interface HarnessOptions {
   observedVersion?: string;
   registryUnavailable?: boolean;
   installedVersion?: string;
-  failedCommand?: 'help' | 'version' | 'plan';
+  failedCommand?: 'help' | 'upgrade-help' | 'version' | 'plan';
 }
 
 function verifierHarness(options: HarnessOptions = {}): {
@@ -45,12 +45,25 @@ function verifierHarness(options: HarnessOptions = {}): {
     },
     runNode(args) {
       state.nodeCalls.push(args);
-      const command = args[1] === 'help' ? 'help' : args[1] === '--version' ? 'version' : 'plan';
+      const command = args[1] === 'help'
+        ? 'help'
+        : args[1] === 'upgrade'
+          ? 'upgrade-help'
+          : args[1] === '--version'
+            ? 'version'
+            : 'plan';
       if (options.failedCommand === command) {
         return { status: 1, stdout: '', stderr: `${command} failed` };
       }
       if (command === 'help') {
         return { status: 0, stdout: 'Mission Control Liftoff 0.3.3\n', stderr: '' };
+      }
+      if (command === 'upgrade-help') {
+        return {
+          status: 0,
+          stdout: 'Replace the supported global npm Liftoff CLI\n--check\n',
+          stderr: ''
+        };
       }
       if (command === 'version') {
         return { status: 0, stdout: 'Liftoff 0.3.3\n', stderr: '' };
@@ -92,7 +105,12 @@ describe('published package verifier', () => {
     expect(state.npmCalls).toHaveLength(2);
     expect(state.npmCalls.every((args) => args.includes(`--registry=${CANONICAL_NPM_REGISTRY}`))).toBe(true);
     expect(state.npmCalls.find((args) => args[0] === 'install')).toContain('@msn-control/liftoff@0.3.3');
-    expect(state.nodeCalls.map((args) => args[1])).toEqual(['help', '--version', 'plan']);
+    expect(state.nodeCalls.map((args) => args[1])).toEqual([
+      'help',
+      'upgrade',
+      '--version',
+      'plan'
+    ]);
     expect(state.removed).toBe(true);
     expect(state.tempRoot && existsSync(state.tempRoot)).toBe(false);
   });
@@ -106,7 +124,11 @@ describe('published package verifier', () => {
     }, dependencies);
 
     expect(result.legacyVersionCommandAllowed).toBe(true);
-    expect(state.nodeCalls.map((args) => args[1])).toEqual(['help', 'plan']);
+    expect(state.nodeCalls.map((args) => args[1])).toEqual([
+      'help',
+      'upgrade',
+      'plan'
+    ]);
   });
 
   it('uses the Windows global node_modules layout when resolving the installed entrypoint', async () => {

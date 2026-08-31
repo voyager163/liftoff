@@ -87,19 +87,19 @@ export class ReadyInitRunner implements CommandRunner {
       }
 
       const key = `${command.executable} ${command.args.join(' ')}`;
-      if (key.startsWith('node ')) return this.result(command, { stdout: 'v22.12.0\n' });
+      if (key.startsWith('node ')) return this.result(command, { stdout: 'v24.20.0\n' });
       if (key.startsWith('python3 ') || key.startsWith('python ') || key.startsWith('py ')) {
-        return this.result(command, { stdout: 'Python 3.12.0\n' });
+        return this.result(command, { stdout: 'Python 3.14.0\n' });
       }
-      if (key.startsWith('go ')) return this.result(command, { stdout: 'go version go1.23.0 test\n' });
-      if (key.startsWith('uv ')) return this.result(command, { stdout: 'uv 0.6.0\n' });
+      if (key.startsWith('go ')) return this.result(command, { stdout: 'go version go1.27.0 test\n' });
+      if (key.startsWith('uv ')) return this.result(command, { stdout: 'uv 0.12.7\n' });
       if (key === 'docker --version') return this.result(command, { stdout: 'Docker version 27.0.0\n' });
       if (key.startsWith('docker info')) return this.result(command, { stdout: '27.0.0\n' });
-      if (key.startsWith('tofu ')) return this.result(command, { stdout: 'OpenTofu v1.9.0\n' });
+      if (key.startsWith('tofu ')) return this.result(command, { stdout: 'OpenTofu v1.12.6\n' });
       if (key.startsWith('az version')) return this.result(command, { stdout: '{"azure-cli":"2.70.0"}\n' });
       if (key.startsWith('az account show')) return this.result(command);
-      if (key === 'openspec --version') return this.result(command, { stdout: '1.6.0\n' });
-      if (key === 'specify --version') return this.result(command, { stdout: 'Specify CLI 0.14.1\n' });
+      if (key === 'openspec --version') return this.result(command, { stdout: '1.11.0\n' });
+      if (key === 'specify --version') return this.result(command, { stdout: 'Specify CLI 1.0.1\n' });
       if (key === 'copilot --version') return this.result(command, { stdout: 'GitHub Copilot CLI 1.0.0\n' });
       if (key === 'claude --version') return this.result(command, { stdout: 'Claude Code 1.0.0\n' });
       if (key === 'claude doctor') return this.result(command, { stdout: 'healthy\n' });

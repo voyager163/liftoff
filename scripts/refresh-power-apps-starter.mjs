@@ -18,9 +18,13 @@ import { fileURLToPath } from 'node:url';
 
 const REPOSITORY = 'https://github.com/microsoft/PowerAppsCodeApps';
 const STARTER_PATH = 'templates/starter';
-const NPM_VERSION = '11.7.0';
 const COMMIT_PATTERN = /^[0-9a-f]{40}$/;
 const repositoryRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const supportedStack = JSON.parse(
+  await readFile(path.join(repositoryRoot, 'assets', 'supported-stack.json'), 'utf8')
+);
+const NPM_VERSION = supportedStack.packageManagers.npm.version;
+const NODE_RELEASE_LINE = supportedStack.runtimes.node.releaseLine;
 const assetsRoot = path.join(repositoryRoot, 'assets', 'power-apps-code-app');
 const catalogsPath = path.join(repositoryRoot, 'src', 'catalogs.ts');
 const assetReadmePath = path.join(assetsRoot, 'README.md');
@@ -32,8 +36,10 @@ if (!requestedCommit || !COMMIT_PATTERN.test(requestedCommit)) {
     'Usage: npm run refresh:power-apps-starter -- <40-character immutable commit SHA>'
   );
 }
-if (process.versions.node.split('.')[0] !== '22') {
-  throw new Error('Run the Power Apps starter refresh with the supported Node.js 22 baseline.');
+if (process.versions.node.split('.')[0] !== NODE_RELEASE_LINE) {
+  throw new Error(
+    `Run the Power Apps starter refresh with the supported Node.js ${NODE_RELEASE_LINE} baseline.`
+  );
 }
 if (process.platform !== 'linux' || process.arch !== 'x64') {
   throw new Error(
@@ -274,7 +280,7 @@ try {
       sha256: sha256(upstreamLicense)
     },
     lockfile: {
-      nodeBaseline: '22.x',
+      nodeBaseline: `${NODE_RELEASE_LINE}.x`,
       npmVersion: NPM_VERSION,
       sha256: files.find((file) => file.pathParts.join('/') === 'package-lock.json').sha256
     },

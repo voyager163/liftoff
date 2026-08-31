@@ -71,7 +71,20 @@ describe('telemetry ingestion handler', () => {
       CliVersion: '0.6.1',
       Outcome: 'success'
     });
+
     expect(Object.keys(record)).toEqual(telemetryStorageFields);
+  });
+
+  it('accepts the canonical aggregate upgrade command', async () => {
+    const deps = dependencies();
+    const response = await handleTelemetryRequest(
+      request(JSON.stringify({ ...validEvent, command: 'upgrade' })),
+      deps
+    );
+    expect(response).toEqual({ status: 204 });
+    expect(deps.upload.mock.calls[0][0]).toMatchObject({
+      Command: 'upgrade'
+    });
   });
 
   it.each([

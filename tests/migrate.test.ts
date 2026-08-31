@@ -93,7 +93,12 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(4);
+    expect(manifest.artifactVersion).toBe(5);
+    expect(manifest.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-generated'
+    });
     expect(manifest.project.workload).toMatchObject({
       kind: 'genai',
       apiStack: 'python-fastapi',
@@ -102,7 +107,7 @@ describe('migrate command', () => {
     expect(manifest.framework).toMatchObject({
       state: 'initialized',
       adapter: 'openspec',
-      contractVersion: '1.6.0'
+      contractVersion: '1.11.0'
     });
 
     const after = await hashTree(source);

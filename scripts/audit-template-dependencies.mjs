@@ -5,11 +5,11 @@ import { fileURLToPath } from 'node:url';
 import spawn from 'cross-spawn';
 import {
   auditTemplateDependencyInventory,
-  canonicalNpmRegistry,
   evaluateTemplateDependencyAudits,
   formatTemplateDependencyAudit,
   formatTemplateDependencyAuditMarkdown,
   parseTemplateDependencyPolicy,
+  resolveTemplateDependencyAuditRegistry,
   TemplateDependencyPolicyError,
   templateDependencyInventory,
   templateDependencyPolicyPathParts
@@ -17,6 +17,9 @@ import {
 
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
 const auditTimeoutMs = 2 * 60_000;
+const auditRegistry = resolveTemplateDependencyAuditRegistry(
+  process.env.LIFTOFF_NPM_AUDIT_REGISTRY
+);
 
 function runNpmAudit(entry) {
   return new Promise((resolve) => {
@@ -25,7 +28,7 @@ function runNpmAudit(entry) {
       '--package-lock-only',
       '--ignore-scripts',
       '--json',
-      `--registry=${canonicalNpmRegistry}`
+      `--registry=${auditRegistry}`
     ], {
       cwd: entry.directory,
       env: process.env,
@@ -88,6 +91,7 @@ try {
   });
   const result = evaluateTemplateDependencyAudits({ auditResults, policy });
   const output = formatTemplateDependencyAudit(result);
+  process.stdout.write(`Template dependency audit registry: ${auditRegistry}\n`);
   process.stdout.write(output);
   await writeStepSummary(formatTemplateDependencyAuditMarkdown(result));
   if (!result.ok) {

@@ -14,10 +14,13 @@ import type {
   ProjectTypeId,
   RegionDefinition,
   FrameworkDefinition,
+  GovernanceProfileDefinition,
   SpecWorkflowDefinition,
   SpecWorkflowId,
   CodeAppsPluginDefinition
 } from './types.js';
+import { supportedStack } from './supported-stack.js';
+import { governancePolicyVersion } from './repository-governance.js';
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -56,9 +59,9 @@ export const projectTypes: ProjectTypeDefinition[] = [
 ];
 
 export const powerAppsCodeAppStarter: PowerAppsStarterSource = {
-  repository: 'https://github.com/microsoft/PowerAppsCodeApps',
-  path: 'templates/starter',
-  commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+  repository: supportedStack.upstreams['power-apps-code-app'].repository,
+  path: supportedStack.upstreams['power-apps-code-app'].path,
+  commit: supportedStack.upstreams['power-apps-code-app'].commit
 };
 
 export const codeAppsPlugin: CodeAppsPluginDefinition = {
@@ -283,6 +286,22 @@ export const specWorkflows: SpecWorkflowDefinition[] = [
   }
 ];
 
+export const governanceProfiles: GovernanceProfileDefinition[] = [
+  {
+    id: 'single-maintainer-gitflow',
+    label: 'Single-maintainer GitFlow',
+    description: 'Generate the versioned local repository-governance handoff; live activation is deferred.',
+    default: true,
+    policyVersion: governancePolicyVersion
+  },
+  {
+    id: 'none',
+    label: 'None',
+    description: 'Do not generate repository-governance handoff artifacts.',
+    default: false
+  }
+];
+
 export const codingAgents: CodingAgentDefinition[] = [
   {
     id: 'github-copilot',
@@ -312,10 +331,10 @@ export const frameworkDefinitions: Record<SpecWorkflowId, FrameworkDefinition> =
   openspec: {
     id: 'openspec',
     executable: 'openspec',
-    version: '1.6.0',
+    version: supportedStack.frameworks.openspec.version,
     installCommand: {
       executable: 'npm',
-      args: ['install', '-g', '@fission-ai/openspec@1.6.0']
+      args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`]
     },
     allowedRoots: ['.claude', '.github', 'openspec'],
     baseMarkers: [['openspec', 'config.yaml']],
@@ -327,10 +346,10 @@ export const frameworkDefinitions: Record<SpecWorkflowId, FrameworkDefinition> =
   'spec-kit': {
     id: 'spec-kit',
     executable: 'specify',
-    version: '0.14.1',
+    version: supportedStack.frameworks['spec-kit'].version,
     installCommand: {
       executable: 'uv',
-      args: ['tool', 'install', 'specify-cli==0.14.1']
+      args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`]
     },
     allowedRoots: ['.claude', '.github', '.specify', 'specs'],
     baseMarkers: [
@@ -367,6 +386,16 @@ export function getProvider(value: string): ProviderDefinition | undefined {
 export function getSpecWorkflow(value: string): SpecWorkflowDefinition | undefined {
   const normalized = normalize(value);
   return specWorkflows.find((workflow) => normalize(workflow.id) === normalized || normalize(workflow.label) === normalized);
+}
+
+export function getGovernanceProfile(
+  value: string
+): GovernanceProfileDefinition | undefined {
+  const normalized = normalize(value);
+  return governanceProfiles.find((profile) =>
+    normalize(profile.id) === normalized ||
+    normalize(profile.label) === normalized
+  );
 }
 
 export function getCodingAgent(value: string): CodingAgentDefinition | undefined {

@@ -64,6 +64,7 @@ export function buildSpecKitInitCommands(plan: ProjectPlan): ExternalCommand[] {
       '--here',
       '--force',
       '--ignore-agent-tools',
+      '--non-interactive',
       '--integration',
       primary.integrationIds['spec-kit'],
       ...specKitIntegrationArgs(primary)

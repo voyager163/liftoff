@@ -14,6 +14,29 @@ project dependencies. No one permission implies another.
 
 Interactive sessions ask separately at the point each permission is needed.
 
+Selecting repository governance or passing `--yes` authorizes only deterministic
+local handoff files. It never authorizes agent execution, Git mutation, GitHub
+APIs, rulesets, security configuration, deployment, monitoring, file
+replacement, machine tools, or project dependencies. Live activation begins
+only after commit, push, read-only Phase 0, and explicit plan approval.
+
+## CLI self-upgrade boundary
+
+`liftoff upgrade` is itself the narrow authorization to replace a supported
+global npm installation with one exact stable version. It accepts no project
+path, `--yes`, `--force`, tool-install, or dependency-install permission.
+`liftoff upgrade --check` is read-only and invokes no npm installation.
+
+Both modes operate from a temporary neutral directory so a project `.npmrc`
+cannot redirect machine-level discovery. Canonical npm selects the target while
+the configured registry must provide that exact release. Liftoff does not expose
+registry credentials, rewrite npm configuration, bypass a stale mirror, invoke
+`sudo` or another elevation mechanism, or touch project files.
+
+npm replacement is not a Liftoff file transaction. If npm or post-install
+verification fails, Liftoff reports an exact-version repair command and does not
+claim automatic rollback.
+
 ## Staged initialization
 
 Initialization does not write generated files directly into the destination.
@@ -77,6 +100,8 @@ Update mode is selected explicitly rather than from terminal interactivity:
 - Default update skips conflicts and lists them by portable relative path.
   After reviewing every listed overwrite, `liftoff update --force` extends the
   transaction only to those guarded conflicts.
+- Unrecorded governance conflicts remain outside manifest ownership and produce
+  `handoff-partial` until a later update safely writes or adopts every artifact.
 - Orphans are reported and left on disk for manual review.
 - Dependency definitions may be updated, but update never installs
   dependencies.

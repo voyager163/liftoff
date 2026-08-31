@@ -104,6 +104,12 @@ npm run build
 liftoff validate
 liftoff doctor
 \`\`\`
+
+## Liftoff maintenance
+
+\`liftoff upgrade --check\` and \`liftoff upgrade\` replace only a supported global Liftoff CLI installation. They do not modify this project. Use \`liftoff update --check\` and then \`liftoff update\` separately to inspect and adopt generated project changes.
+
+When repository governance is enabled, \`.liftoff/governance/README.md\` explains the local handoff and deferred post-push activation. Power Apps context does not invent a Liftoff backend, container, OpenTofu deployment, or API DAST lane.
 ${pluginGuidance}
 ## Source
 

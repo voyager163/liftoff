@@ -143,16 +143,15 @@ describe('generated standard stack smoke checks', () => {
     }
   }, 600_000);
 
-  it('installs and tests fresh Python, GenAI, and Function worker projects', async () => {
-    const pythonCommand = availableCommand(['python3', 'python']);
-    if (!pythonCommand) {
+  it('installs and tests frozen Python, GenAI, and Function worker projects', async () => {
+    const uvCommand = availableCommand(['uv']);
+    if (!uvCommand) {
       return;
     }
 
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-python-test-'));
     const standardRoot = path.join(tempRoot, 'python-api');
     const ragRoot = path.join(tempRoot, 'rag-api');
-    const virtualEnvironment = path.join(tempRoot, 'venv');
     try {
       await writeArtifacts(standardRoot, buildArtifacts(buildProjectPlan({
         projectName: 'Python Smoke',
@@ -166,29 +165,43 @@ describe('generated standard stack smoke checks', () => {
         cloud: 'azure'
       }, { requireProjectName: true })));
 
-      checkedSpawn(pythonCommand, ['-m', 'venv', virtualEnvironment], tempRoot);
-      const virtualPython = path.join(
-        virtualEnvironment,
-        process.platform === 'win32' ? 'Scripts' : 'bin',
-        process.platform === 'win32' ? 'python.exe' : 'python'
-      );
-      const functionRoot = path.join(ragRoot, 'functions', 'rag-worker');
-      for (const installArguments of [
-        ['-e', `${path.join(standardRoot, 'backend')}[test]`],
-        ['-e', `${path.join(ragRoot, 'backend')}[test]`],
-        ['-r', path.join(functionRoot, 'requirements.txt')]
-      ]) {
-        checkedSpawn(virtualPython, [
-          '-m',
-          'pip',
-          'install',
-          '--quiet',
-          '--disable-pip-version-check',
-          '--prefer-binary',
-          ...installArguments
-        ], tempRoot, process.env, 900_000);
-      }
+      const standardMetadata = await Promise.all([
+        readFile(path.join(standardRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(standardRoot, 'backend', 'uv.lock'))
+      ]);
+      checkedSpawn(uvCommand, [
+        'sync',
+        '--frozen',
+        '--project',
+        path.join(standardRoot, 'backend'),
+        '--extra',
+        'test'
+      ], tempRoot, process.env, 900_000);
+      expect(await Promise.all([
+        readFile(path.join(standardRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(standardRoot, 'backend', 'uv.lock'))
+      ])).toEqual(standardMetadata);
 
+      const genAiMetadata = await Promise.all([
+        readFile(path.join(ragRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(ragRoot, 'backend', 'uv.lock'))
+      ]);
+      checkedSpawn(uvCommand, [
+        'sync',
+        '--frozen',
+        '--project',
+        path.join(ragRoot, 'backend'),
+        '--extra',
+        'test',
+        '--extra',
+        'functions'
+      ], tempRoot, process.env, 900_000);
+      expect(await Promise.all([
+        readFile(path.join(ragRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(ragRoot, 'backend', 'uv.lock'))
+      ])).toEqual(genAiMetadata);
+
+      const functionRoot = path.join(ragRoot, 'functions', 'rag-worker');
       const testEnvironment = {
         ...process.env,
         DATABASE_URL: 'postgresql://postgres:postgres@localhost:5432/liftoff_test',
@@ -197,9 +210,35 @@ describe('generated standard stack smoke checks', () => {
         LANGFUSE_PUBLIC_KEY: '',
         LANGFUSE_SECRET_KEY: ''
       };
-      checkedSpawn(virtualPython, ['-m', 'pytest', '-q'], path.join(standardRoot, 'backend'), testEnvironment);
-      checkedSpawn(virtualPython, ['-m', 'pytest', '-q'], path.join(ragRoot, 'backend'), testEnvironment);
-      checkedSpawn(virtualPython, ['-m', 'pytest', '-q'], functionRoot, testEnvironment);
+      checkedSpawn(uvCommand, [
+        'run',
+        '--project',
+        path.join(standardRoot, 'backend'),
+        'python',
+        '-m',
+        'pytest',
+        '-q'
+      ], path.join(standardRoot, 'backend'), testEnvironment);
+      checkedSpawn(uvCommand, [
+        'run',
+        '--project',
+        path.join(ragRoot, 'backend'),
+        'python',
+        '-m',
+        'pytest',
+        '-q'
+      ], path.join(ragRoot, 'backend'), testEnvironment);
+      checkedSpawn(uvCommand, [
+        'run',
+        '--project',
+        path.join(ragRoot, 'backend'),
+        '--directory',
+        functionRoot,
+        'python',
+        '-m',
+        'pytest',
+        '-q'
+      ], functionRoot, testEnvironment);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -222,7 +261,7 @@ describe('generated standard stack smoke checks', () => {
       const backendRoot = path.join(projectRoot, 'backend');
       checkedSpawn(
         npmCommand,
-        ['install', '--no-audit', '--no-fund', '--prefer-offline'],
+        ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
         backendRoot,
         process.env,
         600_000
@@ -251,7 +290,7 @@ describe('generated standard stack smoke checks', () => {
       const frontendRoot = path.join(projectRoot, 'frontend');
       checkedSpawn(
         npmCommand,
-        ['install', '--no-audit', '--no-fund', '--prefer-offline'],
+        ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
         frontendRoot,
         process.env,
         600_000
@@ -311,6 +350,8 @@ describe('generated standard stack smoke checks', () => {
         const projectRoot = path.join(tempRoot, `project-${index}`);
         await writeArtifacts(projectRoot, buildArtifacts(plan));
         const tofuRoot = path.join(projectRoot, 'infrastructure', 'opentofu', 'azure');
+        const providerLock = path.join(tofuRoot, '.terraform.lock.hcl');
+        const providerLockBefore = await readFile(providerLock);
         checkedSpawn('tofu', ['fmt', '-check', '-recursive', '-no-color'], tofuRoot);
         const tofuEnvironment = { ...process.env, TF_IN_AUTOMATION: '1' };
         checkedSpawn(
@@ -321,6 +362,7 @@ describe('generated standard stack smoke checks', () => {
           600_000
         );
         checkedSpawn('tofu', ['validate', '-no-color'], tofuRoot, tofuEnvironment);
+        expect(await readFile(providerLock)).toEqual(providerLockBefore);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

@@ -13,15 +13,16 @@
     "check": "npm run build && npm test"
   },
   "engines": {
-    "node": ">=20.19"
+    "node": ">=24.20"
   },
   "dependencies": {
-    "@azure/identity": "4.13.1",
+    "@azure/identity": "4.13.2",
     "@azure/monitor-ingestion": "1.2.0"
   },
   "devDependencies": {
-    "@types/node": "^20.14.10",
+    "@types/node": "^24.6.0",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.9"
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
   }
 }

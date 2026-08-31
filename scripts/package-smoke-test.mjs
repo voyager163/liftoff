@@ -4,6 +4,7 @@ import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
+import { pathToFileURL } from 'node:url';
 import {
   templateDependencyInventory,
   validateTemplateDependencyInventory
@@ -54,6 +55,16 @@ function runNpm(args, options = {}) {
   return run(process.execPath, [npmCliPath, ...args], options);
 }
 
+function firstPackResult(value) {
+  if (Array.isArray(value)) {
+    return value[0];
+  }
+  if (value && typeof value === 'object') {
+    return Object.values(value)[0];
+  }
+  return undefined;
+}
+
 function assertPackageContains(packResult, expectedPath) {
   if (!packResult.files.some((file) => file.path === expectedPath)) {
     throw new Error(`Packed package is missing ${expectedPath}`);
@@ -92,7 +103,7 @@ try {
 
   const pack = runNpm(['pack', '--json', '--pack-destination', packDirectory]);
   const packResults = JSON.parse(pack.stdout);
-  const packResult = packResults[0];
+  const packResult = firstPackResult(packResults);
   if (!packResult?.filename) {
     throw new Error('npm pack did not return a package filename');
   }
@@ -104,8 +115,10 @@ try {
     'docs/getting-started.md',
     'docs/workloads.md',
     'docs/spec-workflows-and-agents.md',
+    'docs/repository-governance.md',
     'docs/existing-repositories.md',
     'docs/prerequisites.md',
+    'docs/supported-stack.md',
     'docs/safety-and-consent.md',
     'docs/telemetry.md',
     'docs/cli-reference.md',
@@ -119,15 +132,33 @@ try {
   }
   assertPackageContains(packResult, 'dist/cli.js');
   assertPackageContains(packResult, 'dist/commands.js');
+  assertPackageContains(packResult, 'dist/package-identity.js');
+  assertPackageContains(packResult, 'dist/self-upgrade.js');
+  assertPackageContains(packResult, 'dist/stable-release.js');
   assertPackageContains(packResult, 'dist/genai-templates.js');
   assertPackageContains(packResult, 'dist/power-apps-assets.js');
   assertPackageContains(packResult, 'dist/power-apps-templates.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
+  assertPackageContains(packResult, 'dist/supported-stack.js');
+  assertPackageContains(packResult, 'assets/supported-stack.json');
+  assertPackageContains(
+    packResult,
+    'assets/governance/single-maintainer-gitflow/policy.md'
+  );
   assertPackageContains(packResult, 'assets/locks/node-backend/package.json');
   assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
   assertPackageContains(packResult, 'assets/locks/frontend/package.json');
   assertPackageContains(packResult, 'assets/locks/frontend/package-lock.json');
+  assertPackageContains(packResult, 'assets/locks/go-backend/go.mod');
+  assertPackageContains(packResult, 'assets/locks/go-backend/go.sum');
+  assertPackageContains(packResult, 'assets/locks/python-standard/pyproject.toml');
+  assertPackageContains(packResult, 'assets/locks/python-standard/uv.lock');
+  assertPackageContains(packResult, 'assets/locks/python-genai/pyproject.toml');
+  assertPackageContains(packResult, 'assets/locks/python-genai/uv.lock');
+  assertPackageContains(packResult, 'assets/locks/python-genai/function-requirements.txt');
+  assertPackageContains(packResult, 'assets/locks/opentofu-azure/versions.tf');
+  assertPackageContains(packResult, 'assets/locks/opentofu-azure/.terraform.lock.hcl');
   assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/catalog.json');
   assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/UPSTREAM_LICENSE.txt');
   assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/packaged/gitignore');
@@ -210,6 +241,74 @@ try {
     updateHelp.stdout.includes('--apply')
   ) {
     throw new Error('Installed liftoff update help did not expose the imperative mode matrix');
+  }
+
+  const upgradeHelp = run(process.execPath, [liftoffEntrypoint, 'upgrade', '--help'], {
+    cwd: outsideDirectory,
+    env: npmEnv
+  });
+  if (
+    !upgradeHelp.stdout.includes('supported global npm Liftoff CLI') ||
+    !upgradeHelp.stdout.includes('--check') ||
+    !upgradeHelp.stdout.includes('--json') ||
+    !upgradeHelp.stdout.includes('project templates use update separately')
+  ) {
+    throw new Error('Installed liftoff upgrade help did not expose the self-upgrade contract');
+  }
+
+  const isolatedGlobalRoot = process.platform === 'win32'
+    ? path.join(installPrefix, 'node_modules')
+    : path.join(installPrefix, 'lib', 'node_modules');
+  const injectedCheckScript = `
+    import { runSelfUpgrade } from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist', 'self-upgrade.js')).href
+    )};
+    const calls = [];
+    const result = await runSelfUpgrade({
+      mode: 'check',
+      currentVersion: ${JSON.stringify(packResult.version)},
+      stdout: process.stdout,
+      stderr: process.stderr,
+      json: true,
+      runningPackageRoot: ${JSON.stringify(installedPackageRoot)}
+    }, {
+      runner: {
+        run: async (command) => {
+          calls.push(command);
+          if (command.args.join(' ') !== 'root --global') {
+            throw new Error('Injected current-version check attempted an unexpected command.');
+          }
+          return {
+            command,
+            displayCommand: command.executable + ' ' + command.args.join(' '),
+            status: 0,
+            signal: null,
+            stdout: ${JSON.stringify(`${isolatedGlobalRoot}\n`)},
+            stderr: '',
+            timedOut: false
+          };
+        }
+      },
+      lookupStableRelease: async () => ({
+        name: '@msn-control/liftoff',
+        version: ${JSON.stringify(packResult.version)}
+      }),
+      environment: { LIFTOFF_TELEMETRY: '0' }
+    });
+    if (result.status !== 'current' || calls.length !== 1) process.exit(1);
+    process.stdout.write(JSON.stringify(result));
+  `;
+  const injectedCheck = run(
+    process.execPath,
+    ['--input-type=module', '-e', injectedCheckScript],
+    { cwd: outsideDirectory, env: npmEnv }
+  );
+  const injectedResult = JSON.parse(injectedCheck.stdout);
+  if (
+    injectedResult.status !== 'current' ||
+    injectedResult.currentVersion !== packResult.version
+  ) {
+    throw new Error('Installed self-upgrade module failed its isolated injected check');
   }
 
   const removedApply = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--apply'], {

@@ -4,6 +4,8 @@ import {
   canonicalizeCodingAgents,
   codingAgents,
   frameworkDefinitions,
+  governanceProfiles,
+  getGovernanceProfile,
   getApiStack,
   getDefaultRegion,
   patterns,
@@ -69,9 +71,23 @@ describe('catalogs', () => {
       .toEqual(['github-copilot', 'claude']);
   });
 
+  it('keeps append-only repository governance profiles with the enabled default', () => {
+    expect(governanceProfiles.map((profile) => profile.id)).toEqual([
+      'single-maintainer-gitflow',
+      'none'
+    ]);
+    expect(governanceProfiles.find((profile) => profile.default)).toMatchObject({
+      id: 'single-maintainer-gitflow',
+      policyVersion: '1'
+    });
+    expect(getGovernanceProfile('Single Maintainer GitFlow')?.id)
+      .toBe('single-maintainer-gitflow');
+    expect(getGovernanceProfile('none')?.id).toBe('none');
+  });
+
   it('pins the tested framework contracts and generated markers', () => {
-    expect(frameworkDefinitions.openspec.version).toBe('1.6.0');
-    expect(frameworkDefinitions['spec-kit'].version).toBe('0.14.1');
+    expect(frameworkDefinitions.openspec.version).toBe('1.11.0');
+    expect(frameworkDefinitions['spec-kit'].version).toBe('1.0.1');
     expect(frameworkDefinitions.openspec.agentMarkers.claude[0]).toEqual([
       '.claude', 'skills', 'openspec-apply-change', 'SKILL.md'
     ]);
@@ -79,8 +95,8 @@ describe('catalogs', () => {
   });
 
   it('centralizes platform installers and runtime floors', () => {
-    expect(workstationRequirementCatalog.node.minimumVersion).toBe('20.19.0');
-    expect(workstationRequirementCatalog.python.minimumVersion).toBe('3.11.0');
+    expect(workstationRequirementCatalog.node.minimumVersion).toBe('24.20.0');
+    expect(workstationRequirementCatalog.python.minimumVersion).toBe('3.14.0');
     expect(workstationRequirementCatalog.openspec.install.linux?.manager).toBe('npm');
     expect(workstationRequirementCatalog['spec-kit'].install.linux?.manager).toBe('uv');
     expect(workstationRequirementCatalog.claude.install.win32?.command.args).toContain('Anthropic.ClaudeCode');

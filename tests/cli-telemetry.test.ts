@@ -43,6 +43,7 @@ describe('CLI telemetry integration', () => {
         telemetry: hooks,
         execute: async () => expectedCode
       });
+
       expect(code).toBe(expectedCode);
       expect(hooks.afterCommand).toHaveBeenCalledWith(
         expect.objectContaining({ command: 'update' }),
@@ -50,6 +51,48 @@ describe('CLI telemetry integration', () => {
         expect.any(Object)
       );
     }
+  });
+
+  it('tracks only the aggregate upgrade command for every exit state', async () => {
+    for (const expectedCode of [0, 1, 2]) {
+      const hooks = telemetryHooks();
+      const code = await runCli({
+        argv: ['upgrade', '--check'],
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        telemetry: hooks,
+        execute: async () => expectedCode
+      });
+      expect(code).toBe(expectedCode);
+      expect(hooks.afterCommand).toHaveBeenCalledTimes(1);
+      expect(hooks.afterCommand).toHaveBeenCalledWith(
+        expect.objectContaining({
+          command: 'upgrade',
+          flags: { check: true }
+        }),
+        expectedCode,
+        expect.any(Object)
+      );
+    }
+  });
+
+  it('suppresses disclosure and tracking when replacement verification disables telemetry', async () => {
+    const hooks = telemetryHooks();
+    hooks.beforeCommand.mockResolvedValue(false);
+    const code = await runCli({
+      argv: ['--version'],
+      env: {
+        CI: 'true',
+        DO_NOT_TRACK: '1',
+        LIFTOFF_TELEMETRY: '0'
+      },
+      stdout: new CaptureStream(),
+      stderr: new CaptureStream(),
+      telemetry: hooks,
+      execute: async () => 0
+    });
+    expect(code).toBe(0);
+    expect(hooks.afterCommand).not.toHaveBeenCalled();
   });
 
   it('does not run telemetry when parsing fails', async () => {
