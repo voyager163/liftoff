@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare
+Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -329,7 +329,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -530,7 +530,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local      │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
