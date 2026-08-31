@@ -183,7 +183,7 @@ describe('Git-aware init targeting', () => {
         );
         await expect(applyMergePreflight(preflight!, {
           onBeforeMutation: async (entry) => {
-            if (entry.relativePath === 'src/App.tsx') {
+            if (entry.relativePath === path.join('src', 'App.tsx')) {
               throw new Error('injected Power Apps failure');
             }
           }
