@@ -545,15 +545,16 @@ export async function buildMergePreflight(
   const fileMap = new Map(files.map((file) => [file.relativePath, file]));
   const state = await captureTreeState(area.root);
   const entries: PreflightEntry[] = [];
-  for (const [relativePath, staged] of state) {
+  for (const [portableRelativePath, staged] of state) {
     if (staged.type !== 'file' && staged.type !== 'directory') {
       continue;
     }
+    const relativePath = path.join(...staged.pathParts);
     const destination = await inspectDestination(targetRoot, staged.pathParts);
-    const stagedFile = fileMap.get(relativePath);
+    const stagedFile = fileMap.get(portableRelativePath);
     let action: PreflightAction;
     let detail: string;
-    if (relativePath === 'liftoff.manifest.json' && destination.type !== 'missing') {
+    if (portableRelativePath === 'liftoff.manifest.json' && destination.type !== 'missing') {
       action = 'blocked';
       detail = 'an existing Liftoff manifest must be handled with liftoff update';
     } else if (destination.type === 'missing') {
@@ -589,7 +590,9 @@ export async function buildMergePreflight(
       })
     }));
   }
-  entries.sort((left, right) => comparePortable(left.relativePath, right.relativePath));
+  entries.sort((left, right) =>
+    comparePortable(portablePath(left.pathParts), portablePath(right.pathParts))
+  );
   await assertTargetRootSnapshot(targetRootSnapshot, targetRoot);
   const frozenEntries = Object.freeze(entries);
   return Object.freeze({
