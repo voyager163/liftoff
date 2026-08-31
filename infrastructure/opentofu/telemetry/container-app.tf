@@ -88,8 +88,8 @@ resource "azurerm_container_app_environment" "telemetry" {
   name                = local.container_environment
   resource_group_name = azurerm_resource_group.telemetry.name
   location            = var.location
-  logs_destination    = ""
-  tags                = local.common_tags
+
+  tags = local.common_tags
 
   lifecycle {
     ignore_changes = [workload_profile]

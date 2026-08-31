@@ -189,6 +189,21 @@ export class InteractivePrompter {
     const includeFrontend = projectType === 'power-apps-code-app'
       ? initial.includeFrontend
       : initial.includeFrontend ?? await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
+    const codeAppsPlugin = projectType === 'power-apps-code-app'
+      ? initial.codeAppsPlugin ??
+        await this.confirm('Include Microsoft Code Apps preview plugin guidance?', false)
+      : initial.codeAppsPlugin;
+    const selectedEnvironments = projectType === 'power-apps-code-app'
+      ? initial.environments
+      : initial.environments ?? await this.askEnvironments();
+    const governanceProfile = initial.governanceProfile ?? (
+      await this.confirm(
+        'Generate the single-maintainer GitFlow governance handoff?',
+        true
+      )
+        ? 'single-maintainer-gitflow'
+        : 'none'
+    );
     const specWorkflow = initial.specWorkflow ?? await this.choose(
       'Select spec-driven workflow',
       specWorkflows.map((workflow) => ({
@@ -213,14 +228,6 @@ export class InteractivePrompter {
       : specWorkflow === 'spec-kit'
         ? normalizedAgents[0]
         : undefined;
-    const codeAppsPlugin = projectType === 'power-apps-code-app'
-      ? initial.codeAppsPlugin ??
-        await this.confirm('Include Microsoft Code Apps preview plugin guidance?', false)
-      : initial.codeAppsPlugin;
-    const selectedEnvironments = projectType === 'power-apps-code-app'
-      ? initial.environments
-      : initial.environments ?? await this.askEnvironments();
-
     return {
       ...initial,
       projectName,
@@ -230,6 +237,7 @@ export class InteractivePrompter {
       cloud,
       region,
       includeFrontend,
+      governanceProfile,
       specWorkflow,
       agents: normalizedAgents,
       ...(defaultAgent ? { defaultAgent } : {}),

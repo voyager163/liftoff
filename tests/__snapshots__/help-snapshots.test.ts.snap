@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare
+Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -87,9 +87,11 @@ migrate  Adopt an existing project
 Maintenance
 ───────────
 Command   Description
-────────  ──────────────────────────────────────────
+────────  ──────────────────────────────────────────────────────────────────────
 validate  Validate a generated project manifest
 update    Reconcile a project with current templates
+upgrade   Replace the supported global npm Liftoff CLI; project templates use
+          update separately
 doctor    Check local and project readiness
 
 Reference
@@ -153,6 +155,8 @@ Option                                   Description
                                          (default: copilot)
 --default-agent <agent>                  Primary agent for Spec Kit when
                                          multiple agents are selected
+--governance <profile>                   Repository-governance profile (default:
+                                         single-maintainer-gitflow)
 --code-apps-plugin /                     Request the Microsoft Code Apps agent
 --no-code-apps-plugin                    plugin (Preview) (default: false)
 
@@ -255,6 +259,36 @@ Option  Description
 "
 `;
 
+exports[`complete help screens > snapshots compact upgrade command help 1`] = `
+"LIFTOFF / UPGRADE
+Replace the supported global npm Liftoff CLI; project templates use update
+separately
+
+Usage
+─────
+liftoff upgrade
+
+Command options
+───────────────
+Option   Description
+───────  ────────────────────────────────────────────────────────────────────
+--check  Check for an installable stable CLI update without changing anything
+
+Output options
+──────────────
+Option  Description
+──────  ───────────────────────────────────────
+--json  Emit one machine-readable result object
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots plain dev command help 1`] = `
 "LIFTOFF / DEV - Print Docker Compose helper commands
 
@@ -295,7 +329,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -312,6 +346,7 @@ Command: migrate | Description: Adopt an existing project
 Maintenance
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Reconcile a project with current templates
+Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
 Command: doctor | Description: Check local and project readiness
 
 Reference
@@ -353,6 +388,7 @@ Framework options
 Option: --spec <framework> | Description: Spec-driven framework (default: openspec)
 Option: --agents <list> | Description: Comma-separated AI coding agents (default: copilot)
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
+Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
 Option: --code-apps-plugin / --no-code-apps-plugin | Description: Request the Microsoft Code Apps agent plugin (Preview) (default: false)
 
 Consent options
@@ -409,6 +445,24 @@ Option: --force | Description: Replace modified managed files
 
 Output options
 Option: --json | Description: Emit machine-readable JSON
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain upgrade command help 1`] = `
+"LIFTOFF / UPGRADE - Replace the supported global npm Liftoff CLI; project templates use update separately
+
+Usage
+Usage: liftoff upgrade
+
+Command options
+Option: --check | Description: Check for an installable stable CLI update without changing anything
+
+Output options
+Option: --json | Description: Emit one machine-readable result object
 
 General options
 Option: --help | Description: Show command-specific help
@@ -476,7 +530,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local      │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -497,9 +551,11 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
 │ Command   Description                                                                        │
-│ ────────  ──────────────────────────────────────────                                         │
+│ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ validate  Validate a generated project manifest                                              │
 │ update    Reconcile a project with current templates                                         │
+│ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
+│           separately                                                                         │
 │ doctor    Check local and project readiness                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
@@ -554,6 +610,8 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │                                             copilot)                                         │
 │ --default-agent <agent>                     Primary agent for Spec Kit when multiple agents  │
 │                                             are selected                                     │
+│ --governance <profile>                      Repository-governance profile (default:          │
+│                                             single-maintainer-gitflow)                       │
 │ --code-apps-plugin / --no-code-apps-plugin  Request the Microsoft Code Apps agent plugin     │
 │                                             (Preview) (default: false)                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -633,6 +691,31 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 │ Option  Description                                                                          │
 │ ──────  ──────────────────────────                                                           │
 │ --json  Emit machine-readable JSON                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich upgrade command help 1`] = `
+"┌─ LIFTOFF / UPGRADE ──────────────────────────────────────────────────────────────────────────┐
+│ Replace the supported global npm Liftoff CLI; project templates use update separately        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff upgrade                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option   Description                                                                         │
+│ ───────  ────────────────────────────────────────────────────────────────────                │
+│ --check  Check for an installable stable CLI update without changing anything                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ───────────────────────────────────────                                              │
+│ --json  Emit one machine-readable result object                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

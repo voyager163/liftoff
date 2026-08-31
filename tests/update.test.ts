@@ -9,6 +9,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
 import { compareSemver } from '../src/semver.js';
+import { governanceArtifactPaths } from '../src/repository-governance.js';
+import type { CommandRunner } from '../src/process-runner.js';
 import {
   CaptureStream,
   scriptedTtyInput,
@@ -65,10 +67,19 @@ async function powerAppsFixtureProject(codeAppsPlugin = false): Promise<string> 
   return projectRoot;
 }
 
-async function run(args: string[], cwd: string): Promise<{ code: number; out: string; err: string }> {
+async function run(
+  args: string[],
+  cwd: string,
+  runner?: CommandRunner
+): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr });
+  const code = await runCommand(parseArgs(args), {
+    cwd,
+    stdout,
+    stderr,
+    ...(runner ? { runner } : {})
+  });
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
@@ -163,7 +174,55 @@ async function downgradeApiManifest(
     if (artifactVersion === 2) {
       delete manifest.framework;
     }
+    delete manifest.governance;
+    manifest.artifacts = manifest.artifacts.filter(
+      (artifact: { category: string }) => artifact.category !== 'governance'
+    );
   });
+  await Promise.all([
+    rm(path.join(projectRoot, '.liftoff', 'governance'), {
+      recursive: true,
+      force: true
+    }),
+    rm(path.join(
+      projectRoot,
+      '.github',
+      'prompts',
+      'liftoff-repository-governance.prompt.md'
+    ), { force: true }),
+    rm(path.join(
+      projectRoot,
+      '.claude',
+      'commands',
+      'liftoff-repository-governance.md'
+    ), { force: true })
+  ]);
+}
+
+async function removeGovernanceMetadata(
+  projectRoot: string,
+  options: {
+    removeFiles?: boolean;
+    removeConfigField?: boolean;
+  } = {}
+): Promise<void> {
+  await editJson(path.join(projectRoot, 'liftoff.manifest.json'), (manifest) => {
+    manifest.artifactVersion = 4;
+    delete manifest.governance;
+    manifest.artifacts = manifest.artifacts.filter(
+      (artifact: { category: string }) => artifact.category !== 'governance'
+    );
+  });
+  if (options.removeConfigField !== false) {
+    await editJson(path.join(projectRoot, 'liftoff.config.json'), (config) => {
+      delete config.governanceProfile;
+    });
+  }
+  if (options.removeFiles !== false) {
+    await Promise.all(Object.values(governanceArtifactPaths).map((pathParts) =>
+      rm(path.join(projectRoot, ...pathParts), { force: true })
+    ));
+  }
 }
 
 describe('semver comparison', () => {
@@ -194,6 +253,222 @@ describe('update command', () => {
     const result = await run(['update', '--check'], root);
     expect(result.code).toBe(0);
     expect(result.out).toContain('No drift');
+  });
+
+  it('previews and safely adopts default governance into an existing v4 project', async () => {
+    const root = await fixtureProject();
+    await removeGovernanceMetadata(root);
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const configPath = path.join(root, 'liftoff.config.json');
+    const manifestBefore = await readFile(manifestPath);
+    const configBefore = await readFile(configPath);
+
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    for (const artifactPath of [
+      '.liftoff/governance/policy.md',
+      '.liftoff/governance/context.json',
+      '.liftoff/governance/README.md',
+      '.github/prompts/liftoff-repository-governance.prompt.md'
+    ]) {
+      expect(check.out).toContain(artifactPath);
+    }
+    expect(await readFile(manifestPath)).toEqual(manifestBefore);
+    expect(await readFile(configPath)).toEqual(configBefore);
+
+    const apply = await run(['update'], root);
+    expect(apply.code).toBe(0);
+    expect(await readFile(configPath)).toEqual(configBefore);
+    for (const pathParts of [
+      governanceArtifactPaths.policy,
+      governanceArtifactPaths.context,
+      governanceArtifactPaths.guide,
+      governanceArtifactPaths['github-copilot']
+    ]) {
+      await expect(access(path.join(root, ...pathParts))).resolves.toBeUndefined();
+    }
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    expect(manifest).toMatchObject({
+      artifactVersion: 5,
+      governance: {
+        profile: 'single-maintainer-gitflow',
+        policyVersion: '1',
+        state: 'handoff-generated'
+      }
+    });
+  });
+
+  it('adopts identical governance files and preserves an unrecorded launcher conflict', async () => {
+    const identicalRoot = await fixtureProject();
+    await removeGovernanceMetadata(identicalRoot, { removeFiles: false });
+    const contextPath = path.join(identicalRoot, ...governanceArtifactPaths.context);
+    const contextBefore = await readFile(contextPath);
+    expect((await run(['update'], identicalRoot)).code).toBe(0);
+    expect(await readFile(contextPath)).toEqual(contextBefore);
+
+    const conflictRoot = await fixtureProject();
+    await removeGovernanceMetadata(conflictRoot);
+    const launcherPath = path.join(
+      conflictRoot,
+      ...governanceArtifactPaths['github-copilot']
+    );
+    await mkdir(path.dirname(launcherPath), { recursive: true });
+    await writeFile(launcherPath, 'developer launcher\n');
+    const apply = await run(['update'], conflictRoot);
+    expect(apply.code).toBe(0);
+    expect(apply.out).toContain('skipped');
+    expect(apply.out).toContain('liftoff-repository-governance.prompt.md');
+    expect(await readFile(launcherPath, 'utf8')).toBe('developer launcher\n');
+    await expect(access(path.join(conflictRoot, ...governanceArtifactPaths.policy)))
+      .resolves.toBeUndefined();
+    const partialManifest = JSON.parse(
+      await readFile(path.join(conflictRoot, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(partialManifest.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-partial'
+    });
+    expect(partialManifest.artifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName === 'repository-governance-copilot-launcher'
+    )).toBe(false);
+    expect((await run(['validate'], conflictRoot)).code).toBe(0);
+    const nextCheck = await run(['update', '--check'], conflictRoot);
+    expect(nextCheck.code).toBe(2);
+    expect(nextCheck.out).toContain('conflict');
+
+    await rm(launcherPath);
+    expect((await run(['update'], conflictRoot)).code).toBe(0);
+    const resolvedManifest = JSON.parse(
+      await readFile(path.join(conflictRoot, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(resolvedManifest.governance.state).toBe('handoff-generated');
+    expect(resolvedManifest.artifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName === 'repository-governance-copilot-launcher'
+    )).toBe(true);
+    expect((await run(['validate'], conflictRoot)).code).toBe(0);
+  });
+
+  it('never turns a preserved unrecorded governance conflict into an orphan', async () => {
+    const root = await fixtureProject();
+    await removeGovernanceMetadata(root);
+    const launcherPath = path.join(
+      root,
+      ...governanceArtifactPaths['github-copilot']
+    );
+    await mkdir(path.dirname(launcherPath), { recursive: true });
+    await writeFile(launcherPath, 'developer launcher\n');
+    expect((await run(['update'], root)).code).toBe(0);
+
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.governanceProfile = 'none';
+    });
+    const disabled = await run(['update'], root);
+    expect(disabled.code).toBe(0);
+    expect(disabled.out).not.toContain(
+      '.github/prompts/liftoff-repository-governance.prompt.md'
+    );
+    expect(await readFile(launcherPath, 'utf8')).toBe('developer launcher\n');
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.governance).toEqual({
+      profile: 'none',
+      state: 'disabled'
+    });
+    expect(manifest.artifacts.some((artifact: { category: string }) =>
+      artifact.category === 'governance'
+    )).toBe(false);
+  });
+
+  it('turns disabled managed governance files into preserved one-time orphans', async () => {
+    const root = await fixtureProject();
+    const policyPath = path.join(root, ...governanceArtifactPaths.policy);
+    const policyBefore = await readFile(policyPath);
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.governanceProfile = 'none';
+    });
+
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('orphan');
+    expect(check.out).toContain('.liftoff/governance/policy.md');
+
+    const apply = await run(['update'], root);
+    expect(apply.code).toBe(0);
+    expect(await readFile(policyPath)).toEqual(policyBefore);
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.governance).toEqual({
+      profile: 'none',
+      state: 'disabled'
+    });
+    expect(manifest.artifacts.some((artifact: { category: string }) =>
+      artifact.category === 'governance'
+    )).toBe(false);
+    expect((await run(['update', '--check'], root)).code).toBe(0);
+  });
+
+  it('never owns activation evidence or recreates an agent governance change', async () => {
+    const root = await fixtureProject();
+    const activationPath = path.join(root, 'governance', 'activation-baseline.json');
+    const changePath = path.join(
+      root,
+      'openspec',
+      'changes',
+      'repository-governance',
+      'proposal.md'
+    );
+    await mkdir(path.dirname(activationPath), { recursive: true });
+    await mkdir(path.dirname(changePath), { recursive: true });
+    await writeFile(activationPath, '{"main":"abc"}\n');
+    await writeFile(changePath, 'user-owned\n');
+
+    expect((await run(['update'], root)).code).toBe(0);
+    expect(await readFile(activationPath, 'utf8')).toBe('{"main":"abc"}\n');
+    expect(await readFile(changePath, 'utf8')).toBe('user-owned\n');
+    await rm(changePath);
+    expect((await run(['update'], root)).code).toBe(0);
+    await expect(access(changePath)).rejects.toThrow();
+  });
+
+  it('adopts governance identically offline and with an authenticated gh executable', async () => {
+    const offlineRoot = await fixtureProject();
+    const authenticatedRoot = await fixtureProject();
+    await removeGovernanceMetadata(offlineRoot);
+    await removeGovernanceMetadata(authenticatedRoot);
+    const offlineRunner = {
+      run: vi.fn(async () => {
+        throw new Error('offline runner must not be called');
+      })
+    };
+    const authenticatedRunner = {
+      run: vi.fn(async () => {
+        throw new Error('authenticated gh runner must not be called');
+      })
+    };
+
+    const offline = await run(['update'], offlineRoot, offlineRunner);
+    const authenticated = await run(
+      ['update'],
+      authenticatedRoot,
+      authenticatedRunner
+    );
+    expect(offline.code).toBe(0);
+    expect(authenticated.code).toBe(0);
+    expect(offlineRunner.run).not.toHaveBeenCalled();
+    expect(authenticatedRunner.run).not.toHaveBeenCalled();
+    expect(await readFile(
+      path.join(offlineRoot, ...governanceArtifactPaths.policy)
+    )).toEqual(await readFile(
+      path.join(authenticatedRoot, ...governanceArtifactPaths.policy)
+    ));
+    expect(await readFile(
+      path.join(offlineRoot, ...governanceArtifactPaths.context)
+    )).toEqual(await readFile(
+      path.join(authenticatedRoot, ...governanceArtifactPaths.context)
+    ));
   });
 
   it('reconciles a clean Power Apps starter entirely from packaged offline assets', async () => {
@@ -321,7 +596,7 @@ describe('update command', () => {
       expect(result.code).toBe(0);
       expect(result.out).not.toContain('authorization');
       expect(await readFile(path.join(root, 'Dockerfile'), 'utf8')).not.toBe(previous);
-      expect(await readFile(manifestPath, 'utf8')).toContain('"artifactVersion": 4');
+      expect(await readFile(manifestPath, 'utf8')).toContain('"artifactVersion": 5');
     });
 
     it('rejects incompatible check and force modes during argument parsing', () => {
@@ -622,7 +897,7 @@ describe('update command', () => {
 
     const sourceResult = await run(['update'], sourceRoot);
     expect(sourceResult.code).toBe(1);
-    expect(sourceResult.err).toContain('recorded immutable source');
+    expect(sourceResult.err).toContain('not represented by this Liftoff release catalog');
     expect(sourceResult.err).not.toContain('Unable to read src/App.tsx');
 
     const typeRoot = await powerAppsFixtureProject();
@@ -638,6 +913,26 @@ describe('update command', () => {
     const typeResult = await run(['update'], typeRoot);
     expect(typeResult.code).toBe(1);
     expect(typeResult.err).toContain('Project type changes');
+  });
+
+  it('upgrades a cataloged previous Power Apps starter identity without fetching upstream', async () => {
+    const root = await powerAppsFixtureProject();
+    await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+      manifest.project.workload.starter.commit =
+        '22e5c0bc0ef7ba516d9ad6281d6b0c4eb114df55';
+    });
+
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('record the current packaged Power Apps starter');
+
+    const apply = await run(['update'], root);
+    expect(apply.code).toBe(0);
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.project.workload.starter.commit)
+      .toBe('3438c352483e40982f6c5c0fc36fd71f8e7adbbb');
   });
 
   it('reconciles the Power Apps plugin preference through guidance and manifest intent only', async () => {
@@ -1157,7 +1452,7 @@ describe('update command', () => {
     expect(stackResult.err).toContain('liftoff migrate');
   });
 
-  it('upgrades schema-v3 manifests to schema v4 on apply', async () => {
+  it('upgrades schema-v3 manifests to schema v5 on apply', async () => {
     const root = await fixtureProject();
     await downgradeApiManifest(root, 3);
     const manifestPath = path.join(root, 'liftoff.manifest.json');
@@ -1173,12 +1468,17 @@ describe('update command', () => {
       await readFile(manifestPath, 'utf8')
     );
     expect(manifest).toMatchObject({
-      artifactVersion: 4,
+      artifactVersion: 5,
       project: {
         workload: { kind: 'genai', apiStack: 'python-fastapi' },
         agents: ['github-copilot']
       },
-      framework: { state: 'initialized', adapter: 'openspec' }
+      framework: { state: 'initialized', adapter: 'openspec' },
+      governance: {
+        profile: 'single-maintainer-gitflow',
+        policyVersion: '1',
+        state: 'handoff-generated'
+      }
     });
   });
 
@@ -1208,12 +1508,17 @@ describe('update command', () => {
     expect(apply.code).toBe(0);
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(manifest).toMatchObject({
-      artifactVersion: 4,
+      artifactVersion: 5,
       project: {
         workload: { kind: 'genai', apiStack: 'python-fastapi' },
         agents: []
       },
-      framework: { state: 'legacy', adapter: 'openspec' }
+      framework: { state: 'legacy', adapter: 'openspec' },
+      governance: {
+        profile: 'single-maintainer-gitflow',
+        policyVersion: '1',
+        state: 'handoff-generated'
+      }
     });
     expect(manifest.artifacts.find(
       (artifact: { logicalName: string }) => artifact.logicalName === 'root-readme'

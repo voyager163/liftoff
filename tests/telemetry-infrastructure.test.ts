@@ -66,7 +66,7 @@ describe('telemetry OpenTofu privacy contract', () => {
     expect(source).toContain('name                    = "LiftoffCommandEvents_CL"');
     expect(source).toContain('retention_in_days       = 180');
     expect(source).toContain('total_retention_in_days = 180');
-    expect(source).toContain('local_authentication_enabled = false');
+    expect(source).toMatch(/local_authentication_enabled\s*=\s*false/);
     expect(source).toContain(
       'transform_kql = "source | project TimeGenerated, EventName, SchemaVersion, Command, CliVersion, Outcome"'
     );
@@ -105,7 +105,7 @@ describe('telemetry OpenTofu privacy contract', () => {
 
   it('keeps one smallest warm replica with strict scale and probe bounds', async () => {
     const target = await tofuFile('container-app.tf');
-    expect(target).toContain('logs_destination    = ""');
+    expect(target).not.toContain('logs_destination');
     expect(target).not.toContain('log_analytics_workspace_id');
     expect(target).toContain('ignore_changes = [workload_profile]');
     expect(target).toContain('allow_insecure_connections = false');
@@ -157,9 +157,9 @@ describe('telemetry OpenTofu privacy contract', () => {
       tofuFile('outputs.tf'),
       tofuFile('variables.tf')
     ]);
-    expect(source).toContain('version = "4.81.0"');
-    expect(source).toContain('version = "2.11.0"');
-    expect(source).toContain('version = "0.14.0"');
+    expect(source).toContain('version = "5.3.0"');
+    expect(source).toContain('version = "2.12.0"');
+    expect(source).toContain('version = "0.14.1"');
     expect(source).toMatch(/daily_quota_gb\s*=\s*var\.daily_quota_gb/);
     expect(outputs).not.toMatch(/key|secret|token|connection/i);
     expect(outputs).toContain('azurerm_container_app.telemetry.ingress[0].fqdn');

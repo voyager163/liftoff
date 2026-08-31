@@ -1,9 +1,26 @@
+import { readFileSync } from 'node:fs';
 import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 export const canonicalNpmRegistry = 'https://registry.npmjs.org';
+const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
+const supportedStack = JSON.parse(
+  readFileSync(path.join(repositoryRoot, 'assets', 'supported-stack.json'), 'utf8')
+);
+const powerAppsCommit = supportedStack.upstreams['power-apps-code-app'].commit;
 
 export const templateDependencyInventory = Object.freeze([
+  Object.freeze({
+    id: 'liftoff-cli',
+    label: 'Liftoff CLI',
+    pathParts: Object.freeze(['package-lock.json'])
+  }),
+  Object.freeze({
+    id: 'telemetry-ingest',
+    label: 'Telemetry ingest service',
+    pathParts: Object.freeze(['services', 'telemetry-ingest', 'package-lock.json'])
+  }),
   Object.freeze({
     id: 'node-backend',
     label: 'Standard Node.js backend',
@@ -20,7 +37,7 @@ export const templateDependencyInventory = Object.freeze([
     pathParts: Object.freeze([
       'assets',
       'power-apps-code-app',
-      '3438c352483e40982f6c5c0fc36fd71f8e7adbbb',
+      powerAppsCommit,
       'starter',
       'package-lock.json'
     ])
@@ -77,6 +94,32 @@ export class TemplateDependencyAuditError extends Error {
     super(message);
     this.name = 'TemplateDependencyAuditError';
   }
+}
+
+export function resolveTemplateDependencyAuditRegistry(value) {
+  if (value === undefined || value.trim() === '') {
+    return canonicalNpmRegistry;
+  }
+  let parsed;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new TemplateDependencyAuditError(
+      'LIFTOFF_NPM_AUDIT_REGISTRY must be an absolute HTTPS URL.'
+    );
+  }
+  if (
+    parsed.protocol !== 'https:' ||
+    parsed.username ||
+    parsed.password ||
+    parsed.search ||
+    parsed.hash
+  ) {
+    throw new TemplateDependencyAuditError(
+      'LIFTOFF_NPM_AUDIT_REGISTRY must be a credential-free HTTPS URL without query parameters or fragments.'
+    );
+  }
+  return parsed.toString();
 }
 
 function isRecord(value) {
@@ -283,7 +326,9 @@ export async function validateTemplateDependencyInventory(
     const packagedLocks = [...new Set(packagedPaths)]
       .filter((filePath) => filePath.startsWith('assets/') && filePath.endsWith('/package-lock.json'))
       .sort();
-    const inventoryLocks = [...paths].sort();
+    const inventoryLocks = [...paths]
+      .filter((filePath) => filePath.startsWith('assets/'))
+      .sort();
     if (JSON.stringify(packagedLocks) !== JSON.stringify(inventoryLocks)) {
       const missing = packagedLocks.filter((filePath) => !paths.has(filePath));
       const absent = inventoryLocks.filter((filePath) => !packagedLocks.includes(filePath));
@@ -876,8 +921,12 @@ export function parseNpmAuditCommandResult(entry, commandResult) {
     );
   }
   if (!isRecord(auditReport) || auditReport.auditReportVersion !== 2) {
-    const detail = isRecord(auditReport) && isRecord(auditReport.error)
-      ? auditReport.error.summary ?? auditReport.error.message
+    const detail = isRecord(auditReport)
+      ? [
+          auditReport.message,
+          isRecord(auditReport.error) ? auditReport.error.summary : undefined,
+          isRecord(auditReport.error) ? auditReport.error.message : undefined
+        ].find((value) => typeof value === 'string' && value.trim() !== '')
       : undefined;
     throw new TemplateDependencyAuditError(
       `${entry.label} npm audit returned an unsupported response${detail ? `: ${detail}` : '.'}`

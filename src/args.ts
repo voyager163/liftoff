@@ -86,6 +86,12 @@ const projectFlags = {
   spec: valueFlag('Spec-driven framework', 'Framework', 'framework', 'openspec'),
   agents: valueFlag('Comma-separated AI coding agents', 'Framework', 'list', 'copilot'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),
+  governance: valueFlag(
+    'Repository-governance profile',
+    'Framework',
+    'profile',
+    'single-maintainer-gitflow'
+  ),
   'code-apps-plugin': booleanFlag('Request the Microsoft Code Apps agent plugin (Preview)', 'Framework', true, 'false'),
   config: valueFlag('Load deterministic project options from JSON', 'Project', 'file')
 } as const;
@@ -174,6 +180,17 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     },
     arguments: [{ syntax: 'project-path', description: 'Generated project to reconcile' }],
     defaultMaxPositionals: 1
+  },
+  upgrade: {
+    description: 'Replace the supported global npm Liftoff CLI; project templates use update separately',
+    usage: '',
+    group: 'Maintenance',
+    flags: {
+      check: booleanFlag('Check for an installable stable CLI update without changing anything', 'Command'),
+      json: booleanFlag('Emit one machine-readable result object', 'Output'),
+      ...helpFlag
+    },
+    defaultMaxPositionals: 0
   },
   migrate: {
     description: 'Adopt an existing project',

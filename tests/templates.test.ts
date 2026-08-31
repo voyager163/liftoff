@@ -43,8 +43,9 @@ describe('templates and filesystem', () => {
       artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
 
     expect(contentAt('backend/orchestration/model_config.py')).toContain('from pydantic_ai import Agent');
-    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==1.107.1');
-    expect(contentAt('backend/pyproject.toml')).toContain('langfuse==2.60.10');
+    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==2.33.0');
+    expect(contentAt('backend/pyproject.toml')).toContain('langfuse==4.14.4');
+    expect(contentAt('backend/uv.lock')).toContain('name = "functional-rag-backend"');
     expect(contentAt('backend/orchestration/model_config.py')).toContain('PYDANTIC_AI_MODEL is required');
     expect(contentAt('backend/orchestration/agents/rag_agent.py')).toContain('build_agent_runner');
     expect(contentAt('backend/orchestration/agents/rag_agent.py')).toContain('selected_tracer.trace');
@@ -60,8 +61,13 @@ describe('templates and filesystem', () => {
     const tracing = contentAt('backend/observability/tracing.py');
     expect(tracing).toContain('class DisabledTracer');
     expect(tracing).toContain('trace_id=None');
-    expect(tracing).toContain('self._client.trace');
+    expect(tracing).toContain('self._client.start_observation');
     expect(contentAt('backend/tests/test_tracing.py')).toContain('trace.trace_id is None');
+    const compose = contentAt('docker-compose.yml');
+    expect(compose).toContain('langfuse-worker:');
+    expect(compose).toContain('clickhouse:');
+    expect(compose).toContain('minio:');
+    expect(compose).toContain('LANGFUSE_S3_EVENT_UPLOAD_BUCKET');
   });
 
   it('generates Azure Functions workers only for worker-enabled patterns', () => {
@@ -159,7 +165,8 @@ describe('templates and filesystem', () => {
       expect(allContent).not.toContain('Langfuse');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === '.env.example')?.content).toContain('DATABASE_URL=postgresql:');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === '.env.example')?.content).not.toContain('******');
-      expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content).toContain('postgres:16-alpine');
+      expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content)
+        .toContain('postgres:18-alpine@sha256:');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content).not.toContain('profiles:');
     }
   });
@@ -274,6 +281,8 @@ describe('templates and filesystem', () => {
     expect(contentAt('src/App.tsx')).not.toContain('Claims Workspace');
     expect(contentAt('README.md')).toContain('npx --no-install power-apps init');
     expect(contentAt('README.md')).toContain('GitHub Copilot, Claude Code');
+    expect(contentAt('README.md')).toContain('liftoff upgrade --check');
+    expect(contentAt('README.md')).toContain('liftoff update --check');
     expect(contentAt('THIRD_PARTY_NOTICES.md')).toContain(
       '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
     );
@@ -382,6 +391,8 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('VITE_API_BASE_URL');
     expect(readme).toContain('immediately applies safe managed changes');
     expect(readme).toContain('liftoff update --check --json');
+    expect(readme).toContain('liftoff upgrade --check');
+    expect(readme).toMatch(/does not inspect or modify this project/);
     expect(readme).toContain('conflicts are skipped by default');
     expect(readme).toContain('liftoff update --force');
     expect(readme).not.toContain('liftoff update --apply');
@@ -390,7 +401,7 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('retains no backup after a successful overwrite');
     expect(readme).toContain('symlink-escaping manifest paths');
     expect(readme).toContain('liftoff <command> --help');
-    expect(readme).toContain('Workflow: OpenSpec 1.6.0');
+    expect(readme).toContain('Workflow: OpenSpec 1.11.0');
     expect(readme).toContain('AI coding agents: GitHub Copilot');
     expect(readme).toContain('Framework ownership:');
     expect(readme).toContain('Deferred tools:');
@@ -418,7 +429,7 @@ describe('templates and filesystem', () => {
     }, { requireProjectName: true }));
     const readme = artifacts.find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
 
-    expect(readme).toContain('Workflow: Spec Kit 0.14.1');
+    expect(readme).toContain('Workflow: Spec Kit 1.0.1');
     expect(readme).toContain('GitHub Copilot, Claude Code (default integration)');
     expect(readme).toContain('go mod download');
   });
@@ -444,7 +455,7 @@ describe('templates and filesystem', () => {
     )?.content ?? '';
     expect(devTfvars).toContain('function_worker_queue_name');
     expect(devTfvars).toMatch(/resource_suffix\s+= "[a-f0-9]{12}"/);
-    expect(compose).toContain('pgvector/pgvector:pg16');
+    expect(compose).toContain('pgvector/pgvector:pg18@sha256:');
     expect(compose).toContain('azurite');
     expect(compose).toContain('mailpit');
     expect(compose).toContain('profiles:');

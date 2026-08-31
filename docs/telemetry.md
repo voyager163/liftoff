@@ -24,6 +24,12 @@ code. It is an exit-status class, not an error diagnosis. Help requests are
 recorded as `help`, and rejected input that never resolves to a recognized
 command is not recorded.
 
+`upgrade` is recorded only as the aggregate command value. Check/apply mode,
+target or configured-registry details, installation origin, paths, npm output,
+reason codes, and errors are not added. The replacement binary's verification
+process runs with telemetry and disclosure disabled, so at most the originally
+invoked parent command emits an event.
+
 Liftoff does **not** send:
 
 - An installation, user, device, or session identifier.

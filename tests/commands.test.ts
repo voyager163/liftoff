@@ -101,6 +101,19 @@ describe('commands', () => {
     expect(() => parseArgs(['plan', '--api', 'node', '--api', 'go'])).toThrow(/provided only once/);
   });
 
+  it('parses repository governance profiles as a common project option', () => {
+    expect(parseArgs([
+      'init',
+      'app',
+      '--governance',
+      'single-maintainer-gitflow'
+    ]).flags.governance).toBe('single-maintainer-gitflow');
+    expect(parseArgs([
+      'plan',
+      '--governance=none'
+    ]).flags.governance).toBe('none');
+  });
+
   it('rejects unknown flags, options, subcommands, and extra positionals', () => {
     expect(() => parseArgs(['init', 'app', '--cluod', 'aws'])).toThrow(/Unknown flag.*--cluod/);
     expect(() => parseArgs(['plan', '-f'])).toThrow(/Unknown option/);
@@ -226,7 +239,11 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Artifacts');
       expect(stdout.text()).toContain('Coding agents: GitHub Copilot');
       expect(stdout.text()).toContain('Workstation requirements');
-      expect(stdout.text()).toContain('OpenSpec: exactly 1.6.0 [blocking]');
+      expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 1');
+      expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
+      expect(stdout.text()).toContain('repository-governance-policy');
+      expect(stdout.text()).toContain('live enforcement');
       expect(await readdir(tempRoot)).toEqual([]);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -268,8 +285,9 @@ describe('commands', () => {
       expect(stdout.text()).toContain('power-apps-package');
       expect(stdout.text()).toContain('Project dependencies: npm ci');
       expect(stdout.text()).toContain('npx --no-install power-apps init');
-      expect(stdout.text()).toContain('Node.js: 22.12.0+ [blocking]');
+      expect(stdout.text()).toContain('Node.js: 24.20.0+ [blocking]');
       expect(stdout.text()).toContain('Code Apps plugin: Not requested');
+      expect(stdout.text()).toContain('repository-governance-context');
       expect(stdout.text()).not.toContain('docker-compose');
       expect(stdout.text()).not.toContain('opentofu');
       expect(stderr.text()).toBe('');
@@ -490,9 +508,12 @@ describe('commands', () => {
 
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Initialized claims-api');
+      expect(stdout.text()).toContain('local handoff generated, live activation deferred');
+      expect(stdout.text()).toContain('Handoff generated; commit and push before read-only Phase 0');
       expect(stdout.text()).toContain('Deferred project dependencies');
       expect(runner.calls.some((command) => command.args.includes('venv'))).toBe(false);
       expect(await readdir(path.join(tempRoot, 'claims-api'))).toContain('liftoff.manifest.json');
+      expect(runner.calls.some((command) => command.executable === 'gh')).toBe(false);
 
       const validateCode = await runCommand(parseArgs(['validate', 'claims-api']), { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream() });
       expect(validateCode).toBe(0);

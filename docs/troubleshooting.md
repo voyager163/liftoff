@@ -7,6 +7,8 @@ Check the canonical release:
 ```bash
 npm view @msn-control/liftoff@latest version --registry=https://registry.npmjs.org
 liftoff --version
+liftoff upgrade --check
+liftoff upgrade
 ```
 
 Versions before 0.3.0 are unsupported.
@@ -15,6 +17,40 @@ If a managed registry exposes an older version, stop onboarding and ask the
 mirror owner to synchronize or approve the release. Liftoff does not modify
 `.npmrc`. A successful installation of an older mirrored package does not make
 that version supported.
+
+Versions that predate `liftoff upgrade` require one manual global installation:
+
+```bash
+npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+```
+
+## CLI upgrade is blocked by installation origin
+
+Automatic replacement supports only the canonical package at npm's effective
+global package root. A local dependency, `npx` cache copy, linked checkout, or
+another package-manager installation is intentionally refused. Use the manual
+global npm command shown by Liftoff; do not try to make upgrade replace a
+different installation.
+
+## CLI upgrade is blocked by a stale managed registry
+
+Canonical npm defines the exact stable target, but Liftoff installs through the
+configured registry. Ask the mirror owner to synchronize or approve that exact
+version, then rerun `liftoff upgrade --check`. Liftoff does not edit `.npmrc` or
+bypass the managed registry.
+
+## npm cannot write the global prefix
+
+Liftoff does not run `sudo`, request administrator credentials, or retry with
+elevation. Resolve Node/npm global-prefix ownership through the approved
+workstation process, then rerun the command.
+
+## CLI replacement verification fails
+
+Liftoff reports `failed` even when npm exited zero unless installed metadata and
+`liftoff --version` both match the exact target. Run the exact-version global npm
+repair command printed in the result. Liftoff does not claim an automatic
+rollback after npm may have partially changed global state.
 
 ## An installed tool is still reported missing
 
@@ -80,6 +116,48 @@ hand-edited unsafe path.
 
 Commit or copy local work before overwriting. Transaction rollback protects a
 failed update, but Liftoff keeps no backup after success.
+
+For a new governance policy or launcher conflict, review that exact local file
+before considering `liftoff update --force`; do not delete it or activate remote
+governance merely to make update pass. The schema-v5 manifest records
+`handoff-partial` and no ownership entry for each preserved unrecorded conflict.
+Run `liftoff update --check` to inspect the remaining paths. Once each path is
+absent or matches the current artifact, plain update promotes the handoff to
+`handoff-generated`. Setting `governanceProfile` to `none` turns previously
+managed handoff files into preserved orphans rather than deleting them; an
+unrecorded conflicting file remains user-owned and is not reported as an
+orphan.
+
+## Governance handoff exists but nothing is enforced
+
+That is the expected initial state. The manifest records `handoff-generated`,
+not active enforcement. Commit and push the repository, run the selected-agent
+launcher, review its read-only Phase 0 report, and explicitly approve the plan
+before the agent creates a governance change.
+
+Missing licenses, a private Staging runner, alert routes, parallel deployment,
+or sufficient canary traffic must be reported as blockers or inapplicable
+controls. Do not replace them with duplicate scanners or placeholder success.
+
+Do not run an older Liftoff release to reverse a completed baseline migration.
+Restore the affected generated files and `liftoff.manifest.json` through version
+control, then reinstall from the restored locks.
+
+## A frozen Python install cannot reach the package index
+
+Keep the committed `pyproject.toml` and `uv.lock` unchanged and retry the
+generated `uv sync --frozen` command when registry connectivity is restored.
+Do not regenerate the lock as a connectivity workaround.
+
+Python Dockerfiles also accept a credential-free PEP 503 mirror while retaining
+the lock's exact versions and hashes:
+
+```bash
+docker build --build-arg UV_DEFAULT_INDEX=https://packages.example.test/simple/ .
+```
+
+Do not place credentials in build arguments. Configure authenticated registries
+through an approved secret-aware build mechanism.
 
 ## Power Apps dependencies or CLI are missing
 

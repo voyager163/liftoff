@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { addGenAiExtensionArtifacts } from './genai-templates.js';
+import { assertImmutableGeneratedContainerReferences } from './container-validation.js';
 import { addPowerAppsCodeAppArtifacts } from './power-apps-templates.js';
 import {
   addStandardStackArtifacts,
@@ -17,7 +18,21 @@ import type {
 } from './types.js';
 import { liftoffVersion } from './version.js';
 import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
+import {
+  renderOpenTofuProviderLock,
+  renderOpenTofuVersions
+} from './opentofu-template-assets.js';
 import { formatCommand } from './process-runner.js';
+import { formatContainerImage, supportedStack } from './supported-stack.js';
+import {
+  buildRepositoryGovernanceArtifacts,
+  governancePolicyVersion
+} from './repository-governance.js';
+import {
+  renderFunctionRequirementsAsset,
+  renderPythonLock,
+  renderPythonPyprojectAsset
+} from './python-template-assets.js';
 import {
   workstationRequirementCatalog,
   type WorkstationRequirementId
@@ -110,10 +125,19 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
       addPowerAppsWorkloadArtifacts(add, plan);
       break;
   }
-  addGovernanceArtifacts(add, plan);
+  addSpecWorkflowArtifacts(add, plan);
+  for (const artifact of buildRepositoryGovernanceArtifacts(plan)) {
+    add(
+      artifact.logicalName,
+      artifact.category,
+      artifact.pathParts,
+      artifact.content
+    );
+  }
   if (plan.workload !== 'power-apps-code-app' && plan.includeFrontend) {
     addFrontendArtifacts(add, plan);
   }
+  assertImmutableGeneratedContainerReferences(artifacts);
 
   const manifest = buildManifest(plan, artifacts);
   artifacts.push({
@@ -212,7 +236,7 @@ export function buildManifest(
           environments: plan.environments.map((environment) => environment.id)
         };
   return {
-    artifactVersion: 4,
+    artifactVersion: 5,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -227,6 +251,16 @@ export function buildManifest(
       adapter: plan.framework.id,
       ...(frameworkState === 'initialized' ? { contractVersion: plan.framework.version } : {})
     },
+    governance: plan.governanceProfile.id === 'none'
+      ? {
+          profile: 'none',
+          state: 'disabled'
+        }
+      : {
+          profile: plan.governanceProfile.id,
+          policyVersion: governancePolicyVersion,
+          state: 'handoff-generated'
+        },
     artifacts: artifacts
       .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
       .map((artifact) => ({
@@ -252,7 +286,8 @@ function addBaseArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
     environments: plan.environments.map((environment) => environment.id),
     specWorkflow: plan.specWorkflow.id,
     agents: plan.agents.map((agent) => agent.id),
-    ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {})
+    ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
+    governanceProfile: plan.governanceProfile.id
   }, null, 2));
   add('env-example', 'configuration', ['.env.example'], renderEnvExample(plan));
   add(
@@ -273,13 +308,15 @@ function addPowerAppsProjectConfig(
     specWorkflow: plan.specWorkflow.id,
     agents: plan.agents.map((agent) => agent.id),
     ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
-    codeAppsPlugin: plan.codeAppsPlugin
+    codeAppsPlugin: plan.codeAppsPlugin,
+    governanceProfile: plan.governanceProfile.id
   }, null, 2));
 }
 
 function addBackendArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   const routeModule = pyModule(genAiPattern(plan).id);
   add('backend-pyproject', 'backend', ['backend', 'pyproject.toml'], renderBackendPyproject(plan));
+  add('backend-uv-lock', 'backend', ['backend', 'uv.lock'], renderPythonLock('genai', `${plan.safeProjectName}-backend`));
   add('backend-package', 'backend', ['backend', '__init__.py'], '');
   add('backend-api-package', 'backend', ['backend', 'apis', '__init__.py'], '');
   add('backend-main', 'backend', ['backend', 'apis', 'main.py'], renderFastApiMain(plan, routeModule));
@@ -369,7 +406,13 @@ function addDockerArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
 
 function addInfrastructureArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   const base = ['infrastructure', 'opentofu', 'azure'];
-  add('opentofu-versions', 'infrastructure', [...base, 'versions.tf'], renderTofuVersions());
+  add('opentofu-versions', 'infrastructure', [...base, 'versions.tf'], renderOpenTofuVersions());
+  add(
+    'opentofu-provider-lock',
+    'infrastructure',
+    [...base, '.terraform.lock.hcl'],
+    renderOpenTofuProviderLock()
+  );
   add('opentofu-providers', 'infrastructure', [...base, 'providers.tf'], renderTofuProviders());
   add('opentofu-variables', 'infrastructure', [...base, 'variables.tf'], renderTofuVariables(plan));
   add('opentofu-main', 'infrastructure', [...base, 'main.tf'], renderTofuMain(plan));
@@ -382,7 +425,7 @@ function addInfrastructureArtifacts(add: AddArtifact, plan: ApiProjectPlan): voi
   }
 }
 
-function addGovernanceArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addSpecWorkflowArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   if (plan.workload === 'power-apps-code-app') {
     if (plan.specWorkflow.id === 'openspec') {
       const changeName = `bootstrap-${plan.safeProjectName}`;
@@ -522,10 +565,11 @@ function addFrontendArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
 function renderDirectBuildAndTestGuide(plan: ApiProjectPlan): string {
   let backendCommands: string;
   if (plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi') {
-    backendCommands = `# macOS and Linux
-python3 -m venv .venv
-.venv/bin/python -m pip install -e "./backend[test]"
-(cd backend && python -m pytest -q)`;
+    const extras = plan.workload === 'genai' && hasFunctionWorker(plan)
+      ? ' --extra functions'
+      : '';
+    backendCommands = `uv sync --frozen --project backend --extra test${extras}
+uv run --project backend python -m pytest -q backend/tests`;
   } else if (plan.apiStack.id === 'node-fastify') {
     backendCommands = `cd backend
 npm ci
@@ -547,24 +591,12 @@ npm ci
 npm run build
 \`\`\`
 ` : '';
-  const windowsPythonCommands = plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi'
-    ? `
-
-Equivalent Windows dependency commands:
-
-\`\`\`powershell
-py -3 -m venv .venv
-.venv\\Scripts\\python.exe -m pip install -e "./backend[test]"
-\`\`\`
-`
-    : '';
   const functionCommands = plan.workload === 'genai' && hasFunctionWorker(plan) ? `
 
-Run the Function worker unit tests from the same Python virtual environment:
+Run the Function worker unit tests from the same locked Python environment:
 
 \`\`\`bash
-.venv/bin/python -m pip install -r functions/${functionWorkerName(plan)}/requirements.txt
-(cd functions/${functionWorkerName(plan)} && ../../.venv/bin/python -m pytest -q)
+(cd functions/${functionWorkerName(plan)} && uv run --project ../../backend --directory . python -m pytest -q)
 \`\`\`
 ` : '';
   return `## Project Dependencies, Build, And Test
@@ -575,7 +607,7 @@ Run the Function worker unit tests from the same Python virtual environment:
 ${backendCommands}
 \`\`\`
 
-${windowsPythonCommands}${frontendCommands}${functionCommands}`;
+${frontendCommands}${functionCommands}`;
 }
 
 function renderAdvisoryReadinessGuide(plan: ApiProjectPlan): string {
@@ -653,6 +685,10 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 
 function renderGeneratedUpdateGuide(): string {
   return `## Safe Liftoff Updates
+
+\`liftoff upgrade\` replaces a supported global Liftoff CLI installation; it does not inspect or modify this project. Check and apply CLI replacement separately with \`liftoff upgrade --check\` and \`liftoff upgrade\`.
+
+\`single-maintainer-gitflow\` repository governance generates a local handoff only. Review \`.liftoff/governance/README.md\`, commit and push the project, then run a selected-agent launcher for read-only Phase 0. Live enforcement requires a separately approved governance change.
 
 \`liftoff update\` immediately applies safe managed changes without prompting in interactive, redirected, and automated environments. Use \`liftoff update --check\` for a read-only human drift report, or \`liftoff update --check --json\` as an automation gate that exits 0 when clean and 2 when drift exists.
 
@@ -800,16 +836,26 @@ LANGFUSE_SECRET_KEY=
 }
 
 function renderBackendDockerfile(): string {
-  return `FROM python:3.12-slim
+  return `FROM ${formatContainerImage(supportedStack.containers['uv-tool'])} AS uv
+FROM ${formatContainerImage(supportedStack.containers['python-runtime'])}
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV PATH=/app/backend/.venv/bin:$PATH
+COPY --from=uv /uv /uvx /bin/
 
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
 COPY backend/pyproject.toml /app/backend/pyproject.toml
-RUN pip install --no-cache-dir /app/backend
+COPY backend/uv.lock /app/backend/uv.lock
+RUN --mount=type=cache,target=/root/.cache/uv \\
+    uv export --frozen --no-dev --no-emit-project --project /app/backend --output-file /tmp/requirements.txt \\
+    && uv venv /app/backend/.venv \\
+    && uv pip install --python /app/backend/.venv/bin/python --require-hashes \\
+      --default-index "$UV_DEFAULT_INDEX" --requirements /tmp/requirements.txt \\
+    && rm /tmp/requirements.txt
 
 COPY backend /app/backend
 COPY database /app/database
@@ -820,43 +866,7 @@ CMD ["uvicorn", "backend.apis.main:app", "--host", "0.0.0.0", "--port", "8000"]
 }
 
 function renderBackendPyproject(plan: GenAiProjectPlan): string {
-  return `[project]
-name = "${plan.safeProjectName}-backend"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = [
-  "fastapi>=0.111",
-  "uvicorn[standard]>=0.30",
-  "pydantic>=2.7",
-  "pydantic-settings>=2.3",
-  "pydantic-ai-slim[openai]==1.107.1",
-  "scalar-fastapi>=1.0",
-  "sqlalchemy[asyncio]>=2.0",
-  "asyncpg>=0.29",
-  "psycopg[binary]>=3.2",
-  "alembic>=1.13",
-  "redis>=5.0",
-  "langfuse==2.60.10",
-  "azure-servicebus>=7.12",
-  "azure-identity>=1.17",
-  "azure-storage-blob>=12.20",
-  "azure-communication-email>=1.0"
-]
-
-[project.optional-dependencies]
-test = ["pytest>=8.2", "httpx>=0.27"]
-
-[build-system]
-requires = ["setuptools>=70"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = []
-
-[tool.pytest.ini_options]
-pythonpath = [".."]
-testpaths = ["tests"]
-`;
+  return renderPythonPyprojectAsset('genai', `${plan.safeProjectName}-backend`);
 }
 
 function renderFastApiMain(plan: GenAiProjectPlan, routeModule: string): string {
@@ -1253,8 +1263,12 @@ class LangfuseTracer:
 
     @asynccontextmanager
     async def trace(self, name: str, input_data: Any = None):
-        remote_trace = self._client.trace(name=name, input=input_data)
-        remote_id = getattr(remote_trace, "id", None)
+        remote_trace = self._client.start_observation(
+            name=name,
+            as_type="span",
+            input=input_data,
+        )
+        remote_id = getattr(remote_trace, "trace_id", None)
         handle = TraceHandle(
             enabled=True,
             trace_id=str(remote_id) if remote_id is not None else None,
@@ -1266,6 +1280,8 @@ class LangfuseTracer:
             raise
         else:
             remote_trace.update(output=handle.output)
+        finally:
+            remote_trace.end()
 
 
 def build_tracer(
@@ -1413,13 +1429,17 @@ from backend.observability.tracing import (
 
 
 class FakeRemoteTrace:
-    id = "trace-123"
+    trace_id = "trace-123"
 
     def __init__(self):
         self.updates = []
+        self.ended = False
 
     def update(self, **values):
         self.updates.append(values)
+
+    def end(self):
+        self.ended = True
 
 
 class FakeLangfuse:
@@ -1427,7 +1447,7 @@ class FakeLangfuse:
         self.calls = []
         self.remote_trace = FakeRemoteTrace()
 
-    def trace(self, **values):
+    def start_observation(self, **values):
         self.calls.append(values)
         return self.remote_trace
 
@@ -1457,8 +1477,11 @@ def test_configured_tracing_updates_langfuse_operation():
             trace.set_output({"answer": "world"})
 
     asyncio.run(scenario())
-    assert client.calls == [{"name": "agent.run", "input": {"prompt": "hello"}}]
+    assert client.calls == [
+        {"name": "agent.run", "as_type": "span", "input": {"prompt": "hello"}}
+    ]
     assert client.remote_trace.updates == [{"output": {"answer": "world"}}]
+    assert client.remote_trace.ended is True
 
 
 def test_partial_langfuse_configuration_fails(monkeypatch):
@@ -1844,15 +1867,11 @@ Deployed triggers use \`ServiceBusConnection__fullyQualifiedNamespace\` and \`Se
 ## Local Development
 
 \`\`\`bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --frozen --project ../../backend --extra test --extra functions
 cp local.settings.example.json local.settings.json
-python -m pytest -q
+uv run --project ../../backend --directory . python -m pytest -q
 func start
 \`\`\`
-
-On Windows, activate the virtual environment with \`.venv\\Scripts\\activate\`.
 `;
 }
 
@@ -1882,9 +1901,7 @@ function renderFunctionLocalSettings(plan: GenAiProjectPlan): string {
 }
 
 function renderFunctionRequirements(): string {
-  return `azure-functions>=1.21.0
-pytest>=8.2
-`;
+  return renderFunctionRequirementsAsset();
 }
 
 function renderFunctionApp(plan: GenAiProjectPlan): string {
@@ -2003,7 +2020,9 @@ function renderDockerCompose(plan: ApiProjectPlan): string {
     depends_on:
       - backend
 ` : '';
-  const postgresImage = plan.workload === 'genai' ? 'pgvector/pgvector:pg16' : 'postgres:16-alpine';
+  const postgresImage = plan.workload === 'genai'
+    ? formatContainerImage(supportedStack.containers.pgvector)
+    : formatContainerImage(supportedStack.containers.postgres);
   return `services:
   backend:
     build:
@@ -2030,47 +2049,136 @@ ${frontendService}
       POSTGRES_DB: ${plan.safeProjectName.replace(/-/g, '_')}
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: ${formatContainerImage(supportedStack.containers.redis)}
     ports:
       - "6379:6379"
 
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
+    image: ${formatContainerImage(supportedStack.containers.azurite)}
     command: azurite --blobHost 0.0.0.0
     ports:
       - "10000:10000"
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: ${formatContainerImage(supportedStack.containers.mailpit)}
     ports:
       - "8025:8025"
 
-${plan.workload === 'genai' ? `  langfuse:
-    image: langfuse/langfuse:2
+${plan.workload === 'genai' ? `  langfuse-worker:
+    image: ${formatContainerImage(supportedStack.containers['langfuse-worker'])}
     profiles:
       - observability
-    environment:
+    depends_on: &langfuse-dependencies
+      postgres:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment: &langfuse-environment
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/${plan.safeProjectName.replace(/-/g, '_')}
-      NEXTAUTH_SECRET: local-development-placeholder
-      SALT: local-development-placeholder
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: local-development-salt
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: langfuse-redis
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+
+  langfuse:
+    image: ${formatContainerImage(supportedStack.containers['langfuse-web'])}
+    profiles:
+      - observability
+    depends_on: *langfuse-dependencies
+    environment:
+      <<: *langfuse-environment
+      NEXTAUTH_SECRET: local-development-secret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
     ports:
       - "3000:3000"
-` : ''}
-`;
-}
 
-function renderTofuVersions(): string {
-  return `terraform {
-  required_version = ">= 1.6.0"
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.110"
-    }
-  }
-}
+  clickhouse:
+    image: ${formatContainerImage(supportedStack.containers.clickhouse)}
+    profiles:
+      - observability
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: ${formatContainerImage(supportedStack.containers.minio)}
+    profiles:
+      - observability
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    ports:
+      - "9090:9000"
+      - "127.0.0.1:9091:9001"
+    volumes:
+      - langfuse-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+
+  langfuse-redis:
+    image: ${formatContainerImage(supportedStack.containers.redis)}
+    profiles:
+      - observability
+    command: ["redis-server", "--requirepass", "langfuse-redis", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - langfuse-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "langfuse-redis", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+` : ''}
+${plan.workload === 'genai' ? `volumes:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:
+  langfuse-redis-data:
+` : ''}
 `;
 }
 
@@ -2085,7 +2193,7 @@ function renderTofuVariables(plan: ApiProjectPlan): string {
   const frontendVariables = plan.includeFrontend ? `
 variable "frontend_image" {
   type        = string
-  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+  default     = "${formatContainerImage(supportedStack.containers['container-apps-bootstrap'])}"
   description = "Frontend image. Replace the bootstrap image with the generated frontend image after pushing it to ACR."
 }
 ` : '';
@@ -2098,7 +2206,7 @@ variable "function_worker_queue_name" {
 
 variable "functions_python_version" {
   type        = string
-  default     = "3.12"
+  default     = "${supportedStack.runtimes.python.releaseLine}"
   description = "Python runtime version for the generated Azure Functions worker."
 }
 ` : '';
@@ -2125,7 +2233,7 @@ variable "resource_suffix" {
 
 variable "backend_image" {
   type        = string
-  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+  default     = "${formatContainerImage(supportedStack.containers['container-apps-bootstrap'])}"
   description = "Backend image. Replace the bootstrap image with the generated backend image after pushing it to ACR."
 }
 
@@ -2427,7 +2535,7 @@ resource "azurerm_storage_account" "main" {
 
 resource "azurerm_storage_container" "documents" {
   name                  = "documents"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
@@ -2451,11 +2559,12 @@ resource "azurerm_communication_service" "main" {
 }
 
 resource "azurerm_key_vault" "main" {
-  name                = "${names.keyVault}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"
+  name                       = "${names.keyVault}"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
 }
 
 data "azurerm_client_config" "current" {}
@@ -2533,17 +2642,18 @@ Build the generated backend in ACR, then replace the bootstrap image:
 
 \`\`\`bash
 ACR_NAME="$(tofu output -raw container_registry_name)"
-az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-backend:latest ../../..
+SOURCE_SHA="$(git rev-parse HEAD)"
+az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-backend:"$SOURCE_SHA" ../../..
 ${plan.includeFrontend ? `BACKEND_URL="https://$(tofu output -raw backend_url)"
-az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-frontend:latest --build-arg VITE_API_BASE_URL="$BACKEND_URL" ../../../frontend
+az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-frontend:"$SOURCE_SHA" --build-arg VITE_API_BASE_URL="$BACKEND_URL" ../../../frontend
 ` : ''}\`\`\`
 
 Persist the deployed images in \`environments/${env}.tfvars\` so future applies do not restore the bootstrap image:
 
 \`\`\`hcl
-backend_image       = "<login-server>/${plan.safeProjectName}-backend:latest"
+backend_image       = "<login-server>/${plan.safeProjectName}-backend@sha256:<manifest-digest>"
 backend_target_port = 8000
-${plan.includeFrontend ? `frontend_image      = "<login-server>/${plan.safeProjectName}-frontend:latest"
+${plan.includeFrontend ? `frontend_image      = "<login-server>/${plan.safeProjectName}-frontend@sha256:<manifest-digest>"
 ` : ''}\`\`\`
 
 \`\`\`bash
@@ -2565,17 +2675,17 @@ function renderTofuTfvars(plan: ApiProjectPlan, environment: string): string {
     ['environment', JSON.stringify(environment)],
     ['location', JSON.stringify(plan.region.slug)],
     ['resource_suffix', JSON.stringify(stableResourceSuffix(plan, environment))],
-    ['backend_image', JSON.stringify('mcr.microsoft.com/azuredocs/containerapps-helloworld:latest')],
+    ['backend_image', JSON.stringify(formatContainerImage(supportedStack.containers['container-apps-bootstrap']))],
     ['backend_target_port', '80'],
     ['enable_private_networking', 'false']
   ];
   if (plan.includeFrontend) {
-    values.push(['frontend_image', JSON.stringify('mcr.microsoft.com/azuredocs/containerapps-helloworld:latest')]);
+    values.push(['frontend_image', JSON.stringify(formatContainerImage(supportedStack.containers['container-apps-bootstrap']))]);
   }
   if (hasFunctionWorker(plan)) {
     values.push(
       ['function_worker_queue_name', JSON.stringify(DEFAULT_FUNCTION_WORKER_QUEUE_NAME)],
-      ['functions_python_version', JSON.stringify('3.12')]
+      ['functions_python_version', JSON.stringify(supportedStack.runtimes.python.releaseLine)]
     );
   }
   const width = Math.max(...values.map(([key]) => key.length));
@@ -2974,17 +3084,16 @@ async function submit(): Promise<void> {
 }
 
 function renderFrontendStyles(): string {
-  return `@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  return `@import "tailwindcss";
 `;
 }
 
 function renderFrontendViteConfig(): string {
   return `import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
+  import tailwindcss from '@tailwindcss/vite';
+  import vue from '@vitejs/plugin-vue';
 
-export default defineConfig({ plugins: [vue()] });
+  export default defineConfig({ plugins: [vue(), tailwindcss()] });
 `;
 }
 
@@ -3000,16 +3109,17 @@ export default {
 }
 
 function renderFrontendDockerfile(): string {
-  return `FROM node:20-alpine AS build
+  return `FROM ${formatContainerImage(supportedStack.containers['node-runtime'])} AS build
 WORKDIR /app
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
 COPY . .
 ARG VITE_API_BASE_URL=http://localhost:8000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM ${formatContainerImage(supportedStack.containers['nginx-runtime'])}
 COPY --from=build /app/dist /usr/share/nginx/html
 `;
 }

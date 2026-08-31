@@ -39,19 +39,10 @@ function npmExecutable(platform: NodeJS.Platform): string {
   return platform === 'win32' ? 'npm.cmd' : 'npm';
 }
 
-function pythonCommand(probes: RequirementProbeResult[]): { executable: string; prefixArgs: string[] } {
-  const python = probes.find((probe) => probe.requirement.id === 'python' && probe.state === 'ready');
-  const executable = python?.detectedBy ?? (process.platform === 'win32' ? 'py' : 'python3');
-  return {
-    executable,
-    prefixArgs: executable === 'py' ? ['-3'] : []
-  };
-}
-
 export function buildDependencySetupPlan(
   plan: ProjectPlan,
   projectRoot: string,
-  probes: RequirementProbeResult[],
+  _probes: RequirementProbeResult[],
   platform: NodeJS.Platform = process.platform
 ): DependencySetupPlan {
   const commands: DependencyCommandPlan[] = [];
@@ -67,39 +58,28 @@ export function buildDependencySetupPlan(
     return { commands, protectedPaths };
   }
   if (plan.apiStack.id === 'python-fastapi') {
-    const python = pythonCommand(probes);
-    const virtualPython = platform === 'win32'
-      ? path.join(projectRoot, '.venv', 'Scripts', 'python.exe')
-      : path.join(projectRoot, '.venv', 'bin', 'python');
     commands.push({
-      id: 'python-venv',
-      label: 'Create project Python virtual environment',
-      command: {
-        executable: python.executable,
-        args: [...python.prefixArgs, '-m', 'venv', '.venv']
-      },
-      cwd: projectRoot
-    }, {
       id: 'python-backend',
-      label: 'Install backend Python dependencies',
+      label: 'Synchronize locked Python dependencies',
       command: {
-        executable: virtualPython,
-        args: ['-m', 'pip', 'install', '-e', './backend[test]']
+        executable: 'uv',
+        args: [
+          'sync',
+          '--frozen',
+          '--project',
+          'backend',
+          '--extra',
+          'test',
+          ...(plan.workload === 'genai' && plan.pattern.worker
+            ? ['--extra', 'functions']
+            : [])
+        ]
       },
       cwd: projectRoot
     });
-    protectedPaths.push(['backend', 'pyproject.toml']);
+    protectedPaths.push(['backend', 'pyproject.toml'], ['backend', 'uv.lock']);
     if (plan.workload === 'genai' && plan.pattern.worker) {
       const requirements = ['functions', `${plan.pattern.id}-worker`, 'requirements.txt'];
-      commands.push({
-        id: 'python-function-worker',
-        label: 'Install Function worker Python dependencies',
-        command: {
-          executable: virtualPython,
-          args: ['-m', 'pip', 'install', '-r', requirements.join('/')]
-        },
-        cwd: projectRoot
-      });
       protectedPaths.push(requirements);
     }
   } else if (plan.apiStack.id === 'node-fastify') {

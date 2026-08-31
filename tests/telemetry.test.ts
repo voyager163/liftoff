@@ -82,6 +82,7 @@ describe('telemetry client', () => {
       endpoint: 'https://telemetry.example.test/api/events',
       fetch
     });
+
     expect(fetch).toHaveBeenCalledTimes(1);
     const [url, init] = fetch.mock.calls[0];
     expect(String(url)).toBe('https://telemetry.example.test/api/events');
@@ -95,6 +96,32 @@ describe('telemetry client', () => {
       cliVersion: '0.6.1',
       outcome: 'success'
     });
+  });
+
+  it('sends no upgrade mode, target, registry, origin, path, or error detail', async () => {
+    const fetch = vi.fn<TelemetryFetch>().mockResolvedValue(
+      new Response(null, { status: 204 })
+    );
+    await trackCommand('upgrade', '0.7.0', 2, {
+      env: {},
+      endpoint: 'https://telemetry.example.test/api/events',
+      fetch
+    });
+    const payload = JSON.parse(String(fetch.mock.calls[0][1]?.body));
+    expect(payload).toEqual({
+      schemaVersion: 1,
+      event: 'command_executed',
+      command: 'upgrade',
+      cliVersion: '0.7.0',
+      outcome: 'failure'
+    });
+    expect(Object.keys(payload)).toEqual([
+      'schemaVersion',
+      'event',
+      'command',
+      'cliVersion',
+      'outcome'
+    ]);
   });
 
   it('rejects non-HTTPS endpoints without transport', async () => {

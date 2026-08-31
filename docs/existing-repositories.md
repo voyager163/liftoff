@@ -74,6 +74,27 @@ automation, while preserving conflicts and orphans. Review every reported
 conflict and commit or copy local work before choosing `liftoff update --force`.
 For CI drift gates, use `liftoff update --check --json`.
 
+Projects created before manifest schema v5 automatically preview the default
+repository-governance handoff as new named drift. Plain update safely adopts
+collision-free policy, context, guide, and selected-agent launchers without
+rewriting a configuration that omitted `governanceProfile`. Existing different
+files remain unowned conflicts and the v5 manifest records `handoff-partial`.
+Resolving every conflict promotes a later update to `handoff-generated`.
+Selecting `none` leaves previously managed handoff files as undeleted orphans
+while unrecorded conflicts remain user-owned. No update mode runs an agent or
+activates GitHub settings.
+
+Major supported-stack releases can report many runtime, lock, Docker, provider,
+and framework artifact changes at once. Treat those releases as breaking:
+commit or copy local work, inspect `liftoff update --check`, and apply only after
+reviewing all upgrades and conflicts. Plain update preserves conflicting local
+bytes and never requires `--force` as the default migration path.
+
+If an applied baseline migration must be reversed, restore the project and
+manifest through version control and reinstall from the restored locks. Liftoff
+does not automatically downgrade generated dependencies and retains no backup
+after a successful update.
+
 ## Existing non-Liftoff application
 
 Use migration when you want a fresh governed scaffold and a filtered source

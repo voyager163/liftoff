@@ -11,6 +11,8 @@ import {
   validateArtifactPathParts,
   writeProjectFile
 } from '../src/file-system.js';
+import { buildProjectPlan } from '../src/planner.js';
+import { buildArtifacts } from '../src/templates.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const cleanups: string[] = [];
@@ -59,9 +61,34 @@ async function namedManifestRoot(
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`Fixture ${fixtureName} must contain an object.`);
   }
+
   const manifest = parsed as Record<string, unknown>;
   mutate?.(manifest);
   await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  return root;
+}
+
+async function v5ManifestRoot(
+  values: Partial<Parameters<typeof buildProjectPlan>[0]> = {},
+  mutate?: (manifest: Record<string, unknown>) => void
+): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-v5-'));
+  cleanups.push(root);
+  const artifacts = buildArtifacts(buildProjectPlan({
+    projectName: 'Manifest V5',
+    projectType: 'standard',
+    apiStack: 'node',
+    cloud: 'azure',
+    ...values
+  }, { requireProjectName: true }));
+  const manifest = JSON.parse(
+    artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
+  ) as Record<string, unknown>;
+  mutate?.(manifest);
+  await writeFile(
+    path.join(root, 'liftoff.manifest.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`
+  );
   return root;
 }
 
@@ -70,6 +97,10 @@ describe('manifest validation', () => {
     const root = await manifestRoot();
     const manifest = await loadManifest(root);
     expect(manifest.project.workload.kind).toBe('genai');
+    expect(manifest.governance).toEqual({
+      profile: 'unspecified',
+      state: 'unspecified'
+    });
     expect(manifest.artifacts.length).toBeGreaterThan(0);
   });
 
@@ -83,6 +114,10 @@ describe('manifest validation', () => {
     const root = await namedManifestRoot(fixtureName);
     const manifest = await loadManifest(root);
     expect(manifest.project.workload.kind).toBe(expectedKind);
+    expect(manifest.governance).toEqual({
+      profile: 'unspecified',
+      state: 'unspecified'
+    });
   });
 
   it('loads immutable Power Apps starter identity and plugin preference from v4', async () => {
@@ -99,13 +134,113 @@ describe('manifest validation', () => {
     });
   });
 
+  it('strictly loads enabled and disabled schema-v5 governance state', async () => {
+    const enabled = await loadManifest(await v5ManifestRoot());
+    expect(enabled.artifactVersion).toBe(5);
+    expect(enabled.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-generated'
+    });
+
+    const disabled = await loadManifest(await v5ManifestRoot({
+      governanceProfile: 'none'
+    }));
+    expect(disabled.governance).toEqual({
+      profile: 'none',
+      state: 'disabled'
+    });
+    expect(disabled.artifacts.some((artifact) =>
+      artifact.category === 'governance'
+    )).toBe(false);
+
+    const partial = await loadManifest(await v5ManifestRoot({}, (manifest) => {
+      (manifest.governance as Record<string, unknown>).state = 'handoff-partial';
+      manifest.artifacts = (manifest.artifacts as Array<Record<string, unknown>>)
+        .filter((artifact) =>
+          artifact.logicalName !== 'repository-governance-copilot-launcher'
+        );
+    }));
+    expect(partial.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-partial'
+    });
+    expect(partial.artifacts.some((artifact) =>
+      artifact.logicalName === 'repository-governance-copilot-launcher'
+    )).toBe(false);
+  });
+
+  it.each([
+      [
+        'unknown profile',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).profile = 'unknown';
+        },
+        /governance profile "unknown" is invalid/
+      ],
+      [
+        'wrong enabled state',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).state = 'active';
+        },
+        /requires handoff-generated or handoff-partial state/
+      ],
+      [
+        'complete partial state',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).state = 'handoff-partial';
+        },
+        /handoff-partial requires at least one applicable artifact/
+      ],
+      [
+        'wrong policy version',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).policyVersion = '2';
+        },
+        /policyVersion must be 1/
+      ],
+      [
+        'live enforcement field',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).enforced = true;
+        },
+        /inapplicable or unknown field: enforced/
+      ],
+      [
+        'missing launcher',
+        (manifest: Record<string, unknown>) => {
+          manifest.artifacts = (manifest.artifacts as Array<Record<string, unknown>>)
+            .filter((artifact) =>
+              artifact.logicalName !== 'repository-governance-copilot-launcher'
+            );
+        },
+        /missing artifact repository-governance-copilot-launcher/
+      ],
+      [
+        'managed activation baseline',
+        (manifest: Record<string, unknown>) => {
+          (manifest.artifacts as Array<Record<string, unknown>>).push({
+            logicalName: 'activation-baseline',
+            category: 'governance',
+            pathParts: ['governance', 'activation-baseline.json'],
+            contentHash: `sha256:${'a'.repeat(64)}`
+          });
+        },
+        /activation-baseline\.json is user-owned/
+      ]
+  ])('rejects invalid v5 governance: %s', async (_name, mutate, expected) => {
+    await expect(loadManifest(await v5ManifestRoot({}, mutate))).rejects
+      .toThrow(expected);
+  });
+
   it.each([
     [
       'unknown manifest version',
       (manifest: Record<string, unknown>) => {
-        manifest.artifactVersion = 5;
+        manifest.artifactVersion = 6;
       },
-      /Unsupported manifest artifactVersion 5/
+      /Unsupported manifest artifactVersion 6.*2, 3, 4, 5/
     ],
     [
       'mutable Power Apps starter ref',
@@ -275,7 +410,11 @@ describe('project-confined paths', () => {
     await expect(applyProjectFileTransaction(root, [
       { type: 'write', pathParts: ['existing.bin'], content: 'replacement\n' },
       { type: 'delete', pathParts: ['remove.txt'] },
-      { type: 'write', pathParts: ['generated', 'new.txt'], content: 'new\n' },
+      {
+        type: 'write',
+        pathParts: ['.liftoff', 'governance', 'policy.md'],
+        content: 'new governance policy\n'
+      },
       { type: 'write', pathParts: ['liftoff.manifest.json'], content: '{}\n' }
     ], {
       onBeforeMutation: async (_mutation, index) => {
@@ -287,7 +426,7 @@ describe('project-confined paths', () => {
 
     expect(await readFile(path.join(root, 'existing.bin'))).toEqual(original);
     expect(await readFile(path.join(root, 'remove.txt'), 'utf8')).toBe('restore me\n');
-    await expect(access(path.join(root, 'generated'))).rejects.toThrow();
+    await expect(access(path.join(root, '.liftoff'))).rejects.toThrow();
     await expect(access(path.join(root, 'liftoff.manifest.json'))).rejects.toThrow();
   });
 });

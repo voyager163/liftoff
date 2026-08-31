@@ -16,6 +16,8 @@ export type EnvironmentId = 'dev' | 'test' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
 export type ProjectTypeId = 'genai' | 'standard' | 'power-apps-code-app';
 export type ApiStackId = 'python-fastapi' | 'node-fastify' | 'go-huma';
+export type GovernanceProfileId = 'single-maintainer-gitflow' | 'none';
+export type ManifestGovernanceProfileId = GovernanceProfileId | 'unspecified';
 
 export interface ProjectTypeDefinition {
   id: ProjectTypeId;
@@ -73,6 +75,14 @@ export interface SpecWorkflowDefinition {
   description: string;
 }
 
+export interface GovernanceProfileDefinition {
+  id: GovernanceProfileId;
+  label: string;
+  description: string;
+  default: boolean;
+  policyVersion?: string;
+}
+
 export interface ExternalCommand {
   executable: string;
   args: string[];
@@ -128,6 +138,7 @@ export interface ProjectOptions {
   agents?: string[];
   defaultAgent?: string;
   codeAppsPlugin?: boolean;
+  governanceProfile?: string;
   configPath?: string;
   yes?: boolean;
   force?: boolean;
@@ -174,6 +185,7 @@ export interface ProjectPlanBase {
   agents: CodingAgentDefinition[];
   defaultAgent?: CodingAgentDefinition;
   framework: FrameworkDefinition;
+  governanceProfile: GovernanceProfileDefinition;
   approvedStack: string[];
 }
 
@@ -227,8 +239,14 @@ export type ManifestWorkload =
   | ManifestStandardApiWorkload
   | ManifestPowerAppsCodeAppWorkload;
 
+export interface ManifestGovernance {
+  profile: ManifestGovernanceProfileId;
+  state: 'disabled' | 'handoff-generated' | 'handoff-partial' | 'unspecified';
+  policyVersion?: string;
+}
+
 export interface LiftoffManifest {
-  artifactVersion: 2 | 3 | 4;
+  artifactVersion: 2 | 3 | 4 | 5;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
   project: {
@@ -243,6 +261,7 @@ export interface LiftoffManifest {
     adapter: SpecWorkflowId;
     contractVersion?: string;
   };
+  governance: ManifestGovernance;
   artifacts: ManifestArtifact[];
 }
 

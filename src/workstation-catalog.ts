@@ -1,4 +1,5 @@
 import type { ExternalCommand } from './types.js';
+import { supportedStack } from './supported-stack.js';
 
 export type WorkstationRequirementId =
   | 'node'
@@ -56,7 +57,7 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'Node.js',
     severity: 'blocking',
     probes: [{ executable: 'node', args: ['--version'] }],
-    minimumVersion: '20.19.0',
+    minimumVersion: supportedStack.runtimes.node.minimumVersion,
     install: { darwin: brew('node'), win32: winget('OpenJS.NodeJS.LTS') },
     linuxRemedies: linuxRemedies('https://nodejs.org/en/download/package-manager')
   },
@@ -69,8 +70,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
       { executable: 'python', args: ['--version'] },
       { executable: 'py', args: ['-3', '--version'] }
     ],
-    minimumVersion: '3.11.0',
-    install: { darwin: brew('python@3.12'), win32: winget('Python.Python.3.12') },
+    minimumVersion: supportedStack.runtimes.python.minimumVersion,
+    install: { darwin: brew('python@3.14'), win32: winget('Python.Python.3.14') },
     linuxRemedies: linuxRemedies('https://www.python.org/downloads/')
   },
   go: {
@@ -78,7 +79,7 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'Go',
     severity: 'blocking',
     probes: [{ executable: 'go', args: ['version'] }],
-    minimumVersion: '1.23.0',
+    minimumVersion: supportedStack.runtimes.go.minimumVersion,
     install: { darwin: brew('go'), win32: winget('GoLang.Go') },
     linuxRemedies: linuxRemedies('https://go.dev/doc/install')
   },
@@ -87,6 +88,7 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'uv',
     severity: 'blocking',
     probes: [{ executable: 'uv', args: ['--version'] }],
+    minimumVersion: supportedStack.packageManagers.uv.minimumVersion,
     install: { darwin: brew('uv'), win32: winget('astral-sh.uv') },
     linuxRemedies: linuxRemedies('https://docs.astral.sh/uv/getting-started/installation/')
   },
@@ -103,6 +105,7 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'OpenTofu',
     severity: 'advisory',
     probes: [{ executable: 'tofu', args: ['--version'] }],
+    minimumVersion: supportedStack.runtimes.opentofu.minimumVersion,
     install: { darwin: brew('opentofu'), win32: winget('OpenTofu.OpenTofu') },
     linuxRemedies: linuxRemedies('https://opentofu.org/docs/intro/install/')
   },
@@ -119,11 +122,11 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'OpenSpec',
     severity: 'blocking',
     probes: [{ executable: 'openspec', args: ['--version'] }],
-    exactVersion: '1.6.0',
+    exactVersion: supportedStack.frameworks.openspec.version,
     install: {
-      darwin: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', '@fission-ai/openspec@1.6.0'] } },
-      win32: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', '@fission-ai/openspec@1.6.0'] } },
-      linux: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', '@fission-ai/openspec@1.6.0'] } }
+      darwin: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`] } },
+      win32: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`] } },
+      linux: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`] } }
     },
     linuxRemedies: linuxRemedies('https://github.com/Fission-AI/OpenSpec')
   },
@@ -132,11 +135,11 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'Spec Kit',
     severity: 'blocking',
     probes: [{ executable: 'specify', args: ['--version'] }],
-    exactVersion: '0.14.1',
+    exactVersion: supportedStack.frameworks['spec-kit'].version,
     install: {
-      darwin: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', 'specify-cli==0.14.1'] } },
-      win32: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', 'specify-cli==0.14.1'] } },
-      linux: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', 'specify-cli==0.14.1'] } }
+      darwin: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`] } },
+      win32: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`] } },
+      linux: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`] } }
     },
     linuxRemedies: linuxRemedies('https://github.com/github/spec-kit')
   },

@@ -5,8 +5,14 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { createFixtureProject, doctorExitCode, runCommand } from '../src/commands.js';
+import {
+  createFixtureProject,
+  doctorExitCode,
+  runCommand,
+  type CommandContext
+} from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
+import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type {
   CommandResult,
@@ -41,7 +47,10 @@ afterEach(async () => {
 async function withRegistryVersion(version: string, callback: () => Promise<void>): Promise<void> {
   const server = createServer((_request, response) => {
     response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({ version }));
+    response.end(JSON.stringify({
+      name: '@msn-control/liftoff',
+      version
+    }));
   });
   await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
   const address = server.address() as AddressInfo;
@@ -116,11 +125,21 @@ class PluginDoctorRunner extends ReadyInitRunner {
 async function run(
   args: string[],
   cwd: string,
-  runner = new ReadyInitRunner()
+  runner = new ReadyInitRunner(),
+  context: Partial<Pick<
+    CommandContext,
+    'configuredRegistryTargetLookup' | 'stableReleaseLookup'
+  >> = {}
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), { cwd, stdout, stderr, runner });
+  const code = await runCommand(parseArgs(args), {
+    cwd,
+    stdout,
+    stderr,
+    runner,
+    ...context
+  });
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
@@ -159,10 +178,77 @@ describe('doctor command', () => {
     expect(result.out).toContain('Runtime');
     expect(result.out).toContain('Cloud - azure');
     expect(result.out).toMatch(/manifest: valid, \d+ artifacts present/);
-    expect(result.out).toContain('framework contract: OpenSpec 1.6.0');
+    expect(result.out).toContain('framework contract: OpenSpec 1.11.0');
     expect(result.out).toContain('framework markers: 1 selected integration verified');
     expect(result.out).toContain('scaffold drift: project matches the current templates');
+    expect(result.out).toContain('repository governance');
+    expect(result.out).toContain('live enforcement is not inferred');
     expect(result.out).not.toContain('cli freshness');
+  }, 30_000);
+
+  it('reports local governance integrity without claiming live enforcement', async () => {
+    const root = await fixtureProject();
+    const ready = JSON.parse((await run(['doctor', '--json'], root)).out);
+    const project = ready.layers.find((layer: { title: string }) =>
+      layer.title === 'Project'
+    );
+    expect(project.checks.find((check: { id?: string }) =>
+      check.id === 'repository-governance'
+    )).toMatchObject({
+      severity: 'ok',
+      state: 'handoff-generated',
+      detail: expect.stringContaining('live enforcement is not inferred')
+    });
+
+    await writeFile(
+      path.join(root, ...governanceArtifactPaths.policy),
+      'locally changed policy\n'
+    );
+    const validation = await run(['validate'], root);
+    expect(validation.code).toBe(1);
+    expect(validation.err).toContain(
+      'Artifact hash mismatch for repository-governance-policy'
+    );
+    const unhealthy = JSON.parse((await run(['doctor', '--json'], root)).out);
+    const unhealthyProject = unhealthy.layers.find((layer: { title: string }) =>
+      layer.title === 'Project'
+    );
+    expect(unhealthyProject.checks.find((check: { id?: string }) =>
+      check.id === 'repository-governance'
+    )).toMatchObject({
+      severity: 'fail',
+      state: 'unhealthy'
+    });
+  }, 30_000);
+
+  it('warns when governance adoption preserves an unowned conflict', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.governance.state = 'handoff-partial';
+    manifest.artifacts = manifest.artifacts.filter(
+      (artifact: { logicalName: string }) =>
+        artifact.logicalName !== 'repository-governance-copilot-launcher'
+    );
+    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    await writeFile(
+      path.join(root, ...governanceArtifactPaths['github-copilot']),
+      'developer launcher\n'
+    );
+
+    expect((await run(['validate'], root)).code).toBe(0);
+    const result = await run(['doctor', '--json'], root);
+    const project = JSON.parse(result.out).layers.find(
+      (layer: { title: string }) => layer.title === 'Project'
+    );
+    expect(project.checks.find((check: { id?: string }) =>
+      check.id === 'repository-governance'
+    )).toMatchObject({
+      severity: 'warn',
+      state: 'handoff-partial',
+      detail: expect.stringContaining('outside Liftoff ownership'),
+      remedy: expect.stringMatching(/update --check.*update --force/)
+    });
   }, 30_000);
 
   it('reports current and newer authoritative registry versions outside a project', async () => {
@@ -275,7 +361,7 @@ describe('doctor command', () => {
     const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
     expect(project.checks.find((check: { id: string }) => check.id === 'framework-contract')).toMatchObject({
       severity: 'ok',
-      detail: 'Spec Kit 0.14.1'
+      detail: 'Spec Kit 1.0.1'
     });
     expect(project.checks.find((check: { id: string }) => check.id === 'selected-agents')).toMatchObject({
       detail: 'github-copilot, claude'
@@ -429,6 +515,29 @@ describe('doctor command', () => {
     });
   }, 30_000);
 
+  it('distinguishes a stale configured mirror from canonical freshness', async () => {
+    const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-stale-mirror-'));
+    cleanups.push(elsewhere);
+    const result = await run(
+      ['doctor'],
+      elsewhere,
+      new ReadyInitRunner(),
+      {
+        stableReleaseLookup: async () => ({
+          name: '@msn-control/liftoff',
+          version: '99.0.0'
+        }),
+        configuredRegistryTargetLookup: async () => ({ status: 'stale' })
+      }
+    );
+    expect(result.out).toContain(
+      'configured npm registry does not expose it'
+    );
+    expect(result.out).toContain('managed registry owner');
+    expect(result.out).toContain('liftoff upgrade --check');
+    expect(result.out).not.toContain('npm install --global');
+  });
+
   it('fails with a remedy when .env is missing and passes once created', async () => {
     const root = await fixtureProject();
 
@@ -450,6 +559,36 @@ describe('doctor command', () => {
 
     const result = await run(['doctor'], root);
     expect(result.out).toMatch(/\[warn\]\s+scaffold drift: \d+ update\(s\) available - run liftoff update/);
+  }, 30_000);
+
+  it('keeps CLI upgrade and project update remedies distinct', async () => {
+    const root = await fixtureProject();
+    const configPath = path.join(root, 'liftoff.config.json');
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    config.environments = ['dev', 'test'];
+    await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
+
+    const result = await run(
+      ['doctor'],
+      root,
+      new ReadyInitRunner(),
+      {
+        stableReleaseLookup: async () => ({
+          name: '@msn-control/liftoff',
+          version: '99.0.0'
+        }),
+        configuredRegistryTargetLookup: async () => ({
+          status: 'available',
+          registryKind: 'canonical'
+        })
+      }
+    );
+    expect(result.out).toMatch(
+      /cli freshness:.*liftoff upgrade --check.*liftoff upgrade/
+    );
+    expect(result.out).toMatch(
+      /scaffold drift: \d+ update\(s\) available - run liftoff update/
+    );
   }, 30_000);
 
   it('discovers the project from a subdirectory', async () => {

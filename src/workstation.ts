@@ -1,5 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { supportedStack } from './supported-stack.js';
 import {
   workstationRequirementCatalog,
   type InstallRecipe,
@@ -124,7 +125,7 @@ export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
     definition,
     severity: definition.severity,
     reasons: ['Liftoff runtime'],
-    minimumVersion: '20.19.0'
+    minimumVersion: supportedStack.runtimes.node.minimumVersion
   }];
 }
 
@@ -169,23 +170,32 @@ export function selectWorkstationRequirements(
         }
     : plan.workload;
   add('node', 'Liftoff runtime', {
-    minimumVersion: workload.kind === 'power-apps-code-app' ? '22.12.0' : '20.19.0'
+    minimumVersion: supportedStack.runtimes.node.minimumVersion
   });
   if (workload.kind !== 'power-apps-code-app') {
     if (workload.apiStack.id === 'python-fastapi') {
-      add('python', 'selected Python API stack', { minimumVersion: '3.12.0' });
+      add('python', 'selected Python API stack', {
+        minimumVersion: supportedStack.runtimes.python.minimumVersion
+      });
+      add('uv', 'locked Python dependency manager');
     } else if (workload.apiStack.id === 'go-huma') {
-      add('go', 'selected Go API stack', { minimumVersion: '1.23.0' });
+      add('go', 'selected Go API stack', {
+        minimumVersion: supportedStack.runtimes.go.minimumVersion
+      });
     }
   }
 
   if (plan.specWorkflow.id === 'openspec') {
-    add('node', 'OpenSpec runtime', { minimumVersion: '20.19.0' });
+    add('node', 'OpenSpec runtime', {
+      minimumVersion: supportedStack.runtimes.node.minimumVersion
+    });
     if (options.includeFramework !== false) {
       add('openspec', 'selected spec-driven framework', { exactVersion: plan.framework.version });
     }
   } else {
-    add('python', 'Spec Kit runtime', { minimumVersion: '3.11.0' });
+    add('python', 'Spec Kit runtime', {
+      minimumVersion: supportedStack.runtimes.python.minimumVersion
+    });
     add('uv', 'Spec Kit installer and launcher');
     if (options.includeFramework !== false) {
       add('spec-kit', 'selected spec-driven framework', { exactVersion: plan.framework.version });

@@ -183,7 +183,7 @@ describe('Git-aware init targeting', () => {
         );
         await expect(applyMergePreflight(preflight!, {
           onBeforeMutation: async (entry) => {
-            if (entry.relativePath === 'src/App.tsx') {
+            if (entry.relativePath === path.join('src', 'App.tsx')) {
               throw new Error('injected Power Apps failure');
             }
           }
@@ -355,6 +355,117 @@ describe('transactional merge', () => {
       expect(preflight.blocked[0]).toMatchObject({ relativePath: 'README.md', action: 'blocked' });
       await expect(authorizeMergePreflight(preflight, true)).rejects.toThrow(/structural or symlink conflicts/);
     });
+  });
+
+  it('preflights and rolls back exact governance handoff destinations transactionally', async () => {
+      const target = await mkdtemp(path.join(os.tmpdir(), 'liftoff-governance-merge-'));
+      cleanups.push(target);
+      const contextPath = path.join(target, '.liftoff', 'governance', 'context.json');
+      const launcherPath = path.join(
+        target,
+        '.github',
+        'prompts',
+        'liftoff-repository-governance.prompt.md'
+      );
+      const policyRelative = path.join('.liftoff', 'governance', 'policy.md');
+      const contextRelative = path.join('.liftoff', 'governance', 'context.json');
+      const launcherRelative = path.join(
+        '.github',
+        'prompts',
+        'liftoff-repository-governance.prompt.md'
+      );
+      await mkdir(path.dirname(contextPath), { recursive: true });
+      await mkdir(path.dirname(launcherPath), { recursive: true });
+      await writeFile(contextPath, '{"same":true}\n');
+      await writeFile(launcherPath, 'developer launcher\n');
+
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, [
+          artifact(
+            'repository-governance-policy',
+            ['.liftoff', 'governance', 'policy.md'],
+            'policy\n'
+          ),
+          artifact(
+            'repository-governance-context',
+            ['.liftoff', 'governance', 'context.json'],
+            '{"same":true}\n'
+          ),
+          artifact(
+            'repository-governance-copilot-launcher',
+            ['.github', 'prompts', 'liftoff-repository-governance.prompt.md'],
+            'generated launcher\n'
+          ),
+          artifact('manifest', ['liftoff.manifest.json'], '{"artifactVersion":5}\n')
+        ], 'liftoff');
+        const preflight = await buildMergePreflight(area, target);
+        expect(preflight.entries.find((entry) =>
+          entry.relativePath === policyRelative
+        )?.action).toBe('create');
+        expect(preflight.entries.find((entry) =>
+          entry.relativePath === contextRelative
+        )?.action).toBe('identical');
+        expect(preflight.entries.find((entry) =>
+          entry.relativePath === launcherRelative
+        )?.action).toBe('replace');
+        const declined = vi.fn(async () => false);
+        expect(await authorizeMergePreflight(preflight, false, declined))
+          .toBeUndefined();
+        expect(declined).toHaveBeenCalledWith([
+          launcherRelative
+        ]);
+
+        const authorized = await authorizeMergePreflight(preflight, true);
+        await expect(applyMergePreflight(authorized!, {
+          onBeforeMutation: async (entry) => {
+            if (entry.relativePath === 'liftoff.manifest.json') {
+              throw new Error('fail after governance writes');
+            }
+          }
+        })).rejects.toBeInstanceOf(MergeApplyError);
+      });
+
+      await expect(access(path.join(target, '.liftoff', 'governance', 'policy.md')))
+        .rejects.toThrow();
+      expect(await readFile(contextPath, 'utf8')).toBe('{"same":true}\n');
+      expect(await readFile(launcherPath, 'utf8')).toBe('developer launcher\n');
+      await expect(access(path.join(target, '.liftoff-init.lock'))).rejects.toThrow();
+  });
+
+  it('blocks governance paths that escape through a symlinked ancestor', async () => {
+      const parent = await mkdtemp(path.join(os.tmpdir(), 'liftoff-governance-symlink-'));
+      cleanups.push(parent);
+      const target = path.join(parent, 'target');
+      const outside = path.join(parent, 'outside');
+      await mkdir(target);
+      await mkdir(outside);
+      await symlink(
+        outside,
+        path.join(target, '.liftoff'),
+        process.platform === 'win32' ? 'junction' : 'dir'
+      );
+      const policyRelative = path.join('.liftoff', 'governance', 'policy.md');
+
+      await withStagingArea(async (area) => {
+        await writeStagedArtifacts(area, [
+          artifact(
+            'repository-governance-policy',
+            ['.liftoff', 'governance', 'policy.md'],
+            'policy\n'
+          )
+        ], 'liftoff');
+        const preflight = await buildMergePreflight(area, target);
+        expect(preflight.blocked).toEqual(expect.arrayContaining([
+          expect.objectContaining({
+            relativePath: policyRelative,
+            action: 'blocked'
+          })
+        ]));
+        await expect(authorizeMergePreflight(preflight, true)).rejects
+          .toThrow(/structural or symlink conflicts/);
+      });
+      await expect(access(path.join(outside, 'governance', 'policy.md')))
+        .rejects.toThrow();
   });
 
   it('never allows force to replace an existing Liftoff manifest', async () => {

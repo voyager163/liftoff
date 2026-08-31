@@ -8,11 +8,13 @@ import {
   getCodingAgent,
   getEnvironment,
   getFrameworkDefinition,
+  getGovernanceProfile,
   getPattern,
   getProvider,
   getProjectType,
   getSpecWorkflow,
   powerAppsCodeAppStarter,
+  governanceProfiles,
   resolveRegion,
   specWorkflows
 } from './catalogs.js';
@@ -46,7 +48,8 @@ const CONFIG_FIELDS = new Set([
   'specWorkflow',
   'agents',
   'defaultAgent',
-  'codeAppsPlugin'
+  'codeAppsPlugin',
+  'governanceProfile'
 ]);
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -117,6 +120,11 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
   const cloud = resolveConfigCatalogValue(parsed, 'cloud', getProvider);
   const specWorkflow = resolveConfigCatalogValue(parsed, 'specWorkflow', getSpecWorkflow);
   const defaultAgent = resolveConfigCatalogValue(parsed, 'defaultAgent', getCodingAgent);
+  const governanceProfile = resolveConfigCatalogValue(
+    parsed,
+    'governanceProfile',
+    getGovernanceProfile
+  );
 
   const includeFrontendValue = parsed.includeFrontend;
   if (includeFrontendValue !== undefined && typeof includeFrontendValue !== 'boolean') {
@@ -207,7 +215,8 @@ export async function loadConfigOptions(configPath: string, cwd: string): Promis
     specWorkflow,
     agents: selectedAgents,
     defaultAgent,
-    codeAppsPlugin: codeAppsPluginValue
+    codeAppsPlugin: codeAppsPluginValue,
+    governanceProfile
   };
 }
 
@@ -318,6 +327,17 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
   if (!specWorkflow) {
     issues.push(`Unknown spec-driven workflow: ${input.specWorkflow}.`);
   }
+  const governanceProfile = getGovernanceProfile(
+    input.governanceProfile ??
+      governanceProfiles.find((profile) => profile.default)?.id ??
+      'single-maintainer-gitflow'
+  );
+  if (!governanceProfile) {
+    issues.push(
+      `Unknown repository governance profile: ${input.governanceProfile}. ` +
+      `Use one of: ${governanceProfiles.map((profile) => profile.id).join(', ')}.`
+    );
+  }
 
   const selectedAgents = canonicalizeCodingAgents(input.agents);
   if (input.agents?.length === 0) {
@@ -369,6 +389,7 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     !projectName && options.requireProjectName ||
     !projectType ||
     !specWorkflow ||
+    !governanceProfile ||
     selectedAgents.agents.length === 0 ||
     projectType.id !== 'power-apps-code-app' && (
       !apiStack ||
@@ -440,6 +461,7 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     agents: selectedAgents.agents,
     ...(defaultAgent ? { defaultAgent } : {}),
     framework: getFrameworkDefinition(specWorkflow.id),
+    governanceProfile,
     approvedStack: approvedStackFor(workload)
   };
 }
@@ -534,6 +556,33 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
     { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
     ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : [])
   ];
+  const governance = plan.governanceProfile.id === 'none'
+    ? [{
+        label: 'Repository governance',
+        value: 'Disabled; no local handoff or remote action'
+      }]
+    : [
+        {
+          label: 'Repository governance',
+          value: `${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}`
+        },
+        {
+          label: 'Governance handoff',
+          value: 'Local handoff generated; live enforcement is not active'
+        },
+        {
+          label: 'Governance launchers',
+          value: plan.agents.map((agent) =>
+            agent.id === 'github-copilot'
+              ? '.github/prompts/liftoff-repository-governance.prompt.md'
+              : '.claude/commands/liftoff-repository-governance.md'
+          ).join(', ')
+        },
+        {
+          label: 'Governance activation',
+          value: 'Deferred until commit, push, read-only Phase 0, and explicit plan approval'
+        }
+      ];
   if (plan.workload === 'power-apps-code-app') {
     return [
       ...common,
@@ -543,6 +592,7 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
       },
       { label: 'Root application stack', value: plan.approvedStack.join(', ') },
       ...integrations,
+      ...governance,
       {
         label: 'Code Apps plugin',
         value: plan.codeAppsPlugin ? 'Requested (Preview)' : 'Not requested'
@@ -564,6 +614,7 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
     { label: 'Region', value: `${plan.region.displayName} / ${plan.region.slug}` },
     { label: 'Frontend', value: frontendLine },
     ...integrations,
+    ...governance,
     { label: 'Environments', value: plan.environments.map((environment) => environment.id).join(', ') },
     { label: 'Approved stack', value: plan.approvedStack.join(', ') },
     {

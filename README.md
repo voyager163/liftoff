@@ -18,13 +18,20 @@ npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
 liftoff init
 ```
 
+After the first self-upgrade-capable release is installed globally through npm,
+later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
+This replaces the CLI only; generated projects still use `liftoff update`.
+
 Liftoff asks you to choose a workload and spec workflow, select one or more coding
 agents with Space, review workstation readiness, and confirm the project plan before
-it writes. After initialization:
+it writes. Repository governance is enabled by default as a local handoff; live
+activation remains deferred until commit, push, read-only Phase 0, and explicit
+plan approval. After initialization:
 
 ```bash
 liftoff validate
 liftoff doctor
+liftoff upgrade --check
 liftoff update --check
 ```
 
@@ -70,8 +77,10 @@ write failures.
 | [Getting started](docs/getting-started.md) | Install safely and complete the first interactive project |
 | [Workloads](docs/workloads.md) | Compare GenAI, API, and Power Apps choices and outputs |
 | [Spec workflows and agents](docs/spec-workflows-and-agents.md) | Configure OpenSpec, Spec Kit, Copilot, Claude, and the optional Code Apps plugin |
+| [Repository governance](docs/repository-governance.md) | Review the default local policy handoff, Phase 0, approval, activation, and existing-project adoption |
 | [Existing repositories](docs/existing-repositories.md) | Understand in-place, child-directory, and migration behavior |
 | [Prerequisites](docs/prerequisites.md) | Review plan-derived runtimes, tools, authentication, and dependency setup |
+| [Supported stack baseline](docs/supported-stack.md) | Review pinned runtimes, frameworks, dependency locks, images, and refresh policy |
 | [Safety and consent](docs/safety-and-consent.md) | Review staging, overwrite, install, rollback, and ownership guarantees |
 | [Telemetry and privacy](docs/telemetry.md) | Review collected fields, opt-outs, Azure processing, and retention |
 | [CLI reference](docs/cli-reference.md) | Find commands, flags, terminal modes, JSON, and exit-code contracts |

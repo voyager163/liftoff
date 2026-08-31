@@ -9,6 +9,16 @@ const suffix = randomUUID().replaceAll('-', '');
 const image = `liftoff-telemetry-ingest-smoke:${suffix}`;
 let containerId;
 
+function registryBuildArgs() {
+  const value = process.env.npm_config_registry;
+  if (!value) return [];
+  const registry = new URL(value);
+  if (registry.username || registry.password || registry.search || registry.hash) {
+    throw new Error('npm_config_registry must not contain credentials, query parameters, or fragments.');
+  }
+  return ['--build-arg', `NPM_CONFIG_REGISTRY=${registry.toString()}`];
+}
+
 function docker(args, options = {}) {
   const result = spawnSync('docker', args, {
     cwd: repositoryRoot,
@@ -44,6 +54,7 @@ try {
     'build',
     '--file',
     path.join('services', 'telemetry-ingest', 'Dockerfile'),
+    ...registryBuildArgs(),
     '--tag',
     image,
     '.'

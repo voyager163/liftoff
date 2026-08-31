@@ -32,16 +32,16 @@ resource "azurerm_user_assigned_identity" "telemetry" {
 }
 
 resource "azurerm_log_analytics_workspace" "telemetry" {
-  name                         = local.workspace_name
-  resource_group_name          = azurerm_resource_group.telemetry.name
-  location                     = var.location
-  sku                          = "PerGB2018"
-  retention_in_days            = 180
-  daily_quota_gb               = var.daily_quota_gb
-  local_authentication_enabled = false
-  internet_ingestion_enabled   = true
-  internet_query_enabled       = true
-  tags                         = local.common_tags
+  name                           = local.workspace_name
+  resource_group_name            = azurerm_resource_group.telemetry.name
+  location                       = var.location
+  sku                            = "PerGB2018"
+  retention_in_days              = 180
+  daily_quota_gb                 = var.daily_quota_gb
+  local_authentication_enabled   = false
+  internet_ingestion_access_type = "Enabled"
+  internet_query_access_type     = "Enabled"
+  tags                           = local.common_tags
 }
 
 resource "azurerm_log_analytics_workspace_table_custom_log" "command_events" {

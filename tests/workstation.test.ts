@@ -74,6 +74,7 @@ describe('workstation requirement graph', () => {
     expect(requirements.map((item) => item.id)).toEqual([
       'node',
       'python',
+      'uv',
       'docker',
       'opentofu',
       'azure-cli',
@@ -81,8 +82,8 @@ describe('workstation requirement graph', () => {
       'github-copilot',
       'claude'
     ]);
-    expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.12.0');
-    expect(requirements.find((item) => item.id === 'openspec')?.exactVersion).toBe('1.6.0');
+    expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.14.0');
+    expect(requirements.find((item) => item.id === 'openspec')?.exactVersion).toBe('1.11.0');
     expect(requirements.find((item) => item.id === 'docker')?.severity).toBe('advisory');
     expect(requirements.find((item) => item.id === 'claude')?.severity).toBe('blocking');
   });
@@ -100,8 +101,8 @@ describe('workstation requirement graph', () => {
 
     expect(requirements.map((item) => item.id)).toContain('python');
     expect(requirements.map((item) => item.id)).toContain('uv');
-    expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.11.0');
-    expect(requirements.find((item) => item.id === 'spec-kit')?.exactVersion).toBe('0.14.1');
+    expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.14.0');
+    expect(requirements.find((item) => item.id === 'spec-kit')?.exactVersion).toBe('1.0.1');
   });
 
   it('selects only the Power Apps Node, framework, and chosen agent requirements', async () => {
@@ -120,11 +121,11 @@ describe('workstation requirement graph', () => {
       'claude'
     ]);
     const node = requirements.find((item) => item.id === 'node')!;
-    expect(node.minimumVersion).toBe('22.12.0');
+    expect(node.minimumVersion).toBe('24.20.0');
     expect(await probeRequirement(
       node,
-      new FakeRunner(() => ({ stdout: 'v22.11.0' }))
-    )).toMatchObject({ state: 'outdated', detectedVersion: '22.11.0' });
+      new FakeRunner(() => ({ stdout: 'v24.19.0' }))
+    )).toMatchObject({ state: 'outdated', detectedVersion: '24.19.0' });
     expect(await probeRequirement(
       node,
       new FakeRunner(() => ({
@@ -136,9 +137,9 @@ describe('workstation requirement graph', () => {
   });
 
   it.each([
-    ['1.6.0', 'ready'],
-    ['1.5.9', 'outdated'],
-    ['1.7.0', 'outdated']
+    ['1.11.0', 'ready'],
+    ['1.10.9', 'outdated'],
+    ['1.12.0', 'outdated']
   ])('classifies exact framework version %s as %s', async (version, state) => {
     const requirement = openspecRequirement();
     const runner = new FakeRunner(() => ({ stdout: version }));
@@ -161,12 +162,12 @@ describe('workstation requirement graph', () => {
       if (command.executable === 'python') {
         return { status: null, errorCode: 'ENOENT', errorMessage: 'missing' };
       }
-      return { stdout: 'Python 3.12.8' };
+      return { stdout: 'Python 3.14.8' };
     });
 
     expect(await probeRequirement(requirement, runner)).toMatchObject({
       state: 'ready',
-      detectedVersion: '3.12.8',
+      detectedVersion: '3.14.8',
       detectedBy: 'py'
     });
   });
@@ -248,7 +249,7 @@ describe('workstation installation', () => {
       if (command.executable === 'npm') {
         return { stdout: 'installed' };
       }
-      return { stdout: '1.6.0' };
+      return { stdout: '1.11.0' };
     });
     const installed = await installRequirement(requirement, missingProbe(requirement), {
       authorized: true,
@@ -259,7 +260,7 @@ describe('workstation installation', () => {
     expect(installed.state).toBe('installed');
     expect(runner.calls[1]?.command).toEqual({
       executable: 'npm',
-      args: ['install', '-g', '@fission-ai/openspec@1.6.0']
+      args: ['install', '-g', '@fission-ai/openspec@1.11.0']
     });
     expect(runner.calls[1]?.options?.stream).toBe(true);
   });

@@ -7,12 +7,12 @@ prerequisites, generated artifacts, and maintenance checks that apply to it.
 
 | Workload | Primary choices | Required runtime | Liftoff-generated platform areas |
 | --- | --- | --- | --- |
-| GenAI application | Pattern, Azure region, environments, optional frontend | Python 3.12 and Node.js 20.19+ | API, orchestration, data, messaging, Docker, Azure OpenTofu |
-| API application | Python, Node.js, or Go API stack; Azure region; environments; optional frontend | Selected API runtime and Node.js 20.19+ | API, data, Docker, Azure OpenTofu |
-| Power Apps code app | Spec workflow, agents, optional Code Apps plugin | Node.js 22.12+ | Official React/Vite starter and project-local Power Apps tooling |
+| GenAI application | Pattern, Azure region, environments, optional frontend | Python 3.14, `uv` 0.12.7+, and Node.js 24.20+ | API, orchestration, data, messaging, Docker, Azure OpenTofu |
+| API application | Python 3.14, Node.js 24, or Go 1.27 API stack; Azure region; environments; optional frontend | Selected API runtime and Node.js 24.20+ | API, data, Docker, Azure OpenTofu |
+| Power Apps code app | Spec workflow, agents, optional Code Apps plugin | Node.js 24.20+ | Official React/Vite starter and project-local Power Apps tooling |
 
 All three workloads continue into the common OpenSpec or Spec Kit and coding
-agent flow.
+agent flow and the default local repository-governance handoff.
 
 ## GenAI application
 
@@ -29,11 +29,14 @@ The selected pattern fixes the API stack to Python, FastAPI, and PydanticAI.
 ### Generated output
 
 - FastAPI backend and Scalar/OpenAPI integration.
+- A committed `uv.lock` consumed through `uv sync --frozen`.
 - PydanticAI orchestration, prompts, and model configuration boundaries.
 - PostgreSQL and pattern-specific Redis or Azure Service Bus boundaries.
 - Offline-testable tracing and integration adapters.
 - Docker Compose and Azure OpenTofu.
 - Optional Vue frontend and pattern-specific Azure Functions workers.
+- Versioned repository-governance policy, workload context, guide, and
+  selected-agent launcher unless `none` is selected.
 
 ### Deferred actions
 
@@ -55,9 +58,12 @@ infrastructure before applying it.
 ### Generated output
 
 - Stack-native API, OpenAPI, tests, and database migrations.
+- Ecosystem-native locked metadata: `uv.lock`, `package-lock.json`, or
+  `go.mod` plus `go.sum`.
 - PostgreSQL, Redis, Azurite, and Mailpit local services where applicable.
 - Docker Compose and Azure OpenTofu.
 - Optional Vue frontend.
+- Versioned local repository-governance handoff unless explicitly disabled.
 
 ### Deferred actions
 
@@ -87,9 +93,12 @@ environment, API frontend, Docker, or OpenTofu selection.
 - React, Vite, TypeScript, Tailwind, and the Power Apps SDK and Vite plugin.
 - Locked root `package.json` and `package-lock.json`.
 - Project-local `power-apps` CLI supplied by the generated dependency graph.
-- `liftoff.config.json`, schema-v4 `liftoff.manifest.json`, starter provenance,
+- `liftoff.config.json`, schema-v5 `liftoff.manifest.json`, starter provenance,
   and third-party attribution.
 - Official OpenSpec or Spec Kit output and every selected agent marker.
+- The common local governance policy and selected-agent launcher, with backend,
+  container, OpenTofu, custom deployment, and API DAST controls marked
+  inapplicable.
 
 Liftoff does not create an API backend, `docker-compose.yml`,
 `infrastructure/`, API environments, or an environment-bound

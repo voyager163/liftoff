@@ -44,6 +44,8 @@ describe('telemetry contract', () => {
     expect(canonicalTelemetryCommand({ flags: {} })).toBe('help');
     expect(canonicalTelemetryCommand({ command: 'init', flags: { help: true } })).toBe('help');
     expect(canonicalTelemetryCommand({ command: 'infra', subcommand: 'plan', flags: {} })).toBe('infra:plan');
+    expect(canonicalTelemetryCommand({ command: 'upgrade', flags: {} })).toBe('upgrade');
+    expect(canonicalTelemetryCommand({ command: 'upgrade', flags: { check: true } })).toBe('upgrade');
     expect(canonicalTelemetryCommand({ command: 'unknown', flags: {} })).toBeUndefined();
   });
 
@@ -68,6 +70,21 @@ describe('telemetry contract', () => {
       Outcome: 'failure'
     });
     expect(Object.keys(record)).toEqual(telemetryStorageFields);
+
+    expect(createTelemetryEvent('upgrade', '0.7.0', 0)).toEqual({
+      schemaVersion: 1,
+      event: 'command_executed',
+      command: 'upgrade',
+      cliVersion: '0.7.0',
+      outcome: 'success'
+    });
+    expect(createTelemetryEvent('upgrade', '0.7.0', 2)).toEqual({
+      schemaVersion: 1,
+      event: 'command_executed',
+      command: 'upgrade',
+      cliVersion: '0.7.0',
+      outcome: 'failure'
+    });
   });
 
   it('accepts bounded release versions and rejects identifier-bearing metadata', () => {

@@ -106,7 +106,8 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
       cwd: options.cwd ?? process.cwd(),
       stdin: options.stdin ?? process.stdin,
       stdout,
-      stderr
+      stderr,
+      env
     });
   } catch (error) {
     renderEntrypointError(error, stdout, stderr);

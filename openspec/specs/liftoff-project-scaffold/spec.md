@@ -184,25 +184,52 @@ The system SHALL document that `backend/workers` is for backend-adjacent or cont
 - **WHEN** a developer reads the generated project README or functions documentation
 - **THEN** the documentation explains where to place Azure Functions workers and where to place reusable orchestration logic
 
-### Requirement: Generated projects include a v4 Liftoff manifest
-The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v4. It SHALL record generating CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, optional workload preferences, and every durable Liftoff-generated artifact with logical name, category, OS-neutral path parts, and `sha256:` content hash. Framework-owned output and seed content SHALL remain outside durable hash ownership.
+### Requirement: Generated projects include a v5 Liftoff manifest
+The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v5. It SHALL record generating CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, optional workload preferences, and every durable Liftoff-generated artifact with logical name, category, OS-neutral path parts, and `sha256:` content hash. Framework-owned output and one-time seed content SHALL remain outside durable hash ownership.
 
 #### Scenario: Manifest accompanies every initialized workload
 - **WHEN** a developer initializes a GenAI, standard API, or Power Apps project
-- **THEN** the project root contains a schema-v4 manifest with exactly the workload fields applicable to that project
+- **THEN** the project root contains a schema-v5 manifest with exactly the workload and governance fields applicable to that project
 
 #### Scenario: Manifest validates against generated files
 - **WHEN** `liftoff validate` runs against a freshly initialized project
 - **THEN** validation confirms every manifest artifact and declared framework integration marker exists on disk
 
+#### Scenario: Enabled governance records only handoff state
+- **WHEN** a project enables `single-maintainer-gitflow`
+- **THEN** its v5 manifest records the profile, policy version, and `handoff-generated` state
+- **AND** it does not claim live GitHub enforcement
+
+#### Scenario: Disabled governance omits handoff artifacts
+- **WHEN** a project selects `none`
+- **THEN** its v5 manifest records governance as disabled
+- **AND** contains no governance policy, context, guide, or launcher artifact entry
+
 #### Scenario: Power Apps manifest omits API identity
 - **WHEN** a Power Apps code app is initialized
-- **THEN** its v4 workload identity records the pinned starter source and plugin preference
+- **THEN** its v5 workload identity records the pinned starter source and plugin preference
 - **AND** it does not invent an API stack, GenAI pattern, cloud, region, API frontend flag, or API environments
 
 #### Scenario: Framework and seed ownership remains external
 - **WHEN** an official framework initializer or Liftoff seed writes content
 - **THEN** those files are validated by their declared contracts without being added to the durable Liftoff artifact hash list
+- **AND** the separate repository-governance handoff remains durably hash-managed by exact logical name
+
+### Requirement: Governance handoff participates in transactional staging
+Enabled governance artifacts SHALL be rendered into the same temporary staging area, assigned explicit ownership, validated, preflighted, and merged under the same collision, symlink, authorization, lock, and rollback contract as other durable Liftoff files.
+
+#### Scenario: Governance launcher collides with a file
+- **WHEN** an existing target contains different bytes at an enabled governance launcher path
+- **THEN** initialization reports that exact regular-file replacement
+- **AND** does not overwrite it without the existing interactive authorization or `--force`
+
+#### Scenario: Governance path is structurally unsafe
+- **WHEN** a destination ancestor is a symlink, non-directory, or resolves outside the target
+- **THEN** initialization stops before any destination mutation
+
+#### Scenario: Merge fails after writing governance files
+- **WHEN** a later staged artifact cannot be merged
+- **THEN** rollback removes or restores Liftoff-owned governance writes under the existing transaction contract
 
 ### Requirement: Packaged README documents generated project structure
 The system SHALL document workload-specific generated project structures through the public root README's overview and linked packaged documentation. The detailed documentation SHALL cover stable and conditional GenAI and standard API folders, the Power Apps root application layout, stack-specific internals, and the ownership model for generated configuration, manifest, official-framework, and upstream starter files.
@@ -284,7 +311,7 @@ The system SHALL generate a frontend starter that invokes the selected backend r
 - **THEN** the build succeeds without contacting a generated backend
 
 ### Requirement: Generated language stacks include complete dependency metadata
-The system SHALL emit all deterministic dependency metadata required for every freshly generated workload to execute its documented install, build, lint, and test commands without a preparatory dependency-manifest rewrite.
+The system SHALL emit all deterministic dependency metadata required for every freshly generated workload to execute its documented install, build, lint, and test commands without a preparatory dependency-manifest rewrite. npm projects SHALL include tested lockfiles, Python projects SHALL include tracked `uv.lock` files and frozen synchronization commands, Go projects SHALL include complete module checksums, and Azure Functions dependency exports SHALL be reproducible from the corresponding locked Python graph.
 
 #### Scenario: Fresh Go project tests without editing module metadata
 - **WHEN** a standard Go project is generated and dependencies are downloaded
@@ -298,10 +325,25 @@ The system SHALL emit all deterministic dependency metadata required for every f
 - **WHEN** representative Node.js and Python projects are freshly generated
 - **THEN** their documented dependency installation, build, and test commands continue to succeed
 
+#### Scenario: Fresh Node stack retains its build contract
+- **WHEN** a representative Node.js project is freshly generated
+- **THEN** its documented `npm ci`, build, and test commands succeed
+- **AND** package metadata remains byte-for-byte unchanged
+
+#### Scenario: Fresh Python stack installs from a frozen lock
+- **WHEN** a representative Python project is freshly generated
+- **THEN** its documented `uv sync --frozen` command succeeds from the tracked lock
+- **AND** build and test commands use the synchronized project environment without changing dependency metadata
+
 #### Scenario: Fresh Power Apps project has a tested lockfile
 - **WHEN** a Power Apps code app is freshly generated
 - **THEN** its root package and lockfile identities match
 - **AND** `npm ci`, lint, and production build succeed without rewriting package metadata
+
+#### Scenario: Generate dependency paths across platforms
+- **WHEN** the same project is rendered on Windows, macOS, and Linux
+- **THEN** each lock or dependency artifact uses the same logical name and path-part array
+- **AND** platform-specific execution commands resolve the project environment without hardcoded path separators
 
 ### Requirement: Selected spec workflows are initialized through their official CLI
 The system SHALL create complete spec-driven framework infrastructure by running the exact tested official OpenSpec or Spec Kit CLI in the staged project. Liftoff SHALL validate the selected profile, framework markers, and integration output before committing the staged tree and SHALL NOT substitute a partial hand-written framework layout when the official command fails.
@@ -372,3 +414,18 @@ The system SHALL generate workload-specific project documentation that identifie
 #### Scenario: Read project dependency commands
 - **WHEN** a developer declines project dependency installation
 - **THEN** the generated README contains the same workload-specific install command printed by Liftoff
+
+### Requirement: Generated local services and runtime images are immutable
+The system SHALL render each Dockerfile base and Docker Compose service image from an explicit supported-stack baseline entry containing a stable release tag and immutable multi-architecture manifest digest. Generated output SHALL NOT use `latest`, an unqualified image name, or a mutable major-only reference.
+
+#### Scenario: Inspect generated Compose images
+- **WHEN** a GenAI or standard API project is generated
+- **THEN** PostgreSQL or pgvector, Redis, Azurite, Mailpit, and applicable Langfuse image references are bound to tested immutable digests
+
+#### Scenario: Inspect generated runtime stages
+- **WHEN** a Python, Node.js, Go, or frontend container file is rendered
+- **THEN** every base stage is bound to the runtime and operating-system image digest recorded by the baseline
+
+#### Scenario: Baseline image lacks a host architecture
+- **WHEN** an image refresh does not expose every architecture required by the supported generated-project matrix
+- **THEN** baseline verification fails before the image reference can be packaged

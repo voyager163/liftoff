@@ -12,9 +12,9 @@
     "sha256": "sha256:fd532481d828e13a0b13ccb598e02338a3617740675a862ee6bdc1541b68e93d"
   },
   "lockfile": {
-    "nodeBaseline": "22.x",
-    "npmVersion": "11.7.0",
-    "sha256": "sha256:f1f8a6ecae29d57044070348eebb4aad10eb7b2e7509d4d163e50cd6eba45d3b"
+    "nodeBaseline": "24.x",
+    "npmVersion": "12.0.2",
+    "sha256": "sha256:687ddccf5d030a48517c35ac871d4d9fb1d76828ecc417411c7e63cd0872d292"
   },
   "files": [
     {
@@ -59,7 +59,7 @@
         "package-lock.json"
       ],
       "assetPath": "starter/package-lock.json",
-      "sha256": "sha256:f1f8a6ecae29d57044070348eebb4aad10eb7b2e7509d4d163e50cd6eba45d3b",
+      "sha256": "sha256:687ddccf5d030a48517c35ac871d4d9fb1d76828ecc417411c7e63cd0872d292",
       "provenance": "generated-lockfile"
     },
     {

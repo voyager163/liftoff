@@ -153,7 +153,7 @@ describe('terminal renderer', () => {
   it('renders responsive panels, tables, statuses, and commands in compact mode', () => {
     const renderer = terminal(80);
     const output = [
-      renderer.panel('Readiness', ['Node.js 20.19.0', 'OpenSpec 1.6.0']),
+      renderer.panel('Readiness', ['Node.js 24.20.0', 'OpenSpec 1.11.0']),
       renderer.table(['Tool', 'State'], [['Node.js', 'ready'], ['Docker', 'warning']]),
       renderer.status('warning', 'Docker', 'daemon is stopped'),
       renderer.command('liftoff init --install-tools')
@@ -162,8 +162,8 @@ describe('terminal renderer', () => {
     expect(output).toMatchInlineSnapshot(`
       "Readiness
       ─────────
-      Node.js 20.19.0
-      OpenSpec 1.6.0
+      Node.js 24.20.0
+      OpenSpec 1.11.0
 
       Tool     State
       ───────  ───────

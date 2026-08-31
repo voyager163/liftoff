@@ -6,13 +6,21 @@ and a Go API is not asked to install Python.
 
 ## Baseline
 
-- Liftoff CLI: Node.js 20.19 or newer.
-- Power Apps code app: Node.js 22.12 or newer.
-- Selected framework: the Liftoff-tested OpenSpec or Spec Kit contract.
+- Liftoff CLI and generated Node.js workloads: Node.js 24.20 or newer.
+- Python projects: Python 3.14 and `uv` 0.12.7 or newer.
+- Go projects: Go 1.27 or newer.
+- Generated Azure infrastructure: OpenTofu 1.12.6 or newer.
+- Selected framework: OpenSpec 1.11.0 or Spec Kit 1.0.1 exactly.
 - Selected agents: GitHub Copilot, Claude Code, or both.
 
+Automatic `liftoff upgrade` additionally requires that the running canonical
+`@msn-control/liftoff` package is a normal global npm installation beneath
+`npm root --global`. Local dependencies, `npx` cache copies, linked checkouts,
+and other package-manager stores use the documented manual global npm command
+instead. Liftoff never requests elevation.
+
 API workloads additionally require their selected Python, Node.js, or Go
-runtime. GenAI uses Python 3.12 and the Python/FastAPI/PydanticAI stack.
+runtime. GenAI uses Python 3.14 and the Python/FastAPI/PydanticAI stack.
 
 ## Blocking and advisory checks
 
@@ -31,6 +39,11 @@ Advisory checks describe useful but deferrable capabilities:
 
 Authentication checks are read-only. Liftoff never stores credentials or signs
 in to a cloud or agent on your behalf.
+
+The default repository-governance handoff has no additional initialization
+prerequisite. `gh`, a remote, licensed GitHub security features, private runners,
+Slack, and deployment access are discovered only during post-push Phase 0 and
+may be reported as gaps; they do not block local generation.
 
 ## Preview requirements without writes
 
@@ -75,6 +88,19 @@ the project is ready.
 
 GenAI and API projects use their generated stack-native locked dependency
 commands.
+
+Python projects use the generated lock without resolving new versions:
+
+```bash
+uv sync --frozen --project backend --extra test
+```
+
+Worker-enabled GenAI projects add `--extra functions`. Node.js projects use
+`npm ci`, and Go projects use `go mod download`.
+
+Liftoff's npm locks are generated with npm 12.0.2 and verified in the supported
+compatibility lanes. Do not replace a committed lock with an install from
+open-ended manifest ranges.
 
 ## Power Apps local CLI
 

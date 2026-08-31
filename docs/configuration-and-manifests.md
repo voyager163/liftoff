@@ -24,6 +24,7 @@ A Power Apps configuration contains only applicable fields:
   "projectType": "power-apps-code-app",
   "specWorkflow": "openspec",
   "agents": ["github-copilot"],
+  "governanceProfile": "single-maintainer-gitflow",
   "codeAppsPlugin": false
 }
 ```
@@ -33,7 +34,7 @@ workload rather than silently ignored.
 
 ## `liftoff.manifest.json`: CLI-owned compatibility record
 
-New projects use manifest schema v4. Its common project identity includes the
+New projects use manifest schema v5. Its common project identity includes the
 name, spec workflow, selected agents, and applicable Spec Kit default. A
 discriminated `project.workload` object contains only fields valid for one
 workload:
@@ -50,6 +51,8 @@ The manifest also records:
 - Durable artifact logical names.
 - OS-neutral path-part arrays.
 - `sha256:` content hashes.
+- Repository governance profile, policy version, and local
+  `handoff-generated`, `handoff-partial`, or disabled state.
 
 Power Apps source identity uses explicit repository, path, and 40-character
 commit fields. It is not inferred from mutable URLs or generated file paths.
@@ -60,16 +63,21 @@ paths, or hashes.
 
 ## Compatibility
 
-Readers support schemas v2, v3, and v4:
+Readers support schemas v2, v3, v4, and v5:
 
 - V2 normalizes the legacy flat API identity and records framework state as
   uncertain without inventing agents.
 - V3 normalizes flat GenAI or API identity plus framework and agent metadata.
 - V4 represents the discriminated workload model, including Power Apps.
+- V5 adds repository-governance handoff identity without claiming live
+  enforcement.
 
 `liftoff update --check`, including `--check --json`, leaves an old manifest
-byte-for-byte unchanged. A successful plain update writes v4 only after the
-file transaction succeeds. Skipped conflicts retain their recorded hashes.
+byte-for-byte unchanged. A successful plain update writes v5 only after the
+file transaction succeeds. Previously recorded skipped conflicts retain their
+hashes. A preserved unrecorded governance conflict has no artifact entry and
+sets the update-written manifest to `handoff-partial`; resolving every such
+conflict promotes the next manifest to `handoff-generated`.
 
 ## Artifact ownership
 
@@ -88,7 +96,7 @@ can follow their own lifecycle.
 
 ## Contract conventions
 
-- Writers use `artifactVersion` 4; readers support v2, v3, and v4.
+- Writers use `artifactVersion` 5; readers support v2, v3, v4, and v5.
 - Artifact logical names and catalog identifiers are append-only.
 - Rendering is deterministic and does not depend on timestamps, host versions,
   or network state.

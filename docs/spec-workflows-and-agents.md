@@ -7,8 +7,8 @@ Liftoff workload.
 
 ### OpenSpec
 
-OpenSpec organizes proposed behavior changes as reviewable artifacts before
-implementation. Liftoff runs the pinned official OpenSpec initializer in
+OpenSpec 1.11.0 organizes proposed behavior changes as reviewable artifacts
+before implementation. Liftoff runs that pinned official initializer in
 temporary staging and passes every selected coding agent in stable order.
 
 Generated projects contain `openspec/` plus the selected agent integration
@@ -16,10 +16,9 @@ markers.
 
 ### Spec Kit
 
-Spec Kit provides a specification, planning, and implementation workflow.
-Liftoff initializes the selected default coding agent first, adds every
-secondary integration, and records the default separately from the full agent
-set.
+Spec Kit 1.0.1 provides a specification, planning, and implementation workflow.
+Liftoff initializes the selected default coding agent first, adds every secondary
+integration, and records the default separately from the full agent set.
 
 Generated projects contain `.specify/`, `specs/`, and the selected agent
 integration markers.
@@ -65,6 +64,20 @@ extensions. Claude Code is checked through version and health probes.
 Framework files remain owned by the official initializer. Liftoff validates
 them but excludes framework-owned output from durable artifact hashes so a
 framework can manage its own lifecycle.
+
+Repository-governance launchers are separate durable Liftoff files at the exact
+Copilot prompt and Claude command paths documented in
+[repository governance](repository-governance.md). They reference one canonical
+policy and context rather than duplicating framework-owned content. After
+read-only Phase 0 and explicit approval, the agent creates a new change using
+the selected framework; Liftoff never pre-creates or restores that change.
+
+Install the exact selected framework release with its supported package manager:
+
+```bash
+npm install -g @fission-ai/openspec@1.11.0
+uv tool install specify-cli==1.0.1
+```
 
 ## Optional Code Apps plugin
 

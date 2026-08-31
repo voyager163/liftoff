@@ -206,15 +206,16 @@ The system SHALL support `--json` on update, emitting a machine-readable object 
 - **AND** no project file changes and the command exits 2
 
 ### Requirement: Update reconciles packaged Power Apps starter artifacts
-The system SHALL re-render Power Apps projects from the immutable starter snapshot packaged with the running Liftoff version and join those files to manifest entries by explicit logical name. Newer Liftoff releases MAY offer an upstream starter refresh as ordinary new, upgrade, moved, conflict, or orphan states, and SHALL apply the existing content-hash, default safe-apply, explicit check, and force rules without fetching upstream source at update time.
+The system SHALL re-render Power Apps projects from the immutable starter snapshot packaged with the running Liftoff version and join those files to manifest entries by explicit logical name. A newer Liftoff release MAY transition from a manifest's recorded starter identity to the newer immutable snapshot in its own verified release catalog, and SHALL reconcile the source and generated metadata as ordinary new, upgrade, moved, conflict, or orphan states under the existing content-hash, default safe-apply, explicit check, and force rules. Update SHALL NOT fetch upstream source at runtime or accept an arbitrary user-supplied starter transition.
 
 #### Scenario: Current starter is clean
 - **WHEN** a Power Apps project matches the running Liftoff release's packaged starter and generated guidance
 - **THEN** `liftoff update` reports no drift and exits 0
 
 #### Scenario: Untouched starter file has an available upgrade
-- **WHEN** the running Liftoff release contains a changed pinned starter file and the project's recorded file remains unmodified
+- **WHEN** the running Liftoff release contains a newer cataloged immutable starter and the project's recorded file remains unmodified
 - **THEN** update classifies and applies the named artifact as an upgrade
+- **AND** the rewritten manifest records the new release-catalog starter identity only after all safe mutations succeed
 
 #### Scenario: Developer-edited starter file conflicts
 - **WHEN** both the packaged starter artifact and the developer's recorded file changed
@@ -222,19 +223,97 @@ The system SHALL re-render Power Apps projects from the immutable starter snapsh
 
 #### Scenario: Update is offline from upstream
 - **WHEN** a developer checks or applies Power Apps updates without access to GitHub
-- **THEN** reconciliation uses only the packaged source catalog and completes without contacting the upstream repository
+- **THEN** reconciliation uses only the old manifest identity and the running Liftoff release's packaged source catalog
+- **AND** it completes without contacting the upstream repository
 
-### Requirement: Update normalizes old manifests before writing schema v4
-The system SHALL normalize supported v2 and v3 manifests into the internal GenAI or standard workload union before reconciliation. `liftoff update --check` SHALL leave the source manifest byte-for-byte unchanged. A successful plain update SHALL write schema v4 with fresh hashes for written artifacts while preserving skipped-conflict hashes and legacy framework uncertainty.
+#### Scenario: User fabricates a starter transition
+- **WHEN** configuration or manifest fields name a starter repository, path, or commit not represented by the recorded project or running release catalog
+- **THEN** update exits 1 before artifact access and identifies the invalid source identity
 
-#### Scenario: Check a v3 project without rewriting
-- **WHEN** a developer runs `liftoff update --check` in a valid v3 project
-- **THEN** update performs normalized reconciliation and leaves the v3 manifest byte-for-byte unchanged
+### Requirement: Update normalizes old manifests before writing schema v5
+The system SHALL normalize supported v2, v3, and v4 manifests into the
+internal workload and framework model before reconciliation. `liftoff update
+--check` SHALL leave the source manifest byte-for-byte unchanged. A successful
+plain update SHALL write schema v5 with fresh hashes for written or
+byte-identical adopted artifacts, preserve hashes for previously recorded
+skipped conflicts and legacy framework uncertainty, omit unrecorded conflicts
+from Liftoff ownership, and record only the selected governance profile's local
+handoff state.
 
-#### Scenario: Update upgrades a v3 project manifest
-- **WHEN** a developer runs plain `liftoff update` in a valid v3 project and reconciliation completes successfully
-- **THEN** update writes schema v4 with equivalent normalized workload, framework, and agent identity
+#### Scenario: Check a v4 project without rewriting
+- **WHEN** a developer runs `liftoff update --check` in a valid v4 project
+- **THEN** update performs normalized reconciliation, reports applicable governance adoption as drift, and leaves the v4 manifest byte-for-byte unchanged
+
+#### Scenario: Update upgrades a v4 project manifest
+- **WHEN** a developer runs plain `liftoff update` in a valid v4 project and reconciliation completes successfully
+- **THEN** update writes schema v5 with equivalent workload, framework, and agent identity plus the normalized governance profile
 
 #### Scenario: Legacy framework state remains uncertain
-- **WHEN** a v2 manifest without official framework metadata is rewritten to v4
+- **WHEN** a v2 manifest without official framework metadata is rewritten to v5
 - **THEN** the new manifest records legacy framework state without fabricating selected-agent integrations
+- **AND** may record the local governance handoff without claiming that an agent or GitHub enforcement is active
+
+### Requirement: Existing projects adopt durable governance artifacts automatically
+When an existing configuration omits `governanceProfile`, the current CLI SHALL normalize it to `single-maintainer-gitflow` and render the profile's durable policy, context, guide, and selected-agent launchers during normal update reconciliation. The CLI SHALL apply only safe named artifact states and SHALL NOT rewrite the user-owned configuration merely to materialize its default.
+
+#### Scenario: Adopt into an untouched v4 project
+- **WHEN** a developer runs plain `liftoff update` in a valid existing project whose configuration has no governance field and whose new paths are absent
+- **THEN** update writes the explicitly named governance handoff artifacts and schema-v5 manifest transactionally
+- **AND** does not run an agent or contact GitHub
+
+#### Scenario: Preview automatic adoption
+- **WHEN** a developer runs `liftoff update --check` before adoption
+- **THEN** each applicable governance artifact appears as a new named artifact
+- **AND** the command exits 2 without writing any file
+
+#### Scenario: Existing launcher has different bytes
+- **WHEN** an unrecorded governance destination already contains different content
+- **THEN** update classifies that exact destination as a conflict
+- **AND** plain update preserves it while applying other collision-free artifacts
+- **AND** the v5 manifest records `handoff-partial` without recording an artifact entry or hash for the preserved destination
+
+#### Scenario: Resolve a partial handoff
+- **WHEN** a later update finds that every previously unrecorded governance conflict is absent or byte-identical to the current artifact
+- **THEN** it writes or adopts those artifacts through normal safe reconciliation
+- **AND** the v5 manifest records `handoff-generated` with every applicable exact handoff artifact
+
+#### Scenario: Existing launcher already matches
+- **WHEN** an unrecorded destination contains bytes identical to the current launcher
+- **THEN** update adopts it without rewriting the file
+
+### Requirement: Governance opt-out preserves user-owned files
+When configuration explicitly selects `none`, update SHALL stop rendering the profile's durable artifacts. Previously recorded governance artifacts SHALL follow the existing orphan contract and SHALL never be deleted automatically; active or archived spec changes and agent-created governance implementation files SHALL remain outside reconciliation.
+
+#### Scenario: Disable the generated profile
+- **WHEN** a developer changes `governanceProfile` from `single-maintainer-gitflow` to `none` and runs update
+- **THEN** recorded handoff artifacts are reported as orphans and left on disk
+- **AND** the v5 manifest records governance as disabled after successful reconciliation
+
+#### Scenario: Archive the agent-created change
+- **WHEN** a developer archives or removes the post-Phase-0 governance change
+- **THEN** update reports no drift for that change
+- **AND** does not recreate it from the durable policy
+
+### Requirement: Update never activates remote governance
+Repository-governance reconciliation SHALL be limited to local durable artifacts and manifest state. Update SHALL NOT invoke a selected agent, inspect a remote, write an activation baseline, apply a ruleset, create a branch, or alter any GitHub or deployment setting.
+
+#### Scenario: Update with an authenticated GitHub CLI
+- **WHEN** `gh` and a writable remote are available during governance adoption
+- **THEN** update performs the same local filesystem operations as it would offline
+- **AND** sends no GitHub mutation
+
+### Requirement: Update presents supported baseline adoption as managed drift
+The system SHALL reconcile release-driven runtime, dependency, lock, provider, and image changes through explicit durable artifact logical names. `liftoff update --check` SHALL report the resulting upgrades and conflicts without mutation, and plain update SHALL apply only the normal safe states.
+
+#### Scenario: Inspect a breaking baseline refresh
+- **WHEN** an existing project uses artifacts from an older supported-stack baseline
+- **THEN** `liftoff update --check` lists each changed named artifact and exits 2
+- **AND** it does not install dependencies, rewrite locks, or mutate project files
+
+#### Scenario: Apply untouched baseline artifacts
+- **WHEN** the developer runs plain update and every changed baseline-owned artifact is still at its recorded hash
+- **THEN** update writes the packaged versions and records their new hashes transactionally
+
+#### Scenario: Preserve a locally modified dependency file
+- **WHEN** both the current template and a dependency manifest, lock, Dockerfile, or provider lock changed
+- **THEN** plain update reports a conflict and preserves the local bytes

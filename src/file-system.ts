@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   access,
   chmod,
@@ -18,6 +18,7 @@ import {
   getApiStack,
   canonicalizeCodingAgents,
   getEnvironment,
+  getGovernanceProfile,
   getCodingAgent,
   getPattern,
   getProvider,
@@ -28,6 +29,10 @@ import {
 import type { GeneratedArtifact, LiftoffManifest, ManifestArtifact } from './types.js';
 import { validateFrameworkInstallation } from './framework-validation.js';
 import { verifyPowerAppsPackageMetadata } from './power-apps-validation.js';
+import {
+  governanceArtifactPaths,
+  governancePolicyVersion
+} from './repository-governance.js';
 
 export class FileSystemError extends Error {
   constructor(message: string) {
@@ -189,7 +194,7 @@ export async function writeArtifacts(targetRoot: string, artifacts: GeneratedArt
   }
 }
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
@@ -231,6 +236,21 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
         'Regenerate the project with this CLI or use the Liftoff version that generated it.'
     );
   }
+  if (artifactVersion === 5) {
+    assertOnlyFields(
+      raw,
+      [
+        'artifactVersion',
+        'generatedBy',
+        'liftoffVersion',
+        'project',
+        'framework',
+        'governance',
+        'artifacts'
+      ],
+      'Manifest'
+    );
+  }
 
   if (raw.generatedBy !== 'Mission Control Liftoff') {
     throw new FileSystemError('Manifest generatedBy must be "Mission Control Liftoff".');
@@ -242,17 +262,20 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
 
   const project = normalizeManifestProject(raw.project, artifactVersion);
   const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
+  const governance = normalizeManifestGovernance(raw.governance, artifactVersion);
   const normalizedArtifacts = normalizeManifestArtifacts(raw.artifacts);
   const artifacts = normalizedArtifacts
     .filter((artifact) => !LEGACY_SEED_LOGICAL_NAMES.has(artifact.logicalName));
   const manifest: LiftoffManifest = {
-    artifactVersion: artifactVersion as 2 | 3 | 4,
+    artifactVersion: artifactVersion as 2 | 3 | 4 | 5,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project,
     framework,
+    governance,
     artifacts
   };
+  validateGovernanceArtifactIdentity(manifest);
   if (artifacts.length !== normalizedArtifacts.length) {
     manifestsWithFilteredLegacySeedOwnership.add(manifest);
   }
@@ -282,7 +305,7 @@ function normalizeManifestProject(project: unknown, artifactVersion: number): Li
   if (!isRecord(project)) {
     throw new FileSystemError('Manifest.project must be a JSON object.');
   }
-  if (artifactVersion === 4) {
+  if (artifactVersion >= 4) {
     return normalizeV4ManifestProject(project);
   }
 
@@ -598,6 +621,13 @@ function normalizeManifestFramework(
   if (!isRecord(value)) {
     throw new FileSystemError('Manifest.framework must be a JSON object.');
   }
+  if (artifactVersion === 5) {
+    assertOnlyFields(
+      value,
+      ['state', 'adapter', 'contractVersion'],
+      'Manifest.framework'
+    );
+  }
   const state = requiredString(value, 'state', 'Manifest.framework');
   if (state !== 'initialized' && state !== 'legacy') {
     throw new FileSystemError('Manifest.framework.state must be "initialized" or "legacy".');
@@ -633,6 +663,60 @@ function normalizeManifestFramework(
   return { state, adapter: adapter.id, contractVersion };
 }
 
+function normalizeManifestGovernance(
+  value: unknown,
+  artifactVersion: number
+): LiftoffManifest['governance'] {
+  if (artifactVersion < 5) {
+    return { profile: 'unspecified', state: 'unspecified' };
+  }
+  if (!isRecord(value)) {
+    throw new FileSystemError('Manifest.governance must be a JSON object.');
+  }
+  const profileValue = requiredString(value, 'profile', 'Manifest.governance');
+  const profile = getGovernanceProfile(profileValue);
+  if (!profile || profile.id !== profileValue) {
+    throw new FileSystemError(
+      `Manifest governance profile ${JSON.stringify(profileValue)} is invalid.`
+    );
+  }
+  const state = requiredString(value, 'state', 'Manifest.governance');
+  if (profile.id === 'none') {
+    assertOnlyFields(value, ['profile', 'state'], 'Manifest.governance');
+    if (state !== 'disabled') {
+      throw new FileSystemError(
+        'Manifest governance profile none requires disabled state.'
+      );
+    }
+    return { profile: profile.id, state };
+  }
+  assertOnlyFields(
+    value,
+    ['profile', 'policyVersion', 'state'],
+    'Manifest.governance'
+  );
+  const policyVersion = requiredString(
+    value,
+    'policyVersion',
+    'Manifest.governance'
+  );
+  if (policyVersion !== governancePolicyVersion) {
+    throw new FileSystemError(
+      `Manifest governance policyVersion must be ${governancePolicyVersion}.`
+    );
+  }
+  if (state !== 'handoff-generated' && state !== 'handoff-partial') {
+    throw new FileSystemError(
+      'Enabled manifest governance requires handoff-generated or handoff-partial state.'
+    );
+  }
+  return {
+    profile: profile.id,
+    policyVersion,
+    state
+  };
+}
+
 function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
   if (!Array.isArray(value)) {
     throw new FileSystemError('Manifest.artifacts must be an array.');
@@ -645,6 +729,11 @@ function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
     if (!isRecord(entry)) {
       throw new FileSystemError(`${scope} must be a JSON object.`);
     }
+    assertOnlyFields(
+      entry,
+      ['logicalName', 'category', 'pathParts', 'contentHash'],
+      scope
+    );
     const logicalName = requiredString(entry, 'logicalName', scope);
     const category = requiredString(entry, 'category', scope);
     const pathParts = validateArtifactPathParts(entry.pathParts, `${scope}.pathParts`);
@@ -665,6 +754,93 @@ function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
   });
 }
 
+const governanceLogicalPaths = new Map<string, readonly string[]>([
+  ['repository-governance-policy', governanceArtifactPaths.policy],
+  ['repository-governance-context', governanceArtifactPaths.context],
+  ['repository-governance-guide', governanceArtifactPaths.guide],
+  [
+    'repository-governance-copilot-launcher',
+    governanceArtifactPaths['github-copilot']
+  ],
+  [
+    'repository-governance-claude-launcher',
+    governanceArtifactPaths.claude
+  ]
+]);
+
+function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
+  if (manifest.artifacts.some((artifact) =>
+    artifact.pathParts.join('/') === 'governance/activation-baseline.json'
+  )) {
+    throw new FileSystemError(
+      'governance/activation-baseline.json is user-owned and cannot be a Liftoff manifest artifact.'
+    );
+  }
+  const governanceArtifacts = manifest.artifacts.filter((artifact) =>
+    governanceLogicalPaths.has(artifact.logicalName)
+  );
+  if (manifest.governance.profile === 'unspecified') {
+    return;
+  }
+  if (manifest.governance.profile === 'none') {
+    if (governanceArtifacts.length > 0) {
+      throw new FileSystemError(
+        'Disabled manifest governance cannot own governance handoff artifacts.'
+      );
+    }
+    return;
+  }
+  const required = [
+    'repository-governance-policy',
+    'repository-governance-context',
+    'repository-governance-guide',
+    ...manifest.project.agents.map((agent) =>
+      agent === 'github-copilot'
+        ? 'repository-governance-copilot-launcher'
+        : 'repository-governance-claude-launcher'
+    )
+  ];
+  const missing: string[] = [];
+  for (const logicalName of required) {
+    const artifact = manifest.artifacts.find((entry) =>
+      entry.logicalName === logicalName
+    );
+    const expectedPath = governanceLogicalPaths.get(logicalName);
+    if (!artifact) {
+      missing.push(logicalName);
+      continue;
+    }
+    if (!expectedPath) {
+      throw new FileSystemError(`Unknown manifest governance artifact ${logicalName}.`);
+    }
+    if (
+      artifact.category !== 'governance' ||
+      artifact.pathParts.join('\0') !== expectedPath.join('\0')
+    ) {
+      throw new FileSystemError(
+        `Manifest governance artifact ${logicalName} has invalid identity.`
+      );
+    }
+  }
+  if (manifest.governance.state === 'handoff-generated' && missing.length > 0) {
+    throw new FileSystemError(
+      `Enabled manifest governance is missing artifact ${missing[0]}.`
+    );
+  }
+  if (manifest.governance.state === 'handoff-partial' && missing.length === 0) {
+    throw new FileSystemError(
+      'Manifest governance state handoff-partial requires at least one applicable artifact to remain outside Liftoff ownership.'
+    );
+  }
+  for (const artifact of governanceArtifacts) {
+    if (!required.includes(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest governance contains inapplicable launcher ${artifact.logicalName}.`
+      );
+    }
+  }
+}
+
 export async function validateGeneratedProject(projectRoot: string): Promise<string[]> {
   let manifest: LiftoffManifest;
   try {
@@ -677,7 +853,17 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
   for (const artifact of manifest.artifacts) {
     try {
       const targetPath = await resolveProjectPath(projectRoot, artifact.pathParts);
-      await access(targetPath);
+      if (artifact.category === 'governance') {
+        const bytes = await readFile(targetPath);
+        const actualHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+        if (actualHash !== artifact.contentHash) {
+          issues.push(
+            `Artifact hash mismatch for ${artifact.logicalName} at ${artifact.pathParts.join('/')}`
+          );
+        }
+      } else {
+        await access(targetPath);
+      }
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
         issues.push(`Missing artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}`);

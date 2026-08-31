@@ -6,11 +6,10 @@ Thank you for helping improve Mission Control Liftoff.
 
 Install the toolchains exercised by the complete suite:
 
-- Node.js 20.19 or newer for Liftoff; Node.js 22.12 or newer for Power Apps
-  starter verification.
-- Python 3.12.
-- Go 1.23.
-- OpenTofu 1.12.
+- Node.js 24.20 or newer for Liftoff and Power Apps starter verification.
+- Python 3.14 and `uv` 0.12.7 or newer.
+- Go 1.27.
+- OpenTofu 1.12.6.
 
 Clone the repository and install locked dependencies:
 
@@ -34,6 +33,8 @@ Before a change is release-ready, also verify the packed artifact:
 ```bash
 npm run smoke:package
 npm run verify:standard-node-templates
+npm run verify:generated-containers
+npm run check:supported-stack
 ```
 
 Changes to the telemetry gateway, container, or Azure service also require:
@@ -50,15 +51,31 @@ tofu -chdir=infrastructure/opentofu/telemetry validate
 The container smoke test requires a running Docker daemon. Standard hosted CI
 performs these static and local checks but never plans or applies production.
 
+On a Microsoft-managed device, pass the approved registries into generated
+container verification:
+
+```bash
+npm_config_registry=https://packagefeedproxy.microsoft.io/npm/ \
+npm_config_allow_remote=all \
+UV_DEFAULT_INDEX=https://packagefeedproxy.microsoft.io/pypi/simple \
+  npm --replace-registry-host=never run verify:generated-containers
+```
+
+The npm proxy returns approved backing-feed tarball URLs. Disabling registry-host
+replacement prevents a user-level `replace-registry-host=always` setting from
+rewriting those URLs into invalid proxy paths; npm 12 requires the command-local
+remote opt-in for that redirect. Do not persist either override globally.
+
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
-executes the installed CLI. The standard template verifier generates a Node.js
+executes the installed CLI, upgrade help, and an injected read-only self-upgrade
+check without selecting the host global prefix. The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
 
 Changes to the Power Apps renderer, dependencies, lockfile, or assets also
-require Node.js 22:
+require Node.js 24:
 
 ```bash
 npm run verify:power-apps-starter
@@ -98,7 +115,7 @@ here rather than duplicating it in end-user onboarding.
 ## Refresh the Power Apps starter
 
 Refresh only from a reviewed immutable commit in Microsoft's
-`PowerAppsCodeApps` repository. Use Node.js 22 on Linux x64 so npm emits the
+`PowerAppsCodeApps` repository. Use Node.js 24 on Linux x64 so npm emits the
 canonical optional-dependency metadata used by every supported host:
 
 ```bash
@@ -140,6 +157,17 @@ workflow runs the same command weekly and through manual dispatch. Ordinary
 pull-request CI uses committed fixtures so new registry advisories or registry
 outages do not make unrelated test runs nondeterministic.
 
+The command defaults to canonical npm. On a Microsoft-managed device where
+public registries are blocked, use the approved feed for local verification:
+
+```bash
+LIFTOFF_NPM_AUDIT_REGISTRY=https://packagefeedproxy.microsoft.io/npm/ \
+  npm run audit:template-dependencies
+```
+
+GitHub-hosted workflows leave this override unset and continue to audit against
+`https://registry.npmjs.org`.
+
 The explicit inventory and audit engine live under `scripts/`.
 `security/template-dependency-exceptions.json` records findings that have been
 reviewed but cannot yet be removed safely. Each exception is scoped to one
@@ -153,27 +181,69 @@ Do not renew an exception automatically. Reconfirm the vulnerable API remains
 unreachable, update its evidence and upstream reference, then set a new review
 window. Remove stale exceptions immediately after a dependency refresh.
 
-Refresh Liftoff-owned standard lockfiles on Linux x64. Resolve with Node.js 22
-and pinned npm 11.7.0, then normalize the final lockfile with the oldest
-supported Node.js 20 package-manager baseline, npm 10.8.2. Update the narrow
+Refresh Liftoff-owned standard lockfiles on Linux x64. Resolve with Node.js 24
+and pinned npm 12.0.2, then verify the final lockfile with the supported
+npm 10.9.4 and npm 12.0.2 compatibility lanes. Update the narrow
 manifest range first, then run from the affected asset directory:
 
 ```bash
-npx --yes npm@11.7.0 install --package-lock-only --ignore-scripts --no-audit --no-fund
-npx --yes npm@10.8.2 install --package-lock-only --ignore-scripts --no-audit --no-fund
-npx --yes npm@10.8.2 ci --ignore-scripts --no-audit --no-fund
+npm install --package-lock-only --ignore-scripts --no-audit --no-fund --omit-lockfile-registry-resolved
+npm ci --ignore-scripts --no-audit --no-fund
 ```
 
-Prefer the smallest compatible patched line. Do not use `npm audit fix`, force
-an unrelated major upgrade, downgrade a dependency to hide an advisory, or add
-an unverified transitive override. The npm 10 pass is required because newer
-npm releases can omit nested optional-peer records that the supported baseline
-still requires. Afterward run the focused security tests, the standard template
-verifier, package smoke, and the live audit.
+The standard-template CI matrix repeats the locked install with npm 10.9.4 on
+Node.js 22 and npm 12.0.2 on Node.js 24. Prefer the smallest compatible patched
+line between reviewed baseline refreshes. Do not use `npm audit fix`, downgrade a
+dependency to hide an advisory, or add an unverified transitive override.
+Afterward run the focused security tests, the standard template verifier,
+package smoke, and the live audit.
+
+## Refresh the supported stack
+
+`assets/supported-stack.json` is the release-owned source of truth for tested
+runtimes, framework CLIs, direct dependency sets, provider locks, immutable
+container images, and upstream starter identity.
+
+```bash
+npm run check:supported-stack-freshness
+# Update manifests, locks, source compatibility, and immutable digests.
+npm run refresh:supported-stack
+npm run check:supported-stack
+```
+
+Freshness checks are advisory inputs to a reviewed change; they never rewrite
+the repository. Resolve candidates only from the canonical sources recorded in
+the baseline, materialize candidate manifests and locks in temporary
+directories, reject prereleases, and select Node's newest supported LTS rather
+than Current. Promote a candidate only after every affected install, build,
+lint, test, container, OpenTofu, security, and cross-platform check passes.
+Python lock refreshes use `uv lock` and Function requirements are exported from
+the same GenAI lock. Do not hand-edit generated lockfiles.
+
+When the newest stable candidate is incompatible, record the selected version,
+the exact reviewed candidate, and the technical reason in the baseline rather
+than silently pinning an older release. The current Power Apps SDK selection
+stays on 1.2.7 because later releases remove the project-local `power-apps`
+binary; adopting the global `pa` CLI requires a separate workload migration.
 
 For the Power Apps starter, use the immutable refresh procedure above rather
 than editing package metadata or lockfile bytes. A new starter commit changes
 the audit inventory path and requires every exception to be reviewed again.
+
+## Maintain the repository-governance profile
+
+The complete supplied standard is stored at
+`assets/governance/single-maintainer-gitflow/policy.md`. Generated policy
+metadata and the activation protocol are rendered by
+`src/repository-governance.ts`. Keep policy schema/version, required invariant
+fragments, workload context adapters, exact artifact paths, logical names, and
+Copilot/Claude launcher compatibility synchronized.
+
+Policy changes require the focused repository-governance contract tests,
+workload matrix, schema-v5 reader/writer tests, update adoption and opt-out
+tests, framework ownership tests, documentation links, and package smoke. Never
+add a broad `.github` or `.claude` ownership pattern, an active framework change,
+or `governance/activation-baseline.json` to Liftoff-managed artifacts.
 
 ## Propose behavior changes
 
@@ -217,6 +287,23 @@ npm run verify:release-identity -- v0.6.1
 Replace the example tag with the intended release. The Git tag, root package
 metadata, root lockfile metadata, packed package version, and installed
 `liftoff --version` output must all identify the same release.
+
+When a release raises runtime floors or adopts generated-stack majors, label it
+as breaking and direct existing projects to `liftoff update --check` before
+apply. The release rollback boundary is a source revert before publication.
+After publication, projects recover applied template changes through version
+control; Liftoff must not silently downgrade their dependencies.
+
+The first release containing `liftoff upgrade` must retain the one-time bootstrap
+command for users on older versions:
+
+```bash
+npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+```
+
+All upgrade apply tests use temporary prefixes, homes, caches, and injected
+registry responses. Never run self-upgrade apply against a developer or release
+runner's actual global prefix.
 
 Stable versions publish with `latest`; prereleases publish with `next`. The
 post-publish verifier must remain after `npm publish`, receive the selected

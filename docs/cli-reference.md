@@ -5,6 +5,7 @@ Run `liftoff help` or command-specific help for the authoritative syntax:
 ```bash
 liftoff init --help
 liftoff migrate --help
+liftoff upgrade --help
 liftoff update --help
 ```
 
@@ -14,7 +15,7 @@ duplicates, and extra positional arguments fail before generation.
 ## Lifecycle
 
 ```text
-plan -> init or migrate -> validate and doctor -> update -> dev and infra helpers
+install -> upgrade CLI -> plan -> init or migrate -> validate and doctor -> update project -> dev and infra helpers
 ```
 
 | Command | Behavior |
@@ -24,6 +25,8 @@ plan -> init or migrate -> validate and doctor -> update -> dev and infra helper
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, durable files, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
+| `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
+| `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies safe managed drift immediately, preserves unforced conflicts and orphans, and records the resulting manifest |
 | `liftoff update --check` | Reports drift without preflight or mutation; exits 0 when clean and 2 when drift exists |
 | `liftoff update --force` | Applies safe changes and overwrites only the exact guarded conflicts reported by update |
@@ -37,6 +40,11 @@ plan -> init or migrate -> validate and doctor -> update -> dev and infra helper
 
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
+
+Generation, validation, doctor, and update consume the packaged
+[supported-stack baseline](supported-stack.md). The current contract uses
+Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
+1.0 release lines; these commands never resolve mutable latest versions.
 
 ## Planning and initialization options
 
@@ -53,6 +61,7 @@ Common noninteractive inputs include:
 --spec openspec|spec-kit
 --agents copilot,claude
 --default-agent copilot|claude
+--governance single-maintainer-gitflow|none
 --code-apps-plugin | --no-code-apps-plugin
 ```
 
@@ -60,6 +69,44 @@ Power Apps rejects API, pattern, cloud, region, frontend, and API environment
 options rather than ignoring them.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
+Repository governance defaults to `single-maintainer-gitflow`. It generates a
+local policy handoff only; `none` omits it. See
+[repository governance](repository-governance.md).
+
+## CLI upgrade modes
+
+```bash
+liftoff upgrade
+liftoff upgrade --check
+liftoff upgrade --json
+liftoff upgrade --check --json
+```
+
+`liftoff upgrade` is an imperative request to replace the supported global npm
+installation of `@msn-control/liftoff`; it does not prompt or accept `--yes`,
+`--force`, `--install-tools`, project paths, or project dependency flags.
+Automatic replacement is refused for local dependencies, `npx` execution-cache
+copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
+unsafe paths.
+
+Canonical npm's stable `latest` metadata selects one exact target. The effective
+configured npm registry remains the delivery path and must expose that exact
+version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
+canonical bypass around a stale mirror, invokes elevation, installs a
+prerelease, or performs a downgrade.
+
+`--check` performs the same origin, target, and parity checks without invoking
+installation. Apply uses one shell-free exact npm command with lifecycle scripts,
+audit, and funding prompts disabled, then verifies installed metadata, the
+confined binary, and exact `Liftoff <version>` output. A failed install or
+verification is not automatically rolled back; use the exact-version repair
+command printed by Liftoff.
+
+JSON results use schema version 1 and expose only `mode`, `status`,
+`currentVersion`, applicable `targetVersion`, applicable `registryKind`, and a
+stable `reasonCode`. Status is one of `current`, `update-available`, `upgraded`,
+`blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
+object.
 
 ## Update modes
 
@@ -75,6 +122,9 @@ Plain `liftoff update` is imperative and prompt-free. It applies safe new,
 missing, untouched-upgrade, clean-move, and recorded-state changes in
 interactive terminals, redirected streams, and automation. Local or user-owned
 conflicts are skipped and reported. Orphans are reported without deletion.
+During legacy governance adoption, preserved unrecorded conflicts remain
+outside manifest ownership and set local state to `handoff-partial` until a
+later update can write or byte-identically adopt every required artifact.
 
 Use `--check` whenever no project bytes may change. Human check mode prints each
 drift state and recommends plain update for safe changes or a reviewed
@@ -91,6 +141,10 @@ copy local work before using `--force`. Force does not permit workload, API
 stack, GenAI pattern, framework, selected-agent, or user-supplied Power Apps
 starter identity changes, and it cannot bypass project-boundary, symlink,
 structural-collision, or manifest guards.
+
+For a breaking supported-stack release, inspect `liftoff update --check` before
+plain update. Restore an unwanted applied migration through version control;
+running an older CLI is not a supported automatic downgrade.
 
 ### Migration from 0.6.x
 
@@ -113,6 +167,8 @@ Machine-readable maintenance contracts bypass decorative presentation:
 ```bash
 liftoff validate --json
 liftoff doctor --json
+liftoff upgrade --json
+liftoff upgrade --check --json
 liftoff update --json
 liftoff update --check --json
 ```
@@ -125,7 +181,8 @@ Exit codes:
 
 - `0`: success or a clean check.
 - `1`: invalid input, unsafe state, or command failure.
-- `2`: explicit update check mode found drift.
+- `2`: an explicit update check found project drift, or upgrade check found an
+  installable CLI release.
 
 Raw installer, framework, and dependency child stdout and stderr are forwarded
 unchanged.
