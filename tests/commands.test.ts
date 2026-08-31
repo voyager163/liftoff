@@ -1,26 +1,95 @@
 import path from 'node:path';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { runCommand } from '../src/commands.js';
-import { CaptureStream } from './helpers.js';
+import { createFixtureProject, runCommand } from '../src/commands.js';
+import { dependencyResumeCommand } from '../src/project-dependencies.js';
+import { liftoffVersion } from '../src/version.js';
+import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import type {
+  CommandResult,
+  RunCommandOptions
+} from '../src/process-runner.js';
+import type { ExternalCommand } from '../src/types.js';
+
+class FrameworkFailureRunner extends ReadyInitRunner {
+  stagedRoot?: string;
+
+  constructor(
+    private readonly behavior: 'failure' | 'missing-marker',
+    gitRoot: string
+  ) {
+    super({ gitRoot });
+  }
+
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (command.executable !== 'openspec' || command.args[0] !== 'init') {
+      return super.run(command, options);
+    }
+    this.calls.push(command);
+    this.callDetails.push({ command, options });
+    this.stagedRoot = options?.cwd;
+    return {
+      command,
+      displayCommand: [command.executable, ...command.args].join(' '),
+      status: this.behavior === 'failure' ? 1 : 0,
+      signal: null,
+      stdout: '',
+      stderr: this.behavior === 'failure' ? 'initializer failed\n' : '',
+      timedOut: false
+    };
+  }
+}
 
 describe('commands', () => {
-  it('parses create positional arguments without treating them as subcommands', () => {
-    const parsed = parseArgs(['create', 'my-app', '--pattern', 'rag', '--cloud', 'azure']);
+  it('parses init positional arguments without treating them as subcommands', () => {
+    const parsed = parseArgs(['init', 'my-app', '--pattern', 'rag', '--cloud', 'azure']);
 
-    expect(parsed.command).toBe('create');
+    expect(parsed.command).toBe('init');
     expect(parsed.subcommand).toBeUndefined();
     expect(parsed.positional).toEqual(['my-app']);
     expect(parsed.flags.pattern).toBe('rag');
   });
 
   it('parses standard project flags', () => {
-    const parsed = parseArgs(['create', 'my-api', '--no-genai', '--api', 'node']);
+    const parsed = parseArgs(['init', 'my-api', '--no-genai', '--api', 'node']);
 
     expect(parsed.flags.genai).toBe(false);
     expect(parsed.flags.api).toBe('node');
+  });
+
+  it('parses the explicit Power Apps workload and preview plugin preference', () => {
+    const parsed = parseArgs([
+      'init',
+      'field-service',
+      '--type',
+      'power-apps-code-app',
+      '--code-apps-plugin'
+    ]);
+
+    expect(parsed.flags.type).toBe('power-apps-code-app');
+    expect(parsed.flags['code-apps-plugin']).toBe(true);
+  });
+
+  it('parses multi-agent and independent consent flags strictly', () => {
+    const parsed = parseArgs([
+      'init', 'my-api', '--agents', 'copilot,claude', '--default-agent', 'claude',
+      '--yes', '--force', '--install-tools', '--install-dependencies'
+    ]);
+    expect(parsed.flags).toMatchObject({
+      agents: 'copilot,claude',
+      'default-agent': 'claude',
+      yes: true,
+      force: true,
+      'install-tools': true,
+      'install-dependencies': true
+    });
+    expect(() => parseArgs(['plan', '--force'])).toThrow(/Unknown flag/);
+    expect(() => parseArgs(['init', '--agents='])).toThrow(/Missing value/);
   });
 
   it('parses explicit boolean values and rejects duplicate flags', () => {
@@ -32,12 +101,27 @@ describe('commands', () => {
     expect(() => parseArgs(['plan', '--api', 'node', '--api', 'go'])).toThrow(/provided only once/);
   });
 
+  it('parses repository governance profiles as a common project option', () => {
+    expect(parseArgs([
+      'init',
+      'app',
+      '--governance',
+      'single-maintainer-gitflow'
+    ]).flags.governance).toBe('single-maintainer-gitflow');
+    expect(parseArgs([
+      'plan',
+      '--governance=none'
+    ]).flags.governance).toBe('none');
+  });
+
   it('rejects unknown flags, options, subcommands, and extra positionals', () => {
-    expect(() => parseArgs(['create', 'app', '--cluod', 'aws'])).toThrow(/Unknown flag.*--cluod/);
+    expect(() => parseArgs(['init', 'app', '--cluod', 'aws'])).toThrow(/Unknown flag.*--cluod/);
     expect(() => parseArgs(['plan', '-f'])).toThrow(/Unknown option/);
+    expect(() => parseArgs(['-v'])).toThrow(/Unknown option/);
     expect(() => parseArgs(['dev', 'destroy'])).toThrow(/Unsupported dev subcommand.*up, down, logs, reset/);
     expect(() => parseArgs(['regions', 'typo'])).toThrow(/Unsupported regions subcommand/);
     expect(() => parseArgs(['validate', 'one', 'two'])).toThrow(/Too many positional arguments/);
+    expect(() => parseArgs(['create', 'app'])).toThrow(/replaced by `liftoff init`/);
   });
 
   it('rejects missing and malformed flag values', () => {
@@ -49,11 +133,49 @@ describe('commands', () => {
   it('shows command help without evaluating required project options', async () => {
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
-    const code = await runCommand(parseArgs(['create', '--help']), { cwd: process.cwd(), stdout, stderr });
+    const code = await runCommand(parseArgs(['init', '--help']), { cwd: process.cwd(), stdout, stderr });
     expect(code).toBe(0);
-    expect(stdout.text()).toContain('Usage: liftoff create [project-name]');
-    expect(stdout.text()).toContain('--pattern <value>');
+    expect(stdout.text()).toContain('Usage: liftoff init [project-name]');
+    expect(stdout.text()).toContain('--pattern <pattern>');
     expect(stderr.text()).toBe('');
+  });
+
+  it('keeps command help human-readable when a JSON flag is also present', async () => {
+    for (const command of ['doctor', 'update']) {
+      const stdout = new CaptureStream();
+      const stderr = new CaptureStream();
+      const code = await runCommand(parseArgs([command, '--json', '--help']), {
+        cwd: process.cwd(),
+        stdout,
+        stderr
+      });
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain(`Usage: liftoff ${command}`);
+      expect(stdout.text()).toContain('Output options');
+      expect(stderr.text()).toBe('');
+    }
+  });
+
+  it('reports the installed version and includes it in general help outside a project', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-version-'));
+    try {
+      for (const argv of [[], ['help']]) {
+        const stdout = new CaptureStream();
+        const code = await runCommand(parseArgs(argv), { cwd: tempRoot, stdout, stderr: new CaptureStream() });
+        expect(code).toBe(0);
+        expect(stdout.text()).toContain(`Mission Control Liftoff ${liftoffVersion}`);
+        expect(stdout.text()).toContain('--version');
+      }
+
+      const stdout = new CaptureStream();
+      const stderr = new CaptureStream();
+      const code = await runCommand(parseArgs(['--version']), { cwd: tempRoot, stdout, stderr });
+      expect(code).toBe(0);
+      expect(stdout.text()).toBe(`Liftoff ${liftoffVersion}\n`);
+      expect(stderr.text()).toBe('');
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
   });
 
   it('rejects invalid configuration types before writing a project', async () => {
@@ -72,7 +194,7 @@ describe('commands', () => {
         specWorkflow: 'openspec'
       }), 'utf8');
       const code = await runCommand(
-        parseArgs(['create', '--config', configPath, '--yes']),
+        parseArgs(['init', '--config', configPath, '--yes']),
         { cwd: tempRoot, stdout: new CaptureStream(), stderr }
       );
       expect(code).toBe(1);
@@ -115,6 +237,13 @@ describe('commands', () => {
 
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Artifacts');
+      expect(stdout.text()).toContain('Coding agents: GitHub Copilot');
+      expect(stdout.text()).toContain('Workstation requirements');
+      expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 1');
+      expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
+      expect(stdout.text()).toContain('repository-governance-policy');
+      expect(stdout.text()).toContain('live enforcement');
       expect(await readdir(tempRoot)).toEqual([]);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -141,22 +270,279 @@ describe('commands', () => {
     }
   });
 
+  it('previews a Power Apps code app without API or infrastructure artifacts', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plan-'));
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(
+        parseArgs(['plan', '--type', 'power-apps-code-app']),
+        { cwd: tempRoot, stdout, stderr }
+      );
+
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain('Power Apps code app');
+      expect(stdout.text()).toContain('power-apps-package');
+      expect(stdout.text()).toContain('Project dependencies: npm ci');
+      expect(stdout.text()).toContain('npx --no-install power-apps init');
+      expect(stdout.text()).toContain('Node.js: 24.20.0+ [blocking]');
+      expect(stdout.text()).toContain('Code Apps plugin: Not requested');
+      expect(stdout.text()).toContain('repository-governance-context');
+      expect(stdout.text()).not.toContain('docker-compose');
+      expect(stdout.text()).not.toContain('opentofu');
+      expect(stderr.text()).toBe('');
+      expect(await readdir(tempRoot)).toEqual([]);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('shows workload-aware Power Apps development and infrastructure helpers', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Helper App',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot']
+    });
+    try {
+      const devOut = new CaptureStream();
+      expect(await runCommand(parseArgs(['dev']), {
+        cwd: root,
+        stdout: devOut,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(devOut.text()).toContain('Dependency prerequisite');
+      expect(devOut.text()).toContain('$ npm ci');
+      expect(devOut.text()).toContain('$ npm run dev');
+      expect(devOut.text()).not.toContain('docker compose');
+
+      const infraOut = new CaptureStream();
+      expect(await runCommand(parseArgs(['infra']), {
+        cwd: root,
+        stdout: infraOut,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(infraOut.text()).toContain('Not applicable');
+      expect(infraOut.text()).toContain('hosted by Power Platform');
+      expect(infraOut.text()).not.toContain('tofu');
+    } finally {
+      await rm(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+
+  it('validates Power Apps identity, named artifacts, package metadata, and framework markers', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Validate App',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot']
+    });
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const lockPath = path.join(root, 'package-lock.json');
+    const markerPath = path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md');
+    try {
+      const ready = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: ready,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(JSON.parse(ready.text())).toMatchObject({
+        schemaVersion: 1,
+        projectRoot: root,
+        valid: true,
+        issues: []
+      });
+
+      const manifestText = await readFile(manifestPath, 'utf8');
+      const manifest = JSON.parse(manifestText);
+      manifest.artifacts = manifest.artifacts.filter(
+        (artifact: { logicalName: string }) => artifact.logicalName !== 'power-apps-package'
+      );
+      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+      const missingArtifact = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: missingArtifact,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(missingArtifact.text()).issues).toContain(
+        'Missing required Power Apps manifest artifact power-apps-package at package.json'
+      );
+      await writeFile(manifestPath, manifestText);
+
+      const lockText = await readFile(lockPath, 'utf8');
+      const lock = JSON.parse(lockText);
+      lock.name = 'wrong-project';
+      await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
+      const badMetadata = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: badMetadata,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(badMetadata.text()).issues).toContain(
+        'package.json and package-lock.json must record the same project name.'
+      );
+      await writeFile(lockPath, lockText);
+
+      await rm(markerPath);
+      const missingMarker = new CaptureStream();
+      expect(await runCommand(parseArgs(['validate', '--json']), {
+        cwd: root,
+        stdout: missingMarker,
+        stderr: new CaptureStream()
+      })).toBe(1);
+      expect(JSON.parse(missingMarker.text()).issues[0]).toContain('Missing framework marker');
+    } finally {
+      await rm(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+
+  it('keeps requested Code Apps plugin setup advisory even with --install-tools', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plugin-'));
+    const stdout = new CaptureStream();
+    const runner = new ReadyInitRunner();
+    try {
+      const code = await runCommand(parseArgs([
+        'init', 'field-service', '--type', 'power-apps-code-app',
+        '--spec', 'openspec', '--agents', 'copilot,claude',
+        '--code-apps-plugin', '--yes', '--install-tools'
+      ]), {
+        cwd: tempRoot,
+        stdout,
+        stderr: new CaptureStream(),
+        runner
+      });
+
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain('Optional Code Apps plugin');
+      expect(stdout.text()).toContain('code-apps-preview@power-platform-skills');
+      expect(stdout.text()).toContain('Do not run `/create-code-app`');
+      expect(stdout.text()).toContain(
+        dependencyResumeCommand({
+          id: 'power-apps-root',
+          label: 'Install Power Apps code app dependencies',
+          command: {
+            executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+            args: ['ci']
+          },
+          cwd: await realpath(path.join(tempRoot, 'field-service'))
+        })
+      );
+      expect(runner.calls).toContainEqual({
+        executable: 'copilot',
+        args: ['plugin', 'list']
+      });
+      expect(runner.calls).toContainEqual({
+        executable: 'claude',
+        args: ['plugin', 'list', '--json']
+      });
+      expect(runner.calls.some((command) =>
+        command.args[0] === 'plugin' && command.args[1] === 'install'
+      )).toBe(false);
+      expect(runner.calls.some((command) => command.executable === 'curl')).toBe(false);
+      expect(runner.calls.some((command) => command.args[0] === 'ci')).toBe(false);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it.each([
+    ['failure', 'initializer failed'],
+    ['missing-marker', 'did not produce the tested contract']
+  ] as const)('removes staging and preserves an exact Git root after framework %s', async (
+    behavior,
+    expected
+  ) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-framework-'));
+    const sentinelPath = path.join(root, 'developer.txt');
+    await mkdir(path.join(root, '.git'));
+    await writeFile(sentinelPath, 'preserve\n');
+    const runner = new FrameworkFailureRunner(behavior, root);
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(parseArgs([
+        'init', '--type', 'power-apps-code-app', '--spec', 'openspec',
+        '--agents', 'copilot', '--yes'
+      ]), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr,
+        runner
+      });
+
+      expect(code).toBe(1);
+      expect(stderr.text()).toContain(expected);
+      expect(await readFile(sentinelPath, 'utf8')).toBe('preserve\n');
+      await expect(access(path.join(root, 'package.json'))).rejects.toThrow();
+      expect(runner.stagedRoot).toBeDefined();
+      await expect(access(runner.stagedRoot!)).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects unsupported Power Apps migration before inspecting the source', async () => {
+    const stderr = new CaptureStream();
+    const code = await runCommand(
+      parseArgs(['migrate', 'missing-source', '--type', 'power-apps-code-app', '--yes']),
+      { cwd: process.cwd(), stdout: new CaptureStream(), stderr }
+    );
+
+    expect(code).toBe(1);
+    expect(stderr.text()).toContain('Power Apps code app migration is not supported');
+    expect(stderr.text()).not.toContain('Source project not found');
+  });
+
   it('creates and validates a backend-only project non-interactively', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-create-'));
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
     try {
+      const runner = new ReadyInitRunner();
       const code = await runCommand(
-        parseArgs(['create', 'claims-api', '--pattern', 'prompt', '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes']),
-        { cwd: tempRoot, stdout, stderr }
+        parseArgs(['init', 'claims-api', '--pattern', 'prompt', '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes']),
+        { cwd: tempRoot, stdout, stderr, runner }
       );
 
       expect(code).toBe(0);
-      expect(stdout.text()).toContain('Created claims-api');
+      expect(stdout.text()).toContain('Initialized claims-api');
+      expect(stdout.text()).toContain('local handoff generated, live activation deferred');
+      expect(stdout.text()).toContain('Handoff generated; commit and push before read-only Phase 0');
+      expect(stdout.text()).toContain('Deferred project dependencies');
+      expect(runner.calls.some((command) => command.args.includes('venv'))).toBe(false);
       expect(await readdir(path.join(tempRoot, 'claims-api'))).toContain('liftoff.manifest.json');
+      expect(runner.calls.some((command) => command.executable === 'gh')).toBe(false);
 
       const validateCode = await runCommand(parseArgs(['validate', 'claims-api']), { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream() });
       expect(validateCode).toBe(0);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('installs project dependencies only with independent explicit consent', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-install-dependencies-'));
+    const stdout = new CaptureStream();
+    const runner = new ReadyInitRunner();
+    try {
+      const code = await runCommand(
+        parseArgs([
+          'init', 'dependency-app', '--no-genai', '--api', 'node', '--cloud', 'azure',
+          '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes',
+          '--install-dependencies'
+        ]),
+        { cwd: tempRoot, stdout, stderr: new CaptureStream(), runner }
+      );
+
+      expect(code).toBe(0);
+      expect(stdout.text()).toContain('Project dependencies');
+      expect(stdout.text()).not.toContain('Deferred project dependencies');
+      expect(runner.calls).toContainEqual({
+        executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
+        args: ['ci']
+      });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -169,10 +555,10 @@ describe('commands', () => {
     try {
       const code = await runCommand(
         parseArgs([
-          'create', 'orders-api', '--no-genai', '--api', 'go', '--cloud', 'azure',
+          'init', 'orders-api', '--no-genai', '--api', 'go', '--cloud', 'azure',
           '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--environments', 'dev,test,prod', '--yes'
         ]),
-        { cwd: tempRoot, stdout, stderr }
+        { cwd: tempRoot, stdout, stderr, runner: new ReadyInitRunner() }
       );
 
       expect(code).toBe(0);
@@ -187,7 +573,7 @@ describe('commands', () => {
     const stderr = new CaptureStream();
     const code = await runCommand(
       parseArgs([
-        'create', 'invalid', '--no-genai', '--api', 'node', '--pattern', 'rag', '--cloud', 'azure',
+        'init', 'invalid', '--no-genai', '--api', 'node', '--pattern', 'rag', '--cloud', 'azure',
         '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--environments', 'dev', '--yes'
       ]),
       { cwd: process.cwd(), stdout: new CaptureStream(), stderr }
@@ -214,14 +600,14 @@ describe('commands', () => {
         );
         expect(plan).toBe(0);
 
-        const create = await runCommand(
+        const init = await runCommand(
           parseArgs([
-            'create', projectName, '--no-genai', '--api', alias, '--cloud', 'azure',
+            'init', projectName, '--no-genai', '--api', alias, '--cloud', 'azure',
             '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--environments', 'dev', '--yes'
           ]),
-          { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream() }
+          { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream(), runner: new ReadyInitRunner() }
         );
-        expect(create).toBe(0);
+        expect(init).toBe(0);
 
         const projectRoot = path.join(tempRoot, projectName);
         const validate = await runCommand(
@@ -247,7 +633,7 @@ describe('commands', () => {
         expect(doctor.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
 
         const manifest = JSON.parse(await readFile(path.join(projectRoot, 'liftoff.manifest.json'), 'utf8'));
-        expect(manifest.project.apiStack).toBe(stackId);
+        expect(manifest.project.workload).toMatchObject({ kind: 'standard', apiStack: stackId });
       }
     } finally {
       if (previousRegistry === undefined) {
@@ -259,7 +645,7 @@ describe('commands', () => {
     }
   }, 120_000);
 
-  it('rejects non-empty create targets', async () => {
+  it('preserves unrelated files in an existing named target', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-existing-'));
     const target = path.join(tempRoot, 'existing-app');
     const stdout = new CaptureStream();
@@ -268,14 +654,129 @@ describe('commands', () => {
       await mkdir(target, { recursive: true });
       await writeFile(path.join(target, 'file.txt'), 'content', 'utf8');
       const code = await runCommand(
-        parseArgs(['create', 'existing-app', '--pattern', 'rag', '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes']),
-        { cwd: tempRoot, stdout, stderr }
+        parseArgs(['init', 'existing-app', '--pattern', 'rag', '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes']),
+        { cwd: tempRoot, stdout, stderr, runner: new ReadyInitRunner() }
       );
 
-      expect(code).toBe(1);
-      expect(stderr.text()).toContain('must be new or empty');
+      expect(code).toBe(0);
+      expect(await readFile(path.join(target, 'file.txt'), 'utf8')).toBe('content');
+      expect(await readdir(target)).toContain('liftoff.manifest.json');
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires --force for listed regular-file conflicts even when --yes is present', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-conflict-'));
+    const target = path.join(tempRoot, 'existing-app');
+    try {
+      await mkdir(target);
+      await writeFile(path.join(target, 'README.md'), 'developer content\n');
+      await writeFile(path.join(target, 'unrelated.txt'), 'preserve\n');
+      const base = [
+        'init', 'existing-app', '--pattern', 'rag', '--cloud', 'azure', '--region', 'eastus',
+        '--spec', 'openspec', '--no-frontend', '--environments', 'dev', '--yes'
+      ];
+      const stderr = new CaptureStream();
+      expect(await runCommand(parseArgs(base), {
+        cwd: tempRoot,
+        stdout: new CaptureStream(),
+        stderr,
+        runner: new ReadyInitRunner()
+      })).toBe(1);
+      expect(stderr.text()).toContain('require --force');
+      expect(await readFile(path.join(target, 'README.md'), 'utf8')).toBe('developer content\n');
+      await expect(readFile(path.join(target, 'liftoff.manifest.json'))).rejects.toThrow();
+
+      expect(await runCommand(parseArgs([...base, '--force']), {
+        cwd: tempRoot,
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        runner: new ReadyInitRunner()
+      })).toBe(0);
+      expect(await readFile(path.join(target, 'README.md'), 'utf8')).toContain('# existing-app');
+      expect(await readFile(path.join(target, 'unrelated.txt'), 'utf8')).toBe('preserve\n');
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('initializes an exact Git root in place and infers its project identity', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-in-place-'));
+    try {
+      await mkdir(path.join(root, '.git'));
+      await writeFile(path.join(root, 'existing.txt'), 'preserve\n');
+      const code = await runCommand(parseArgs([
+        'init', '--pattern', 'prompt', '--cloud', 'azure', '--region', 'eastus',
+        '--spec', 'openspec', '--no-frontend', '--environments', 'dev', '--yes'
+      ]), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        runner: new ReadyInitRunner({ gitRoot: root })
+      });
+
+      expect(code).toBe(0);
+      expect(await readdir(root)).toContain('liftoff.manifest.json');
+      expect(await readFile(path.join(root, 'existing.txt'), 'utf8')).toBe('preserve\n');
+      const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+      expect(manifest.project.name).toBe(path.basename(root));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('persists canonical multi-agent Spec Kit configuration and default identity', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-agent-init-'));
+    try {
+      const code = await runCommand(parseArgs([
+        'init', 'agent-app', '--pattern', 'rag', '--cloud', 'azure', '--region', 'eastus',
+        '--spec', 'spec-kit', '--agents', 'claude,copilot', '--default-agent', 'claude',
+        '--no-frontend', '--environments', 'dev', '--yes'
+      ]), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        runner: new ReadyInitRunner()
+      });
+
+      expect(code).toBe(0);
+      const manifest = JSON.parse(await readFile(path.join(root, 'agent-app', 'liftoff.manifest.json'), 'utf8'));
+      expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
+      expect(manifest.project.defaultAgent).toBe('claude');
+      expect(await readFile(path.join(root, 'agent-app', '.specify', 'integration.json'), 'utf8'))
+        .toContain('"default_integration": "claude"');
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps --yes and --install-tools independent', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-tool-consent-'));
+    const argv = [
+      'init', 'tool-app', '--pattern', 'rag', '--cloud', 'azure', '--region', 'eastus',
+      '--spec', 'openspec', '--no-frontend', '--environments', 'dev', '--yes'
+    ];
+    try {
+      const stderr = new CaptureStream();
+      expect(await runCommand(parseArgs(argv), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr,
+        runner: new ReadyInitRunner({ missing: ['openspec'] })
+      })).toBe(1);
+      expect(stderr.text()).toContain('Resume with `liftoff init --install-tools`');
+      await expect(readdir(path.join(root, 'tool-app'))).rejects.toThrow();
+
+      expect(await runCommand(parseArgs([...argv, '--install-tools']), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        runner: new ReadyInitRunner({ missing: ['openspec'] })
+      })).toBe(0);
+      expect(await readdir(path.join(root, 'tool-app'))).toContain('liftoff.manifest.json');
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 });

@@ -1,0 +1,340 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { buildProjectPlan } from '../src/planner.js';
+import {
+  assertGovernanceContentSafe,
+  buildRepositoryGovernanceArtifacts,
+  governanceArtifactPaths,
+  governanceContextSchemaVersion,
+  governancePolicySchemaVersion,
+  governancePolicyVersion,
+  renderCanonicalGovernancePolicy,
+  renderGovernanceContext,
+  validateGovernanceContext,
+  validateGovernancePolicy
+} from '../src/repository-governance.js';
+import { buildArtifacts } from '../src/templates.js';
+
+function plan(values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}) {
+  return buildProjectPlan({
+    projectName: 'Governed App',
+    pattern: 'rag',
+    cloud: 'azure',
+    agents: ['copilot', 'claude'],
+    ...values
+  }, { requireProjectName: true });
+}
+
+describe('canonical repository governance policy', () => {
+  it('packages the complete versioned single-maintainer policy', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain(`schemaVersion: ${governancePolicySchemaVersion}`);
+    expect(policy).toContain(`policyVersion: "${governancePolicyVersion}"`);
+    expect(policy).toContain('Vincent Driessen');
+    expect(policy).toContain('required_approving_review_count: 0');
+    expect(policy).toContain('Do not create a `CODEOWNERS` file');
+    expect(policy).toContain('GITHUB_TOKEN');
+    expect(policy).toContain('GitHub Secret Protection');
+    expect(policy).toContain('Dependabot + Dependency Review');
+    expect(policy).toContain('CodeQL + Copilot Autofix');
+    expect(policy).toContain('Checkov');
+    expect(policy).toContain('Trivy');
+    expect(policy).toContain('Grype');
+    expect(policy).toContain('OWASP ZAP');
+    expect(policy).toContain('trusted_root.jsonl');
+    expect(policy).toContain('Route everything to Slack');
+    expect(policy).toContain('DORA four keys');
+    expect(policy).toContain('STOP FOR EXPLICIT USER APPROVAL');
+    expect(policy).toContain('governance/activation-baseline.json');
+    expect(policy).toContain('rulesets idempotently last');
+    expect(policy.length).toBeGreaterThan(40_000);
+    expect(createHash('sha256').update(policy).digest('hex'))
+      .toMatchInlineSnapshot(`"f90887530e667f7f68b818f48af676b89d0f6703273202897310f668d6c96737"`);
+    expect(policy).toBe(readFileSync(
+      new URL(
+        '../assets/governance/single-maintainer-gitflow/policy.md',
+        import.meta.url
+      ),
+      'utf8'
+    ));
+    expect(() => validateGovernancePolicy(policy)).not.toThrow();
+  });
+
+  it.each([
+    'required_approving_review_count: 0',
+    'GITHUB_TOKEN',
+    'Trivy',
+    'STOP FOR EXPLICIT USER APPROVAL',
+    'governance/activation-baseline.json',
+    'Prove each check fails'
+  ])('fails closed when %s is omitted', (fragment) => {
+    const policy = renderCanonicalGovernancePolicy().replaceAll(fragment, '');
+    expect(() => validateGovernancePolicy(policy)).toThrow(
+      /missing required contract fragment|fail-closed/
+    );
+  });
+
+  it('rejects credential-shaped values without rejecting policy terminology', () => {
+    expect(() => assertGovernanceContentSafe(
+      'https://hooks.slack.com/services/ABC/DEF/SECRET'
+    )).toThrow(/credential-shaped/);
+    expect(() => assertGovernanceContentSafe(
+      'github_pat_abcdefghijklmnopqrstuvwxyz123456789'
+    )).toThrow(/credential-shaped/);
+    expect(() => assertGovernanceContentSafe(
+      'Discover whether a Slack webhook and GITHUB_TOKEN policy exist.'
+    )).not.toThrow();
+  });
+
+  it('requires truthful blockers and adaptations instead of governance theatre', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toMatch(
+      /self-hosted runner group with Staging access exists[\s\S]*DAST cannot run without it/
+    );
+    expect(policy).toMatch(
+      /GitHub Advanced Security is licensed[\s\S]*Secret Protection, CodeQL and Copilot Autofix/
+    );
+    expect(policy).toMatch(
+      /Make the routing target \*\*required\*\*, and fail the deployment if it is\s+absent\./
+    );
+    expect(policy).toMatch(
+      /target platform cannot support parallel versions[\s\S]*say so plainly/
+    );
+    expect(policy).toMatch(
+      /too quiet for a canary slice to be meaningful[\s\S]*single atomic switch/
+    );
+    expect(policy).toContain('**Never gates.**');
+    expect(policy).toContain('Keep `trivy config` disabled');
+  });
+
+  it('keeps zero-approval repository scope and fail-closed sequencing fixed', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('required_approving_review_count: 0');
+    expect(policy).toContain('require_code_owner_review: false');
+    expect(policy).toContain('require_last_push_approval: false');
+    expect(policy).toContain('no required reviewers');
+    expect(policy).toContain('Do not add a manual approval step');
+    expect(policy).toContain('Repository-scoped only');
+    expect(policy).toContain('Never propose org-level rulesets');
+    expect(policy).toMatch(/Observe every proposed required context green/i);
+    expect(policy).toMatch(/prove that exact context deliberately red/i);
+    expect(policy).toContain('Apply repository-scoped\nrulesets idempotently last');
+  });
+});
+
+describe('repository governance artifacts', () => {
+  it('renders canonical files and only selected-agent launchers', () => {
+    const all = buildRepositoryGovernanceArtifacts(plan());
+    expect(all.map((artifact) => artifact.logicalName)).toEqual([
+      'repository-governance-policy',
+      'repository-governance-context',
+      'repository-governance-guide',
+      'repository-governance-copilot-launcher',
+      'repository-governance-claude-launcher'
+    ]);
+    expect(all.map((artifact) => artifact.pathParts)).toEqual([
+      [...governanceArtifactPaths.policy],
+      [...governanceArtifactPaths.context],
+      [...governanceArtifactPaths.guide],
+      [...governanceArtifactPaths['github-copilot']],
+      [...governanceArtifactPaths.claude]
+    ]);
+    for (const artifact of all) {
+      expect(artifact.category).toBe('governance');
+      expect(artifact.pathParts.every((part) =>
+        !part.includes('/') && !part.includes('\\')
+      )).toBe(true);
+    }
+
+    const copilotOnly = buildRepositoryGovernanceArtifacts(
+      plan({ agents: ['copilot'] })
+    );
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .not.toContain('repository-governance-claude-launcher');
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .toContain('repository-governance-copilot-launcher');
+  });
+
+  it('keeps launchers thin and requires pushed Phase 0 plus approval', () => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan());
+    const policy = artifacts.find((artifact) =>
+      artifact.logicalName === 'repository-governance-policy'
+    )!.content;
+    for (const launcher of artifacts.filter((artifact) =>
+      artifact.logicalName.endsWith('launcher')
+    )) {
+      expect(launcher.content.length).toBeLessThan(2_000);
+      expect(launcher.content).toContain('.liftoff/governance/policy.md');
+      expect(launcher.content).toContain('.liftoff/governance/context.json');
+      expect(launcher.content).toContain('committed and pushed');
+      expect(launcher.content).toContain('read-only Phase 0');
+      expect(launcher.content).toContain('stop for explicit user approval');
+      expect(launcher.content).not.toContain('Phase 4 — Security pipeline');
+      expect(launcher.content).not.toBe(policy);
+    }
+  });
+
+  it('omits every handoff artifact for the none profile', () => {
+    const disabled = plan({ governanceProfile: 'none' });
+    expect(buildRepositoryGovernanceArtifacts(disabled)).toEqual([]);
+    const artifacts = buildArtifacts(disabled);
+    expect(artifacts.some((artifact) => artifact.category === 'governance'))
+      .toBe(false);
+    const manifest = JSON.parse(
+      artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
+    );
+    expect(manifest.governance).toEqual({
+      profile: 'none',
+      state: 'disabled'
+    });
+  });
+
+  it('renders identical bytes and path identities repeatedly', () => {
+    const selectedPlan = plan();
+    expect(buildRepositoryGovernanceArtifacts(selectedPlan)).toEqual(
+      buildRepositoryGovernanceArtifacts(selectedPlan)
+    );
+    for (const parts of Object.values(governanceArtifactPaths)) {
+      expect(path.posix.join('/repo', ...parts)).toContain('/repo/');
+      expect(path.win32.join('C:\\repo', ...parts)).toContain('C:\\repo\\');
+    }
+  });
+
+  it('keeps consent flags outside governance activation authority', () => {
+    const base = buildRepositoryGovernanceArtifacts(plan());
+    for (const consent of [
+      { yes: true },
+      { force: true },
+      { installTools: true },
+      { installDependencies: true }
+    ]) {
+      expect(buildRepositoryGovernanceArtifacts(plan(consent))).toEqual(base);
+    }
+  });
+
+  it('writes schema-v5 handoff identity and exact durable hashes', () => {
+    const artifacts = buildArtifacts(plan());
+    const manifest = JSON.parse(
+      artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
+    );
+    expect(manifest.artifactVersion).toBe(5);
+    expect(manifest.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '1',
+      state: 'handoff-generated'
+    });
+    expect(manifest.artifacts.filter((artifact: { category: string }) =>
+      artifact.category === 'governance'
+    )).toHaveLength(5);
+    expect(manifest.artifacts.some((artifact: { pathParts: string[] }) =>
+      artifact.pathParts.join('/') === 'governance/activation-baseline.json'
+    )).toBe(false);
+    expect(artifacts.some((artifact) =>
+      artifact.pathParts.join('/').includes('/changes/') &&
+      artifact.category === 'governance'
+    )).toBe(false);
+  });
+});
+
+describe('workload-aware governance context', () => {
+  it.each([
+    ['genai-rag', { pattern: 'rag' }],
+    ['genai-chatbot', { pattern: 'chatbot' }],
+    ['standard-python', { projectType: 'standard', apiStack: 'python', pattern: undefined }],
+    ['standard-node', { projectType: 'standard', apiStack: 'node', pattern: undefined }],
+    ['standard-go', { projectType: 'standard', apiStack: 'go', pattern: undefined }]
+  ] as const)('renders real generated facts for %s', (_name, values) => {
+    const selectedPlan = plan(values);
+    const first = renderGovernanceContext(selectedPlan);
+    const second = renderGovernanceContext(selectedPlan);
+    expect(first).toBe(second);
+    const context = JSON.parse(first);
+    expect(context.schemaVersion).toBe(governanceContextSchemaVersion);
+    expect(context.policy).toMatchObject({
+      profile: 'single-maintainer-gitflow',
+      state: 'handoff-generated',
+      liveEnforcement: 'not-active'
+    });
+    expect(context.generatedBoundaries.backend.state).toBe('generated');
+    expect(context.generatedBoundaries.docker.state).toBe('generated');
+    expect(context.generatedBoundaries.opentofu.state)
+      .toBe('generated-not-deployed');
+    expect(context.health).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: '/health', depth: 'shallow' }),
+      expect.objectContaining({
+        path: '/ready',
+        gap: expect.stringContaining('does not prove dependency')
+      })
+    ]));
+    expect(Object.values(context.discovery).every((value) =>
+      value === 'undiscovered'
+    )).toBe(true);
+    expect(context.commands.every((command: { cwdPathParts: string[] }) =>
+      command.cwdPathParts.every((part) =>
+        !part.includes('/') && !part.includes('\\')
+      )
+    )).toBe(true);
+  });
+
+  it('marks optional frontend and worker boundaries explicitly', () => {
+    const withOptions = JSON.parse(renderGovernanceContext(
+      plan({ pattern: 'rag', includeFrontend: true })
+    ));
+    expect(withOptions.generatedBoundaries.frontend.state).toBe('generated');
+    expect(withOptions.generatedBoundaries.worker.state).toBe('generated');
+
+    const withoutOptions = JSON.parse(renderGovernanceContext(
+      plan({ pattern: 'chatbot', includeFrontend: false })
+    ));
+    expect(withoutOptions.generatedBoundaries.frontend.state).toBe('inapplicable');
+    expect(withoutOptions.generatedBoundaries.worker.state).toBe('inapplicable');
+  });
+
+  it('rejects fabricated live state and vacuous command context', () => {
+    const context = JSON.parse(renderGovernanceContext(plan()));
+    context.policy.liveEnforcement = 'active';
+    expect(() => validateGovernanceContext(context)).toThrow(
+      /cannot claim live enforcement/
+    );
+    context.policy.liveEnforcement = 'not-active';
+    context.discovery.rulesets = 'enforced';
+    expect(() => validateGovernanceContext(context)).toThrow(
+      /fabricated live discovery fact/
+    );
+    context.discovery.rulesets = 'undiscovered';
+    context.commands = [];
+    expect(() => validateGovernanceContext(context)).toThrow(
+      /real generated commands/
+    );
+  });
+
+  it('models Power Apps without invented API or deployment boundaries', () => {
+    const context = JSON.parse(renderGovernanceContext(plan({
+      projectType: 'power-apps-code-app',
+      pattern: undefined,
+      cloud: undefined,
+      agents: ['copilot']
+    })));
+    expect(context.project.artifactForm).toBe(
+      'browser-hosted-power-apps-code-app'
+    );
+    expect(context.commands.map((command: { id: string }) => command.id))
+      .toEqual(['root-install', 'root-lint', 'root-build']);
+    expect(context.source.commit).toMatch(/^[0-9a-f]{40}$/);
+    expect(context.generatedBoundaries).toMatchObject({
+      rootApplication: 'generated',
+      backend: 'inapplicable',
+      database: 'inapplicable',
+      docker: 'inapplicable',
+      opentofu: 'inapplicable',
+      apiEnvironments: 'inapplicable',
+      customContainerPromotion: 'inapplicable',
+      apiDast: 'inapplicable',
+      backendHealth: 'inapplicable',
+      powerPlatformDeployment: 'live-discovery-required'
+    });
+    expect(JSON.stringify(context)).not.toContain('DATABASE_URL');
+  });
+});

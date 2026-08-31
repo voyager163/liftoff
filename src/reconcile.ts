@@ -12,6 +12,8 @@ export interface ReconcileEntry {
   reason: string;
   rendered?: GeneratedArtifact;
   cleanMove?: boolean;
+  sourceModified?: boolean;
+  destinationOccupied?: boolean;
   refreshHash?: boolean;
   destinationMatches?: boolean;
 }
@@ -36,7 +38,12 @@ export async function reconcileProject(
     // the manifest is rewritten wholesale on apply; liftoff.config.json is user-owned
     // desired state; seed content is gifted once and follows its own lifecycle -
     // none of them are reconciled
-    if (artifact.logicalName === 'manifest' || artifact.logicalName === 'liftoff-config' || artifact.category === 'seed') {
+    if (
+      artifact.logicalName === 'manifest' ||
+      artifact.logicalName === 'liftoff-config' ||
+      artifact.category === 'seed' ||
+      artifact.category === 'framework'
+    ) {
       continue;
     }
     const renderHash = hashBytes(artifact.content);
@@ -122,6 +129,9 @@ export async function reconcileProject(
           pathParts: artifact.pathParts,
           previousPathParts: recorded.pathParts,
           cleanMove: false,
+          sourceModified: !cleanMove,
+          destinationOccupied: true,
+          destinationMatches: false,
           reason: cleanMove
             ? 'relocated by the current templates but the destination contains user-owned bytes'
             : 'relocated by the current templates, modified locally, and the destination contains different bytes',
@@ -135,6 +145,8 @@ export async function reconcileProject(
         pathParts: artifact.pathParts,
         previousPathParts: recorded.pathParts,
         cleanMove,
+        sourceModified: !cleanMove,
+        destinationOccupied: newDisk !== undefined,
         reason: cleanMove
           ? destinationMatches
             ? 'relocated by the current templates; destination already matches'

@@ -1,18 +1,26 @@
 import type {
   ApiStackDefinition,
   ApiStackId,
+  CodingAgentDefinition,
+  CodingAgentId,
   EnvironmentDefinition,
   EnvironmentId,
   PatternDefinition,
   PatternId,
+  PowerAppsStarterSource,
   ProviderDefinition,
   ProviderId,
   ProjectTypeDefinition,
   ProjectTypeId,
   RegionDefinition,
+  FrameworkDefinition,
+  GovernanceProfileDefinition,
   SpecWorkflowDefinition,
-  SpecWorkflowId
+  SpecWorkflowId,
+  CodeAppsPluginDefinition
 } from './types.js';
+import { supportedStack } from './supported-stack.js';
+import { governancePolicyVersion } from './repository-governance.js';
 
 const normalize = (value: string) => value.toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -42,8 +50,33 @@ export const projectTypes: ProjectTypeDefinition[] = [
     id: 'standard',
     label: 'Standard application',
     description: 'Non-GenAI API application using an approved Python, Node.js, or Go stack.'
+  },
+  {
+    id: 'power-apps-code-app',
+    label: 'Power Apps code app',
+    description: 'React and TypeScript application hosted by Microsoft Power Apps.'
   }
 ];
+
+export const powerAppsCodeAppStarter: PowerAppsStarterSource = {
+  repository: supportedStack.upstreams['power-apps-code-app'].repository,
+  path: supportedStack.upstreams['power-apps-code-app'].path,
+  commit: supportedStack.upstreams['power-apps-code-app'].commit
+};
+
+export const codeAppsPlugin: CodeAppsPluginDefinition = {
+  id: 'code-apps-preview',
+  label: 'Microsoft Power Apps Code Apps plugin (Preview)',
+  version: '1.0.0',
+  marketplace: 'power-platform-skills',
+  repository: 'https://github.com/microsoft/power-platform-skills',
+  path: 'plugins/code-apps',
+  preview: true,
+  probes: {
+    'github-copilot': { executable: 'copilot', args: ['plugin', 'list'] },
+    claude: { executable: 'claude', args: ['plugin', 'list', '--json'] }
+  }
+};
 
 export const apiStacks: ApiStackDefinition[] = [
   {
@@ -253,6 +286,83 @@ export const specWorkflows: SpecWorkflowDefinition[] = [
   }
 ];
 
+export const governanceProfiles: GovernanceProfileDefinition[] = [
+  {
+    id: 'single-maintainer-gitflow',
+    label: 'Single-maintainer GitFlow',
+    description: 'Generate the versioned local repository-governance handoff; live activation is deferred.',
+    default: true,
+    policyVersion: governancePolicyVersion
+  },
+  {
+    id: 'none',
+    label: 'None',
+    description: 'Do not generate repository-governance handoff artifacts.',
+    default: false
+  }
+];
+
+export const codingAgents: CodingAgentDefinition[] = [
+  {
+    id: 'github-copilot',
+    inputName: 'copilot',
+    label: 'GitHub Copilot',
+    aliases: ['copilot', 'github-copilot', 'github copilot', 'gh-copilot'],
+    executable: 'copilot',
+    integrationIds: {
+      openspec: 'github-copilot',
+      'spec-kit': 'copilot'
+    }
+  },
+  {
+    id: 'claude',
+    inputName: 'claude',
+    label: 'Claude Code',
+    aliases: ['claude', 'claude-code', 'claude code'],
+    executable: 'claude',
+    integrationIds: {
+      openspec: 'claude',
+      'spec-kit': 'claude'
+    }
+  }
+];
+
+export const frameworkDefinitions: Record<SpecWorkflowId, FrameworkDefinition> = {
+  openspec: {
+    id: 'openspec',
+    executable: 'openspec',
+    version: supportedStack.frameworks.openspec.version,
+    installCommand: {
+      executable: 'npm',
+      args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`]
+    },
+    allowedRoots: ['.claude', '.github', 'openspec'],
+    baseMarkers: [['openspec', 'config.yaml']],
+    agentMarkers: {
+      'github-copilot': [['.github', 'skills', 'openspec-apply-change', 'SKILL.md']],
+      claude: [['.claude', 'skills', 'openspec-apply-change', 'SKILL.md']]
+    }
+  },
+  'spec-kit': {
+    id: 'spec-kit',
+    executable: 'specify',
+    version: supportedStack.frameworks['spec-kit'].version,
+    installCommand: {
+      executable: 'uv',
+      args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`]
+    },
+    allowedRoots: ['.claude', '.github', '.specify', 'specs'],
+    baseMarkers: [
+      ['.specify', 'init-options.json'],
+      ['.specify', 'integration.json']
+    ],
+    agentMarkers: {
+      'github-copilot': [['.github', 'skills', 'speckit-specify', 'SKILL.md']],
+      claude: [['.claude', 'skills', 'speckit-specify', 'SKILL.md']]
+    }
+  }
+};
+
 export function getPattern(value: string): PatternDefinition | undefined {
   const normalized = normalize(value);
   return patterns.find((pattern) => normalize(pattern.id) === normalized || pattern.aliases.some((alias) => normalize(alias) === normalized));
@@ -276,6 +386,50 @@ export function getProvider(value: string): ProviderDefinition | undefined {
 export function getSpecWorkflow(value: string): SpecWorkflowDefinition | undefined {
   const normalized = normalize(value);
   return specWorkflows.find((workflow) => normalize(workflow.id) === normalized || normalize(workflow.label) === normalized);
+}
+
+export function getGovernanceProfile(
+  value: string
+): GovernanceProfileDefinition | undefined {
+  const normalized = normalize(value);
+  return governanceProfiles.find((profile) =>
+    normalize(profile.id) === normalized ||
+    normalize(profile.label) === normalized
+  );
+}
+
+export function getCodingAgent(value: string): CodingAgentDefinition | undefined {
+  const normalized = normalize(value);
+  return codingAgents.find((agent) =>
+    normalize(agent.id) === normalized ||
+    normalize(agent.inputName) === normalized ||
+    agent.aliases.some((alias) => normalize(alias) === normalized)
+  );
+}
+
+export function getFrameworkDefinition(value: SpecWorkflowId): FrameworkDefinition {
+  return frameworkDefinitions[value];
+}
+
+export function canonicalizeCodingAgents(values?: string[]): {
+  agents: CodingAgentDefinition[];
+  unknown: string[];
+} {
+  const selected = values === undefined ? ['github-copilot'] : values;
+  const ids = new Set<CodingAgentId>();
+  const unknown: string[] = [];
+  for (const value of selected) {
+    const agent = getCodingAgent(value);
+    if (agent) {
+      ids.add(agent.id);
+    } else {
+      unknown.push(value);
+    }
+  }
+  return {
+    agents: codingAgents.filter((agent) => ids.has(agent.id)),
+    unknown
+  };
 }
 
 export function getEnvironment(value: string): EnvironmentDefinition | undefined {
@@ -362,4 +516,8 @@ export function isEnvironmentId(value: string): value is EnvironmentId {
 
 export function isSpecWorkflowId(value: string): value is SpecWorkflowId {
   return specWorkflows.some((workflow) => workflow.id === value);
+}
+
+export function isCodingAgentId(value: string): value is CodingAgentId {
+  return codingAgents.some((agent) => agent.id === value);
 }

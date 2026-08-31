@@ -3,7 +3,13 @@ import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { apiStacks, patterns } from '../src/catalogs.js';
-import { artifactPath, assertNewOrEmptyDirectory, validateGeneratedProject, writeArtifacts } from '../src/file-system.js';
+import {
+  artifactPath,
+  assertNewOrEmptyDirectory,
+  validateGeneratedProject,
+  writeArtifacts,
+  writeProjectFile
+} from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
 
@@ -37,8 +43,9 @@ describe('templates and filesystem', () => {
       artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
 
     expect(contentAt('backend/orchestration/model_config.py')).toContain('from pydantic_ai import Agent');
-    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==1.107.1');
-    expect(contentAt('backend/pyproject.toml')).toContain('langfuse==2.60.10');
+    expect(contentAt('backend/pyproject.toml')).toContain('pydantic-ai-slim[openai]==2.33.0');
+    expect(contentAt('backend/pyproject.toml')).toContain('langfuse==4.14.4');
+    expect(contentAt('backend/uv.lock')).toContain('name = "functional-rag-backend"');
     expect(contentAt('backend/orchestration/model_config.py')).toContain('PYDANTIC_AI_MODEL is required');
     expect(contentAt('backend/orchestration/agents/rag_agent.py')).toContain('build_agent_runner');
     expect(contentAt('backend/orchestration/agents/rag_agent.py')).toContain('selected_tracer.trace');
@@ -54,8 +61,13 @@ describe('templates and filesystem', () => {
     const tracing = contentAt('backend/observability/tracing.py');
     expect(tracing).toContain('class DisabledTracer');
     expect(tracing).toContain('trace_id=None');
-    expect(tracing).toContain('self._client.trace');
+    expect(tracing).toContain('self._client.start_observation');
     expect(contentAt('backend/tests/test_tracing.py')).toContain('trace.trace_id is None');
+    const compose = contentAt('docker-compose.yml');
+    expect(compose).toContain('langfuse-worker:');
+    expect(compose).toContain('clickhouse:');
+    expect(compose).toContain('minio:');
+    expect(compose).toContain('LANGFUSE_S3_EVENT_UPLOAD_BUCKET');
   });
 
   it('generates Azure Functions workers only for worker-enabled patterns', () => {
@@ -153,7 +165,8 @@ describe('templates and filesystem', () => {
       expect(allContent).not.toContain('Langfuse');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === '.env.example')?.content).toContain('DATABASE_URL=postgresql:');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === '.env.example')?.content).not.toContain('******');
-      expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content).toContain('postgres:16-alpine');
+      expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content)
+        .toContain('postgres:18-alpine@sha256:');
       expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content).not.toContain('profiles:');
     }
   });
@@ -228,6 +241,70 @@ describe('templates and filesystem', () => {
     expect(tfvars).toContain('backend_image');
     expect(tfvars).toContain('backend_target_port');
     expect(tofuReadme).toContain('Persist the deployed images');
+  });
+
+  it('renders the complete Power Apps starter at the project root without API infrastructure', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Claims Workspace',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec',
+      agents: ['copilot', 'claude']
+    }, { requireProjectName: true }));
+    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
+    const contentAt = (artifactPath: string) =>
+      artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
+
+    expect(paths).toContain('src/App.tsx');
+    expect(paths).toContain('src/providers/query-provider.tsx');
+    expect(paths).toContain('public/power-apps.svg');
+    expect(paths).toContain('package.json');
+    expect(paths).toContain('package-lock.json');
+    expect(paths).toContain('openspec/config.yaml');
+    expect(paths).toContain('THIRD_PARTY_NOTICES.md');
+    expect(paths).toContain('liftoff.manifest.json');
+    expect(paths).not.toContain('power.config.json');
+    expect(paths).not.toContain('.env');
+    expect(paths).not.toContain('.env.example');
+    expect(paths.some((artifactPath) => artifactPath.startsWith('backend/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('frontend/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('infrastructure/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('environments/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('functions/'))).toBe(false);
+    expect(paths).not.toContain('docker-compose.yml');
+
+    const packageJson = JSON.parse(contentAt('package.json'));
+    const packageLock = JSON.parse(contentAt('package-lock.json'));
+    expect(packageJson.name).toBe('claims-workspace');
+    expect(packageLock.name).toBe('claims-workspace');
+    expect(packageLock.packages[''].name).toBe('claims-workspace');
+    expect(packageJson.scripts.lint).toContain('react-refresh/only-export-components: off');
+    expect(contentAt('src/App.tsx')).not.toContain('Claims Workspace');
+    expect(contentAt('README.md')).toContain('npx --no-install power-apps init');
+    expect(contentAt('README.md')).toContain('GitHub Copilot, Claude Code');
+    expect(contentAt('README.md')).toContain('liftoff upgrade --check');
+    expect(contentAt('README.md')).toContain('liftoff update --check');
+    expect(contentAt('THIRD_PARTY_NOTICES.md')).toContain(
+      '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
+    );
+  });
+
+  it('renders Spec Kit governance for Power Apps without OpenSpec ownership overlap', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Canvas Companion',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'spec-kit',
+      agents: ['copilot']
+    }, { requireProjectName: true }));
+    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
+    const constitution = artifacts.find(
+      (artifact) => artifact.pathParts.join('/') === '.specify/memory/constitution.md'
+    )?.content ?? '';
+
+    expect(paths).toContain('.specify/memory/constitution.md');
+    expect(paths).not.toContain('openspec/config.yaml');
+    expect(constitution).toContain('Power Apps code app');
+    expect(constitution).not.toContain('backend/');
+    expect(constitution).not.toContain('infrastructure/');
   });
 
   it('escapes project names embedded in generated frontend scripts', () => {
@@ -312,14 +389,49 @@ describe('templates and filesystem', () => {
 
     expect(readme).toContain('PYDANTIC_AI_MODEL');
     expect(readme).toContain('VITE_API_BASE_URL');
+    expect(readme).toContain('immediately applies safe managed changes');
+    expect(readme).toContain('liftoff update --check --json');
+    expect(readme).toContain('liftoff upgrade --check');
+    expect(readme).toMatch(/does not inspect or modify this project/);
+    expect(readme).toContain('conflicts are skipped by default');
+    expect(readme).toContain('liftoff update --force');
+    expect(readme).not.toContain('liftoff update --apply');
     expect(readme).toContain('occupied destination');
+    expect(readme).toContain('never deletes orphans or installs dependencies');
+    expect(readme).toContain('retains no backup after a successful overwrite');
     expect(readme).toContain('symlink-escaping manifest paths');
     expect(readme).toContain('liftoff <command> --help');
+    expect(readme).toContain('Workflow: OpenSpec 1.11.0');
+    expect(readme).toContain('AI coding agents: GitHub Copilot');
+    expect(readme).toContain('Framework ownership:');
+    expect(readme).toContain('Deferred tools:');
+    expect(readme).toContain('liftoff init --install-dependencies');
+    expect(readme).toContain('npm ci');
+    expect(readme).toContain('liftoff validate');
+    expect(readme).toContain('liftoff doctor');
     expect(tofuReadme).toContain('resource_suffix');
     expect(tofuReadme).toContain('^[a-z0-9]{12}$');
     expect(tofuReadme).toContain('ServiceBusConnection__clientId');
     expect(functionReadme).toContain('AzureWebJobsStorage');
     expect(functionReadme).toContain('python -m pytest -q');
+  });
+
+  it('documents both Spec Kit agents and the selected default integration', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Dual Agent App',
+      projectType: 'standard',
+      apiStack: 'go',
+      cloud: 'azure',
+      specWorkflow: 'spec-kit',
+      agents: ['copilot', 'claude'],
+      defaultAgent: 'claude',
+      includeFrontend: false
+    }, { requireProjectName: true }));
+    const readme = artifacts.find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
+
+    expect(readme).toContain('Workflow: Spec Kit 1.0.1');
+    expect(readme).toContain('GitHub Copilot, Claude Code (default integration)');
+    expect(readme).toContain('go mod download');
   });
 
   it('generates OpenTofu and Docker Compose validation hooks', () => {
@@ -343,7 +455,7 @@ describe('templates and filesystem', () => {
     )?.content ?? '';
     expect(devTfvars).toContain('function_worker_queue_name');
     expect(devTfvars).toMatch(/resource_suffix\s+= "[a-f0-9]{12}"/);
-    expect(compose).toContain('pgvector/pgvector:pg16');
+    expect(compose).toContain('pgvector/pgvector:pg18@sha256:');
     expect(compose).toContain('azurite');
     expect(compose).toContain('mailpit');
     expect(compose).toContain('profiles:');
@@ -404,6 +516,14 @@ describe('templates and filesystem', () => {
       const plan = buildProjectPlan({ projectName: 'Claims RAG', pattern: 'rag', cloud: 'azure', includeFrontend: true }, { requireProjectName: true });
       await writeArtifacts(targetRoot, buildArtifacts(plan));
 
+      expect(await validateGeneratedProject(targetRoot)).toContain(
+        'Missing framework marker: .github/skills/openspec-apply-change/SKILL.md'
+      );
+      await writeProjectFile(
+        targetRoot,
+        ['.github', 'skills', 'openspec-apply-change', 'SKILL.md'],
+        'fixture marker\n'
+      );
       expect(await validateGeneratedProject(targetRoot)).toEqual([]);
       expect(await readFile(path.join(targetRoot, 'backend', 'apis', 'main.py'), 'utf8')).toContain('/scalar');
     } finally {

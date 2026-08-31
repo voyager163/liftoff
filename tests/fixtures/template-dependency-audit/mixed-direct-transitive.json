@@ -1,0 +1,50 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "leaf-package": {
+      "name": "leaf-package",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 2,
+          "name": "leaf-package",
+          "dependency": "leaf-package",
+          "title": "Mixed direct and transitive fixture advisory",
+          "url": "https://github.com/advisories/GHSA-DDDD-EEEE-FFFF",
+          "severity": "moderate",
+          "range": "<3.0.0"
+        }
+      ],
+      "effects": [
+        "root-package"
+      ],
+      "range": "<3.0.0",
+      "nodes": [
+        "node_modules/leaf-package",
+        "node_modules/root-package/node_modules/leaf-package"
+      ],
+      "fixAvailable": false
+    },
+    "root-package": {
+      "name": "root-package",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "leaf-package"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": [
+        "node_modules/root-package"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "moderate": 2,
+      "total": 2
+    }
+  }
+}

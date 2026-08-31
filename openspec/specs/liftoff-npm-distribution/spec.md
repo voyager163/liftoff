@@ -45,16 +45,46 @@ The system SHALL verify the standalone Liftoff package before publishing it to n
 - **WHEN** build, tests, package inspection, license verification, or install smoke testing fails during release
 - **THEN** the system does not publish a new npm version
 
+### Requirement: Published releases are verified from canonical npm
+The system SHALL verify an authenticated npm publication against `https://registry.npmjs.org` after publishing by comparing the selected dist-tag with the version declared in root `package.json` and by installing that dist-tag into an isolated global prefix. The verification SHALL use an isolated npm cache and home directory, SHALL resolve installed paths portably on Windows, macOS, and Linux, and SHALL fail the release workflow when the observed dist-tag or installed version differs from the expected version.
+
+#### Scenario: Stable publication satisfies the canonical registry postcondition
+- **WHEN** release automation publishes a stable Liftoff version using the `latest` dist-tag
+- **THEN** canonical npm reports that version for `@msn-control/liftoff@latest`
+- **AND** a clean isolated canonical-registry installation of `@latest` contains that version
+
+#### Scenario: Published package executes from the canonical installation
+- **WHEN** post-publish verification installs the selected dist-tag from canonical npm
+- **THEN** the installed CLI successfully reports its version and runs representative help and standard-project plan commands outside the repository
+
+#### Scenario: Canonical registry publication mismatch fails release verification
+- **WHEN** canonical npm reports or installs a version different from the version declared by the release commit after the bounded propagation window
+- **THEN** the release workflow fails with the expected and observed versions
+- **AND** it does not report the release as successfully verified
+
 ### Requirement: Stable releases use the latest npm dist-tag
-The system SHALL make stable Liftoff releases installable through the npm `latest` dist-tag.
+The system SHALL make stable Liftoff releases installable through the `latest` dist-tag on the canonical public npm registry and SHALL verify that the tag resolves to the version being released.
 
 #### Scenario: Stable release published
 - **WHEN** a stable Liftoff version is published successfully
-- **THEN** `npm install -g @msn-control/liftoff@latest` installs that stable version
+- **THEN** `npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org` installs that stable version
 
 #### Scenario: Prerelease release published
 - **WHEN** a prerelease Liftoff version is published
-- **THEN** the release process does not move the npm `latest` dist-tag to that prerelease version
+- **THEN** the release process does not move the canonical npm `latest` dist-tag to that prerelease version
+- **AND** post-publish verification checks the prerelease dist-tag selected by the workflow
+
+### Requirement: Unsupported releases are deprecated non-destructively
+The system SHALL mark unsupported npm release lines as deprecated with an upgrade message while retaining their published tarballs, provenance, and explicit-version availability.
+
+#### Scenario: Developer requests an unsupported pre-0.3 release
+- **WHEN** a synchronized npm registry installs an explicitly requested pre-0.3 Liftoff version
+- **THEN** npm displays a deprecation warning directing the developer to the current stable release
+
+#### Scenario: Historical package remains reproducible
+- **WHEN** a lockfile or diagnostic workflow explicitly resolves a deprecated historical Liftoff version
+- **THEN** the package remains available
+- **AND** the release process does not unpublish it
 
 ### Requirement: npm publishing is explicit and authenticated
 The system SHALL publish the scoped Liftoff package from the public Liftoff repository root through npm trusted publishing with public package access and provenance.
@@ -87,18 +117,138 @@ The system SHALL publish npm metadata that identifies `voyager163/liftoff` as th
 - **THEN** the attestation identifies the public Liftoff repository and its release workflow
 
 ### Requirement: Documentation presents the global install path
-The system SHALL document global npm installation as the primary user setup path for Liftoff.
+The system SHALL document global npm installation as the primary user setup path for Liftoff, SHALL identify `https://registry.npmjs.org` as the authoritative release registry, SHALL identify the supported Node.js 24 LTS baseline required by the current release, and SHALL distinguish canonical installation from installation through a managed registry whose synchronization is externally controlled.
 
 #### Scenario: Developer reads install instructions
 - **WHEN** a developer opens the Mission Control or Liftoff README
 - **THEN** the documentation shows `npm install -g @msn-control/liftoff@latest` as the user installation command
-- **AND** the documentation distinguishes global user installation from repository-local contributor commands
+- **AND** it shows how to target canonical npm explicitly where policy permits
+- **AND** it distinguishes global user installation from repository-local contributor commands
+
+#### Scenario: Developer uses a managed registry
+- **WHEN** a developer's npm configuration routes packages through a managed registry
+- **THEN** the documentation requires confirming that the managed registry exposes the current stable Liftoff version before installation
+- **AND** it directs stale-registry remediation to the mirror operator rather than changing npm configuration automatically
 
 #### Scenario: Contributor reads source instructions
 - **WHEN** a contributor follows source or development guidance
 - **THEN** the documentation directs them to `voyager163/liftoff`
 - **AND** contributor commands run from that repository root without npm workspace selectors
 
+#### Scenario: Developer verifies the installed version
+- **WHEN** a developer completes a global Liftoff installation
+- **THEN** the documentation directs them to run `liftoff --version`
+- **AND** the reported version can be compared with the current stable version exposed by the selected registry
+
 #### Scenario: Developer reads first-use instructions
 - **WHEN** a developer reviews the Liftoff installation documentation
-- **THEN** the documentation shows a first-use command such as `liftoff help` or `liftoff create`
+- **THEN** the documentation shows `liftoff help`, `liftoff plan`, and `liftoff init`
+- **AND** it does not present `liftoff create` as a supported command
+
+#### Scenario: Developer reads runtime requirements
+- **WHEN** a developer reviews the Liftoff installation documentation
+- **THEN** it states the exact Node.js 24 LTS minimum recorded by the current Liftoff baseline before global installation
+
+### Requirement: Release version identity is coherent before publication
+The system SHALL require root package metadata, root lockfile metadata, a tag-triggered release's Git tag, packed package metadata, and the installed CLI version output to identify the same semantic version before publishing a new Liftoff package. A mismatch in any required identity SHALL fail the release workflow before `npm publish`.
+
+#### Scenario: Prepare the first version-reporting release
+- **WHEN** release automation prepares Liftoff `0.3.4`, the first published release containing `liftoff --version`
+- **THEN** root `package.json` and root `package-lock.json` metadata identify version `0.3.4`
+- **AND** an isolated installation of the packed package prints `Liftoff 0.3.4` for `liftoff --version`
+
+#### Scenario: Tag-triggered release matches package metadata
+- **WHEN** the release workflow is triggered by Git tag `v0.3.4`
+- **THEN** the workflow confirms that root package and lockfile metadata identify `0.3.4` before publication
+- **AND** packed package metadata identifies `0.3.4`
+
+#### Scenario: Release identity mismatch blocks publication
+- **WHEN** the Git release tag, root package version, root lockfile version, packed version, or installed `liftoff --version` output does not match another required identity
+- **THEN** release verification fails with the expected and observed identities
+- **AND** no new npm package is published by that workflow run
+
+### Requirement: Registry onboarding preserves release version identity
+The system SHALL treat a registry path as ready for version-command-based onboarding only when its stable dist-tag and explicit package version resolve to the intended release and a clean installation through that registry reports the same version through `liftoff --version`. Canonical publication success and managed-registry readiness SHALL remain independently observable states.
+
+#### Scenario: Canonical npm exposes Liftoff 0.3.4
+- **WHEN** canonical publication and post-publish verification of Liftoff `0.3.4` succeed
+- **THEN** canonical npm resolves both `@msn-control/liftoff@latest` and `@msn-control/liftoff@0.3.4` to version `0.3.4`
+- **AND** a clean canonical installation prints `Liftoff 0.3.4` for `liftoff --version`
+
+#### Scenario: Approved managed registry reaches parity
+- **WHEN** an organization presents its approved managed registry as ready for Liftoff `0.3.4` onboarding
+- **THEN** that registry resolves both `@latest` and explicit `@0.3.4` metadata to version `0.3.4`
+- **AND** a clean installation through that registry prints `Liftoff 0.3.4` for `liftoff --version`
+
+#### Scenario: Managed registry remains stale
+- **WHEN** an approved managed registry resolves `@latest` to an older release, rejects explicit `@0.3.4`, or installs a CLI that does not report `Liftoff 0.3.4`
+- **THEN** version-command-based onboarding through that registry remains blocked
+- **AND** Liftoff does not modify npm configuration or silently install from another registry
+
+### Requirement: Package smoke testing verifies the init command surface
+The system SHALL smoke-test the installed package's renamed initialization surface without changing the test workstation. The smoke test SHALL verify `init` help and planning behavior and SHALL verify that `create` is rejected with migration guidance.
+
+#### Scenario: Installed init command is available
+- **WHEN** release automation installs the packed package in an isolated location
+- **THEN** `liftoff init --help` exits 0 and documents the init-specific arguments and consent flags
+
+#### Scenario: Installed create command is absent
+- **WHEN** release automation runs `liftoff create` from the isolated installation
+- **THEN** the command exits 1, recommends `liftoff init`, and creates no project files
+
+#### Scenario: Installed plan remains side-effect free
+- **WHEN** release automation runs a fully specified `liftoff plan`
+- **THEN** it exits successfully without installing tools or creating a project directory
+
+### Requirement: Published Liftoff requires the supported Node.js LTS baseline
+The system SHALL declare the Node.js 24 LTS floor recorded by the supported-stack baseline in published package engine metadata and SHALL fail startup with concise upgrade guidance when the running Node.js version is unsupported.
+
+#### Scenario: Install with a supported Node.js runtime
+- **WHEN** a developer installs and runs the published package with a Node.js version satisfying the recorded Node.js 24 LTS floor
+- **THEN** the Liftoff command can start and render help
+
+#### Scenario: Run with an unsupported Node.js runtime
+- **WHEN** a developer starts Liftoff with a Node.js version below the recorded Node.js 24 LTS floor
+- **THEN** Liftoff exits 1 before parsing project commands or performing side effects
+- **AND** it reports the observed and minimum supported versions
+
+#### Scenario: Release package and runtime catalog disagree
+- **WHEN** package engine metadata, startup validation, workflow setup, or documentation does not match the named Node.js baseline entry
+- **THEN** release verification fails before publication
+
+### Requirement: A global npm installation can replace itself with a verified stable release
+The published Liftoff package SHALL contain all runtime code needed for a supported global npm installation to discover canonical stable release metadata, verify configured-registry parity, invoke an exact global npm replacement, and verify the replacement outside the source repository.
+
+#### Scenario: Upgrade a canonical global installation
+- **WHEN** a published global npm installation invokes `liftoff upgrade` and a newer stable version is available through its effective registry
+- **THEN** the effective global package is replaced with that exact published version
+- **AND** the replacement command reports the same version
+
+#### Scenario: Inspect a packed package
+- **WHEN** release verification inspects and installs the packed Liftoff artifact in an isolated global prefix
+- **THEN** `liftoff upgrade --help` works outside the repository
+- **AND** self-upgrade runtime modules are included in the published package
+
+### Requirement: Self-upgrade preserves canonical and managed registry boundaries
+Canonical npm SHALL remain the authority for the stable target, while the user's effective npm registry SHALL remain the delivery path. Self-upgrade SHALL require exact-version parity before installation and SHALL not rewrite npm configuration, bypass a stale managed mirror, or install a mirror-specific version not selected by canonical `latest`.
+
+#### Scenario: Approved mirror exposes canonical target
+- **WHEN** a managed registry exposes the exact canonical stable version
+- **THEN** a supported global installation may upgrade through that mirror
+
+#### Scenario: Approved mirror is stale
+- **WHEN** a managed registry does not expose the canonical target
+- **THEN** self-upgrade remains blocked until the mirror synchronizes
+- **AND** canonical availability alone does not authorize bypassing it
+
+### Requirement: Release verification covers the self-upgrade surface safely
+Release automation SHALL verify command help, stable metadata parsing, installation-origin detection, and replacement verification through committed fixtures and isolated temporary global prefixes. It SHALL never invoke self-upgrade apply mode against the release runner's actual global prefix.
+
+#### Scenario: Smoke-test the published command
+- **WHEN** the packed package is installed under an isolated global prefix
+- **THEN** its upgrade help and injected check behavior execute with platform-correct paths
+- **AND** the host installation remains unchanged
+
+#### Scenario: Missing self-upgrade runtime asset
+- **WHEN** the packed package omits a module required by upgrade
+- **THEN** package smoke verification fails before publication

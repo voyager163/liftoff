@@ -5,10 +5,10 @@ Define standard Liftoff projects, their approved API stacks, shared operational 
 ## Requirements
 
 ### Requirement: Developers can create standard projects
-The system SHALL let developers identify a project as either GenAI or standard before collecting type-specific project decisions, SHALL require a GenAI pattern only for GenAI projects, and SHALL require an approved API stack only for standard projects.
+The system SHALL let developers identify a project as either GenAI or standard during `liftoff init` before collecting type-specific project decisions, SHALL require a GenAI pattern only for GenAI projects, and SHALL require an approved API stack only for standard projects.
 
 #### Scenario: Select a standard project interactively
-- **WHEN** a developer runs `liftoff create` interactively and answers no to the GenAI project question
+- **WHEN** a developer runs `liftoff init` interactively and answers no to the GenAI project question
 - **THEN** the CLI skips the GenAI pattern prompt
 - **AND** the CLI asks the developer to select an approved standard API stack
 
@@ -68,3 +68,57 @@ The system SHALL keep database artifacts under the common `database` boundary wh
 - **WHEN** a developer creates a standard project
 - **THEN** the backend dependencies and database artifacts use the approved tooling for the selected API stack
 - **AND** an initial PostgreSQL migration is generated
+
+### Requirement: Standard project workstation readiness is stack-specific
+The system SHALL select blocking runtime requirements and project dependency commands from the approved standard API stack. It SHALL NOT block a standard project on runtimes used only by unselected stacks.
+
+#### Scenario: Python standard project readiness
+- **WHEN** a developer initializes a standard Python/FastAPI project
+- **THEN** Liftoff requires the supported Python runtime and offers the Python virtual-environment dependency flow
+- **AND** it does not require Go
+
+#### Scenario: Node.js standard project readiness
+- **WHEN** a developer initializes a standard Node.js/Fastify project
+- **THEN** Liftoff requires the supported Node.js runtime and offers the lockfile-preserving Node.js dependency flow
+- **AND** it does not require the Python backend runtime or Go
+
+#### Scenario: Go standard project readiness
+- **WHEN** a developer initializes a standard Go/Huma project
+- **THEN** Liftoff requires the supported Go toolchain and offers the generated-module download flow
+- **AND** it does not require the Python backend runtime
+
+#### Scenario: Spec Kit adds only its own prerequisite
+- **WHEN** a Node.js or Go standard project selects Spec Kit
+- **THEN** Python and `uv` requirements needed by the pinned Spec Kit CLI are identified as framework prerequisites
+- **AND** they are not presented as backend runtime requirements
+
+### Requirement: Standard stacks use the release-owned tested baseline
+The system SHALL generate the Python/FastAPI, Node.js/Fastify/TypeScript, and Go/Huma/Chi stacks from exact dependency and runtime identities recorded by the current Liftoff supported-stack baseline. A baseline refresh MAY cross stable major versions only when the generated stack is migrated and its complete workload contract passes verification.
+
+#### Scenario: Generate the Python standard stack
+- **WHEN** a developer selects `python-fastapi`
+- **THEN** the project uses Python 3.14-compatible packages from a generated `uv.lock`
+- **AND** dependency synchronization is frozen
+
+#### Scenario: Generate the Node.js standard stack
+- **WHEN** a developer selects `node-fastify`
+- **THEN** the backend uses the Node.js 24 LTS, Fastify, TypeScript, Drizzle, PostgreSQL, and Vitest identities recorded by the baseline
+- **AND** its package lock installs without mutation
+
+#### Scenario: Generate the Go standard stack
+- **WHEN** a developer selects `go-huma`
+- **THEN** the backend uses Go 1.27 and the tested Huma, Chi, pgx, and Goose identities recorded by the baseline
+- **AND** module download and tests do not change `go.mod` or `go.sum`
+
+#### Scenario: Generate the optional frontend
+- **WHEN** a standard project includes a frontend
+- **THEN** it uses the tested stable Vue, Vite, Tailwind, PostCSS, and plugin major versions recorded by the baseline
+- **AND** its production build preserves package metadata
+
+### Requirement: Major stack refreshes preserve the standard API contract
+A dependency major upgrade SHALL preserve the selected stack's port, health, readiness, OpenAPI, Scalar, configuration, database, migration, and test behavior unless a separate approved capability change explicitly changes that product contract.
+
+#### Scenario: Verify all three upgraded stacks
+- **WHEN** the supported baseline changes one or more standard stack majors
+- **THEN** representative Python, Node.js, and Go generated projects pass their install, build, and test commands
+- **AND** each still satisfies the common standard API contract

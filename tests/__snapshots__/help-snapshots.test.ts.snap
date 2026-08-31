@@ -1,0 +1,726 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`complete help screens > snapshots compact dev command help 1`] = `
+"LIFTOFF / DEV
+Print Docker Compose helper commands
+
+Usage
+─────
+liftoff dev [up|down|logs|reset]
+
+Subcommands
+───────────
+- up
+- down
+- logs
+- reset
+
+Command options
+───────────────
+Option            Description
+────────────────  ──────────────────────
+--profile <name>  Docker Compose profile
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact doctor command help 1`] = `
+"LIFTOFF / DOCTOR
+Check local and project readiness
+
+Usage
+─────
+liftoff doctor
+
+Project options
+───────────────
+Option              Description
+──────────────────  ──────────────────────────────────────────
+--cloud <provider>  Cloud provider to inspect (default: azure)
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────
+--json  Emit machine-readable JSON
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact general help 1`] = `
+"╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
+┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
+┗━╸╹╹   ╹ ┗━┛╹  ╹
+Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare
+its local workstation.
+Usage
+─────
+liftoff <command> [options]
+
+Global options
+──────────────
+Option     Description
+─────────  ──────────────────────────────────
+--version  Show the installed Liftoff version
+--help     Show general help
+
+Onboarding
+──────────
+Command  Description
+───────  ────────────────────────────────────────────────
+init     Initialize a project and prepare its workstation
+plan     Preview generated artifacts
+migrate  Adopt an existing project
+
+Maintenance
+───────────
+Command   Description
+────────  ──────────────────────────────────────────────────────────────────────
+validate  Validate a generated project manifest
+update    Reconcile a project with current templates
+upgrade   Replace the supported global npm Liftoff CLI; project templates use
+          update separately
+doctor    Check local and project readiness
+
+Reference
+─────────
+Command    Description
+─────────  ─────────────────────────────────────
+help       Show general or command-specific help
+patterns   List GenAI patterns
+providers  List cloud providers
+regions    List or search provider regions
+
+Operations
+──────────
+Command  Description
+───────  ────────────────────────────────────
+dev      Print Docker Compose helper commands
+infra    Print OpenTofu helper commands
+
+i Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots compact init command help 1`] = `
+"LIFTOFF / INIT
+Initialize a project and prepare its workstation
+
+Usage
+─────
+liftoff init [project-name]
+
+Arguments
+─────────
+Argument      Description
+────────────  ────────────────────────────────────────
+project-name  Project identity or child directory name
+
+Project options
+───────────────
+Option                      Description
+──────────────────────────  ────────────────────────────────────────────────────
+--project <path>            Project name or project path
+--type <workload>           Project workload type
+--genai / --no-genai        Create a GenAI project; use --no-genai for a
+                            standard API
+--api <stack>               Backend API stack
+--pattern <pattern>         GenAI application pattern
+--cloud <provider>          Cloud provider (default: azure)
+--region <region>           Cloud deployment region (default: eastus)
+--frontend / --no-frontend  Include the Vue frontend starter (default: false)
+--environments <list>       Comma-separated environments (default:
+                            dev,test,prod)
+--config <file>             Load deterministic project options from JSON
+
+Framework options
+─────────────────
+Option                                   Description
+───────────────────────────────────────  ───────────────────────────────────────
+--spec <framework>                       Spec-driven framework (default:
+                                         openspec)
+--agents <list>                          Comma-separated AI coding agents
+                                         (default: copilot)
+--default-agent <agent>                  Primary agent for Spec Kit when
+                                         multiple agents are selected
+--governance <profile>                   Repository-governance profile (default:
+                                         single-maintainer-gitflow)
+--code-apps-plugin /                     Request the Microsoft Code Apps agent
+--no-code-apps-plugin                    plugin (Preview) (default: false)
+
+Consent options
+───────────────
+Option                  Description
+──────────────────────  ──────────────────────────────────────────────────────
+--yes                   Accept project defaults and plan confirmation
+--force                 Authorize replacement of listed regular-file conflicts
+--install-tools         Authorize allowlisted workstation tool installation
+--install-dependencies  Authorize project-local dependency installation
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact regions command help 1`] = `
+"LIFTOFF / REGIONS
+List or search provider regions
+
+Usage
+─────
+liftoff regions [search <query>]
+
+Arguments
+─────────
+Argument  Description
+────────  ────────────────────────────────────────────────
+query     Region name, slug, geography, or alias to search
+
+Subcommands
+───────────
+- search
+
+Project options
+───────────────
+Option              Description
+──────────────────  ───────────────────────────────
+--cloud <provider>  Cloud provider (default: azure)
+--region <region>   Exact region identifier
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact update command help 1`] = `
+"LIFTOFF / UPDATE
+Reconcile a project with current templates
+
+Usage
+─────
+liftoff update [project-path]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────────
+project-path  Generated project to reconcile
+
+Project options
+───────────────
+Option            Description
+────────────────  ────────────
+--project <path>  Project path
+
+Command options
+───────────────
+Option   Description
+───────  ───────────────────────────────────────────
+--check  Report drift without changing project files
+
+Consent options
+───────────────
+Option   Description
+───────  ──────────────────────────────
+--force  Replace modified managed files
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────
+--json  Emit machine-readable JSON
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact upgrade command help 1`] = `
+"LIFTOFF / UPGRADE
+Replace the supported global npm Liftoff CLI; project templates use update
+separately
+
+Usage
+─────
+liftoff upgrade
+
+Command options
+───────────────
+Option   Description
+───────  ────────────────────────────────────────────────────────────────────
+--check  Check for an installable stable CLI update without changing anything
+
+Output options
+──────────────
+Option  Description
+──────  ───────────────────────────────────────
+--json  Emit one machine-readable result object
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain dev command help 1`] = `
+"LIFTOFF / DEV - Print Docker Compose helper commands
+
+Usage
+Usage: liftoff dev [up|down|logs|reset]
+
+Subcommands
+- up
+- down
+- logs
+- reset
+
+Command options
+Option: --profile <name> | Description: Docker Compose profile
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain doctor command help 1`] = `
+"LIFTOFF / DOCTOR - Check local and project readiness
+
+Usage
+Usage: liftoff doctor
+
+Project options
+Option: --cloud <provider> | Description: Cloud provider to inspect (default: azure)
+
+Output options
+Option: --json | Description: Emit machine-readable JSON
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain general help 1`] = `
+"Liftoff - Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local workstation.
+
+Usage
+liftoff <command> [options]
+
+Global options
+Option: --version | Description: Show the installed Liftoff version
+Option: --help | Description: Show general help
+
+Onboarding
+Command: init | Description: Initialize a project and prepare its workstation
+Command: plan | Description: Preview generated artifacts
+Command: migrate | Description: Adopt an existing project
+
+Maintenance
+Command: validate | Description: Validate a generated project manifest
+Command: update | Description: Reconcile a project with current templates
+Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
+Command: doctor | Description: Check local and project readiness
+
+Reference
+Command: help | Description: Show general or command-specific help
+Command: patterns | Description: List GenAI patterns
+Command: providers | Description: List cloud providers
+Command: regions | Description: List or search provider regions
+
+Operations
+Command: dev | Description: Print Docker Compose helper commands
+Command: infra | Description: Print OpenTofu helper commands
+
+[info] Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots plain init command help 1`] = `
+"LIFTOFF / INIT - Initialize a project and prepare its workstation
+
+Usage
+Usage: liftoff init [project-name]
+
+Arguments
+Argument: project-name | Description: Project identity or child directory name
+
+Project options
+Option: --project <path> | Description: Project name or project path
+Option: --type <workload> | Description: Project workload type
+Option: --genai / --no-genai | Description: Create a GenAI project; use --no-genai for a standard API
+Option: --api <stack> | Description: Backend API stack
+Option: --pattern <pattern> | Description: GenAI application pattern
+Option: --cloud <provider> | Description: Cloud provider (default: azure)
+Option: --region <region> | Description: Cloud deployment region (default: eastus)
+Option: --frontend / --no-frontend | Description: Include the Vue frontend starter (default: false)
+Option: --environments <list> | Description: Comma-separated environments (default: dev,test,prod)
+Option: --config <file> | Description: Load deterministic project options from JSON
+
+Framework options
+Option: --spec <framework> | Description: Spec-driven framework (default: openspec)
+Option: --agents <list> | Description: Comma-separated AI coding agents (default: copilot)
+Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
+Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
+Option: --code-apps-plugin / --no-code-apps-plugin | Description: Request the Microsoft Code Apps agent plugin (Preview) (default: false)
+
+Consent options
+Option: --yes | Description: Accept project defaults and plan confirmation
+Option: --force | Description: Authorize replacement of listed regular-file conflicts
+Option: --install-tools | Description: Authorize allowlisted workstation tool installation
+Option: --install-dependencies | Description: Authorize project-local dependency installation
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain regions command help 1`] = `
+"LIFTOFF / REGIONS - List or search provider regions
+
+Usage
+Usage: liftoff regions [search <query>]
+
+Arguments
+Argument: query | Description: Region name, slug, geography, or alias to search
+
+Subcommands
+- search
+
+Project options
+Option: --cloud <provider> | Description: Cloud provider (default: azure)
+Option: --region <region> | Description: Exact region identifier
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain update command help 1`] = `
+"LIFTOFF / UPDATE - Reconcile a project with current templates
+
+Usage
+Usage: liftoff update [project-path]
+
+Arguments
+Argument: project-path | Description: Generated project to reconcile
+
+Project options
+Option: --project <path> | Description: Project path
+
+Command options
+Option: --check | Description: Report drift without changing project files
+
+Consent options
+Option: --force | Description: Replace modified managed files
+
+Output options
+Option: --json | Description: Emit machine-readable JSON
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain upgrade command help 1`] = `
+"LIFTOFF / UPGRADE - Replace the supported global npm Liftoff CLI; project templates use update separately
+
+Usage
+Usage: liftoff upgrade
+
+Command options
+Option: --check | Description: Check for an installable stable CLI update without changing anything
+
+Output options
+Option: --json | Description: Emit one machine-readable result object
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots rich dev command help 1`] = `
+"┌─ LIFTOFF / DEV ──────────────────────────────────────────────────────────────────────────────┐
+│ Print Docker Compose helper commands                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff dev [up|down|logs|reset]                                                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • up                                                                                         │
+│ • down                                                                                       │
+│ • logs                                                                                       │
+│ • reset                                                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option            Description                                                                │
+│ ────────────────  ──────────────────────                                                     │
+│ --profile <name>  Docker Compose profile                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich doctor command help 1`] = `
+"┌─ LIFTOFF / DOCTOR ───────────────────────────────────────────────────────────────────────────┐
+│ Check local and project readiness                                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff doctor                                                                               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option              Description                                                              │
+│ ──────────────────  ──────────────────────────────────────────                               │
+│ --cloud <provider>  Cloud provider to inspect (default: azure)                               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --json  Emit machine-readable JSON                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich general help 1`] = `
+"┌──────────────────────────────────────────────────────────────────────────────────────────────┐
+│ ██╗     ██╗███████╗████████╗ ██████╗ ███████╗███████╗                                        │
+│ ██║     ██║██╔════╝╚══██╔══╝██╔═══██╗██╔════╝██╔════╝                                        │
+│ ██║     ██║█████╗     ██║   ██║   ██║█████╗  █████╗                                          │
+│ ██║     ██║██╔══╝     ██║   ██║   ██║██╔══╝  ██╔══╝                                          │
+│ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
+│ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
+│                                                                                              │
+│ Mission Control Liftoff 0.7.0 - Initialize a governed application and prepare its local      │
+│ workstation.                                                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff <command> [options]                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Global options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option     Description                                                                       │
+│ ─────────  ──────────────────────────────────                                                │
+│ --version  Show the installed Liftoff version                                                │
+│ --help     Show general help                                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Onboarding ─────────────────────────────────────────────────────────────────────────────────┐
+│ Command  Description                                                                         │
+│ ───────  ────────────────────────────────────────────────                                    │
+│ init     Initialize a project and prepare its workstation                                    │
+│ plan     Preview generated artifacts                                                         │
+│ migrate  Adopt an existing project                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
+│ Command   Description                                                                        │
+│ ────────  ────────────────────────────────────────────────────────────────────────────────── │
+│ validate  Validate a generated project manifest                                              │
+│ update    Reconcile a project with current templates                                         │
+│ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
+│           separately                                                                         │
+│ doctor    Check local and project readiness                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
+│ Command    Description                                                                       │
+│ ─────────  ─────────────────────────────────────                                             │
+│ help       Show general or command-specific help                                             │
+│ patterns   List GenAI patterns                                                               │
+│ providers  List cloud providers                                                              │
+│ regions    List or search provider regions                                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
+│ Command  Description                                                                         │
+│ ───────  ────────────────────────────────────                                                │
+│ dev      Print Docker Compose helper commands                                                │
+│ infra    Print OpenTofu helper commands                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+i Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots rich init command help 1`] = `
+"┌─ LIFTOFF / INIT ─────────────────────────────────────────────────────────────────────────────┐
+│ Initialize a project and prepare its workstation                                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff init [project-name]                                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ────────────────────────────────────────                                       │
+│ project-name  Project identity or child directory name                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                      Description                                                      │
+│ ──────────────────────────  ─────────────────────────────────────────────────────────        │
+│ --project <path>            Project name or project path                                     │
+│ --type <workload>           Project workload type                                            │
+│ --genai / --no-genai        Create a GenAI project; use --no-genai for a standard API        │
+│ --api <stack>               Backend API stack                                                │
+│ --pattern <pattern>         GenAI application pattern                                        │
+│ --cloud <provider>          Cloud provider (default: azure)                                  │
+│ --region <region>           Cloud deployment region (default: eastus)                        │
+│ --frontend / --no-frontend  Include the Vue frontend starter (default: false)                │
+│ --environments <list>       Comma-separated environments (default: dev,test,prod)            │
+│ --config <file>             Load deterministic project options from JSON                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
+│ Option                                      Description                                      │
+│ ──────────────────────────────────────────  ──────────────────────────────────────────────── │
+│ --spec <framework>                          Spec-driven framework (default: openspec)        │
+│ --agents <list>                             Comma-separated AI coding agents (default:       │
+│                                             copilot)                                         │
+│ --default-agent <agent>                     Primary agent for Spec Kit when multiple agents  │
+│                                             are selected                                     │
+│ --governance <profile>                      Repository-governance profile (default:          │
+│                                             single-maintainer-gitflow)                       │
+│ --code-apps-plugin / --no-code-apps-plugin  Request the Microsoft Code Apps agent plugin     │
+│                                             (Preview) (default: false)                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                  Description                                                          │
+│ ──────────────────────  ──────────────────────────────────────────────────────               │
+│ --yes                   Accept project defaults and plan confirmation                        │
+│ --force                 Authorize replacement of listed regular-file conflicts               │
+│ --install-tools         Authorize allowlisted workstation tool installation                  │
+│ --install-dependencies  Authorize project-local dependency installation                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich regions command help 1`] = `
+"┌─ LIFTOFF / REGIONS ──────────────────────────────────────────────────────────────────────────┐
+│ List or search provider regions                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff regions [search <query>]                                                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument  Description                                                                        │
+│ ────────  ────────────────────────────────────────────────                                   │
+│ query     Region name, slug, geography, or alias to search                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • search                                                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option              Description                                                              │
+│ ──────────────────  ───────────────────────────────                                          │
+│ --cloud <provider>  Cloud provider (default: azure)                                          │
+│ --region <region>   Exact region identifier                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich update command help 1`] = `
+"┌─ LIFTOFF / UPDATE ───────────────────────────────────────────────────────────────────────────┐
+│ Reconcile a project with current templates                                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff update [project-path]                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ──────────────────────────────                                                 │
+│ project-path  Generated project to reconcile                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option            Description                                                                │
+│ ────────────────  ────────────                                                               │
+│ --project <path>  Project path                                                               │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option   Description                                                                         │
+│ ───────  ───────────────────────────────────────────                                         │
+│ --check  Report drift without changing project files                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option   Description                                                                         │
+│ ───────  ──────────────────────────────                                                      │
+│ --force  Replace modified managed files                                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --json  Emit machine-readable JSON                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich upgrade command help 1`] = `
+"┌─ LIFTOFF / UPGRADE ──────────────────────────────────────────────────────────────────────────┐
+│ Replace the supported global npm Liftoff CLI; project templates use update separately        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff upgrade                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option   Description                                                                         │
+│ ───────  ────────────────────────────────────────────────────────────────────                │
+│ --check  Check for an installable stable CLI update without changing anything                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ───────────────────────────────────────                                              │
+│ --json  Emit one machine-readable result object                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;

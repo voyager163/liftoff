@@ -1,0 +1,28 @@
+{
+  "name": "@msn-control/liftoff-telemetry-ingest",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "dist/services/telemetry-ingest/src/index.js",
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.json",
+    "package": "npm run build && node scripts/prepare-package.mjs",
+    "start": "node dist/services/telemetry-ingest/src/index.js",
+    "smoke:container": "node scripts/smoke-container.mjs",
+    "test": "vitest run",
+    "check": "npm run build && npm test"
+  },
+  "engines": {
+    "node": ">=24.20"
+  },
+  "dependencies": {
+    "@azure/identity": "4.13.2",
+    "@azure/monitor-ingestion": "1.2.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "typescript": "^7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  }
+}

@@ -1,0 +1,7 @@
+subscription_id       = "<subscription-id>"
+location              = "eastus"
+resource_suffix       = "<unique-suffix>"
+source_revision       = "<40-character-public-git-commit-sha>"
+image_digest           = "sha256:<64-character-lowercase-image-manifest-digest>"
+retained_image_revisions = []
+daily_quota_gb         = 0.1

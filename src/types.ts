@@ -11,10 +11,13 @@ export type PatternId =
 export type ProviderId = 'azure' | 'aws' | 'gcp';
 export type ProviderStatus = 'available' | 'planned';
 export type SpecWorkflowId = 'openspec' | 'spec-kit';
+export type CodingAgentId = 'github-copilot' | 'claude';
 export type EnvironmentId = 'dev' | 'test' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
-export type ProjectTypeId = 'genai' | 'standard';
+export type ProjectTypeId = 'genai' | 'standard' | 'power-apps-code-app';
 export type ApiStackId = 'python-fastapi' | 'node-fastify' | 'go-huma';
+export type GovernanceProfileId = 'single-maintainer-gitflow' | 'none';
+export type ManifestGovernanceProfileId = GovernanceProfileId | 'unspecified';
 
 export interface ProjectTypeDefinition {
   id: ProjectTypeId;
@@ -72,9 +75,59 @@ export interface SpecWorkflowDefinition {
   description: string;
 }
 
+export interface GovernanceProfileDefinition {
+  id: GovernanceProfileId;
+  label: string;
+  description: string;
+  default: boolean;
+  policyVersion?: string;
+}
+
+export interface ExternalCommand {
+  executable: string;
+  args: string[];
+}
+
+export interface CodingAgentDefinition {
+  id: CodingAgentId;
+  inputName: string;
+  label: string;
+  aliases: string[];
+  executable: string;
+  integrationIds: Record<SpecWorkflowId, string>;
+}
+
+export interface FrameworkDefinition {
+  id: SpecWorkflowId;
+  executable: string;
+  version: string;
+  installCommand: ExternalCommand;
+  allowedRoots: string[];
+  baseMarkers: string[][];
+  agentMarkers: Record<CodingAgentId, string[][]>;
+}
+
+export interface PowerAppsStarterSource {
+  repository: string;
+  path: string;
+  commit: string;
+}
+
+export interface CodeAppsPluginDefinition {
+  id: 'code-apps-preview';
+  label: string;
+  version: string;
+  marketplace: 'power-platform-skills';
+  repository: string;
+  path: string;
+  preview: true;
+  probes: Partial<Record<CodingAgentId, ExternalCommand>>;
+}
+
 export interface ProjectOptions {
   projectName?: string;
   projectType?: string;
+  genai?: boolean;
   apiStack?: string;
   pattern?: string;
   cloud?: string;
@@ -82,25 +135,65 @@ export interface ProjectOptions {
   includeFrontend?: boolean;
   environments?: string[];
   specWorkflow?: string;
+  agents?: string[];
+  defaultAgent?: string;
+  codeAppsPlugin?: boolean;
+  governanceProfile?: string;
   configPath?: string;
   yes?: boolean;
+  force?: boolean;
+  installTools?: boolean;
+  installDependencies?: boolean;
 }
 
-export interface ProjectPlan {
-  projectName: string;
-  safeProjectName: string;
-  packageName: string;
-  projectType: ProjectTypeDefinition;
+export interface GenAiWorkloadPlan {
+  workload: 'genai';
   apiStack: ApiStackDefinition;
-  pattern?: PatternDefinition;
+  pattern: PatternDefinition;
   provider: ProviderDefinition;
   region: RegionDefinition;
   includeFrontend: boolean;
   frontendStarter: string;
   environments: EnvironmentDefinition[];
+}
+
+export interface StandardApiWorkloadPlan {
+  workload: 'standard';
+  apiStack: ApiStackDefinition;
+  provider: ProviderDefinition;
+  region: RegionDefinition;
+  includeFrontend: boolean;
+  frontendStarter: string;
+  environments: EnvironmentDefinition[];
+}
+
+export interface PowerAppsCodeAppWorkloadPlan {
+  workload: 'power-apps-code-app';
+  starter: PowerAppsStarterSource;
+  codeAppsPlugin: boolean;
+}
+
+export type ApiWorkloadPlan = GenAiWorkloadPlan | StandardApiWorkloadPlan;
+export type WorkloadPlan = ApiWorkloadPlan | PowerAppsCodeAppWorkloadPlan;
+
+export interface ProjectPlanBase {
+  projectName: string;
+  safeProjectName: string;
+  packageName: string;
+  projectType: ProjectTypeDefinition;
   specWorkflow: SpecWorkflowDefinition;
+  agents: CodingAgentDefinition[];
+  defaultAgent?: CodingAgentDefinition;
+  framework: FrameworkDefinition;
+  governanceProfile: GovernanceProfileDefinition;
   approvedStack: string[];
 }
+
+export type ProjectPlan = ProjectPlanBase & WorkloadPlan;
+export type GenAiProjectPlan = ProjectPlanBase & GenAiWorkloadPlan;
+export type StandardApiProjectPlan = ProjectPlanBase & StandardApiWorkloadPlan;
+export type ApiProjectPlan = GenAiProjectPlan | StandardApiProjectPlan;
+export type PowerAppsCodeAppProjectPlan = ProjectPlanBase & PowerAppsCodeAppWorkloadPlan;
 
 export interface GeneratedArtifact {
   logicalName: string;
@@ -116,21 +209,59 @@ export interface ManifestArtifact {
   contentHash: string;
 }
 
+export interface ManifestGenAiWorkload {
+  kind: 'genai';
+  apiStack: ApiStackId;
+  pattern: PatternId;
+  cloud: ProviderId;
+  region: string;
+  frontend: boolean;
+  environments: EnvironmentId[];
+}
+
+export interface ManifestStandardApiWorkload {
+  kind: 'standard';
+  apiStack: ApiStackId;
+  cloud: ProviderId;
+  region: string;
+  frontend: boolean;
+  environments: EnvironmentId[];
+}
+
+export interface ManifestPowerAppsCodeAppWorkload {
+  kind: 'power-apps-code-app';
+  starter: PowerAppsStarterSource;
+  codeAppsPlugin: boolean;
+}
+
+export type ManifestWorkload =
+  | ManifestGenAiWorkload
+  | ManifestStandardApiWorkload
+  | ManifestPowerAppsCodeAppWorkload;
+
+export interface ManifestGovernance {
+  profile: ManifestGovernanceProfileId;
+  state: 'disabled' | 'handoff-generated' | 'handoff-partial' | 'unspecified';
+  policyVersion?: string;
+}
+
 export interface LiftoffManifest {
-  artifactVersion: 2;
+  artifactVersion: 2 | 3 | 4 | 5;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
   project: {
     name: string;
-    projectType: ProjectTypeId;
-    apiStack: ApiStackId;
-    pattern?: PatternId;
-    cloud: ProviderId;
-    region: string;
-    frontend: boolean;
+    workload: ManifestWorkload;
     specWorkflow: SpecWorkflowId;
-    environments: EnvironmentId[];
+    agents: CodingAgentId[];
+    defaultAgent?: CodingAgentId;
   };
+  framework: {
+    state: 'initialized' | 'legacy';
+    adapter: SpecWorkflowId;
+    contractVersion?: string;
+  };
+  governance: ManifestGovernance;
   artifacts: ManifestArtifact[];
 }
 

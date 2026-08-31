@@ -1,0 +1,33 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "direct-package": {
+      "name": "direct-package",
+      "severity": "high",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1,
+          "name": "direct-package",
+          "dependency": "direct-package",
+          "title": "Direct fixture advisory",
+          "url": "https://github.com/advisories/GHSA-AAAA-BBBB-CCCC",
+          "severity": "high",
+          "range": "<2.0.0"
+        }
+      ],
+      "effects": [],
+      "range": "<2.0.0",
+      "nodes": [
+        "node_modules/direct-package"
+      ],
+      "fixAvailable": true
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "high": 1,
+      "total": 1
+    }
+  }
+}

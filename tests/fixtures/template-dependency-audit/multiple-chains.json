@@ -1,0 +1,83 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "leaf-package": {
+      "name": "leaf-package",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        {
+          "source": 2,
+          "name": "leaf-package",
+          "dependency": "leaf-package",
+          "title": "Multiple-chain fixture advisory",
+          "url": "https://github.com/advisories/GHSA-DDDD-EEEE-FFFF",
+          "severity": "moderate",
+          "range": "<3.0.0"
+        }
+      ],
+      "effects": [
+        "middle-a",
+        "middle-b"
+      ],
+      "range": "<3.0.0",
+      "nodes": [
+        "node_modules/leaf-package"
+      ],
+      "fixAvailable": false
+    },
+    "middle-a": {
+      "name": "middle-a",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "leaf-package"
+      ],
+      "effects": [
+        "root-package"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/middle-a"
+      ],
+      "fixAvailable": false
+    },
+    "middle-b": {
+      "name": "middle-b",
+      "severity": "moderate",
+      "isDirect": false,
+      "via": [
+        "leaf-package"
+      ],
+      "effects": [
+        "root-package"
+      ],
+      "range": "*",
+      "nodes": [
+        "node_modules/middle-b"
+      ],
+      "fixAvailable": false
+    },
+    "root-package": {
+      "name": "root-package",
+      "severity": "moderate",
+      "isDirect": true,
+      "via": [
+        "middle-a",
+        "middle-b"
+      ],
+      "effects": [],
+      "range": "*",
+      "nodes": [
+        "node_modules/root-package"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "moderate": 4,
+      "total": 4
+    }
+  }
+}

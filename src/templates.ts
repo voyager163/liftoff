@@ -1,13 +1,42 @@
 import { createHash } from 'node:crypto';
 import { addGenAiExtensionArtifacts } from './genai-templates.js';
+import { assertImmutableGeneratedContainerReferences } from './container-validation.js';
+import { addPowerAppsCodeAppArtifacts } from './power-apps-templates.js';
 import {
   addStandardStackArtifacts,
   renderStandardDockerfile,
   renderStandardEnv
 } from './standard-templates.js';
 import type { AddArtifact } from './template-types.js';
-import type { GeneratedArtifact, LiftoffManifest, PatternDefinition, ProjectPlan } from './types.js';
+import type {
+  ApiProjectPlan,
+  GeneratedArtifact,
+  GenAiProjectPlan,
+  LiftoffManifest,
+  ManifestWorkload,
+  ProjectPlan
+} from './types.js';
 import { liftoffVersion } from './version.js';
+import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
+import {
+  renderOpenTofuProviderLock,
+  renderOpenTofuVersions
+} from './opentofu-template-assets.js';
+import { formatCommand } from './process-runner.js';
+import { formatContainerImage, supportedStack } from './supported-stack.js';
+import {
+  buildRepositoryGovernanceArtifacts,
+  governancePolicyVersion
+} from './repository-governance.js';
+import {
+  renderFunctionRequirementsAsset,
+  renderPythonLock,
+  renderPythonPyprojectAsset
+} from './python-template-assets.js';
+import {
+  workstationRequirementCatalog,
+  type WorkstationRequirementId
+} from './workstation-catalog.js';
 
 const contentHash = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 const DEFAULT_FUNCTION_WORKER_QUEUE_NAME = 'events';
@@ -35,7 +64,7 @@ const boundedToken = (value: string, length: number) =>
   value.slice(0, length).replace(/-+$/g, '') || 'app';
 
 export function buildAzureResourceNames(
-  plan: ProjectPlan,
+  plan: ApiProjectPlan,
   environment: string,
   resourceSuffix: string
 ): AzureResourceNames {
@@ -59,7 +88,7 @@ export function buildAzureResourceNames(
   };
 }
 
-function stableResourceSuffix(plan: ProjectPlan, environment: string): string {
+function stableResourceSuffix(plan: ApiProjectPlan, environment: string): string {
   return createHash('sha256')
     .update(`${plan.safeProjectName}:${environment}`, 'utf8')
     .digest('hex')
@@ -72,15 +101,12 @@ const sourceString = (value: string) => JSON.stringify(value);
 const scriptSourceString = (value: string) => sourceString(value).replaceAll('<', '\\u003c');
 const escapeHtml = (value: string) =>
   value.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
-const genAiPattern = (plan: ProjectPlan): PatternDefinition => {
-  if (plan.projectType.id !== 'genai' || !plan.pattern) {
-    throw new Error('GenAI template rendering requires a GenAI pattern.');
-  }
+const genAiPattern = (plan: GenAiProjectPlan) => {
   return plan.pattern;
 };
-const hasFunctionWorker = (plan: ProjectPlan) =>
-  plan.projectType.id === 'genai' && plan.provider.id === 'azure' && genAiPattern(plan).worker;
-const functionWorkerName = (plan: ProjectPlan) => `${genAiPattern(plan).id}-worker`;
+const hasFunctionWorker = (plan: ApiProjectPlan) =>
+  plan.workload === 'genai' && plan.provider.id === 'azure' && plan.pattern.worker;
+const functionWorkerName = (plan: GenAiProjectPlan) => `${plan.pattern.id}-worker`;
 
 export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   const artifacts: GeneratedArtifact[] = [];
@@ -88,24 +114,30 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
     artifacts.push({ logicalName, category, pathParts, content: ensureTrailingNewline(content) });
   };
 
-  addBaseArtifacts(add, plan);
-  if (plan.projectType.id === 'genai') {
-    addGenAiExtensionArtifacts(add, plan, {
-      backend: addBackendArtifacts,
-      database: addDatabaseArtifacts,
-      pattern: addPatternArtifacts,
-      functions: addFunctionArtifacts
-    });
-  } else {
-    addStandardStackArtifacts(add, plan);
+  switch (plan.workload) {
+    case 'genai':
+      addGenAiWorkloadArtifacts(add, plan);
+      break;
+    case 'standard':
+      addStandardWorkloadArtifacts(add, plan);
+      break;
+    case 'power-apps-code-app':
+      addPowerAppsWorkloadArtifacts(add, plan);
+      break;
   }
-  addEnvironmentArtifacts(add, plan);
-  addDockerArtifacts(add, plan);
-  addInfrastructureArtifacts(add, plan);
-  addGovernanceArtifacts(add, plan);
-  if (plan.includeFrontend) {
+  addSpecWorkflowArtifacts(add, plan);
+  for (const artifact of buildRepositoryGovernanceArtifacts(plan)) {
+    add(
+      artifact.logicalName,
+      artifact.category,
+      artifact.pathParts,
+      artifact.content
+    );
+  }
+  if (plan.workload !== 'power-apps-code-app' && plan.includeFrontend) {
     addFrontendArtifacts(add, plan);
   }
+  assertImmutableGeneratedContainerReferences(artifacts);
 
   const manifest = buildManifest(plan, artifacts);
   artifacts.push({
@@ -118,24 +150,119 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   return artifacts;
 }
 
-export function buildManifest(plan: ProjectPlan, artifacts: GeneratedArtifact[]): LiftoffManifest {
+function addGenAiWorkloadArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
+  addBaseArtifacts(add, plan);
+  addGenAiExtensionArtifacts(add, plan, {
+    backend: addBackendArtifacts,
+    database: addDatabaseArtifacts,
+    pattern: addPatternArtifacts,
+    functions: addFunctionArtifacts
+  });
+  addApiWorkloadOperations(add, plan);
+}
+
+function addStandardWorkloadArtifacts(
+  add: AddArtifact,
+  plan: Extract<ProjectPlan, { workload: 'standard' }>
+): void {
+  addBaseArtifacts(add, plan);
+  addStandardStackArtifacts(add, plan);
+  addApiWorkloadOperations(add, plan);
+}
+
+function addPowerAppsWorkloadArtifacts(
+  add: AddArtifact,
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): void {
+  addPowerAppsCodeAppArtifacts(add, plan);
+  addPowerAppsProjectConfig(add, plan);
+}
+
+function addApiWorkloadOperations(add: AddArtifact, plan: ApiProjectPlan): void {
+  addEnvironmentArtifacts(add, plan);
+  addDockerArtifacts(add, plan);
+  addInfrastructureArtifacts(add, plan);
+}
+
+export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
+  durable: GeneratedArtifact[];
+  framework: GeneratedArtifact[];
+  seed: GeneratedArtifact[];
+  manifest: GeneratedArtifact;
+} {
+  const manifest = artifacts.find((artifact) => artifact.logicalName === 'manifest');
+  if (!manifest) {
+    throw new Error('Generated artifacts are missing the Liftoff manifest.');
+  }
   return {
-    artifactVersion: 2,
+    durable: artifacts.filter((artifact) =>
+      artifact.logicalName !== 'manifest' && artifact.category !== 'seed' && artifact.category !== 'framework'
+    ),
+    framework: artifacts.filter((artifact) => artifact.category === 'framework'),
+    seed: artifacts.filter((artifact) => artifact.category === 'seed'),
+    manifest
+  };
+}
+
+export function buildManifest(
+  plan: ProjectPlan,
+  artifacts: GeneratedArtifact[],
+  options: { frameworkState?: 'initialized' | 'legacy' } = {}
+): LiftoffManifest {
+  const frameworkState = options.frameworkState ?? 'initialized';
+  const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
+  const workload: ManifestWorkload = plan.workload === 'power-apps-code-app'
+    ? {
+        kind: 'power-apps-code-app',
+        starter: plan.starter,
+        codeAppsPlugin: plan.codeAppsPlugin
+      }
+    : plan.workload === 'genai'
+      ? {
+          kind: 'genai',
+          apiStack: plan.apiStack.id,
+          pattern: plan.pattern.id,
+          cloud: plan.provider.id,
+          region: plan.region.slug,
+          frontend: plan.includeFrontend,
+          environments: plan.environments.map((environment) => environment.id)
+        }
+      : {
+          kind: 'standard',
+          apiStack: plan.apiStack.id,
+          cloud: plan.provider.id,
+          region: plan.region.slug,
+          frontend: plan.includeFrontend,
+          environments: plan.environments.map((environment) => environment.id)
+        };
+  return {
+    artifactVersion: 5,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
       name: plan.projectName,
-      projectType: plan.projectType.id,
-      apiStack: plan.apiStack.id,
-      ...(plan.pattern ? { pattern: plan.pattern.id } : {}),
-      cloud: plan.provider.id,
-      region: plan.region.slug,
-      frontend: plan.includeFrontend,
+      workload,
       specWorkflow: plan.specWorkflow.id,
-      environments: plan.environments.map((environment) => environment.id)
+      agents,
+      ...(frameworkState === 'initialized' && plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
     },
+    framework: {
+      state: frameworkState,
+      adapter: plan.framework.id,
+      ...(frameworkState === 'initialized' ? { contractVersion: plan.framework.version } : {})
+    },
+    governance: plan.governanceProfile.id === 'none'
+      ? {
+          profile: 'none',
+          state: 'disabled'
+        }
+      : {
+          profile: plan.governanceProfile.id,
+          policyVersion: governancePolicyVersion,
+          state: 'handoff-generated'
+        },
     artifacts: artifacts
-      .filter((artifact) => artifact.category !== 'seed') // seed content is written once, never tracked
+      .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
       .map((artifact) => ({
         logicalName: artifact.logicalName,
         category: artifact.category,
@@ -145,32 +272,51 @@ export function buildManifest(plan: ProjectPlan, artifacts: GeneratedArtifact[])
   };
 }
 
-function addBaseArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addBaseArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   add('root-readme', 'documentation', ['README.md'], renderRootReadme(plan));
   add('root-gitignore', 'project', ['.gitignore'], renderGeneratedGitignore());
   add('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
     projectName: plan.projectName,
     projectType: plan.projectType.id,
     apiStack: plan.apiStack.id,
-    ...(plan.pattern ? { pattern: plan.pattern.id } : {}),
+    ...(plan.workload === 'genai' ? { pattern: plan.pattern.id } : {}),
     cloud: plan.provider.id,
     region: plan.region.slug,
     includeFrontend: plan.includeFrontend,
     environments: plan.environments.map((environment) => environment.id),
-    specWorkflow: plan.specWorkflow.id
+    specWorkflow: plan.specWorkflow.id,
+    agents: plan.agents.map((agent) => agent.id),
+    ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
+    governanceProfile: plan.governanceProfile.id
   }, null, 2));
   add('env-example', 'configuration', ['.env.example'], renderEnvExample(plan));
   add(
     'backend-dockerfile',
     'runtime',
     ['Dockerfile'],
-    plan.projectType.id === 'genai' ? renderBackendDockerfile() : renderStandardDockerfile(plan)
+    plan.workload === 'genai' ? renderBackendDockerfile() : renderStandardDockerfile(plan)
   );
 }
 
-function addBackendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addPowerAppsProjectConfig(
+  add: AddArtifact,
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): void {
+  add('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
+    projectName: plan.projectName,
+    projectType: plan.projectType.id,
+    specWorkflow: plan.specWorkflow.id,
+    agents: plan.agents.map((agent) => agent.id),
+    ...(plan.defaultAgent ? { defaultAgent: plan.defaultAgent.id } : {}),
+    codeAppsPlugin: plan.codeAppsPlugin,
+    governanceProfile: plan.governanceProfile.id
+  }, null, 2));
+}
+
+function addBackendArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   const routeModule = pyModule(genAiPattern(plan).id);
   add('backend-pyproject', 'backend', ['backend', 'pyproject.toml'], renderBackendPyproject(plan));
+  add('backend-uv-lock', 'backend', ['backend', 'uv.lock'], renderPythonLock('genai', `${plan.safeProjectName}-backend`));
   add('backend-package', 'backend', ['backend', '__init__.py'], '');
   add('backend-api-package', 'backend', ['backend', 'apis', '__init__.py'], '');
   add('backend-main', 'backend', ['backend', 'apis', 'main.py'], renderFastApiMain(plan, routeModule));
@@ -191,14 +337,14 @@ function addBackendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('backend-test-tracing', 'backend-test', ['backend', 'tests', 'test_tracing.py'], renderTracingTest());
 }
 
-function addDatabaseArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addDatabaseArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   add('database-alembic-ini', 'database', ['database', 'alembic.ini'], renderAlembicIni());
   add('database-alembic-env', 'database', ['database', 'migrations', 'env.py'], renderAlembicEnv());
   add('database-initial-migration', 'database', ['database', 'migrations', 'versions', '0001_initial.py'], renderInitialMigration(plan));
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderDatabaseSchema(plan));
 }
 
-function addPatternArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addPatternArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   const pattern = genAiPattern(plan);
   const routeModule = pyModule(pattern.id);
   add('pattern-agent', 'pattern', ['backend', 'orchestration', 'agents', `${routeModule}_agent.py`], renderPatternAgent(plan));
@@ -222,7 +368,7 @@ function addPatternArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   }
 }
 
-function addFunctionArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addFunctionArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   if (!hasFunctionWorker(plan)) {
     return;
   }
@@ -240,27 +386,33 @@ function addFunctionArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('function-worker-gitignore', 'functions', [...workerBase, '.gitignore'], renderFunctionGitIgnore());
 }
 
-function addEnvironmentArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addEnvironmentArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   for (const environment of plan.environments) {
     add(
       `environment-${environment.id}-backend`,
       'environment',
       ['environments', environment.id, 'backend.env'],
-      plan.projectType.id === 'genai' ? renderBackendEnv(plan, environment.id) : renderStandardEnv(plan, environment.id)
+      plan.workload === 'genai' ? renderBackendEnv(plan, environment.id) : renderStandardEnv(plan, environment.id)
     );
-    if (hasFunctionWorker(plan)) {
+    if (plan.workload === 'genai' && hasFunctionWorker(plan)) {
       add(`environment-${environment.id}-functions`, 'environment', ['environments', environment.id, 'functions.env'], renderFunctionsEnv(plan, environment.id));
     }
   }
 }
 
-function addDockerArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addDockerArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   add('docker-compose', 'local-development', ['docker-compose.yml'], renderDockerCompose(plan));
 }
 
-function addInfrastructureArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addInfrastructureArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   const base = ['infrastructure', 'opentofu', 'azure'];
-  add('opentofu-versions', 'infrastructure', [...base, 'versions.tf'], renderTofuVersions());
+  add('opentofu-versions', 'infrastructure', [...base, 'versions.tf'], renderOpenTofuVersions());
+  add(
+    'opentofu-provider-lock',
+    'infrastructure',
+    [...base, '.terraform.lock.hcl'],
+    renderOpenTofuProviderLock()
+  );
   add('opentofu-providers', 'infrastructure', [...base, 'providers.tf'], renderTofuProviders());
   add('opentofu-variables', 'infrastructure', [...base, 'variables.tf'], renderTofuVariables(plan));
   add('opentofu-main', 'infrastructure', [...base, 'main.tf'], renderTofuMain(plan));
@@ -273,25 +425,133 @@ function addInfrastructureArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   }
 }
 
-function addGovernanceArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addSpecWorkflowArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+  if (plan.workload === 'power-apps-code-app') {
+    if (plan.specWorkflow.id === 'openspec') {
+      const changeName = `bootstrap-${plan.safeProjectName}`;
+      add('openspec-config', 'seed', ['openspec', 'config.yaml'], renderPowerAppsOpenSpecConfig(plan));
+      add('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
+      add('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderPowerAppsSeedProposal(plan));
+      add('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderPowerAppsSeedDesign(plan));
+      add('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
+      add('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
+    } else {
+      add('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderPowerAppsSpecKitConstitution(plan));
+      add('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+      add('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+      add('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
+    }
+    return;
+  }
   if (plan.specWorkflow.id === 'openspec') {
     const changeName = `bootstrap-${plan.safeProjectName}`;
-    add('openspec-config', 'governance', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
+    add('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
     add('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
     add('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
     add('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
     add('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
-    add('openspec-spec-placeholder', 'governance', ['openspec', 'specs', '.gitkeep'], '');
+    add('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
   } else {
-    add('spec-kit-constitution', 'governance', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
-    add('spec-kit-spec-template', 'governance', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
-    add('spec-kit-plan-template', 'governance', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
-    add('specs-placeholder', 'governance', ['specs', '.gitkeep'], '');
+    add('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
+    add('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+    add('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+    add('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
   }
 }
 
-function addFrontendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function renderPowerAppsOpenSpecConfig(
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): string {
+  return `schema: spec-driven
+context: |
+  Project: ${plan.projectName}
+  Workload: Microsoft Power Apps code app
+  Stack: React, Vite, TypeScript, Tailwind CSS, Power Apps SDK
+  Starter: ${plan.starter.repository}/${plan.starter.path}@${plan.starter.commit}
+  Runtime boundary: browser-hosted code app with connector-first data access
+  Environment binding: explicit post-scaffold Power Apps CLI action
+rules:
+  proposal:
+    - Keep tenant, environment, connection, solution, and deployment choices explicit.
+  design:
+    - Prefer Power Platform connectors and generated service modules over custom APIs.
+    - Do not add Liftoff-owned Azure or API infrastructure unless a later change explicitly introduces it.
+  tasks:
+    - Include npm lint and build verification.
+`;
+}
+
+function renderPowerAppsSeedProposal(
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): string {
+  return `# Proposal: bootstrap-${plan.safeProjectName}
+
+## Why
+
+Establish the first governed feature on the generated ${plan.projectName} Power Apps code app.
+
+## What Changes
+
+- Define the initial React user experience and routes.
+- Add connector-backed data access through generated service modules.
+- Keep Power Apps environment binding, authentication, connections, and deployment explicit.
+
+## Impact
+
+- Affected source: \`src/\`
+- No Liftoff-owned backend API, Docker stack, Azure resources, or \`power.config.json\`.
+`;
+}
+
+function renderPowerAppsSeedDesign(
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): string {
+  return `# Design: bootstrap-${plan.safeProjectName}
+
+## Context
+
+The project uses React, Vite, TypeScript, Tailwind CSS, and Microsoft's Power Apps SDK.
+It was initialized from \`${plan.starter.path}\` at \`${plan.starter.commit}\`.
+
+## Decisions
+
+- Keep pages under \`src/pages\` and shared UI under \`src/components\`.
+- Keep connector and generated service boundaries explicit under \`src\`.
+- Use TanStack Query for server state and Zustand only for local client state.
+- Bind to a tenant and environment only through Microsoft's Power Apps CLI.
+`;
+}
+
+function renderPowerAppsSpecKitConstitution(
+  plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
+): string {
+  return `# ${plan.projectName} Constitution
+
+## I. Power Apps workload boundary
+
+The application MUST remain a Power Apps code app using React, Vite, TypeScript, Tailwind CSS,
+the Power Apps SDK, and the Power Apps Vite plugin. Tenant and environment binding MUST remain
+an explicit developer action.
+
+## II. Connector-first integration
+
+Features MUST prefer Power Platform connectors and generated service modules. A custom API or
+Azure resource requires an explicit specification and MUST NOT be inferred from this scaffold.
+
+## III. Project structure
+
+Pages belong under \`src/pages\`, shared UI under \`src/components\`, and reusable providers or
+connector boundaries under named \`src\` modules. \`power.config.json\` is never fabricated.
+
+## IV. Quality gates
+
+Every change MUST pass the applicable npm lint and build checks plus \`liftoff validate\`.
+`;
+}
+
+function addFrontendArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   add('frontend-package', 'frontend', ['frontend', 'package.json'], renderFrontendPackage(plan));
+  add('frontend-lock', 'frontend', ['frontend', 'package-lock.json'], renderNpmLock('frontend', `${plan.safeProjectName}-frontend`));
   add('frontend-index', 'frontend', ['frontend', 'index.html'], renderFrontendIndex(plan));
   add('frontend-main', 'frontend', ['frontend', 'src', 'main.ts'], renderFrontendMain());
   add('frontend-app', 'frontend', ['frontend', 'src', 'App.vue'], renderFrontendApp(plan));
@@ -302,20 +562,22 @@ function addFrontendArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('frontend-dockerfile', 'frontend', ['frontend', 'Dockerfile'], renderFrontendDockerfile());
 }
 
-function renderDirectBuildAndTestGuide(plan: ProjectPlan): string {
+function renderDirectBuildAndTestGuide(plan: ApiProjectPlan): string {
   let backendCommands: string;
-  if (plan.projectType.id === 'genai' || plan.apiStack.id === 'python-fastapi') {
-    backendCommands = `python -m venv .venv
-. .venv/bin/activate
-python -m pip install -e "./backend[test]"
-(cd backend && python -m pytest -q)`;
+  if (plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi') {
+    const extras = plan.workload === 'genai' && hasFunctionWorker(plan)
+      ? ' --extra functions'
+      : '';
+    backendCommands = `uv sync --frozen --project backend --extra test${extras}
+uv run --project backend python -m pytest -q backend/tests`;
   } else if (plan.apiStack.id === 'node-fastify') {
     backendCommands = `cd backend
-npm install
+npm ci
 npm run build
 npm test`;
   } else {
     backendCommands = `cd backend
+go mod download
 go test ./...`;
   }
   const frontendCommands = plan.includeFrontend ? `
@@ -325,35 +587,85 @@ Build the frontend without a running backend:
 \`\`\`bash
 cp frontend/.env.example frontend/.env
 cd frontend
-npm install
+npm ci
 npm run build
 \`\`\`
 ` : '';
-  const functionCommands = hasFunctionWorker(plan) ? `
+  const functionCommands = plan.workload === 'genai' && hasFunctionWorker(plan) ? `
 
-Run the Function worker unit tests from the same Python virtual environment:
+Run the Function worker unit tests from the same locked Python environment:
 
 \`\`\`bash
-cd functions/${functionWorkerName(plan)}
-python -m pip install -r requirements.txt
-python -m pytest -q
+(cd functions/${functionWorkerName(plan)} && uv run --project ../../backend --directory . python -m pytest -q)
 \`\`\`
 ` : '';
-  return `## Direct Build And Test
+  return `## Project Dependencies, Build, And Test
+
+\`liftoff init --install-dependencies\` runs the selected stack's locked project-local dependency commands. To run or resume them manually:
 
 \`\`\`bash
 ${backendCommands}
 \`\`\`
 
-On Windows, activate Python virtual environments with \`.venv\\Scripts\\activate\`.
 ${frontendCommands}${functionCommands}`;
 }
 
-function renderGeneratedConfigurationGuide(plan: ProjectPlan): string {
+function renderAdvisoryReadinessGuide(plan: ApiProjectPlan): string {
+  const selected: WorkstationRequirementId[] = [
+    'docker',
+    'opentofu',
+    ...(plan.provider.id === 'azure' ? ['azure-cli' as const] : [])
+  ];
+  return selected.map((id) => {
+    const requirement = workstationRequirementCatalog[id];
+    const mac = requirement.install.darwin;
+    const windows = requirement.install.win32;
+    const commands = [
+      ...(mac ? [`macOS: \`${formatCommand(mac.command)}\``] : []),
+      ...(windows ? [`Windows: \`${formatCommand(windows.command)}\``] : []),
+      `Linux: ${requirement.linuxRemedies.unknown}`
+    ].join('; ');
+    const health = id === 'docker'
+      ? ' After installation, start Docker Desktop or the Docker daemon.'
+      : id === 'azure-cli'
+        ? ' After installation, run `az login` if authentication is not ready.'
+        : '';
+    return `- ${requirement.label}: ${commands}.${health}`;
+  }).join('\n');
+}
+
+function renderSpecWorkflowGuide(plan: ApiProjectPlan): string {
+  const agents = plan.agents.map((agent) =>
+    `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default integration)' : ''}`
+  ).join(', ');
+  const ownership = plan.specWorkflow.id === 'openspec'
+    ? 'OpenSpec core files and the selected Copilot or Claude skill integrations'
+    : 'Spec Kit core files, integration state, and the selected Copilot or Claude skill integrations';
+  return `## Spec-Driven Workflow And Validation
+
+- Workflow: ${plan.specWorkflow.label} ${plan.framework.version}
+- AI coding agents: ${agents}
+- Framework ownership: the official initializer owns ${ownership}. Liftoff validates these files but excludes framework-owned output and one-time seed content from durable manifest hashes.
+- Deferred tools: advisory workstation checks may be deferred. Liftoff never claims they are installed and never installs them without \`--install-tools\`.
+
+If \`liftoff doctor\` reports a selected advisory tool as missing, use its registered readiness remedy:
+
+${renderAdvisoryReadinessGuide(plan)}
+
+Validate the scaffold and workstation after setup:
+
+\`\`\`bash
+liftoff validate
+liftoff doctor
+\`\`\`
+`;
+}
+
+function renderGeneratedConfigurationGuide(plan: ApiProjectPlan): string {
   const frontendConfiguration = plan.includeFrontend
     ? '\n- `frontend/.env` configures `VITE_API_BASE_URL`; the production build does not contact the backend.'
     : '';
-  if (plan.projectType.id === 'standard') {
+  if (plan.workload === 'standard') {
     return `## Runtime Configuration
 
 Copy \`.env.example\` to \`.env\` before running outside Docker Compose. The backend requires \`DATABASE_URL\` and \`REDIS_URL\`. \`CORS_ALLOWED_ORIGINS\` is a comma-separated allowlist and defaults to the local frontend at \`http://localhost:5173\`.${frontendConfiguration}
@@ -374,14 +686,20 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 function renderGeneratedUpdateGuide(): string {
   return `## Safe Liftoff Updates
 
-\`liftoff update\` is a read-only drift check; \`liftoff update --apply\` writes only preflighted changes. An occupied destination with different user bytes is reported and skipped, while an identical destination is adopted without rewriting it. Use \`--force\` only after reviewing each conflict.
+\`liftoff upgrade\` replaces a supported global Liftoff CLI installation; it does not inspect or modify this project. Check and apply CLI replacement separately with \`liftoff upgrade --check\` and \`liftoff upgrade\`.
+
+\`single-maintainer-gitflow\` repository governance generates a local handoff only. Review \`.liftoff/governance/README.md\`, commit and push the project, then run a selected-agent launcher for read-only Phase 0. Live enforcement requires a separately approved governance change.
+
+\`liftoff update\` immediately applies safe managed changes without prompting in interactive, redirected, and automated environments. Use \`liftoff update --check\` for a read-only human drift report, or \`liftoff update --check --json\` as an automation gate that exits 0 when clean and 2 when drift exists.
+
+Local or user-owned conflicts are skipped by default. Review the reported paths, commit or copy local work, and use \`liftoff update --force\` only when every listed overwrite is intended. An occupied destination with different user bytes remains preserved without force, while an identical destination is adopted without rewriting it. Update never deletes orphans or installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful overwrite.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 `;
 }
 
-function renderRootReadme(plan: ProjectPlan): string {
-  if (plan.projectType.id === 'standard') {
+function renderRootReadme(plan: ApiProjectPlan): string {
+  if (plan.workload === 'standard') {
     return `# ${plan.projectName}
 
 Generated by Mission Control Liftoff.
@@ -420,9 +738,7 @@ tofu apply -var-file=environments/dev.tfvars
 
 The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
 
-## Spec-Driven Workflow
-
-Selected workflow: ${plan.specWorkflow.label}.
+${renderSpecWorkflowGuide(plan)}
 `;
   }
 
@@ -473,9 +789,7 @@ tofu apply -var-file=environments/dev.tfvars
 
 The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
 
-## Spec-Driven Workflow
-
-Selected workflow: ${plan.specWorkflow.label}.
+${renderSpecWorkflowGuide(plan)}
 ${functionsSection}
 `;
 }
@@ -494,8 +808,8 @@ migration/legacy/
 `;
 }
 
-function renderEnvExample(plan: ProjectPlan): string {
-  if (plan.projectType.id === 'standard') {
+function renderEnvExample(plan: ApiProjectPlan): string {
+  if (plan.workload === 'standard') {
     return renderStandardEnv(plan);
   }
   const pattern = genAiPattern(plan);
@@ -522,16 +836,26 @@ LANGFUSE_SECRET_KEY=
 }
 
 function renderBackendDockerfile(): string {
-  return `FROM python:3.12-slim
+  return `FROM ${formatContainerImage(supportedStack.containers['uv-tool'])} AS uv
+FROM ${formatContainerImage(supportedStack.containers['python-runtime'])}
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV PATH=/app/backend/.venv/bin:$PATH
+COPY --from=uv /uv /uvx /bin/
 
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
 COPY backend/pyproject.toml /app/backend/pyproject.toml
-RUN pip install --no-cache-dir /app/backend
+COPY backend/uv.lock /app/backend/uv.lock
+RUN --mount=type=cache,target=/root/.cache/uv \\
+    uv export --frozen --no-dev --no-emit-project --project /app/backend --output-file /tmp/requirements.txt \\
+    && uv venv /app/backend/.venv \\
+    && uv pip install --python /app/backend/.venv/bin/python --require-hashes \\
+      --default-index "$UV_DEFAULT_INDEX" --requirements /tmp/requirements.txt \\
+    && rm /tmp/requirements.txt
 
 COPY backend /app/backend
 COPY database /app/database
@@ -541,47 +865,11 @@ CMD ["uvicorn", "backend.apis.main:app", "--host", "0.0.0.0", "--port", "8000"]
 `;
 }
 
-function renderBackendPyproject(plan: ProjectPlan): string {
-  return `[project]
-name = "${plan.safeProjectName}-backend"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = [
-  "fastapi>=0.111",
-  "uvicorn[standard]>=0.30",
-  "pydantic>=2.7",
-  "pydantic-settings>=2.3",
-  "pydantic-ai-slim[openai]==1.107.1",
-  "scalar-fastapi>=1.0",
-  "sqlalchemy[asyncio]>=2.0",
-  "asyncpg>=0.29",
-  "psycopg[binary]>=3.2",
-  "alembic>=1.13",
-  "redis>=5.0",
-  "langfuse==2.60.10",
-  "azure-servicebus>=7.12",
-  "azure-identity>=1.17",
-  "azure-storage-blob>=12.20",
-  "azure-communication-email>=1.0"
-]
-
-[project.optional-dependencies]
-test = ["pytest>=8.2", "httpx>=0.27"]
-
-[build-system]
-requires = ["setuptools>=70"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = []
-
-[tool.pytest.ini_options]
-pythonpath = [".."]
-testpaths = ["tests"]
-`;
+function renderBackendPyproject(plan: GenAiProjectPlan): string {
+  return renderPythonPyprojectAsset('genai', `${plan.safeProjectName}-backend`);
 }
 
-function renderFastApiMain(plan: ProjectPlan, routeModule: string): string {
+function renderFastApiMain(plan: GenAiProjectPlan, routeModule: string): string {
   return `from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -636,7 +924,7 @@ def ready():
 `;
 }
 
-function renderPatternRoutes(plan: ProjectPlan): string {
+function renderPatternRoutes(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   const moduleName = pyModule(pattern.id);
   const agentName = `${moduleName}_agent`;
@@ -717,7 +1005,7 @@ async def get_current_user() -> CurrentUser:
 `;
 }
 
-function renderSettings(plan: ProjectPlan): string {
+function renderSettings(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   return `from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -753,7 +1041,7 @@ def get_settings() -> Settings:
 `;
 }
 
-function renderModelConfig(plan: ProjectPlan): string {
+function renderModelConfig(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   return `import os
 from dataclasses import dataclass
@@ -975,8 +1263,12 @@ class LangfuseTracer:
 
     @asynccontextmanager
     async def trace(self, name: str, input_data: Any = None):
-        remote_trace = self._client.trace(name=name, input=input_data)
-        remote_id = getattr(remote_trace, "id", None)
+        remote_trace = self._client.start_observation(
+            name=name,
+            as_type="span",
+            input=input_data,
+        )
+        remote_id = getattr(remote_trace, "trace_id", None)
         handle = TraceHandle(
             enabled=True,
             trace_id=str(remote_id) if remote_id is not None else None,
@@ -988,6 +1280,8 @@ class LangfuseTracer:
             raise
         else:
             remote_trace.update(output=handle.output)
+        finally:
+            remote_trace.end()
 
 
 def build_tracer(
@@ -1135,13 +1429,17 @@ from backend.observability.tracing import (
 
 
 class FakeRemoteTrace:
-    id = "trace-123"
+    trace_id = "trace-123"
 
     def __init__(self):
         self.updates = []
+        self.ended = False
 
     def update(self, **values):
         self.updates.append(values)
+
+    def end(self):
+        self.ended = True
 
 
 class FakeLangfuse:
@@ -1149,7 +1447,7 @@ class FakeLangfuse:
         self.calls = []
         self.remote_trace = FakeRemoteTrace()
 
-    def trace(self, **values):
+    def start_observation(self, **values):
         self.calls.append(values)
         return self.remote_trace
 
@@ -1179,8 +1477,11 @@ def test_configured_tracing_updates_langfuse_operation():
             trace.set_output({"answer": "world"})
 
     asyncio.run(scenario())
-    assert client.calls == [{"name": "agent.run", "input": {"prompt": "hello"}}]
+    assert client.calls == [
+        {"name": "agent.run", "as_type": "span", "input": {"prompt": "hello"}}
+    ]
     assert client.remote_trace.updates == [{"output": {"answer": "world"}}]
+    assert client.remote_trace.ended is True
 
 
 def test_partial_langfuse_configuration_fails(monkeypatch):
@@ -1222,7 +1523,7 @@ run_migrations_online()
 `;
 }
 
-function renderInitialMigration(plan: ProjectPlan): string {
+function renderInitialMigration(plan: GenAiProjectPlan): string {
   const vectorExtension = genAiPattern(plan).id === 'rag' ? '    op.execute("CREATE EXTENSION IF NOT EXISTS vector")\n' : '';
   return `from alembic import op
 import sqlalchemy as sa
@@ -1248,7 +1549,7 @@ def downgrade():
 `;
 }
 
-function renderDatabaseSchema(plan: ProjectPlan): string {
+function renderDatabaseSchema(plan: GenAiProjectPlan): string {
   return `CREATE TABLE IF NOT EXISTS events (
   id SERIAL PRIMARY KEY,
   event_type VARCHAR(120) NOT NULL,
@@ -1258,7 +1559,7 @@ function renderDatabaseSchema(plan: ProjectPlan): string {
 ${genAiPattern(plan).id === 'rag' ? '\nCREATE EXTENSION IF NOT EXISTS vector;\n' : ''}`;
 }
 
-function renderPatternAgent(plan: ProjectPlan): string {
+function renderPatternAgent(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   const moduleName = pyModule(pattern.id);
   if (pattern.id === 'rag') {
@@ -1363,7 +1664,7 @@ async def run_${moduleName}(
 `;
 }
 
-function renderPatternAgentTest(plan: ProjectPlan): string {
+function renderPatternAgentTest(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   const moduleName = pyModule(pattern.id);
   const agentModule = `backend.orchestration.agents.${moduleName}_agent`;
@@ -1503,7 +1804,7 @@ def test_missing_model_configuration_is_explicit(monkeypatch):
 `;
 }
 
-function renderPromptTemplate(plan: ProjectPlan): string {
+function renderPromptTemplate(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   return `# ${pattern.label} Prompt
 
@@ -1535,7 +1836,7 @@ class PgVectorStore:
 `;
 }
 
-function renderPatternWorker(plan: ProjectPlan): string {
+function renderPatternWorker(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   return `async def run_worker() -> None:
     # Consume ${pattern.label} jobs from the configured messaging boundary.
@@ -1552,7 +1853,7 @@ Keep reusable GenAI orchestration, model configuration, prompt handling, and dom
 `;
 }
 
-function renderFunctionWorkerReadme(plan: ProjectPlan): string {
+function renderFunctionWorkerReadme(plan: GenAiProjectPlan): string {
   const workerName = functionWorkerName(plan);
   const pattern = genAiPattern(plan);
   return `# ${workerName}
@@ -1566,15 +1867,11 @@ Deployed triggers use \`ServiceBusConnection__fullyQualifiedNamespace\` and \`Se
 ## Local Development
 
 \`\`\`bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+uv sync --frozen --project ../../backend --extra test --extra functions
 cp local.settings.example.json local.settings.json
-python -m pytest -q
+uv run --project ../../backend --directory . python -m pytest -q
 func start
 \`\`\`
-
-On Windows, activate the virtual environment with \`.venv\\Scripts\\activate\`.
 `;
 }
 
@@ -1588,7 +1885,7 @@ function renderFunctionHostJson(): string {
   }, null, 2);
 }
 
-function renderFunctionLocalSettings(plan: ProjectPlan): string {
+function renderFunctionLocalSettings(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   return JSON.stringify({
     IsEncrypted: false,
@@ -1604,12 +1901,10 @@ function renderFunctionLocalSettings(plan: ProjectPlan): string {
 }
 
 function renderFunctionRequirements(): string {
-  return `azure-functions>=1.21.0
-pytest>=8.2
-`;
+  return renderFunctionRequirementsAsset();
 }
 
-function renderFunctionApp(plan: ProjectPlan): string {
+function renderFunctionApp(plan: GenAiProjectPlan): string {
   const pattern = genAiPattern(plan);
   const moduleName = pyModule(pattern.id);
   return `import json
@@ -1675,7 +1970,7 @@ local.settings.json
 `;
 }
 
-function renderBackendEnv(plan: ProjectPlan, environment: string): string {
+function renderBackendEnv(plan: GenAiProjectPlan, environment: string): string {
   const pattern = genAiPattern(plan);
   const transport = environment === 'dev' ? 'redis-streams' : 'azure-service-bus';
   return `APP_ENV=${environment}
@@ -1700,7 +1995,7 @@ LANGFUSE_SECRET_KEY=
 `;
 }
 
-function renderFunctionsEnv(plan: ProjectPlan, environment: string): string {
+function renderFunctionsEnv(plan: GenAiProjectPlan, environment: string): string {
   const pattern = genAiPattern(plan);
   return `APP_ENV=${environment}
 APP_NAME=${plan.safeProjectName}
@@ -1714,7 +2009,7 @@ SHARED_ORCHESTRATION_ROOT=../../backend
 `;
 }
 
-function renderDockerCompose(plan: ProjectPlan): string {
+function renderDockerCompose(plan: ApiProjectPlan): string {
   const localEnvironment = plan.environments.find((environment) => environment.id === 'dev') ?? plan.environments[0];
   const frontendService = plan.includeFrontend ? `
   frontend:
@@ -1725,7 +2020,9 @@ function renderDockerCompose(plan: ProjectPlan): string {
     depends_on:
       - backend
 ` : '';
-  const postgresImage = plan.projectType.id === 'genai' ? 'pgvector/pgvector:pg16' : 'postgres:16-alpine';
+  const postgresImage = plan.workload === 'genai'
+    ? formatContainerImage(supportedStack.containers.pgvector)
+    : formatContainerImage(supportedStack.containers.postgres);
   return `services:
   backend:
     build:
@@ -1752,47 +2049,136 @@ ${frontendService}
       POSTGRES_DB: ${plan.safeProjectName.replace(/-/g, '_')}
     ports:
       - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
 
   redis:
-    image: redis:7-alpine
+    image: ${formatContainerImage(supportedStack.containers.redis)}
     ports:
       - "6379:6379"
 
   azurite:
-    image: mcr.microsoft.com/azure-storage/azurite
+    image: ${formatContainerImage(supportedStack.containers.azurite)}
     command: azurite --blobHost 0.0.0.0
     ports:
       - "10000:10000"
 
   mailpit:
-    image: axllent/mailpit:latest
+    image: ${formatContainerImage(supportedStack.containers.mailpit)}
     ports:
       - "8025:8025"
 
-${plan.projectType.id === 'genai' ? `  langfuse:
-    image: langfuse/langfuse:2
+${plan.workload === 'genai' ? `  langfuse-worker:
+    image: ${formatContainerImage(supportedStack.containers['langfuse-worker'])}
     profiles:
       - observability
-    environment:
+    depends_on: &langfuse-dependencies
+      postgres:
+        condition: service_healthy
+      langfuse-redis:
+        condition: service_healthy
+      clickhouse:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment: &langfuse-environment
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/${plan.safeProjectName.replace(/-/g, '_')}
-      NEXTAUTH_SECRET: local-development-placeholder
-      SALT: local-development-placeholder
+      NEXTAUTH_URL: http://localhost:3000
+      SALT: local-development-salt
+      ENCRYPTION_KEY: 0000000000000000000000000000000000000000000000000000000000000000
+      TELEMETRY_ENABLED: "false"
+      CLICKHOUSE_MIGRATION_URL: clickhouse://clickhouse:9000
+      CLICKHOUSE_URL: http://clickhouse:8123
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+      REDIS_HOST: langfuse-redis
+      REDIS_PORT: 6379
+      REDIS_AUTH: langfuse-redis
+      LANGFUSE_S3_EVENT_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_EVENT_UPLOAD_REGION: auto
+      LANGFUSE_S3_EVENT_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_EVENT_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_EVENT_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_EVENT_UPLOAD_FORCE_PATH_STYLE: "true"
+      LANGFUSE_S3_MEDIA_UPLOAD_BUCKET: langfuse
+      LANGFUSE_S3_MEDIA_UPLOAD_REGION: auto
+      LANGFUSE_S3_MEDIA_UPLOAD_ACCESS_KEY_ID: minio
+      LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: miniosecret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://minio:9000
+      LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+
+  langfuse:
+    image: ${formatContainerImage(supportedStack.containers['langfuse-web'])}
+    profiles:
+      - observability
+    depends_on: *langfuse-dependencies
+    environment:
+      <<: *langfuse-environment
+      NEXTAUTH_SECRET: local-development-secret
+      LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://localhost:9090
     ports:
       - "3000:3000"
-` : ''}
-`;
-}
 
-function renderTofuVersions(): string {
-  return `terraform {
-  required_version = ">= 1.6.0"
-  required_providers {
-    azurerm = {
-      source  = "hashicorp/azurerm"
-      version = "~> 3.110"
-    }
-  }
-}
+  clickhouse:
+    image: ${formatContainerImage(supportedStack.containers.clickhouse)}
+    profiles:
+      - observability
+    user: "101:101"
+    environment:
+      CLICKHOUSE_DB: default
+      CLICKHOUSE_USER: clickhouse
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - langfuse-clickhouse-data:/var/lib/clickhouse
+      - langfuse-clickhouse-logs:/var/log/clickhouse-server
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: ${formatContainerImage(supportedStack.containers.minio)}
+    profiles:
+      - observability
+    entrypoint: sh
+    command: -c 'mkdir -p /data/langfuse && minio server --address ":9000" --console-address ":9001" /data'
+    environment:
+      MINIO_ROOT_USER: minio
+      MINIO_ROOT_PASSWORD: miniosecret
+    ports:
+      - "9090:9000"
+      - "127.0.0.1:9091:9001"
+    volumes:
+      - langfuse-minio-data:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 1s
+      timeout: 5s
+      retries: 5
+
+  langfuse-redis:
+    image: ${formatContainerImage(supportedStack.containers.redis)}
+    profiles:
+      - observability
+    command: ["redis-server", "--requirepass", "langfuse-redis", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - langfuse-redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "-a", "langfuse-redis", "ping"]
+      interval: 3s
+      timeout: 10s
+      retries: 10
+` : ''}
+${plan.workload === 'genai' ? `volumes:
+  langfuse-clickhouse-data:
+  langfuse-clickhouse-logs:
+  langfuse-minio-data:
+  langfuse-redis-data:
+` : ''}
 `;
 }
 
@@ -1803,11 +2189,11 @@ function renderTofuProviders(): string {
 `;
 }
 
-function renderTofuVariables(plan: ProjectPlan): string {
+function renderTofuVariables(plan: ApiProjectPlan): string {
   const frontendVariables = plan.includeFrontend ? `
 variable "frontend_image" {
   type        = string
-  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+  default     = "${formatContainerImage(supportedStack.containers['container-apps-bootstrap'])}"
   description = "Frontend image. Replace the bootstrap image with the generated frontend image after pushing it to ACR."
 }
 ` : '';
@@ -1820,7 +2206,7 @@ variable "function_worker_queue_name" {
 
 variable "functions_python_version" {
   type        = string
-  default     = "3.12"
+  default     = "${supportedStack.runtimes.python.releaseLine}"
   description = "Python runtime version for the generated Azure Functions worker."
 }
 ` : '';
@@ -1847,7 +2233,7 @@ variable "resource_suffix" {
 
 variable "backend_image" {
   type        = string
-  default     = "mcr.microsoft.com/azuredocs/containerapps-helloworld:latest"
+  default     = "${formatContainerImage(supportedStack.containers['container-apps-bootstrap'])}"
   description = "Backend image. Replace the bootstrap image with the generated backend image after pushing it to ACR."
 }
 
@@ -1872,13 +2258,15 @@ ${functionVariables}
 `;
 }
 
-function renderTofuMain(plan: ProjectPlan): string {
-  const functionPattern = hasFunctionWorker(plan) ? genAiPattern(plan) : undefined;
+function renderTofuMain(plan: ApiProjectPlan): string {
+  const functionPattern = plan.workload === 'genai' && hasFunctionWorker(plan)
+    ? genAiPattern(plan)
+    : undefined;
   const names = buildAzureResourceNames(plan, '${var.environment}', '${var.resource_suffix}');
   const queueName = hasFunctionWorker(plan)
     ? 'var.function_worker_queue_name'
     : JSON.stringify(DEFAULT_FUNCTION_WORKER_QUEUE_NAME);
-  const projectIdentityEnv = plan.projectType.id === 'genai' ? `
+  const projectIdentityEnv = plan.workload === 'genai' ? `
       env {
         name  = "GENAI_PATTERN"
         value = "${genAiPattern(plan).id}"
@@ -2147,7 +2535,7 @@ resource "azurerm_storage_account" "main" {
 
 resource "azurerm_storage_container" "documents" {
   name                  = "documents"
-  storage_account_name  = azurerm_storage_account.main.name
+  storage_account_id    = azurerm_storage_account.main.id
   container_access_type = "private"
 }
 
@@ -2171,18 +2559,19 @@ resource "azurerm_communication_service" "main" {
 }
 
 resource "azurerm_key_vault" "main" {
-  name                = "${names.keyVault}"
-  location            = azurerm_resource_group.main.location
-  resource_group_name = azurerm_resource_group.main.name
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"
+  name                       = "${names.keyVault}"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
 }
 
 data "azurerm_client_config" "current" {}
 `;
 }
 
-function renderTofuOutputs(plan: ProjectPlan): string {
+function renderTofuOutputs(plan: ApiProjectPlan): string {
   const functionOutputs = hasFunctionWorker(plan) ? `
 output "function_app_name" {
   value = azurerm_linux_function_app.worker.name
@@ -2228,9 +2617,9 @@ function renderTofuRemoteStateExample(): string {
 `;
 }
 
-function renderTofuReadme(plan: ProjectPlan): string {
+function renderTofuReadme(plan: ApiProjectPlan): string {
   const env = plan.environments[0]?.id ?? 'dev';
-  const functionSection = hasFunctionWorker(plan) ? `
+  const functionSection = plan.workload === 'genai' && hasFunctionWorker(plan) ? `
 ## Azure Functions Worker
 
 This project includes an Azure Functions worker under \`functions/${functionWorkerName(plan)}\`. The OpenTofu configuration attaches one user-assigned identity, grants its principal the Service Bus Data Receiver role, and selects it through \`ServiceBusConnection__clientId\` plus \`ServiceBusConnection__fullyQualifiedNamespace\`. \`function_worker_queue_name\` provisions the queue, configures \`SERVICEBUS_QUEUE_NAME\`, and drives the worker queue output. Function host storage uses the complete key-backed \`AzureWebJobsStorage\` connection setting.
@@ -2253,17 +2642,18 @@ Build the generated backend in ACR, then replace the bootstrap image:
 
 \`\`\`bash
 ACR_NAME="$(tofu output -raw container_registry_name)"
-az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-backend:latest ../../..
+SOURCE_SHA="$(git rev-parse HEAD)"
+az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-backend:"$SOURCE_SHA" ../../..
 ${plan.includeFrontend ? `BACKEND_URL="https://$(tofu output -raw backend_url)"
-az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-frontend:latest --build-arg VITE_API_BASE_URL="$BACKEND_URL" ../../../frontend
+az acr build --registry "$ACR_NAME" --image ${plan.safeProjectName}-frontend:"$SOURCE_SHA" --build-arg VITE_API_BASE_URL="$BACKEND_URL" ../../../frontend
 ` : ''}\`\`\`
 
 Persist the deployed images in \`environments/${env}.tfvars\` so future applies do not restore the bootstrap image:
 
 \`\`\`hcl
-backend_image       = "<login-server>/${plan.safeProjectName}-backend:latest"
+backend_image       = "<login-server>/${plan.safeProjectName}-backend@sha256:<manifest-digest>"
 backend_target_port = 8000
-${plan.includeFrontend ? `frontend_image      = "<login-server>/${plan.safeProjectName}-frontend:latest"
+${plan.includeFrontend ? `frontend_image      = "<login-server>/${plan.safeProjectName}-frontend@sha256:<manifest-digest>"
 ` : ''}\`\`\`
 
 \`\`\`bash
@@ -2280,31 +2670,31 @@ ${functionSection}
 `;
 }
 
-function renderTofuTfvars(plan: ProjectPlan, environment: string): string {
+function renderTofuTfvars(plan: ApiProjectPlan, environment: string): string {
   const values: Array<[string, string]> = [
     ['environment', JSON.stringify(environment)],
     ['location', JSON.stringify(plan.region.slug)],
     ['resource_suffix', JSON.stringify(stableResourceSuffix(plan, environment))],
-    ['backend_image', JSON.stringify('mcr.microsoft.com/azuredocs/containerapps-helloworld:latest')],
+    ['backend_image', JSON.stringify(formatContainerImage(supportedStack.containers['container-apps-bootstrap']))],
     ['backend_target_port', '80'],
     ['enable_private_networking', 'false']
   ];
   if (plan.includeFrontend) {
-    values.push(['frontend_image', JSON.stringify('mcr.microsoft.com/azuredocs/containerapps-helloworld:latest')]);
+    values.push(['frontend_image', JSON.stringify(formatContainerImage(supportedStack.containers['container-apps-bootstrap']))]);
   }
   if (hasFunctionWorker(plan)) {
     values.push(
       ['function_worker_queue_name', JSON.stringify(DEFAULT_FUNCTION_WORKER_QUEUE_NAME)],
-      ['functions_python_version', JSON.stringify('3.12')]
+      ['functions_python_version', JSON.stringify(supportedStack.runtimes.python.releaseLine)]
     );
   }
   const width = Math.max(...values.map(([key]) => key.length));
   return values.map(([key, value]) => `${key.padEnd(width)} = ${value}`).join('\n');
 }
 
-function renderOpenSpecConfig(plan: ProjectPlan): string {
+function renderOpenSpecConfig(plan: ApiProjectPlan): string {
   const frontendRule = plan.includeFrontend ? '\n    - Keep frontend code under frontend.' : '';
-  if (plan.projectType.id === 'standard') {
+  if (plan.workload === 'standard') {
     const backendRule = plan.apiStack.id === 'python-fastapi'
       ? 'Keep backend API code under backend/apis.'
       : plan.apiStack.id === 'node-fastify'
@@ -2380,8 +2770,8 @@ ${functionsRule}
 `;
 }
 
-function renderSeedProposal(plan: ProjectPlan): string {
-  if (plan.projectType.id === 'standard') {
+function renderSeedProposal(plan: ApiProjectPlan): string {
+  if (plan.workload === 'standard') {
     return `## Why
 
 Bootstrap the generated ${plan.apiStack.label} standard application baseline created by Mission Control Liftoff.
@@ -2435,8 +2825,8 @@ ${functionsChange}
 `;
 }
 
-function renderSeedDesign(plan: ProjectPlan): string {
-  if (plan.projectType.id === 'standard') {
+function renderSeedDesign(plan: ApiProjectPlan): string {
+  if (plan.workload === 'standard') {
     return `## Context
 
 This standard project was generated with Liftoff using ${plan.apiStack.label}, Azure, OpenTofu, and ${plan.specWorkflow.label}.
@@ -2502,8 +2892,8 @@ function renderSeedTasks(): string {
 `;
 }
 
-function renderSpecKitConstitution(plan: ProjectPlan): string {
-  if (plan.projectType.id === 'standard') {
+function renderSpecKitConstitution(plan: ApiProjectPlan): string {
+  if (plan.workload === 'standard') {
     const backendLayout = plan.apiStack.id === 'python-fastapi'
       ? 'backend/apis'
       : plan.apiStack.id === 'node-fastify' ? 'backend/src' : 'backend/cmd/api and backend/internal';
@@ -2526,7 +2916,9 @@ Services MUST use structured logging and environment-specific configuration for 
 `;
   }
 
-  const functionsLayout = hasFunctionWorker(plan) ? ` Azure Functions trigger adapters live under functions/${functionWorkerName(plan)} and call shared orchestration from backend/orchestration.` : '';
+  const functionsLayout = plan.workload === 'genai' && hasFunctionWorker(plan)
+    ? ` Azure Functions trigger adapters live under functions/${functionWorkerName(plan)} and call shared orchestration from backend/orchestration.`
+    : '';
   return `# Mission Control Liftoff Constitution
 
 ## Principle 1: Approved Application Stack
@@ -2568,29 +2960,11 @@ function renderSpecKitPlanTemplate(): string {
 `;
 }
 
-function renderFrontendPackage(plan: ProjectPlan): string {
-  return JSON.stringify({
-    name: `${plan.safeProjectName}-frontend`,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    scripts: {
-      dev: 'vite',
-      build: 'vite build',
-      preview: 'vite preview'
-    },
-    dependencies: {
-      '@vitejs/plugin-vue': '^5.0.5',
-      vite: '^5.3.1',
-      vue: '^3.4.29',
-      tailwindcss: '^3.4.4',
-      autoprefixer: '^10.4.19',
-      postcss: '^8.4.38'
-    }
-  }, null, 2);
+function renderFrontendPackage(plan: ApiProjectPlan): string {
+  return renderNpmPackage('frontend', `${plan.safeProjectName}-frontend`);
 }
 
-function renderFrontendIndex(plan: ProjectPlan): string {
+function renderFrontendIndex(plan: ApiProjectPlan): string {
   return `<div id="app"></div><script type="module" src="/src/main.ts"></script><title>${escapeHtml(plan.projectName)}</title>`;
 }
 
@@ -2603,9 +2977,9 @@ createApp(App).mount('#app');
 `;
 }
 
-function renderFrontendApp(plan: ProjectPlan): string {
-  const descriptor = plan.projectType.id === 'genai' ? `${genAiPattern(plan).label} starter` : `${plan.apiStack.label} starter`;
-  const apiContract = plan.projectType.id === 'standard'
+function renderFrontendApp(plan: ApiProjectPlan): string {
+  const descriptor = plan.workload === 'genai' ? `${genAiPattern(plan).label} starter` : `${plan.apiStack.label} starter`;
+  const apiContract = plan.workload === 'standard'
     ? { route: '/api', method: 'GET', bodyField: '', queryParameter: '', requiresInput: false }
     : genAiPattern(plan).id === 'rag'
       ? { route: `${genAiPattern(plan).routePrefix}/query`, method: 'POST', bodyField: 'question', queryParameter: '', requiresInput: true }
@@ -2710,17 +3084,16 @@ async function submit(): Promise<void> {
 }
 
 function renderFrontendStyles(): string {
-  return `@tailwind base;
-@tailwind components;
-@tailwind utilities;
+  return `@import "tailwindcss";
 `;
 }
 
 function renderFrontendViteConfig(): string {
   return `import { defineConfig } from 'vite';
-import vue from '@vitejs/plugin-vue';
+  import tailwindcss from '@tailwindcss/vite';
+  import vue from '@vitejs/plugin-vue';
 
-export default defineConfig({ plugins: [vue()] });
+  export default defineConfig({ plugins: [vue(), tailwindcss()] });
 `;
 }
 
@@ -2736,16 +3109,17 @@ export default {
 }
 
 function renderFrontendDockerfile(): string {
-  return `FROM node:20-alpine AS build
+  return `FROM ${formatContainerImage(supportedStack.containers['node-runtime'])} AS build
 WORKDIR /app
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 COPY package.json package-lock.json* ./
-RUN npm install
+RUN npm ci --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
 COPY . .
 ARG VITE_API_BASE_URL=http://localhost:8000
 ENV VITE_API_BASE_URL=$VITE_API_BASE_URL
 RUN npm run build
 
-FROM nginx:1.27-alpine
+FROM ${formatContainerImage(supportedStack.containers['nginx-runtime'])}
 COPY --from=build /app/dist /usr/share/nginx/html
 `;
 }

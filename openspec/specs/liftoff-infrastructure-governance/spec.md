@@ -5,19 +5,24 @@ Define Liftoff infrastructure and governance output, including Azure OpenTofu ar
 ## Requirements
 
 ### Requirement: Generated projects include Azure-complete OpenTofu infrastructure
-The system SHALL generate OpenTofu infrastructure artifacts for Azure Container Apps, Azure Functions hosting, Azure Database for PostgreSQL, Azure Redis Cache, Azure Blob Storage, Azure Service Bus, Azure Communication Services, Azure Container Registry, Key Vault, and supporting configuration for selected environments.
+The system SHALL generate OpenTofu infrastructure artifacts for GenAI and standard API workloads that select Azure, covering applicable Azure Container Apps, Azure Functions hosting, Azure Database for PostgreSQL, Azure Redis Cache, Azure Blob Storage, Azure Service Bus, Azure Communication Services, Azure Container Registry, Key Vault, and selected-environment configuration. A Power Apps code app SHALL rely on Power Platform hosting and SHALL NOT receive Liftoff Azure OpenTofu infrastructure.
 
 #### Scenario: Generate Azure infrastructure
-- **WHEN** a developer creates a project with Azure as the target cloud
+- **WHEN** a developer creates a GenAI or standard API project with Azure as the target cloud
 - **THEN** the generated project includes Azure OpenTofu files, environment tfvars, provider configuration, outputs, and documented usage commands
 
 #### Scenario: Generate Azure Functions infrastructure
-- **WHEN** a developer creates an Azure project that includes Azure Functions workers
+- **WHEN** a developer creates an Azure GenAI project that includes Azure Functions workers
 - **THEN** the generated Azure OpenTofu files include Function app hosting, required storage, managed identity wiring, app settings, and worker-related outputs
 
 #### Scenario: Use default Azure region
-- **WHEN** the developer does not choose a different Azure region
+- **WHEN** an API workload developer does not choose a different Azure region
 - **THEN** the generated OpenTofu environment configuration uses East US with the slug `eastus`
+
+#### Scenario: Power Apps omits Azure infrastructure
+- **WHEN** a developer creates a Power Apps code app
+- **THEN** the project contains no Liftoff OpenTofu, Azure resource, tfvars, or infrastructure helper output
+- **AND** its documentation identifies Power Platform environment initialization as a separate external action
 
 ### Requirement: Generated infrastructure uses OpenTofu environment configuration
 The system SHALL generate dev, test, and prod OpenTofu environment configuration using explicit files rather than implicit pattern matching.
@@ -64,18 +69,24 @@ The system SHALL include provider adapter metadata for AWS and GCP without gener
 - **THEN** the generated infrastructure does not include deployable AWS or GCP OpenTofu files
 
 ### Requirement: Generated projects include spec-driven governance assets
-The system SHALL ask the developer to choose OpenSpec or Spec Kit as the spec-driven development workflow and SHALL default the selection to OpenSpec.
+The system SHALL ask every workload developer to choose OpenSpec or Spec Kit as the spec-driven development workflow, SHALL default the selection to OpenSpec, and SHALL initialize every selected coding-agent integration through the official framework CLI. Governance seed or constitution content SHALL describe the selected workload's actual stack and folders.
 
 #### Scenario: OpenSpec selected
 - **WHEN** a developer selects OpenSpec or accepts the default spec workflow
-- **THEN** the generated project includes `openspec/config.yaml`, OpenSpec directory structure, and an initial seed change describing the generated application baseline
+- **THEN** the generated project includes official OpenSpec core output, every selected agent integration, and an initial seed change describing the generated workload baseline
 
 #### Scenario: Spec Kit selected
 - **WHEN** a developer selects Spec Kit
-- **THEN** the generated project includes a Spec Kit constitution and supporting template structure based on the generated stack and folder layout
+- **THEN** the generated project includes official Spec Kit output for the selected default and secondary integrations
+- **AND** its constitution and supporting template structure describe the generated workload
+
+#### Scenario: Power Apps retains governance
+- **WHEN** a developer selects either framework for a Power Apps code app
+- **THEN** the framework is initialized at the Power Apps project root with the selected Copilot, Claude Code, or both integrations
+- **AND** no API backend is required for spec-driven governance
 
 ### Requirement: Generated governance reflects selected stack
-The system SHALL tailor generated governance content to the selected project type, GenAI pattern when applicable, API stack, cloud provider, frontend choice, environments, and approved stack.
+The system SHALL tailor generated governance content to the selected workload and only its applicable pattern, API stack, cloud provider, frontend choice, environments, starter source, optional plugin preference, and approved technologies. It SHALL describe explicit workload folder boundaries and SHALL NOT include standards belonging only to another workload.
 
 #### Scenario: Governance for GenAI project mentions approved stack
 - **WHEN** governance files are generated for a GenAI project
@@ -86,13 +97,20 @@ The system SHALL tailor generated governance content to the selected project typ
 - **THEN** they identify the selected Python/FastAPI, Node.js/Fastify, or Go/Huma API stack, its database tooling, Scalar, OpenTofu, Docker Compose, PostgreSQL, Redis, and the selected spec workflow
 - **AND** they do not require PydanticAI, Langfuse, agents, prompts, models, or GenAI orchestration
 
-#### Scenario: Governance mentions frontend only when selected
-- **WHEN** governance files are generated for a backend-only project
+#### Scenario: Governance for Power Apps mentions Code Apps standards
+- **WHEN** governance files are generated for a Power Apps code app
+- **THEN** they identify React, Vite, TypeScript, the Power Apps SDK and Vite plugin, connector-first data access, generated connector services, the pinned official starter, and the selected spec workflow
+- **AND** they do not require a Liftoff backend, database, Docker Compose, OpenTofu, Azure API infrastructure, PydanticAI, or Langfuse
+
+#### Scenario: Governance mentions frontend only when applicable
+- **WHEN** governance files are generated for an API backend-only project
 - **THEN** frontend folder rules are not presented as required generated output
+- **AND** a Power Apps project describes its root React application rather than a nested optional frontend
 
 #### Scenario: Governance includes path rules
 - **WHEN** generated governance references project structure
-- **THEN** it describes frontend, backend, database, infrastructure, and environment locations by explicit folder names appropriate to the selected API stack
+- **THEN** it names explicit folders valid for the selected workload
+- **AND** it does not describe absent backend, database, infrastructure, environment, or frontend locations
 
 ### Requirement: Generated infrastructure is API-runtime aware without changing cloud boundaries
 The system SHALL keep Azure Container Apps and shared Azure service output applicable to every API stack while tailoring container build and runtime configuration to the selected stack and omitting pattern-driven Azure Functions from standard projects.
@@ -183,3 +201,63 @@ The system SHALL render OpenTofu files that pass the repository's supported `tof
 #### Scenario: Validate every representative infrastructure shape
 - **WHEN** CI renders backend-only, frontend, worker, and non-worker representative plans
 - **THEN** each generated OpenTofu directory initializes without a backend and validates successfully without Azure credentials
+
+### Requirement: Generated infrastructure dependencies are release-pinned
+The system SHALL render OpenTofu CLI constraints, provider constraints, provider checksums, cloud runtime versions, database major versions, and bootstrap container identities from the supported-stack baseline. Generated infrastructure SHALL include an explicit multi-platform provider lock and SHALL NOT resolve a newer provider or mutable bootstrap image than the Liftoff release tested.
+
+#### Scenario: Generate current Azure OpenTofu
+- **WHEN** an API workload generates Azure infrastructure
+- **THEN** its OpenTofu and AzureRM release lines match the named baseline entries
+- **AND** its provider lock contains checksums for every supported execution platform
+
+#### Scenario: Validate on a supported platform
+- **WHEN** `tofu init -backend=false` runs on Windows, macOS, or Linux
+- **THEN** it accepts the generated provider lock without rewriting it
+- **AND** `tofu validate` succeeds without Azure credentials
+
+#### Scenario: Bootstrap image is generated
+- **WHEN** infrastructure contains a default application or frontend bootstrap image
+- **THEN** the image is bound to an immutable digest recorded by the baseline
+- **AND** it is not represented by `latest`
+
+### Requirement: Provider major upgrades preserve generated infrastructure intent
+A stable provider major upgrade SHALL include the source migrations needed for every representative generated infrastructure shape. It SHALL preserve environment selection, secret boundaries, resource naming, identities, roles, queues, health settings, and outputs unless a separate approved capability change explicitly alters them.
+
+#### Scenario: Upgrade AzureRM
+- **WHEN** the supported baseline moves generated projects from AzureRM 3.x to 5.x
+- **THEN** backend-only, frontend, worker, and non-worker plans format, initialize, and validate unchanged
+- **AND** compatibility edits are reviewed with the provider version change
+
+#### Scenario: Provider migration is incomplete
+- **WHEN** any representative configuration uses a removed argument, invalid default, or rewritten lock after the upgrade
+- **THEN** baseline verification fails before release
+
+### Requirement: Repository governance is distinct from spec-workflow governance
+The system SHALL keep the durable repository-governance policy and activation handoff separate from OpenSpec configuration, Spec Kit constitution content, official framework output, and one-time workload seed changes. Selecting OpenSpec or Spec Kit determines how the post-Phase-0 governance change is created; it SHALL NOT change the canonical repository-governance profile's fixed invariants.
+
+#### Scenario: Generate OpenSpec with repository governance
+- **WHEN** a project selects OpenSpec and `single-maintainer-gitflow`
+- **THEN** it receives official OpenSpec output, its one-time workload seed, and the separate durable repository-governance handoff
+- **AND** archiving either active change does not remove or recreate the policy
+
+#### Scenario: Generate Spec Kit with repository governance
+- **WHEN** a project selects Spec Kit and `single-maintainer-gitflow`
+- **THEN** it receives official Spec Kit output and the same canonical repository-governance profile
+- **AND** the selected default agent is used only through the framework's normal integration contract
+
+### Requirement: Repository governance context reflects actual infrastructure
+The generated governance context SHALL enumerate only infrastructure, environments, deployment boundaries, health endpoints, and operations artifacts present in the resolved plan. It SHALL mark runner access, live deployments, monitoring, alerts, traffic volume, and platform rollout capabilities as discovery inputs rather than generated facts.
+
+#### Scenario: Generate Azure API governance context
+- **WHEN** a GenAI or standard API plan includes Azure OpenTofu and selected environments
+- **THEN** context identifies those generated files and environment names
+- **AND** does not claim that Azure resources are deployed or monitored
+
+#### Scenario: Generate no optional frontend
+- **WHEN** an API plan excludes the frontend
+- **THEN** governance context and policy adaptation do not require frontend source, image, deployment, synthetic availability, or CDN controls
+
+#### Scenario: Missing deployment capability
+- **WHEN** Phase 0 cannot prove a staging environment, production deployment path, parallel-version mechanism, or monitoring signal
+- **THEN** the proposed governance plan records the exact gap or inapplicability
+- **AND** does not create a success-shaped placeholder workflow

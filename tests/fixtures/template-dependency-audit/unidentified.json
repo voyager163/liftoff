@@ -1,0 +1,33 @@
+{
+  "auditReportVersion": 2,
+  "vulnerabilities": {
+    "legacy-package": {
+      "name": "legacy-package",
+      "severity": "critical",
+      "isDirect": true,
+      "via": [
+        {
+          "source": 1179,
+          "name": "legacy-package",
+          "dependency": "legacy-package",
+          "title": "Legacy advisory without a GHSA URL",
+          "url": "https://www.npmjs.com/advisories/1179",
+          "severity": "critical",
+          "range": "<2.0.0"
+        }
+      ],
+      "effects": [],
+      "range": "<2.0.0",
+      "nodes": [
+        "node_modules/legacy-package"
+      ],
+      "fixAvailable": false
+    }
+  },
+  "metadata": {
+    "vulnerabilities": {
+      "critical": 1,
+      "total": 1
+    }
+  }
+}

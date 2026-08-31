@@ -1,7 +1,14 @@
 import type { AddArtifact } from './template-types.js';
-import type { ApiStackId, ProjectPlan } from './types.js';
+import type { ApiStackId, StandardApiProjectPlan } from './types.js';
+import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
+import { formatContainerImage, supportedStack } from './supported-stack.js';
+import { renderGoChecksumAsset, renderGoModuleAsset } from './go-template-assets.js';
+import {
+  renderPythonLock,
+  renderPythonPyprojectAsset
+} from './python-template-assets.js';
 
-type StackBuilder = (add: AddArtifact, plan: ProjectPlan) => void;
+type StackBuilder = (add: AddArtifact, plan: StandardApiProjectPlan) => void;
 
 const stackBuilders: Record<ApiStackId, StackBuilder> = {
   'python-fastapi': addPythonArtifacts,
@@ -15,23 +22,33 @@ const escapeHtml = (value: string) =>
 const localPostgresUrl = (host: string, database: string) =>
   `postgresql:${'//'}postgres:postgres@${host}:5432/${database}`;
 
-export function addStandardStackArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+export function addStandardStackArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   stackBuilders[plan.apiStack.id](add, plan);
 }
 
-export function renderStandardDockerfile(plan: ProjectPlan): string {
+export function renderStandardDockerfile(plan: StandardApiProjectPlan): string {
   switch (plan.apiStack.id) {
     case 'python-fastapi':
-      return `FROM python:3.12-slim
+      return `FROM ${formatContainerImage(supportedStack.containers['uv-tool'])} AS uv
+FROM ${formatContainerImage(supportedStack.containers['python-runtime'])}
 
 WORKDIR /app
 
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app
+ENV PATH=/app/backend/.venv/bin:$PATH
+COPY --from=uv /uv /uvx /bin/
 
+ARG UV_DEFAULT_INDEX=https://pypi.org/simple
 COPY backend/pyproject.toml /app/backend/pyproject.toml
-RUN pip install --no-cache-dir /app/backend
+COPY backend/uv.lock /app/backend/uv.lock
+RUN --mount=type=cache,target=/root/.cache/uv \\
+    uv export --frozen --no-dev --no-emit-project --project /app/backend --output-file /tmp/requirements.txt \\
+    && uv venv /app/backend/.venv \\
+    && uv pip install --python /app/backend/.venv/bin/python --require-hashes \\
+      --default-index "$UV_DEFAULT_INDEX" --requirements /tmp/requirements.txt \\
+    && rm /tmp/requirements.txt
 
 COPY backend /app/backend
 COPY database /app/database
@@ -40,19 +57,21 @@ EXPOSE 8000
 CMD ["uvicorn", "backend.apis.main:app", "--host", "0.0.0.0", "--port", "8000"]
 `;
     case 'node-fastify':
-      return `FROM node:20-alpine AS build
+      return `FROM ${formatContainerImage(supportedStack.containers['node-runtime'])} AS build
 
 WORKDIR /app/backend
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 COPY backend/package*.json ./
-RUN npm install
+RUN npm ci --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
 COPY backend ./
 RUN npm run build
 
-FROM node:20-alpine AS runtime
+FROM ${formatContainerImage(supportedStack.containers['node-runtime'])} AS runtime
 WORKDIR /app/backend
 ENV NODE_ENV=production
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
 COPY backend/package*.json ./
-RUN npm install --omit=dev
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
 COPY --from=build /app/backend/dist ./dist
 COPY database /app/database
 
@@ -60,7 +79,7 @@ EXPOSE 8000
 CMD ["node", "dist/server.js"]
 `;
     case 'go-huma':
-      return `FROM golang:1.23-alpine AS build
+      return `FROM ${formatContainerImage(supportedStack.containers['go-build'])} AS build
 
 WORKDIR /src/backend
 COPY backend/go.mod backend/go.sum ./
@@ -68,7 +87,7 @@ RUN go mod download
 COPY backend ./
 RUN CGO_ENABLED=0 GOOS=linux go build -o /out/api ./cmd/api
 
-FROM alpine:3.20
+FROM ${formatContainerImage(supportedStack.containers['alpine-runtime'])}
 RUN adduser -D -u 10001 liftoff
 USER liftoff
 WORKDIR /app
@@ -81,7 +100,7 @@ CMD ["/app/api"]
   }
 }
 
-export function renderStandardEnv(plan: ProjectPlan, environment = 'dev'): string {
+export function renderStandardEnv(plan: StandardApiProjectPlan, environment = 'dev'): string {
   const local = environment === 'dev';
   const databaseUrl = localPostgresUrl('postgres', plan.safeProjectName.replace(/-/g, '_'));
   return `APP_ENV=${environment}
@@ -97,8 +116,9 @@ CORS_ALLOWED_ORIGINS=http://localhost:5173
 `;
 }
 
-function addPythonArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addPythonArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('backend-pyproject', 'backend', ['backend', 'pyproject.toml'], renderPythonPyproject(plan));
+  add('backend-uv-lock', 'backend', ['backend', 'uv.lock'], renderPythonLock('standard', `${plan.safeProjectName}-backend`));
   add('backend-package', 'backend', ['backend', '__init__.py'], '');
   add('backend-api-package', 'backend', ['backend', 'apis', '__init__.py'], '');
   add('backend-main', 'backend', ['backend', 'apis', 'main.py'], renderPythonMain(plan));
@@ -116,44 +136,11 @@ function addPythonArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function renderPythonPyproject(plan: ProjectPlan): string {
-  return `[project]
-name = "${plan.safeProjectName}-backend"
-version = "0.1.0"
-requires-python = ">=3.12"
-dependencies = [
-  "fastapi>=0.111",
-  "uvicorn[standard]>=0.30",
-  "pydantic>=2.7",
-  "pydantic-settings>=2.3",
-  "scalar-fastapi>=1.0",
-  "sqlalchemy[asyncio]>=2.0",
-  "asyncpg>=0.29",
-  "psycopg[binary]>=3.2",
-  "alembic>=1.13",
-  "redis>=5.0",
-  "azure-servicebus>=7.12",
-  "azure-storage-blob>=12.20",
-  "azure-communication-email>=1.0"
-]
-
-[project.optional-dependencies]
-test = ["pytest>=8.2", "httpx>=0.27"]
-
-[build-system]
-requires = ["setuptools>=70"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = []
-
-[tool.pytest.ini_options]
-pythonpath = [".."]
-testpaths = ["tests"]
-`;
+function renderPythonPyproject(plan: StandardApiProjectPlan): string {
+  return renderPythonPyprojectAsset('standard', `${plan.safeProjectName}-backend`);
 }
 
-function renderPythonMain(plan: ProjectPlan): string {
+function renderPythonMain(plan: StandardApiProjectPlan): string {
   return `from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -225,7 +212,7 @@ async def get_current_user() -> CurrentUser:
 `;
 }
 
-function renderPythonSettings(plan: ProjectPlan): string {
+function renderPythonSettings(plan: StandardApiProjectPlan): string {
   return `from functools import lru_cache
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -349,8 +336,9 @@ def downgrade():
 `;
 }
 
-function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addNodeArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('node-backend-package', 'backend', ['backend', 'package.json'], renderNodePackage(plan));
+  add('node-backend-lock', 'backend', ['backend', 'package-lock.json'], renderNpmLock('node-backend', `${plan.safeProjectName}-backend`));
   add('node-backend-tsconfig', 'backend', ['backend', 'tsconfig.json'], renderNodeTsconfig());
   add('node-backend-drizzle-config', 'backend', ['backend', 'drizzle.config.ts'], renderNodeDrizzleConfig());
   add('node-backend-config', 'backend', ['backend', 'src', 'config.ts'], renderNodeConfig(plan));
@@ -365,37 +353,8 @@ function addNodeArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function renderNodePackage(plan: ProjectPlan): string {
-  return JSON.stringify({
-    name: `${plan.safeProjectName}-backend`,
-    version: '0.1.0',
-    private: true,
-    type: 'module',
-    engines: { node: '>=20' },
-    scripts: {
-      dev: 'tsx watch src/server.ts',
-      build: 'tsc -p tsconfig.json',
-      start: 'node dist/server.js',
-      test: 'vitest run',
-      'db:generate': 'drizzle-kit generate',
-      'db:migrate': 'drizzle-kit migrate'
-    },
-    dependencies: {
-      '@fastify/cors': '^10.0.1',
-      '@fastify/swagger': '^9.4.0',
-      'drizzle-orm': '^0.44.0',
-      fastify: '^5.4.0',
-      pg: '^8.16.0'
-    },
-    devDependencies: {
-      '@types/node': '^20.14.10',
-      '@types/pg': '^8.15.0',
-      'drizzle-kit': '^0.31.0',
-      tsx: '^4.20.0',
-      typescript: '^5.5.4',
-      vitest: '^4.1.9'
-    }
-  }, null, 2);
+function renderNodePackage(plan: StandardApiProjectPlan): string {
+  return renderNpmPackage('node-backend', `${plan.safeProjectName}-backend`);
 }
 
 function renderNodeTsconfig(): string {
@@ -429,7 +388,7 @@ export default defineConfig({
 `;
 }
 
-function renderNodeConfig(plan: ProjectPlan): string {
+function renderNodeConfig(plan: StandardApiProjectPlan): string {
   return `export interface AppConfig {
   appName: string;
   appEnv: string;
@@ -463,7 +422,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 `;
 }
 
-function renderNodeApp(plan: ProjectPlan): string {
+function renderNodeApp(plan: StandardApiProjectPlan): string {
   const scalarPage = `<!doctype html><html><head><title>${escapeHtml(plan.projectName)} API</title></head><body><script id="api-reference" data-url="/openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>`;
   return `import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
@@ -658,7 +617,7 @@ function renderNodeMigrationSnapshot(): string {
   }, null, 2);
 }
 
-function addGoArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addGoArtifacts(add: AddArtifact, plan: StandardApiProjectPlan): void {
   add('go-backend-module', 'backend', ['backend', 'go.mod'], renderGoModule(plan));
   add('go-backend-checksums', 'backend', ['backend', 'go.sum'], renderGoChecksums());
   add('go-backend-makefile', 'backend', ['backend', 'Makefile'], renderGoMakefile());
@@ -671,72 +630,20 @@ function addGoArtifacts(add: AddArtifact, plan: ProjectPlan): void {
   add('database-schema', 'database', ['database', 'models', 'schema.sql'], renderStandardSchema(plan));
 }
 
-function goModule(plan: ProjectPlan): string {
+function goModule(plan: StandardApiProjectPlan): string {
   return `example.com/${plan.packageName}/backend`;
 }
 
-function renderGoModule(plan: ProjectPlan): string {
-  return `module ${goModule(plan)}
-
-go 1.23
-
-require (
-	github.com/danielgtaylor/huma/v2 v2.27.0
-	github.com/go-chi/chi/v5 v5.2.1
-	github.com/jackc/pgx/v5 v5.7.2
-)
-
-require (
-	github.com/jackc/pgpassfile v1.0.0 // indirect
-	github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 // indirect
-	github.com/jackc/puddle/v2 v2.2.2 // indirect
-	golang.org/x/crypto v0.31.0 // indirect
-	golang.org/x/sync v0.10.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
-)
-`;
+function renderGoModule(plan: StandardApiProjectPlan): string {
+  return renderGoModuleAsset(goModule(plan));
 }
 
 function renderGoChecksums(): string {
-  return `github.com/danielgtaylor/huma/v2 v2.27.0 h1:yxgJ8GqYqKeXw/EnQ4ZNc2NBpmn49AlhxL2+ksSXjUI=
-github.com/danielgtaylor/huma/v2 v2.27.0/go.mod h1:NbSFXRoOMh3BVmiLJQ9EbUpnPas7D9BeOxF/pZBAGa0=
-github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
-github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
-github.com/go-chi/chi/v5 v5.2.1 h1:KOIHODQj58PmL80G2Eak4WdvUzjSJSm0vG72crDCqb8=
-github.com/go-chi/chi/v5 v5.2.1/go.mod h1:L2yAIGWB3H+phAw1NxKwWM+7eUH/lU8pOMm5hHcoops=
-github.com/google/uuid v1.6.0 h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=
-github.com/google/uuid v1.6.0/go.mod h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=
-github.com/jackc/pgpassfile v1.0.0 h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=
-github.com/jackc/pgpassfile v1.0.0/go.mod h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=
-github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761 h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=
-github.com/jackc/pgservicefile v0.0.0-20240606120523-5a60cdf6a761/go.mod h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=
-github.com/jackc/pgx/v5 v5.7.2 h1:mLoDLV6sonKlvjIEsV56SkWNCnuNv531l94GaIzO+XI=
-github.com/jackc/pgx/v5 v5.7.2/go.mod h1:ncY89UGWxg82EykZUwSpUKEfccBGGYq1xjrOpsbsfGQ=
-github.com/jackc/puddle/v2 v2.2.2 h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=
-github.com/jackc/puddle/v2 v2.2.2/go.mod h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=
-github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
-github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
-github.com/stretchr/objx v0.1.0/go.mod h1:HFkY916IF+rwdDfMAkV7OtwuqBVzrE8GR6GFx+wExME=
-github.com/stretchr/testify v1.3.0/go.mod h1:M5WIy9Dh21IEIfnGCwXGc5bZfKNJtfHm1UVUgZn+9EI=
-github.com/stretchr/testify v1.7.0/go.mod h1:6Fq8oRcR53rry900zMqJjRRixrwX3KX962/h/Wwjteg=
-github.com/stretchr/testify v1.9.0 h1:HtqpIVDClZ4nwg75+f6Lvsy/wHu+3BoSGCbBAcpTsTg=
-github.com/stretchr/testify v1.9.0/go.mod h1:r2ic/lqez/lEtzL7wO/rwa5dbSLXVDPFyf8C91i36aY=
-golang.org/x/crypto v0.31.0 h1:ihbySMvVjLAeSH1IbfcRTkD/iNscyz8rGzjF/E5hV6U=
-golang.org/x/crypto v0.31.0/go.mod h1:kDsLvtWBEx7MV9tJOj9bnXsPbxwJQ6csT/x4KIN4Ssk=
-golang.org/x/sync v0.10.0 h1:3NQrjDixjgGwUOCaF8w2+VYHv0Ve/vGYSbdkTa98gmQ=
-golang.org/x/sync v0.10.0/go.mod h1:Czt+wKu1gCyEFDUtn0jG5QVvpJ6rzVqr5aXyt9drQfk=
-golang.org/x/text v0.21.0 h1:zyQAAkrwaneQ066sspRyJaG9VNi/YJ1NfzcGB3hZ/qo=
-golang.org/x/text v0.21.0/go.mod h1:4IBbMaMmOPCJ8SecivzSH54+73PCFmPWxNTLm+vZkEQ=
-gopkg.in/check.v1 v0.0.0-20161208181325-20d25e280405/go.mod h1:Co6ibVJAznAaIkqp8huTwlJQCZ016jof/cbN4VW5Yz0=
-gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-gopkg.in/yaml.v3 v3.0.1 h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=
-gopkg.in/yaml.v3 v3.0.1/go.mod h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=
-`;
+  return renderGoChecksumAsset();
 }
 
 function renderGoMakefile(): string {
-  return `GOOSE_VERSION := v3.24.1
+  return `GOOSE_VERSION := ${supportedStack.goModules['go-backend'].tools['github.com/pressly/goose/v3']}
 
 .PHONY: test migrate
 
@@ -748,7 +655,7 @@ migrate:
 `;
 }
 
-function renderGoMain(plan: ProjectPlan): string {
+function renderGoMain(plan: StandardApiProjectPlan): string {
   return `package main
 
 import (
@@ -770,7 +677,7 @@ func main() {
 `;
 }
 
-function renderGoApi(plan: ProjectPlan): string {
+function renderGoApi(plan: StandardApiProjectPlan): string {
   return `package api
 
 import (
@@ -863,7 +770,7 @@ func scalarReference(response http.ResponseWriter, _ *http.Request) {
 `;
 }
 
-function renderGoConfig(plan: ProjectPlan): string {
+function renderGoConfig(plan: StandardApiProjectPlan): string {
   return `package config
 
 import (
@@ -926,7 +833,7 @@ func Open(ctx context.Context, databaseURL string) (*pgxpool.Pool, error) {
 `;
 }
 
-function renderGoHealthTest(plan: ProjectPlan): string {
+function renderGoHealthTest(plan: StandardApiProjectPlan): string {
   return `package api
 
 import (
@@ -977,7 +884,7 @@ DROP TABLE app_records;
 `;
 }
 
-function renderStandardSchema(plan: ProjectPlan): string {
+function renderStandardSchema(plan: StandardApiProjectPlan): string {
   return `-- ${plan.safeProjectName} standard application schema
 CREATE TABLE IF NOT EXISTS app_records (
   id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,

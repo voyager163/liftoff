@@ -5,19 +5,20 @@ Define the `liftoff migrate` command that adopts existing non-Liftoff projects t
 ## Requirements
 
 ### Requirement: Migrate adopts existing projects through a fresh scaffold
-The system SHALL provide a `liftoff migrate <path>` command that scans an existing non-Liftoff project, captures project decisions through the standard creation prompts, generates a fresh Liftoff scaffold in a new directory beside the source project using the standard generation pipeline, and SHALL NOT write to the source project in any way.
+The system SHALL provide a `liftoff migrate <path>` command that scans an existing non-Liftoff project, captures project decisions through the standard init prompts, generates a fresh Liftoff scaffold in a new directory beside the source project using the staged official-framework generation pipeline, and SHALL NOT write to the source project in any way.
 
 #### Scenario: Migrate produces a compliant scaffold
 - **WHEN** a developer runs `liftoff migrate ../legacy-app` and completes the prompts
-- **THEN** a new Liftoff project is generated in a fresh directory with a v2 manifest, and `liftoff validate` passes on it
+- **THEN** a new Liftoff project is generated in a fresh directory with a v3 manifest and complete official framework integration
+- **AND** `liftoff validate` passes on it
 
 #### Scenario: Source project is untouched
-- **WHEN** a full migrate run completes
+- **WHEN** a full migrate run completes or fails
 - **THEN** the source project's file tree is byte-for-byte identical to its state before the run
 
 #### Scenario: Target directory must be new or empty
 - **WHEN** the chosen project name resolves to an existing non-empty directory
-- **THEN** migrate fails with the same safety error as `create`
+- **THEN** migrate fails before target writes even when `--force` is present
 
 ### Requirement: The legacy scan is deterministic and feeds prompts and plan
 The system SHALL scan the source project read-only for Python, Node.js, and Go dependency files; framework indicators; GenAI and retrieval indicators; environment files; Docker assets; CI workflows; tests; database migrations; frontend indicators; and spec-workflow directories. The scan SHALL run before prompting, its inventory SHALL drive both prompt pre-fill and migration task seeding, and every top-level entry not matched by an explicit detection rule SHALL surface as a placement-decision task.
@@ -43,7 +44,7 @@ The system SHALL scan the source project read-only for Python, Node.js, and Go d
 - **THEN** evidence source paths and staged destinations are resolved with platform-correct path handling while emitted logical paths remain portable
 
 ### Requirement: Prompt pre-fill is evidence-based with visible provenance
-The system SHALL pre-fill project type, API stack, GenAI pattern, and common creation decisions only from strong scan evidence, SHALL display the evidence alongside each pre-filled default, and SHALL leave a decision unresolved when evidence is weak or conflicting. The developer SHALL be able to override every pre-filled value, and non-interactive runs with `--yes` SHALL follow the same semantics as `create`.
+The system SHALL pre-fill project type, API stack, GenAI pattern, and common init decisions only from strong scan evidence, SHALL display the evidence alongside each pre-filled default, and SHALL leave a decision unresolved when evidence is weak or conflicting. The developer SHALL be able to override every pre-filled value, and non-interactive runs with `--yes` SHALL follow the same project-question semantics as `init` without implying overwrite or installation consent.
 
 #### Scenario: Strong standard Node.js evidence pre-fills with provenance
 - **WHEN** the scan finds Fastify and TypeScript dependencies without GenAI dependencies
@@ -111,3 +112,37 @@ The system SHALL end a successful run by printing next steps: the optional git-h
 #### Scenario: Next steps after generation
 - **WHEN** migrate completes successfully
 - **THEN** the output includes the optional history-preservation instruction, the emitted plan location, and the validate/doctor gate
+
+### Requirement: Migration targets use the complete workstation and framework pipeline
+The system SHALL apply the same plan-derived workstation readiness, selected-agent configuration, staged official framework initialization, and optional project dependency phase to a migration target as to a new initialized project. The migration source SHALL remain read-only throughout these phases.
+
+#### Scenario: Missing migration target prerequisite
+- **WHEN** a resolved migration plan requires a missing blocking runtime or framework CLI
+- **THEN** Liftoff obtains the same separate installation consent used by `init`
+- **AND** it writes neither the source nor target before blocking requirements are ready
+
+#### Scenario: Configure both agents in a migration target
+- **WHEN** a migration plan selects Copilot and Claude Code
+- **THEN** the fresh target's official framework setup contains both selected integrations
+- **AND** the source project receives no framework files
+
+#### Scenario: Dependency installation affects only the target
+- **WHEN** `--install-dependencies` is authorized for a completed migration scaffold
+- **THEN** Liftoff runs the selected stack's dependency commands with working directories under the new target
+- **AND** it never runs a dependency command from the source path
+
+#### Scenario: Machine installation does not weaken source safety
+- **WHEN** migration installs a selected machine tool outside either project
+- **THEN** the source project tree remains byte-for-byte unchanged
+- **AND** the machine change is reported separately from source and target writes
+
+### Requirement: Migration keeps a fresh-target-only safety rule
+The system SHALL require the migration target to be new or empty even though `init` can merge into an existing non-Liftoff directory. `--force` SHALL NOT authorize migration into a non-empty target.
+
+#### Scenario: Non-empty migration target is rejected
+- **WHEN** the chosen migration project name resolves to an existing non-empty directory
+- **THEN** migration exits before framework initialization or target writes with guidance to choose a fresh target
+
+#### Scenario: Force does not merge a migration target
+- **WHEN** a developer supplies `--force` and the migration target is non-empty
+- **THEN** migration still rejects the target and leaves it unchanged

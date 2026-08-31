@@ -1,7 +1,7 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.3.2",
-  "description": "Mission Control Liftoff CLI for scaffolding governed GenAI and standard API applications.",
+  "version": "0.7.0",
+  "description": "Interactive CLI for governed GenAI, API, and Power Apps code app projects.",
   "type": "module",
   "license": "GPL-3.0-only",
   "homepage": "https://github.com/voyager163/liftoff#readme",
@@ -21,6 +21,7 @@
     "fastify",
     "golang",
     "pydanticai",
+    "power-apps",
     "opentofu",
     "openspec",
     "mission-control"
@@ -30,6 +31,11 @@
   },
   "files": [
     "dist",
+    "assets/locks",
+    "assets/governance",
+    "assets/power-apps-code-app",
+    "assets/supported-stack.json",
+    "docs",
     "README.md",
     "LICENSE"
   ],
@@ -40,15 +46,33 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
+    "audit:template-dependencies": "node scripts/audit-template-dependencies.mjs",
+    "refresh:supported-stack": "node scripts/refresh-supported-stack-baseline.mjs --write",
+    "check:supported-stack": "node scripts/refresh-supported-stack-baseline.mjs",
+    "check:supported-stack-freshness": "node scripts/check-supported-stack-freshness.mjs",
+    "canonicalize:python-locks": "node scripts/canonicalize-uv-lock.mjs assets/locks/python-standard/uv.lock assets/locks/python-genai/uv.lock",
+    "refresh:power-apps-starter": "node scripts/refresh-power-apps-starter.mjs",
     "smoke:package": "npm run build && node scripts/package-smoke-test.mjs",
-    "check": "npm run build && npm test"
+    "verify:standard-node-templates": "npm run build && node scripts/verify-standard-node-templates.mjs",
+    "verify:generated-containers": "npm run build && node scripts/verify-generated-containers.mjs",
+    "verify:power-apps-starter": "npm run build && node scripts/verify-power-apps-starter.mjs",
+    "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
+    "verify:published": "npm run build && node scripts/verify-published-package.mjs",
+    "check": "npm run check:supported-stack && npm run build && npm test"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=24.20"
   },
   "devDependencies": {
-    "@types/node": "^20.14.10",
-    "typescript": "^5.5.4",
-    "vitest": "^4.1.9"
+    "@types/cross-spawn": "^6.0.6",
+    "@types/node": "^24.6.0",
+    "typescript": "^7.0.2",
+    "vite": "8.2.2",
+    "vitest": "4.1.11"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^8.6.0",
+    "cross-spawn": "^7.0.6",
+    "picocolors": "^1.1.1"
   }
 }

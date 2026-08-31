@@ -1,9 +1,25 @@
-import { randomUUID } from 'node:crypto';
-import { access, lstat, mkdir, readdir, readFile, realpath, rename, stat, unlink, writeFile } from 'node:fs/promises';
+import { createHash, randomUUID } from 'node:crypto';
+import {
+  access,
+  chmod,
+  lstat,
+  mkdir,
+  readdir,
+  readFile,
+  realpath,
+  rename,
+  rmdir,
+  stat,
+  unlink,
+  writeFile
+} from 'node:fs/promises';
 import path from 'node:path';
 import {
   getApiStack,
+  canonicalizeCodingAgents,
   getEnvironment,
+  getGovernanceProfile,
+  getCodingAgent,
   getPattern,
   getProvider,
   getProjectType,
@@ -11,11 +27,31 @@ import {
   listRegions
 } from './catalogs.js';
 import type { GeneratedArtifact, LiftoffManifest, ManifestArtifact } from './types.js';
+import { validateFrameworkInstallation } from './framework-validation.js';
+import { verifyPowerAppsPackageMetadata } from './power-apps-validation.js';
+import {
+  governanceArtifactPaths,
+  governancePolicyVersion
+} from './repository-governance.js';
 
 export class FileSystemError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'FileSystemError';
+  }
+}
+
+export type ProjectFileMutation =
+  | { type: 'write'; pathParts: string[]; content: string }
+  | { type: 'delete'; pathParts: string[] };
+
+export class ProjectFileTransactionError extends FileSystemError {
+  constructor(
+    message: string,
+    public readonly rollbackFailures: readonly string[]
+  ) {
+    super(message);
+    this.name = 'ProjectFileTransactionError';
   }
 }
 
@@ -158,7 +194,7 @@ export async function writeArtifacts(targetRoot: string, artifacts: GeneratedArt
   }
 }
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
@@ -168,6 +204,11 @@ const LEGACY_SEED_LOGICAL_NAMES = new Set([
   'openspec-seed-design',
   'openspec-seed-tasks'
 ]);
+const manifestsWithFilteredLegacySeedOwnership = new WeakSet<LiftoffManifest>();
+
+export function manifestHadFilteredLegacySeedOwnership(manifest: LiftoffManifest): boolean {
+  return manifestsWithFilteredLegacySeedOwnership.has(manifest);
+}
 
 export async function loadManifest(projectRoot: string): Promise<LiftoffManifest> {
   let raw: unknown;
@@ -195,6 +236,21 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
         'Regenerate the project with this CLI or use the Liftoff version that generated it.'
     );
   }
+  if (artifactVersion === 5) {
+    assertOnlyFields(
+      raw,
+      [
+        'artifactVersion',
+        'generatedBy',
+        'liftoffVersion',
+        'project',
+        'framework',
+        'governance',
+        'artifacts'
+      ],
+      'Manifest'
+    );
+  }
 
   if (raw.generatedBy !== 'Mission Control Liftoff') {
     throw new FileSystemError('Manifest generatedBy must be "Mission Control Liftoff".');
@@ -204,17 +260,26 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
     throw new FileSystemError('Manifest liftoffVersion must be a valid semantic version.');
   }
 
-  const project = normalizeManifestProject(raw.project);
-  const artifacts = normalizeManifestArtifacts(raw.artifacts)
+  const project = normalizeManifestProject(raw.project, artifactVersion);
+  const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
+  const governance = normalizeManifestGovernance(raw.governance, artifactVersion);
+  const normalizedArtifacts = normalizeManifestArtifacts(raw.artifacts);
+  const artifacts = normalizedArtifacts
     .filter((artifact) => !LEGACY_SEED_LOGICAL_NAMES.has(artifact.logicalName));
-
-  return {
-    artifactVersion: 2,
+  const manifest: LiftoffManifest = {
+    artifactVersion: artifactVersion as 2 | 3 | 4 | 5,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project,
+    framework,
+    governance,
     artifacts
   };
+  validateGovernanceArtifactIdentity(manifest);
+  if (artifacts.length !== normalizedArtifacts.length) {
+    manifestsWithFilteredLegacySeedOwnership.add(manifest);
+  }
+  return manifest;
 }
 
 function requiredString(record: Record<string, unknown>, key: string, scope: string): string {
@@ -236,9 +301,12 @@ function optionalString(record: Record<string, unknown>, key: string, scope: str
   return value;
 }
 
-function normalizeManifestProject(project: unknown): LiftoffManifest['project'] {
+function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
   if (!isRecord(project)) {
     throw new FileSystemError('Manifest.project must be a JSON object.');
+  }
+  if (artifactVersion >= 4) {
+    return normalizeV4ManifestProject(project);
   }
 
   const name = requiredString(project, 'name', 'Manifest.project');
@@ -287,6 +355,38 @@ function normalizeManifestProject(project: unknown): LiftoffManifest['project'] 
     throw new FileSystemError(`Manifest project specWorkflow ${JSON.stringify(specWorkflowValue)} is invalid.`);
   }
 
+  let agents: LiftoffManifest['project']['agents'] = [];
+  let defaultAgent: LiftoffManifest['project']['defaultAgent'];
+  if (artifactVersion >= 3) {
+    if (!Array.isArray(project.agents)) {
+      throw new FileSystemError('Manifest.project.agents must be an array.');
+    }
+    const rawAgents = project.agents.map((value, index) => {
+      if (typeof value !== 'string') {
+        throw new FileSystemError(`Manifest.project.agents[${index}] must be a string.`);
+      }
+      const agent = getCodingAgent(value);
+      if (!agent || agent.id !== value) {
+        throw new FileSystemError(`Manifest project agent ${JSON.stringify(value)} is invalid.`);
+      }
+      return agent.id;
+    });
+    const canonical = canonicalizeCodingAgents(rawAgents).agents.map((agent) => agent.id);
+    if (canonical.length !== rawAgents.length || canonical.some((agent, index) => agent !== rawAgents[index])) {
+      throw new FileSystemError('Manifest.project.agents must be unique and in canonical order.');
+    }
+    agents = canonical;
+
+    const defaultAgentValue = optionalString(project, 'defaultAgent', 'Manifest.project');
+    if (defaultAgentValue) {
+      const resolved = getCodingAgent(defaultAgentValue);
+      if (!resolved || resolved.id !== defaultAgentValue) {
+        throw new FileSystemError(`Manifest project defaultAgent ${JSON.stringify(defaultAgentValue)} is invalid.`);
+      }
+      defaultAgent = resolved.id;
+    }
+  }
+
   if (!Array.isArray(project.environments) || project.environments.length === 0) {
     throw new FileSystemError('Manifest.project.environments must be a non-empty string array.');
   }
@@ -306,14 +406,314 @@ function normalizeManifestProject(project: unknown): LiftoffManifest['project'] 
 
   return {
     name,
-    projectType: projectType.id,
-    apiStack: apiStack.id,
-    ...(pattern ? { pattern: pattern.id } : {}),
-    cloud: provider.id,
-    region: regionValue,
-    frontend,
+    workload: projectType.id === 'genai'
+      ? {
+          kind: 'genai',
+          apiStack: apiStack.id,
+          pattern: pattern!.id,
+          cloud: provider.id,
+          region: regionValue,
+          frontend,
+          environments
+        }
+      : {
+          kind: 'standard',
+          apiStack: apiStack.id,
+          cloud: provider.id,
+          region: regionValue,
+          frontend,
+          environments
+        },
     specWorkflow: specWorkflow.id,
+    agents,
+    ...(defaultAgent ? { defaultAgent } : {})
+  };
+}
+
+function assertOnlyFields(
+  record: Record<string, unknown>,
+  allowed: readonly string[],
+  scope: string
+): void {
+  const unknown = Object.keys(record).filter((field) => !allowed.includes(field));
+  if (unknown.length > 0) {
+    throw new FileSystemError(
+      `${scope} contains inapplicable or unknown field${unknown.length === 1 ? '' : 's'}: ${unknown.join(', ')}.`
+    );
+  }
+}
+
+function requiredBoolean(record: Record<string, unknown>, key: string, scope: string): boolean {
+  const value = record[key];
+  if (typeof value !== 'boolean') {
+    throw new FileSystemError(`${scope}.${key} must be a boolean.`);
+  }
+  return value;
+}
+
+function normalizeV4ManifestProject(project: Record<string, unknown>): LiftoffManifest['project'] {
+  assertOnlyFields(
+    project,
+    ['name', 'workload', 'specWorkflow', 'agents', 'defaultAgent'],
+    'Manifest.project'
+  );
+  const name = requiredString(project, 'name', 'Manifest.project');
+  if (!isRecord(project.workload)) {
+    throw new FileSystemError('Manifest.project.workload must be a JSON object.');
+  }
+  const workload = normalizeV4ManifestWorkload(project.workload);
+  const specWorkflowValue = requiredString(project, 'specWorkflow', 'Manifest.project');
+  const specWorkflow = getSpecWorkflow(specWorkflowValue);
+  if (!specWorkflow || specWorkflow.id !== specWorkflowValue) {
+    throw new FileSystemError(`Manifest project specWorkflow ${JSON.stringify(specWorkflowValue)} is invalid.`);
+  }
+  if (!Array.isArray(project.agents)) {
+    throw new FileSystemError('Manifest.project.agents must be an array.');
+  }
+  const rawAgents = project.agents.map((value, index) => {
+    if (typeof value !== 'string') {
+      throw new FileSystemError(`Manifest.project.agents[${index}] must be a string.`);
+    }
+    const agent = getCodingAgent(value);
+    if (!agent || agent.id !== value) {
+      throw new FileSystemError(`Manifest project agent ${JSON.stringify(value)} is invalid.`);
+    }
+    return agent.id;
+  });
+  const agents = canonicalizeCodingAgents(rawAgents).agents.map((agent) => agent.id);
+  if (agents.length !== rawAgents.length || agents.some((agent, index) => agent !== rawAgents[index])) {
+    throw new FileSystemError('Manifest.project.agents must be unique and in canonical order.');
+  }
+  const defaultAgentValue = optionalString(project, 'defaultAgent', 'Manifest.project');
+  let defaultAgent: LiftoffManifest['project']['defaultAgent'];
+  if (defaultAgentValue) {
+    const resolved = getCodingAgent(defaultAgentValue);
+    if (!resolved || resolved.id !== defaultAgentValue) {
+      throw new FileSystemError(`Manifest project defaultAgent ${JSON.stringify(defaultAgentValue)} is invalid.`);
+    }
+    defaultAgent = resolved.id;
+  }
+  return {
+    name,
+    workload,
+    specWorkflow: specWorkflow.id,
+    agents,
+    ...(defaultAgent ? { defaultAgent } : {})
+  };
+}
+
+function normalizeV4ManifestWorkload(
+  workload: Record<string, unknown>
+): LiftoffManifest['project']['workload'] {
+  const kind = requiredString(workload, 'kind', 'Manifest.project.workload');
+  if (kind === 'power-apps-code-app') {
+    assertOnlyFields(
+      workload,
+      ['kind', 'starter', 'codeAppsPlugin'],
+      'Manifest.project.workload'
+    );
+    if (!isRecord(workload.starter)) {
+      throw new FileSystemError('Manifest.project.workload.starter must be a JSON object.');
+    }
+    assertOnlyFields(
+      workload.starter,
+      ['repository', 'path', 'commit'],
+      'Manifest.project.workload.starter'
+    );
+    const repository = requiredString(
+      workload.starter,
+      'repository',
+      'Manifest.project.workload.starter'
+    );
+    const templatePath = requiredString(
+      workload.starter,
+      'path',
+      'Manifest.project.workload.starter'
+    );
+    const commit = requiredString(
+      workload.starter,
+      'commit',
+      'Manifest.project.workload.starter'
+    );
+    if (!/^https:\/\/github\.com\/[^/]+\/[^/]+$/.test(repository)) {
+      throw new FileSystemError('Manifest Power Apps starter repository must be a canonical GitHub repository URL.');
+    }
+    if (
+      templatePath.startsWith('/') ||
+      templatePath.endsWith('/') ||
+      templatePath.split('/').some((part) => part === '' || part === '.' || part === '..')
+    ) {
+      throw new FileSystemError('Manifest Power Apps starter path must be a canonical repository-relative path.');
+    }
+    if (!/^[0-9a-f]{40}$/.test(commit)) {
+      throw new FileSystemError('Manifest Power Apps starter commit must be a 40-character lowercase Git commit.');
+    }
+    return {
+      kind,
+      starter: { repository, path: templatePath, commit },
+      codeAppsPlugin: requiredBoolean(workload, 'codeAppsPlugin', 'Manifest.project.workload')
+    };
+  }
+  if (kind !== 'genai' && kind !== 'standard') {
+    throw new FileSystemError(`Manifest project workload kind ${JSON.stringify(kind)} is invalid.`);
+  }
+  const allowed = kind === 'genai'
+    ? ['kind', 'apiStack', 'pattern', 'cloud', 'region', 'frontend', 'environments']
+    : ['kind', 'apiStack', 'cloud', 'region', 'frontend', 'environments'];
+  assertOnlyFields(workload, allowed, 'Manifest.project.workload');
+  const apiStackValue = requiredString(workload, 'apiStack', 'Manifest.project.workload');
+  const apiStack = getApiStack(apiStackValue);
+  if (!apiStack || apiStack.id !== apiStackValue) {
+    throw new FileSystemError(`Manifest project workload apiStack ${JSON.stringify(apiStackValue)} is invalid.`);
+  }
+  const patternValue = kind === 'genai'
+    ? requiredString(workload, 'pattern', 'Manifest.project.workload')
+    : undefined;
+  const pattern = patternValue ? getPattern(patternValue) : undefined;
+  if (kind === 'genai' && (!pattern || pattern.id !== patternValue || apiStack.id !== 'python-fastapi')) {
+    throw new FileSystemError('GenAI manifest workloads require a valid pattern and python-fastapi API stack.');
+  }
+  const cloudValue = requiredString(workload, 'cloud', 'Manifest.project.workload');
+  const provider = getProvider(cloudValue);
+  if (!provider || provider.id !== cloudValue || provider.status !== 'available') {
+    throw new FileSystemError(`Manifest project workload cloud ${JSON.stringify(cloudValue)} is invalid or unavailable.`);
+  }
+  const region = requiredString(workload, 'region', 'Manifest.project.workload');
+  if (!listRegions(provider.id).some((candidate) => candidate.slug === region)) {
+    throw new FileSystemError(`Manifest project workload region ${JSON.stringify(region)} is invalid for ${provider.id}.`);
+  }
+  if (!Array.isArray(workload.environments) || workload.environments.length === 0) {
+    throw new FileSystemError('Manifest.project.workload.environments must be a non-empty string array.');
+  }
+  const environments = workload.environments.map((value, index) => {
+    if (typeof value !== 'string') {
+      throw new FileSystemError(`Manifest.project.workload.environments[${index}] must be a string.`);
+    }
+    const environment = getEnvironment(value);
+    if (!environment || environment.id !== value) {
+      throw new FileSystemError(`Manifest project workload environment ${JSON.stringify(value)} is invalid.`);
+    }
+    return environment.id;
+  });
+  if (new Set(environments).size !== environments.length) {
+    throw new FileSystemError('Manifest.project.workload.environments must not contain duplicates.');
+  }
+  const common = {
+    apiStack: apiStack.id,
+    cloud: provider.id,
+    region,
+    frontend: requiredBoolean(workload, 'frontend', 'Manifest.project.workload'),
     environments
+  };
+  return kind === 'genai'
+    ? { kind, ...common, pattern: pattern!.id }
+    : { kind, ...common };
+}
+
+function normalizeManifestFramework(
+  value: unknown,
+  artifactVersion: number,
+  project: LiftoffManifest['project']
+): LiftoffManifest['framework'] {
+  if (artifactVersion === 2) {
+    return { state: 'legacy', adapter: project.specWorkflow };
+  }
+  if (!isRecord(value)) {
+    throw new FileSystemError('Manifest.framework must be a JSON object.');
+  }
+  if (artifactVersion === 5) {
+    assertOnlyFields(
+      value,
+      ['state', 'adapter', 'contractVersion'],
+      'Manifest.framework'
+    );
+  }
+  const state = requiredString(value, 'state', 'Manifest.framework');
+  if (state !== 'initialized' && state !== 'legacy') {
+    throw new FileSystemError('Manifest.framework.state must be "initialized" or "legacy".');
+  }
+  const adapterValue = requiredString(value, 'adapter', 'Manifest.framework');
+  const adapter = getSpecWorkflow(adapterValue);
+  if (!adapter || adapter.id !== adapterValue || adapter.id !== project.specWorkflow) {
+    throw new FileSystemError('Manifest.framework.adapter must match Manifest.project.specWorkflow.');
+  }
+  const contractVersion = optionalString(value, 'contractVersion', 'Manifest.framework');
+  if (contractVersion && !SEMVER_PATTERN.test(contractVersion)) {
+    throw new FileSystemError('Manifest.framework.contractVersion must be a valid semantic version.');
+  }
+  if (state === 'legacy') {
+    if (contractVersion || project.agents.length > 0 || project.defaultAgent) {
+      throw new FileSystemError('Legacy framework state cannot claim a contract version or configured agents.');
+    }
+    return { state, adapter: adapter.id };
+  }
+  if (!contractVersion) {
+    throw new FileSystemError('Initialized framework state requires Manifest.framework.contractVersion.');
+  }
+  if (project.agents.length === 0) {
+    throw new FileSystemError('Initialized framework state requires at least one configured agent.');
+  }
+  if (adapter.id === 'spec-kit') {
+    if (!project.defaultAgent || !project.agents.includes(project.defaultAgent)) {
+      throw new FileSystemError('Spec Kit manifests require a selected defaultAgent.');
+    }
+  } else if (project.defaultAgent) {
+    throw new FileSystemError('OpenSpec manifests cannot record a defaultAgent.');
+  }
+  return { state, adapter: adapter.id, contractVersion };
+}
+
+function normalizeManifestGovernance(
+  value: unknown,
+  artifactVersion: number
+): LiftoffManifest['governance'] {
+  if (artifactVersion < 5) {
+    return { profile: 'unspecified', state: 'unspecified' };
+  }
+  if (!isRecord(value)) {
+    throw new FileSystemError('Manifest.governance must be a JSON object.');
+  }
+  const profileValue = requiredString(value, 'profile', 'Manifest.governance');
+  const profile = getGovernanceProfile(profileValue);
+  if (!profile || profile.id !== profileValue) {
+    throw new FileSystemError(
+      `Manifest governance profile ${JSON.stringify(profileValue)} is invalid.`
+    );
+  }
+  const state = requiredString(value, 'state', 'Manifest.governance');
+  if (profile.id === 'none') {
+    assertOnlyFields(value, ['profile', 'state'], 'Manifest.governance');
+    if (state !== 'disabled') {
+      throw new FileSystemError(
+        'Manifest governance profile none requires disabled state.'
+      );
+    }
+    return { profile: profile.id, state };
+  }
+  assertOnlyFields(
+    value,
+    ['profile', 'policyVersion', 'state'],
+    'Manifest.governance'
+  );
+  const policyVersion = requiredString(
+    value,
+    'policyVersion',
+    'Manifest.governance'
+  );
+  if (policyVersion !== governancePolicyVersion) {
+    throw new FileSystemError(
+      `Manifest governance policyVersion must be ${governancePolicyVersion}.`
+    );
+  }
+  if (state !== 'handoff-generated' && state !== 'handoff-partial') {
+    throw new FileSystemError(
+      'Enabled manifest governance requires handoff-generated or handoff-partial state.'
+    );
+  }
+  return {
+    profile: profile.id,
+    policyVersion,
+    state
   };
 }
 
@@ -329,6 +729,11 @@ function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
     if (!isRecord(entry)) {
       throw new FileSystemError(`${scope} must be a JSON object.`);
     }
+    assertOnlyFields(
+      entry,
+      ['logicalName', 'category', 'pathParts', 'contentHash'],
+      scope
+    );
     const logicalName = requiredString(entry, 'logicalName', scope);
     const category = requiredString(entry, 'category', scope);
     const pathParts = validateArtifactPathParts(entry.pathParts, `${scope}.pathParts`);
@@ -349,6 +754,93 @@ function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
   });
 }
 
+const governanceLogicalPaths = new Map<string, readonly string[]>([
+  ['repository-governance-policy', governanceArtifactPaths.policy],
+  ['repository-governance-context', governanceArtifactPaths.context],
+  ['repository-governance-guide', governanceArtifactPaths.guide],
+  [
+    'repository-governance-copilot-launcher',
+    governanceArtifactPaths['github-copilot']
+  ],
+  [
+    'repository-governance-claude-launcher',
+    governanceArtifactPaths.claude
+  ]
+]);
+
+function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
+  if (manifest.artifacts.some((artifact) =>
+    artifact.pathParts.join('/') === 'governance/activation-baseline.json'
+  )) {
+    throw new FileSystemError(
+      'governance/activation-baseline.json is user-owned and cannot be a Liftoff manifest artifact.'
+    );
+  }
+  const governanceArtifacts = manifest.artifacts.filter((artifact) =>
+    governanceLogicalPaths.has(artifact.logicalName)
+  );
+  if (manifest.governance.profile === 'unspecified') {
+    return;
+  }
+  if (manifest.governance.profile === 'none') {
+    if (governanceArtifacts.length > 0) {
+      throw new FileSystemError(
+        'Disabled manifest governance cannot own governance handoff artifacts.'
+      );
+    }
+    return;
+  }
+  const required = [
+    'repository-governance-policy',
+    'repository-governance-context',
+    'repository-governance-guide',
+    ...manifest.project.agents.map((agent) =>
+      agent === 'github-copilot'
+        ? 'repository-governance-copilot-launcher'
+        : 'repository-governance-claude-launcher'
+    )
+  ];
+  const missing: string[] = [];
+  for (const logicalName of required) {
+    const artifact = manifest.artifacts.find((entry) =>
+      entry.logicalName === logicalName
+    );
+    const expectedPath = governanceLogicalPaths.get(logicalName);
+    if (!artifact) {
+      missing.push(logicalName);
+      continue;
+    }
+    if (!expectedPath) {
+      throw new FileSystemError(`Unknown manifest governance artifact ${logicalName}.`);
+    }
+    if (
+      artifact.category !== 'governance' ||
+      artifact.pathParts.join('\0') !== expectedPath.join('\0')
+    ) {
+      throw new FileSystemError(
+        `Manifest governance artifact ${logicalName} has invalid identity.`
+      );
+    }
+  }
+  if (manifest.governance.state === 'handoff-generated' && missing.length > 0) {
+    throw new FileSystemError(
+      `Enabled manifest governance is missing artifact ${missing[0]}.`
+    );
+  }
+  if (manifest.governance.state === 'handoff-partial' && missing.length === 0) {
+    throw new FileSystemError(
+      'Manifest governance state handoff-partial requires at least one applicable artifact to remain outside Liftoff ownership.'
+    );
+  }
+  for (const artifact of governanceArtifacts) {
+    if (!required.includes(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest governance contains inapplicable launcher ${artifact.logicalName}.`
+      );
+    }
+  }
+}
+
 export async function validateGeneratedProject(projectRoot: string): Promise<string[]> {
   let manifest: LiftoffManifest;
   try {
@@ -361,7 +853,17 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
   for (const artifact of manifest.artifacts) {
     try {
       const targetPath = await resolveProjectPath(projectRoot, artifact.pathParts);
-      await access(targetPath);
+      if (artifact.category === 'governance') {
+        const bytes = await readFile(targetPath);
+        const actualHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+        if (actualHash !== artifact.contentHash) {
+          issues.push(
+            `Artifact hash mismatch for ${artifact.logicalName} at ${artifact.pathParts.join('/')}`
+          );
+        }
+      } else {
+        await access(targetPath);
+      }
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
         issues.push(`Missing artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}`);
@@ -369,6 +871,35 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         issues.push(`Unable to access artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`);
       }
     }
+  }
+
+  if (manifest.framework.state === 'initialized') {
+    issues.push(...await validateFrameworkInstallation(projectRoot, {
+      workflow: manifest.framework.adapter,
+      agents: manifest.project.agents,
+      ...(manifest.project.defaultAgent ? { defaultAgent: manifest.project.defaultAgent } : {})
+    }));
+  }
+  if (manifest.project.workload.kind === 'power-apps-code-app') {
+    const requiredArtifacts = [
+      { logicalName: 'power-apps-package', pathParts: ['package.json'] },
+      { logicalName: 'power-apps-lock', pathParts: ['package-lock.json'] },
+      { logicalName: 'power-apps-readme', pathParts: ['README.md'] },
+      { logicalName: 'power-apps-attribution', pathParts: ['THIRD_PARTY_NOTICES.md'] }
+    ];
+    for (const required of requiredArtifacts) {
+      const artifact = manifest.artifacts.find((entry) => entry.logicalName === required.logicalName);
+      if (!artifact) {
+        issues.push(
+          `Missing required Power Apps manifest artifact ${required.logicalName} at ${required.pathParts.join('/')}`
+        );
+      } else if (artifact.pathParts.join('/') !== required.pathParts.join('/')) {
+        issues.push(
+          `Power Apps manifest artifact ${required.logicalName} must target ${required.pathParts.join('/')}`
+        );
+      }
+    }
+    issues.push(...await verifyPowerAppsPackageMetadata(projectRoot));
   }
 
   return issues;
@@ -409,7 +940,11 @@ export async function readProjectFile(projectRoot: string, pathParts: string[]):
   }
 }
 
-export async function writeProjectFile(projectRoot: string, pathParts: string[], content: string): Promise<void> {
+export async function writeProjectFile(
+  projectRoot: string,
+  pathParts: string[],
+  content: string | Buffer
+): Promise<void> {
   const targetPath = await resolveProjectPath(projectRoot, pathParts);
   const temporaryPath = path.join(
     path.dirname(targetPath),
@@ -418,7 +953,7 @@ export async function writeProjectFile(projectRoot: string, pathParts: string[],
   let temporaryFileWritten = false;
   try {
     await mkdir(path.dirname(targetPath), { recursive: true });
-    await writeFile(temporaryPath, content, { encoding: 'utf8', flag: 'wx' });
+    await writeFile(temporaryPath, content, { flag: 'wx' });
     temporaryFileWritten = true;
     await rename(temporaryPath, targetPath);
   } catch (error) {
@@ -446,5 +981,200 @@ export async function deleteProjectFile(projectRoot: string, pathParts: string[]
       return;
     }
     throw new FileSystemError(`Unable to delete ${pathParts.join('/')}: ${errorMessage(error)}`);
+  }
+}
+
+export interface ProjectFileSnapshot {
+  pathParts: string[];
+  content?: Buffer;
+  mode?: number;
+}
+
+export async function captureProjectFileSnapshot(
+  projectRoot: string,
+  pathParts: string[]
+): Promise<ProjectFileSnapshot> {
+  const targetPath = await resolveProjectPath(projectRoot, pathParts);
+  try {
+    const details = await lstat(targetPath);
+    if (!details.isFile()) {
+      throw new FileSystemError(
+        `Project update target must be a regular file: ${pathParts.join('/')}`
+      );
+    }
+    return {
+      pathParts,
+      content: await readFile(targetPath),
+      mode: details.mode & 0o7777
+    };
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') {
+      return { pathParts };
+    }
+    throw error;
+  }
+}
+
+async function assertProjectFileSnapshot(
+  projectRoot: string,
+  snapshot: ProjectFileSnapshot
+): Promise<void> {
+  const current = await captureProjectFileSnapshot(projectRoot, snapshot.pathParts);
+  if (
+    (snapshot.content === undefined) !== (current.content === undefined) ||
+    snapshot.mode !== current.mode ||
+    snapshot.content?.equals(current.content!) === false
+  ) {
+    throw new FileSystemError(
+      `Project update target changed after review: ${snapshot.pathParts.join('/')}`
+    );
+  }
+}
+
+async function assertAppliedMutationCurrent(
+  projectRoot: string,
+  mutation: ProjectFileMutation
+): Promise<void> {
+  const current = await captureProjectFileSnapshot(projectRoot, mutation.pathParts);
+  if (mutation.type === 'delete') {
+    if (current.content !== undefined) {
+      throw new FileSystemError(
+        `Project update target changed before rollback: ${mutation.pathParts.join('/')}`
+      );
+    }
+    return;
+  }
+  if (
+    current.content === undefined ||
+    !current.content.equals(Buffer.from(mutation.content, 'utf8'))
+  ) {
+    throw new FileSystemError(
+      `Project update target changed before rollback: ${mutation.pathParts.join('/')}`
+    );
+  }
+}
+
+async function missingMutationParents(
+  projectRoot: string,
+  pathParts: string[]
+): Promise<string[][]> {
+  const missing: string[][] = [];
+  for (let index = 1; index < pathParts.length; index += 1) {
+    const parentParts = pathParts.slice(0, index);
+    const parentPath = await resolveProjectPath(projectRoot, parentParts);
+    try {
+      const details = await lstat(parentPath);
+      if (!details.isDirectory() && !details.isSymbolicLink()) {
+        throw new FileSystemError(
+          `Artifact path parent is not a directory: ${parentParts.join('/')}`
+        );
+      }
+    } catch (error) {
+      if (errorCode(error) === 'ENOENT') {
+        missing.push(parentParts);
+        continue;
+      }
+      throw error;
+    }
+  }
+  return missing;
+}
+
+export async function applyProjectFileTransaction(
+  projectRoot: string,
+  mutations: readonly ProjectFileMutation[],
+  options: {
+    onBeforeMutation?: (mutation: ProjectFileMutation, index: number) => Promise<void>;
+    preconditions?: readonly ProjectFileSnapshot[];
+  } = {}
+): Promise<void> {
+  const snapshots = new Map<string, ProjectFileSnapshot>();
+  const preconditions = new Map<string, ProjectFileSnapshot>();
+  const missingParents = new Map<string, string[]>();
+  for (const snapshot of options.preconditions ?? []) {
+    const key = snapshot.pathParts.join('\0');
+    if (preconditions.has(key)) {
+      throw new FileSystemError(
+        `Project update contains duplicate preconditions for ${snapshot.pathParts.join('/')}.`
+      );
+    }
+    preconditions.set(key, snapshot);
+  }
+  for (const mutation of mutations) {
+    const key = mutation.pathParts.join('\0');
+    if (snapshots.has(key)) {
+      throw new FileSystemError(
+        `Project update contains duplicate mutations for ${mutation.pathParts.join('/')}.`
+      );
+    }
+    snapshots.set(
+      key,
+      preconditions.get(key) ??
+        await captureProjectFileSnapshot(projectRoot, mutation.pathParts)
+    );
+    if (mutation.type === 'write') {
+      for (const parentParts of await missingMutationParents(projectRoot, mutation.pathParts)) {
+        missingParents.set(parentParts.join('\0'), parentParts);
+      }
+    }
+  }
+  for (const snapshot of preconditions.values()) {
+    await assertProjectFileSnapshot(projectRoot, snapshot);
+  }
+
+  const applied: ProjectFileMutation[] = [];
+  try {
+    for (const [index, mutation] of mutations.entries()) {
+      await options.onBeforeMutation?.(mutation, index);
+      await assertProjectFileSnapshot(
+        projectRoot,
+        snapshots.get(mutation.pathParts.join('\0'))!
+      );
+      if (mutation.type === 'write') {
+        await writeProjectFile(projectRoot, mutation.pathParts, mutation.content);
+      } else {
+        await deleteProjectFile(projectRoot, mutation.pathParts);
+      }
+      applied.push(mutation);
+    }
+  } catch (error) {
+    const rollbackFailures: string[] = [];
+    for (const mutation of [...applied].reverse()) {
+      const snapshot = snapshots.get(mutation.pathParts.join('\0'))!;
+      try {
+        await assertAppliedMutationCurrent(projectRoot, mutation);
+        if (snapshot.content === undefined) {
+          await deleteProjectFile(projectRoot, mutation.pathParts);
+        } else {
+          await writeProjectFile(projectRoot, mutation.pathParts, snapshot.content);
+          await chmod(
+            await resolveProjectPath(projectRoot, mutation.pathParts),
+            snapshot.mode!
+          );
+        }
+      } catch (rollbackError) {
+        rollbackFailures.push(
+          `${mutation.pathParts.join('/')}: ${errorMessage(rollbackError)}`
+        );
+      }
+    }
+    const parents = [...missingParents.values()]
+      .sort((left, right) => right.length - left.length);
+    for (const parentParts of parents) {
+      try {
+        await rmdir(await resolveProjectPath(projectRoot, parentParts));
+      } catch (rollbackError) {
+        if (errorCode(rollbackError) !== 'ENOENT') {
+          rollbackFailures.push(`${parentParts.join('/')}: ${errorMessage(rollbackError)}`);
+        }
+      }
+    }
+    const rollbackDetail = rollbackFailures.length === 0
+      ? 'All applied changes were rolled back.'
+      : `Rollback was incomplete:\n${rollbackFailures.map((failure) => `- ${failure}`).join('\n')}`;
+    throw new ProjectFileTransactionError(
+      `Project update failed: ${errorMessage(error)} ${rollbackDetail}`,
+      rollbackFailures
+    );
   }
 }

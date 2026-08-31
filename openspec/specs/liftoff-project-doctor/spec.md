@@ -5,26 +5,31 @@ Define the layered, read-only `liftoff doctor` diagnostics covering environment,
 ## Requirements
 
 ### Requirement: Doctor runs layered diagnostics selected by context
-The system SHALL run `liftoff doctor` as layered read-only diagnostics — environment, project, runtime, and cloud — where the project, runtime, and cloud-from-manifest layers run only when a generated project is located via project-root discovery. Outside a generated project, doctor SHALL preserve its prior behavior: environment checks plus cloud checks only when `--cloud` is passed.
+The system SHALL run `liftoff doctor` as layered read-only diagnostics with CLI and environment layers in every context; project, runtime, and cloud-from-manifest layers SHALL run only when a generated project is located via project-root discovery, and cloud checks SHALL also run outside a project when `--cloud` is passed.
 
 #### Scenario: Full preflight inside a project
 - **WHEN** a developer runs `liftoff doctor` inside a generated project
-- **THEN** the output reports environment, project, runtime, and cloud layers grouped and labeled
+- **THEN** the output reports CLI, environment, project, runtime, and cloud layers grouped and labeled
 
-#### Scenario: Unchanged behavior outside a project
+#### Scenario: Diagnostics outside a project
 - **WHEN** a developer runs `liftoff doctor` outside any generated project without flags
-- **THEN** only the environment checks run
+- **THEN** only the CLI and environment layers run
 
 #### Scenario: Doctor never writes
 - **WHEN** any doctor run completes
 - **THEN** no file in the project or environment has been created or modified
+- **AND** npm registry configuration remains unchanged
 
 ### Requirement: The manifest configures project-aware checks
-The system SHALL read the project manifest to configure diagnostics: the cloud layer targets `project.cloud` (with `--cloud` acting as an override), worker-enabled Azure projects check for Azure Functions Core Tools at warn severity, and the project layer verifies the manifest loads and every listed artifact exists.
+The system SHALL read the normalized manifest to configure diagnostics. Cloud checks SHALL target a declared API workload cloud with `--cloud` acting as an override; a workload without declared cloud infrastructure SHALL not inherit a default cloud. Environment and runtime checks SHALL target the selected workload, API stack when applicable, spec workflow, configured coding agents, optional requested integrations, and declared framework contract. The project layer SHALL verify that the manifest loads, every listed Liftoff artifact exists, and every declared framework integration marker is present.
 
-#### Scenario: Cloud checks come from the manifest
-- **WHEN** doctor runs inside a project whose manifest records Azure
+#### Scenario: Cloud checks come from an API manifest
+- **WHEN** doctor runs inside an API project whose manifest records Azure
 - **THEN** Azure authentication checks run without any `--cloud` flag
+
+#### Scenario: Power Apps does not inherit Azure checks
+- **WHEN** doctor runs inside a Power Apps project without a `--cloud` override
+- **THEN** no Azure, OpenTofu, Docker, backend, database, or API environment check is selected
 
 #### Scenario: Structure failures surface
 - **WHEN** a manifest artifact is missing from disk
@@ -34,16 +39,48 @@ The system SHALL read the project manifest to configure diagnostics: the cloud l
 - **WHEN** doctor runs inside a worker-enabled Azure project without Azure Functions Core Tools installed
 - **THEN** the output includes a warning with an installation remedy
 
+#### Scenario: Framework checks come from the manifest
+- **WHEN** doctor runs inside a supported project configured for Spec Kit, Copilot, and Claude Code
+- **THEN** it checks the pinned Spec Kit contract and both recorded integrations without requiring a workflow flag
+
+#### Scenario: Missing framework marker fails project readiness
+- **WHEN** a manifest declares an initialized agent integration whose required marker is missing
+- **THEN** the project layer reports a failure naming that integration and its framework-owned repair command
+
+#### Scenario: Legacy v2 framework state is not fabricated
+- **WHEN** doctor reads a supported v2 project with no agent or official initializer metadata
+- **THEN** it reports a legacy framework-state warning
+- **AND** it does not claim that Copilot, Claude Code, OpenSpec, or Spec Kit integration was officially initialized
+
 ### Requirement: Doctor reports version freshness and scaffold drift
-The system SHALL compare the manifest's `liftoffVersion` against the running CLI and SHALL surface scaffold drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's check classification; a newer-CLI availability lookup against the npm registry SHALL use a short timeout and skip silently on any network failure.
+The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface scaffold drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's check classification. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
+
+#### Scenario: Freshness check runs outside a project
+- **WHEN** a developer runs doctor outside a generated project with registry access
+- **THEN** the CLI layer reports the running Liftoff version
+- **AND** it reports whether a newer stable version is published
+
+#### Scenario: Authoritative registry is newer than the running CLI
+- **WHEN** the authoritative registry reports a stable Liftoff version newer than the running CLI
+- **THEN** doctor emits a warning naming both exact versions
+- **AND** the primary remedy tells the developer to run `liftoff upgrade --check` and then `liftoff upgrade`
+- **AND** it retains an exact manual npm command for unsupported installation origins or explicit recovery
+
+#### Scenario: Configured managed mirror is stale
+- **WHEN** a developer's configured npm mirror exposes an older Liftoff version than the authoritative registry lookup
+- **THEN** doctor does not claim the running CLI is current based on the configured mirror
+- **AND** the remedy states that self-upgrade remains blocked until the approved mirror exposes the canonical target
+- **AND** doctor does not modify npm configuration or perform an automatic update
 
 #### Scenario: Drift warning line
 - **WHEN** doctor runs in a project with four reconcilable differences
 - **THEN** the output contains one warning stating four updates are available and naming `liftoff update`
+- **AND** it does not describe project drift as a CLI self-upgrade
 
-#### Scenario: Offline doctor stays quiet about freshness
+#### Scenario: Offline doctor preserves local version diagnostics
 - **WHEN** doctor runs without network access
-- **THEN** all local checks complete normally and no freshness warning or error appears
+- **THEN** all local checks complete normally and the running CLI version remains visible
+- **AND** no freshness warning or error appears
 
 ### Requirement: Runtime readiness checks degrade honestly
 The system SHALL check that `.env` exists when `.env.example` is present and that the Docker Compose configuration parses when a compose file exists and docker is available; when a runtime check's prerequisites are missing, the system SHALL report the check as skipped with the reason rather than passing or failing it.
@@ -101,3 +138,126 @@ The system SHALL run read-only validation commands only when the selected stack'
 - **WHEN** the selected stack's optional validation command cannot run because its toolchain is unavailable
 - **THEN** doctor reports the validation as skipped or failed according to whether the runtime is required
 - **AND** it does not report a successful check
+
+### Requirement: Doctor evaluates the shared workstation requirement registry in probe-only mode
+The system SHALL derive doctor checks from the same workload-aware requirement registry used by initialization, based on the discovered manifest when present. Doctor SHALL execute only allowlisted read-only probes and SHALL never invoke installers, allow npx downloads, alter PATH or shell configuration, initialize a framework, install project dependencies, authenticate, or persist observed tool versions.
+
+#### Scenario: Doctor checks only selected API tools
+- **WHEN** doctor runs inside a Go project configured for OpenSpec, Copilot, and Claude Code
+- **THEN** it checks supported Node.js, Go, the pinned OpenSpec contract, both agents, and applicable advisory infrastructure tools
+- **AND** it does not require the Python backend runtime or Spec Kit
+
+#### Scenario: Doctor checks only selected Power Apps tools
+- **WHEN** doctor runs inside a Power Apps project configured for OpenSpec and Claude Code
+- **THEN** it checks the Power Apps Node.js baseline, the pinned OpenSpec contract, Claude Code, starter artifacts, and applicable project-local tooling
+- **AND** it does not check Python, Go, Docker, OpenTofu, Azure CLI, or an unselected agent
+
+#### Scenario: Doctor remains read-only with missing tools
+- **WHEN** a required runtime or framework CLI is missing
+- **THEN** doctor reports the missing requirement and exact platform remedy
+- **AND** no installation command is executed
+
+#### Scenario: Doctor JSON uses the same stable requirement identifiers
+- **WHEN** a developer runs `liftoff doctor --json`
+- **THEN** each workstation result includes the stable registry identifier, severity, observed state, and remedy
+
+### Requirement: Doctor reports selected AI coding-agent readiness honestly
+The system SHALL check every agent recorded by manifest v3. Copilot SHALL be present when its CLI probe succeeds or an observable VS Code extension list contains the supported Copilot identifiers. Claude Code SHALL be present when its CLI probe succeeds, and its doctor result SHALL be reported without Liftoff automating authentication.
+
+#### Scenario: Copilot CLI is detected
+- **WHEN** the manifest selects Copilot and `copilot --version` succeeds
+- **THEN** doctor reports the Copilot installation as ready
+
+#### Scenario: VS Code Copilot extension is detected
+- **WHEN** the Copilot CLI is absent, `code --list-extensions` succeeds, and the list contains `GitHub.copilot` or `GitHub.copilot-chat` case-insensitively
+- **THEN** doctor reports Copilot as installed through VS Code
+
+#### Scenario: VS Code extension state is not observable
+- **WHEN** the Copilot CLI and the `code` command are both unavailable
+- **THEN** doctor reports Copilot as not observable rather than claiming the extension is absent
+- **AND** it offers the supported Copilot CLI installation remedy
+
+#### Scenario: Claude authentication remains external
+- **WHEN** `claude --version` succeeds but `claude doctor` reports an authentication problem
+- **THEN** doctor reports Claude Code as installed with an authentication warning and agent-owned remedy
+- **AND** it does not request credentials
+
+### Requirement: Doctor distinguishes blocking and advisory workstation readiness
+The system SHALL preserve each selected requirement's blocking or advisory classification in human and JSON output. Missing blocking requirements SHALL contribute a failure, while missing advisory infrastructure tools SHALL contribute warnings and SHALL never be reported as successful.
+
+#### Scenario: Missing selected runtime fails doctor
+- **WHEN** the selected backend runtime is missing
+- **THEN** doctor records a failure and exits 1
+
+#### Scenario: Missing deferred infrastructure tool warns
+- **WHEN** Docker, OpenTofu, or Azure CLI is applicable but missing
+- **THEN** doctor records a warning with the exact remedy
+- **AND** the warning alone does not make doctor exit 1
+
+### Requirement: Doctor validates Power Apps project readiness
+The system SHALL validate schema-v4 Power Apps projects through read-only checks for the pinned starter identity, required package and lockfile pair, Power Apps SDK and Vite plugin declarations, selected framework markers, selected coding agents, and tested Node.js LTS baseline. When dependencies are installed it MAY probe the project-local Code Apps CLI with `npx --no-install power-apps --version`; when they are absent it SHALL report the probe as skipped with the root `npm ci` remedy.
+
+#### Scenario: Fresh Power Apps project is structurally ready
+- **WHEN** doctor runs after Power Apps initialization with all manifest artifacts and framework markers present
+- **THEN** the project layer reports the pinned starter and selected integrations as valid
+
+#### Scenario: Package and lockfile identity differ
+- **WHEN** the Power Apps root package name does not match the lockfile root package identity
+- **THEN** doctor reports a project failure with a restore or update remedy
+
+#### Scenario: Dependencies are not installed
+- **WHEN** the Power Apps project has no installed project-local Code Apps CLI
+- **THEN** doctor reports the CLI probe as skipped rather than successful
+- **AND** it shows the exact root `npm ci` command
+
+#### Scenario: Project-local CLI probe cannot download
+- **WHEN** doctor probes an installed Power Apps project CLI
+- **THEN** it uses `npx --no-install`
+- **AND** a missing package is reported without any network installation attempt
+
+### Requirement: Doctor reports requested Code Apps plugin readiness as advisory
+The system SHALL check the preview Code Apps plugin only when the Power Apps manifest records the preference enabled. It SHALL report each selected agent host independently as ready, missing, or not observable, use warn severity for every non-ready plugin result, and provide pinned manual marketplace guidance without changing agent configuration.
+
+#### Scenario: Requested plugin is installed for both agents
+- **WHEN** both selected agent hosts report the canonical plugin installed
+- **THEN** doctor reports both plugin checks as ready
+
+#### Scenario: Requested plugin cannot be observed
+- **WHEN** an agent exposes no allowlisted plugin-list probe
+- **THEN** doctor reports that host as not observable with manual verification guidance
+- **AND** the warning alone does not make doctor exit 1
+
+#### Scenario: Plugin preference is disabled
+- **WHEN** the Power Apps manifest records the plugin preference disabled
+- **THEN** doctor omits Code Apps plugin checks
+
+### Requirement: Doctor validates locked dependency readiness
+The system SHALL use the supported-stack baseline and explicit workload identity to check that every expected dependency manifest and lock pair exists, agrees on project identity, and can be consumed without mutation. Doctor SHALL remain read-only and SHALL report missing, stale, malformed, or mismatched metadata with the exact frozen install or repair command.
+
+#### Scenario: Check a locked Python project
+- **WHEN** doctor runs inside a Python project with `pyproject.toml` and `uv.lock`
+- **THEN** it verifies the expected lock is present and reports `uv sync --frozen` as the dependency command
+- **AND** it does not run `uv lock` or change either file
+
+#### Scenario: Check npm and Go metadata
+- **WHEN** doctor runs inside a Node.js, frontend, Power Apps, or Go project
+- **THEN** it validates the explicit package-lock or module-checksum pair applicable to that workload
+- **AND** it omits unrelated ecosystem checks
+
+#### Scenario: Lock metadata is missing
+- **WHEN** an expected lockfile or checksum file is absent
+- **THEN** doctor reports a failure naming the missing path and baseline-owned dependency set
+- **AND** it does not report dependency readiness as successful
+
+#### Scenario: Check paths on Windows
+- **WHEN** doctor resolves dependency files in a project on Windows
+- **THEN** it uses the same explicit path-part definitions as generation
+- **AND** produces the same logical check identifiers as macOS and Linux
+
+### Requirement: Doctor reports baseline identity without resolving it
+Doctor SHALL report the current Liftoff supported-stack baseline identity and applicable runtime constraints from packaged state. It MAY perform the existing bounded Liftoff CLI freshness lookup, but SHALL NOT contact dependency registries to replace or rewrite the project's baseline.
+
+#### Scenario: Run doctor offline
+- **WHEN** dependency registries are unavailable
+- **THEN** doctor still reports the packaged baseline and completes every local check
+- **AND** it does not classify the project as upgraded from cached or speculative registry data

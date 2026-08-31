@@ -4,6 +4,18 @@ updates:
     directory: /
     schedule:
       interval: weekly
+  - package-ecosystem: npm
+    directory: /services/telemetry-ingest
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /assets/locks/node-backend
+    schedule:
+      interval: weekly
+  - package-ecosystem: npm
+    directory: /assets/locks/frontend
+    schedule:
+      interval: weekly
   - package-ecosystem: github-actions
     directory: /
     schedule:
