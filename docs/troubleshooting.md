@@ -85,6 +85,43 @@ Review the complete replacement list. Approve interactively or rerun with
 manifest, or a non-empty migration target. Move or rename the structural
 conflict and retry.
 
+## OpenSpec global profile is incompatible
+
+Liftoff OpenSpec projects require profile `custom`, delivery `both`, and all 12
+OpenSpec 1.11 workflows. Review the observed and required values printed by
+Liftoff. Approve the separate interactive prompt or rerun the same command with
+`--configure-openspec-profile` only when the machine-wide change is intended.
+
+`--yes`, `--force`, `--install-tools`, and `--install-dependencies` do not
+authorize this change. If configuration or verification fails, run
+`openspec config list --json`, correct the reported OpenSpec issue, and retry
+before any project files are written.
+
+## OpenSpec wants to replace workflow files immediately
+
+A fresh Liftoff project should already contain all 12 workflows as skills and
+commands. Confirm that the same OpenSpec 1.11.0 binary, selected tools, global
+profile, delivery, and `githubCopilot.cloudAgent` choice are still in effect.
+
+For an older project, use:
+
+```bash
+openspec config profile
+openspec update
+```
+
+Select both delivery modes and every workflow. Do not use `liftoff update
+--force` to manage OpenSpec-owned skills or commands.
+
+## Copilot cloud-agent files are missing
+
+The GitHub-hosted coding agent is default-off and separate from Copilot in an
+editor or terminal. Opt in during new initialization with `--copilot-cloud`.
+For an existing project, set `githubCopilot.cloudAgent: true` in
+`openspec/config.yaml` and run `openspec update`. The expected files are
+`.github/workflows/copilot-setup-steps.yml` and
+`.github/agents/openspec.agent.md`.
+
 ## A handled write failed
 
 Liftoff reports whether rollback completed. Correct the filesystem problem and

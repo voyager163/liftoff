@@ -42,12 +42,13 @@ from unexpectedly treating that subdirectory as the repository root.
 Liftoff never blindly replaces a target tree. It:
 
 1. Renders Liftoff-owned files in temporary staging.
-2. Runs the official OpenSpec or Spec Kit initializer in staging.
-3. Rejects unexpected roots, nested Git metadata, and unsafe paths.
-4. Compares every destination before writing.
-5. Lists different regular files as one replacement set.
-6. Requires explicit overwrite permission before replacing that set.
-7. Applies the authorized merge transactionally and rolls back handled
+2. Verifies or separately configures the required global OpenSpec profile.
+3. Runs the official OpenSpec or Spec Kit initializer in staging.
+4. Rejects unexpected roots, nested Git metadata, and unsafe paths.
+5. Compares every destination before writing.
+6. Lists different regular files as one replacement set.
+7. Requires explicit overwrite permission before replacing that set.
+8. Applies the authorized merge transactionally and rolls back handled
    failures.
 
 Unrelated existing files are preserved. Structural collisions, symlinks,
@@ -73,6 +74,19 @@ safe managed changes immediately and without prompting in terminals and
 automation, while preserving conflicts and orphans. Review every reported
 conflict and commit or copy local work before choosing `liftoff update --force`.
 For CI drift gates, use `liftoff update --check --json`.
+
+OpenSpec skills and commands remain framework-owned. To give an existing
+project all 12 workflows as both skills and commands, run:
+
+```bash
+openspec config profile
+openspec update
+```
+
+Select both delivery modes and every workflow in the profile picker. Plain
+`liftoff update` does not regenerate OpenSpec integrations. To change the
+hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
+and run `openspec update`.
 
 Projects created before manifest schema v5 automatically preview the default
 repository-governance handoff as new named drift. Plain update safely adopts
@@ -105,8 +119,9 @@ liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 ```
 
 Migration requires a new or empty sibling target, runs the same readiness and
-framework pipeline, and leaves the source byte-for-byte unchanged. `--force`
-does not permit a non-empty migration target.
+framework pipeline, including separate global OpenSpec profile authorization,
+and leaves the source byte-for-byte unchanged. `--force` does not permit a
+non-empty migration target.
 
 Arbitrary existing Power Apps application migration is not currently
 supported.

@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { OPEN_SPEC_WORKFLOW_IDS } from '../src/openspec-profile.js';
 
 const cleanups: string[] = [];
 afterEach(async () => {
@@ -109,6 +110,20 @@ describe('migrate command', () => {
       adapter: 'openspec',
       contractVersion: '1.11.0'
     });
+    expect(await readFile(path.join(target, 'openspec', 'config.yaml'), 'utf8'))
+      .toContain('cloudAgent: false');
+    await expect(access(path.join(
+      target,
+      '.github',
+      'workflows',
+      'copilot-setup-steps.yml'
+    ))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(path.join(
+      target,
+      '.github',
+      'agents',
+      'openspec.agent.md'
+    ))).rejects.toMatchObject({ code: 'ENOENT' });
 
     const after = await hashTree(source);
     expect(after).toEqual(before);
@@ -299,6 +314,86 @@ describe('migrate command', () => {
       workflow === 'openspec' ? 'openspec-apply-change' : 'speckit-specify',
       'SKILL.md'
     ));
+    if (workflow === 'openspec') {
+      await access(path.join(
+        target,
+        '.github',
+        'prompts',
+        'opsx-bulk-archive.prompt.md'
+      ));
+      await access(path.join(
+        target,
+        '.claude',
+        'commands',
+        'opsx',
+        'bulk-archive.md'
+      ));
+    }
+    expect(await hashTree(source)).toEqual(before);
+  });
+
+  it('requires dedicated profile authorization for a migration target', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+    const base = ['migrate', source, '--region', 'eastus', '--yes'];
+
+    const blockedRunner = new ReadyInitRunner({
+      openSpecProfile: {
+        profile: 'core',
+        delivery: 'skills',
+        workflows: ['propose', 'explore', 'apply', 'update', 'sync', 'archive']
+      }
+    });
+    const blocked = await run(base, parent, blockedRunner);
+    expect(blocked.code).toBe(1);
+    expect(blocked.err).toContain('--configure-openspec-profile');
+    expect(blockedRunner.calls.some((command) =>
+      command.args[0] === 'config' && command.args[1] === 'set'
+    )).toBe(false);
+    await expect(access(path.join(parent, 'legacy-app-liftoff'))).rejects.toMatchObject({
+      code: 'ENOENT'
+    });
+    expect(await hashTree(source)).toEqual(before);
+
+    const authorizedRunner = new ReadyInitRunner({
+      openSpecProfile: { profile: 'core', delivery: 'commands', workflows: ['propose'] }
+    });
+    const authorized = await run([
+      ...base,
+      '--configure-openspec-profile'
+    ], parent, authorizedRunner);
+    expect(authorized.code).toBe(0);
+    expect(authorizedRunner.openSpecProfile).toEqual({
+      profile: 'custom',
+      delivery: 'both',
+      workflows: [...OPEN_SPEC_WORKFLOW_IDS]
+    });
+    expect(await hashTree(source)).toEqual(before);
+  });
+
+  it('writes an opted-in Copilot cloud integration only to the fresh target', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+
+    const result = await run([
+      'migrate',
+      source,
+      '--region',
+      'eastus',
+      '--spec',
+      'openspec',
+      '--agents',
+      'copilot',
+      '--copilot-cloud',
+      '--yes'
+    ], parent);
+    expect(result.code).toBe(0);
+
+    const target = path.join(parent, 'legacy-app-liftoff');
+    await access(path.join(target, '.github', 'workflows', 'copilot-setup-steps.yml'));
+    await access(path.join(target, '.github', 'agents', 'openspec.agent.md'));
+    expect(await readFile(path.join(target, 'openspec', 'config.yaml'), 'utf8'))
+      .toContain('cloudAgent: true');
     expect(await hashTree(source)).toEqual(before);
   });
 

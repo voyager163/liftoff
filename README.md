@@ -26,7 +26,10 @@ Liftoff asks you to choose a workload and spec workflow, select one or more codi
 agents with Space, review workstation readiness, and confirm the project plan before
 it writes. Repository governance is enabled by default as a local handoff; live
 activation remains deferred until commit, push, read-only Phase 0, and explicit
-plan approval. After initialization:
+plan approval. OpenSpec projects include all 12 OpenSpec 1.11 workflows as both
+skills and commands. A mismatched global OpenSpec profile and the default-off
+GitHub-hosted Copilot coding agent each require separate consent. After
+initialization:
 
 ```bash
 liftoff validate

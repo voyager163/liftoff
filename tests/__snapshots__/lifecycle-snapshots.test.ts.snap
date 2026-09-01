@@ -10,7 +10,7 @@ exports[`complete onboarding screens > snapshots the compact conflict consent an
 Initialize the project and prepare its workstation
 ◆: Discover project context
 ◆: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ◆: Review resolved plan
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
 Project                snapshot-app
@@ -21,6 +21,8 @@ Region                 East US / eastus
 Frontend               Not generated
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
+OpenSpec workflows     12 workflows; skills and commands
+Copilot cloud agent    Disabled (default)
 Repository governance  Single-maintainer GitFlow policy 1
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
@@ -62,6 +64,8 @@ Region                 East US / eastus
 Frontend               Not generated
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
+OpenSpec workflows     12 workflows; skills and commands
+Copilot cloud agent    Disabled (default)
 Repository governance  Single-maintainer GitFlow policy 1
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
@@ -112,6 +116,8 @@ Region                 East US / eastus
 Frontend               Not generated
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
+OpenSpec workflows     12 workflows; skills and commands
+Copilot cloud agent    Disabled (default)
 Repository governance  Single-maintainer GitFlow policy 1
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
@@ -138,10 +144,12 @@ Azure CLI       advisory  ready  Version 2.70.0
 OpenSpec        blocking  ready  Version 1.11.0
 GitHub Copilot  blocking  ready  Version 1.0.0
 
+◆: Check OpenSpec global profile
+✓ OpenSpec global profile: custom; both; 12 workflows
 ◆: Stage project files
 ◆: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 ◆: Validate staged project
 ◆: Merge staged project
 <workspace>/snapshot-app
@@ -149,6 +157,8 @@ Configured integrations
 ───────────────────────
 - OpenSpec 1.11.0
 - GitHub Copilot
+- OpenSpec global profile: verified; 12 workflows; skills and commands
+- GitHub Copilot cloud agent: disabled
 - Repository governance: Single-maintainer GitFlow policy 1; local handoff
 generated, live activation deferred
 
@@ -208,6 +218,8 @@ Region                 East US / eastus
 Frontend               Not generated
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
+OpenSpec workflows     12 workflows; skills and commands
+Copilot cloud agent    Disabled (default)
 Repository governance  Single-maintainer GitFlow policy 1
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
@@ -233,10 +245,12 @@ Azure CLI       advisory  ready  Version 2.70.0
 OpenSpec        blocking  ready  Version 1.11.0
 GitHub Copilot  blocking  ready  Version 1.0.0
 
+◆: Check OpenSpec global profile
+✓ OpenSpec global profile: custom; both; 12 workflows
 ◆: Stage fresh migration project
 ◆: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 ◆: Copy filtered legacy source
 <workspace>/legacy-node
 ◆: Validate staged migration
@@ -246,6 +260,8 @@ Configured integrations
 ───────────────────────
 - OpenSpec 1.11.0
 - GitHub Copilot
+- OpenSpec global profile: verified; 12 workflows; skills and commands
+- GitHub Copilot cloud agent: disabled
 
 Deferred advisory checks
 ────────────────────────
@@ -299,6 +315,8 @@ Region                 East US / eastus
 Frontend               Not generated
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
+OpenSpec workflows     12 workflows; skills and commands
+Copilot cloud agent    Disabled (default)
 Repository governance  Single-maintainer GitFlow policy 1
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
@@ -390,7 +408,7 @@ exports[`complete onboarding screens > snapshots the plain conflict consent and 
 
 Stage: Discover project context
 Stage: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: Stage: Review resolved plan
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: Stage: Review resolved plan
 Resolved project plan
 Project: snapshot-app
 Project type: Standard application
@@ -400,6 +418,8 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+OpenSpec workflows: 12 workflows; skills and commands
+Copilot cloud agent: Disabled (default)
 Repository governance: Single-maintainer GitFlow policy 1
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
@@ -435,6 +455,8 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+OpenSpec workflows: 12 workflows; skills and commands
+Copilot cloud agent: Disabled (default)
 Repository governance: Single-maintainer GitFlow policy 1
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
@@ -476,6 +498,8 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+OpenSpec workflows: 12 workflows; skills and commands
+Copilot cloud agent: Disabled (default)
 Repository governance: Single-maintainer GitFlow policy 1
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
@@ -496,16 +520,20 @@ Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
 Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.11.0
 Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
 
+Stage: Check OpenSpec global profile
+[ok] OpenSpec global profile: custom; both; 12 workflows
 Stage: Stage project files
 Stage: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 Stage: Validate staged project
 Stage: Merge staged project
 <workspace>/snapshot-app
 Configured integrations
 - OpenSpec 1.11.0
 - GitHub Copilot
+- OpenSpec global profile: verified; 12 workflows; skills and commands
+- GitHub Copilot cloud agent: disabled
 - Repository governance: Single-maintainer GitFlow policy 1; local handoff generated, live activation deferred
 
 Deferred advisory checks
@@ -551,6 +579,8 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+OpenSpec workflows: 12 workflows; skills and commands
+Copilot cloud agent: Disabled (default)
 Repository governance: Single-maintainer GitFlow policy 1
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
@@ -570,10 +600,12 @@ Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
 Requirement: OpenSpec | Level: blocking | State: ready | Detail: Version 1.11.0
 Requirement: GitHub Copilot | Level: blocking | State: ready | Detail: Version 1.0.0
 
+Stage: Check OpenSpec global profile
+[ok] OpenSpec global profile: custom; both; 12 workflows
 Stage: Stage fresh migration project
 Stage: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 Stage: Copy filtered legacy source
 <workspace>/legacy-node
 Stage: Validate staged migration
@@ -582,6 +614,8 @@ Stage: Merge fresh migration target
 Configured integrations
 - OpenSpec 1.11.0
 - GitHub Copilot
+- OpenSpec global profile: verified; 12 workflows; skills and commands
+- GitHub Copilot cloud agent: disabled
 
 Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
@@ -622,6 +656,8 @@ Region: East US / eastus
 Frontend: Not generated
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
+OpenSpec workflows: 12 workflows; skills and commands
+Copilot cloud agent: Disabled (default)
 Repository governance: Single-maintainer GitFlow policy 1
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
@@ -700,7 +736,7 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Discover project context
 ◆: Configure project
-? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ◆: Review resolved plan
+? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
 │ Project                snapshot-app                                                          │
 │ Project type           Standard application                                                  │
@@ -710,6 +746,8 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 │ Frontend               Not generated                                                         │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
+│ OpenSpec workflows     12 workflows; skills and commands                                     │
+│ Copilot cloud agent    Disabled (default)                                                    │
 │ Repository governance  Single-maintainer GitFlow policy 1                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
@@ -760,6 +798,8 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 │ Frontend               Not generated                                                         │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
+│ OpenSpec workflows     12 workflows; skills and commands                                     │
+│ Copilot cloud agent    Disabled (default)                                                    │
 │ Repository governance  Single-maintainer GitFlow policy 1                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
@@ -813,6 +853,8 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 │ Frontend               Not generated                                                         │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
+│ OpenSpec workflows     12 workflows; skills and commands                                     │
+│ Copilot cloud agent    Disabled (default)                                                    │
 │ Repository governance  Single-maintainer GitFlow policy 1                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
@@ -837,16 +879,20 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 │ OpenSpec        blocking  ready  Version 1.11.0                                              │
 │ GitHub Copilot  blocking  ready  Version 1.0.0                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+◆: Check OpenSpec global profile
+✓ OpenSpec global profile: custom; both; 12 workflows
 ◆: Stage project files
 ◆: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 ◆: Validate staged project
 ◆: Merge staged project
 <workspace>/snapshot-app
 ┌─ Configured integrations ────────────────────────────────────────────────────────────────────┐
 │ • OpenSpec 1.11.0                                                                            │
 │ • GitHub Copilot                                                                             │
+│ • OpenSpec global profile: verified; 12 workflows; skills and commands                       │
+│ • GitHub Copilot cloud agent: disabled                                                       │
 │ • Repository governance: Single-maintainer GitFlow policy 1; local handoff generated, live   │
 │ activation deferred                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -905,6 +951,8 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ Frontend               Not generated                                                         │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
+│ OpenSpec workflows     12 workflows; skills and commands                                     │
+│ Copilot cloud agent    Disabled (default)                                                    │
 │ Repository governance  Single-maintainer GitFlow policy 1                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
@@ -928,10 +976,12 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ OpenSpec        blocking  ready  Version 1.11.0                                              │
 │ GitHub Copilot  blocking  ready  Version 1.0.0                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
+◆: Check OpenSpec global profile
+✓ OpenSpec global profile: custom; both; 12 workflows
 ◆: Stage fresh migration project
 ◆: Initialize spec-driven framework
 OpenSpec 1.11.0
-$ openspec init --tools github-copilot --profile core
+$ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 ◆: Copy filtered legacy source
 <workspace>/legacy-node
 ◆: Validate staged migration
@@ -940,6 +990,8 @@ $ openspec init --tools github-copilot --profile core
 ┌─ Configured integrations ────────────────────────────────────────────────────────────────────┐
 │ • OpenSpec 1.11.0                                                                            │
 │ • GitHub Copilot                                                                             │
+│ • OpenSpec global profile: verified; 12 workflows; skills and commands                       │
+│ • GitHub Copilot cloud agent: disabled                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
 │ • GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials.   │
@@ -994,6 +1046,8 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Frontend               Not generated                                                         │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
+│ OpenSpec workflows     12 workflows; skills and commands                                     │
+│ Copilot cloud agent    Disabled (default)                                                    │
 │ Repository governance  Single-maintainer GitFlow policy 1                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │

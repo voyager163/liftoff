@@ -93,6 +93,16 @@ const projectFlags = {
     'single-maintainer-gitflow'
   ),
   'code-apps-plugin': booleanFlag('Request the Microsoft Code Apps agent plugin (Preview)', 'Framework', true, 'false'),
+  'copilot-cloud': booleanFlag(
+    'Set up the GitHub-hosted Copilot coding agent for OpenSpec',
+    'Framework',
+    true,
+    'false'
+  ),
+  'configure-openspec-profile': booleanFlag(
+    'Authorize the required global OpenSpec workflow profile',
+    'Consent'
+  ),
   config: valueFlag('Load deterministic project options from JSON', 'Project', 'file')
 } as const;
 
