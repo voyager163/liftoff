@@ -109,6 +109,12 @@ normal reviewed project change. Ordinary update and force cannot perform that
 migration, and the existing `liftoff migrate` command remains a fresh-target
 workflow for non-Liftoff sources.
 
+A project generated with `pattern: generic` follows the same ownership rule.
+When its specialization becomes clear, migrate the project-owned routes,
+orchestration, data, and infrastructure through a reviewed project change.
+Changing the configuration to RAG, chatbot, or another pattern and running
+`liftoff update` is intentionally rejected.
+
 ## Existing non-Liftoff application
 
 Use migration when you want a fresh governed scaffold and a filtered source

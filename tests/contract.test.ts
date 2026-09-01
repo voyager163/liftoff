@@ -18,6 +18,7 @@ const matrix: Array<{ key: string; options: ProjectOptions }> = [
     key: pattern.id,
     options: { projectName: `${pattern.id} App`, pattern: pattern.id, cloud: 'azure' }
   })),
+  { key: 'generic+frontend', options: { projectName: 'Generic Frontend App', pattern: 'generic', cloud: 'azure', includeFrontend: true } },
   { key: 'standard-python', options: { projectName: 'Standard Python', projectType: 'standard', apiStack: 'python', cloud: 'azure' } },
   { key: 'standard-node', options: { projectName: 'Standard Node', projectType: 'standard', apiStack: 'node', cloud: 'azure' } },
   { key: 'standard-go', options: { projectName: 'Standard Go', projectType: 'standard', apiStack: 'go', cloud: 'azure' } },
@@ -212,6 +213,7 @@ describe('manifest contract', () => {
         apiStack: 'node',
         cloud: 'azure'
       });
+
       await writeArtifacts(projectRoot, artifacts);
 
       const manifest = await loadManifest(projectRoot);
@@ -223,6 +225,32 @@ describe('manifest contract', () => {
         frontend: false,
         environments: ['dev', 'test', 'prod']
       });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('records and reloads generic as an explicit schema-v6 GenAI identity', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-generic-contract-'));
+    const projectRoot = path.join(tempRoot, 'generic-app');
+    try {
+      await writeArtifacts(projectRoot, renderMatrixEntry({
+        projectName: 'Generic App',
+        pattern: 'generic',
+        cloud: 'azure'
+      }));
+
+      const manifest = await loadManifest(projectRoot);
+      expect(manifest.artifactVersion).toBe(6);
+      expect(manifest.project.workload).toMatchObject({
+        kind: 'genai',
+        apiStack: 'python-fastapi',
+        pattern: 'generic'
+      });
+      expect(manifest.projectArtifacts.length).toBeGreaterThan(0);
+      expect(manifest.projectArtifacts.every((artifact) =>
+        artifact.generationHash.startsWith('sha256:')
+      )).toBe(true);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

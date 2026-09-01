@@ -41,11 +41,12 @@ The system SHALL expose the running package version through `liftoff --version` 
 - **THEN** the reported version exactly matches the packed package version
 
 ### Requirement: CLI captures required project decisions
-The system SHALL capture the project name, project type, spec-driven workflow, and one or more AI coding agents before generating files. For GenAI projects it SHALL also capture the GenAI pattern, target cloud provider, deployment region, frontend selection, and environment selection while using the approved Python/FastAPI/PydanticAI stack. For standard projects it SHALL capture one approved API stack, target cloud provider, deployment region, frontend selection, and environment selection without requiring a GenAI pattern. For Power Apps code apps it SHALL capture the optional Microsoft Code Apps plugin preference without requiring API, GenAI, cloud, region, frontend, or API environment decisions. When Spec Kit has multiple selected agents, the system SHALL also capture exactly one default agent.
+The system SHALL capture the project name, project type, spec-driven workflow, and one or more AI coding agents before generating files. For GenAI projects it SHALL also capture the GenAI pattern, target cloud provider, deployment region, frontend selection, and environment selection while using the approved Python/FastAPI/PydanticAI stack. The GenAI pattern choice SHALL offer an explicit generic option for users who are not ready to select a specialization and SHALL default to that option. For standard projects it SHALL capture one approved API stack, target cloud provider, deployment region, frontend selection, and environment selection without requiring a GenAI pattern. For Power Apps code apps it SHALL capture the optional Microsoft Code Apps plugin preference without requiring API, GenAI, cloud, region, frontend, or API environment decisions. When Spec Kit has multiple selected agents, the system SHALL also capture exactly one default agent.
 
 #### Scenario: Interactive GenAI project decisions
 - **WHEN** a developer runs `liftoff init` without all required options and selects a GenAI project
-- **THEN** the system prompts for missing common decisions, the GenAI pattern, cloud decisions, and one or more coding agents
+- **THEN** the system prompts for missing common decisions, offers `I'm not sure yet - Generic GenAI starter` before specialized patterns, captures cloud decisions and one or more coding agents
+- **AND** the generic option is selected when the developer accepts the pattern default
 - **AND** the system defaults the spec-driven workflow to OpenSpec
 
 #### Scenario: Interactive standard project decisions
@@ -72,15 +73,19 @@ The system SHALL capture the project name, project type, spec-driven workflow, a
 - **THEN** the system asks which selected agent is the default integration before generation
 
 ### Requirement: CLI supports all approved GenAI patterns
-The system SHALL allow developers to select RAG, chatbot/conversational AI, agent-based, prompt-based app, multi-agent system, fine-tuned model app, real-time/streaming AI, or AI workflow/pipeline as the GenAI application pattern.
+The system SHALL allow developers to select generic/undecided, RAG, chatbot/conversational AI, agent-based, prompt-based app, multi-agent system, fine-tuned model app, real-time/streaming AI, or AI workflow/pipeline as the GenAI application pattern. Interactive and noninteractive selection SHALL resolve the stable identifier `generic` rather than silently mapping uncertainty to another specialization.
+
+#### Scenario: Select generic pattern
+- **WHEN** a developer chooses `I'm not sure yet - Generic GenAI starter` or supplies `--pattern generic`
+- **THEN** the system records the `generic` pattern and resolves a neutral GenAI project plan
 
 #### Scenario: Select RAG pattern
 - **WHEN** a developer selects the RAG pattern
 - **THEN** the system includes RAG-specific decisions in the project plan, including retrieval and ingestion scaffold decisions
 
 #### Scenario: Select each supported pattern
-- **WHEN** a developer selects any one of the eight approved GenAI patterns
-- **THEN** the system accepts the pattern and maps it to a pattern-specific scaffold module
+- **WHEN** a developer selects any one of the nine approved GenAI patterns
+- **THEN** the system accepts the pattern and maps it to its explicit scaffold definition
 
 ### Requirement: CLI handles planned cloud providers explicitly
 The system SHALL fully support Azure in V1 and identify AWS and GCP as planned provider adapters.
@@ -240,7 +245,7 @@ The system SHALL expose commands for project initialization, planning, managed-c
 
 #### Scenario: List supported patterns
 - **WHEN** a developer runs `liftoff patterns`
-- **THEN** the system lists all eight GenAI patterns and their V1 scaffold status
+- **THEN** the system lists all nine GenAI patterns, including the generic uncertainty option, with their scaffold status
 
 #### Scenario: Search regions
 - **WHEN** a developer runs `liftoff regions search korea --cloud azure`

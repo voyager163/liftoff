@@ -57,6 +57,8 @@ project/
   `backend/cmd/api` plus `backend/internal`.
 - `backend/orchestration` appears only in GenAI projects and contains
   PydanticAI agents, prompts, model configuration, and integration boundaries.
+  The generic pattern creates `generic_agent.py`, `generic.md`, and the neutral
+  `/api/ai/run` route without specialized subdirectories.
 - `database` contains SQLAlchemy/Alembic for Python, Drizzle for Node.js, or
   pgx/Goose for Go.
 - `environments/<env>` contains environment-specific backend settings and
@@ -81,7 +83,7 @@ project/
 - `frontend` is generated only when selected. It uses Vue 3 and Tailwind with
   a generic API starter or a GenAI experience matched to the pattern.
 - `functions/<worker-name>` appears for worker-enabled RAG, agent, multi-agent,
-  and workflow patterns.
+  and workflow patterns. It does not appear for the generic pattern.
 - `backend/workers` contains backend-adjacent or containerized worker code,
   separate from Azure Functions runtime files.
 - `migration/legacy` contains the filtered source copy created by migration.

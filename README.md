@@ -55,6 +55,11 @@ generation and remain outside every update mode, including `--force`. Use
 | **API application** | Python/FastAPI, Node.js/Fastify, or Go/Huma API, database assets, optional frontend, Docker, and Azure OpenTofu | Service configuration, cloud sign-in, deployment |
 | **Power Apps code app** | Microsoft's pinned React, Vite, TypeScript, Power Apps SDK starter and project-local CLI | Environment binding, connectors, `power-apps push` |
 
+If the GenAI specialization is not yet known, choose **I'm not sure yet -
+Generic GenAI starter** or use `--pattern generic`. It creates a neutral
+PydanticAI invocation foundation without assuming RAG, chat, agents, streaming,
+fine-tuning, or workflows.
+
 Every workload can use **OpenSpec** or **Spec Kit** with **GitHub Copilot**,
 **Claude Code**, or both. The optional Microsoft Code Apps agent plugin remains an
 explicit, Preview-only choice.

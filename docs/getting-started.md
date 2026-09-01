@@ -50,6 +50,8 @@ The guided flow asks for:
 
 1. Project identity and workload: GenAI, API, or Power Apps code app.
 2. Only the architecture choices applicable to that workload.
+   For GenAI, **I'm not sure yet - Generic GenAI starter** is the safe default
+   when no specialization has been selected.
 3. Whether to generate the default single-maintainer GitFlow repository-
    governance handoff. Accepting it creates local files only.
 4. OpenSpec or Spec Kit.
@@ -69,6 +71,8 @@ If the global OpenSpec profile differs, Liftoff displays the exact global change
 and asks separately before staging.
 Governance activation is a later selected-agent action after commit and push;
 see [repository governance](repository-governance.md).
+
+For deterministic generic generation, use `--type genai --pattern generic`.
 
 ## 3. Understand the target
 

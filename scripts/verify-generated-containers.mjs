@@ -14,7 +14,8 @@ const imageTags = [
   'liftoff-template-go:verify',
   'liftoff-template-frontend:verify',
   'liftoff-template-genai-worker:verify',
-  'liftoff-template-genai-non-worker:verify'
+  'liftoff-template-genai-non-worker:verify',
+  'liftoff-template-genai-generic:verify'
 ];
 
 function run(args, cwd) {
@@ -148,6 +149,19 @@ try {
         tag: 'liftoff-template-genai-non-worker:verify',
         registryKind: 'python'
       }]
+    },
+    {
+      name: 'genai-generic',
+      plan: buildProjectPlan({
+        projectName: 'Container GenAI Generic',
+        pattern: 'generic',
+        cloud: 'azure'
+      }, { requireProjectName: true }),
+      builds: [{
+        pathParts: [],
+        tag: 'liftoff-template-genai-generic:verify',
+        registryKind: 'python'
+      }]
     }
   ];
 
@@ -166,7 +180,7 @@ try {
     }
   }
   console.log(
-    'Generated Python, Node.js, Go, frontend, and worker/non-worker GenAI containers verified.'
+    'Generated Python, Node.js, Go, frontend, and worker/non-worker/generic GenAI containers verified.'
   );
 } finally {
   for (const imageTag of imageTags) {

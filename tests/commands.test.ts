@@ -224,6 +224,8 @@ describe('commands', () => {
     const code = await runCommand(parseArgs(['patterns']), { cwd: process.cwd(), stdout, stderr });
 
     expect(code).toBe(0);
+    expect(stdout.text()).toContain('generic');
+    expect(stdout.text()).toContain('Generic GenAI Starter');
     expect(stdout.text()).toContain('multi-agent');
     expect(stdout.text()).toContain('fine-tuned');
     expect(stderr.text()).toBe('');

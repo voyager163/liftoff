@@ -67,6 +67,11 @@ Common noninteractive inputs include:
 --configure-openspec-profile
 ```
 
+For an undecided GenAI architecture, use `--type genai --pattern generic`.
+Interactive initialization presents **I'm not sure yet - Generic GenAI
+starter** first and accepts it as the default. `liftoff patterns` lists this
+stable `generic` identifier alongside the eight specialized patterns.
+
 Power Apps rejects API, pattern, cloud, region, frontend, and API environment
 options rather than ignoring them.
 

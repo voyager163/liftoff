@@ -17,8 +17,9 @@ import {
 import { workstationRequirementCatalog } from '../src/workstation-catalog.js';
 
 describe('catalogs', () => {
-  it('defines all eight GenAI patterns with scaffold status', () => {
+  it('defines all nine GenAI patterns with generic first', () => {
     expect(patterns.map((pattern) => pattern.id)).toEqual([
+      'generic',
       'rag',
       'chatbot',
       'agent',
@@ -29,6 +30,14 @@ describe('catalogs', () => {
       'workflow'
     ]);
     expect(patterns.every((pattern) => pattern.scaffoldStatus)).toBe(true);
+    expect(patterns[0]).toMatchObject({
+      id: 'generic',
+      label: 'Generic GenAI Starter',
+      aliases: ['generic', 'undecided', 'unsure', 'not-sure'],
+      scaffoldStatus: 'foundation',
+      routePrefix: '/api/ai',
+      worker: false
+    });
   });
 
   it('marks Azure available and AWS/GCP planned', () => {

@@ -158,6 +158,76 @@ describe('manifest validation', () => {
     });
   });
 
+  it.each([
+    ['manifest-v2.json', false],
+    ['manifest-v4-genai.json', true]
+  ] as const)('accepts generic identity in supported legacy fixture %s', async (
+    fixtureName,
+    nestedWorkload
+  ) => {
+    const root = await namedManifestRoot(fixtureName, (manifest) => {
+      const project = manifest.project as Record<string, unknown>;
+      if (nestedWorkload) {
+        (project.workload as Record<string, unknown>).pattern = 'generic';
+      } else {
+        project.pattern = 'generic';
+      }
+    });
+    const manifest = await loadManifest(root);
+    expect(manifest.project.workload).toMatchObject({
+      kind: 'genai',
+      pattern: 'generic'
+    });
+  });
+
+  it('accepts generic identity in schema v5 and rejects missing or unknown patterns', async () => {
+    const genericV3Root = await manifestRoot((manifest) => {
+      manifest.artifactVersion = 3;
+      const project = manifest.project as Record<string, unknown>;
+      project.projectType = 'genai';
+      project.apiStack = 'python-fastapi';
+      project.pattern = 'generic';
+      project.agents = ['github-copilot'];
+      manifest.framework = {
+        state: 'initialized',
+        adapter: 'openspec',
+        contractVersion: '1.11.0'
+      };
+    });
+    expect((await loadManifest(genericV3Root)).project.workload).toMatchObject({
+      kind: 'genai',
+      pattern: 'generic'
+    });
+
+    const genericV5 = await loadManifest(await v5ManifestRoot({
+      projectType: 'genai',
+      apiStack: 'python',
+      pattern: 'generic'
+    }));
+    expect(genericV5.project.workload).toMatchObject({
+      kind: 'genai',
+      pattern: 'generic'
+    });
+
+    for (const value of [undefined, 'not-a-pattern']) {
+      const root = await namedManifestRoot('manifest-v4-genai.json', (manifest) => {
+        const workload = (manifest.project as {
+          workload: Record<string, unknown>;
+        }).workload;
+        if (value === undefined) {
+          delete workload.pattern;
+        } else {
+          workload.pattern = value;
+        }
+      });
+      await expect(loadManifest(root)).rejects.toThrow(
+        value === undefined
+          ? /pattern must be a non-empty string/
+          : /require a valid pattern/
+      );
+    }
+  });
+
   it('loads immutable Power Apps starter identity and plugin preference from v4', async () => {
     const root = await namedManifestRoot('manifest-v4-power-apps.json');
     const manifest = await loadManifest(root);

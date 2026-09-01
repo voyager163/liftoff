@@ -173,6 +173,14 @@ ordinary update intentionally reports nothing for those project-owned
 differences. Review and migrate them as production changes. The existing
 `liftoff migrate` command does not perform an in-place Liftoff project upgrade.
 
+## Generic GenAI project now needs a specialization
+
+`pattern: generic` records that no specialized architecture was selected at
+generation time. Do not change it to RAG, chatbot, agent, streaming,
+fine-tuned, multi-agent, or workflow and expect `liftoff update` to rewrite the
+application. Design and apply that transition as a reviewed project migration;
+the existing project files and infrastructure are project-owned.
+
 ## Governance handoff exists but nothing is enforced
 
 That is the expected initial state. The manifest records `handoff-generated`,
