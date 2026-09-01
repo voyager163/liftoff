@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { writeFileSync } from 'node:fs';
 import {
   access,
   mkdir,
@@ -116,7 +117,7 @@ class TriggerCaptureStream extends CaptureStream {
 
   constructor(
     private readonly trigger: string,
-    private readonly action: () => Promise<void>
+    private readonly action: () => void
   ) {
     super();
   }
@@ -133,11 +134,12 @@ class TriggerCaptureStream extends CaptureStream {
       return;
     }
     this.triggered = true;
-    this.action().then(
-      () => callback(),
-      (error: unknown) =>
-        callback(error instanceof Error ? error : new Error(String(error)))
-    );
+    try {
+      this.action();
+      callback();
+    } catch (error) {
+      callback(error instanceof Error ? error : new Error(String(error)));
+    }
   }
 }
 
@@ -791,7 +793,7 @@ describe('core-only update command', () => {
     const manifestBefore = await readFile(manifestPath, 'utf8');
     const stdout = new TriggerCaptureStream(
       'Apply safe Liftoff core changes',
-      () => writeFile(policyPath, '# concurrent policy\n')
+      () => writeFileSync(policyPath, '# concurrent policy\n')
     );
     const stderr = new CaptureStream();
 
