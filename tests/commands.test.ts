@@ -269,6 +269,9 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Single-maintainer GitFlow policy 1');
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
+      expect(stdout.text()).toContain('managed-core');
+      expect(stdout.text()).toContain('project (frontend)');
+      expect(stdout.text()).toContain('desired-state');
       expect(stdout.text()).toContain('live enforcement');
       expect(await readdir(tempRoot)).toEqual([]);
       expect(runner.calls).toEqual([]);
@@ -357,7 +360,7 @@ describe('commands', () => {
     }
   });
 
-  it('validates Power Apps identity, named artifacts, package metadata, and framework markers', async () => {
+  it('validates Power Apps provenance and framework markers without policing project bytes', async () => {
     const root = await createFixtureProject({
       projectName: 'Validate App',
       projectType: 'power-apps-code-app',
@@ -383,7 +386,7 @@ describe('commands', () => {
 
       const manifestText = await readFile(manifestPath, 'utf8');
       const manifest = JSON.parse(manifestText);
-      manifest.artifacts = manifest.artifacts.filter(
+      manifest.projectArtifacts = manifest.projectArtifacts.filter(
         (artifact: { logicalName: string }) => artifact.logicalName !== 'power-apps-package'
       );
       await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
@@ -402,15 +405,13 @@ describe('commands', () => {
       const lock = JSON.parse(lockText);
       lock.name = 'wrong-project';
       await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-      const badMetadata = new CaptureStream();
+      const projectOwnedEdit = new CaptureStream();
       expect(await runCommand(parseArgs(['validate', '--json']), {
         cwd: root,
-        stdout: badMetadata,
+        stdout: projectOwnedEdit,
         stderr: new CaptureStream()
-      })).toBe(1);
-      expect(JSON.parse(badMetadata.text()).issues).toContain(
-        'package.json and package-lock.json must record the same project name.'
-      );
+      })).toBe(0);
+      expect(JSON.parse(projectOwnedEdit.text()).issues).toEqual([]);
       await writeFile(lockPath, lockText);
 
       await rm(markerPath);
@@ -896,7 +897,7 @@ describe('commands', () => {
           { cwd: projectRoot, stdout: updateOutput, stderr: new CaptureStream() }
         );
         expect(update).toBe(0);
-        expect(updateOutput.text()).toContain('No drift');
+        expect(updateOutput.text()).toContain('Liftoff core is current');
 
         const doctorOutput = new CaptureStream();
         await runCommand(

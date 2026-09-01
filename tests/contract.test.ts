@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { patterns } from '../src/catalogs.js';
+import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import { loadManifest, validateGeneratedProject, writeArtifacts } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -54,12 +55,54 @@ describe('manifest contract', () => {
       expect(second.length).toBe(first.length);
       for (const [index, artifact] of first.entries()) {
         expect(
-          second[index]?.content,
+          second[index],
           `non-deterministic rendering for "${artifact.logicalName}" in plan "${entry.key}": ` +
             'artifact content must depend only on the plan and template code (no timestamps, randomness, or environment)'
-        ).toBe(artifact.content);
+        ).toEqual(artifact);
       }
     }
+  });
+
+  it('classifies every artifact explicitly and keeps managed core on an exact allowlist', () => {
+    const renderedManagedCore = new Set<string>();
+    for (const entry of matrix) {
+      for (const artifact of renderMatrixEntry(entry.options)) {
+        expect(artifact.lifecycle).toMatch(
+          /^(managed-core|project|desired-state|framework|seed|manifest)$/
+        );
+        for (const part of artifact.pathParts) {
+          expect(part).not.toMatch(/[\\/\0]/);
+          expect(part).not.toBe('');
+        }
+        if (artifact.lifecycle === 'project') {
+          expect(artifact.provisioningGroup).toMatch(
+            /^(base|frontend|power-apps-starter|environment:(dev|test|prod))$/
+          );
+        } else {
+          expect(artifact.provisioningGroup).toBeUndefined();
+        }
+        if (artifact.lifecycle === 'managed-core') {
+          renderedManagedCore.add(artifact.logicalName);
+          expect(managedCoreLogicalNames).toContain(artifact.logicalName);
+        }
+        if (artifact.logicalName === 'liftoff-config') {
+          expect(artifact.lifecycle).toBe('desired-state');
+        }
+      }
+    }
+    for (const artifact of renderMatrixEntry({
+      projectName: 'All Core Launchers',
+      pattern: 'prompt',
+      cloud: 'azure',
+      agents: ['copilot', 'claude']
+    })) {
+      if (artifact.lifecycle === 'managed-core') {
+        renderedManagedCore.add(artifact.logicalName);
+      }
+    }
+    expect([...renderedManagedCore].sort()).toEqual(
+      [...managedCoreLogicalNames].sort()
+    );
   });
 
   it('keeps host-specific tool versions out of deterministic rendering', () => {
@@ -94,9 +137,10 @@ describe('manifest contract', () => {
       });
       expect(typeof manifest.liftoffVersion).toBe('string');
       expect(manifest.liftoffVersion.length).toBeGreaterThan(0);
-      expect(manifest.artifacts.length).toBeGreaterThan(0);
-      for (const artifact of manifest.artifacts) {
-        expect(artifact.contentHash).toMatch(/^sha256:[0-9a-f]{64}$/);
+      expect(manifest.projectArtifacts.length).toBeGreaterThan(0);
+      expect(manifest.managedArtifacts).toEqual([]);
+      for (const artifact of manifest.projectArtifacts) {
+        expect(artifact.generationHash).toMatch(/^sha256:[0-9a-f]{64}$/);
         expect(Array.isArray(artifact.pathParts)).toBe(true);
       }
     } finally {
@@ -124,7 +168,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('writes schema v5 with framework and local governance identity', async () => {
+  it('writes schema v6 with framework, governance, and separated ownership', async () => {
     const artifacts = renderMatrixEntry({
       projectName: 'Manifest V3',
       pattern: 'rag',
@@ -139,7 +183,7 @@ describe('manifest contract', () => {
       governance: { profile: string; policyVersion: string; state: string };
     };
 
-    expect(manifest.artifactVersion).toBe(5);
+    expect(manifest.artifactVersion).toBe(6);
     expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
     expect(manifest.framework).toEqual({
@@ -152,6 +196,10 @@ describe('manifest contract', () => {
       policyVersion: '1',
       state: 'handoff-generated'
     });
+    expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)
+      .toHaveLength(5);
+    expect((manifest as unknown as { projectArtifacts: unknown[] }).projectArtifacts.length)
+      .toBeGreaterThan(0);
   });
 
   it('records standard project identity without a GenAI pattern', async () => {
@@ -266,10 +314,16 @@ describe('manifest contract', () => {
       await writeArtifacts(projectRoot, artifacts);
 
       const manifest = await loadManifest(projectRoot);
-      for (const artifact of manifest.artifacts) {
+      for (const artifact of manifest.managedArtifacts) {
         const bytes = await readFile(path.join(projectRoot, ...artifact.pathParts));
         const diskHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
         expect(diskHash, `hash mismatch for ${artifact.logicalName}`).toBe(artifact.contentHash);
+      }
+      for (const artifact of manifest.projectArtifacts) {
+        const bytes = await readFile(path.join(projectRoot, ...artifact.pathParts));
+        const diskHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+        expect(diskHash, `generation hash mismatch for ${artifact.logicalName}`)
+          .toBe(artifact.generationHash);
       }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });

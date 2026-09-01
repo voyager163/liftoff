@@ -87,24 +87,24 @@ describe('Power Apps maintenance presentation', () => {
       const lock = JSON.parse(await readFile(lockPath, 'utf8'));
       lock.name = 'malformed-project';
       await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-      const malformedJson = await run(['validate', '--json'], root);
-      const malformedReport = JSON.parse(malformedJson.stdout);
-      const malformedHuman = await run(['validate'], root);
+      const productionEditJson = await run(['validate', '--json'], root);
+      const productionEditReport = JSON.parse(productionEditJson.stdout);
+      const productionEditHuman = await run(['validate'], root);
       expect({
         json: {
-          code: malformedJson.code,
-          valid: malformedReport.valid,
-          issues: malformedReport.issues
+          code: productionEditJson.code,
+          valid: productionEditReport.valid,
+          issues: productionEditReport.issues
         },
         human: {
-          code: malformedHuman.code,
-          stdout: malformedHuman.stdout.split('\n').filter((line) => line.includes('VALIDATE')),
-          stderr: malformedHuman.stderr
+          code: productionEditHuman.code,
+          stdout: productionEditHuman.stdout.split('\n').filter((line) => line.includes('VALIDATE')),
+          stderr: productionEditHuman.stderr
             .replaceAll(root, '<project>')
             .split('\n')
             .filter(Boolean)
         }
-      }).toMatchSnapshot('validate malformed states');
+      }).toMatchSnapshot('validate project-owned edit states');
     } finally {
       if (previousRegistry === undefined) {
         delete process.env.LIFTOFF_REGISTRY;

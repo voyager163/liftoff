@@ -138,25 +138,27 @@ Restore `liftoff.manifest.json` from version control or regenerate the project
 with the matching Liftoff version. Do not weaken path validation or retain a
 hand-edited unsafe path.
 
-## Update reports conflicts or orphans
+## Update reports managed-core conflicts or orphans
 
-`liftoff update` applies safe managed changes immediately and skips conflicts.
+`liftoff update` applies safe managed-core changes immediately and skips core
+conflicts.
 
 - Use `liftoff update --check` for a read-only human report or
   `liftoff update --check --json` for an automation drift gate.
-- Local or user-owned conflicts remain untouched by default.
+- Project-owned application files never enter the report or mutation set.
+- Managed-core conflicts remain untouched by default.
 - Use `liftoff update --force` only after reviewing every listed path and
-  deciding that each overwrite is intended.
-- Orphans are never deleted automatically.
-- Update reports dependency-definition impact but does not install
-  dependencies.
+  deciding that each core overwrite is intended. Force cannot cross into
+  project files or component-provisioning collisions.
+- Managed-core orphans are never deleted automatically.
+- Update neither changes nor installs project dependencies.
 
 Commit or copy local work before overwriting. Transaction rollback protects a
 failed update, but Liftoff keeps no backup after success.
 
 For a new governance policy or launcher conflict, review that exact local file
 before considering `liftoff update --force`; do not delete it or activate remote
-governance merely to make update pass. The schema-v5 manifest records
+governance merely to make update pass. The schema-v6 manifest records
 `handoff-partial` and no ownership entry for each preserved unrecorded conflict.
 Run `liftoff update --check` to inspect the remaining paths. Once each path is
 absent or matches the current artifact, plain update promotes the handoff to
@@ -164,6 +166,12 @@ absent or matches the current artifact, plain update promotes the handoff to
 managed handoff files into preserved orphans rather than deleting them; an
 unrecorded conflicting file remains user-owned and is not reported as an
 orphan.
+
+If a newer Liftoff release contains different source, dependencies, schemas,
+containers, environment files, Power Apps starter files, or infrastructure,
+ordinary update intentionally reports nothing for those project-owned
+differences. Review and migrate them as production changes. The existing
+`liftoff migrate` command does not perform an in-place Liftoff project upgrade.
 
 ## Governance handoff exists but nothing is enforced
 

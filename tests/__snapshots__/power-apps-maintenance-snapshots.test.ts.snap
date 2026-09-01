@@ -107,7 +107,7 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
         },
         {
           "id": undefined,
-          "label": "scaffold drift",
+          "label": "managed core",
           "severity": "ok",
           "state": undefined,
         },
@@ -163,24 +163,19 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
 ]
 `;
 
-exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > validate malformed states 1`] = `
+exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisory, malformed, and offline states > validate project-owned edit states 1`] = `
 {
   "human": {
-    "code": 1,
-    "stderr": [
-      "[error] Error: package.json and package-lock.json must record the same project name.",
-      "Remedy: Restore invalid generated files or the manifest from version control, then rerun validation.",
-    ],
+    "code": 0,
+    "stderr": [],
     "stdout": [
       "LIFTOFF / VALIDATE - Validate a generated Liftoff project",
     ],
   },
   "json": {
-    "code": 1,
-    "issues": [
-      "package.json and package-lock.json must record the same project name.",
-    ],
-    "valid": false,
+    "code": 0,
+    "issues": [],
+    "valid": true,
   },
 }
 `;

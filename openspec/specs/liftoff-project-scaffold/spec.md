@@ -184,39 +184,39 @@ The system SHALL document that `backend/workers` is for backend-adjacent or cont
 - **WHEN** a developer reads the generated project README or functions documentation
 - **THEN** the documentation explains where to place Azure Functions workers and where to place reusable orchestration logic
 
-### Requirement: Generated projects include a v5 Liftoff manifest
-The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v5. It SHALL record generating CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, optional workload preferences, and every durable Liftoff-generated artifact with logical name, category, OS-neutral path parts, and `sha256:` content hash. Framework-owned output and one-time seed content SHALL remain outside durable hash ownership.
+### Requirement: Generated projects include a v6 Liftoff manifest
+The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v6. It SHALL record the manifest-writing CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, optional workload preferences, managed-core artifacts with reconciliation hashes, and project artifacts with generation provenance. Framework-owned, desired-state, and one-time seed content SHALL remain outside managed-core hash authority.
 
 #### Scenario: Manifest accompanies every initialized workload
 - **WHEN** a developer initializes a GenAI, standard API, or Power Apps project
-- **THEN** the project root contains a schema-v5 manifest with exactly the workload and governance fields applicable to that project
+- **THEN** the project root contains a schema-v6 manifest with exactly the workload, governance, managed-core, and project-provenance fields applicable to that project
 
 #### Scenario: Manifest validates against generated files
 - **WHEN** `liftoff validate` runs against a freshly initialized project
-- **THEN** validation confirms every manifest artifact and declared framework integration marker exists on disk
+- **THEN** validation confirms every managed-core artifact and declared framework integration marker while structurally validating project provenance without requiring production bytes to remain unchanged
 
 #### Scenario: Enabled governance records only handoff state
 - **WHEN** a project enables `single-maintainer-gitflow`
-- **THEN** its v5 manifest records the profile, policy version, and `handoff-generated` state
+- **THEN** its v6 manifest records the profile, policy version, and `handoff-generated` state
 - **AND** it does not claim live GitHub enforcement
 
 #### Scenario: Disabled governance omits handoff artifacts
 - **WHEN** a project selects `none`
-- **THEN** its v5 manifest records governance as disabled
-- **AND** contains no governance policy, context, guide, or launcher artifact entry
+- **THEN** its v6 manifest records governance as disabled
+- **AND** contains no managed governance policy, context, guide, or launcher entry
 
 #### Scenario: Power Apps manifest omits API identity
 - **WHEN** a Power Apps code app is initialized
-- **THEN** its v5 workload identity records the pinned starter source and plugin preference
+- **THEN** its v6 workload identity records the pinned starter source and plugin preference
 - **AND** it does not invent an API stack, GenAI pattern, cloud, region, API frontend flag, or API environments
 
 #### Scenario: Framework and seed ownership remains external
 - **WHEN** an official framework initializer or Liftoff seed writes content
-- **THEN** those files are validated by their declared contracts without being added to the durable Liftoff artifact hash list
-- **AND** the separate repository-governance handoff remains durably hash-managed by exact logical name
+- **THEN** those files are validated by their declared contracts without being added to managed-core hash authority
+- **AND** the separate repository-governance handoff remains managed by exact logical name
 
 ### Requirement: Governance handoff participates in transactional staging
-Enabled governance artifacts SHALL be rendered into the same temporary staging area, assigned explicit ownership, validated, preflighted, and merged under the same collision, symlink, authorization, lock, and rollback contract as other durable Liftoff files.
+Enabled governance artifacts SHALL be rendered into the same temporary staging area, assigned explicit managed-core ownership, validated, preflighted, and merged under the same collision, symlink, authorization, lock, and rollback contract as other Liftoff-generated files.
 
 #### Scenario: Governance launcher collides with a file
 - **WHEN** an existing target contains different bytes at an enabled governance launcher path
@@ -401,21 +401,35 @@ The system SHALL configure the selected spec workflow for GitHub Copilot, Claude
 - **WHEN** Spec Kit is selected with Claude Code as default and Copilot as secondary
 - **THEN** the Copilot integration is installed using the tested skills option rather than deprecated agent-file output
 
-### Requirement: Framework output has an explicit ownership boundary
-The system SHALL distinguish Liftoff durable artifacts, framework-owned output, and write-once seed or overlay content. Liftoff SHALL hash and reconcile only its named durable artifacts, SHALL validate declared framework markers without adopting all framework files, and SHALL never delete or overwrite framework-owned files through pattern-based reconciliation.
+### Requirement: Generated output has an explicit ownership boundary
+The system SHALL distinguish Liftoff managed-core artifacts, project-owned scaffold artifacts, developer-owned desired state, framework-owned output, and write-once seed or overlay content. Initial generation SHALL write the complete resolved scaffold transactionally, but only exact managed-core logical artifacts SHALL retain post-generation hash authority. Project artifacts SHALL retain generation provenance without becoming update-managed. Liftoff SHALL validate declared framework markers without adopting all framework files and SHALL never infer ownership from directory patterns.
+
+#### Scenario: Initialization writes the complete scaffold
+- **WHEN** a developer initializes any supported workload
+- **THEN** Liftoff writes the resolved application, dependency, container, environment, documentation, infrastructure, framework, seed, desired-state, core, and manifest output
+- **AND** the completed manifest records each applicable ownership class
+
+#### Scenario: Update excludes project-owned files
+- **WHEN** generated application source, dependencies, schemas, containers, environment files, documentation, or infrastructure become production assets
+- **THEN** plain update and force cannot overwrite, restore, move, or delete them
 
 #### Scenario: Update excludes framework-owned core files
-- **WHEN** a framework CLI created scripts, commands, skills, or core templates that are not named Liftoff durable artifacts
+- **WHEN** a framework CLI created scripts, commands, skills, or core templates that are not named Liftoff managed-core artifacts
 - **THEN** plain `liftoff update` does not overwrite or delete those files
 
 #### Scenario: Validation checks framework integration markers
-- **WHEN** `liftoff validate` runs on a new project
-- **THEN** it verifies every Liftoff durable artifact and the declared framework and selected-agent markers
-- **AND** it does not require a Liftoff content hash for framework-owned files
+- **WHEN** `liftoff validate` runs on a generated project
+- **THEN** it verifies every managed-core artifact and declared framework and selected-agent marker
+- **AND** it validates project provenance structurally without requiring project files to retain generation bytes or locations
 
 #### Scenario: Liftoff seed content is not reconciled
 - **WHEN** Liftoff writes an initial OpenSpec change, constitution, or supported framework configuration overlay
-- **THEN** the content is available in the new project but is not treated as a normal update-managed template artifact
+- **THEN** the content is available in the new project but is not treated as an update-managed core artifact
+
+#### Scenario: Windows ownership paths remain confined
+- **WHEN** initialization or validation resolves artifact paths on Windows
+- **THEN** every ownership class uses OS-neutral path parts and platform-correct path resolution
+- **AND** traversal, embedded separators, absolute paths, and project-boundary escapes are rejected before access
 
 ### Requirement: Generated documentation explains workstation and framework readiness
 The system SHALL generate workload-specific project documentation that identifies the selected spec workflow, all configured coding agents, the default agent when applicable, framework-owned directories, applicable deferred advisory tools, and exact dependency, validation, and next-step commands.

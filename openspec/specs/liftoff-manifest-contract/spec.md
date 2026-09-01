@@ -4,46 +4,74 @@ Define the persistent contract between the Liftoff CLI and generated projects: t
 
 ## Requirements
 
-### Requirement: V5 manifests record generating identity and durable artifact hashes
-The system SHALL write `liftoff.manifest.json` with `artifactVersion` 5, a `liftoffVersion` field containing the exact semver of the CLI that wrote the manifest, deterministic workload, framework, selected-agent, and repository-governance identity, and a `contentHash` for every durable Liftoff artifact entry computed over the exact bytes written to disk and formatted as `sha256:<hex>`.
+### Requirement: V6 manifests separate managed-core authority and project provenance
+The system SHALL write `liftoff.manifest.json` with `artifactVersion` 6 and a `liftoffVersion` containing the exact semver of the CLI that wrote the manifest. The manifest SHALL record deterministic workload, framework, selected-agent, and repository-governance identity; managed-core entries SHALL carry `contentHash` values over the exact bytes Liftoff is authorized to reconcile, while project entries SHALL carry distinct generation provenance that cannot authorize update writes. Desired-state, framework-owned, and seed files SHALL remain outside managed-core hashes.
 
-#### Scenario: Generate a v5 manifest
+#### Scenario: Generate a v6 manifest
 - **WHEN** a developer initializes a project with `liftoff init`
-- **THEN** the generated manifest declares `artifactVersion` 5
-- **AND** records deterministic workload, framework, agent, governance, and durable artifact identity
+- **THEN** the generated manifest declares `artifactVersion` 6
+- **AND** separates managed-core entries from project generation provenance
 
-#### Scenario: Hashes match the written files
-- **WHEN** a durable Liftoff artifact, including a governance handoff file, is hashed with SHA-256
+#### Scenario: Managed-core hashes match written files
+- **WHEN** a managed-core artifact is hashed with SHA-256
 - **THEN** the result equals the hex portion of that artifact's manifest `contentHash`
 
-#### Scenario: External framework and seed output have no durable hash entry
-- **WHEN** an official framework initializer or one-time Liftoff seed creates a file
-- **THEN** the manifest does not present that file as a hash-managed durable artifact
+#### Scenario: Project hash records provenance only
+- **WHEN** a project artifact is generated
+- **THEN** its manifest entry records the generating Liftoff version and generation hash
+- **AND** changing, relocating, or deleting that file does not grant Liftoff reconciliation authority
 
-### Requirement: Manifest readers accept schemas 2 through 5
-The system SHALL read manifest schema versions 2, 3, 4, and 5, SHALL write only schema version 5, and SHALL reject any other `artifactVersion` with an error that names the found version, supported versions, and remedy.
+#### Scenario: External framework and seed output have no core hash
+- **WHEN** an official framework initializer or one-time Liftoff seed creates a file
+- **THEN** the manifest does not present that file as a managed-core artifact
+
+### Requirement: Manifest readers accept schemas 2 through 6
+The system SHALL read manifest schema versions 2, 3, 4, 5, and 6, SHALL write only schema version 6, and SHALL reject any other `artifactVersion` with an error that names the found version, supported versions, and remedy. Readers SHALL normalize v2 through v5 artifact entries through the current explicit lifecycle declarations without treating unknown entries as managed core.
 
 #### Scenario: Read a current manifest
-- **WHEN** a CLI command reads a valid manifest whose `artifactVersion` is 5
-- **THEN** it validates workload, framework, agent, governance, and artifact identity and proceeds normally
+- **WHEN** a CLI command reads a valid manifest whose `artifactVersion` is 6
+- **THEN** it validates workload, framework, agent, governance, managed-core, and project-provenance identity and proceeds normally
+
+#### Scenario: Read a supported v5 manifest
+- **WHEN** a CLI command reads a valid v5 manifest
+- **THEN** it preserves workload, framework, agent, governance, and recorded generation hashes
+- **AND** normalizes only explicitly declared core logical names as managed core
 
 #### Scenario: Read a supported v4 manifest
 - **WHEN** a CLI command reads a valid v4 manifest
 - **THEN** it preserves the v4 workload, framework, and agent declarations
-- **AND** normalizes governance as unspecified until plan defaults are applied by an appropriate command
+- **AND** defaults unknown or non-core durable entries to project provenance
 
 #### Scenario: Read a supported v2 or v3 manifest
 - **WHEN** a CLI command reads a valid legacy manifest
 - **THEN** it preserves the existing workload normalization and framework uncertainty contracts
-- **AND** does not fabricate live governance
+- **AND** defaults unknown or non-core durable entries to project provenance
 
 #### Scenario: Reject an unsupported manifest version
-- **WHEN** a CLI command reads a manifest whose `artifactVersion` is not 2, 3, 4, or 5
+- **WHEN** a CLI command reads a manifest whose `artifactVersion` is not 2, 3, 4, 5, or 6
 - **THEN** it exits 1 before artifact access
 - **AND** states the found and supported versions and corrective action
 
-### Requirement: V5 manifests distinguish governance handoff from enforcement
-A v5 manifest SHALL record an append-only governance profile identifier and
+### Requirement: Manifest migration releases broad legacy ownership atomically
+When plain update rewrites a supported v2 through v5 manifest, the system SHALL atomically convert explicit current core entries to managed-core state and all other durable entries to project provenance. It SHALL preserve each legacy generation hash and path as provenance even when the file is modified or absent, and SHALL perform no project-file mutation as a consequence of reclassification.
+
+#### Scenario: Rewrite a v5 production project
+- **WHEN** a v5 manifest records backend, frontend, database, container, environment, documentation, and infrastructure artifacts
+- **THEN** the v6 rewrite records those entries as project provenance
+- **AND** only exact current core entries retain content-hash update authority
+
+#### Scenario: Manifest transaction fails
+- **WHEN** ownership migration cannot atomically replace the manifest
+- **THEN** update exits 1 without claiming migration success
+- **AND** no project file is changed
+
+#### Scenario: Older CLI reads v6
+- **WHEN** a Liftoff version that supports only schemas through v5 reads the v6 manifest
+- **THEN** it rejects the unsupported schema before artifact access
+- **AND** cannot fall back to broad legacy write authority
+
+### Requirement: V5 and V6 manifests distinguish governance handoff from enforcement
+A v5 or v6 manifest SHALL record an append-only governance profile identifier and
 state. An enabled profile SHALL include the exact packaged policy version and
 use `handoff-generated` when every applicable handoff artifact is owned, or
 update-only `handoff-partial` when one or more unrecorded conflicting
@@ -62,7 +90,7 @@ monitoring, or release controls are live.
 #### Scenario: Record partial governance adoption
 - **WHEN** update preserves different bytes at an unrecorded applicable handoff destination
 - **THEN** the manifest records the selected profile, current policy version, and `handoff-partial`
-- **AND** omits the preserved destination from durable ownership while retaining exact hashes for every handoff artifact written or adopted
+- **AND** omits the preserved destination from managed ownership while retaining exact hashes for every handoff artifact written or adopted
 - **AND** a later update continues to classify that destination as an unrecorded conflict until the developer resolves it
 
 #### Scenario: Record disabled governance
@@ -72,7 +100,7 @@ monitoring, or release controls are live.
 
 #### Scenario: Host GitHub state differs
 - **WHEN** identical plans are rendered while live GitHub settings differ or cannot be observed
-- **THEN** their v5 manifest bytes remain identical
+- **THEN** their manifest bytes remain identical
 
 ### Requirement: Governance identifiers and logical names are append-only
 The governance profile identifiers, governance state identifiers, and logical names for the canonical policy, context, guide, and agent launchers SHALL follow the existing append-only contract. Generated artifact paths SHALL be represented as non-empty OS-neutral path-part arrays and validated inside the project root.
@@ -82,7 +110,7 @@ The governance profile identifiers, governance state identifiers, and logical na
 - **THEN** existing `single-maintainer-gitflow` and `none` identifiers retain their meanings
 
 #### Scenario: Validate governance paths on Windows
-- **WHEN** a v5 manifest is loaded on Windows
+- **WHEN** a v5 or v6 manifest is loaded on Windows
 - **THEN** governance path parts resolve under the project root using platform-native path handling
 - **AND** embedded separators, traversal, drive-qualified parts, UNC paths, and symlink escapes are rejected before access
 
@@ -221,20 +249,29 @@ The system SHALL record the selected spec workflow, a canonical ordered set of s
 - **WHEN** identical project plans are initialized with different compatible patch versions of Python, Go, Docker, or a coding agent
 - **THEN** those observed workstation versions do not change the rendered manifest bytes
 
-### Requirement: Framework-owned and seed files remain outside durable artifact ownership
-The system SHALL use manifest framework metadata and declared integration markers to validate official framework setup without adding framework-owned core output or write-once Liftoff seed content to the durable hashed artifact list. Reconciliation SHALL operate only on explicit durable logical names.
+### Requirement: Only managed-core files carry durable update authority
+The system SHALL use explicit logical artifact declarations to distinguish managed core, project provenance, desired state, official framework output, and one-time seed content. Reconciliation SHALL operate only on managed-core logical names plus separately authorized create-only component provisioning. It SHALL NOT select authority by directory pattern, filename, category, current disk hash, or unknown legacy identity.
 
 #### Scenario: Framework files are validated without hashes
 - **WHEN** an official initializer creates framework-owned commands, skills, scripts, or templates
-- **THEN** the manifest can identify the framework contract and integrations without creating durable Liftoff artifact entries for those paths
+- **THEN** the manifest can identify framework integration without creating managed-core entries for those paths
+
+#### Scenario: Project files retain provenance without authority
+- **WHEN** Liftoff generates source, dependencies, containers, environments, documentation, database files, or infrastructure
+- **THEN** the manifest records project provenance
+- **AND** update cannot use those generation hashes to restore or replace the files
 
 #### Scenario: Update uses explicit durable lookup
-- **WHEN** `liftoff update` calculates changes for a v3 project
-- **THEN** it looks up named durable artifacts from the manifest
-- **AND** it does not select files for replacement or deletion by matching a framework-directory pattern
+- **WHEN** `liftoff update` calculates changes for any supported manifest
+- **THEN** it looks up exact managed-core logical names from current lifecycle declarations
+- **AND** it does not select files for replacement or deletion by path or category matching
+
+#### Scenario: Unknown legacy artifact fails safe
+- **WHEN** a legacy manifest contains a logical name absent from the current lifecycle declarations
+- **THEN** the reader treats it as project provenance rather than managed core
 
 ### Requirement: Legacy v2 manifests normalize framework state without false claims
-The system SHALL continue to accept valid v2 manifests and SHALL normalize their missing framework and agent metadata as explicit legacy state. A v2 reader SHALL NOT infer that any agent integration was officially initialized. A later v3 or v4 rewrite SHALL preserve that uncertainty unless the project has gone through a supported framework-initialization flow.
+The system SHALL continue to accept valid v2 manifests and SHALL normalize their missing framework and agent metadata as explicit legacy state. A v2 reader SHALL NOT infer that any agent integration was officially initialized. A later v6 rewrite SHALL preserve that uncertainty unless the project has gone through a supported framework-initialization flow.
 
 #### Scenario: Read v2 project identity
 - **WHEN** a valid v2 manifest contains a spec workflow but no framework contract or agent list
@@ -242,7 +279,7 @@ The system SHALL continue to accept valid v2 manifests and SHALL normalize their
 
 #### Scenario: Rewrite v2 without fabricating agents
 - **WHEN** plain `liftoff update` rewrites a valid v2 project without running framework initialization
-- **THEN** the current manifest schema records legacy framework state and no configured agents
+- **THEN** the v6 manifest records legacy framework state and no configured agents
 - **AND** it does not claim that Copilot or Claude Code was installed or integrated
 
 ### Requirement: Manifest v4 separates common integration identity from workload identity

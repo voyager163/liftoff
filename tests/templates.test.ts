@@ -176,10 +176,11 @@ describe('templates and filesystem', () => {
     const plan = buildProjectPlan({ projectName: 'Manifest App', pattern: 'workflow', cloud: 'azure' }, { requireProjectName: true });
     const artifacts = buildArtifacts(plan);
     const manifest = JSON.parse(artifacts.find((artifact) => artifact.logicalName === 'manifest')?.content ?? '{}');
-    const functionArtifact = manifest.artifacts.find((artifact: { logicalName: string }) => artifact.logicalName === 'function-worker-app');
+    const functionArtifact = manifest.projectArtifacts.find((artifact: { logicalName: string }) => artifact.logicalName === 'function-worker-app');
 
-    expect(manifest.artifacts.every((artifact: { pathParts: string[] }) => Array.isArray(artifact.pathParts))).toBe(true);
-    expect(manifest.artifacts.some((artifact: { pathParts: string[] }) => artifact.pathParts.includes('backend'))).toBe(true);
+    expect(manifest.managedArtifacts.every((artifact: { pathParts: string[] }) => Array.isArray(artifact.pathParts))).toBe(true);
+    expect(manifest.projectArtifacts.every((artifact: { pathParts: string[] }) => Array.isArray(artifact.pathParts))).toBe(true);
+    expect(manifest.projectArtifacts.some((artifact: { pathParts: string[] }) => artifact.pathParts.includes('backend'))).toBe(true);
     expect(functionArtifact?.pathParts).toEqual(['functions', 'workflow-worker', 'function_app.py']);
     expect(artifactPath(path.join('generated-root'), functionArtifact.pathParts)).toBe(path.join('generated-root', 'functions', 'workflow-worker', 'function_app.py'));
   });
@@ -459,16 +460,17 @@ describe('templates and filesystem', () => {
 
     expect(readme).toContain('PYDANTIC_AI_MODEL');
     expect(readme).toContain('VITE_API_BASE_URL');
-    expect(readme).toContain('immediately applies safe managed changes');
+    expect(readme).toContain('maintains only explicit Liftoff core files');
     expect(readme).toContain('liftoff update --check --json');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(/does not inspect or modify this project/);
-    expect(readme).toContain('conflicts are skipped by default');
+    expect(readme).toContain('Managed-core conflicts are skipped by default');
     expect(readme).toContain('liftoff update --force');
     expect(readme).not.toContain('liftoff update --apply');
-    expect(readme).toContain('occupied destination');
-    expect(readme).toContain('never deletes orphans or installs dependencies');
-    expect(readme).toContain('retains no backup after a successful overwrite');
+    expect(readme).toContain('collision blocks the whole component');
+    expect(readme).toContain('Managed-core orphans remain on disk');
+    expect(readme).toContain('update never installs dependencies');
+    expect(readme).toContain('retains no backup after a successful core overwrite');
     expect(readme).toContain('symlink-escaping manifest paths');
     expect(readme).toContain('liftoff <command> --help');
     expect(readme).toContain('Workflow: OpenSpec 1.11.0');
@@ -601,7 +603,7 @@ describe('templates and filesystem', () => {
     }
   });
 
-  it('reports missing generated Function worker artifacts from the manifest', async () => {
+  it('allows project-owned Function worker artifacts to be removed after generation', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-functions-missing-'));
     const targetRoot = path.join(tempRoot, 'claims-rag');
     try {
@@ -609,7 +611,10 @@ describe('templates and filesystem', () => {
       await writeArtifacts(targetRoot, buildArtifacts(plan));
       await rm(path.join(targetRoot, 'functions', 'rag-worker', 'function_app.py'));
 
-      expect(await validateGeneratedProject(targetRoot)).toContain('Missing artifact function-worker-app at functions/rag-worker/function_app.py');
+      const issues = await validateGeneratedProject(targetRoot);
+      expect(issues).not.toContain(
+        'Missing artifact function-worker-app at functions/rag-worker/function_app.py'
+      );
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

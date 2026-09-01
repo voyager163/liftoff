@@ -9,9 +9,14 @@ machine-rewrite it afterward.
 
 Supported edits are reconciled by `liftoff update`:
 
-- API workloads can add or remove environments and enable applicable generated
-  areas such as the frontend.
-- Power Apps can change the optional Code Apps plugin preference.
+- API workloads can select a previously absent environment or frontend. Update
+  provisions that component once only when its destinations are absent or
+  byte-identical; a differing destination blocks the complete component and
+  cannot be forced.
+- Removing or re-enabling a previously provisioned component never deletes,
+  restores, or overwrites its project-owned files.
+- Power Apps can change the optional Code Apps plugin preference; only manifest
+  intent and applicable managed-core context change.
 
 Workload kind, API stack, GenAI pattern, spec workflow, selected agents, and a
 user-supplied Power Apps starter source change are not ordinary updates.
@@ -34,7 +39,7 @@ workload rather than silently ignored.
 
 ## `liftoff.manifest.json`: CLI-owned compatibility record
 
-New projects use manifest schema v5. Its common project identity includes the
+New projects use manifest schema v6. Its common project identity includes the
 name, spec workflow, selected agents, and applicable Spec Kit default. A
 discriminated `project.workload` object contains only fields valid for one
 workload:
@@ -46,11 +51,14 @@ workload:
 
 The manifest also records:
 
-- Generating Liftoff version.
+- Last manifest-writing Liftoff version.
 - Official framework adapter, state, and tested contract version when known.
-- Durable artifact logical names.
+- `managedArtifacts`: exact Liftoff core logical names, paths, and
+  reconciliation `contentHash` values.
+- `projectArtifacts`: starter provenance with the original path, generating
+  Liftoff version, `generationHash`, and provisioning group. These hashes never
+  authorize update writes.
 - OS-neutral path-part arrays.
-- `sha256:` content hashes.
 - Repository governance profile, policy version, and local
   `handoff-generated`, `handoff-partial`, or disabled state.
 
@@ -63,7 +71,7 @@ paths, or hashes.
 
 ## Compatibility
 
-Readers support schemas v2, v3, v4, and v5:
+Readers support schemas v2, v3, v4, v5, and v6:
 
 - V2 normalizes the legacy flat API identity and records framework state as
   uncertain without inventing agents.
@@ -71,32 +79,39 @@ Readers support schemas v2, v3, v4, and v5:
 - V4 represents the discriminated workload model, including Power Apps.
 - V5 adds repository-governance handoff identity without claiming live
   enforcement.
+- V6 separates managed-core update authority from project generation
+  provenance.
 
 `liftoff update --check`, including `--check --json`, leaves an old manifest
-byte-for-byte unchanged. A successful plain update writes v5 only after the
-file transaction succeeds. Previously recorded skipped conflicts retain their
-hashes. A preserved unrecorded governance conflict has no artifact entry and
-sets the update-written manifest to `handoff-partial`; resolving every such
-conflict promotes the next manifest to `handoff-generated`.
+byte-for-byte unchanged. A successful plain update writes v6 only after the
+transaction succeeds. V2-v5 backend, frontend, database, dependency, container,
+environment, documentation, Power Apps, and infrastructure entries become
+project provenance without reading or changing current production bytes.
+Intentionally deleted files remain absent. Only exact current core logical
+names retain write authority.
 
 ## Artifact ownership
 
-Durable Liftoff artifacts carry logical names and hashes. That lets validate,
-doctor, and update distinguish:
+Every generated artifact has an explicit lifecycle independent from its
+category or filename:
 
-- Current template bytes.
-- An untouched file with a template upgrade.
-- A developer edit that conflicts with a template change.
-- A named artifact moved by the template.
-- Missing, new, and orphaned artifacts.
+| Lifecycle | Owner after initialization | Update behavior |
+| --- | --- | --- |
+| `managed-core` | Liftoff | Safe reconciliation; reviewed core conflicts may use `--force` |
+| `project` | Developer/project | Provenance only; never compared, restored, moved, or overwritten |
+| `desired-state` | Developer | Read as input and never machine-rewritten |
+| `framework` | Official framework | Validated through framework markers and maintained by that framework |
+| `seed` | Developer/project | Written once and never reconciled |
 
-Framework-owned OpenSpec and Spec Kit files are validated separately and are
-not claimed in durable hashes. One-time seed files are also excluded so they
-can follow their own lifecycle.
+The manifest is a CLI-owned transaction record rather than an ordinary
+template artifact. Current managed core is limited to the exact repository
+governance policy, context, guide, and selected-agent launchers. A name such as
+`config.go`, a `configuration` category, or a path under `.github` does not
+grant update authority.
 
 ## Contract conventions
 
-- Writers use `artifactVersion` 5; readers support v2, v3, v4, and v5.
+- Writers use `artifactVersion` 6; readers support v2, v3, v4, v5, and v6.
 - Artifact logical names and catalog identifiers are append-only.
 - Rendering is deterministic and does not depend on timestamps, host versions,
   or network state.

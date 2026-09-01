@@ -352,7 +352,8 @@ describe('framework ownership boundaries', () => {
     const specKitArtifacts = buildArtifacts(plan({ specWorkflow: 'spec-kit', agents: ['copilot'] }));
     const partition = partitionGeneratedArtifacts(specKitArtifacts);
     const manifest = JSON.parse(partition.manifest.content) as {
-      artifacts: Array<{ pathParts: string[] }>;
+      managedArtifacts: Array<{ pathParts: string[] }>;
+      projectArtifacts: Array<{ pathParts: string[] }>;
     };
 
     expect(partition.framework.map((item) => item.logicalName)).toEqual([
@@ -363,7 +364,7 @@ describe('framework ownership boundaries', () => {
       'spec-kit-constitution',
       'specs-placeholder'
     ]);
-    expect(partition.durable.map((item) => item.logicalName)).toEqual(
+    expect(partition.managedCore.map((item) => item.logicalName)).toEqual(
       expect.arrayContaining([
         'repository-governance-policy',
         'repository-governance-context',
@@ -375,25 +376,32 @@ describe('framework ownership boundaries', () => {
       item.pathParts.join('/') ===
         '.github/prompts/liftoff-repository-governance.prompt.md'
     )).toBe(false);
-    expect(manifest.artifacts.some((item) => item.pathParts[0] === '.specify')).toBe(false);
-    expect(manifest.artifacts.some((item) => item.pathParts[0] === 'specs')).toBe(false);
+    expect([...manifest.managedArtifacts, ...manifest.projectArtifacts].some(
+      (item) => item.pathParts[0] === '.specify'
+    )).toBe(false);
+    expect([...manifest.managedArtifacts, ...manifest.projectArtifacts].some(
+      (item) => item.pathParts[0] === 'specs'
+    )).toBe(false);
 
     const openSpecPartition = partitionGeneratedArtifacts(buildArtifacts(plan()));
     const openSpecManifest = JSON.parse(openSpecPartition.manifest.content) as {
-      artifacts: Array<{ pathParts: string[] }>;
+      managedArtifacts: Array<{ pathParts: string[] }>;
+      projectArtifacts: Array<{ pathParts: string[] }>;
     };
     expect(openSpecPartition.seed.map((item) => item.logicalName)).toContain('openspec-config');
-    expect(openSpecPartition.durable.some((item) =>
+    expect(openSpecPartition.managedCore.some((item) =>
       item.logicalName === 'repository-governance-copilot-launcher'
     )).toBe(true);
-    expect(openSpecManifest.artifacts.some((item) => item.pathParts[0] === 'openspec')).toBe(false);
+    expect([...openSpecManifest.managedArtifacts, ...openSpecManifest.projectArtifacts].some(
+      (item) => item.pathParts[0] === 'openspec'
+    )).toBe(false);
   });
 
   it('validates durable artifacts plus official framework markers in a completed stage', async () => {
     const selectedPlan = plan({ agents: ['copilot', 'claude'] });
     const partition = partitionGeneratedArtifacts(buildArtifacts(selectedPlan));
     await withStagingArea(async (area) => {
-      await writeStagedArtifacts(area, partition.durable, 'liftoff');
+      await writeStagedArtifacts(area, partition.liftoff, 'liftoff');
       await initializeFramework(area, selectedPlan, new FrameworkRunner());
       await writeStagedArtifacts(area, partition.seed, 'seed');
       await writeStagedArtifacts(area, [partition.manifest], 'liftoff');

@@ -9,6 +9,8 @@ import {
   loadManifest,
   resolveProjectPath,
   validateArtifactPathParts,
+  validateGeneratedProject,
+  writeArtifacts,
   writeProjectFile
 } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
@@ -84,6 +86,42 @@ async function v5ManifestRoot(
   const manifest = JSON.parse(
     artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
   ) as Record<string, unknown>;
+  const managedArtifacts = manifest.managedArtifacts as Array<Record<string, unknown>>;
+  const projectArtifacts = manifest.projectArtifacts as Array<Record<string, unknown>>;
+  manifest.artifactVersion = 5;
+  manifest.artifacts = [
+    ...managedArtifacts,
+    ...projectArtifacts.map((artifact) => ({
+      logicalName: artifact.logicalName,
+      category: artifact.category,
+      pathParts: artifact.pathParts,
+      contentHash: artifact.generationHash
+    }))
+  ];
+  delete manifest.managedArtifacts;
+  delete manifest.projectArtifacts;
+  mutate?.(manifest);
+  await writeFile(
+    path.join(root, 'liftoff.manifest.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`
+  );
+  return root;
+}
+
+async function v6ManifestRoot(
+  mutate?: (manifest: Record<string, unknown>) => void
+): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-v6-'));
+  cleanups.push(root);
+  const artifacts = buildArtifacts(buildProjectPlan({
+    projectName: 'Manifest V6',
+    projectType: 'standard',
+    apiStack: 'node',
+    cloud: 'azure'
+  }, { requireProjectName: true }));
+  const manifest = JSON.parse(
+    artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
+  ) as Record<string, unknown>;
   mutate?.(manifest);
   await writeFile(
     path.join(root, 'liftoff.manifest.json'),
@@ -101,7 +139,7 @@ describe('manifest validation', () => {
       profile: 'unspecified',
       state: 'unspecified'
     });
-    expect(manifest.artifacts.length).toBeGreaterThan(0);
+    expect(manifest.projectArtifacts.length).toBeGreaterThan(0);
   });
 
   it.each([
@@ -150,7 +188,7 @@ describe('manifest validation', () => {
       profile: 'none',
       state: 'disabled'
     });
-    expect(disabled.artifacts.some((artifact) =>
+    expect(disabled.managedArtifacts.some((artifact) =>
       artifact.category === 'governance'
     )).toBe(false);
 
@@ -166,7 +204,7 @@ describe('manifest validation', () => {
       policyVersion: '1',
       state: 'handoff-partial'
     });
-    expect(partial.artifacts.some((artifact) =>
+    expect(partial.managedArtifacts.some((artifact) =>
       artifact.logicalName === 'repository-governance-copilot-launcher'
     )).toBe(false);
   });
@@ -238,9 +276,9 @@ describe('manifest validation', () => {
     [
       'unknown manifest version',
       (manifest: Record<string, unknown>) => {
-        manifest.artifactVersion = 6;
+        manifest.artifactVersion = 7;
       },
-      /Unsupported manifest artifactVersion 6.*2, 3, 4, 5/
+      /Unsupported manifest artifactVersion 7.*2, 3, 4, 5, 6/
     ],
     [
       'mutable Power Apps starter ref',
@@ -323,6 +361,68 @@ describe('manifest validation', () => {
 
   it.each([
     [
+      'unknown managed logical name',
+      (manifest: Record<string, unknown>) => {
+        (manifest.managedArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: 'production-source',
+          category: 'backend',
+          pathParts: ['backend', 'main.ts'],
+          contentHash: `sha256:${'a'.repeat(64)}`
+        });
+      },
+      /not an explicit managed-core logical name/
+    ],
+    [
+      'managed core in project provenance',
+      (manifest: Record<string, unknown>) => {
+        const managed = manifest.managedArtifacts as Array<Record<string, unknown>>;
+        const [artifact] = managed.splice(0, 1);
+        (manifest.projectArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: artifact.logicalName,
+          category: artifact.category,
+          pathParts: artifact.pathParts,
+          generatedBy: '0.9.0',
+          generationHash: artifact.contentHash,
+          provisioningGroup: 'base'
+        });
+      },
+      /cannot contain a managed-core logical name/
+    ],
+    [
+      'invalid project generation hash',
+      (manifest: Record<string, unknown>) => {
+        (manifest.projectArtifacts as Array<Record<string, unknown>>)[0].generationHash = 'invalid';
+      },
+      /generationHash must be a sha256-prefixed/
+    ],
+    [
+      'invalid project generating version',
+      (manifest: Record<string, unknown>) => {
+        (manifest.projectArtifacts as Array<Record<string, unknown>>)[0].generatedBy = 'latest';
+      },
+      /generatedBy must be a valid semantic version/
+    ],
+    [
+      'invalid provisioning group',
+      (manifest: Record<string, unknown>) => {
+        (manifest.projectArtifacts as Array<Record<string, unknown>>)[0].provisioningGroup = 'configuration';
+      },
+      /provisioningGroup is invalid/
+    ],
+    [
+      'duplicate cross-authority path',
+      (manifest: Record<string, unknown>) => {
+        const managed = (manifest.managedArtifacts as Array<Record<string, unknown>>)[0];
+        (manifest.projectArtifacts as Array<Record<string, unknown>>)[0].pathParts = managed.pathParts;
+      },
+      /duplicate artifact path/
+    ]
+  ])('rejects invalid v6 authority: %s', async (_name, mutate, expected) => {
+    await expect(loadManifest(await v6ManifestRoot(mutate))).rejects.toThrow(expected);
+  });
+
+  it.each([
+    [
       'non-canonical agents',
       (manifest: TestManifest) => {
         manifest.artifactVersion = 3;
@@ -389,6 +489,32 @@ describe('project-confined paths', () => {
     await symlink(path.join(root, 'real'), path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
     await writeProjectFile(root, ['linked', 'file.txt'], 'content\n');
     await access(path.join(root, 'real', 'file.txt'));
+  });
+
+  it('reports project-provenance paths that escape through a symlink', async () => {
+    const parent = await mkdtemp(path.join(os.tmpdir(), 'liftoff-provenance-symlink-'));
+    cleanups.push(parent);
+    const root = path.join(parent, 'project');
+    const outside = path.join(parent, 'outside');
+    await mkdir(outside);
+    await writeArtifacts(root, buildArtifacts(buildProjectPlan({
+      projectName: 'Provenance Paths',
+      projectType: 'standard',
+      apiStack: 'go',
+      cloud: 'azure'
+    }, { requireProjectName: true })));
+    await rm(path.join(root, 'backend'), { recursive: true });
+    await symlink(
+      outside,
+      path.join(root, 'backend'),
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+
+    expect(await validateGeneratedProject(root)).toContainEqual(
+      expect.stringContaining(
+        'Unsafe project provenance path for go-backend-module at backend/go.mod'
+      )
+    );
   });
 
   it('atomically replaces a project file without leaving temporary artifacts', async () => {

@@ -233,11 +233,11 @@ A stable provider major upgrade SHALL include the source migrations needed for e
 - **THEN** baseline verification fails before release
 
 ### Requirement: Repository governance is distinct from spec-workflow governance
-The system SHALL keep the durable repository-governance policy and activation handoff separate from OpenSpec configuration, Spec Kit constitution content, official framework output, and one-time workload seed changes. Selecting OpenSpec or Spec Kit determines how the post-Phase-0 governance change is created; it SHALL NOT change the canonical repository-governance profile's fixed invariants.
+The system SHALL keep the managed-core repository-governance policy and activation handoff separate from OpenSpec configuration, Spec Kit constitution content, official framework output, and one-time workload seed changes. Selecting OpenSpec or Spec Kit determines how the post-Phase-0 governance change is created; it SHALL NOT change the canonical repository-governance profile's fixed invariants.
 
 #### Scenario: Generate OpenSpec with repository governance
 - **WHEN** a project selects OpenSpec and `single-maintainer-gitflow`
-- **THEN** it receives official OpenSpec output, its one-time workload seed, and the separate durable repository-governance handoff
+- **THEN** it receives official OpenSpec output, its one-time workload seed, and the separate managed-core repository-governance handoff
 - **AND** archiving either active change does not remove or recreate the policy
 
 #### Scenario: Generate Spec Kit with repository governance

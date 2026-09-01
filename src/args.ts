@@ -178,7 +178,7 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 1
   },
   update: {
-    description: 'Reconcile a project with current templates',
+    description: 'Reconcile Liftoff-managed core files in a project',
     usage: '[project-path]',
     group: 'Maintenance',
     flags: {
@@ -346,9 +346,9 @@ export function parseArgs(argv: string[]): ParsedArgs {
         throw new UsageError(
           legacyForceRequested
             ? 'Flag --apply was removed. Replace this command with `liftoff update --force`, ' +
-              'or use `liftoff update --check` for a read-only drift check.'
-            : 'Flag --apply was removed. Run `liftoff update` to apply safe changes or ' +
-              '`liftoff update --check` for a read-only drift check.'
+              'or use `liftoff update --check` for a read-only managed-core check.'
+            : 'Flag --apply was removed. Run `liftoff update` to apply safe managed-core changes or ' +
+              '`liftoff update --check` for a read-only managed-core check.'
         );
       }
       throw new UsageError(`Unknown flag for ${command}: --${rawName}.`);
@@ -386,7 +386,7 @@ export function parseArgs(argv: string[]): ParsedArgs {
   if (command === 'update' && flags.check === true && flags.force === true) {
     throw new UsageError(
       'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
-        'to inspect drift or `liftoff update --force` to overwrite conflicts.'
+        'to inspect managed-core drift or `liftoff update --force` to overwrite core conflicts.'
     );
   }
 

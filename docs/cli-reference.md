@@ -23,13 +23,13 @@ install -> upgrade CLI -> plan -> init or migrate -> validate and doctor -> upda
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
-| `liftoff validate [project]` | Validates manifest identity, durable files, workload metadata, and framework markers |
+| `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
-| `liftoff update [project]` | Applies safe managed drift immediately, preserves unforced conflicts and orphans, and records the resulting manifest |
-| `liftoff update --check` | Reports drift without preflight or mutation; exits 0 when clean and 2 when drift exists |
-| `liftoff update --force` | Applies safe changes and overwrites only the exact guarded conflicts reported by update |
+| `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
+| `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
+| `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for API workloads and reports infrastructure as not applicable for Power Apps |
 | `liftoff patterns` | Lists GenAI patterns |
@@ -132,32 +132,44 @@ liftoff update --check --json
 ```
 
 Plain `liftoff update` is imperative and prompt-free. It applies safe new,
-missing, untouched-upgrade, clean-move, and recorded-state changes in
-interactive terminals, redirected streams, and automation. Local or user-owned
-conflicts are skipped and reported. Orphans are reported without deletion.
-During legacy governance adoption, preserved unrecorded conflicts remain
-outside manifest ownership and set local state to `handoff-partial` until a
-later update can write or byte-identically adopt every required artifact.
+missing, untouched-upgrade, clean-move, and recorded-state changes only for
+explicit `managed-core` artifacts. Core conflicts are skipped and core orphans
+are reported without deletion. During legacy governance adoption, preserved
+unrecorded conflicts remain outside managed ownership and set local state to
+`handoff-partial`.
 
-Use `--check` whenever no project bytes may change. Human check mode prints each
-drift state and recommends plain update for safe changes or a reviewed
-`--force` invocation for conflicts. `--check --force` is invalid because check
-mode never authorizes writes.
+Application source, tests, dependencies and locks, database assets, Docker and
+Compose files, environment files, documentation, Power Apps starter files, and
+OpenTofu topology are `project` artifacts after generation. Update does not
+compare them with newer templates, restore deleted paths, or overwrite them
+under `--force`.
+
+Changing desired state from no frontend to frontend, or adding an environment,
+can authorize one create-only provisioning group. All destinations are
+preflighted together. Absent files are created and byte-identical files are
+adopted as provenance; any differing destination blocks the group even with
+`--force`. Disabling or re-enabling a previously provisioned group never
+recreates or deletes project files.
+
+Use `--check` whenever no project bytes may change. Human check mode prints
+managed-core drift, ownership-only manifest migration, and authorized
+provisioning. It recommends `--force` only for core conflicts. `--check
+--force` is invalid because check mode never authorizes writes.
 
 `--json` selects output format, not safety. `liftoff update --json` applies safe
 changes and emits the versioned apply result. `liftoff update --check --json`
 is the read-only automation gate.
 
 Update never installs dependencies. Transaction snapshots restore a failed
-update, but Liftoff retains no backup after a successful overwrite; commit or
-copy local work before using `--force`. Force does not permit workload, API
-stack, GenAI pattern, framework, selected-agent, or user-supplied Power Apps
-starter identity changes, and it cannot bypass project-boundary, symlink,
-structural-collision, or manifest guards.
+core update, but Liftoff retains no backup after a successful core overwrite.
+Force cannot bypass the ownership, project-boundary, symlink, structural,
+identity, or manifest guards.
 
-For a breaking supported-stack release, inspect `liftoff update --check` before
-plain update. Restore an unwanted applied migration through version control;
-running an older CLI is not a supported automatic downgrade.
+New dependency, runtime, container, database, application, Power Apps starter,
+and infrastructure templates apply to newly generated projects. Existing
+production projects adopt them through a separately reviewed project change.
+The existing `liftoff migrate` command only adopts a non-Liftoff source into a
+fresh target; it is not an in-place template upgrade.
 
 ### Migration from 0.6.x
 
@@ -186,7 +198,9 @@ liftoff update --json
 liftoff update --check --json
 ```
 
-Each JSON object has a top-level numeric `schemaVersion`.
+Each JSON object has a top-level numeric `schemaVersion`. Update JSON uses
+schema version 2 and includes `scope: "managed-core"`, ownership-migration
+state, and a separate provisioning collection.
 Operational warnings, such as a dirty-worktree warning before JSON apply, are
 written to stderr so stdout remains one parseable JSON object.
 
@@ -194,7 +208,7 @@ Exit codes:
 
 - `0`: success or a clean check.
 - `1`: invalid input, unsafe state, or command failure.
-- `2`: an explicit update check found project drift, or upgrade check found an
+- `2`: an explicit update check found core maintenance or provisioning, or upgrade check found an
   installable CLI release.
 
 Raw installer, framework, and dependency child stdout and stderr are forwarded

@@ -198,19 +198,54 @@ export type StandardApiProjectPlan = ProjectPlanBase & StandardApiWorkloadPlan;
 export type ApiProjectPlan = GenAiProjectPlan | StandardApiProjectPlan;
 export type PowerAppsCodeAppProjectPlan = ProjectPlanBase & PowerAppsCodeAppWorkloadPlan;
 
-export interface GeneratedArtifact {
+export type ArtifactLifecycle =
+  | 'managed-core'
+  | 'project'
+  | 'desired-state'
+  | 'framework'
+  | 'seed'
+  | 'manifest';
+
+export type ProjectProvisioningGroup =
+  | 'base'
+  | 'frontend'
+  | `environment:${EnvironmentId}`
+  | 'power-apps-starter';
+
+interface GeneratedArtifactBase {
   logicalName: string;
   category: string;
   pathParts: string[];
   content: string;
 }
 
-export interface ManifestArtifact {
+export type GeneratedArtifact =
+  | GeneratedArtifactBase & {
+      lifecycle: 'project';
+      provisioningGroup: ProjectProvisioningGroup;
+    }
+  | GeneratedArtifactBase & {
+      lifecycle: Exclude<ArtifactLifecycle, 'project'>;
+      provisioningGroup?: never;
+    };
+
+export interface ManifestManagedArtifact {
   logicalName: string;
   category: string;
   pathParts: string[];
   contentHash: string;
 }
+
+export interface ManifestProjectArtifact {
+  logicalName: string;
+  category: string;
+  pathParts: string[];
+  generatedBy: string;
+  generationHash: string;
+  provisioningGroup: ProjectProvisioningGroup;
+}
+
+export type ManifestArtifact = ManifestManagedArtifact;
 
 export interface ManifestGenAiWorkload {
   kind: 'genai';
@@ -249,7 +284,7 @@ export interface ManifestGovernance {
 }
 
 export interface LiftoffManifest {
-  artifactVersion: 2 | 3 | 4 | 5;
+  artifactVersion: 2 | 3 | 4 | 5 | 6;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
   project: {
@@ -265,7 +300,8 @@ export interface LiftoffManifest {
     contractVersion?: string;
   };
   governance: ManifestGovernance;
-  artifacts: ManifestArtifact[];
+  managedArtifacts: ManifestManagedArtifact[];
+  projectArtifacts: ManifestProjectArtifact[];
 }
 
 export interface ParsedArgs {

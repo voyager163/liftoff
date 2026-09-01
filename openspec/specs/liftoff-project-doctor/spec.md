@@ -52,8 +52,8 @@ The system SHALL read the normalized manifest to configure diagnostics. Cloud ch
 - **THEN** it reports a legacy framework-state warning
 - **AND** it does not claim that Copilot, Claude Code, OpenSpec, or Spec Kit integration was officially initialized
 
-### Requirement: Doctor reports version freshness and scaffold drift
-The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface scaffold drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's check classification. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
+### Requirement: Doctor reports version freshness and managed-core drift
+The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface managed-core drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's scoped check classification. Doctor SHALL NOT compare project-owned files with current templates or imply that a CLI upgrade can replace production files. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
 
 #### Scenario: Freshness check runs outside a project
 - **WHEN** a developer runs doctor outside a generated project with registry access
@@ -73,9 +73,14 @@ The system SHALL always report the running CLI version and SHALL compare it with
 - **AND** doctor does not modify npm configuration or perform an automatic update
 
 #### Scenario: Drift warning line
-- **WHEN** doctor runs in a project with four reconcilable differences
-- **THEN** the output contains one warning stating four updates are available and naming `liftoff update`
-- **AND** it does not describe project drift as a CLI self-upgrade
+- **WHEN** doctor runs in a project with four reconcilable managed-core differences
+- **THEN** the output contains one warning stating four core updates are available and naming `liftoff update`
+- **AND** it does not count project template differences
+
+#### Scenario: Production files differ from templates
+- **WHEN** only project-owned files differ from the running CLI templates
+- **THEN** doctor reports no managed-core drift warning
+- **AND** retains independent runtime and structural diagnostics
 
 #### Scenario: Offline doctor preserves local version diagnostics
 - **WHEN** doctor runs without network access

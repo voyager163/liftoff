@@ -94,7 +94,7 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(5);
+    expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
       policyVersion: '1',

@@ -85,7 +85,9 @@ describe('public documentation', () => {
     expect(readme).toContain('docs/safety-and-consent.md');
     expect(readme).toContain('liftoff update --check --json');
     expect(readme).toContain('liftoff upgrade --check');
-    expect(readme).toMatch(/replaces the CLI only; generated projects still use `liftoff update`/);
+    expect(readme).toMatch(
+      /replaces the CLI only; generated projects use `liftoff update` separately\s+for Liftoff-managed core files/
+    );
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
       .map((match) => match[1])
@@ -186,11 +188,11 @@ describe('public documentation', () => {
     expect(cli).toContain('Plain `liftoff update` is imperative and prompt-free');
     expect(cli).toContain('liftoff update --check --json');
     expect(cli).toContain('Migration from 0.6.x');
-    expect(cli).toMatch(/Liftoff retains no backup after a\s+successful overwrite/);
+    expect(cli).toMatch(/Liftoff retains no backup after a successful core overwrite/);
     expect(cli).toContain('Next recommended command');
     expect(cli).toContain('Liftoff has not executed it automatically');
-    expect(safety).toContain('Default update skips conflicts');
-    expect(safety).toMatch(/update never installs\s+dependencies/);
+    expect(safety).toContain('Default update skips core conflicts');
+    expect(safety).toMatch(/update neither changes\s+nor installs them/);
     expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
     expect(telemetry).toContain('DO_NOT_TRACK=1');
     expect(telemetry).toContain('no persistent installation or session identifier');
@@ -210,7 +212,9 @@ describe('public documentation', () => {
     expect(telemetry).toContain('Standard GitHub-hosted runners run static validation only');
     expect(telemetry).toContain('tofu -chdir=infrastructure/opentofu/telemetry');
     expect(telemetry).not.toMatch(/\bterraform (?:apply|plan|destroy)\b/i);
-    expect(existing).toContain('For CI drift gates, use `liftoff update --check --json`');
+    expect(existing).toMatch(
+      /For CI\s+core-maintenance gates, use `liftoff update --check --json`/
+    );
     expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
     expect(troubleshooting).toContain('Do not regenerate the lock as a connectivity workaround');
     expect(troubleshooting).toContain('UV_DEFAULT_INDEX');
@@ -311,17 +315,22 @@ describe('public documentation', () => {
     expect(gettingStarted).toContain('local files only');
     expect(workloads).toContain('repository-governance');
     expect(cli).toContain('--governance single-maintainer-gitflow|none');
-    expect(existing).toContain('schema v5');
+    expect(existing).toContain('schema v6');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);
     expect(structure).toContain('.liftoff/');
-    expect(manifests).toContain('manifest schema v5');
+    expect(manifests).toContain('manifest schema v6');
     expect(manifests).toContain('handoff-partial');
     expect(troubleshooting).toContain('handoff-generated');
     expect(troubleshooting).toContain('no ownership entry');
     expect(existing).toContain('handoff-partial');
+    expect(existing).toContain('Intentionally removed infrastructure stays absent');
+    expect(manifests).toContain('`managedArtifacts`');
+    expect(manifests).toContain('`projectArtifacts`');
+    expect(manifests).toContain('grant update authority');
+    expect(safety).toContain('cannot be restored or overwritten by any');
     expect(safety).toContain('outside manifest ownership');
-    expect(cli).toContain('outside manifest ownership');
+    expect(cli).toContain('outside managed ownership');
     expect(contributing).toContain('Maintain the repository-governance profile');
     for (const phrase of [
       'single-maintainer-gitflow',

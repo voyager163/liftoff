@@ -70,10 +70,10 @@ liftoff update
 ```
 
 Use `--check` first when the invocation must be read-only. Plain update applies
-safe managed changes immediately and without prompting in terminals and
-automation, while preserving conflicts and orphans. Review every reported
-conflict and commit or copy local work before choosing `liftoff update --force`.
-For CI drift gates, use `liftoff update --check --json`.
+safe managed-core changes immediately and preserves core conflicts and orphans.
+`--force` can replace only listed core conflicts. Project-owned production
+files are not compared and remain unreachable from every update mode. For CI
+core-maintenance gates, use `liftoff update --check --json`.
 
 OpenSpec skills and commands remain framework-owned. To give an existing
 project all 12 workflows as both skills and commands, run:
@@ -88,26 +88,26 @@ Select both delivery modes and every workflow in the profile picker. Plain
 hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
 and run `openspec update`.
 
-Projects created before manifest schema v5 automatically preview the default
+Projects created before manifest schema v6 automatically preview the default
 repository-governance handoff as new named drift. Plain update safely adopts
 collision-free policy, context, guide, and selected-agent launchers without
 rewriting a configuration that omitted `governanceProfile`. Existing different
-files remain unowned conflicts and the v5 manifest records `handoff-partial`.
+files remain unowned conflicts and the v6 manifest records `handoff-partial`.
 Resolving every conflict promotes a later update to `handoff-generated`.
 Selecting `none` leaves previously managed handoff files as undeleted orphans
 while unrecorded conflicts remain user-owned. No update mode runs an agent or
 activates GitHub settings.
 
-Major supported-stack releases can report many runtime, lock, Docker, provider,
-and framework artifact changes at once. Treat those releases as breaking:
-commit or copy local work, inspect `liftoff update --check`, and apply only after
-reviewing all upgrades and conflicts. Plain update preserves conflicting local
-bytes and never requires `--force` as the default migration path.
+The schema-v6 transition releases every legacy non-core artifact into project
+provenance without writing, restoring, moving, or deleting its path.
+Intentionally removed infrastructure stays absent and production source stays
+byte-for-byte unchanged.
 
-If an applied baseline migration must be reversed, restore the project and
-manifest through version control and reinstall from the restored locks. Liftoff
-does not automatically downgrade generated dependencies and retains no backup
-after a successful update.
+Major supported-stack releases apply to new scaffolds. Existing projects adopt
+runtime, lock, Docker, provider, framework, and application changes through a
+normal reviewed project change. Ordinary update and force cannot perform that
+migration, and the existing `liftoff migrate` command remains a fresh-target
+workflow for non-Liftoff sources.
 
 ## Existing non-Liftoff application
 

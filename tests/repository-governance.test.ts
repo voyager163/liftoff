@@ -219,16 +219,16 @@ describe('repository governance artifacts', () => {
     const manifest = JSON.parse(
       artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
     );
-    expect(manifest.artifactVersion).toBe(5);
+    expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
       policyVersion: '1',
       state: 'handoff-generated'
     });
-    expect(manifest.artifacts.filter((artifact: { category: string }) =>
+    expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
     )).toHaveLength(5);
-    expect(manifest.artifacts.some((artifact: { pathParts: string[] }) =>
+    expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
       artifact.pathParts.join('/') === 'governance/activation-baseline.json'
     )).toBe(false);
     expect(artifacts.some((artifact) =>

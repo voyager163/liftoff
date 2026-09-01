@@ -89,7 +89,7 @@ Select **Both (skills + commands)** and every workflow in the profile picker.
 Plain `liftoff update` intentionally does not regenerate these framework-owned
 files.
 
-Repository-governance launchers are separate durable Liftoff files at the exact
+Repository-governance launchers are separate managed-core Liftoff files at the exact
 Copilot prompt and Claude command paths documented in
 [repository governance](repository-governance.md). They reference one canonical
 policy and context rather than duplicating framework-owned content. After
@@ -140,6 +140,7 @@ invoke `/create-code-app`. The plugin's connector and deployment skills remain
 available for post-creation work.
 
 Changing the valid plugin preference in `liftoff.config.json` is reconciled by
-plain `liftoff update`; it immediately updates generated guidance and manifest
-intent without creating API or infrastructure artifacts. Use
-`liftoff update --check` to inspect that drift without writing.
+plain `liftoff update`; it updates manifest intent and applicable managed-core
+governance context without rewriting the project-owned Power Apps README or
+starter. Use `liftoff update --check` to inspect that maintenance without
+writing.
