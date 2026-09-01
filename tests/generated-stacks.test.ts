@@ -152,6 +152,7 @@ describe('generated standard stack smoke checks', () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-python-test-'));
     const standardRoot = path.join(tempRoot, 'python-api');
     const ragRoot = path.join(tempRoot, 'rag-api');
+    const genericRoot = path.join(tempRoot, 'generic-api');
     try {
       await writeArtifacts(standardRoot, buildArtifacts(buildProjectPlan({
         projectName: 'Python Smoke',
@@ -162,6 +163,11 @@ describe('generated standard stack smoke checks', () => {
       await writeArtifacts(ragRoot, buildArtifacts(buildProjectPlan({
         projectName: 'RAG Smoke',
         pattern: 'rag',
+        cloud: 'azure'
+      }, { requireProjectName: true })));
+      await writeArtifacts(genericRoot, buildArtifacts(buildProjectPlan({
+        projectName: 'Generic Smoke',
+        pattern: 'generic',
         cloud: 'azure'
       }, { requireProjectName: true })));
 
@@ -201,6 +207,23 @@ describe('generated standard stack smoke checks', () => {
         readFile(path.join(ragRoot, 'backend', 'uv.lock'))
       ])).toEqual(genAiMetadata);
 
+      const genericMetadata = await Promise.all([
+        readFile(path.join(genericRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(genericRoot, 'backend', 'uv.lock'))
+      ]);
+      checkedSpawn(uvCommand, [
+        'sync',
+        '--frozen',
+        '--project',
+        path.join(genericRoot, 'backend'),
+        '--extra',
+        'test'
+      ], tempRoot, process.env, 900_000);
+      expect(await Promise.all([
+        readFile(path.join(genericRoot, 'backend', 'pyproject.toml')),
+        readFile(path.join(genericRoot, 'backend', 'uv.lock'))
+      ])).toEqual(genericMetadata);
+
       const functionRoot = path.join(ragRoot, 'functions', 'rag-worker');
       const testEnvironment = {
         ...process.env,
@@ -228,6 +251,15 @@ describe('generated standard stack smoke checks', () => {
         'pytest',
         '-q'
       ], path.join(ragRoot, 'backend'), testEnvironment);
+      checkedSpawn(uvCommand, [
+        'run',
+        '--project',
+        path.join(genericRoot, 'backend'),
+        'python',
+        '-m',
+        'pytest',
+        '-q'
+      ], path.join(genericRoot, 'backend'), testEnvironment);
       checkedSpawn(uvCommand, [
         'run',
         '--project',
@@ -273,37 +305,43 @@ describe('generated standard stack smoke checks', () => {
     }
   }, 900_000);
 
-  it('installs and production-builds a fresh generated frontend', async () => {
+  it('installs and production-builds specialized and generic generated frontends', async () => {
     if (spawnSync(npmCommand, ['--version'], { encoding: 'utf8' }).status !== 0) {
       return;
     }
 
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-frontend-test-'));
-    const projectRoot = path.join(tempRoot, 'rag-ui');
     try {
-      await writeArtifacts(projectRoot, buildArtifacts(buildProjectPlan({
-        projectName: 'RAG Frontend Smoke',
-        pattern: 'rag',
-        cloud: 'azure',
-        includeFrontend: true
-      }, { requireProjectName: true })));
-      const frontendRoot = path.join(projectRoot, 'frontend');
-      checkedSpawn(
-        npmCommand,
-        ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
-        frontendRoot,
-        process.env,
-        600_000
-      );
-      checkedSpawn(npmCommand, ['run', 'build', '--silent'], frontendRoot, {
-        ...process.env,
-        VITE_API_BASE_URL: 'https://api.example.test'
-      });
-      expect(await readFile(path.join(frontendRoot, 'dist', 'index.html'), 'utf8')).toContain('RAG Frontend Smoke');
+      for (const [directory, projectName, pattern] of [
+        ['rag-ui', 'RAG Frontend Smoke', 'rag'],
+        ['generic-ui', 'Generic Frontend Smoke', 'generic']
+      ] as const) {
+        const projectRoot = path.join(tempRoot, directory);
+        await writeArtifacts(projectRoot, buildArtifacts(buildProjectPlan({
+          projectName,
+          pattern,
+          cloud: 'azure',
+          includeFrontend: true
+        }, { requireProjectName: true })));
+        const frontendRoot = path.join(projectRoot, 'frontend');
+        checkedSpawn(
+          npmCommand,
+          ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
+          frontendRoot,
+          process.env,
+          600_000
+        );
+        checkedSpawn(npmCommand, ['run', 'build', '--silent'], frontendRoot, {
+          ...process.env,
+          VITE_API_BASE_URL: 'https://api.example.test'
+        });
+        expect(await readFile(path.join(frontendRoot, 'dist', 'index.html'), 'utf8'))
+          .toContain(projectName);
+      }
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
-  }, 900_000);
+  }, 1_200_000);
 
   it('keeps machine-readable artifact paths portable for every stack', () => {
     for (const apiStack of ['python', 'node', 'go']) {
@@ -317,6 +355,17 @@ describe('generated standard stack smoke checks', () => {
       for (const artifact of artifacts) {
         expect(artifact.pathParts.every((part) => !part.includes('/') && !part.includes('\\'))).toBe(true);
       }
+    }
+
+    const genericArtifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Generic paths',
+      pattern: 'generic',
+      cloud: 'azure'
+    }, { requireProjectName: true }));
+    for (const artifact of genericArtifacts) {
+      expect(
+        artifact.pathParts.every((part) => !part.includes('/') && !part.includes('\\'))
+      ).toBe(true);
     }
 
     expect(path.win32.join('project', 'backend', 'src', 'server.ts')).toBe('project\\backend\\src\\server.ts');
@@ -341,6 +390,12 @@ describe('generated standard stack smoke checks', () => {
           projectName: 'Standard Infrastructure',
           projectType: 'standard',
           apiStack: 'node',
+          cloud: 'azure',
+          environments: ['dev']
+        }, { requireProjectName: true }),
+        buildProjectPlan({
+          projectName: 'Generic Infrastructure',
+          pattern: 'generic',
           cloud: 'azure',
           environments: ['dev']
         }, { requireProjectName: true })

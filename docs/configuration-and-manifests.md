@@ -21,6 +21,28 @@ Supported edits are reconciled by `liftoff update`:
 Workload kind, API stack, GenAI pattern, spec workflow, selected agents, and a
 user-supplied Power Apps starter source change are not ordinary updates.
 
+An undecided GenAI project records an explicit generic identity rather than
+omitting the pattern:
+
+```json
+{
+  "projectName": "general-assistant",
+  "projectType": "genai",
+  "apiStack": "python-fastapi",
+  "pattern": "generic",
+  "cloud": "azure",
+  "region": "eastus",
+  "includeFrontend": false,
+  "environments": ["dev"],
+  "specWorkflow": "openspec",
+  "agents": ["github-copilot"],
+  "governanceProfile": "single-maintainer-gitflow"
+}
+```
+
+Changing `generic` to a specialized pattern later is a reviewed project
+migration because application files are project-owned; it is not an update.
+
 A Power Apps configuration contains only applicable fields:
 
 ```json

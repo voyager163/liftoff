@@ -56,7 +56,12 @@ The system SHALL use the folder layout defined by the selected workload. GenAI a
 - **THEN** the same logical folders are generated using platform-correct path handling
 
 ### Requirement: Generated projects support all GenAI patterns
-The system SHALL generate pattern-aware backend scaffolds for RAG, chatbot/conversational AI, agent-based, prompt-based app, multi-agent system, fine-tuned model app, real-time/streaming AI, and AI workflow/pipeline applications.
+The system SHALL generate pattern-aware backend scaffolds for a generic/undecided GenAI application, RAG, chatbot/conversational AI, agent-based, prompt-based app, multi-agent system, fine-tuned model app, real-time/streaming AI, and AI workflow/pipeline applications. The generic scaffold SHALL contain the common GenAI runtime and a neutral invocation boundary without asserting any specialized architecture.
+
+#### Scenario: Generate generic GenAI scaffold
+- **WHEN** a developer selects the generic pattern
+- **THEN** the generated project includes a neutral FastAPI invocation route, PydanticAI runner, generic system prompt, tracing boundary, and offline test
+- **AND** it excludes retrieval and pgvector, ingestion or task workers, chat persistence, specialized agent tools, streaming transport, fine-tuning datasets, and workflow-specific output
 
 #### Scenario: Generate RAG scaffold
 - **WHEN** a developer selects the RAG pattern
@@ -91,7 +96,12 @@ The system SHALL generate pattern-aware backend scaffolds for RAG, chatbot/conve
 - **THEN** the generated project includes pipeline stage structure, run persistence structure, trigger configuration, and worker structure
 
 ### Requirement: Generated projects include optional pattern-aware frontend
-The system SHALL ask GenAI and standard API projects whether to generate a Vue 3/Tailwind frontend suited to the project type. GenAI frontends SHALL remain suited to the selected GenAI pattern; standard frontends SHALL provide a generic API starter that uses the selected stack's common API contract. Power Apps code apps SHALL use their root React application as the workload and SHALL NOT ask the optional API-frontend question or generate a nested `frontend` project.
+The system SHALL ask GenAI and standard API projects whether to generate a Vue 3/Tailwind frontend suited to the project type. Generic GenAI frontends SHALL provide a neutral prompt playground; specialized GenAI frontends SHALL remain suited to their selected pattern. Standard frontends SHALL provide a generic API starter that uses the selected stack's common API contract. Power Apps code apps SHALL use their root React application as the workload and SHALL NOT ask the optional API-frontend question or generate a nested `frontend` project.
+
+#### Scenario: Frontend selected for generic GenAI
+- **WHEN** a developer selects the generic GenAI pattern and chooses to include a frontend
+- **THEN** the generated frontend provides a neutral text-input playground that calls the generic invocation route
+- **AND** it contains no RAG, chatbot, agent, streaming, fine-tuning, or workflow claims
 
 #### Scenario: Frontend selected for RAG
 - **WHEN** a developer selects the RAG pattern and chooses to include a frontend

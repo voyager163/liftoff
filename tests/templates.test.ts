@@ -140,6 +140,77 @@ describe('templates and filesystem', () => {
     expect(compose).toContain('LANGFUSE_S3_EVENT_UPLOAD_BUCKET');
   });
 
+  it('renders a neutral generic GenAI scaffold without specialized artifacts', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Generic Assistant',
+      pattern: 'generic',
+      cloud: 'azure',
+      includeFrontend: true
+    }, { requireProjectName: true }));
+    const contentAt = (artifactPath: string) =>
+      artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
+    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
+
+    expect(contentAt('backend/apis/routes/generic.py')).toContain(
+      'router = APIRouter(prefix="/api/ai", tags=["generic"])'
+    );
+    expect(contentAt('backend/apis/routes/generic.py')).toContain('@router.post("/run")');
+    expect(contentAt('backend/orchestration/agents/generic_agent.py')).toContain(
+      'Respond safely and usefully to this general-purpose AI request'
+    );
+    expect(contentAt('backend/orchestration/prompts/generic.md')).toContain(
+      'Do not assume retrieval, conversation memory, tools, streaming'
+    );
+    expect(contentAt('backend/tests/test_generic_orchestration.py')).toContain(
+      'offline generic result'
+    );
+    expect(contentAt('database/models/schema.sql')).not.toContain('vector');
+    expect(paths).not.toContain('backend/orchestration/retrieval/vector_store.py');
+    expect(paths).not.toContain('backend/evaluation/datasets/sample.jsonl');
+    expect(paths.some((artifactPath) => artifactPath.startsWith('functions/'))).toBe(false);
+    expect(paths.some((artifactPath) => artifactPath.startsWith('backend/workers/'))).toBe(false);
+    expect(contentAt('docker-compose.yml')).toContain('langfuse:');
+    expect(contentAt('docker-compose.yml')).toContain('langfuse-worker:');
+    expect(contentAt('docker-compose.yml')).toContain('postgres:');
+    expect(contentAt('infrastructure/opentofu/azure/main.tf')).not.toContain(
+      'azurerm_linux_function_app'
+    );
+    expect(contentAt('infrastructure/opentofu/azure/main.tf')).not.toContain(
+      'function_worker'
+    );
+
+    const frontend = contentAt('frontend/src/App.vue');
+    expect(frontend).toContain('const route = "/api/ai/run"');
+    expect(frontend).toContain('const method = "POST"');
+    expect(frontend).toContain('const bodyField = "input"');
+    expect(frontend).toContain('const starter = "Generic AI playground"');
+    expect(frontend).toContain('const descriptor = "Generic GenAI Starter"');
+    expect(frontend).not.toContain('Generic GenAI Starter starter');
+    expect(frontend).not.toMatch(/RAG|retrieval|chatbot|streaming|fine-tun|workflow/i);
+
+    const config = JSON.parse(contentAt('liftoff.config.json'));
+    const manifest = JSON.parse(contentAt('liftoff.manifest.json'));
+    expect(config.pattern).toBe('generic');
+    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.project.workload.pattern).toBe('generic');
+    expect(contentAt('.env.example')).toContain('GENAI_PATTERN=generic');
+    expect(contentAt('backend/config/settings.py')).toContain(
+      'genai_pattern: str = "generic"'
+    );
+    expect(contentAt('openspec/config.yaml')).toContain(
+      'GenAI pattern: Generic GenAI Starter'
+    );
+    expect(JSON.parse(contentAt('.liftoff/governance/context.json')).api.pattern)
+      .toBe('generic');
+    expect(contentAt('openspec/changes/bootstrap-generic-assistant/proposal.md')).toContain(
+      '`generic-application-baseline`'
+    );
+    expect(contentAt('README.md')).toContain('Choosing A Specialization Later');
+    expect(contentAt('README.md')).toContain(
+      '`liftoff update` and `--force` do not convert this project'
+    );
+  });
+
   it('generates Azure Functions workers only for worker-enabled patterns', () => {
     const workerPlan = buildProjectPlan({ projectName: 'RAG Worker', pattern: 'rag', cloud: 'azure', region: 'eastus' }, { requireProjectName: true });
     const workerArtifacts = buildArtifacts(workerPlan);

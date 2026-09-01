@@ -110,6 +110,16 @@ export const apiStacks: ApiStackDefinition[] = [
 
 export const patterns: PatternDefinition[] = [
   {
+    id: 'generic',
+    label: 'Generic GenAI Starter',
+    aliases: ['generic', 'undecided', 'unsure', 'not-sure'],
+    description: 'Neutral FastAPI and PydanticAI foundation for projects that have not selected a specialized GenAI architecture.',
+    scaffoldStatus: 'foundation',
+    frontendStarter: 'Generic AI playground',
+    routePrefix: '/api/ai',
+    worker: false
+  },
+  {
     id: 'rag',
     label: 'RAG (Knowledge Retrieval)',
     aliases: ['rag', 'retrieval', 'knowledge', 'knowledge-retrieval'],

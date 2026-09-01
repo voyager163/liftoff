@@ -19,12 +19,16 @@ agent flow and the default local repository-governance handoff.
 ### Questions
 
 - Project name.
-- GenAI pattern such as prompt, chatbot, RAG, agent, multi-agent, or workflow.
+- GenAI pattern. **I'm not sure yet - Generic GenAI starter** is the default;
+  specialized choices include prompt, chatbot, RAG, agent, multi-agent,
+  fine-tuned, streaming, and workflow.
 - Azure region and generated environments.
 - Whether to generate a frontend.
 - Spec workflow and coding agents.
 
 The selected pattern fixes the API stack to Python, FastAPI, and PydanticAI.
+Automation can select the neutral starting point explicitly with
+`--type genai --pattern generic`.
 
 ### Generated output
 
@@ -43,6 +47,13 @@ The selected pattern fixes the API stack to Python, FastAPI, and PydanticAI.
 Liftoff does not insert model credentials, sign in to cloud services, or deploy
 resources. Configure `.env`, authenticate separately, and review generated
 infrastructure before applying it.
+
+The generic pattern provides a neutral `/api/ai/run` boundary, PydanticAI
+runner, prompt, tracing, offline test, and optional prompt playground. It does
+not generate retrieval or pgvector, workers, chat persistence, specialized
+tools, streaming adapters, fine-tuning datasets, or workflow structures.
+Specializing it later is reviewed project migration work; `liftoff update` and
+`--force` cannot convert project-owned application files.
 
 ## API application
 
