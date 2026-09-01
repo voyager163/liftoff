@@ -58,7 +58,7 @@ export async function lookupStableRelease(
     const response = await fetchRelease(
       packageMetadataUrl(options.registry ?? canonicalNpmRegistry),
       {
-        headers: { accept: 'application/vnd.npm.install-v1+json' },
+        headers: { accept: 'application/json' },
         redirect: 'error',
         signal: controller.signal
       }
