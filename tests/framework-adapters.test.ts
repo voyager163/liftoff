@@ -1,4 +1,4 @@
-import { mkdir, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
@@ -15,6 +15,11 @@ import type {
   RunCommandOptions
 } from '../src/process-runner.js';
 import { buildProjectPlan } from '../src/planner.js';
+import {
+  OPEN_SPEC_COPILOT_CLOUD_PATHS,
+  OPEN_SPEC_WORKFLOW_IDS,
+  openSpecIntegrationPaths
+} from '../src/openspec-profile.js';
 import { reconcileProject } from '../src/reconcile.js';
 import { buildArtifacts, partitionGeneratedArtifacts } from '../src/templates.js';
 import type { ExternalCommand, ProjectPlan } from '../src/types.js';
@@ -24,7 +29,16 @@ class FrameworkRunner implements CommandRunner {
   private defaultIntegration?: string;
   private installed: string[] = [];
 
-  constructor(private readonly behavior: 'success' | 'fail' | 'outside' | 'git' | 'symlink' | 'empty' = 'success') {}
+  constructor(
+    private readonly behavior:
+      | 'success'
+      | 'fail'
+      | 'outside'
+      | 'git'
+      | 'symlink'
+      | 'empty'
+      | 'directory-marker' = 'success'
+  ) {}
 
   async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
     this.calls.push(command);
@@ -50,6 +64,16 @@ class FrameworkRunner implements CommandRunner {
     }
     if (command.executable === 'openspec') {
       await this.writeOpenSpec(cwd, command);
+      if (this.behavior === 'directory-marker') {
+        const marker = path.join(
+          cwd,
+          '.github',
+          'prompts',
+          'opsx-bulk-archive.prompt.md'
+        );
+        await rm(marker);
+        await mkdir(marker);
+      }
     } else {
       await this.writeSpecKit(cwd, command);
     }
@@ -60,10 +84,19 @@ class FrameworkRunner implements CommandRunner {
     const tools = command.args[command.args.indexOf('--tools') + 1]?.split(',') ?? [];
     await write(path.join(cwd, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
     if (tools.includes('github-copilot')) {
-      await write(path.join(cwd, '.github', 'skills', 'openspec-apply-change', 'SKILL.md'), 'copilot\n');
+      for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
+        await write(path.join(cwd, ...pathParts), 'copilot\n');
+      }
     }
     if (tools.includes('claude')) {
-      await write(path.join(cwd, '.claude', 'skills', 'openspec-apply-change', 'SKILL.md'), 'claude\n');
+      for (const pathParts of openSpecIntegrationPaths('claude')) {
+        await write(path.join(cwd, ...pathParts), 'claude\n');
+      }
+    }
+    if (command.args.includes('--copilot-cloud')) {
+      for (const pathParts of OPEN_SPEC_COPILOT_CLOUD_PATHS) {
+        await write(path.join(cwd, ...pathParts), 'copilot cloud\n');
+      }
     }
   }
 
@@ -135,11 +168,28 @@ function powerAppsPlan(
 }
 
 describe('official framework commands', () => {
-  it('maps every selected agent into one pinned OpenSpec core initialization', () => {
+  it('maps every selected agent into one pinned OpenSpec complete-profile initialization', () => {
     expect(buildOpenSpecInitCommand(plan({ agents: ['claude', 'copilot'] }))).toEqual({
       executable: 'openspec',
-      args: ['init', '--tools', 'github-copilot,claude', '--profile', 'core']
+      args: [
+        'init',
+        '--tools',
+        'github-copilot,claude',
+        '--profile',
+        'custom',
+        '--no-copilot-cloud'
+      ]
     });
+  });
+
+  it('passes an explicit Copilot cloud opt-in and omits cloud flags for Claude-only plans', () => {
+    expect(buildOpenSpecInitCommand(plan({
+      agents: ['copilot'],
+      copilotCloud: true
+    })).args).toContain('--copilot-cloud');
+    expect(buildOpenSpecInitCommand(plan({
+      agents: ['claude']
+    })).args.some((argument) => argument.includes('copilot-cloud'))).toBe(false);
   });
 
   it('keeps the Spec Kit default primary and installs secondary Copilot in skills mode', () => {
@@ -164,8 +214,16 @@ describe('official framework commands', () => {
       agents: ['copilot', 'claude']
     }))).toEqual({
       executable: 'openspec',
-      args: ['init', '--tools', 'github-copilot,claude', '--profile', 'core']
+      args: [
+        'init',
+        '--tools',
+        'github-copilot,claude',
+        '--profile',
+        'custom',
+        '--no-copilot-cloud'
+      ]
     });
+
     expect(buildSpecKitInitCommands(powerAppsPlan({
       specWorkflow: 'spec-kit',
       agents: ['copilot', 'claude'],
@@ -189,6 +247,22 @@ describe('official framework commands', () => {
         args: ['integration', 'install', 'claude', '--force']
       }
     ]);
+  });
+
+  it('validates every expanded workflow path and both cloud-agent paths', async () => {
+    const selectedPlan = plan({ agents: ['copilot'], copilotCloud: true });
+    await withStagingArea(async (area) => {
+      await initializeFramework(area, selectedPlan, new FrameworkRunner());
+      const files = await validateStagedTree(area);
+      const paths = new Set(files.map((file) => file.relativePath));
+      expect(OPEN_SPEC_WORKFLOW_IDS).toHaveLength(12);
+      for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
+        expect(paths.has(path.join(...pathParts))).toBe(true);
+      }
+      for (const pathParts of OPEN_SPEC_COPILOT_CLOUD_PATHS) {
+        expect(paths.has(path.join(...pathParts))).toBe(true);
+      }
+    });
   });
 });
 
@@ -264,7 +338,8 @@ describe('framework adapter lifecycle', () => {
     ['outside', /outside its approved roots/],
     ['git', /forbidden \.git metadata/],
     ['symlink', /forbidden symlink/],
-    ['empty', /did not produce the tested contract/]
+    ['empty', /did not produce the tested contract/],
+    ['directory-marker', /not a regular file/]
   ] as const)('rejects %s framework output before destination writes', async (behavior, expected) => {
     await withStagingArea(async (area) => {
       await expect(initializeFramework(area, plan(), new FrameworkRunner(behavior))).rejects.toThrow(expected);

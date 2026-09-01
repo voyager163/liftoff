@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare
+Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -159,15 +159,21 @@ Option                                   Description
                                          single-maintainer-gitflow)
 --code-apps-plugin /                     Request the Microsoft Code Apps agent
 --no-code-apps-plugin                    plugin (Preview) (default: false)
+--copilot-cloud / --no-copilot-cloud     Set up the GitHub-hosted Copilot coding
+                                         agent for OpenSpec (default: false)
 
 Consent options
 ───────────────
-Option                  Description
-──────────────────────  ──────────────────────────────────────────────────────
---yes                   Accept project defaults and plan confirmation
---force                 Authorize replacement of listed regular-file conflicts
---install-tools         Authorize allowlisted workstation tool installation
---install-dependencies  Authorize project-local dependency installation
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--configure-openspec-profile  Authorize the required global OpenSpec workflow
+                              profile
+--yes                         Accept project defaults and plan confirmation
+--force                       Authorize replacement of listed regular-file
+                              conflicts
+--install-tools               Authorize allowlisted workstation tool
+                              installation
+--install-dependencies        Authorize project-local dependency installation
 
 General options
 ───────────────
@@ -329,7 +335,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -390,8 +396,10 @@ Option: --agents <list> | Description: Comma-separated AI coding agents (default
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
 Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
 Option: --code-apps-plugin / --no-code-apps-plugin | Description: Request the Microsoft Code Apps agent plugin (Preview) (default: false)
+Option: --copilot-cloud / --no-copilot-cloud | Description: Set up the GitHub-hosted Copilot coding agent for OpenSpec (default: false)
 
 Consent options
+Option: --configure-openspec-profile | Description: Authorize the required global OpenSpec workflow profile
 Option: --yes | Description: Accept project defaults and plan confirmation
 Option: --force | Description: Authorize replacement of listed regular-file conflicts
 Option: --install-tools | Description: Authorize allowlisted workstation tool installation
@@ -530,7 +538,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.8.0 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare its local      │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -614,14 +622,17 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │                                             single-maintainer-gitflow)                       │
 │ --code-apps-plugin / --no-code-apps-plugin  Request the Microsoft Code Apps agent plugin     │
 │                                             (Preview) (default: false)                       │
+│ --copilot-cloud / --no-copilot-cloud        Set up the GitHub-hosted Copilot coding agent    │
+│                                             for OpenSpec (default: false)                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option                  Description                                                          │
-│ ──────────────────────  ──────────────────────────────────────────────────────               │
-│ --yes                   Accept project defaults and plan confirmation                        │
-│ --force                 Authorize replacement of listed regular-file conflicts               │
-│ --install-tools         Authorize allowlisted workstation tool installation                  │
-│ --install-dependencies  Authorize project-local dependency installation                      │
+│ Option                        Description                                                    │
+│ ────────────────────────────  ───────────────────────────────────────────────────────        │
+│ --configure-openspec-profile  Authorize the required global OpenSpec workflow profile        │
+│ --yes                         Accept project defaults and plan confirmation                  │
+│ --force                       Authorize replacement of listed regular-file conflicts         │
+│ --install-tools               Authorize allowlisted workstation tool installation            │
+│ --install-dependencies        Authorize project-local dependency installation                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

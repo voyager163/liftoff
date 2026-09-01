@@ -1,10 +1,15 @@
 import path from 'node:path';
+import { Readable } from 'node:stream';
 import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
 import { dependencyResumeCommand } from '../src/project-dependencies.js';
+import {
+  OPEN_SPEC_PROFILE,
+  OPEN_SPEC_WORKFLOW_IDS
+} from '../src/openspec-profile.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type {
@@ -18,9 +23,10 @@ class FrameworkFailureRunner extends ReadyInitRunner {
 
   constructor(
     private readonly behavior: 'failure' | 'missing-marker',
-    gitRoot: string
+    gitRoot?: string,
+    openSpecProfile?: ConstructorParameters<typeof ReadyInitRunner>[0]['openSpecProfile']
   ) {
-    super({ gitRoot });
+    super({ gitRoot, openSpecProfile });
   }
 
   override async run(
@@ -78,7 +84,8 @@ describe('commands', () => {
   it('parses multi-agent and independent consent flags strictly', () => {
     const parsed = parseArgs([
       'init', 'my-api', '--agents', 'copilot,claude', '--default-agent', 'claude',
-      '--yes', '--force', '--install-tools', '--install-dependencies'
+      '--yes', '--force', '--install-tools', '--install-dependencies',
+      '--copilot-cloud', '--configure-openspec-profile'
     ]);
     expect(parsed.flags).toMatchObject({
       agents: 'copilot,claude',
@@ -86,8 +93,11 @@ describe('commands', () => {
       yes: true,
       force: true,
       'install-tools': true,
-      'install-dependencies': true
+      'install-dependencies': true,
+      'copilot-cloud': true,
+      'configure-openspec-profile': true
     });
+    expect(parseArgs(['plan', '--no-copilot-cloud']).flags['copilot-cloud']).toBe(false);
     expect(() => parseArgs(['plan', '--force'])).toThrow(/Unknown flag/);
     expect(() => parseArgs(['init', '--agents='])).toThrow(/Missing value/);
   });
@@ -137,6 +147,8 @@ describe('commands', () => {
     expect(code).toBe(0);
     expect(stdout.text()).toContain('Usage: liftoff init [project-name]');
     expect(stdout.text()).toContain('--pattern <pattern>');
+    expect(stdout.text()).toContain('--copilot-cloud / --no-copilot-cloud');
+    expect(stdout.text()).toContain('--configure-openspec-profile');
     expect(stderr.text()).toBe('');
   });
 
@@ -233,11 +245,25 @@ describe('commands', () => {
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
     try {
-      const code = await runCommand(parseArgs(['plan', '--pattern', 'rag', '--cloud', 'azure', '--frontend']), { cwd: tempRoot, stdout, stderr });
+      const runner = new ReadyInitRunner({
+        openSpecProfile: { profile: 'core', delivery: 'skills', workflows: ['propose'] }
+      });
+      const code = await runCommand(parseArgs([
+        'plan',
+        '--pattern',
+        'rag',
+        '--cloud',
+        'azure',
+        '--frontend',
+        '--copilot-cloud',
+        '--configure-openspec-profile'
+      ]), { cwd: tempRoot, stdout, stderr, runner });
 
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Artifacts');
       expect(stdout.text()).toContain('Coding agents: GitHub Copilot');
+      expect(stdout.text()).toContain('OpenSpec workflows: 12 workflows; skills and commands');
+      expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
       expect(stdout.text()).toContain('Single-maintainer GitFlow policy 1');
@@ -245,6 +271,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('live enforcement');
       expect(await readdir(tempRoot)).toEqual([]);
+      expect(runner.calls).toEqual([]);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -519,6 +546,253 @@ describe('commands', () => {
       expect(validateCode).toBe(0);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('persists explicit Copilot cloud opt-in and opt-out only in OpenSpec-owned state', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-copilot-cloud-'));
+    try {
+      for (const enabled of [true, false]) {
+        const name = enabled ? 'cloud-enabled' : 'cloud-disabled';
+        const code = await runCommand(parseArgs([
+          'init',
+          name,
+          '--pattern',
+          'rag',
+          '--cloud',
+          'azure',
+          '--region',
+          'eastus',
+          '--spec',
+          'openspec',
+          '--agents',
+          'copilot',
+          enabled ? '--copilot-cloud' : '--no-copilot-cloud',
+          '--no-frontend',
+          '--environments',
+          'dev',
+          '--yes'
+        ]), {
+          cwd: tempRoot,
+          stdout: new CaptureStream(),
+          stderr: new CaptureStream(),
+          runner: new ReadyInitRunner()
+        });
+        expect(code).toBe(0);
+
+        const projectRoot = path.join(tempRoot, name);
+        const openSpecConfig = await readFile(
+          path.join(projectRoot, 'openspec', 'config.yaml'),
+          'utf8'
+        );
+        expect(openSpecConfig).toContain(`cloudAgent: ${enabled}`);
+        for (const relativePath of [
+          ['.github', 'workflows', 'copilot-setup-steps.yml'],
+          ['.github', 'agents', 'openspec.agent.md']
+        ]) {
+          if (enabled) {
+            await access(path.join(projectRoot, ...relativePath));
+          } else {
+            await expect(access(path.join(projectRoot, ...relativePath))).rejects.toMatchObject({
+              code: 'ENOENT'
+            });
+          }
+        }
+        await access(path.join(
+          projectRoot,
+          '.github',
+          'skills',
+          'openspec-bulk-archive-change',
+          'SKILL.md'
+        ));
+        await access(path.join(
+          projectRoot,
+          '.github',
+          'prompts',
+          'opsx-bulk-archive.prompt.md'
+        ));
+        const liftoffConfig = await readFile(
+          path.join(projectRoot, 'liftoff.config.json'),
+          'utf8'
+        );
+        const manifest = await readFile(
+          path.join(projectRoot, 'liftoff.manifest.json'),
+          'utf8'
+        );
+        expect(liftoffConfig).not.toMatch(/copilotCloud|configureOpenSpecProfile/);
+        expect(manifest).not.toMatch(/copilotCloud|configureOpenSpecProfile/);
+        const updateCheck = await runCommand(
+          parseArgs(['update', '--check', projectRoot]),
+          {
+            cwd: tempRoot,
+            stdout: new CaptureStream(),
+            stderr: new CaptureStream(),
+            runner: new ReadyInitRunner()
+          }
+        );
+        expect(updateCheck).toBe(0);
+      }
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires dedicated consent before changing an incompatible global OpenSpec profile', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-profile-consent-'));
+    const base = [
+      'init',
+      'profile-app',
+      '--pattern',
+      'rag',
+      '--cloud',
+      'azure',
+      '--region',
+      'eastus',
+      '--spec',
+      'openspec',
+      '--agents',
+      'copilot',
+      '--no-copilot-cloud',
+      '--no-frontend',
+      '--environments',
+      'dev',
+      '--yes',
+      '--force',
+      '--install-tools',
+      '--install-dependencies'
+    ];
+    try {
+      const blockedRunner = new ReadyInitRunner({
+        openSpecProfile: {
+          profile: 'core',
+          delivery: 'skills',
+          workflows: ['propose', 'explore', 'apply', 'update', 'sync', 'archive']
+        }
+      });
+      const blockedError = new CaptureStream();
+      expect(await runCommand(parseArgs(base), {
+        cwd: tempRoot,
+        stdout: new CaptureStream(),
+        stderr: blockedError,
+        runner: blockedRunner
+      })).toBe(1);
+      expect(blockedError.text()).toContain('--configure-openspec-profile');
+      expect(blockedRunner.calls.some((command) =>
+        command.args[0] === 'config' && command.args[1] === 'set'
+      )).toBe(false);
+      await expect(access(path.join(tempRoot, 'profile-app'))).rejects.toMatchObject({
+        code: 'ENOENT'
+      });
+
+      const authorizedRunner = new ReadyInitRunner({
+        openSpecProfile: {
+          profile: 'core',
+          delivery: 'skills',
+          workflows: ['propose']
+        }
+      });
+      const output = new CaptureStream();
+      expect(await runCommand(parseArgs([...base, '--configure-openspec-profile']), {
+        cwd: tempRoot,
+        stdout: output,
+        stderr: new CaptureStream(),
+        runner: authorizedRunner
+      })).toBe(0);
+      expect(authorizedRunner.openSpecProfile).toEqual({
+        profile: OPEN_SPEC_PROFILE,
+        delivery: 'both',
+        workflows: [...OPEN_SPEC_WORKFLOW_IDS]
+      });
+      expect(output.text()).toContain('OpenSpec global profile');
+      expect(output.text()).toContain('(configured)');
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requests global profile consent interactively and preserves an authorized change after framework failure', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-profile-interactive-'));
+    const base = [
+      'init',
+      'interactive-profile',
+      '--pattern',
+      'rag',
+      '--cloud',
+      'azure',
+      '--region',
+      'eastus',
+      '--spec',
+      'openspec',
+      '--agents',
+      'copilot',
+      '--no-copilot-cloud',
+      '--no-frontend',
+      '--environments',
+      'dev',
+      '--governance',
+      'single-maintainer-gitflow'
+    ];
+    try {
+      const declinedRunner = new ReadyInitRunner({
+        openSpecProfile: { profile: 'core', delivery: 'both', workflows: ['propose'] }
+      });
+      expect(await runCommand(parseArgs(base), {
+        cwd: tempRoot,
+        stdin: Readable.from(['y\nn\n']),
+        stdout: new CaptureStream(),
+        stderr: new CaptureStream(),
+        runner: declinedRunner
+      })).toBe(1);
+      expect(declinedRunner.openSpecProfile.profile).toBe('core');
+      await expect(access(path.join(tempRoot, 'interactive-profile'))).rejects.toMatchObject({
+        code: 'ENOENT'
+      });
+
+      const failedRunner = new FrameworkFailureRunner(
+        'failure',
+        undefined,
+        { profile: 'core', delivery: 'skills', workflows: ['propose'] }
+      );
+      const output = new CaptureStream();
+      expect(await runCommand(parseArgs([...base, '--configure-openspec-profile']), {
+        cwd: tempRoot,
+        stdin: Readable.from(['y\n']),
+        stdout: output,
+        stderr: new CaptureStream(),
+        runner: failedRunner
+      })).toBe(1);
+      expect(failedRunner.openSpecProfile).toEqual({
+        profile: 'custom',
+        delivery: 'both',
+        workflows: [...OPEN_SPEC_WORKFLOW_IDS]
+      });
+      expect(output.text()).toContain('(configured)');
+      await expect(access(path.join(tempRoot, 'interactive-profile'))).rejects.toMatchObject({
+        code: 'ENOENT'
+      });
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects Copilot cloud flags without the required OpenSpec Copilot combination', async () => {
+    for (const args of [
+      [
+        'plan', '--pattern', 'rag', '--cloud', 'azure', '--spec', 'spec-kit',
+        '--agents', 'copilot', '--default-agent', 'copilot', '--copilot-cloud'
+      ],
+      [
+        'plan', '--pattern', 'rag', '--cloud', 'azure', '--spec', 'openspec',
+        '--agents', 'claude', '--no-copilot-cloud'
+      ]
+    ]) {
+      const stderr = new CaptureStream();
+      expect(await runCommand(parseArgs(args), {
+        cwd: process.cwd(),
+        stdout: new CaptureStream(),
+        stderr
+      })).toBe(1);
+      expect(stderr.text()).toContain('requires OpenSpec with GitHub Copilot');
     }
   });
 

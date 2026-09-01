@@ -88,7 +88,7 @@ describe('interactive presentation', () => {
 
   it('handles the standard API branch and accepted default values', async () => {
     const { prompter, output } = scriptedPrompter(
-      '2\n\n1\n\ny\ndev,prod\n\n\n\n'
+      '2\n\n1\n\ny\ndev,prod\n\n\n\n\n'
     );
     try {
       const options = await prompter.promptForInitOptions({ projectName: 'standard-api' });
@@ -102,18 +102,20 @@ describe('interactive presentation', () => {
         governanceProfile: 'single-maintainer-gitflow',
         specWorkflow: 'openspec',
         agents: ['github-copilot'],
+        copilotCloud: false,
         environments: ['dev', 'prod']
       });
       expect(output.text()).toContain('Python / FastAPI');
       expect(output.text()).toContain('East US / eastus');
       expect(output.text()).toContain('GitHub Copilot');
+      expect(output.text()).toContain('GitHub-hosted Copilot coding agent');
     } finally {
       prompter.close();
     }
   });
 
   it('routes Power Apps directly into the shared workflow and agent tail', async () => {
-    const { prompter, output } = scriptedPrompter('3\ny\n\n\n1,2\n');
+    const { prompter, output } = scriptedPrompter('3\ny\n\n\n1,2\n\n');
     try {
       const options = await prompter.promptForInitOptions({
         projectName: 'power-workspace'
@@ -123,6 +125,7 @@ describe('interactive presentation', () => {
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
         agents: ['github-copilot', 'claude'],
+        copilotCloud: false,
         codeAppsPlugin: true,
         governanceProfile: 'single-maintainer-gitflow'
       });
@@ -142,7 +145,7 @@ describe('interactive presentation', () => {
   });
 
   it('allows an explicit interactive governance opt-out after architecture choices', async () => {
-    const { prompter, output } = scriptedPrompter('n\n');
+    const { prompter, output } = scriptedPrompter('n\n\n');
     try {
       const options = await prompter.promptForInitOptions({
         projectName: 'opt-out',
@@ -156,6 +159,7 @@ describe('interactive presentation', () => {
         agents: ['copilot']
       });
       expect(options.governanceProfile).toBe('none');
+      expect(options.copilotCloud).toBe(false);
       expect(output.text()).toContain(
         'Generate the single-maintainer GitFlow governance handoff?'
       );
@@ -374,6 +378,7 @@ describe('interactive presentation', () => {
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
         codeAppsPlugin: false,
+        copilotCloud: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
       setTimeout(() => input.write('\u001B[B \r'), 50);
@@ -410,6 +415,7 @@ describe('interactive presentation', () => {
         projectType: 'power-apps-code-app',
         specWorkflow: 'openspec',
         codeAppsPlugin: false,
+        copilotCloud: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
       setTimeout(() => input.write('\u0003'), 50);
@@ -445,6 +451,7 @@ describe('interactive presentation', () => {
           projectType: 'power-apps-code-app',
           specWorkflow: 'openspec',
           codeAppsPlugin: false,
+          copilotCloud: false,
           governanceProfile: 'single-maintainer-gitflow'
         });
         return output.text();
@@ -547,6 +554,29 @@ describe('interactive presentation', () => {
     } finally {
       dependencyPrompt.prompter.close();
     }
+
+    const profilePrompt = scriptedPrompter('y\n');
+    try {
+      expect(await profilePrompt.prompter.confirmOpenSpecProfileConfiguration({
+        observed: [
+          { label: 'Profile', value: 'core' },
+          { label: 'Delivery', value: 'skills' },
+          { label: 'Workflows', value: 'propose, apply' }
+        ],
+        required: [
+          { label: 'Profile', value: 'custom' },
+          { label: 'Delivery', value: 'both' },
+          { label: 'Workflows', value: 'all 12' }
+        ],
+        differences: ['profile "core" -> "custom"'],
+        commands: ['openspec config set profile custom']
+      })).toBe(true);
+      expect(profilePrompt.output.text()).toContain('Observed global OpenSpec profile');
+      expect(profilePrompt.output.text()).toContain('Required global OpenSpec profile');
+      expect(profilePrompt.output.text()).toContain('openspec config set profile custom');
+    } finally {
+      profilePrompt.prompter.close();
+    }
   });
 
   it('cancels init through the shared status without changing the destination', async () => {
@@ -567,6 +597,7 @@ describe('interactive presentation', () => {
         'openspec',
         '--agents',
         'copilot',
+        '--no-copilot-cloud',
         '--no-frontend',
         '--environments',
         'dev'
