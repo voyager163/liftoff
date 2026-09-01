@@ -34,6 +34,10 @@ project/
 |       `-- azure/
 |           `-- .terraform.lock.hcl
 |-- openspec/ or .specify/
+|-- .github/skills/openspec-*/ and .github/prompts/opsx-*  # OpenSpec + Copilot
+|-- .claude/skills/openspec-*/ and .claude/commands/opsx/  # OpenSpec + Claude
+|-- .github/workflows/copilot-setup-steps.yml              # optional hosted agent
+|-- .github/agents/openspec.agent.md                       # optional hosted agent
 |-- .github/prompts/liftoff-repository-governance.prompt.md
 |   or .claude/commands/liftoff-repository-governance.md
 |-- frontend/                  # only when selected
@@ -63,6 +67,9 @@ project/
   state configuration, and a remote-state example.
 - `openspec` is created for OpenSpec. `.specify` and `specs` are created for
   Spec Kit.
+- OpenSpec projects receive all 12 pinned workflows as both skills and commands
+  for supported selected-agent surfaces. The two hosted Copilot agent files are
+  generated only after explicit opt-in.
 
 ### Conditional areas
 

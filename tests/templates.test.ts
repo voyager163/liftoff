@@ -14,6 +14,76 @@ import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
 
 describe('templates and filesystem', () => {
+  it('preserves the OpenSpec Copilot cloud decision without persisting Liftoff consent fields', () => {
+    const cases = [
+      {
+        plan: buildProjectPlan({
+          projectName: 'Cloud Enabled',
+          pattern: 'rag',
+          cloud: 'azure',
+          agents: ['copilot'],
+          copilotCloud: true
+        }, { requireProjectName: true }),
+        expected: 'cloudAgent: true'
+      },
+      {
+        plan: buildProjectPlan({
+          projectName: 'Cloud Disabled',
+          pattern: 'rag',
+          cloud: 'azure',
+          agents: ['copilot'],
+          copilotCloud: false
+        }, { requireProjectName: true }),
+        expected: 'cloudAgent: false'
+      },
+      {
+        plan: buildProjectPlan({
+          projectName: 'Power Cloud',
+          projectType: 'power-apps-code-app',
+          agents: ['copilot'],
+          copilotCloud: true
+        }, { requireProjectName: true }),
+        expected: 'cloudAgent: true'
+      }
+    ];
+
+    for (const { plan, expected } of cases) {
+      const artifacts = buildArtifacts(plan);
+      const config = artifacts.find((artifact) =>
+        path.join(...artifact.pathParts) === path.join('openspec', 'config.yaml')
+      )?.content ?? '';
+      expect(config).toContain('githubCopilot:');
+      expect(config).toContain(expected);
+      expect(artifacts.find((artifact) =>
+        path.join(...artifact.pathParts) === 'liftoff.config.json'
+      )?.content).not.toMatch(/copilotCloud|configureOpenSpecProfile/);
+      expect(artifacts.find((artifact) =>
+        path.join(...artifact.pathParts) === 'liftoff.manifest.json'
+      )?.content).not.toMatch(/copilotCloud|configureOpenSpecProfile/);
+    }
+
+    const claudeArtifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Claude Only',
+      pattern: 'rag',
+      cloud: 'azure',
+      agents: ['claude']
+    }, { requireProjectName: true }));
+    expect(claudeArtifacts.find((artifact) =>
+      path.join(...artifact.pathParts) === path.join('openspec', 'config.yaml')
+    )?.content).not.toContain('githubCopilot:');
+
+    const specKitArtifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Spec Kit',
+      pattern: 'rag',
+      cloud: 'azure',
+      specWorkflow: 'spec-kit',
+      agents: ['copilot']
+    }, { requireProjectName: true }));
+    expect(specKitArtifacts.some((artifact) =>
+      path.join(...artifact.pathParts) === path.join('openspec', 'config.yaml')
+    )).toBe(false);
+  });
+
   it('omits frontend artifacts when frontend is disabled', () => {
     const plan = buildProjectPlan({ projectName: 'API Only', pattern: 'prompt', cloud: 'azure', includeFrontend: false }, { requireProjectName: true });
     const artifacts = buildArtifacts(plan);

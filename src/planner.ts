@@ -349,6 +349,15 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
   if (selectedAgents.agents.length === 0) {
     issues.push('At least one supported AI coding agent is required.');
   }
+  const includesGitHubCopilot = selectedAgents.agents.some((agent) => agent.id === 'github-copilot');
+  if (
+    input.copilotCloud !== undefined &&
+    (specWorkflow?.id !== 'openspec' || !includesGitHubCopilot)
+  ) {
+    issues.push(
+      '--copilot-cloud/--no-copilot-cloud requires OpenSpec with GitHub Copilot selected.'
+    );
+  }
 
   const requestedDefaultAgent = input.defaultAgent ? getCodingAgent(input.defaultAgent) : undefined;
   if (input.defaultAgent && !requestedDefaultAgent) {
@@ -460,6 +469,9 @@ export function buildProjectPlan(input: ProjectOptions, options: BuildPlanOption
     specWorkflow,
     agents: selectedAgents.agents,
     ...(defaultAgent ? { defaultAgent } : {}),
+    copilotCloud: specWorkflow.id === 'openspec' && includesGitHubCopilot
+      ? input.copilotCloud ?? false
+      : false,
     framework: getFrameworkDefinition(specWorkflow.id),
     governanceProfile,
     approvedStack: approvedStackFor(workload)
@@ -554,7 +566,17 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
   const integrations = [
     { label: 'Spec workflow', value: plan.specWorkflow.label },
     { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
-    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : [])
+    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
+    ...(plan.specWorkflow.id === 'openspec'
+      ? [{ label: 'OpenSpec workflows', value: '12 workflows; skills and commands' }]
+      : []),
+    ...(plan.specWorkflow.id === 'openspec' &&
+      plan.agents.some((agent) => agent.id === 'github-copilot')
+      ? [{
+          label: 'Copilot cloud agent',
+          value: plan.copilotCloud ? 'Enabled' : 'Disabled (default)'
+        }]
+      : [])
   ];
   const governance = plan.governanceProfile.id === 'none'
     ? [{

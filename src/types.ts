@@ -138,6 +138,8 @@ export interface ProjectOptions {
   agents?: string[];
   defaultAgent?: string;
   codeAppsPlugin?: boolean;
+  copilotCloud?: boolean;
+  configureOpenSpecProfile?: boolean;
   governanceProfile?: string;
   configPath?: string;
   yes?: boolean;
@@ -184,6 +186,7 @@ export interface ProjectPlanBase {
   specWorkflow: SpecWorkflowDefinition;
   agents: CodingAgentDefinition[];
   defaultAgent?: CodingAgentDefinition;
+  copilotCloud: boolean;
   framework: FrameworkDefinition;
   governanceProfile: GovernanceProfileDefinition;
   approvedStack: string[];

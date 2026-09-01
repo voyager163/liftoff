@@ -76,6 +76,14 @@ import {
 } from './init-filesystem.js';
 import { renderMigrationChecklist, renderMigrationProposal, renderMigrationTasks, seedMigrationGroups } from './migrate-plan.js';
 import {
+  buildOpenSpecProfileWriteCommands,
+  configureOpenSpecProfile,
+  inspectOpenSpecProfile,
+  OPEN_SPEC_DELIVERY,
+  OPEN_SPEC_PROFILE,
+  OPEN_SPEC_WORKFLOW_IDS
+} from './openspec-profile.js';
+import {
   buildProjectPlan,
   loadConfigOptions,
   mergeOptions,
@@ -304,6 +312,17 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
     if (!readiness.ready) {
       return 1;
     }
+    const profileReadiness = await ensureOpenSpecProfileReady(
+      plan,
+      options,
+      context,
+      runner,
+      presentation,
+      prompter
+    );
+    if (!profileReadiness.ready) {
+      return 1;
+    }
 
     presentation.stage('Stage project files');
     const staged = await withStagingArea(async (area): Promise<
@@ -316,6 +335,7 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
         `${plan.specWorkflow.label} ${plan.framework.version}`
       );
       await initializeFramework(area, plan, runner, {
+        env: context.env,
         ...presentation.childStreams(),
         onCommand: (command) => presentation.command(command)
       });
@@ -383,6 +403,15 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
       ...readiness.pluginProbes.map((probe) =>
         `Code Apps plugin for ${probe.agent.label}: ${probe.state}`
       ),
+      ...(plan.specWorkflow.id === 'openspec'
+        ? [
+            `OpenSpec global profile: ${profileReadiness.changed ? 'configured' : 'verified'}; ` +
+              `${OPEN_SPEC_WORKFLOW_IDS.length} workflows; skills and commands`,
+            ...(plan.agents.some((agent) => agent.id === 'github-copilot')
+              ? [`GitHub Copilot cloud agent: ${plan.copilotCloud ? 'enabled' : 'disabled'}`]
+              : [])
+          ]
+        : []),
       plan.governanceProfile.id === 'none'
         ? 'Repository governance: disabled'
         : `Repository governance: ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}; local handoff generated, live activation deferred`
@@ -456,6 +485,11 @@ interface WorkstationReadinessResult {
   deferred: string[];
   probes: RequirementProbeResult[];
   pluginProbes: CodeAppsPluginProbe[];
+}
+
+interface OpenSpecProfileReadinessResult {
+  ready: boolean;
+  changed: boolean;
 }
 
 async function ensureWorkstationReady(
@@ -615,6 +649,84 @@ async function ensureWorkstationReady(
       )
   ];
   return { ready: true, deferred, probes, pluginProbes };
+}
+
+async function ensureOpenSpecProfileReady(
+  plan: ProjectPlan,
+  options: ProjectOptions,
+  context: ExecutionContext,
+  runner: CommandRunner,
+  presentation: PresentationSession,
+  prompter?: InteractivePrompter,
+  resumeInvocation = 'liftoff init'
+): Promise<OpenSpecProfileReadinessResult> {
+  if (plan.specWorkflow.id !== 'openspec') {
+    return { ready: true, changed: false };
+  }
+
+  presentation.stage('Check OpenSpec global profile');
+  const inspection = await inspectOpenSpecProfile(plan.framework.executable, runner, {
+    cwd: context.cwd,
+    env: context.env
+  });
+  if (inspection.compatible) {
+    presentation.status(
+      'success',
+      'OpenSpec global profile',
+      `${OPEN_SPEC_PROFILE}; ${OPEN_SPEC_DELIVERY}; ${OPEN_SPEC_WORKFLOW_IDS.length} workflows`
+    );
+    return { ready: true, changed: false };
+  }
+
+  const commands = buildOpenSpecProfileWriteCommands(plan.framework.executable);
+  const authorized = options.configureOpenSpecProfile === true ||
+    (
+      options.configureOpenSpecProfile === undefined &&
+      prompter !== undefined &&
+      await prompter.confirmOpenSpecProfileConfiguration({
+        observed: [
+          { label: 'Profile', value: inspection.state.profile },
+          { label: 'Delivery', value: inspection.state.delivery },
+          {
+            label: 'Workflows',
+            value: inspection.state.workflows.length > 0
+              ? inspection.state.workflows.join(', ')
+              : '(none)'
+          }
+        ],
+        required: [
+          { label: 'Profile', value: OPEN_SPEC_PROFILE },
+          { label: 'Delivery', value: OPEN_SPEC_DELIVERY },
+          { label: 'Workflows', value: OPEN_SPEC_WORKFLOW_IDS.join(', ') }
+        ],
+        differences: inspection.differences,
+        commands: commands.map((command) => formatCommand(command))
+      })
+    );
+
+  if (!authorized) {
+    presentation.error(
+      'The global OpenSpec profile does not satisfy the Liftoff template contract.',
+      `Run ${commands.map((command) => `\`${formatCommand(command)}\``).join(', then ')}, ` +
+        `then rerun \`${resumeInvocation}\`; or authorize those commands with ` +
+        '`--configure-openspec-profile`.'
+    );
+    return { ready: false, changed: false };
+  }
+
+  presentation.stage('Configure OpenSpec global profile');
+  await configureOpenSpecProfile(plan.framework.executable, runner, {
+    cwd: context.cwd,
+    env: context.env,
+    ...presentation.childStreams(),
+    onCommand: (command) => presentation.command(formatCommand(command))
+  });
+  presentation.status(
+    'success',
+    'OpenSpec global profile',
+    `${OPEN_SPEC_PROFILE}; ${OPEN_SPEC_DELIVERY}; ${OPEN_SPEC_WORKFLOW_IDS.length} workflows (configured)`
+  );
+  return { ready: true, changed: true };
 }
 
 async function handleProjectDependencies(
@@ -992,6 +1104,18 @@ async function executeMigration(
     if (!readiness.ready) {
       return 1;
     }
+    const profileReadiness = await ensureOpenSpecProfileReady(
+      plan,
+      options,
+      context,
+      runner,
+      presentation,
+      prompter,
+      `liftoff migrate ${JSON.stringify(sourceRoot)}`
+    );
+    if (!profileReadiness.ready) {
+      return 1;
+    }
 
     const migrationPlan = migrationPlanArtifacts(plan, inventory);
     presentation.stage('Stage fresh migration project');
@@ -1003,6 +1127,7 @@ async function executeMigration(
         `${plan.specWorkflow.label} ${plan.framework.version}`
       );
       await initializeFramework(area, plan, runner, {
+        env: context.env,
         ...presentation.childStreams(),
         onCommand: (command) => presentation.command(command)
       });
@@ -1058,7 +1183,16 @@ async function executeMigration(
       `${plan.specWorkflow.label} ${plan.framework.version}`,
       ...plan.agents.map((agent) =>
         `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default)' : ''}`
-      )
+      ),
+      ...(plan.specWorkflow.id === 'openspec'
+        ? [
+            `OpenSpec global profile: ${profileReadiness.changed ? 'configured' : 'verified'}; ` +
+              `${OPEN_SPEC_WORKFLOW_IDS.length} workflows; skills and commands`,
+            ...(plan.agents.some((agent) => agent.id === 'github-copilot')
+              ? [`GitHub Copilot cloud agent: ${plan.copilotCloud ? 'enabled' : 'disabled'}`]
+              : [])
+          ]
+        : [])
     ]);
     if (readiness.deferred.length > 0) {
       presentation.bullets('Deferred advisory checks', readiness.deferred);
@@ -2588,6 +2722,8 @@ async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includePro
     agents: readListFlag(parsed.flags, 'agents'),
     defaultAgent: readStringFlag(parsed.flags, 'default-agent'),
     codeAppsPlugin: readBooleanFlag(parsed.flags, 'code-apps-plugin'),
+    copilotCloud: readBooleanFlag(parsed.flags, 'copilot-cloud'),
+    configureOpenSpecProfile: readBooleanFlag(parsed.flags, 'configure-openspec-profile'),
     governanceProfile: readStringFlag(parsed.flags, 'governance'),
     configPath,
     yes: readBooleanFlag(parsed.flags, 'yes') ?? false,
@@ -2613,6 +2749,9 @@ function hasMissingInitInputs(options: ProjectOptions): boolean {
   const missingDefaultAgent = options.specWorkflow === 'spec-kit' &&
     (options.agents?.length ?? 0) > 1 &&
     !options.defaultAgent;
+  const missingCopilotCloud = options.specWorkflow === 'openspec' &&
+    options.agents?.some((agent) => getCodingAgent(agent)?.id === 'github-copilot') === true &&
+    options.copilotCloud === undefined;
   return !options.projectName ||
     missingTypeSpecific ||
     projectType !== 'power-apps-code-app' && !options.cloud ||
@@ -2621,6 +2760,7 @@ function hasMissingInitInputs(options: ProjectOptions): boolean {
     !options.agents ||
     !options.governanceProfile ||
     missingDefaultAgent ||
+    missingCopilotCloud ||
     projectType !== 'power-apps-code-app' && !options.environments;
 }
 

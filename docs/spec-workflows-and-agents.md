@@ -9,10 +9,23 @@ Liftoff workload.
 
 OpenSpec 1.11.0 organizes proposed behavior changes as reviewable artifacts
 before implementation. Liftoff runs that pinned official initializer in
-temporary staging and passes every selected coding agent in stable order.
+temporary staging, passes every selected coding agent in stable order, and
+requires the complete custom profile with both skills and commands:
 
-Generated projects contain `openspec/` plus the selected agent integration
-markers.
+```text
+propose, explore, new, continue, apply, update,
+ff, sync, archive, bulk-archive, verify, onboard
+```
+
+OpenSpec stores profile and delivery preferences globally. Before creating an
+OpenSpec project, Liftoff reads that configuration through the pinned CLI. A
+matching custom/both profile proceeds without a prompt. A different profile is
+blocking until you separately approve the displayed global changes or pass
+`--configure-openspec-profile`. `--yes` and other consent flags do not authorize
+the machine-wide change.
+
+Generated projects contain `openspec/` plus all 12 official workflow skills and
+commands for each selected agent surface that supports them.
 
 ### Spec Kit
 
@@ -65,6 +78,17 @@ Framework files remain owned by the official initializer. Liftoff validates
 them but excludes framework-owned output from durable artifact hashes so a
 framework can manage its own lifecycle.
 
+To align an existing OpenSpec project, configure both delivery and all workflows:
+
+```bash
+openspec config profile
+openspec update
+```
+
+Select **Both (skills + commands)** and every workflow in the profile picker.
+Plain `liftoff update` intentionally does not regenerate these framework-owned
+files.
+
 Repository-governance launchers are separate durable Liftoff files at the exact
 Copilot prompt and Claude command paths documented in
 [repository governance](repository-governance.md). They reference one canonical
@@ -78,6 +102,21 @@ Install the exact selected framework release with its supported package manager:
 npm install -g @fission-ai/openspec@1.11.0
 uv tool install specify-cli==1.0.1
 ```
+
+## Optional GitHub Copilot cloud coding agent
+
+When OpenSpec and GitHub Copilot are selected, Liftoff asks whether to configure
+GitHub's hosted coding agent. This is separate from Copilot in an editor or
+terminal and defaults to No.
+
+Opting in writes official OpenSpec-owned files:
+
+- `.github/workflows/copilot-setup-steps.yml`
+- `.github/agents/openspec.agent.md`
+
+Use `--copilot-cloud` or `--no-copilot-cloud` in automation. The choice is
+recorded as `githubCopilot.cloudAgent` in `openspec/config.yaml`; it is not stored
+as Liftoff overwrite or machine-configuration consent.
 
 ## Optional Code Apps plugin
 
