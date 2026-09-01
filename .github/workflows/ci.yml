@@ -55,7 +55,7 @@ jobs:
 
       - name: Run Windows initialization safety coverage
         if: runner.os == 'Windows'
-        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/openspec-profile.test.ts tests/framework-adapters.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/openspec-profile.test.ts tests/framework-adapters.test.ts tests/dependabot-config.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
 
       - name: Run package check
         run: npm run check
