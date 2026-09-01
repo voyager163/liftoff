@@ -57,7 +57,7 @@ describe('interactive presentation', () => {
 
   it('handles defaults, invalid choices, disabled providers, ambiguous regions, and multi-agent selection', async () => {
     const { prompter, output } = scriptedPrompter(
-      '\nlaunch-app\n\n99\n1\n2\n1\nkorea\n2\n\n\n\n2\n9\n1,2\n2\n'
+      '\nlaunch-app\n\n99\n2\n2\n1\nkorea\n2\n\n\n\n2\n9\n1,2\n2\n'
     );
     try {
       const options = await prompter.promptForInitOptions({});
@@ -76,11 +76,37 @@ describe('interactive presentation', () => {
         defaultAgent: 'claude',
         environments: ['dev', 'test', 'prod']
       });
+
       expect(output.text()).toContain('Project name is required');
       expect(output.text()).toContain('Please choose a valid option');
       expect(output.text()).toContain('AWS - planned is not available in V1');
       expect(output.text()).toContain('Matching Azure regions');
       expect(output.text()).toContain('Please choose valid agent options');
+    } finally {
+      prompter.close();
+    }
+  });
+
+  it('defaults an undecided GenAI project to the generic starter', async () => {
+    const { prompter, output } = scriptedPrompter('\n');
+    try {
+      const options = await prompter.promptForInitOptions({
+        projectName: 'generic-app',
+        projectType: 'genai',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
+        governanceProfile: 'none',
+        specWorkflow: 'openspec',
+        agents: ['github-copilot'],
+        copilotCloud: false
+      });
+
+      expect(options.pattern).toBe('generic');
+      expect(output.text()).toContain(
+        "I'm not sure yet - Generic GenAI starter (foundation)"
+      );
     } finally {
       prompter.close();
     }

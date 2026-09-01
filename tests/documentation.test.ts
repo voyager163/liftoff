@@ -142,6 +142,36 @@ describe('public documentation', () => {
     expect(workloads).toContain('Do not run `/create-code-app`');
   });
 
+  it('documents the uncertainty-safe generic GenAI pattern and migration boundary', async () => {
+    const [readme, gettingStarted, workloads, cli, manifests, structure, existing, troubleshooting] =
+      await Promise.all([
+        repositoryFile('README.md'),
+        repositoryFile('docs/getting-started.md'),
+        repositoryFile('docs/workloads.md'),
+        repositoryFile('docs/cli-reference.md'),
+        repositoryFile('docs/configuration-and-manifests.md'),
+        repositoryFile('docs/project-structure.md'),
+        repositoryFile('docs/existing-repositories.md'),
+        repositoryFile('docs/troubleshooting.md')
+      ]);
+
+    for (const source of [readme, gettingStarted, workloads, cli]) {
+      expect(source).toMatch(/Generic GenAI\s+starter/i);
+      expect(source).toContain('--pattern generic');
+    }
+    expect(workloads).toContain('/api/ai/run');
+    expect(workloads).toMatch(/does\s+not generate retrieval or pgvector/);
+    expect(manifests).toContain('"pattern": "generic"');
+    expect(manifests).toContain('reviewed project');
+    expect(structure).toContain('generic_agent.py');
+    expect(existing).toContain('Changing the configuration to RAG');
+    expect(troubleshooting).toContain('Generic GenAI project now needs a specialization');
+    const genericTroubleshooting = troubleshooting
+      .split('## Generic GenAI project now needs a specialization')[1]
+      .split('\n## ')[0];
+    expect(genericTroubleshooting).not.toContain('liftoff update --force');
+  });
+
   it('moves detailed installation, target, consent, readiness, and terminal contracts into guides', async () => {
     const [
       gettingStarted,

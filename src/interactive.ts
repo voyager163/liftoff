@@ -170,9 +170,11 @@ export class InteractivePrompter {
     const pattern = projectType === 'genai'
       ? initial.pattern ?? await this.choose('Select GenAI pattern', patterns.map((pattern) => ({
           value: pattern.id,
-          label: `${pattern.label} (${pattern.scaffoldStatus})`,
+          label: pattern.id === 'generic'
+            ? `I'm not sure yet - Generic GenAI starter (${pattern.scaffoldStatus})`
+            : `${pattern.label} (${pattern.scaffoldStatus})`,
           disabled: false
-        })))
+        })), 'generic')
       : initial.pattern;
     const apiStack = projectType === 'standard'
       ? initial.apiStack ?? await this.choose('Select API stack', apiStacks.map((stack) => ({

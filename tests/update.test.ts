@@ -753,6 +753,42 @@ describe('core-only update command', () => {
     expect(await readFile(sourcePath, 'utf8')).toBe(source);
   });
 
+  it.each([
+    ['generic', 'rag'],
+    ['prompt', 'generic']
+  ])(
+    'rejects the GenAI pattern migration %s -> %s without touching project files',
+    async (recordedPattern, desiredPattern) => {
+      const root = await createFixtureProject({
+        projectName: 'Pattern Migration',
+        pattern: recordedPattern,
+        cloud: 'azure',
+        region: 'eastus',
+        environments: ['dev'],
+        specWorkflow: 'openspec'
+      });
+      cleanups.push(path.dirname(root));
+      const routePath = path.join(
+        root,
+        'backend',
+        'apis',
+        'routes',
+        `${recordedPattern}.py`
+      );
+      const before = await readFile(routePath, 'utf8');
+      await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+        config.pattern = desiredPattern;
+      });
+
+      const result = await run(['update', '--force'], root);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(
+        `Pattern changes (${recordedPattern} -> ${desiredPattern}) are a migration`
+      );
+      expect(await readFile(routePath, 'utf8')).toBe(before);
+    }
+  );
+
   it('rejects a project written by a newer CLI', async () => {
     const root = await fixtureProject();
     await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {

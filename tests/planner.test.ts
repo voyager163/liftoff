@@ -31,7 +31,31 @@ describe('planner', () => {
       policyVersion: '1',
       default: true
     });
+
   });
+
+  it.each(['generic', 'undecided', 'unsure', 'not-sure'])(
+    'builds a generic GenAI plan from %s',
+    (pattern) => {
+      const plan = buildProjectPlan({
+        projectName: 'Unspecified Assistant',
+        projectType: 'genai',
+        pattern,
+        cloud: 'azure'
+      }, { requireProjectName: true });
+
+      expect(plan.workload).toBe('genai');
+      expect(plan.pattern).toMatchObject({
+        id: 'generic',
+        label: 'Generic GenAI Starter',
+        routePrefix: '/api/ai',
+        worker: false
+      });
+      expect(plan.apiStack.id).toBe('python-fastapi');
+      expect(plan.frontendStarter).toBe('Generic AI playground');
+      expect(plan.approvedStack).toContain('PydanticAI');
+    }
+  );
 
   it.each([
     ['python', 'python-fastapi'],

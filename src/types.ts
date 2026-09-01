@@ -1,4 +1,5 @@
 export type PatternId =
+  | 'generic'
   | 'rag'
   | 'chatbot'
   | 'agent'
