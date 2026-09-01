@@ -331,58 +331,75 @@ Infrastructure         OpenTofu for Azure
 
 Artifacts (38)
 ──────────────
-Artifact                                Path
-──────────────────────────────────────  ────────────────────────────────────────
-root-readme                             README.md
-root-gitignore                          .gitignore
-liftoff-config                          liftoff.config.json
-env-example                             .env.example
-backend-dockerfile                      Dockerfile
-go-backend-module                       backend/go.mod
-go-backend-checksums                    backend/go.sum
-go-backend-makefile                     backend/Makefile
-go-backend-main                         backend/cmd/api/main.go
-go-backend-api                          backend/internal/api/api.go
-go-backend-config                       backend/internal/config/config.go
-go-backend-database                     backend/internal/database/database.go
-go-backend-test-health                  backend/internal/api/api_test.go
-database-go-migration                   database/migrations/0001_initial.sql
-database-schema                         database/models/schema.sql
-environment-dev-backend                 environments/dev/backend.env
-docker-compose                          docker-compose.yml
-opentofu-versions                       infrastructure/opentofu/azure/versions.t
-                                        f
-opentofu-provider-lock                  infrastructure/opentofu/azure/.terraform
-                                        .lock.hcl
-opentofu-providers                      infrastructure/opentofu/azure/providers.
-                                        tf
-opentofu-variables                      infrastructure/opentofu/azure/variables.
-                                        tf
-opentofu-main                           infrastructure/opentofu/azure/main.tf
-opentofu-outputs                        infrastructure/opentofu/azure/outputs.tf
-opentofu-local-state                    infrastructure/opentofu/azure/backend.lo
-                                        cal.tf
-opentofu-remote-state-example           infrastructure/opentofu/azure/backend.re
-                                        mote.example.tf
-opentofu-readme                         infrastructure/opentofu/azure/README.md
-opentofu-dev-tfvars                     infrastructure/opentofu/azure/environmen
-                                        ts/dev.tfvars
-openspec-config                         openspec/config.yaml
-openspec-seed-change-metadata           openspec/changes/bootstrap-liftoff-previ
-                                        ew/.openspec.yaml
-openspec-seed-proposal                  openspec/changes/bootstrap-liftoff-previ
-                                        ew/proposal.md
-openspec-seed-design                    openspec/changes/bootstrap-liftoff-previ
-                                        ew/design.md
-openspec-seed-tasks                     openspec/changes/bootstrap-liftoff-previ
-                                        ew/tasks.md
-openspec-spec-placeholder               openspec/specs/.gitkeep
-repository-governance-policy            .liftoff/governance/policy.md
-repository-governance-context           .liftoff/governance/context.json
-repository-governance-guide             .liftoff/governance/README.md
-repository-governance-copilot-launcher  .github/prompts/liftoff-repository-gover
-                                        nance.prompt.md
-manifest                                liftoff.manifest.json
+Artifact                   Lifecycle                  Path
+─────────────────────────  ─────────────────────────  ──────────────────────────
+root-readme                project (base)             README.md
+root-gitignore             project (base)             .gitignore
+liftoff-config             desired-state              liftoff.config.json
+env-example                project (base)             .env.example
+backend-dockerfile         project (base)             Dockerfile
+go-backend-module          project (base)             backend/go.mod
+go-backend-checksums       project (base)             backend/go.sum
+go-backend-makefile        project (base)             backend/Makefile
+go-backend-main            project (base)             backend/cmd/api/main.go
+go-backend-api             project (base)             backend/internal/api/api.g
+                                                      o
+go-backend-config          project (base)             backend/internal/config/co
+                                                      nfig.go
+go-backend-database        project (base)             backend/internal/database/
+                                                      database.go
+go-backend-test-health     project (base)             backend/internal/api/api_t
+                                                      est.go
+database-go-migration      project (base)             database/migrations/0001_i
+                                                      nitial.sql
+database-schema            project (base)             database/models/schema.sql
+environment-dev-backend    project (environment:dev)  environments/dev/backend.e
+                                                      nv
+docker-compose             project (base)             docker-compose.yml
+opentofu-versions          project (base)             infrastructure/opentofu/az
+                                                      ure/versions.tf
+opentofu-provider-lock     project (base)             infrastructure/opentofu/az
+                                                      ure/.terraform.lock.hcl
+opentofu-providers         project (base)             infrastructure/opentofu/az
+                                                      ure/providers.tf
+opentofu-variables         project (base)             infrastructure/opentofu/az
+                                                      ure/variables.tf
+opentofu-main              project (base)             infrastructure/opentofu/az
+                                                      ure/main.tf
+opentofu-outputs           project (base)             infrastructure/opentofu/az
+                                                      ure/outputs.tf
+opentofu-local-state       project (base)             infrastructure/opentofu/az
+                                                      ure/backend.local.tf
+opentofu-remote-state-exa  project (base)             infrastructure/opentofu/az
+mple                                                  ure/backend.remote.example
+                                                      .tf
+opentofu-readme            project (base)             infrastructure/opentofu/az
+                                                      ure/README.md
+opentofu-dev-tfvars        project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev.tfvar
+                                                      s
+openspec-config            seed                       openspec/config.yaml
+openspec-seed-change-meta  seed                       openspec/changes/bootstrap
+data                                                  -liftoff-preview/.openspec
+                                                      .yaml
+openspec-seed-proposal     seed                       openspec/changes/bootstrap
+                                                      -liftoff-preview/proposal.
+                                                      md
+openspec-seed-design       seed                       openspec/changes/bootstrap
+                                                      -liftoff-preview/design.md
+openspec-seed-tasks        seed                       openspec/changes/bootstrap
+                                                      -liftoff-preview/tasks.md
+openspec-spec-placeholder  seed                       openspec/specs/.gitkeep
+repository-governance-pol  managed-core               .liftoff/governance/policy
+icy                                                   .md
+repository-governance-con  managed-core               .liftoff/governance/contex
+text                                                  t.json
+repository-governance-gui  managed-core               .liftoff/governance/README
+de                                                    .md
+repository-governance-cop  managed-core               .github/prompts/liftoff-re
+ilot-launcher                                         pository-governance.prompt
+                                                      .md
+manifest                   manifest                   liftoff.manifest.json
 
 Workstation requirements
 ────────────────────────
@@ -668,44 +685,44 @@ Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
 Artifacts (38)
-Artifact: root-readme | Path: README.md
-Artifact: root-gitignore | Path: .gitignore
-Artifact: liftoff-config | Path: liftoff.config.json
-Artifact: env-example | Path: .env.example
-Artifact: backend-dockerfile | Path: Dockerfile
-Artifact: go-backend-module | Path: backend/go.mod
-Artifact: go-backend-checksums | Path: backend/go.sum
-Artifact: go-backend-makefile | Path: backend/Makefile
-Artifact: go-backend-main | Path: backend/cmd/api/main.go
-Artifact: go-backend-api | Path: backend/internal/api/api.go
-Artifact: go-backend-config | Path: backend/internal/config/config.go
-Artifact: go-backend-database | Path: backend/internal/database/database.go
-Artifact: go-backend-test-health | Path: backend/internal/api/api_test.go
-Artifact: database-go-migration | Path: database/migrations/0001_initial.sql
-Artifact: database-schema | Path: database/models/schema.sql
-Artifact: environment-dev-backend | Path: environments/dev/backend.env
-Artifact: docker-compose | Path: docker-compose.yml
-Artifact: opentofu-versions | Path: infrastructure/opentofu/azure/versions.tf
-Artifact: opentofu-provider-lock | Path: infrastructure/opentofu/azure/.terraform.lock.hcl
-Artifact: opentofu-providers | Path: infrastructure/opentofu/azure/providers.tf
-Artifact: opentofu-variables | Path: infrastructure/opentofu/azure/variables.tf
-Artifact: opentofu-main | Path: infrastructure/opentofu/azure/main.tf
-Artifact: opentofu-outputs | Path: infrastructure/opentofu/azure/outputs.tf
-Artifact: opentofu-local-state | Path: infrastructure/opentofu/azure/backend.local.tf
-Artifact: opentofu-remote-state-example | Path: infrastructure/opentofu/azure/backend.remote.example.tf
-Artifact: opentofu-readme | Path: infrastructure/opentofu/azure/README.md
-Artifact: opentofu-dev-tfvars | Path: infrastructure/opentofu/azure/environments/dev.tfvars
-Artifact: openspec-config | Path: openspec/config.yaml
-Artifact: openspec-seed-change-metadata | Path: openspec/changes/bootstrap-liftoff-preview/.openspec.yaml
-Artifact: openspec-seed-proposal | Path: openspec/changes/bootstrap-liftoff-preview/proposal.md
-Artifact: openspec-seed-design | Path: openspec/changes/bootstrap-liftoff-preview/design.md
-Artifact: openspec-seed-tasks | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
-Artifact: openspec-spec-placeholder | Path: openspec/specs/.gitkeep
-Artifact: repository-governance-policy | Path: .liftoff/governance/policy.md
-Artifact: repository-governance-context | Path: .liftoff/governance/context.json
-Artifact: repository-governance-guide | Path: .liftoff/governance/README.md
-Artifact: repository-governance-copilot-launcher | Path: .github/prompts/liftoff-repository-governance.prompt.md
-Artifact: manifest | Path: liftoff.manifest.json
+Artifact: root-readme | Lifecycle: project (base) | Path: README.md
+Artifact: root-gitignore | Lifecycle: project (base) | Path: .gitignore
+Artifact: liftoff-config | Lifecycle: desired-state | Path: liftoff.config.json
+Artifact: env-example | Lifecycle: project (base) | Path: .env.example
+Artifact: backend-dockerfile | Lifecycle: project (base) | Path: Dockerfile
+Artifact: go-backend-module | Lifecycle: project (base) | Path: backend/go.mod
+Artifact: go-backend-checksums | Lifecycle: project (base) | Path: backend/go.sum
+Artifact: go-backend-makefile | Lifecycle: project (base) | Path: backend/Makefile
+Artifact: go-backend-main | Lifecycle: project (base) | Path: backend/cmd/api/main.go
+Artifact: go-backend-api | Lifecycle: project (base) | Path: backend/internal/api/api.go
+Artifact: go-backend-config | Lifecycle: project (base) | Path: backend/internal/config/config.go
+Artifact: go-backend-database | Lifecycle: project (base) | Path: backend/internal/database/database.go
+Artifact: go-backend-test-health | Lifecycle: project (base) | Path: backend/internal/api/api_test.go
+Artifact: database-go-migration | Lifecycle: project (base) | Path: database/migrations/0001_initial.sql
+Artifact: database-schema | Lifecycle: project (base) | Path: database/models/schema.sql
+Artifact: environment-dev-backend | Lifecycle: project (environment:dev) | Path: environments/dev/backend.env
+Artifact: docker-compose | Lifecycle: project (base) | Path: docker-compose.yml
+Artifact: opentofu-versions | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/versions.tf
+Artifact: opentofu-provider-lock | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/.terraform.lock.hcl
+Artifact: opentofu-providers | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/providers.tf
+Artifact: opentofu-variables | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/variables.tf
+Artifact: opentofu-main | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/main.tf
+Artifact: opentofu-outputs | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/outputs.tf
+Artifact: opentofu-local-state | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/backend.local.tf
+Artifact: opentofu-remote-state-example | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/backend.remote.example.tf
+Artifact: opentofu-readme | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/README.md
+Artifact: opentofu-dev-tfvars | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev.tfvars
+Artifact: openspec-config | Lifecycle: seed | Path: openspec/config.yaml
+Artifact: openspec-seed-change-metadata | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/.openspec.yaml
+Artifact: openspec-seed-proposal | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/proposal.md
+Artifact: openspec-seed-design | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/design.md
+Artifact: openspec-seed-tasks | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
+Artifact: openspec-spec-placeholder | Lifecycle: seed | Path: openspec/specs/.gitkeep
+Artifact: repository-governance-policy | Lifecycle: managed-core | Path: .liftoff/governance/policy.md
+Artifact: repository-governance-context | Lifecycle: managed-core | Path: .liftoff/governance/context.json
+Artifact: repository-governance-guide | Lifecycle: managed-core | Path: .liftoff/governance/README.md
+Artifact: repository-governance-copilot-launcher | Lifecycle: managed-core | Path: .github/prompts/liftoff-repository-governance.prompt.md
+Artifact: manifest | Lifecycle: manifest | Path: liftoff.manifest.json
 
 Workstation requirements
 Node.js: 24.20.0+ [blocking]
@@ -1060,51 +1077,64 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Infrastructure         OpenTofu for Azure                                                    │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Artifacts (38) ─────────────────────────────────────────────────────────────────────────────┐
-│ Artifact                                Path                                                 │
-│ ──────────────────────────────────────  ──────────────────────────────────────────────────── │
-│ root-readme                             README.md                                            │
-│ root-gitignore                          .gitignore                                           │
-│ liftoff-config                          liftoff.config.json                                  │
-│ env-example                             .env.example                                         │
-│ backend-dockerfile                      Dockerfile                                           │
-│ go-backend-module                       backend/go.mod                                       │
-│ go-backend-checksums                    backend/go.sum                                       │
-│ go-backend-makefile                     backend/Makefile                                     │
-│ go-backend-main                         backend/cmd/api/main.go                              │
-│ go-backend-api                          backend/internal/api/api.go                          │
-│ go-backend-config                       backend/internal/config/config.go                    │
-│ go-backend-database                     backend/internal/database/database.go                │
-│ go-backend-test-health                  backend/internal/api/api_test.go                     │
-│ database-go-migration                   database/migrations/0001_initial.sql                 │
-│ database-schema                         database/models/schema.sql                           │
-│ environment-dev-backend                 environments/dev/backend.env                         │
-│ docker-compose                          docker-compose.yml                                   │
-│ opentofu-versions                       infrastructure/opentofu/azure/versions.tf            │
-│ opentofu-provider-lock                  infrastructure/opentofu/azure/.terraform.lock.hcl    │
-│ opentofu-providers                      infrastructure/opentofu/azure/providers.tf           │
-│ opentofu-variables                      infrastructure/opentofu/azure/variables.tf           │
-│ opentofu-main                           infrastructure/opentofu/azure/main.tf                │
-│ opentofu-outputs                        infrastructure/opentofu/azure/outputs.tf             │
-│ opentofu-local-state                    infrastructure/opentofu/azure/backend.local.tf       │
-│ opentofu-remote-state-example           infrastructure/opentofu/azure/backend.remote.example │
-│                                         .tf                                                  │
-│ opentofu-readme                         infrastructure/opentofu/azure/README.md              │
-│ opentofu-dev-tfvars                     infrastructure/opentofu/azure/environments/dev.tfvar │
-│                                         s                                                    │
-│ openspec-config                         openspec/config.yaml                                 │
-│ openspec-seed-change-metadata           openspec/changes/bootstrap-liftoff-preview/.openspec │
-│                                         .yaml                                                │
-│ openspec-seed-proposal                  openspec/changes/bootstrap-liftoff-preview/proposal. │
-│                                         md                                                   │
-│ openspec-seed-design                    openspec/changes/bootstrap-liftoff-preview/design.md │
-│ openspec-seed-tasks                     openspec/changes/bootstrap-liftoff-preview/tasks.md  │
-│ openspec-spec-placeholder               openspec/specs/.gitkeep                              │
-│ repository-governance-policy            .liftoff/governance/policy.md                        │
-│ repository-governance-context           .liftoff/governance/context.json                     │
-│ repository-governance-guide             .liftoff/governance/README.md                        │
-│ repository-governance-copilot-launcher  .github/prompts/liftoff-repository-governance.prompt │
-│                                         .md                                                  │
-│ manifest                                liftoff.manifest.json                                │
+│ Artifact                         Lifecycle                  Path                             │
+│ ───────────────────────────────  ─────────────────────────  ──────────────────────────────── │
+│ root-readme                      project (base)             README.md                        │
+│ root-gitignore                   project (base)             .gitignore                       │
+│ liftoff-config                   desired-state              liftoff.config.json              │
+│ env-example                      project (base)             .env.example                     │
+│ backend-dockerfile               project (base)             Dockerfile                       │
+│ go-backend-module                project (base)             backend/go.mod                   │
+│ go-backend-checksums             project (base)             backend/go.sum                   │
+│ go-backend-makefile              project (base)             backend/Makefile                 │
+│ go-backend-main                  project (base)             backend/cmd/api/main.go          │
+│ go-backend-api                   project (base)             backend/internal/api/api.go      │
+│ go-backend-config                project (base)             backend/internal/config/config.g │
+│                                                             o                                │
+│ go-backend-database              project (base)             backend/internal/database/databa │
+│                                                             se.go                            │
+│ go-backend-test-health           project (base)             backend/internal/api/api_test.go │
+│ database-go-migration            project (base)             database/migrations/0001_initial │
+│                                                             .sql                             │
+│ database-schema                  project (base)             database/models/schema.sql       │
+│ environment-dev-backend          project (environment:dev)  environments/dev/backend.env     │
+│ docker-compose                   project (base)             docker-compose.yml               │
+│ opentofu-versions                project (base)             infrastructure/opentofu/azure/ve │
+│                                                             rsions.tf                        │
+│ opentofu-provider-lock           project (base)             infrastructure/opentofu/azure/.t │
+│                                                             erraform.lock.hcl                │
+│ opentofu-providers               project (base)             infrastructure/opentofu/azure/pr │
+│                                                             oviders.tf                       │
+│ opentofu-variables               project (base)             infrastructure/opentofu/azure/va │
+│                                                             riables.tf                       │
+│ opentofu-main                    project (base)             infrastructure/opentofu/azure/ma │
+│                                                             in.tf                            │
+│ opentofu-outputs                 project (base)             infrastructure/opentofu/azure/ou │
+│                                                             tputs.tf                         │
+│ opentofu-local-state             project (base)             infrastructure/opentofu/azure/ba │
+│                                                             ckend.local.tf                   │
+│ opentofu-remote-state-example    project (base)             infrastructure/opentofu/azure/ba │
+│                                                             ckend.remote.example.tf          │
+│ opentofu-readme                  project (base)             infrastructure/opentofu/azure/RE │
+│                                                             ADME.md                          │
+│ opentofu-dev-tfvars              project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev.tfvars            │
+│ openspec-config                  seed                       openspec/config.yaml             │
+│ openspec-seed-change-metadata    seed                       openspec/changes/bootstrap-lifto │
+│                                                             ff-preview/.openspec.yaml        │
+│ openspec-seed-proposal           seed                       openspec/changes/bootstrap-lifto │
+│                                                             ff-preview/proposal.md           │
+│ openspec-seed-design             seed                       openspec/changes/bootstrap-lifto │
+│                                                             ff-preview/design.md             │
+│ openspec-seed-tasks              seed                       openspec/changes/bootstrap-lifto │
+│                                                             ff-preview/tasks.md              │
+│ openspec-spec-placeholder        seed                       openspec/specs/.gitkeep          │
+│ repository-governance-policy     managed-core               .liftoff/governance/policy.md    │
+│ repository-governance-context    managed-core               .liftoff/governance/context.json │
+│ repository-governance-guide      managed-core               .liftoff/governance/README.md    │
+│ repository-governance-copilot-l  managed-core               .github/prompts/liftoff-reposito │
+│ auncher                                                     ry-governance.prompt.md          │
+│ manifest                         manifest                   liftoff.manifest.json            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Workstation requirements ───────────────────────────────────────────────────────────────────┐
 │ Requirement     Version         Level                                                        │

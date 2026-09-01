@@ -55,7 +55,7 @@ describe('seed artifact lifecycle', () => {
     await access(path.join(root, ...SEED_DIR, 'tasks.md'));
 
     const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-    const seedEntries = manifest.artifacts.filter(
+    const seedEntries = [...manifest.managedArtifacts, ...manifest.projectArtifacts].filter(
       (artifact: { logicalName: string; pathParts: string[] }) =>
         artifact.logicalName.startsWith('openspec-seed') || artifact.pathParts.includes('bootstrap-seed-app')
     );
@@ -68,7 +68,7 @@ describe('seed artifact lifecycle', () => {
 
     const check = await run(['update', '--check'], root);
     expect(check.code).toBe(0);
-    expect(check.out).toContain('No drift');
+    expect(check.out).toContain('Liftoff core is current');
 
     const apply = await run(['update'], root);
     expect(apply.code).toBe(0);
@@ -82,6 +82,23 @@ describe('seed artifact lifecycle', () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.artifactVersion = 5;
+    manifest.artifacts = [
+      ...manifest.managedArtifacts,
+      ...manifest.projectArtifacts.map((artifact: {
+        logicalName: string;
+        category: string;
+        pathParts: string[];
+        generationHash: string;
+      }) => ({
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        contentHash: artifact.generationHash
+      }))
+    ];
+    delete manifest.managedArtifacts;
+    delete manifest.projectArtifacts;
 
     // simulate a 0.2.0 manifest: seed entries recorded as governance artifacts
     const seedFiles: Array<[string, string]> = [
@@ -113,7 +130,9 @@ describe('seed artifact lifecycle', () => {
     await run(['update'], root);
     const rewritten = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(
-      rewritten.artifacts.filter((artifact: { logicalName: string }) => artifact.logicalName.startsWith('openspec-seed'))
+      [...rewritten.managedArtifacts, ...rewritten.projectArtifacts].filter(
+        (artifact: { logicalName: string }) => artifact.logicalName.startsWith('openspec-seed')
+      )
     ).toEqual([]);
   });
 
@@ -136,7 +155,7 @@ describe('seed artifact lifecycle', () => {
 
     const check = await run(['update', '--check'], target);
     expect(check.code).toBe(0);
-    expect(check.out).toContain('No drift');
+    expect(check.out).toContain('Liftoff core is current');
 
     const validate = await run(['validate'], target);
     expect(validate.code).toBe(0);

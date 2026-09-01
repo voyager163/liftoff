@@ -230,6 +230,28 @@ For the Power Apps starter, use the immutable refresh procedure above rather
 than editing package metadata or lockfile bytes. A new starter commit changes
 the audit inventory path and requires every exception to be reviewed again.
 
+### Reconcile Dependabot updates
+
+`develop` is the default integration branch, so Dependabot version and security
+pull requests follow it without a separate `target-branch` override. The four
+Liftoff-owned npm graphs group routine minor and patch version updates per
+directory; majors remain individually reviewable.
+
+The root, telemetry, and standard Node backend graphs ignore only
+`@types/node` semantic-major version updates while Node 24 is the supported LTS.
+Remove or revise that rule as part of the reviewed Node runtime-major migration,
+not in an isolated dependency pull request. Patch and minor type updates,
+security alerts, and majors for other dependencies remain enabled.
+
+Do not add the commit-addressed Power Apps starter directory to
+`.github/dependabot.yml`. Refresh it by selecting a newer immutable Microsoft
+commit and running the complete starter provenance procedure.
+
+Dependabot changes to a baseline-managed manifest or lock must be incorporated
+into one coherent supported-stack refresh. Regenerate locks from their manifests
+with the documented Node/npm lanes, update `assets/supported-stack.json`, and
+validate every affected graph before closing the superseded bot pull requests.
+
 ## Maintain the repository-governance profile
 
 The complete supplied standard is stored at

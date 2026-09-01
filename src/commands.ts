@@ -25,6 +25,7 @@ import {
 } from './args.js';
 import {
   getCodingAgent,
+  getEnvironment,
   getFrameworkDefinition,
   getSpecWorkflow,
   listRegions,
@@ -45,8 +46,9 @@ import {
   captureProjectFileSnapshot,
   findProjectRoot,
   loadManifest,
-  manifestHadFilteredLegacySeedOwnership,
+  manifestHadFilteredLegacyNonDurableOwnership,
   manifestDisplayPath,
+  readProjectFile,
   resolveProjectPath,
   resolveTargetRoot,
   validateGeneratedProject,
@@ -130,7 +132,9 @@ import type {
   ApiProjectPlan,
   GeneratedArtifact,
   LiftoffManifest,
+  ManifestProjectArtifact,
   ParsedArgs,
+  ProjectProvisioningGroup,
   ProjectOptions,
   ProjectPlan
 } from './types.js';
@@ -329,7 +333,7 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
       { status: 'applied'; merge: MergeResult } | { status: 'authorization-required' | 'declined' }
     > => {
       const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
-      await writeStagedArtifacts(area, partition.durable, 'liftoff');
+      await writeStagedArtifacts(area, partition.liftoff, 'liftoff');
       presentation.stage(
         'Initialize spec-driven framework',
         `${plan.specWorkflow.label} ${plan.framework.version}`
@@ -453,8 +457,14 @@ async function planCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
   presentation.definitions('Project decisions', projectPlanEntries(plan));
   presentation.table(
     `Artifacts (${artifacts.length})`,
-    ['Artifact', 'Path'],
-    artifacts.map((artifact) => [artifact.logicalName, artifact.pathParts.join('/')])
+    ['Artifact', 'Lifecycle', 'Path'],
+    artifacts.map((artifact) => [
+      artifact.logicalName,
+      artifact.lifecycle === 'project'
+        ? `${artifact.lifecycle} (${artifact.provisioningGroup})`
+        : artifact.lifecycle,
+      artifact.pathParts.join('/')
+    ])
   );
   const workstationRows = selectWorkstationRequirements(plan).map((requirement) => [
     requirement.definition.label,
@@ -762,7 +772,7 @@ async function handleProjectDependencies(
     if (issues.length > 0) {
       presentation.error(
         'Power Apps dependency installation blocked',
-        `${issues.join(' ')} Restore package.json and package-lock.json or run \`liftoff update\`.`
+        `${issues.join(' ')} Repair the project-owned package.json and package-lock.json before installing dependencies.`
       );
       return { success: false, deferred: [] };
     }
@@ -974,12 +984,14 @@ function migrationPlanArtifacts(
         {
           logicalName: 'migration-proposal',
           category: 'seed',
+          lifecycle: 'seed',
           pathParts: ['openspec', 'changes', 'migrate-to-liftoff', 'proposal.md'],
           content: renderMigrationProposal(plan, inventory)
         },
         {
           logicalName: 'migration-tasks',
           category: 'seed',
+          lifecycle: 'seed',
           pathParts: ['openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'],
           content: renderMigrationTasks(groups)
         }
@@ -991,6 +1003,7 @@ function migrationPlanArtifacts(
     artifacts: [{
       logicalName: 'migration-checklist',
       category: 'seed',
+      lifecycle: 'seed',
       pathParts: ['MIGRATION.md'],
       content: renderMigrationChecklist(plan, inventory, groups)
     }],
@@ -1121,7 +1134,7 @@ async function executeMigration(
     presentation.stage('Stage fresh migration project');
     await withStagingArea(async (area) => {
       const partition = partitionGeneratedArtifacts(buildArtifacts(plan));
-      await writeStagedArtifacts(area, partition.durable, 'liftoff');
+      await writeStagedArtifacts(area, partition.liftoff, 'liftoff');
       presentation.stage(
         'Initialize spec-driven framework',
         `${plan.specWorkflow.label} ${plan.framework.version}`
@@ -1253,7 +1266,7 @@ async function migrateCommand(parsed: ParsedArgs, context: ExecutionContext): Pr
   if (existsSync(path.join(sourceRoot, 'liftoff.manifest.json'))) {
     context.presentation.error(
       `${sourceRoot} is already a Liftoff project.`,
-      'Use `liftoff update` instead.'
+      'Use `liftoff update` for managed-core maintenance; in-place project template migration is not automated.'
     );
     return 1;
   }
@@ -1325,6 +1338,214 @@ function isDirtyGitWorktree(projectRoot: string): boolean {
   return result.status === 0 && result.stdout.trim().length > 0;
 }
 
+type GeneratedProjectArtifact = Extract<GeneratedArtifact, { lifecycle: 'project' }>;
+type ProvisioningEntryStatus = 'create' | 'adopt' | 'conflict';
+
+interface ProvisioningEntry {
+  group: ProjectProvisioningGroup;
+  status: ProvisioningEntryStatus;
+  rendered: GeneratedProjectArtifact;
+  reason: string;
+}
+
+interface ProvisioningGroupPlan {
+  group: ProjectProvisioningGroup;
+  entries: ProvisioningEntry[];
+  blocked: boolean;
+}
+
+function requestedProvisioningGroups(
+  manifest: LiftoffManifest,
+  plan: ProjectPlan
+): ProjectProvisioningGroup[] {
+  if (
+    plan.workload === 'power-apps-code-app' ||
+    manifest.project.workload.kind === 'power-apps-code-app'
+  ) {
+    return [];
+  }
+  const provisioned = new Set(
+    manifest.projectArtifacts.map((artifact) => artifact.provisioningGroup)
+  );
+  const groups: ProjectProvisioningGroup[] = [];
+  if (
+    plan.includeFrontend &&
+    !manifest.project.workload.frontend &&
+    !provisioned.has('frontend')
+  ) {
+    groups.push('frontend');
+  }
+  const recordedEnvironments = new Set(manifest.project.workload.environments);
+  for (const environment of plan.environments) {
+    const group = `environment:${environment.id}` as const;
+    if (
+      !recordedEnvironments.has(environment.id) &&
+      !provisioned.has(group)
+    ) {
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
+async function inspectProvisioningGroups(
+  projectRoot: string,
+  render: readonly GeneratedArtifact[],
+  groups: readonly ProjectProvisioningGroup[]
+): Promise<ProvisioningGroupPlan[]> {
+  const projectArtifacts = render.filter(
+    (artifact): artifact is GeneratedProjectArtifact =>
+      artifact.lifecycle === 'project'
+  );
+  const plans: ProvisioningGroupPlan[] = [];
+  for (const group of groups) {
+    const artifacts = projectArtifacts.filter(
+      (artifact) => artifact.provisioningGroup === group
+    );
+    if (artifacts.length === 0) {
+      throw new Error(`Provisioning group ${group} did not render any project artifacts.`);
+    }
+    const entries = await Promise.all(artifacts.map(async (artifact): Promise<ProvisioningEntry> => {
+      const disk = await readProjectFile(projectRoot, artifact.pathParts);
+      if (disk === undefined) {
+        return {
+          group,
+          status: 'create',
+          rendered: artifact,
+          reason: 'destination is absent'
+        };
+      }
+      if (disk.toString('utf8') === artifact.content) {
+        return {
+          group,
+          status: 'adopt',
+          rendered: artifact,
+          reason: 'destination already matches the selected component'
+        };
+      }
+      return {
+        group,
+        status: 'conflict',
+        rendered: artifact,
+        reason: 'destination contains project-owned bytes'
+      };
+    }));
+    plans.push({
+      group,
+      entries,
+      blocked: entries.some((entry) => entry.status === 'conflict')
+    });
+  }
+  return plans;
+}
+
+function provisioningJson(plans: readonly ProvisioningGroupPlan[]): object[] {
+  return plans.map((plan) => ({
+    group: plan.group,
+    status: plan.blocked ? 'blocked' : 'ready',
+    entries: plan.entries.map((entry) => ({
+      status: entry.status,
+      path: manifestDisplayPath(entry.rendered.pathParts),
+      reason: entry.reason
+    }))
+  }));
+}
+
+function projectProvenanceFor(
+  artifact: GeneratedProjectArtifact
+): ManifestProjectArtifact {
+  return {
+    logicalName: artifact.logicalName,
+    category: artifact.category,
+    pathParts: artifact.pathParts,
+    generatedBy: liftoffVersion,
+    generationHash: `sha256:${createHash('sha256').update(artifact.content, 'utf8').digest('hex')}`,
+    provisioningGroup: artifact.provisioningGroup
+  };
+}
+
+function appendProvisionedProjectArtifacts(
+  existing: readonly ManifestProjectArtifact[],
+  plans: readonly ProvisioningGroupPlan[]
+): ManifestProjectArtifact[] {
+  const byName = new Map(existing.map((artifact) => [artifact.logicalName, artifact]));
+  for (const plan of plans) {
+    if (plan.blocked) {
+      continue;
+    }
+    for (const entry of plan.entries) {
+      if (!byName.has(entry.rendered.logicalName)) {
+        byName.set(entry.rendered.logicalName, projectProvenanceFor(entry.rendered));
+      }
+    }
+  }
+  return [...byName.values()];
+}
+
+function sameWorkloadIntent(
+  left: LiftoffManifest['project']['workload'],
+  right: LiftoffManifest['project']['workload']
+): boolean {
+  if (left.kind !== right.kind) {
+    return false;
+  }
+  if (left.kind === 'power-apps-code-app' && right.kind === 'power-apps-code-app') {
+    return left.codeAppsPlugin === right.codeAppsPlugin &&
+      left.starter.repository === right.starter.repository &&
+      left.starter.path === right.starter.path &&
+      left.starter.commit === right.starter.commit;
+  }
+  if (left.kind === 'power-apps-code-app' || right.kind === 'power-apps-code-app') {
+    return false;
+  }
+  return left.apiStack === right.apiStack &&
+    left.cloud === right.cloud &&
+    left.region === right.region &&
+    left.frontend === right.frontend &&
+    left.environments.length === right.environments.length &&
+    left.environments.every((environment, index) =>
+      environment === right.environments[index]
+    ) &&
+    (left.kind !== 'genai' || right.kind !== 'genai' || left.pattern === right.pattern);
+}
+
+function planWithBlockedProvisioning(
+  plan: ProjectPlan,
+  recordedWorkload: LiftoffManifest['project']['workload'],
+  provisioningPlans: readonly ProvisioningGroupPlan[]
+): ProjectPlan {
+  if (
+    plan.workload === 'power-apps-code-app' ||
+    recordedWorkload.kind === 'power-apps-code-app'
+  ) {
+    return plan;
+  }
+  const blockedGroups = new Set(
+    provisioningPlans
+      .filter((group) => group.blocked)
+      .map((group) => group.group)
+  );
+  const hasBlockedEnvironment = [...blockedGroups].some((group) =>
+    group.startsWith('environment:')
+  );
+  const environments = hasBlockedEnvironment
+    ? recordedWorkload.environments.map((id) => {
+        const environment = getEnvironment(id);
+        if (!environment) {
+          throw new Error(`Recorded environment ${id} is no longer supported.`);
+        }
+        return environment;
+      })
+    : plan.environments;
+  return {
+    ...plan,
+    includeFrontend: blockedGroups.has('frontend')
+      ? recordedWorkload.frontend
+      : plan.includeFrontend,
+    environments
+  };
+}
+
 async function preflightUpdate(
   projectRoot: string,
   entries: ReconcileEntry[],
@@ -1365,10 +1586,8 @@ async function captureUpdateSnapshots(
   );
   const seenKeys = new Set(snapshots.keys());
   const candidates = [
-    ...manifest.artifacts.map((artifact) => artifact.pathParts),
-    ...render
-      .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
-      .map((artifact) => artifact.pathParts)
+    ...manifest.managedArtifacts.map((artifact) => artifact.pathParts),
+    ...render.map((artifact) => artifact.pathParts)
   ];
   const uncaptured: string[][] = [];
   for (const pathParts of candidates) {
@@ -1389,11 +1608,13 @@ async function captureUpdateSnapshots(
 function selectUpdatePreconditions(
   snapshots: readonly ProjectFileSnapshot[],
   entries: readonly ReconcileEntry[],
-  mutations: readonly ProjectFileMutation[]
+  mutations: readonly ProjectFileMutation[],
+  additionalPaths: readonly string[][] = []
 ): ProjectFileSnapshot[] {
   const requiredKeys = new Set([
     updateSnapshotKey(['liftoff.config.json']),
-    ...mutations.map((mutation) => updateSnapshotKey(mutation.pathParts))
+    ...mutations.map((mutation) => updateSnapshotKey(mutation.pathParts)),
+    ...additionalPaths.map((pathParts) => updateSnapshotKey(pathParts))
   ]);
   for (const entry of entries) {
     const adoptsExistingDestination =
@@ -1412,12 +1633,50 @@ function selectUpdatePreconditions(
   return snapshots.filter((snapshot) => requiredKeys.has(updateSnapshotKey(snapshot.pathParts)));
 }
 
+function assertAuthorizedUpdateMutations(
+  mutations: readonly ProjectFileMutation[],
+  entries: readonly ReconcileEntry[],
+  provisioningPlans: readonly ProvisioningGroupPlan[]
+): void {
+  const authorized = new Set<string>([
+    updateSnapshotKey(['liftoff.manifest.json'])
+  ]);
+  for (const entry of entries) {
+    if (entry.rendered && entry.rendered.lifecycle !== 'managed-core') {
+      throw new Error(
+        `Update reconciliation produced a non-core mutation candidate: ${entry.logicalName}`
+      );
+    }
+    authorized.add(updateSnapshotKey(entry.pathParts));
+    if (entry.previousPathParts) {
+      authorized.add(updateSnapshotKey(entry.previousPathParts));
+    }
+  }
+  for (const plan of provisioningPlans) {
+    if (plan.blocked) {
+      continue;
+    }
+    for (const entry of plan.entries) {
+      if (entry.status === 'create') {
+        authorized.add(updateSnapshotKey(entry.rendered.pathParts));
+      }
+    }
+  }
+  for (const mutation of mutations) {
+    if (!authorized.has(updateSnapshotKey(mutation.pathParts))) {
+      throw new Error(
+        `Update mutation is outside managed-core or authorized provisioning scope: ${manifestDisplayPath(mutation.pathParts)}`
+      );
+    }
+  }
+}
+
 async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
   const { presentation } = context;
   const check = readBooleanFlag(parsed.flags, 'check') ?? false;
   const force = readBooleanFlag(parsed.flags, 'force') ?? false;
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
-  presentation.commandIdentity('update', 'Reconcile the project with current Liftoff templates');
+  presentation.commandIdentity('update', 'Reconcile Liftoff-managed core files');
   if (force && check) {
     presentation.error(
       '--force cannot be combined with --check.',
@@ -1462,7 +1721,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       `Project type changes (${recordedWorkload.kind} -> ${plan.workload}) are not supported by update.`,
       involvesPowerApps
         ? 'Initialize a fresh project for the new workload.'
-        : 'Run `liftoff migrate` instead.'
+        : 'Initialize a fresh project and move production behavior through a reviewed project change.'
     );
     return 1;
   }
@@ -1486,7 +1745,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     if (plan.apiStack.id !== recordedWorkload.apiStack) {
       presentation.error(
         `API stack changes (${recordedWorkload.apiStack} -> ${plan.apiStack.id}) are a migration, not an update.`,
-        'Run `liftoff migrate` instead.'
+        'Initialize a fresh project and move production behavior through a reviewed project change.'
       );
       return 1;
     }
@@ -1495,7 +1754,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     if (desiredPattern !== recordedPattern) {
       presentation.error(
         `Pattern changes (${recordedPattern ?? 'none'} -> ${desiredPattern ?? 'none'}) are a migration, not an update.`,
-        'Run `liftoff migrate` instead.'
+        'Use a separately reviewed project migration; the existing migrate command only adopts non-Liftoff sources into a fresh target.'
       );
       return 1;
     }
@@ -1522,55 +1781,89 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     return 1;
   }
 
-  const renderPlan = manifest.framework.state === 'legacy'
+  let desiredRenderPlan: ProjectPlan = manifest.framework.state === 'legacy'
     ? { ...plan, agents: [], defaultAgent: undefined }
     : plan;
+  if (
+    desiredRenderPlan.workload === 'power-apps-code-app' &&
+    recordedWorkload.kind === 'power-apps-code-app'
+  ) {
+    desiredRenderPlan = {
+      ...desiredRenderPlan,
+      starter: recordedWorkload.starter
+    };
+  }
+  const desiredRender = buildArtifacts(desiredRenderPlan);
+  const provisioningPlans = await inspectProvisioningGroups(
+    projectRoot,
+    desiredRender,
+    requestedProvisioningGroups(manifest, desiredRenderPlan)
+  );
+  const renderPlan = planWithBlockedProvisioning(
+    desiredRenderPlan,
+    recordedWorkload,
+    provisioningPlans
+  );
   const render = buildArtifacts(renderPlan);
+  const scopedRender = [
+    ...render.filter((artifact) => artifact.lifecycle === 'managed-core'),
+    ...desiredRender.filter((artifact) =>
+    artifact.lifecycle === 'project' &&
+      provisioningPlans.some((group) => group.group === artifact.provisioningGroup)
+    )
+  ];
   const updateSnapshots = check
     ? []
-    : await captureUpdateSnapshots(projectRoot, manifest, render, initialUpdateSnapshots);
+    : await captureUpdateSnapshots(
+        projectRoot,
+        manifest,
+        scopedRender,
+        initialUpdateSnapshots
+      );
   const entries = await reconcileProject(manifest, render, projectRoot);
   const summary = summarizeEntries(entries);
-  const manifestUpgradePending = manifest.artifactVersion !== 5;
-  const starterUpgradePending =
-    plan.workload === 'power-apps-code-app' &&
-    recordedWorkload.kind === 'power-apps-code-app' &&
-    recordedWorkload.starter.commit !== plan.starter.commit;
-  const nonDurableNames = new Set(
-    render
-      .filter((artifact) => artifact.category === 'seed' || artifact.category === 'framework')
-      .map((artifact) => artifact.logicalName)
+  const ownershipMigrationPending =
+    manifest.artifactVersion !== 6 ||
+    manifestHadFilteredLegacyNonDurableOwnership(manifest);
+  const plannedManifest = buildManifest(renderPlan, render, {
+    frameworkState: manifest.framework.state,
+    projectArtifacts: manifest.projectArtifacts
+  });
+  const workloadIntentChanged = !sameWorkloadIntent(
+    plannedManifest.project.workload,
+    manifest.project.workload
   );
-  const manifestOwnershipCleanupPending = manifest.artifacts.some((artifact) =>
-    nonDurableNames.has(artifact.logicalName)
-  ) || manifestHadFilteredLegacySeedOwnership(manifest);
   const manifestRewritePending =
-    manifestUpgradePending ||
-    manifestOwnershipCleanupPending ||
-    starterUpgradePending;
-  const drift = hasDrift(entries) || manifestRewritePending;
+    ownershipMigrationPending ||
+    workloadIntentChanged;
+  const drift =
+    hasDrift(entries) ||
+    manifestRewritePending ||
+    provisioningPlans.length > 0;
   const visible = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash);
 
   if (!drift) {
     if (jsonMode) {
       presentation.rawStdout(`${JSON.stringify(check ? {
-        schemaVersion: 1,
+        schemaVersion: 2,
         mode: 'check',
+        scope: 'managed-core',
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         entries: [],
-        manifestUpgradePending,
-        manifestOwnershipCleanupPending,
+        provisioning: [],
+        ownershipMigrationPending,
         summary
       } : {
-        schemaVersion: 1,
+        schemaVersion: 2,
         mode: 'apply',
+        scope: 'managed-core',
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         written: [],
         skipped: [],
-        manifestUpgradePending,
-        manifestOwnershipCleanupPending,
+        provisioning: [],
+        ownershipMigrationPending,
         summary
       }, null, 2)}\n`);
       return 0;
@@ -1581,8 +1874,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     ]);
     presentation.status(
       'success',
-      'No drift',
-      `${summary.unchanged} artifacts match the current templates and configuration`
+      'Liftoff core is current',
+      `${summary.unchanged} managed-core artifacts match; project files are not compared`
     );
     return 0;
   }
@@ -1590,8 +1883,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   if (check) {
     if (jsonMode) {
       presentation.rawStdout(`${JSON.stringify({
-        schemaVersion: 1,
+        schemaVersion: 2,
         mode: 'check',
+        scope: 'managed-core',
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         entries: visible.map((entry) => ({
@@ -1601,8 +1895,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           previousPath: entry.previousPathParts ? manifestDisplayPath(entry.previousPathParts) : undefined,
           reason: entry.reason
         })),
-        manifestUpgradePending,
-        manifestOwnershipCleanupPending,
+        provisioning: provisioningJson(provisioningPlans),
+        ownershipMigrationPending,
         summary
       }, null, 2)}\n`);
       return 2;
@@ -1615,24 +1909,31 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     if (visible.length > 0) {
       if (presentation.stdout.layout === 'plain') {
         presentation.section(
-          'Template drift',
+          'Liftoff core drift',
           visible.map((entry) => `${entryMarker(entry)} ${entryDisplay(entry)}  ${entry.reason}`)
         );
       } else {
         presentation.table(
-          'Template drift',
+          'Liftoff core drift',
           ['Change', 'Artifact', 'Reason'],
           visible.map((entry) => [entryMarker(entry), entryDisplay(entry), entry.reason])
         );
       }
     }
+    for (const group of provisioningPlans) {
+      presentation.bullets(
+        `Project component provisioning: ${group.group}`,
+        group.entries.map((entry) =>
+          `${entry.status} ${manifestDisplayPath(entry.rendered.pathParts)}  ${entry.reason}`
+        )
+      );
+    }
     const manifestMaintenance = [
-      manifestUpgradePending ? 'upgrade liftoff.manifest.json to schema v5' : undefined,
-      manifestOwnershipCleanupPending
-        ? 'remove obsolete seed or framework entries from durable manifest ownership'
+      ownershipMigrationPending
+        ? 'release legacy project artifacts from Liftoff update authority in manifest schema v6; no production file will be written'
         : undefined,
-      starterUpgradePending
-        ? `record the current packaged Power Apps starter ${plan.starter.commit}`
+      workloadIntentChanged
+        ? 'record the requested project configuration intent after safe provisioning'
         : undefined
     ].filter((item): item is string => item !== undefined);
     if (manifestMaintenance.length > 0) {
@@ -1644,11 +1945,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       summary.upgrade +
       summary.moved +
       summary.refresh +
+      provisioningPlans.reduce(
+        (count, group) =>
+          count + (
+            group.blocked
+              ? 0
+              : group.entries.filter((entry) => entry.status === 'create').length
+          ),
+        0
+      ) +
       (manifestRewritePending ? 1 : 0);
     presentation.status(
       'warning',
-      'Drift detected',
-      `${toWrite} to write, ${summary.conflict} conflict(s), ${summary.orphan} orphan(s), ${summary.unchanged} unchanged`
+      'Liftoff core maintenance available',
+      `${toWrite} to write, ${summary.conflict} core conflict(s), ${summary.orphan} core orphan(s), ${summary.unchanged} core unchanged`
     );
     if (toWrite > 0) {
       presentation.command('liftoff update');
@@ -1659,6 +1969,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     return 2;
   }
 
+  const blockedProvisioning = provisioningPlans.filter((group) => group.blocked);
+
   if (isDirtyGitWorktree(projectRoot)) {
     const warning =
       'The project worktree has uncommitted changes; consider committing before applying.';
@@ -1668,7 +1980,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       presentation.warning(warning);
     }
   }
-  presentation.stage('Apply safe template changes', projectRoot);
+  presentation.stage('Apply safe Liftoff core changes', projectRoot);
   await preflightUpdate(projectRoot, entries, force);
 
   const written: ReconcileEntry[] = [];
@@ -1721,17 +2033,43 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     }
   }
 
-  const oldByName = new Map(manifest.artifacts.map((artifact) => [artifact.logicalName, artifact]));
+  const provisioned: ProvisioningEntry[] = [];
+  for (const group of provisioningPlans) {
+    if (group.blocked) {
+      continue;
+    }
+    for (const entry of group.entries) {
+      if (entry.status === 'create') {
+        mutations.push({
+          type: 'write',
+          pathParts: entry.rendered.pathParts,
+          content: entry.rendered.content
+        });
+      }
+      provisioned.push(entry);
+    }
+  }
+
+  const oldByName = new Map(
+    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
+  );
   const skippedByName = new Map(skipped.map((entry) => [entry.logicalName, entry]));
   const hasUnrecordedGovernanceConflict = skipped.some((entry) =>
     entry.status === 'conflict' &&
     entry.rendered?.category === 'governance' &&
     !oldByName.has(entry.logicalName)
   );
+  const nextProjectArtifacts = appendProvisionedProjectArtifacts(
+    manifest.projectArtifacts,
+    provisioningPlans
+  );
   const nextManifest = buildManifest(
-    plan,
+    renderPlan,
     render.filter((artifact) => artifact.logicalName !== 'manifest'),
-    { frameworkState: manifest.framework.state }
+    {
+      frameworkState: manifest.framework.state,
+      projectArtifacts: nextProjectArtifacts
+    }
   );
   nextManifest.framework = manifest.framework;
   nextManifest.project.specWorkflow = manifest.project.specWorkflow;
@@ -1747,11 +2085,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   ) {
     nextManifest.governance.state = 'handoff-partial';
   }
-  nextManifest.artifacts = nextManifest.artifacts.flatMap((artifact) => {
-    // config is user-owned after create: carry the recorded entry forward untouched
-    if (artifact.logicalName === 'liftoff-config') {
-      return [oldByName.get('liftoff-config') ?? artifact];
-    }
+  nextManifest.managedArtifacts = nextManifest.managedArtifacts.flatMap((artifact) => {
     if (!skippedByName.has(artifact.logicalName)) {
       return [artifact];
     }
@@ -1770,7 +2104,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       ) {
         continue;
       }
-      nextManifest.artifacts.push(previous);
+      nextManifest.managedArtifacts.push(previous);
     }
   }
   mutations.push({
@@ -1778,20 +2112,28 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     pathParts: ['liftoff.manifest.json'],
     content: `${JSON.stringify(nextManifest, null, 2)}\n`
   });
+  assertAuthorizedUpdateMutations(mutations, entries, provisioningPlans);
   await applyProjectFileTransaction(projectRoot, mutations, {
-    preconditions: selectUpdatePreconditions(updateSnapshots, entries, mutations)
+    preconditions: selectUpdatePreconditions(
+      updateSnapshots,
+      entries,
+      mutations,
+      provisioned.map((entry) => entry.rendered.pathParts)
+    )
   });
 
   if (jsonMode) {
     presentation.rawStdout(`${JSON.stringify({
-      schemaVersion: 1,
+      schemaVersion: 2,
       mode: 'apply',
+      scope: 'managed-core',
+      status: blockedProvisioning.length > 0 ? 'partial' : 'applied',
       cliVersion: liftoffVersion,
       projectVersion: manifest.liftoffVersion,
       written: written.map((entry) => manifestDisplayPath(entry.pathParts)),
       skipped: skipped.map((entry) => ({ path: manifestDisplayPath(entry.pathParts), reason: entry.reason })),
-      manifestUpgradePending,
-      manifestOwnershipCleanupPending,
+      provisioning: provisioningJson(provisioningPlans),
+      ownershipMigrationPending,
       summary
     }, null, 2)}\n`);
     return 0;
@@ -1799,13 +2141,33 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
 
   if (written.length > 0) {
     presentation.bullets(
-      'Applied changes',
+      'Applied Liftoff core changes',
       written.map((entry) => `wrote ${entryDisplay(entry)}`)
+    );
+  }
+  if (provisioned.length > 0) {
+    presentation.bullets(
+      'Provisioned project components',
+      provisioned.map((entry) =>
+        `${entry.status === 'create' ? 'wrote' : 'adopted'} ${manifestDisplayPath(entry.rendered.pathParts)}`
+      )
+    );
+  }
+  if (blockedProvisioning.length > 0) {
+    presentation.bullets(
+      'Blocked project component provisioning',
+      blockedProvisioning.flatMap((group) =>
+        group.entries
+          .filter((entry) => entry.status === 'conflict')
+          .map((entry) =>
+            `${group.group}: preserved ${manifestDisplayPath(entry.rendered.pathParts)}; --force cannot overwrite project-owned bytes`
+          )
+      )
     );
   }
   if (skipped.length > 0) {
     presentation.bullets(
-      'Skipped conflicts',
+      'Skipped Liftoff core conflicts',
       skipped.map((entry) =>
         `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
       )
@@ -1814,13 +2176,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const orphans = entries.filter((entry) => entry.status === 'orphan');
   if (orphans.length > 0) {
     presentation.bullets(
-      'Orphaned artifacts',
+      'Orphaned Liftoff core artifacts',
       orphans.map((entry) => `orphan ${entryDisplay(entry)}  ${entry.reason}`)
     );
   }
   presentation.completion(
     'Updated project',
-    `${written.length} written, ${skipped.length} skipped, ${summary.orphan} orphan(s)`,
+    [
+      `${written.length} core written`,
+      `${provisioned.length} project provisioned`,
+      ...(blockedProvisioning.length > 0
+        ? [`${blockedProvisioning.length} provisioning group(s) blocked`]
+        : []),
+      `${skipped.length} core skipped`
+    ].join(', '),
     [{ label: 'Manifest version', value: liftoffVersion }],
     'liftoff validate && liftoff doctor'
   );
@@ -2137,7 +2506,7 @@ function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorChe
       label: `${apiStack} project`,
       severity: 'fail',
       detail: `missing locked dependency metadata: ${missingMetadata}`,
-      remedy: `restore ${missingMetadata} or run liftoff update`
+      remedy: `restore or repair the project-owned ${missingMetadata}`
     };
   }
   if (apiStack === 'python-fastapi') {
@@ -2152,7 +2521,7 @@ function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorChe
         label: `${apiStack} project`,
         severity: 'fail',
         detail: 'pyproject.toml and uv.lock do not identify the same project',
-        remedy: 'restore backend/pyproject.toml and backend/uv.lock or run liftoff update'
+        remedy: 'repair the project-owned backend/pyproject.toml and backend/uv.lock'
       };
     }
   }
@@ -2215,7 +2584,7 @@ async function powerAppsProjectCheck(projectRoot: string): Promise<DoctorCheck> 
     severity: 'fail',
     state: 'unhealthy',
     detail: issues[0],
-    remedy: 'restore package.json and package-lock.json or run liftoff update'
+    remedy: 'repair the project-owned package.json and package-lock.json'
   };
 }
 
@@ -2308,10 +2677,14 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
       label: 'manifest',
       severity: 'fail',
       detail: `${issues.length} issue(s): ${issues[0]}${issues.length > 1 ? ' ...' : ''}`,
-      remedy: 'restore missing artifacts or run liftoff update'
+      remedy: 'restore the manifest or run liftoff update for managed-core repair'
     });
   } else {
-    checks.push({ label: 'manifest', severity: 'ok', detail: `valid, ${manifest.artifacts.length} artifacts present` });
+    checks.push({
+      label: 'manifest',
+      severity: 'ok',
+      detail: `valid, ${manifest.managedArtifacts.length} managed core and ${manifest.projectArtifacts.length} project provenance entries`
+    });
   }
 
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
@@ -2387,20 +2760,32 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
     const plan = buildProjectPlan(config, { requireProjectName: true });
     const render = buildArtifacts(plan);
     const entries = await reconcileProject(manifest, render, projectRoot);
-    const driftCount = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash).length;
+    const provisioningPlans = await inspectProvisioningGroups(
+      projectRoot,
+      render,
+      requestedProvisioningGroups(manifest, plan)
+    );
+    const driftCount =
+      entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash).length +
+      provisioningPlans.length +
+      (manifest.artifactVersion === 6 ? 0 : 1);
     if (driftCount > 0) {
       checks.push({
-        label: 'scaffold drift',
+        label: 'managed core',
         severity: 'warn',
-        detail: `${driftCount} update(s) available`,
+        detail: `${driftCount} core maintenance action(s) available`,
         remedy: 'run liftoff update'
       });
     } else {
-      checks.push({ label: 'scaffold drift', severity: 'ok', detail: 'project matches the current templates' });
+      checks.push({
+        label: 'managed core',
+        severity: 'ok',
+        detail: 'Liftoff core is current; project templates are not compared'
+      });
     }
   } catch (error) {
     checks.push({
-      label: 'scaffold drift',
+      label: 'managed core',
       severity: 'fail',
       detail: `liftoff.config.json could not be evaluated: ${(error as Error).message.split('\n')[0]}`,
       remedy: 'repair liftoff.config.json'

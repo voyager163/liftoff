@@ -4,18 +4,54 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      root-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: npm
     directory: /services/telemetry-ingest
     schedule:
       interval: weekly
+    groups:
+      telemetry-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: npm
     directory: /assets/locks/node-backend
     schedule:
       interval: weekly
+    groups:
+      node-backend-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
+    ignore:
+      - dependency-name: "@types/node"
+        update-types:
+          - version-update:semver-major
   - package-ecosystem: npm
     directory: /assets/locks/frontend
     schedule:
       interval: weekly
+    groups:
+      frontend-minor-and-patch:
+        applies-to: version-updates
+        update-types:
+          - minor
+          - patch
   - package-ecosystem: github-actions
     directory: /
     schedule:

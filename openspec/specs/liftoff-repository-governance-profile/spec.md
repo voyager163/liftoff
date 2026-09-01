@@ -1,6 +1,6 @@
 ## Purpose
 
-Define Liftoff's repository-governance profile: selection, the durable single-maintainer GitFlow policy and generated context, per-agent activation handoff, workload adaptation, deferred read-only Phase 0 discovery, explicit approval boundary, activation baseline for existing repositories, and the distinction between generated policy and live GitHub enforcement.
+Define Liftoff's repository-governance profile: selection, the managed-core single-maintainer GitFlow policy and generated context, per-agent activation handoff, workload adaptation, deferred read-only Phase 0 discovery, explicit approval boundary, activation baseline for existing repositories, and the distinction between generated policy and live GitHub enforcement.
 
 ## Requirements
 
@@ -26,8 +26,8 @@ The system SHALL expose repository governance as an append-only catalog selectio
 - **THEN** Liftoff exits 1 before workstation probes or destination writes
 - **AND** identifies the accepted profile values
 
-### Requirement: The selected profile generates one canonical durable handoff
-The system SHALL render a versioned canonical policy, schema-versioned workload context, activation guide, and thin launcher for each selected coding agent as explicitly named durable Liftoff artifacts. The policy and context SHALL live under `.liftoff/governance`; a Copilot launcher SHALL use the reserved explicit GitHub prompt path and a Claude launcher SHALL use the reserved explicit Claude command path. Launchers SHALL reference the canonical files instead of duplicating the policy.
+### Requirement: The selected profile generates one canonical managed-core handoff
+The system SHALL render a versioned canonical policy, schema-versioned workload context, activation guide, and thin launcher for each selected coding agent as explicitly named managed-core Liftoff artifacts. The policy and context SHALL live under `.liftoff/governance`; a Copilot launcher SHALL use the reserved explicit GitHub prompt path and a Claude launcher SHALL use the reserved explicit Claude command path. Launchers SHALL reference the canonical files instead of duplicating the policy.
 
 #### Scenario: Generate for Copilot and Claude
 - **WHEN** a project selects `single-maintainer-gitflow`, GitHub Copilot, and Claude Code
@@ -234,5 +234,5 @@ the presence of policy, workflow, or ruleset source files.
 
 #### Scenario: Governance adoption is partial
 - **WHEN** a legacy update preserves one or more unrecorded conflicting handoff destinations
-- **THEN** validation accepts the truthful schema-v5 ownership record
+- **THEN** validation accepts the truthful schema-v6 managed-core ownership record
 - **AND** doctor warns that the local handoff is incomplete and directs the developer to inspect conflicts before considering `--force`

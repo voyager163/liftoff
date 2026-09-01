@@ -236,7 +236,7 @@ The system SHALL initialize at the current directory only when that directory is
 - **AND** manifest path semantics remain identical to macOS and Linux
 
 ### Requirement: CLI exposes discovery and validation commands
-The system SHALL expose commands for project initialization, planning, imperative project update, explicit project update checks, project migration, pattern discovery, provider discovery, region discovery, validation, local development helpers, infrastructure helpers, and environment diagnostics.
+The system SHALL expose commands for project initialization, planning, managed-core project update, explicit managed-core update checks, project migration, pattern discovery, provider discovery, region discovery, validation, local development helpers, infrastructure helpers, and environment diagnostics.
 
 #### Scenario: List supported patterns
 - **WHEN** a developer runs `liftoff patterns`
@@ -252,19 +252,25 @@ The system SHALL expose commands for project initialization, planning, imperativ
 
 #### Scenario: Check a project for drift
 - **WHEN** a developer or automation runs `liftoff update --check`
-- **THEN** the system reports scaffold drift between the project and current CLI templates without requesting input or writing files
+- **THEN** the system reports only managed-core drift and configuration-authorized component provisioning without requesting input or writing files
+- **AND** it does not compare production project files with current starter templates
 
 #### Scenario: Apply safe drift by default
-- **WHEN** a developer or automation runs plain `liftoff update` and actionable safe drift exists
-- **THEN** the system applies the safe managed changes without requesting input
-- **AND** local conflicts remain untouched unless `--force` is supplied
+- **WHEN** a developer or automation runs plain `liftoff update` and actionable managed-core drift exists
+- **THEN** the system applies safe core changes without requesting input
+- **AND** core conflicts remain untouched unless `--force` is supplied
+
+#### Scenario: Force stays inside the core boundary
+- **WHEN** a developer runs `liftoff update --force`
+- **THEN** only listed managed-core conflicts are eligible for overwrite
+- **AND** project-owned files and provisioning collisions remain untouched
 
 #### Scenario: Migrate an existing project
 - **WHEN** a developer runs `liftoff migrate ../legacy-app`
 - **THEN** the system scans the source project, generates a fresh Liftoff scaffold beside it, and emits a migration plan without modifying the source project
 
 ### Requirement: Packaged README documents the current CLI lifecycle
-The system SHALL provide a public repository root `README.md` included with the npm package that gives a concise first-use path, supported workloads, spec and agent integrations, exact-Git-root behavior, safety summary, validation and diagnostics entry points, and links to packaged detailed documentation. Detailed command lifecycle, consent, machine-output, generated-structure, and contributor contracts SHALL remain available through those links instead of requiring every contract to appear inline.
+The system SHALL provide a public repository root `README.md` included with the npm package that gives a concise first-use path, supported workloads, spec and agent integrations, exact-Git-root behavior, safety summary, validation and diagnostics entry points, and links to packaged detailed documentation. Detailed command lifecycle, ownership, consent, machine-output, generated-structure, and contributor contracts SHALL remain available through those links instead of requiring every contract to appear inline.
 
 #### Scenario: Review first-use workflow
 - **WHEN** a developer reads the Liftoff CLI README after installing or inspecting `@msn-control/liftoff`
@@ -282,11 +288,12 @@ The system SHALL provide a public repository root `README.md` included with the 
 
 #### Scenario: Understand update safety
 - **WHEN** a developer needs update behavior
-- **THEN** linked documentation states that plain `liftoff update` applies safe managed changes without prompts, `--check` is read-only, `--force` explicitly overwrites conflicts, `--check --json` is the machine-readable check, `--apply` was removed, successful overwrites retain no Liftoff backup, dependencies are not installed, and orphans are not automatically deleted
+- **THEN** linked documentation states that plain `liftoff update` applies only safe managed-core changes, `--check` inspects only that authority, `--force` cannot reach project files, configuration expansion is create-only, and production template changes require separate migration
+- **AND** it retains the documented JSON, exit-code, removed `--apply`, dependency-installation, conflict, orphan, and backup behavior
 
 #### Scenario: Understand machine-readable and exit-code behavior
 - **WHEN** a developer reads the linked CLI contract documentation
-- **THEN** it states that check-mode drift uses exit code 2, successful apply mode uses exit code 0, and JSON-capable commands emit a top-level numeric `schemaVersion`
+- **THEN** it states that check-mode core drift uses exit code 2, successful apply mode uses exit code 0, and JSON-capable commands emit a top-level numeric `schemaVersion`
 
 #### Scenario: Review contributor workflow
 - **WHEN** a contributor follows the README contribution link
@@ -661,7 +668,7 @@ The system SHALL include repository governance among common project decisions fo
 - **AND** flags override configuration through the normal defined-value merge
 
 ### Requirement: Plan preview distinguishes handoff from enforcement
-The project plan preview SHALL identify the selected governance profile, policy version, durable handoff artifacts, selected-agent launchers, and deferred post-push activation. `liftoff plan` SHALL remain side-effect free and SHALL not require a Git repository, remote, GitHub authentication, or governance platform capability.
+The project plan preview SHALL identify the selected governance profile, policy version, managed-core handoff artifacts, selected-agent launchers, and deferred post-push activation. `liftoff plan` SHALL remain side-effect free and SHALL not require a Git repository, remote, GitHub authentication, or governance platform capability.
 
 #### Scenario: Preview enabled governance
 - **WHEN** a developer runs `liftoff plan` with the profile enabled

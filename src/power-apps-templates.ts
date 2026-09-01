@@ -121,7 +121,9 @@ liftoff doctor
 
 ## Liftoff maintenance
 
-\`liftoff upgrade --check\` and \`liftoff upgrade\` replace only a supported global Liftoff CLI installation. They do not modify this project. Use \`liftoff update --check\` and then \`liftoff update\` separately to inspect and adopt generated project changes.
+\`liftoff upgrade --check\` and \`liftoff upgrade\` replace only a supported global Liftoff CLI installation. They do not modify this project. \`liftoff update --check\` and \`liftoff update\` maintain only explicit Liftoff core files.
+
+The Power Apps starter, package metadata, lockfile, source, assets, and this README are project-owned after generation. No update mode, including \`--force\`, replaces them. Adopting a newer packaged starter is a separately reviewed project migration; the existing non-Liftoff \`migrate\` command does not perform an in-place upgrade.
 
 For an existing OpenSpec project, change workflow delivery with \`openspec config profile\` and refresh framework-owned files with \`openspec update\`. Plain \`liftoff update\` does not regenerate OpenSpec integrations.
 

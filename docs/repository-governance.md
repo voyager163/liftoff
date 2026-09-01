@@ -72,9 +72,9 @@ liftoff update --check
 liftoff update
 ```
 
-Check mode previews the schema-v5 manifest and new named artifacts without
+Check mode previews the schema-v6 manifest and new named core artifacts without
 writing. Plain update applies collision-free files; differing existing files
-remain conflicts unless individually reviewed with `--force`. An unrecorded
+remain managed-core conflicts unless individually reviewed with `--force`. An unrecorded
 conflict remains outside Liftoff ownership and produces `handoff-partial`.
 After every conflict is removed or matches the current artifact, the next
 update records the full artifact set as `handoff-generated`.

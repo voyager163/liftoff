@@ -78,10 +78,10 @@ Individual project files use temporary-file replacement. Initialization keeps
 backups for replaced files and records created files and directories. A handled
 merge failure restores or removes those entries in reverse order.
 
-Plain `liftoff update` preflights all affected paths and applies generated file,
-move, delete, and manifest mutations as one rollback-capable transaction.
-Schema upgrades are committed only after the other mutations succeed. A
-corrected retry converges from the restored state.
+Plain `liftoff update` preflights every eligible managed-core or authorized
+create-only provisioning path and applies those writes, managed-core moves or
+deletes, and the manifest as one rollback-capable transaction. Schema upgrades
+are committed only after the other mutations succeed.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
@@ -94,30 +94,35 @@ does not retain them as backups after success.
 
 Update mode is selected explicitly rather than from terminal interactivity:
 
-- Clean generated files remain unchanged.
+- Existing project artifacts are never compared with current template bytes.
 - Plain `liftoff update` immediately applies safe new, missing,
-  untouched-upgrade, clean-move, and recorded-state changes without prompting,
-  including with redirected input or output.
+  untouched-upgrade, clean-move, and recorded-state changes only for exact
+  managed-core artifacts.
 - `liftoff update --check` is read-only and performs no preflight or mutation.
 - `liftoff update --json` applies safe changes and returns an apply result;
   `liftoff update --check --json` is the read-only machine drift gate.
-- Developer edits that also differ from the current template are conflicts.
-- Default update skips conflicts and lists them by portable relative path.
-  After reviewing every listed overwrite, `liftoff update --force` extends the
-  transaction only to those guarded conflicts.
+- Managed-core developer edits are conflicts. Project edits are outside update.
+- Default update skips core conflicts and lists them by portable relative path.
+  `liftoff update --force` extends authority only to those guarded core
+  conflicts.
+- Project source, dependencies, schemas, containers, environments,
+  documentation, and infrastructure cannot be restored or overwritten by any
+  update mode.
+- A newly selected frontend or environment is provisioned once only at absent
+  or byte-identical destinations. A collision blocks the complete group and
+  cannot be forced.
 - Unrecorded governance conflicts remain outside manifest ownership and produce
   `handoff-partial` until a later update safely writes or adopts every artifact.
 - Orphans are reported and left on disk for manual review.
-- Dependency definitions may be updated, but update never installs
-  dependencies.
+- Dependency definitions and locks are project-owned; update neither changes
+  nor installs them.
 
 `--force` cannot be combined with `--check` and cannot weaken project-boundary,
 symlink, collision, manifest, or transaction guards.
 
-Power Apps reconciliation reads only the packaged immutable starter. It does
-not fetch the upstream repository. Workload kind and user-edited starter
-repository, template path, or commit changes are rejected before artifact
-access.
+Power Apps starter source and metadata are project-owned after generation.
+Update does not fetch upstream source or transition an existing project to a
+newer packaged starter.
 
 ## Framework and seed ownership
 

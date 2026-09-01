@@ -29,23 +29,17 @@ export async function reconcileProject(
   render: GeneratedArtifact[],
   projectRoot: string
 ): Promise<ReconcileEntry[]> {
-  const recordedByName = new Map(manifest.artifacts.map((artifact) => [artifact.logicalName, artifact]));
+  const recordedByName = new Map(
+    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
+  );
   const entries: ReconcileEntry[] = [];
 
   for (const artifact of render) {
-    const recorded = recordedByName.get(artifact.logicalName);
-    recordedByName.delete(artifact.logicalName);
-    // the manifest is rewritten wholesale on apply; liftoff.config.json is user-owned
-    // desired state; seed content is gifted once and follows its own lifecycle -
-    // none of them are reconciled
-    if (
-      artifact.logicalName === 'manifest' ||
-      artifact.logicalName === 'liftoff-config' ||
-      artifact.category === 'seed' ||
-      artifact.category === 'framework'
-    ) {
+    if (artifact.lifecycle !== 'managed-core') {
       continue;
     }
+    const recorded = recordedByName.get(artifact.logicalName);
+    recordedByName.delete(artifact.logicalName);
     const renderHash = hashBytes(artifact.content);
 
     if (!recorded) {

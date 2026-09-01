@@ -20,7 +20,8 @@ liftoff init
 
 After the first self-upgrade-capable release is installed globally through npm,
 later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
-This replaces the CLI only; generated projects still use `liftoff update`.
+This replaces the CLI only; generated projects use `liftoff update` separately
+for Liftoff-managed core files.
 
 Liftoff asks you to choose a workload and spec workflow, select one or more coding
 agents with Space, review workstation readiness, and confirm the project plan before
@@ -38,9 +39,11 @@ liftoff upgrade --check
 liftoff update --check
 ```
 
-Plain `liftoff update` applies safe managed changes immediately and skips
-conflicts. Use `liftoff update --check --json` for a read-only CI drift gate,
-and review every reported path before choosing `liftoff update --force`.
+Plain `liftoff update` applies safe managed-core changes immediately and skips
+core conflicts. Application source, dependencies, schemas, containers,
+environments, documentation, and infrastructure are project-owned after
+generation and remain outside every update mode, including `--force`. Use
+`liftoff update --check --json` for a read-only core-maintenance gate.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 

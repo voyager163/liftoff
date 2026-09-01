@@ -522,18 +522,21 @@ export function buildRepositoryGovernanceArtifacts(
     {
       logicalName: 'repository-governance-policy',
       category: 'governance',
+      lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.policy],
       content: policy
     },
     {
       logicalName: 'repository-governance-context',
       category: 'governance',
+      lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.context],
       content: context
     },
     {
       logicalName: 'repository-governance-guide',
       category: 'governance',
+      lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.guide],
       content: guide
     },
@@ -542,6 +545,7 @@ export function buildRepositoryGovernanceArtifacts(
         ? 'repository-governance-copilot-launcher'
         : 'repository-governance-claude-launcher',
       category: 'governance',
+      lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths[agent.id]],
       content: launcher
     }))

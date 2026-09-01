@@ -30,7 +30,8 @@ The system SHALL generate Power Apps application files from the newest reviewed 
 
 #### Scenario: Track every copied starter file
 - **WHEN** the Power Apps starter is rendered
-- **THEN** every copied or transformed file has an explicit stable logical name, portable path parts, and manifest content hash
+- **THEN** every copied or transformed file has an explicit stable logical name, portable path parts, and project generation hash
+- **AND** that provenance does not grant ordinary update or force authority
 
 #### Scenario: Preserve Microsoft attribution
 - **WHEN** a generated Power Apps project contains a substantial copy of the official starter

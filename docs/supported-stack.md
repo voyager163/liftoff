@@ -60,8 +60,8 @@ commit workflow. Do not edit Microsoft-owned starter files independently.
 
 ## Existing generated projects
 
-Upgrade the globally installed Liftoff CLI, then inspect project-managed changes
-as a separate operation:
+Upgrade the globally installed Liftoff CLI, then inspect Liftoff core
+maintenance as a separate operation:
 
 ```bash
 liftoff upgrade --check
@@ -72,18 +72,15 @@ liftoff validate
 liftoff doctor
 ```
 
-Untouched managed files and new lockfiles can be updated automatically.
-Locally modified files remain conflicts unless explicitly reviewed with
-`liftoff update --force`. Liftoff never installs the updated project
-dependencies during `update`; run the generated `npm ci`, `uv sync --frozen`,
-or `go mod download` command afterward. CLI upgrade does not discover or modify
-the project.
+Only explicit Liftoff core files are updated automatically. Package manifests,
+locks, runtime files, containers, and providers are project-owned after
+generation; ordinary update and force do not replace them. Liftoff also never
+installs project dependencies during update. CLI upgrade does not discover or
+modify the project.
 
-This baseline is a breaking release boundary: it raises the Node.js, Python, Go,
-and OpenTofu floors and includes major framework, provider, frontend, container,
-and dependency migrations. Commit or otherwise preserve local work, run
-`liftoff update --check`, and review every named upgrade and conflict before
-applying. Do not use an older Liftoff release as an automatic downgrade tool.
-After a successful update, recover unwanted changes through version control and
-then reinstall from the restored locks; Liftoff does not retain a post-success
-backup.
+This baseline is a breaking generation boundary: it raises the Node.js, Python,
+Go, and OpenTofu floors and includes major framework, provider, frontend,
+container, and dependency migrations for new scaffolds. Existing production
+projects adopt those changes through separately reviewed project work, not
+`liftoff update` or `--force`. Do not use an older Liftoff release as an
+automatic downgrade tool.

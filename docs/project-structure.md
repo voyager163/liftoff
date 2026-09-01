@@ -4,6 +4,11 @@ Generated paths are logical examples. Liftoff uses platform-correct filesystem
 handling on Windows, macOS, and Linux, and manifests store path-part arrays
 instead of joined strings.
 
+After initialization, workload paths shown below are project-owned production
+assets. Their manifest entries preserve generation provenance but
+`liftoff update`, including `--force`, cannot compare, restore, move, or replace
+them. Only exact files labeled as managed core retain Liftoff write authority.
+
 ## GenAI and API projects
 
 ```text
@@ -15,7 +20,7 @@ project/
 |-- Dockerfile
 |-- docker-compose.yml
 |-- .liftoff/
-|   `-- governance/             # durable local handoff when enabled
+|   `-- governance/             # managed-core local handoff when enabled
 |       |-- policy.md
 |       |-- context.json
 |       `-- README.md

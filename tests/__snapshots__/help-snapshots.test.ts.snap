@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare
+Mission Control Liftoff 0.9.1 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -89,7 +89,7 @@ Maintenance
 Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
 validate  Validate a generated project manifest
-update    Reconcile a project with current templates
+update    Reconcile Liftoff-managed core files in a project
 upgrade   Replace the supported global npm Liftoff CLI; project templates use
           update separately
 doctor    Check local and project readiness
@@ -220,7 +220,7 @@ Option  Description
 
 exports[`complete help screens > snapshots compact update command help 1`] = `
 "LIFTOFF / UPDATE
-Reconcile a project with current templates
+Reconcile Liftoff-managed core files in a project
 
 Usage
 ─────
@@ -335,7 +335,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.9.1 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -351,7 +351,7 @@ Command: migrate | Description: Adopt an existing project
 
 Maintenance
 Command: validate | Description: Validate a generated project manifest
-Command: update | Description: Reconcile a project with current templates
+Command: update | Description: Reconcile Liftoff-managed core files in a project
 Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
 Command: doctor | Description: Check local and project readiness
 
@@ -434,7 +434,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain update command help 1`] = `
-"LIFTOFF / UPDATE - Reconcile a project with current templates
+"LIFTOFF / UPDATE - Reconcile Liftoff-managed core files in a project
 
 Usage
 Usage: liftoff update [project-path]
@@ -538,7 +538,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.9.0 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.9.1 - Initialize a governed application and prepare its local      │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -561,7 +561,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ Command   Description                                                                        │
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ validate  Validate a generated project manifest                                              │
-│ update    Reconcile a project with current templates                                         │
+│ update    Reconcile Liftoff-managed core files in a project                                  │
 │ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
 │           separately                                                                         │
 │ doctor    Check local and project readiness                                                  │
@@ -673,7 +673,7 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 
 exports[`complete help screens > snapshots rich update command help 1`] = `
 "┌─ LIFTOFF / UPDATE ───────────────────────────────────────────────────────────────────────────┐
-│ Reconcile a project with current templates                                                   │
+│ Reconcile Liftoff-managed core files in a project                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff update [project-path]                                                                │
