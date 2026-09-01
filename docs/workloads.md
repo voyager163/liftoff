@@ -93,7 +93,7 @@ environment, API frontend, Docker, or OpenTofu selection.
 - React, Vite, TypeScript, Tailwind, and the Power Apps SDK and Vite plugin.
 - Locked root `package.json` and `package-lock.json`.
 - Project-local `power-apps` CLI supplied by the generated dependency graph.
-- `liftoff.config.json`, schema-v5 `liftoff.manifest.json`, starter provenance,
+- `liftoff.config.json`, schema-v6 `liftoff.manifest.json`, starter provenance,
   and third-party attribution.
 - Official OpenSpec or Spec Kit output and every selected agent marker.
 - The common local governance policy and selected-agent launcher, with backend,
@@ -131,11 +131,12 @@ created the application.
 
 ## Change workload later
 
-`liftoff update` reconciles supported desired-state changes within the recorded
-workload. It does not convert among GenAI, API, and Power Apps or change an API
-stack, GenAI pattern, or user-supplied starter identity. Initialize a fresh
-project or use a supported migration flow instead.
+`liftoff update` maintains explicit Liftoff core files and can provision a
+previously absent frontend or environment once after a corresponding desired
+state edit. It does not convert workloads, change API stacks or GenAI patterns,
+transition a Power Apps starter, or modernize production project templates.
 
-Plain update applies safe changes immediately for every workload. Use
-`liftoff update --check` for read-only inspection and review all reported
-conflicts before using `liftoff update --force`; orphans remain untouched.
+Plain update applies safe core changes immediately. Use `liftoff update
+--check` for read-only inspection. `--force` applies only to listed
+managed-core conflicts; project-owned source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain untouched.

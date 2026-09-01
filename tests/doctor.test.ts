@@ -177,10 +177,12 @@ describe('doctor command', () => {
     expect(result.out).toContain('Project');
     expect(result.out).toContain('Runtime');
     expect(result.out).toContain('Cloud - azure');
-    expect(result.out).toMatch(/manifest: valid, \d+ artifacts present/);
+    expect(result.out).toMatch(/manifest: valid, \d+ managed core and \d+ project provenance entries/);
     expect(result.out).toContain('framework contract: OpenSpec 1.11.0');
     expect(result.out).toContain('framework markers: 1 selected integration verified');
-    expect(result.out).toContain('scaffold drift: project matches the current templates');
+    expect(result.out).toContain(
+      'managed core: Liftoff core is current; project templates are not compared'
+    );
     expect(result.out).toContain('repository governance');
     expect(result.out).toContain('live enforcement is not inferred');
     expect(result.out).not.toContain('cli freshness');
@@ -226,7 +228,7 @@ describe('doctor command', () => {
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     manifest.governance.state = 'handoff-partial';
-    manifest.artifacts = manifest.artifacts.filter(
+    manifest.managedArtifacts = manifest.managedArtifacts.filter(
       (artifact: { logicalName: string }) =>
         artifact.logicalName !== 'repository-governance-copilot-launcher'
     );
@@ -471,6 +473,17 @@ describe('doctor command', () => {
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     const workload = manifest.project.workload;
+    manifest.artifacts = [
+      ...manifest.managedArtifacts,
+      ...manifest.projectArtifacts.map((artifact: Record<string, unknown>) => ({
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        contentHash: artifact.generationHash
+      }))
+    ];
+    delete manifest.managedArtifacts;
+    delete manifest.projectArtifacts;
     manifest.artifactVersion = 2;
     manifest.project = {
       name: manifest.project.name,
@@ -550,7 +563,7 @@ describe('doctor command', () => {
     expect(present.out).toMatch(/\[ok\]\s+\.env: present/);
   }, 30_000);
 
-  it('surfaces scaffold drift as a single warning with the update remedy', async () => {
+  it('surfaces managed-core maintenance as a single warning with the update remedy', async () => {
     const root = await fixtureProject();
     const configPath = path.join(root, 'liftoff.config.json');
     const config = JSON.parse(await readFile(configPath, 'utf8'));
@@ -558,7 +571,30 @@ describe('doctor command', () => {
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 
     const result = await run(['doctor'], root);
-    expect(result.out).toMatch(/\[warn\]\s+scaffold drift: \d+ update\(s\) available - run liftoff update/);
+    expect(result.out).toMatch(
+      /\[warn\]\s+managed core: \d+ core maintenance action\(s\) available - run liftoff update/
+    );
+  }, 30_000);
+
+  it('does not report project template edits as managed-core drift', async () => {
+    const root = await fixtureProject();
+    await writeFile(
+      path.join(root, 'backend', 'apis', 'main.py'),
+      '# production application\n'
+    );
+    await rm(path.join(root, 'infrastructure', 'opentofu', 'azure', 'main.tf'));
+
+    const result = await run(['doctor', '--json'], root);
+    const report = JSON.parse(result.out);
+    const project = report.layers.find(
+      (layer: { title: string }) => layer.title === 'Project'
+    );
+    expect(project.checks.find((check: { label: string }) =>
+      check.label === 'managed core'
+    )).toMatchObject({
+      severity: 'ok',
+      detail: 'Liftoff core is current; project templates are not compared'
+    });
   }, 30_000);
 
   it('keeps CLI upgrade and project update remedies distinct', async () => {
@@ -587,7 +623,7 @@ describe('doctor command', () => {
       /cli freshness:.*liftoff upgrade --check.*liftoff upgrade/
     );
     expect(result.out).toMatch(
-      /scaffold drift: \d+ update\(s\) available - run liftoff update/
+      /managed core: \d+ core maintenance action\(s\) available - run liftoff update/
     );
   }, 30_000);
 

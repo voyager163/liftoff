@@ -26,9 +26,18 @@ import {
   getSpecWorkflow,
   listRegions
 } from './catalogs.js';
-import type { GeneratedArtifact, LiftoffManifest, ManifestArtifact } from './types.js';
+import type {
+  GeneratedArtifact,
+  LiftoffManifest,
+  ManifestManagedArtifact,
+  ManifestProjectArtifact,
+  ProjectProvisioningGroup
+} from './types.js';
 import { validateFrameworkInstallation } from './framework-validation.js';
-import { verifyPowerAppsPackageMetadata } from './power-apps-validation.js';
+import {
+  isManagedCoreLogicalName,
+  legacyProvisioningGroup
+} from './artifact-lifecycle.js';
 import {
   governanceArtifactPaths,
   governancePolicyVersion
@@ -194,19 +203,31 @@ export async function writeArtifacts(targetRoot: string, artifacts: GeneratedArt
   }
 }
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5, 6];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
 const LEGACY_SEED_LOGICAL_NAMES = new Set([
+  'openspec-config',
   'openspec-seed-change-metadata',
   'openspec-seed-proposal',
   'openspec-seed-design',
-  'openspec-seed-tasks'
+  'openspec-seed-tasks',
+  'openspec-spec-placeholder',
+  'spec-kit-constitution',
+  'specs-placeholder'
+]);
+const LEGACY_NON_PROVENANCE_LOGICAL_NAMES = new Set([
+  ...LEGACY_SEED_LOGICAL_NAMES,
+  'liftoff-config',
+  'spec-kit-spec-template',
+  'spec-kit-plan-template'
 ]);
 const manifestsWithFilteredLegacySeedOwnership = new WeakSet<LiftoffManifest>();
 
-export function manifestHadFilteredLegacySeedOwnership(manifest: LiftoffManifest): boolean {
+export function manifestHadFilteredLegacyNonDurableOwnership(
+  manifest: LiftoffManifest
+): boolean {
   return manifestsWithFilteredLegacySeedOwnership.has(manifest);
 }
 
@@ -236,7 +257,22 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
         'Regenerate the project with this CLI or use the Liftoff version that generated it.'
     );
   }
-  if (artifactVersion === 5) {
+  if (artifactVersion === 6) {
+    assertOnlyFields(
+      raw,
+      [
+        'artifactVersion',
+        'generatedBy',
+        'liftoffVersion',
+        'project',
+        'framework',
+        'governance',
+        'managedArtifacts',
+        'projectArtifacts'
+      ],
+      'Manifest'
+    );
+  } else if (artifactVersion === 5) {
     assertOnlyFields(
       raw,
       [
@@ -263,20 +299,54 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
   const project = normalizeManifestProject(raw.project, artifactVersion);
   const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
   const governance = normalizeManifestGovernance(raw.governance, artifactVersion);
-  const normalizedArtifacts = normalizeManifestArtifacts(raw.artifacts);
-  const artifacts = normalizedArtifacts
-    .filter((artifact) => !LEGACY_SEED_LOGICAL_NAMES.has(artifact.logicalName));
+  let managedArtifacts: ManifestManagedArtifact[];
+  let projectArtifacts: ManifestProjectArtifact[];
+  let filteredLegacySeedOwnership = false;
+  if (artifactVersion === 6) {
+    managedArtifacts = normalizeManifestManagedArtifacts(
+      raw.managedArtifacts,
+      'Manifest.managedArtifacts'
+    );
+    projectArtifacts = normalizeManifestProjectArtifacts(raw.projectArtifacts);
+    validateV6ArtifactAuthority(managedArtifacts, projectArtifacts);
+  } else {
+    const normalizedArtifacts = normalizeManifestManagedArtifacts(
+      raw.artifacts,
+      'Manifest.artifacts'
+    );
+    const artifacts = normalizedArtifacts.filter(
+      (artifact) => !LEGACY_NON_PROVENANCE_LOGICAL_NAMES.has(artifact.logicalName)
+    );
+    filteredLegacySeedOwnership = artifacts.length !== normalizedArtifacts.length;
+    managedArtifacts = artifacts.filter((artifact) =>
+      isManagedCoreLogicalName(artifact.logicalName)
+    );
+    projectArtifacts = artifacts
+      .filter((artifact) => !isManagedCoreLogicalName(artifact.logicalName))
+      .map((artifact) => ({
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        generatedBy: liftoffVersion,
+        generationHash: artifact.contentHash,
+        provisioningGroup: project.workload.kind === 'power-apps-code-app'
+          ? 'power-apps-starter'
+          : legacyProvisioningGroup(artifact.logicalName)
+      }));
+  }
+  validateManifestArtifactUniqueness(managedArtifacts, projectArtifacts);
   const manifest: LiftoffManifest = {
-    artifactVersion: artifactVersion as 2 | 3 | 4 | 5,
+    artifactVersion: artifactVersion as 2 | 3 | 4 | 5 | 6,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project,
     framework,
     governance,
-    artifacts
+    managedArtifacts,
+    projectArtifacts
   };
   validateGovernanceArtifactIdentity(manifest);
-  if (artifacts.length !== normalizedArtifacts.length) {
+  if (filteredLegacySeedOwnership) {
     manifestsWithFilteredLegacySeedOwnership.add(manifest);
   }
   return manifest;
@@ -621,7 +691,7 @@ function normalizeManifestFramework(
   if (!isRecord(value)) {
     throw new FileSystemError('Manifest.framework must be a JSON object.');
   }
-  if (artifactVersion === 5) {
+  if (artifactVersion >= 5) {
     assertOnlyFields(
       value,
       ['state', 'adapter', 'contractVersion'],
@@ -717,15 +787,18 @@ function normalizeManifestGovernance(
   };
 }
 
-function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
+function normalizeManifestManagedArtifacts(
+  value: unknown,
+  scopeRoot: string
+): ManifestManagedArtifact[] {
   if (!Array.isArray(value)) {
-    throw new FileSystemError('Manifest.artifacts must be an array.');
+    throw new FileSystemError(`${scopeRoot} must be an array.`);
   }
 
   const logicalNames = new Set<string>();
   const paths = new Set<string>();
   return value.map((entry, index) => {
-    const scope = `Manifest.artifacts[${index}]`;
+    const scope = `${scopeRoot}[${index}]`;
     if (!isRecord(entry)) {
       throw new FileSystemError(`${scope} must be a JSON object.`);
     }
@@ -754,6 +827,132 @@ function normalizeManifestArtifacts(value: unknown): ManifestArtifact[] {
   });
 }
 
+function normalizeManifestProjectArtifacts(value: unknown): ManifestProjectArtifact[] {
+  if (!Array.isArray(value)) {
+    throw new FileSystemError('Manifest.projectArtifacts must be an array.');
+  }
+
+  const logicalNames = new Set<string>();
+  const paths = new Set<string>();
+  return value.map((entry, index) => {
+    const scope = `Manifest.projectArtifacts[${index}]`;
+    if (!isRecord(entry)) {
+      throw new FileSystemError(`${scope} must be a JSON object.`);
+    }
+    assertOnlyFields(
+      entry,
+      [
+        'logicalName',
+        'category',
+        'pathParts',
+        'generatedBy',
+        'generationHash',
+        'provisioningGroup'
+      ],
+      scope
+    );
+    const logicalName = requiredString(entry, 'logicalName', scope);
+    const category = requiredString(entry, 'category', scope);
+    const pathParts = validateArtifactPathParts(entry.pathParts, `${scope}.pathParts`);
+    const generatedBy = requiredString(entry, 'generatedBy', scope);
+    if (!SEMVER_PATTERN.test(generatedBy)) {
+      throw new FileSystemError(`${scope}.generatedBy must be a valid semantic version.`);
+    }
+    const generationHash = requiredString(entry, 'generationHash', scope);
+    if (!CONTENT_HASH_PATTERN.test(generationHash)) {
+      throw new FileSystemError(
+        `${scope}.generationHash must be a sha256-prefixed lowercase hexadecimal digest.`
+      );
+    }
+    const provisioningGroup = normalizeProjectProvisioningGroup(
+      requiredString(entry, 'provisioningGroup', scope),
+      scope
+    );
+    if (logicalNames.has(logicalName)) {
+      throw new FileSystemError(`Manifest contains duplicate logicalName ${JSON.stringify(logicalName)}.`);
+    }
+    logicalNames.add(logicalName);
+    const pathKey = pathParts.join('\0');
+    if (paths.has(pathKey)) {
+      throw new FileSystemError(`Manifest contains duplicate artifact path ${pathParts.join('/')}.`);
+    }
+    paths.add(pathKey);
+    return {
+      logicalName,
+      category,
+      pathParts,
+      generatedBy,
+      generationHash,
+      provisioningGroup
+    };
+  });
+}
+
+function normalizeProjectProvisioningGroup(
+  value: string,
+  scope: string
+): ProjectProvisioningGroup {
+  if (
+    value === 'base' ||
+    value === 'frontend' ||
+    value === 'power-apps-starter'
+  ) {
+    return value;
+  }
+  const prefix = 'environment:';
+  if (value.startsWith(prefix)) {
+    const environmentValue = value.slice(prefix.length);
+    const environment = getEnvironment(environmentValue);
+    if (environment?.id === environmentValue) {
+      return `environment:${environment.id}`;
+    }
+  }
+  throw new FileSystemError(`${scope}.provisioningGroup is invalid.`);
+}
+
+function validateV6ArtifactAuthority(
+  managedArtifacts: readonly ManifestManagedArtifact[],
+  projectArtifacts: readonly ManifestProjectArtifact[]
+): void {
+  for (const artifact of managedArtifacts) {
+    if (!isManagedCoreLogicalName(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest managed artifact ${artifact.logicalName} is not an explicit managed-core logical name.`
+      );
+    }
+  }
+  for (const artifact of projectArtifacts) {
+    if (isManagedCoreLogicalName(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest project artifact ${artifact.logicalName} cannot contain a managed-core logical name.`
+      );
+    }
+  }
+}
+
+function validateManifestArtifactUniqueness(
+  managedArtifacts: readonly ManifestManagedArtifact[],
+  projectArtifacts: readonly ManifestProjectArtifact[]
+): void {
+  const logicalNames = new Set<string>();
+  const paths = new Set<string>();
+  for (const artifact of [...managedArtifacts, ...projectArtifacts]) {
+    if (logicalNames.has(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest contains duplicate logicalName ${JSON.stringify(artifact.logicalName)}.`
+      );
+    }
+    logicalNames.add(artifact.logicalName);
+    const pathKey = artifact.pathParts.join('\0');
+    if (paths.has(pathKey)) {
+      throw new FileSystemError(
+        `Manifest contains duplicate artifact path ${artifact.pathParts.join('/')}.`
+      );
+    }
+    paths.add(pathKey);
+  }
+}
+
 const governanceLogicalPaths = new Map<string, readonly string[]>([
   ['repository-governance-policy', governanceArtifactPaths.policy],
   ['repository-governance-context', governanceArtifactPaths.context],
@@ -769,14 +968,14 @@ const governanceLogicalPaths = new Map<string, readonly string[]>([
 ]);
 
 function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
-  if (manifest.artifacts.some((artifact) =>
+  if ([...manifest.managedArtifacts, ...manifest.projectArtifacts].some((artifact) =>
     artifact.pathParts.join('/') === 'governance/activation-baseline.json'
   )) {
     throw new FileSystemError(
       'governance/activation-baseline.json is user-owned and cannot be a Liftoff manifest artifact.'
     );
   }
-  const governanceArtifacts = manifest.artifacts.filter((artifact) =>
+  const governanceArtifacts = manifest.managedArtifacts.filter((artifact) =>
     governanceLogicalPaths.has(artifact.logicalName)
   );
   if (manifest.governance.profile === 'unspecified') {
@@ -802,7 +1001,7 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
   ];
   const missing: string[] = [];
   for (const logicalName of required) {
-    const artifact = manifest.artifacts.find((entry) =>
+    const artifact = manifest.managedArtifacts.find((entry) =>
       entry.logicalName === logicalName
     );
     const expectedPath = governanceLogicalPaths.get(logicalName);
@@ -850,19 +1049,15 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
   }
 
   const issues: string[] = [];
-  for (const artifact of manifest.artifacts) {
+  for (const artifact of manifest.managedArtifacts) {
     try {
       const targetPath = await resolveProjectPath(projectRoot, artifact.pathParts);
-      if (artifact.category === 'governance') {
-        const bytes = await readFile(targetPath);
-        const actualHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
-        if (actualHash !== artifact.contentHash) {
-          issues.push(
-            `Artifact hash mismatch for ${artifact.logicalName} at ${artifact.pathParts.join('/')}`
-          );
-        }
-      } else {
-        await access(targetPath);
+      const bytes = await readFile(targetPath);
+      const actualHash = `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+      if (actualHash !== artifact.contentHash) {
+        issues.push(
+          `Artifact hash mismatch for ${artifact.logicalName} at ${artifact.pathParts.join('/')}`
+        );
       }
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
@@ -870,6 +1065,15 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
       } else {
         issues.push(`Unable to access artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`);
       }
+    }
+  }
+  for (const artifact of manifest.projectArtifacts) {
+    try {
+      await resolveProjectPath(projectRoot, artifact.pathParts);
+    } catch (error) {
+      issues.push(
+        `Unsafe project provenance path for ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`
+      );
     }
   }
 
@@ -888,7 +1092,9 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
       { logicalName: 'power-apps-attribution', pathParts: ['THIRD_PARTY_NOTICES.md'] }
     ];
     for (const required of requiredArtifacts) {
-      const artifact = manifest.artifacts.find((entry) => entry.logicalName === required.logicalName);
+      const artifact = manifest.projectArtifacts.find(
+        (entry) => entry.logicalName === required.logicalName
+      );
       if (!artifact) {
         issues.push(
           `Missing required Power Apps manifest artifact ${required.logicalName} at ${required.pathParts.join('/')}`
@@ -899,7 +1105,6 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         );
       }
     }
-    issues.push(...await verifyPowerAppsPackageMetadata(projectRoot));
   }
 
   return issues;

@@ -253,7 +253,7 @@ export async function assertSafeInitTarget(
     try {
       await lstat(path.join(target.root, 'liftoff.manifest.json'));
       throw new InitFileSystemError(
-        `A Liftoff manifest already exists at ${target.root}. Use \`liftoff update\` instead.`
+        `A Liftoff manifest already exists at ${target.root}. Use \`liftoff update\` for managed-core maintenance; project template changes require reviewed project work.`
       );
     } catch (error) {
       if (error instanceof InitFileSystemError) {
@@ -556,7 +556,7 @@ export async function buildMergePreflight(
     let detail: string;
     if (portableRelativePath === 'liftoff.manifest.json' && destination.type !== 'missing') {
       action = 'blocked';
-      detail = 'an existing Liftoff manifest must be handled with liftoff update';
+      detail = 'an existing Liftoff manifest must use liftoff update for managed-core maintenance, not reinitialization';
     } else if (destination.type === 'missing') {
       action = 'create';
       detail = staged.type === 'directory' ? 'create directory' : 'create file';

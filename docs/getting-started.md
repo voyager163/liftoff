@@ -32,8 +32,9 @@ liftoff upgrade
 ```
 
 `upgrade` replaces only the supported global CLI installation. It does not read
-or update a generated project; inspect project template changes separately with
-`liftoff update --check`.
+or update a generated project. Inspect Liftoff-managed core maintenance
+separately with `liftoff update --check`; production template modernization is
+a reviewed project change.
 
 See [prerequisites](prerequisites.md) for the complete plan-derived tool model.
 

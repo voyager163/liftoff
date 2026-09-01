@@ -150,7 +150,7 @@ describe('maintenance presentation', () => {
       });
 
       expect(result.code).toBe(2);
-      expect(result.out).toContain('Drift detected');
+      expect(result.out).toContain('Liftoff core maintenance available');
       expect(result.out).not.toContain('Update impact');
       expect(result.out).not.toContain('Apply these');
       expect(result.err).toBe('');
@@ -184,7 +184,7 @@ describe('maintenance presentation', () => {
     for (const command of [['update', '--check', '--json'], ['doctor', '--json']]) {
       const result = await run(command, projectRoot, 100);
       const parsed = JSON.parse(result.out);
-      expect(parsed.schemaVersion).toBe(1);
+      expect(parsed.schemaVersion).toBe(command[0] === 'update' ? 2 : 1);
       expect(result.out.startsWith('{')).toBe(true);
       expect(result.out.endsWith('}\n')).toBe(true);
       expect(result.out).not.toContain('LIFTOFF');

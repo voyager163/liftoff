@@ -14,7 +14,9 @@ import type {
   GenAiProjectPlan,
   LiftoffManifest,
   ManifestWorkload,
-  ProjectPlan
+  ProjectPlan,
+  ArtifactLifecycle,
+  ProjectProvisioningGroup
 } from './types.js';
 import { liftoffVersion } from './version.js';
 import { renderNpmLock, renderNpmPackage } from './npm-template-assets.js';
@@ -115,32 +117,31 @@ const functionWorkerName = (plan: GenAiProjectPlan) => `${plan.pattern.id}-worke
 
 export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   const artifacts: GeneratedArtifact[] = [];
-  const add: AddArtifact = (logicalName, category, pathParts, content) => {
-    artifacts.push({ logicalName, category, pathParts, content: ensureTrailingNewline(content) });
-  };
+  const addProject = createArtifactAdder(artifacts, 'project', 'base');
+  const addDesiredState = createArtifactAdder(artifacts, 'desired-state');
+  const addFramework = createArtifactAdder(artifacts, 'framework');
+  const addSeed = createArtifactAdder(artifacts, 'seed');
 
   switch (plan.workload) {
     case 'genai':
-      addGenAiWorkloadArtifacts(add, plan);
+      addGenAiWorkloadArtifacts(addProject, addDesiredState, artifacts, plan);
       break;
     case 'standard':
-      addStandardWorkloadArtifacts(add, plan);
+      addStandardWorkloadArtifacts(addProject, addDesiredState, artifacts, plan);
       break;
     case 'power-apps-code-app':
-      addPowerAppsWorkloadArtifacts(add, plan);
+      addPowerAppsWorkloadArtifacts(addDesiredState, artifacts, plan);
       break;
   }
-  addSpecWorkflowArtifacts(add, plan);
+  addSpecWorkflowArtifacts(addSeed, addFramework, plan);
   for (const artifact of buildRepositoryGovernanceArtifacts(plan)) {
-    add(
-      artifact.logicalName,
-      artifact.category,
-      artifact.pathParts,
-      artifact.content
-    );
+    artifacts.push({ ...artifact, content: ensureTrailingNewline(artifact.content) });
   }
   if (plan.workload !== 'power-apps-code-app' && plan.includeFrontend) {
-    addFrontendArtifacts(add, plan);
+    addFrontendArtifacts(
+      createArtifactAdder(artifacts, 'project', 'frontend'),
+      plan
+    );
   }
   assertImmutableGeneratedContainerReferences(artifacts);
 
@@ -148,6 +149,7 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   artifacts.push({
     logicalName: 'manifest',
     category: 'manifest',
+    lifecycle: 'manifest',
     pathParts: ['liftoff.manifest.json'],
     content: `${JSON.stringify(manifest, null, 2)}\n`
   });
@@ -155,42 +157,91 @@ export function buildArtifacts(plan: ProjectPlan): GeneratedArtifact[] {
   return artifacts;
 }
 
-function addGenAiWorkloadArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
-  addBaseArtifacts(add, plan);
+function createArtifactAdder(
+  artifacts: GeneratedArtifact[],
+  lifecycle: ArtifactLifecycle,
+  provisioningGroup?: ProjectProvisioningGroup
+): AddArtifact {
+  return (logicalName, category, pathParts, content) => {
+    const normalizedContent = ensureTrailingNewline(content);
+    if (lifecycle === 'project') {
+      if (!provisioningGroup) {
+        throw new Error(`Project artifact ${logicalName} is missing a provisioning group.`);
+      }
+      artifacts.push({
+        logicalName,
+        category,
+        lifecycle,
+        provisioningGroup,
+        pathParts,
+        content: normalizedContent
+      });
+      return;
+    }
+    artifacts.push({
+      logicalName,
+      category,
+      lifecycle,
+      pathParts,
+      content: normalizedContent
+    });
+  };
+}
+
+function addGenAiWorkloadArtifacts(
+  add: AddArtifact,
+  addDesiredState: AddArtifact,
+  artifacts: GeneratedArtifact[],
+  plan: GenAiProjectPlan
+): void {
+  addBaseArtifacts(add, addDesiredState, plan);
   addGenAiExtensionArtifacts(add, plan, {
     backend: addBackendArtifacts,
     database: addDatabaseArtifacts,
     pattern: addPatternArtifacts,
     functions: addFunctionArtifacts
   });
-  addApiWorkloadOperations(add, plan);
+  addApiWorkloadOperations(add, artifacts, plan);
 }
 
 function addStandardWorkloadArtifacts(
   add: AddArtifact,
+  addDesiredState: AddArtifact,
+  artifacts: GeneratedArtifact[],
   plan: Extract<ProjectPlan, { workload: 'standard' }>
 ): void {
-  addBaseArtifacts(add, plan);
+  addBaseArtifacts(add, addDesiredState, plan);
   addStandardStackArtifacts(add, plan);
-  addApiWorkloadOperations(add, plan);
+  addApiWorkloadOperations(add, artifacts, plan);
 }
 
 function addPowerAppsWorkloadArtifacts(
-  add: AddArtifact,
+  addDesiredState: AddArtifact,
+  artifacts: GeneratedArtifact[],
   plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
 ): void {
-  addPowerAppsCodeAppArtifacts(add, plan);
-  addPowerAppsProjectConfig(add, plan);
+  addPowerAppsCodeAppArtifacts(
+    createArtifactAdder(artifacts, 'project', 'power-apps-starter'),
+    plan
+  );
+  addPowerAppsProjectConfig(addDesiredState, plan);
 }
 
-function addApiWorkloadOperations(add: AddArtifact, plan: ApiProjectPlan): void {
-  addEnvironmentArtifacts(add, plan);
+function addApiWorkloadOperations(
+  add: AddArtifact,
+  artifacts: GeneratedArtifact[],
+  plan: ApiProjectPlan
+): void {
+  addEnvironmentArtifacts(artifacts, plan);
   addDockerArtifacts(add, plan);
-  addInfrastructureArtifacts(add, plan);
+  addInfrastructureArtifacts(add, artifacts, plan);
 }
 
 export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
-  durable: GeneratedArtifact[];
+  liftoff: GeneratedArtifact[];
+  managedCore: GeneratedArtifact[];
+  project: GeneratedArtifact[];
+  desiredState: GeneratedArtifact[];
   framework: GeneratedArtifact[];
   seed: GeneratedArtifact[];
   manifest: GeneratedArtifact;
@@ -200,11 +251,16 @@ export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
     throw new Error('Generated artifacts are missing the Liftoff manifest.');
   }
   return {
-    durable: artifacts.filter((artifact) =>
-      artifact.logicalName !== 'manifest' && artifact.category !== 'seed' && artifact.category !== 'framework'
+    liftoff: artifacts.filter((artifact) =>
+      artifact.lifecycle === 'managed-core' ||
+      artifact.lifecycle === 'project' ||
+      artifact.lifecycle === 'desired-state'
     ),
-    framework: artifacts.filter((artifact) => artifact.category === 'framework'),
-    seed: artifacts.filter((artifact) => artifact.category === 'seed'),
+    managedCore: artifacts.filter((artifact) => artifact.lifecycle === 'managed-core'),
+    project: artifacts.filter((artifact) => artifact.lifecycle === 'project'),
+    desiredState: artifacts.filter((artifact) => artifact.lifecycle === 'desired-state'),
+    framework: artifacts.filter((artifact) => artifact.lifecycle === 'framework'),
+    seed: artifacts.filter((artifact) => artifact.lifecycle === 'seed'),
     manifest
   };
 }
@@ -212,7 +268,10 @@ export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {
 export function buildManifest(
   plan: ProjectPlan,
   artifacts: GeneratedArtifact[],
-  options: { frameworkState?: 'initialized' | 'legacy' } = {}
+  options: {
+    frameworkState?: 'initialized' | 'legacy';
+    projectArtifacts?: LiftoffManifest['projectArtifacts'];
+  } = {}
 ): LiftoffManifest {
   const frameworkState = options.frameworkState ?? 'initialized';
   const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
@@ -241,7 +300,7 @@ export function buildManifest(
           environments: plan.environments.map((environment) => environment.id)
         };
   return {
-    artifactVersion: 5,
+    artifactVersion: 6,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -266,21 +325,37 @@ export function buildManifest(
           policyVersion: governancePolicyVersion,
           state: 'handoff-generated'
         },
-    artifacts: artifacts
-      .filter((artifact) => artifact.category !== 'seed' && artifact.category !== 'framework')
+    managedArtifacts: artifacts
+      .filter((artifact) => artifact.lifecycle === 'managed-core')
       .map((artifact) => ({
         logicalName: artifact.logicalName,
         category: artifact.category,
         pathParts: artifact.pathParts,
         contentHash: contentHash(artifact.content)
+      })),
+    projectArtifacts: options.projectArtifacts ?? artifacts
+      .filter((artifact): artifact is Extract<GeneratedArtifact, { lifecycle: 'project' }> =>
+        artifact.lifecycle === 'project'
+      )
+      .map((artifact) => ({
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        generatedBy: liftoffVersion,
+        generationHash: contentHash(artifact.content),
+        provisioningGroup: artifact.provisioningGroup
       }))
   };
 }
 
-function addBaseArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
+function addBaseArtifacts(
+  add: AddArtifact,
+  addDesiredState: AddArtifact,
+  plan: ApiProjectPlan
+): void {
   add('root-readme', 'documentation', ['README.md'], renderRootReadme(plan));
   add('root-gitignore', 'project', ['.gitignore'], renderGeneratedGitignore());
-  add('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
+  addDesiredState('liftoff-config', 'project', ['liftoff.config.json'], JSON.stringify({
     projectName: plan.projectName,
     projectType: plan.projectType.id,
     apiStack: plan.apiStack.id,
@@ -391,8 +466,16 @@ function addFunctionArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
   add('function-worker-gitignore', 'functions', [...workerBase, '.gitignore'], renderFunctionGitIgnore());
 }
 
-function addEnvironmentArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
+function addEnvironmentArtifacts(
+  artifacts: GeneratedArtifact[],
+  plan: ApiProjectPlan
+): void {
   for (const environment of plan.environments) {
+    const add = createArtifactAdder(
+      artifacts,
+      'project',
+      `environment:${environment.id}`
+    );
     add(
       `environment-${environment.id}-backend`,
       'environment',
@@ -409,7 +492,11 @@ function addDockerArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
   add('docker-compose', 'local-development', ['docker-compose.yml'], renderDockerCompose(plan));
 }
 
-function addInfrastructureArtifacts(add: AddArtifact, plan: ApiProjectPlan): void {
+function addInfrastructureArtifacts(
+  add: AddArtifact,
+  artifacts: GeneratedArtifact[],
+  plan: ApiProjectPlan
+): void {
   const base = ['infrastructure', 'opentofu', 'azure'];
   add('opentofu-versions', 'infrastructure', [...base, 'versions.tf'], renderOpenTofuVersions());
   add(
@@ -426,41 +513,54 @@ function addInfrastructureArtifacts(add: AddArtifact, plan: ApiProjectPlan): voi
   add('opentofu-remote-state-example', 'infrastructure', [...base, 'backend.remote.example.tf'], renderTofuRemoteStateExample());
   add('opentofu-readme', 'infrastructure', [...base, 'README.md'], renderTofuReadme(plan));
   for (const environment of plan.environments) {
-    add(`opentofu-${environment.id}-tfvars`, 'infrastructure', [...base, 'environments', `${environment.id}.tfvars`], renderTofuTfvars(plan, environment.id));
+    createArtifactAdder(
+      artifacts,
+      'project',
+      `environment:${environment.id}`
+    )(
+      `opentofu-${environment.id}-tfvars`,
+      'infrastructure',
+      [...base, 'environments', `${environment.id}.tfvars`],
+      renderTofuTfvars(plan, environment.id)
+    );
   }
 }
 
-function addSpecWorkflowArtifacts(add: AddArtifact, plan: ProjectPlan): void {
+function addSpecWorkflowArtifacts(
+  addSeed: AddArtifact,
+  addFramework: AddArtifact,
+  plan: ProjectPlan
+): void {
   if (plan.workload === 'power-apps-code-app') {
     if (plan.specWorkflow.id === 'openspec') {
       const changeName = `bootstrap-${plan.safeProjectName}`;
-      add('openspec-config', 'seed', ['openspec', 'config.yaml'], renderPowerAppsOpenSpecConfig(plan));
-      add('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
-      add('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderPowerAppsSeedProposal(plan));
-      add('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderPowerAppsSeedDesign(plan));
-      add('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
-      add('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
+      addSeed('openspec-config', 'seed', ['openspec', 'config.yaml'], renderPowerAppsOpenSpecConfig(plan));
+      addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
+      addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderPowerAppsSeedProposal(plan));
+      addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderPowerAppsSeedDesign(plan));
+      addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
+      addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
     } else {
-      add('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderPowerAppsSpecKitConstitution(plan));
-      add('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
-      add('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
-      add('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
+      addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderPowerAppsSpecKitConstitution(plan));
+      addFramework('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+      addFramework('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+      addSeed('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
     }
     return;
   }
   if (plan.specWorkflow.id === 'openspec') {
     const changeName = `bootstrap-${plan.safeProjectName}`;
-    add('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
-    add('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
-    add('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
-    add('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
-    add('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
-    add('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
+    addSeed('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
+    addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
+    addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
+    addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
+    addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
+    addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
   } else {
-    add('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
-    add('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
-    add('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
-    add('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
+    addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
+    addFramework('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+    addFramework('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+    addSeed('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
   }
 }
 
@@ -668,7 +768,7 @@ function renderSpecWorkflowGuide(plan: ApiProjectPlan): string {
 - Workflow: ${plan.specWorkflow.label} ${plan.framework.version}
 - AI coding agents: ${agents}
 ${openSpecDetails ? `${openSpecDetails}\n` : ''}
-- Framework ownership: the official initializer owns ${ownership}. Liftoff validates these files but excludes framework-owned output and one-time seed content from durable manifest hashes.
+- Framework ownership: the official initializer owns ${ownership}. Liftoff validates these files but excludes framework-owned output and one-time seed content from managed-core hashes.
 - Deferred tools: advisory workstation checks may be deferred. Liftoff never claims they are installed and never installs them without \`--install-tools\`.
 
 If \`liftoff doctor\` reports a selected advisory tool as missing, use its registered readiness remedy:
@@ -715,9 +815,11 @@ function renderGeneratedUpdateGuide(): string {
 
 \`single-maintainer-gitflow\` repository governance generates a local handoff only. Review \`.liftoff/governance/README.md\`, commit and push the project, then run a selected-agent launcher for read-only Phase 0. Live enforcement requires a separately approved governance change.
 
-\`liftoff update\` immediately applies safe managed changes without prompting in interactive, redirected, and automated environments. Use \`liftoff update --check\` for a read-only human drift report, or \`liftoff update --check --json\` as an automation gate that exits 0 when clean and 2 when drift exists.
+\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, and selected-agent launchers. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
 
-Local or user-owned conflicts are skipped by default. Review the reported paths, commit or copy local work, and use \`liftoff update --force\` only when every listed overwrite is intended. An occupied destination with different user bytes remains preserved without force, while an identical destination is adopted without rewriting it. Update never deletes orphans or installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful overwrite.
+Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
+
+Project template modernization is a separately reviewed production change and is not performed by ordinary update or by the existing non-Liftoff \`migrate\` command. Managed-core conflicts are skipped by default; after reviewing every listed core path, \`liftoff update --force\` may replace only those core conflicts. Managed-core orphans remain on disk, and update never installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful core overwrite.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 `;
