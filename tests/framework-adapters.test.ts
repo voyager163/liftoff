@@ -254,13 +254,13 @@ describe('official framework commands', () => {
     await withStagingArea(async (area) => {
       await initializeFramework(area, selectedPlan, new FrameworkRunner());
       const files = await validateStagedTree(area);
-      const paths = new Set(files.map((file) => file.relativePath));
+      const paths = new Set(files.map((file) => JSON.stringify(file.pathParts)));
       expect(OPEN_SPEC_WORKFLOW_IDS).toHaveLength(12);
       for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
-        expect(paths.has(path.join(...pathParts))).toBe(true);
+        expect(paths.has(JSON.stringify(pathParts))).toBe(true);
       }
       for (const pathParts of OPEN_SPEC_COPILOT_CLOUD_PATHS) {
-        expect(paths.has(path.join(...pathParts))).toBe(true);
+        expect(paths.has(JSON.stringify(pathParts))).toBe(true);
       }
     });
   });
