@@ -42,4 +42,3 @@ The system SHALL configure automated dependency proposals so routine version upd
 - **WHEN** dependency configuration or verification maps the root, telemetry service, standard Node backend, and standard frontend graphs on Windows, macOS, or Linux
 - **THEN** each graph is selected from an explicit named directory entry
 - **AND** internal filesystem access uses platform-correct path handling rather than recursive pattern discovery
-
