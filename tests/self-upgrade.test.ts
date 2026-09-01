@@ -320,6 +320,26 @@ describe('self-upgrade state machine', () => {
     expect(fixture.runner.rootCalls).toBe(2);
   });
 
+  it('accepts the one-element metadata array emitted by npm 12', async () => {
+    const fixture = await harness({
+      runnerOptions: {
+        viewResult: {
+          stdout: JSON.stringify([{
+            name: '@msn-control/liftoff',
+            version: '0.8.0'
+          }])
+        }
+      }
+    });
+
+    expect(await runSelfUpgrade(fixture.request, fixture.dependencies)).toMatchObject({
+      status: 'update-available',
+      targetVersion: '0.8.0',
+      registryKind: 'canonical',
+      reasonCode: 'update_available'
+    });
+  });
+
   it('routes child stdout to stderr in JSON mode', async () => {
     const fixture = await harness({ mode: 'apply' });
     fixture.request.json = true;
@@ -455,6 +475,21 @@ describe('self-upgrade state machine', () => {
     expect(malformed.runner.calls.some(({ command }) =>
       command.args[0] === 'install'
     )).toBe(false);
+
+    for (const stdout of ['[]', '[{},{}]', '[null]']) {
+      const invalidArray = await harness({
+        runnerOptions: {
+          viewResult: { stdout }
+        }
+      });
+      expect(await runSelfUpgrade(
+        invalidArray.request,
+        invalidArray.dependencies
+      )).toMatchObject({
+        status: 'failed',
+        reasonCode: 'registry_invalid'
+      });
+    }
 
     const unavailable = await harness({
       runnerOptions: {
