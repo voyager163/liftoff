@@ -470,6 +470,12 @@ async function inspectRegistryParity(
   } catch {
     throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
   }
+  if (Array.isArray(metadata)) {
+    if (metadata.length !== 1) {
+      throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
+    }
+    [metadata] = metadata;
+  }
   if (!metadata || typeof metadata !== 'object' || Array.isArray(metadata)) {
     throw new SelfUpgradeFailure('failed', 'registry_invalid', kind);
   }
