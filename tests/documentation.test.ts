@@ -65,7 +65,7 @@ function contrast(left: string, right: string): number {
 describe('public documentation', () => {
   it('keeps the root README concise and puts the interactive first-use path first', async () => {
     const readme = await repositoryFile('README.md');
-    const install = 'npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org';
+    const install = 'npm install -g @msn-control/liftoff@latest';
     const init = 'liftoff init';
     const workloadSection = readme.indexOf('## One flow, three workloads');
 

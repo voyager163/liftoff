@@ -22,7 +22,10 @@ describe('canonical stable release lookup', () => {
       expect(String(fetch.mock.calls[0][0])).toBe(
         'https://registry.npmjs.org/%40msn-control%2Fliftoff/latest'
       );
-      expect(fetch.mock.calls[0][1]).toMatchObject({ redirect: 'error' });
+      expect(fetch.mock.calls[0][1]).toMatchObject({
+        headers: { accept: 'application/json' },
+        redirect: 'error'
+      });
     }
   );
 
