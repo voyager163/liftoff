@@ -14,7 +14,7 @@ Spec Kit and integrates GitHub Copilot, Claude Code, or both from the first comm
 Install the published CLI from canonical npm, then launch the guided experience:
 
 ```bash
-npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+npm install -g @msn-control/liftoff@latest
 liftoff init
 ```
 
