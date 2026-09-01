@@ -38,14 +38,14 @@
 
 - [x] 7.1 Run supported-stack refresh/check, freshness review, template dependency security audit, focused root/backend/frontend tests, and generated standard template verification; resolve any failure by excluding the responsible candidate rather than weakening policy
 - [x] 7.2 Run `npm run check`, package smoke, Power Apps verification, and all existing generated-project gates; verify package manifests and locks remain unchanged after every install/build/test command
-- [ ] 7.3 Ensure the Dependabot configuration contract tests run in the existing Windows CI lane and use platform-correct path handling; verify required Windows, macOS, and Linux checks all pass on the replacement PR
+- [x] 7.3 Ensure the Dependabot configuration contract tests run in the existing Windows CI lane and use platform-correct path handling; verify required Windows, macOS, and Linux checks all pass on the replacement PR
 - [x] 7.4 Validate `reconcile-dependabot-backlog` and the affected main OpenSpec specification in strict mode before GitHub cleanup
 
 ## 8. Replace and close the Dependabot backlog
 
 - [x] 8.1 Commit and push the coherent change on one feature branch and open one pull request targeting `develop`; verify its body links all 13 original PRs and records which seven candidates were retained or excluded
-- [ ] 8.2 Wait for every required replacement-PR check to complete successfully; if a candidate fails, revise and revalidate the replacement before closing any original PR
-- [ ] 8.3 Comment on and close #15, #20, #26, #28, #29, #31, and #32 as superseded by the validated replacement PR; verify none was merged independently
-- [ ] 8.4 Comment on and close #25, #27, and #30 as incompatible with the Node 24 LTS baseline, and #16, #17, and #18 as incompatible with immutable upstream snapshot ownership; verify each closure links the governing replacement or refresh process
-- [ ] 8.5 Query every exact closed-PR head ref and remove only verified leftover Dependabot branches; verify no wildcard deletion occurs and no open dependency PR remains based on `main`
+- [x] 8.2 Wait for every required replacement-PR check to complete successfully; if a candidate fails, revise and revalidate the replacement before closing any original PR
+- [x] 8.3 Comment on and close #15, #20, #26, #28, #29, #31, and #32 as superseded by the validated replacement PR; verify none was merged independently
+- [x] 8.4 Comment on and close #25, #27, and #30 as incompatible with the Node 24 LTS baseline, and #16, #17, and #18 as incompatible with immutable upstream snapshot ownership; verify each closure links the governing replacement or refresh process
+- [x] 8.5 Query every exact closed-PR head ref and remove only verified leftover Dependabot branches; verify no wildcard deletion occurs and no open dependency PR remains based on `main`
 - [ ] 8.6 Confirm `develop` contains the merged reconciliation and `main` remains unchanged pending a normal release branch; verify the final open-PR and branch inventory matches GitFlow policy
