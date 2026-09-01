@@ -71,6 +71,13 @@ export interface ToolInstallationPrompt {
   remedy?: string;
 }
 
+export interface OpenSpecProfilePrompt {
+  observed: Array<{ label: string; value: string }>;
+  required: Array<{ label: string; value: string }>;
+  differences: string[];
+  commands: string[];
+}
+
 interface SelectableChoice {
   value: string;
   label: string;
@@ -228,6 +235,13 @@ export class InteractivePrompter {
       : specWorkflow === 'spec-kit'
         ? normalizedAgents[0]
         : undefined;
+    const copilotCloud = specWorkflow === 'openspec' &&
+      normalizedAgents.includes('github-copilot')
+      ? initial.copilotCloud ?? await this.confirm(
+          'Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md.',
+          false
+        )
+      : initial.copilotCloud;
     return {
       ...initial,
       projectName,
@@ -241,6 +255,7 @@ export class InteractivePrompter {
       specWorkflow,
       agents: normalizedAgents,
       ...(defaultAgent ? { defaultAgent } : {}),
+      ...(copilotCloud !== undefined ? { copilotCloud } : {}),
       ...(selectedEnvironments ? { environments: selectedEnvironments } : {}),
       ...(codeAppsPlugin !== undefined ? { codeAppsPlugin } : {})
     };
@@ -273,6 +288,16 @@ export class InteractivePrompter {
       }
     }
     return this.confirm('Run this allowlisted installation command?', false);
+  }
+
+  async confirmOpenSpecProfileConfiguration(prompt: OpenSpecProfilePrompt): Promise<boolean> {
+    this.presentation.definitions('Observed global OpenSpec profile', prompt.observed);
+    this.presentation.definitions('Required global OpenSpec profile', prompt.required);
+    this.presentation.bullets('Global profile changes', prompt.differences);
+    for (const command of prompt.commands) {
+      this.presentation.command(command);
+    }
+    return this.confirm('Update the global OpenSpec profile?', false);
   }
 
   async confirmFileReplacements(paths: readonly string[]): Promise<boolean> {

@@ -29,6 +29,7 @@ Blocking checks must be ready before initialization can safely complete:
 - Required runtime and minimum version.
 - Selected spec framework CLI.
 - Every selected coding agent.
+- For OpenSpec, global profile `custom`, delivery `both`, and all 12 workflows.
 
 Advisory checks describe useful but deferrable capabilities:
 
@@ -68,6 +69,22 @@ installation requires `--install-tools` or separate interactive approval.
 An install that changes `PATH` is re-probed when possible and may require a new
 terminal. Do not treat installer success as readiness until the corresponding
 probe passes.
+
+## OpenSpec global profile consent
+
+OpenSpec 1.11 stores workflow selection and delivery globally rather than in a
+project. Liftoff requires all workflows with both skills and commands so a fresh
+project does not immediately drift when OpenSpec is rerun.
+
+Profile inspection is read-only. When the profile differs, interactive runs
+show the observed values, required values, and exact `openspec config set`
+commands before asking. Noninteractive runs stop unless
+`--configure-openspec-profile` is present. This authorization is independent of
+`--yes`, `--force`, and tool or dependency installation.
+
+The authorized change is verified before project staging. Because it is a
+machine-wide user preference, Liftoff reports it separately and does not restore
+an older profile if a later project phase fails.
 
 ## Project dependency consent
 

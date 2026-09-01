@@ -63,6 +63,8 @@ Common noninteractive inputs include:
 --default-agent copilot|claude
 --governance single-maintainer-gitflow|none
 --code-apps-plugin | --no-code-apps-plugin
+--copilot-cloud | --no-copilot-cloud
+--configure-openspec-profile
 ```
 
 Power Apps rejects API, pattern, cloud, region, frontend, and API environment
@@ -72,6 +74,17 @@ Consent options are documented in [safety and consent](safety-and-consent.md).
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
 local policy handoff only; `none` omits it. See
 [repository governance](repository-governance.md).
+
+OpenSpec projects use all 12 OpenSpec 1.11 workflows with both skills and
+commands. `--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
+agent definition; omission and `--no-copilot-cloud` keep it disabled.
+
+OpenSpec stores workflow profile and delivery globally. If the observed profile
+does not match Liftoff's complete contract, interactive runs request separate
+consent. Noninteractive `init` and `migrate` require
+`--configure-openspec-profile` to authorize the displayed
+`openspec config set` commands. The flag has no effect during `plan`, which
+never inspects or changes machine configuration.
 
 ## CLI upgrade modes
 

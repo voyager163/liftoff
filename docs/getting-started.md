@@ -54,13 +54,18 @@ The guided flow asks for:
 4. OpenSpec or Spec Kit.
 5. One or both coding agents. On a real TTY, Space toggles agents and Enter
    confirms the selection.
-6. A Spec Kit default agent when both agents are selected.
-7. The optional Preview Code Apps plugin preference for Power Apps projects.
-8. Plan confirmation, workstation readiness, and any separate install or
+6. Whether to configure the default-off GitHub-hosted Copilot coding agent when
+   OpenSpec and GitHub Copilot are selected.
+7. A Spec Kit default agent when both agents are selected.
+8. The optional Preview Code Apps plugin preference for Power Apps projects.
+9. Plan confirmation, workstation readiness, and any separate install or
    overwrite permissions that are needed.
 
 Liftoff renders into temporary staging, runs the official framework initializer
 there, validates the complete result, and only then merges it into the target.
+OpenSpec projects use all 12 OpenSpec 1.11 workflows as both skills and commands.
+If the global OpenSpec profile differs, Liftoff displays the exact global change
+and asks separately before staging.
 Governance activation is a later selected-agent action after commit and push;
 see [repository governance](repository-governance.md).
 
@@ -110,8 +115,12 @@ liftoff plan --type power-apps-code-app --spec openspec --agents copilot
 
 Automation can pass the same options to `liftoff init`. Use `--yes` for project
 defaults and confirmation only. It does not authorize file replacement,
-machine-level tools, or project dependency installation. Those permissions
-remain independent.
+machine-level tools, global OpenSpec profile changes, Copilot cloud opt-in, or
+project dependency installation. Those permissions remain independent.
+
+Use `--configure-openspec-profile` only after reviewing the machine-wide change.
+Use `--copilot-cloud` to opt into the hosted agent or `--no-copilot-cloud` to
+record the safe default explicitly.
 
 See the [CLI reference](cli-reference.md) and
 [safety and consent](safety-and-consent.md) before automating initialization.

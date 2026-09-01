@@ -9,8 +9,9 @@ import {
 } from './init-filesystem.js';
 import {
   frameworkSelectionFromPlan,
-  validateFrameworkInstallation
+  validateFrameworkInitialization
 } from './framework-validation.js';
+import { OPEN_SPEC_PROFILE } from './openspec-profile.js';
 import { formatCommand, type CommandRunner, type RunCommandOptions } from './process-runner.js';
 import type { ExternalCommand, ProjectPlan } from './types.js';
 
@@ -19,7 +20,7 @@ export interface FrameworkInitializationResult {
   changedPaths: string[];
 }
 
-export interface FrameworkInitializationOptions extends Pick<RunCommandOptions, 'stdout' | 'stderr'> {
+export interface FrameworkInitializationOptions extends Pick<RunCommandOptions, 'env' | 'stdout' | 'stderr'> {
   onCommand?: (displayCommand: string) => void;
 }
 
@@ -36,6 +37,7 @@ function errorCode(error: unknown): string | undefined {
 }
 
 export function buildOpenSpecInitCommand(plan: ProjectPlan): ExternalCommand {
+  const includesGitHubCopilot = plan.agents.some((agent) => agent.id === 'github-copilot');
   return {
     executable: plan.framework.executable,
     args: [
@@ -43,7 +45,10 @@ export function buildOpenSpecInitCommand(plan: ProjectPlan): ExternalCommand {
       '--tools',
       plan.agents.map((agent) => agent.integrationIds.openspec).join(','),
       '--profile',
-      'core'
+      OPEN_SPEC_PROFILE,
+      ...(includesGitHubCopilot
+        ? [plan.copilotCloud ? '--copilot-cloud' : '--no-copilot-cloud']
+        : [])
     ]
   };
 }
@@ -126,6 +131,7 @@ export async function initializeFramework(
     options.onCommand?.(formatCommand(command));
     const result = await runner.run(command, {
       cwd: area.root,
+      env: options.env,
       timeoutMs: 5 * 60_000,
       stream: true,
       stdout: options.stdout,
@@ -143,7 +149,11 @@ export async function initializeFramework(
   await assertNoFrameworkGitMetadata(area.root);
   const changedPaths = await claimFrameworkChanges(area, before, plan.framework.allowedRoots);
   await validateStagedTree(area);
-  const issues = await validateFrameworkInstallation(area.root, frameworkSelectionFromPlan(plan));
+  const issues = await validateFrameworkInitialization(
+    area.root,
+    frameworkSelectionFromPlan(plan),
+    plan.copilotCloud
+  );
   if (issues.length > 0) {
     throw new InitFileSystemError(`Framework initialization did not produce the tested contract:\n${issues.map((issue) => `- ${issue}`).join('\n')}`);
   }

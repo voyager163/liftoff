@@ -1,6 +1,10 @@
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { getFrameworkDefinition } from './catalogs.js';
+import {
+  OPEN_SPEC_COPILOT_CLOUD_PATHS,
+  openSpecIntegrationPaths
+} from './openspec-profile.js';
 import type { CodingAgentId, ProjectPlan, SpecWorkflowId } from './types.js';
 
 export interface FrameworkSelection {
@@ -30,6 +34,22 @@ async function markerIssue(root: string, pathParts: string[]): Promise<string | 
   } catch (error) {
     if (errorCode(error) === 'ENOENT') {
       return `Missing framework marker: ${display}`;
+    }
+    return `Unable to inspect framework marker ${display}: ${error instanceof Error ? error.message : String(error)}`;
+  }
+}
+
+async function unexpectedMarkerIssue(
+  root: string,
+  pathParts: readonly string[]
+): Promise<string | undefined> {
+  const display = pathParts.join('/');
+  try {
+    await lstat(path.join(root, ...pathParts));
+    return `Unexpected framework marker: ${display}`;
+  } catch (error) {
+    if (errorCode(error) === 'ENOENT') {
+      return undefined;
     }
     return `Unable to inspect framework marker ${display}: ${error instanceof Error ? error.message : String(error)}`;
   }
@@ -86,6 +106,32 @@ export async function validateFrameworkInstallation(
     issues.push(...await validateSpecKitState(root, selection));
   }
   return issues;
+}
+
+export async function validateFrameworkInitialization(
+  root: string,
+  selection: FrameworkSelection,
+  copilotCloud: boolean
+): Promise<string[]> {
+  const issues = await validateFrameworkInstallation(root, selection);
+  if (selection.workflow !== 'openspec') {
+    return issues;
+  }
+
+  const integrationMarkers = selection.agents.flatMap((agent) =>
+    openSpecIntegrationPaths(agent)
+  );
+  const integrationIssues = (await Promise.all(
+    integrationMarkers.map((marker) => markerIssue(root, marker))
+  )).filter((issue): issue is string => issue !== undefined);
+  const cloudIssues = copilotCloud
+    ? (await Promise.all(
+        OPEN_SPEC_COPILOT_CLOUD_PATHS.map((marker) => markerIssue(root, [...marker]))
+      )).filter((issue): issue is string => issue !== undefined)
+    : (await Promise.all(
+        OPEN_SPEC_COPILOT_CLOUD_PATHS.map((marker) => unexpectedMarkerIssue(root, marker))
+      )).filter((issue): issue is string => issue !== undefined);
+  return [...new Set([...issues, ...integrationIssues, ...cloudIssues])];
 }
 
 export function frameworkSelectionFromPlan(plan: ProjectPlan): FrameworkSelection {

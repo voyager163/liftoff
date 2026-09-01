@@ -6,6 +6,14 @@ import type {
   CommandRunner,
   RunCommandOptions
 } from '../src/process-runner.js';
+import {
+  OPEN_SPEC_COPILOT_CLOUD_PATHS,
+  OPEN_SPEC_DELIVERY,
+  OPEN_SPEC_PROFILE,
+  OPEN_SPEC_WORKFLOW_IDS,
+  openSpecIntegrationPaths,
+  type OpenSpecGlobalProfile
+} from '../src/openspec-profile.js';
 import type { ExternalCommand } from '../src/types.js';
 
 export class CaptureStream extends Writable {
@@ -44,10 +52,22 @@ export class ReadyInitRunner implements CommandRunner {
     callDetails: Array<{ command: ExternalCommand; options?: RunCommandOptions }> = [];
     private readonly missing: Set<string>;
     private readonly specKitState = new Map<string, { defaultIntegration: string; installed: string[] }>();
+    readonly openSpecProfile: OpenSpecGlobalProfile;
 
-    constructor(options: { gitRoot?: string; missing?: string[] } = {}) {
+    constructor(options: {
+      gitRoot?: string;
+      missing?: string[];
+      openSpecProfile?: Partial<OpenSpecGlobalProfile>;
+    } = {}) {
       this.gitRoot = options.gitRoot;
       this.missing = new Set(options.missing ?? []);
+      this.openSpecProfile = {
+        profile: options.openSpecProfile?.profile ?? OPEN_SPEC_PROFILE,
+        delivery: options.openSpecProfile?.delivery ?? OPEN_SPEC_DELIVERY,
+        workflows: options.openSpecProfile?.workflows
+          ? [...options.openSpecProfile.workflows]
+          : [...OPEN_SPEC_WORKFLOW_IDS]
+      };
     }
 
     readonly gitRoot?: string;
@@ -77,6 +97,9 @@ export class ReadyInitRunner implements CommandRunner {
         });
       }
 
+      if (command.executable === 'openspec' && command.args[0] === 'config') {
+        return this.runOpenSpecConfig(command);
+      }
       if (command.executable === 'openspec' && command.args[0] === 'init') {
         await this.writeOpenSpec(options?.cwd, command);
         return this.result(command);
@@ -122,15 +145,49 @@ export class ReadyInitRunner implements CommandRunner {
       };
     }
 
+    private runOpenSpecConfig(command: ExternalCommand): CommandResult {
+      if (command.args[1] === 'list' && command.args[2] === '--json') {
+        return this.result(command, {
+          stdout: `${JSON.stringify(this.openSpecProfile)}\n`
+        });
+      }
+      if (command.args[1] === 'set') {
+        const key = command.args[2];
+        const value = command.args[3];
+        if (key === 'workflows') {
+          const parsed = JSON.parse(value) as unknown;
+          if (!Array.isArray(parsed) || parsed.some((item) => typeof item !== 'string')) {
+            return this.result(command, { status: 1, stderr: 'invalid workflows\n' });
+          }
+          this.openSpecProfile.workflows = [...parsed] as string[];
+        } else if (key === 'delivery') {
+          this.openSpecProfile.delivery = value;
+        } else if (key === 'profile') {
+          this.openSpecProfile.profile = value;
+        }
+        return this.result(command, { stdout: `Set ${key}\n` });
+      }
+      return this.result(command, { status: 1, stderr: 'unsupported OpenSpec config command\n' });
+    }
+
     private async writeOpenSpec(cwd: string | undefined, command: ExternalCommand): Promise<void> {
       if (!cwd) throw new Error('OpenSpec fixture command requires cwd');
       const tools = command.args[command.args.indexOf('--tools') + 1]?.split(',') ?? [];
       await this.write(path.join(cwd, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
       if (tools.includes('github-copilot')) {
-        await this.write(path.join(cwd, '.github', 'skills', 'openspec-apply-change', 'SKILL.md'), 'copilot\n');
+        for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
+          await this.write(path.join(cwd, ...pathParts), 'copilot\n');
+        }
       }
       if (tools.includes('claude')) {
-        await this.write(path.join(cwd, '.claude', 'skills', 'openspec-apply-change', 'SKILL.md'), 'claude\n');
+        for (const pathParts of openSpecIntegrationPaths('claude')) {
+          await this.write(path.join(cwd, ...pathParts), 'claude\n');
+        }
+      }
+      if (command.args.includes('--copilot-cloud')) {
+        for (const pathParts of OPEN_SPEC_COPILOT_CLOUD_PATHS) {
+          await this.write(path.join(cwd, ...pathParts), 'copilot cloud\n');
+        }
       }
     }
 

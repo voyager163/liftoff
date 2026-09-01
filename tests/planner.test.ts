@@ -24,6 +24,7 @@ describe('planner', () => {
     expect(plan.approvedStack).toContain('PydanticAI');
     expect(plan.agents.map((agent) => agent.id)).toEqual(['github-copilot']);
     expect(plan.defaultAgent).toBeUndefined();
+    expect(plan.copilotCloud).toBe(false);
     expect(plan.framework.version).toBe('1.11.0');
     expect(plan.governanceProfile).toMatchObject({
       id: 'single-maintainer-gitflow',
@@ -194,6 +195,29 @@ describe('planner', () => {
     }, { requireProjectName: true })).toThrow(/requires --default-agent/);
   });
 
+  it('resolves Copilot cloud setup only for OpenSpec with GitHub Copilot', () => {
+    expect(buildProjectPlan({
+      projectName: 'Cloud Copilot',
+      pattern: 'rag',
+      cloud: 'azure',
+      agents: ['copilot'],
+      copilotCloud: true
+    }, { requireProjectName: true }).copilotCloud).toBe(true);
+
+    for (const invalid of [
+      { specWorkflow: 'spec-kit', agents: ['copilot'], defaultAgent: 'copilot' },
+      { specWorkflow: 'openspec', agents: ['claude'] }
+    ]) {
+      expect(() => buildProjectPlan({
+        projectName: 'Invalid Cloud Copilot',
+        pattern: 'rag',
+        cloud: 'azure',
+        copilotCloud: false,
+        ...invalid
+      }, { requireProjectName: true })).toThrow(/requires OpenSpec with GitHub Copilot/);
+    }
+  });
+
   it('rejects unsupported or inconsistent agent selections', () => {
     expect(() => buildProjectPlan({
       projectName: 'Unknown Agent',
@@ -234,6 +258,12 @@ describe('planner', () => {
 
       await writeFile(path.join(root, 'invalid.json'), JSON.stringify({ force: true }));
       await expect(loadConfigOptions('invalid.json', root)).rejects.toThrow(/Unknown configuration field: force/);
+      await writeFile(path.join(root, 'cloud-consent.json'), JSON.stringify({
+        copilotCloud: true,
+        configureOpenSpecProfile: true
+      }));
+      await expect(loadConfigOptions('cloud-consent.json', root)).rejects
+        .toThrow(/Unknown configuration fields: copilotCloud, configureOpenSpecProfile/);
       await writeFile(path.join(root, 'bad-governance.json'), JSON.stringify({
         governanceProfile: 'unknown'
       }));
