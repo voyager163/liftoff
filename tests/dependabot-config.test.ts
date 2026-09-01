@@ -1,4 +1,8 @@
-version: 2
+import { readFile } from 'node:fs/promises';
+import path from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+const expectedConfig = `version: 2
 updates:
   - package-ecosystem: npm
     directory: /
@@ -56,3 +60,17 @@ updates:
     directory: /
     schedule:
       interval: weekly
+`;
+
+describe('Dependabot configuration', () => {
+  it('groups owned npm graphs while preserving branch and provenance boundaries', async () => {
+    const config = await readFile(
+      path.resolve('.github', 'dependabot.yml'),
+      'utf8'
+    );
+
+    expect(config).toBe(expectedConfig);
+    expect(config).not.toContain('target-branch:');
+    expect(config).not.toContain('/assets/power-apps-code-app/');
+  });
+});
