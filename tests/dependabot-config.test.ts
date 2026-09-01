@@ -64,10 +64,10 @@ updates:
 
 describe('Dependabot configuration', () => {
   it('groups owned npm graphs while preserving branch and provenance boundaries', async () => {
-    const config = await readFile(
+    const config = (await readFile(
       path.resolve('.github', 'dependabot.yml'),
       'utf8'
-    );
+    )).replaceAll('\r\n', '\n');
 
     expect(config).toBe(expectedConfig);
     expect(config).not.toContain('target-branch:');
