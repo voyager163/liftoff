@@ -1,7 +1,7 @@
 ## 1. Refresh the live backlog and safety baseline
 
 - [x] 1.1 Re-query open PRs #15–#18, #20, and #25–#32 and record each exact head SHA, base branch, changed-file list, mergeability, and check state; verify every PR still maps to one explicit disposition before changing repository or GitHub state
-- [ ] 1.2 Confirm the replacement work is based on the current `develop` tree and that `main` receives no direct commit; verify the eventual replacement PR base is `develop`
+- [x] 1.2 Confirm the replacement work is based on the current `develop` tree and that `main` receives no direct commit; verify the eventual replacement PR base is `develop`
 - [x] 1.3 Capture and verify the current Power Apps starter catalog hashes before dependency work so a final byte comparison can prove the immutable snapshot did not change
 
 ## 2. Constrain future Dependabot proposals
@@ -43,7 +43,7 @@
 
 ## 8. Replace and close the Dependabot backlog
 
-- [ ] 8.1 Commit and push the coherent change on one feature branch and open one pull request targeting `develop`; verify its body links all 13 original PRs and records which seven candidates were retained or excluded
+- [x] 8.1 Commit and push the coherent change on one feature branch and open one pull request targeting `develop`; verify its body links all 13 original PRs and records which seven candidates were retained or excluded
 - [ ] 8.2 Wait for every required replacement-PR check to complete successfully; if a candidate fails, revise and revalidate the replacement before closing any original PR
 - [ ] 8.3 Comment on and close #15, #20, #26, #28, #29, #31, and #32 as superseded by the validated replacement PR; verify none was merged independently
 - [ ] 8.4 Comment on and close #25, #27, and #30 as incompatible with the Node 24 LTS baseline, and #16, #17, and #18 as incompatible with immutable upstream snapshot ownership; verify each closure links the governing replacement or refresh process
