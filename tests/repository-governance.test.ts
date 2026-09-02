@@ -51,7 +51,7 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('rulesets idempotently last');
     expect(policy.length).toBeGreaterThan(40_000);
     expect(createHash('sha256').update(policy).digest('hex'))
-      .toMatchInlineSnapshot(`"f11021af916cecf364c1fd5b7fa1a460ec5588af43cdda002ee9be11c6d084ff"`);
+      .toMatchInlineSnapshot(`"2126efb1d1669034d8c4b9c8d23c51a30bc62df0f739b85931d0da5f13ce2a52"`);
     expect(policy).toBe(readFileSync(
       new URL(
         '../assets/governance/single-maintainer-gitflow/policy.md',
@@ -65,7 +65,25 @@ describe('canonical repository governance policy', () => {
   it.each([
     'required_approving_review_count: 0',
     'GITHUB_TOKEN',
-    'One exception only:',
+    'One provisioning exception only:',
+    'private Staging DAST genuinely applies',
+    'If DAST is inapplicable, provision no runner networking',
+    'consume it without creating a duplicate',
+    'Any unresolved input is a blocker',
+    'Every Azure runner-network resource, remote state',
+    'Staging subscription.',
+    "Do not share or depend on another repository's or subscription's firewall",
+    'selected access for only this repository',
+    'Azure Firewall Basic',
+    'Azure NAT Gateway',
+    'takes precedence for new outbound connections',
+    'NAT Gateway and an NSG do not filter HTTPS',
+    'current GitHub meta endpoint',
+    'deny all unsolicited inbound connections',
+    'private DNS',
+    'A standard hosted preflight checks assignment',
+    'Do not mark the prerequisite satisfied until readback proves',
+    'live Staging reachability',
     'Pre-answered platform defaults',
     'Provision nothing that no code uses',
     'The SLSA L3 generator is the one approved exception to SHA-pinning',
@@ -98,8 +116,9 @@ describe('canonical repository governance policy', () => {
   it('requires truthful blockers and adaptations instead of governance theatre', () => {
     const policy = renderCanonicalGovernancePolicy();
     expect(policy).toMatch(
-      /GitHub-hosted larger runner group with Azure VNet injection into Staging[\s\S]*DAST cannot run without it/
+      /GitHub-hosted larger runner group with Azure\s+VNet injection into Staging/
     );
+    expect(policy).toContain('keep release qualification blocked');
     expect(policy).toContain('Never silently skip DAST');
     expect(policy).not.toContain('DAST must run on a self-hosted runner');
     expect(policy).not.toContain('self-hosted runner group with Staging access exists');
@@ -153,6 +172,55 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('Grype remains non-gating');
     expect(() => validateGovernancePolicy(
       `${policy}\nDAST must run on a self-hosted runner`
+    )).toThrow(/forbidden legacy contract fragment/);
+  });
+
+  it('provisions private Staging runners only when applicable and authorized', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('Provision this stack only when private Staging DAST applies');
+    expect(policy).toContain('If DAST is inapplicable, provision no runner networking');
+    expect(policy).toContain('consume it without creating a duplicate');
+    expect(policy).toContain('Any unresolved input is a blocker');
+    expect(policy).toContain('One provisioning exception only:');
+    expect(policy).toContain('selected access for only this repository');
+  });
+
+  it('keeps repository subscriptions independent and selects one outbound mode', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toMatch(/target repository's\s+Staging subscription/);
+    expect(policy).toContain(
+      "Do not share or depend on another repository's or subscription's firewall"
+    );
+    expect(policy).toContain('Azure Firewall Basic');
+    expect(policy).toContain('Azure NAT Gateway');
+    expect(policy).toContain('select exactly one of these modes');
+    expect(policy).toMatch(/NAT Gateway\s+takes precedence/);
+    expect(policy).toContain('do not filter HTTPS\n   traffic by domain');
+    expect(policy).toContain('Disable implicit default outbound access');
+  });
+
+  it('requires runner isolation, private connectivity, readback, and ordered teardown', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('deny all unsolicited inbound connections');
+    expect(policy).toContain('non-overlapping address space');
+    expect(policy).toContain('private DNS');
+    expect(policy).toContain('perform no TLS interception');
+    expect(policy).toContain('live Staging reachability');
+    expect(policy).toContain('maximum concurrency of one');
+    expect(policy).toContain('Remove in dependency order');
+    expect(policy).toContain('A standalone runner\nVNet');
+    expect(policy).toContain('Do not mark the prerequisite satisfied until readback proves');
+  });
+
+  it.each([
+    'Consume it; never attempt to create it',
+    'Treat it as an **external prerequisite**',
+    'share a firewall across repository subscriptions',
+    'NAT Gateway may coexist with Azure Firewall',
+    'resource creation is sufficient proof of Staging connectivity'
+  ])('rejects unsafe runner policy wording: %s', (fragment) => {
+    expect(() => validateGovernancePolicy(
+      `${renderCanonicalGovernancePolicy()}\n${fragment}`
     )).toThrow(/forbidden legacy contract fragment/);
   });
 
@@ -269,7 +337,7 @@ describe('repository governance artifacts', () => {
     expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '2',
+      policyVersion: '3',
       state: 'handoff-generated'
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>

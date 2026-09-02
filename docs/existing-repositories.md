@@ -98,6 +98,12 @@ Selecting `none` leaves previously managed handoff files as undeleted orphans
 while unrecorded conflicts remain user-owned. No update mode runs an agent or
 activates GitHub settings.
 
+Projects carrying governance policy version 2 preview policy version 3 as
+managed-core drift. Review the new conditional private-runner provisioning
+contract before replacement. Updating the handoff never provisions Azure or
+GitHub resources; reconcile any active downstream runner change with version 3
+before applying its infrastructure.
+
 The schema-v6 transition releases every legacy non-core artifact into project
 provenance without writing, restoring, moving, or deleting its path.
 Intentionally removed infrastructure stays absent and production source stays

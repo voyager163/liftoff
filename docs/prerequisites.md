@@ -43,8 +43,9 @@ in to a cloud or agent on your behalf.
 
 The default repository-governance handoff has no additional initialization
 prerequisite. `gh`, a remote, licensed GitHub security features, private runners,
-Slack, and deployment access are discovered only during post-push Phase 0 and
-may be reported as gaps; they do not block local generation.
+Azure and GitHub provisioning authority, Slack, and deployment access are
+discovered only during post-push Phase 0 and may be reported as gaps; they do
+not block local generation or authorize cloud mutation.
 
 ## Preview requirements without writes
 

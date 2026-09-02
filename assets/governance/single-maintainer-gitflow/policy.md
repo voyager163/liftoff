@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "2"
+policyVersion: "3"
 state: handoff-generated
 ---
 
@@ -26,16 +26,17 @@ one-off.
   best-practice default would introduce a human approver, override it and say so.
   To be precise: me approving *your plan* in this conversation is expected and required. What is
   forbidden is any *merge or deploy gate that waits on a person* once the automation is in place.
-- **Repository-scoped only. Org-level rulesets are out of scope and will not be set up.** I am a
-  repository admin, not an org owner. Every control must be applied per-repository and must work
+- **Repository-scoped only, with one bounded provisioning exception.** Org-level rulesets remain out
+  of scope and will not be set up. Every governance control must be applied per-repository and work
   standalone in a single repository. Do not propose, recommend, or design around org-level rulesets,
   org-level required workflows, or org-wide GitHub App installations — not even as a "better
-  alternative" or a future phase. Do not treat the per-repository approach as a limitation to be
-  worked around; it is the deliberate design. If a control genuinely cannot be enforced at repository
-  scope, say so plainly and leave it out rather than proposing an org-level substitute.
-  **One exception only:** the VNet-injected runner group described below is an org/enterprise-level
-  prerequisite that already exists in this organisation. Consume it; never attempt to create it, and
-  never generalise it into a reason to propose other org-level controls.
+  alternative" or future phase. If a control genuinely cannot be enforced at repository scope, say so
+  plainly and leave it out rather than proposing an org-level substitute.
+  **One provisioning exception only:** when private Staging DAST genuinely applies and no suitable
+  VNet-injected larger runner is assigned, an explicitly approved governance change may provision the
+  Azure network setting, organisation hosted-compute network configuration, selected-access runner
+  group, and bounded larger runner described below. Prove the required Azure and GitHub organisation
+  write authority first; never generalise this exception to any unrelated org-level control.
 - **Automation identity is the built-in `GITHUB_TOKEN`.** Set the **GitHub Actions app** as the bypass
   actor where automation must act on a protected ref — no custom GitHub App is available, since
   installing one requires org ownership. Note that pushes made with `GITHUB_TOKEN` do not trigger
@@ -52,11 +53,11 @@ one-off.
   **This is a deliberate, approved deviation** from guidance that assumes self-hosted runners for
   private targets — implement it as written and do not re-argue it.
   Note the dependency: VNet injection requires an Azure **network configuration** and a **runner
-  group**, both created at organisation or enterprise level. This is the one prerequisite a
-  repository genuinely cannot provision for itself, and it is the single exception to the
-  repository-scoped rule above. Treat it as an **external prerequisite**: check whether a runner
-  group with Staging connectivity exists, and if it does not, say so plainly and name it as a
-  blocker. Never silently skip DAST, and never substitute a self-hosted runner to work around it.
+  group**, both represented at organisation or enterprise level. Reuse a suitable existing
+  repository assignment when one is verified. If none exists, keep release qualification blocked
+  until the exact repository-dedicated stack is explicitly approved, provisioned, read back, and
+  proven to reach Staging. Never silently skip DAST, and never substitute a self-hosted runner to
+  work around it.
 - **The GitHub Release plus attestations are the audit record.** There is no external GRC or
   change-management system to integrate with.
 
@@ -104,14 +105,18 @@ Report before you change anything.
 2. Language(s), package managers, and the build and test commands that genuinely work today.
 3. Anything already present: branches, workflows and their exact job names, rulesets, tags, releases,
    environments, deployment pipelines, security scanning.
-4. Whether a **GitHub-hosted larger runner group with Azure VNet injection into Staging** already
-   exists at organisation or enterprise level, whether the repository can inspect its assignment,
-   and its exact runner group and labels. If it does not, say so plainly — DAST cannot run without it,
-   the release lane cannot qualify a candidate, and the repo cannot create it for itself. Name it as a
-   blocker rather than substituting a self-hosted runner.
-5. What monitoring and alerting already exists — alert rules, action groups, where they route, and
+4. Whether private Staging DAST applies and whether a **GitHub-hosted larger runner group with Azure
+   VNet injection into Staging** already exists, is assigned to this repository, exposes the exact
+   required labels, and can inspect and reach the real private target.
+5. If DAST applies and no suitable assignment exists: the repository's Staging subscription and
+   tenant; supported region; Azure and GitHub organisation write permissions; enterprise policy for
+   organisation network configurations; billing owner; remote state owner; deterministic resource
+   names; non-overlapping address space; Staging VNet, route, private DNS and security topology;
+   required outbound policy; current costs and service limits; and dependency-ordered teardown
+   owner. Any unresolved input is a blocker, not permission to begin a partial bootstrap.
+6. What monitoring and alerting already exists — alert rules, action groups, where they route, and
    which components have no coverage at all. Name the gaps explicitly.
-6. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
+7. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
    (dependencies are reachable). A shallow check reported as health is a gap, not coverage.
 
 Then state the gap and your proposed order of work, and **get my approval before making changes.**
@@ -119,6 +124,60 @@ Then state the gap and your proposed order of work, and **get my approval before
 **Adapt honestly.** Container scanning is meaningless for a mobile app; SBOM and image digests do not
 apply to a library the same way. Implement what is real for this repo and tell me explicitly what you
 skipped and why. Never ship a workflow that cannot pass.
+
+### Private Staging runner provisioning contract
+
+Provision this stack only when private Staging DAST applies and no suitable assignment already
+exists. If DAST is inapplicable, provision no runner networking or hosted-compute resources. If a
+suitable assignment exists, consume it without creating a duplicate.
+
+**Keep repository ownership independent.** Every Azure runner-network resource, remote state,
+explicit egress resource, cost, and teardown responsibility belongs in the target repository's
+Staging subscription. Do not share or depend on another repository's or subscription's firewall,
+hub, route, state, billing boundary, or lifecycle. GitHub resources necessarily exist at organisation
+level, but the runner group must use selected access for only this repository and, where supported,
+only the required workflows.
+
+**Use one explicit outbound mode.** Disable implicit default outbound access on the runner subnet,
+then select exactly one of these modes from Phase 0 evidence:
+
+1. **Azure Firewall Basic** only when an applicable organisation or repository policy requires
+   domain-restricted egress. Populate HTTPS application rules from the current GitHub meta endpoint
+   domain set, record the selected set and capture time, refresh it at least weekly, use no retired
+   static GitHub IP allowlist, and perform no TLS interception. Firewall Basic has no DNS proxy, so it
+   does not replace the private DNS path to Staging.
+2. **Azure NAT Gateway** when strict domain-restricted egress is not required. Limit required
+   outbound protocols with an NSG, but state plainly that NAT Gateway and an NSG do not filter HTTPS
+   traffic by domain.
+
+Never attach NAT Gateway to a runner subnet whose default route uses Azure Firewall. NAT Gateway
+takes precedence for new outbound connections and would bypass the firewall path. Never treat
+implicit Azure outbound access as a durable design.
+
+**Prove isolation and the private path.** The delegated subnet must contain no existing NICs, use
+non-overlapping address space, and deny all unsolicited inbound connections; GitHub requires no
+inbound connection to the runner. Model the actual same-subscription route or peering to Staging,
+private DNS zone or resolver path, forwarding settings, NSGs, and target policy. A standalone runner
+VNet or a successfully created network setting is not proof that DAST can reach Staging.
+
+**Apply and verify idempotently.** Use reviewable infrastructure as code for the Azure resources and
+supported GitHub APIs for the hosted-compute network configuration, group, repository and workflow
+access, and runner. Use deterministic names and read before write. Default to the smallest
+organisation-supported Ubuntu x64 runner proven sufficient for ZAP — normally 4 cores and 16 GiB —
+with maximum concurrency of one unless Phase 0 justifies another bound.
+
+Do not mark the prerequisite satisfied until readback proves the Azure network setting and returned
+GitHub ID, organisation network configuration, selected-access group, exact repository and workflow
+assignment, runner image, size, labels, status, concurrency, billing owner, explicit egress path,
+private DNS resolution, and live Staging reachability. A standard hosted preflight checks assignment
+and labels before scheduling DAST; the larger-runner job proves the private target path. Missing,
+stale, denied, skipped, or partial evidence fails closed.
+
+**Remove in dependency order.** Stop new scheduling and repository access first; delete the larger
+runner; remove repository and workflow access; detach and delete the runner group and hosted-compute
+network configuration; delete the Azure network setting and wait for its service association to be
+removed; only then delete the repository-owned subnet, egress, network, and state resources. Never
+report rollback success while a billed or service-associated resource remains.
 
 ## Phase 1 — Branching model
 
@@ -749,18 +808,23 @@ Inspect and report all of the following with evidence before changing anything:
 4. Secret Protection, Dependabot, Dependency Review, CodeQL, Copilot Autofix,
    Checkov, Trivy, Grype, ZAP, attestations, SLSA, Scorecard, licenses, and every
    required input or suppression policy.
-5. The exact GitHub-hosted larger runner group and labels, whether it is assigned
-   to the repository, whether its Azure VNet injection can reach Staging, and
-   whether a standard hosted preflight can verify that assignment before DAST is
-   scheduled.
-6. Live deployment mechanisms, parallel-version support, version-specific
+5. Whether private Staging DAST applies; the exact GitHub-hosted larger runner
+   group and labels when present; its repository and workflow assignment; whether
+   its Azure VNet injection can resolve and reach Staging; and whether a standard
+   hosted preflight can verify the assignment before DAST is scheduled.
+6. When DAST applies but no suitable assignment exists: Staging subscription,
+   tenant, region, organisation and Azure write authority, enterprise network
+   policy, billing, state, deterministic names, address space, route or peering,
+   private DNS, inbound denial, strict-domain-egress requirement, explicit
+   Firewall Basic or NAT Gateway mode, costs, limits, and teardown ownership.
+7. Live deployment mechanisms, parallel-version support, version-specific
    origins, traffic volume, statistically valid canary capacity, and provider
    status sources.
-7. Monitoring signals, alert rules, severity routing, Slack delivery,
+8. Monitoring signals, alert rules, severity routing, Slack delivery,
    heartbeat coverage, alert-fire tests, dashboards, shallow/deep component
    health, dependency graph, recovery order, deployed versions/digests, and DORA
    event sources.
-8. Which settled platform defaults apply to components the workload actually
+9. Which settled platform defaults apply to components the workload actually
    uses, the cost and known service limits of every required managed service, and
    any live-resource drift that requires a refactor-and-import reconciliation
    plan.
@@ -779,6 +843,14 @@ alert, or Slack route.
 After approval, create a new governance change using the project's selected
 OpenSpec or Spec Kit workflow. The generated Liftoff policy remains an input;
 Liftoff does not own, name, restore, or recreate that active change.
+
+When the approved plan includes the runner provisioning exception, treat it as
+a fail-closed state machine: remote state and the Azure network; delegated
+private subnet and exactly one explicit egress mode; Azure network setting and
+GitHub ID; organisation network configuration; selected-access group; bounded
+larger runner; complete API readback; private DNS and live Staging reachability;
+then DAST eligibility. Stop at the first failed transition and reconcile or
+remove partial resources in reverse dependency order.
 
 Author workflows, exact ruleset payloads, runbooks, and documentation first.
 Observe every proposed required context green on all applicable paths, then

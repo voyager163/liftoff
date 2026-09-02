@@ -23,7 +23,7 @@ Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
 OpenSpec workflows     12 workflows; skills and commands
 Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 2
+Repository governance  Single-maintainer GitFlow policy 3
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
@@ -66,7 +66,7 @@ Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
 OpenSpec workflows     12 workflows; skills and commands
 Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 2
+Repository governance  Single-maintainer GitFlow policy 3
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
@@ -118,7 +118,7 @@ Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
 OpenSpec workflows     12 workflows; skills and commands
 Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 2
+Repository governance  Single-maintainer GitFlow policy 3
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
@@ -159,7 +159,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 2; local handoff
+- Repository governance: Single-maintainer GitFlow policy 3; local handoff
 generated, live activation deferred
 
 Deferred advisory checks
@@ -220,7 +220,7 @@ Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
 OpenSpec workflows     12 workflows; skills and commands
 Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 2
+Repository governance  Single-maintainer GitFlow policy 3
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
@@ -317,7 +317,7 @@ Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
 OpenSpec workflows     12 workflows; skills and commands
 Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 2
+Repository governance  Single-maintainer GitFlow policy 3
 Governance handoff     Local handoff generated; live enforcement is not active
 Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
@@ -437,7 +437,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 2
+Repository governance: Single-maintainer GitFlow policy 3
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
@@ -474,7 +474,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 2
+Repository governance: Single-maintainer GitFlow policy 3
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
@@ -517,7 +517,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 2
+Repository governance: Single-maintainer GitFlow policy 3
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
@@ -551,7 +551,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 2; local handoff generated, live activation deferred
+- Repository governance: Single-maintainer GitFlow policy 3; local handoff generated, live activation deferred
 
 Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
@@ -598,7 +598,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 2
+Repository governance: Single-maintainer GitFlow policy 3
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
@@ -675,7 +675,7 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 2
+Repository governance: Single-maintainer GitFlow policy 3
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
@@ -765,7 +765,7 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 │ Coding agents          GitHub Copilot                                                        │
 │ OpenSpec workflows     12 workflows; skills and commands                                     │
 │ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 2                                    │
+│ Repository governance  Single-maintainer GitFlow policy 3                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
@@ -817,7 +817,7 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 │ Coding agents          GitHub Copilot                                                        │
 │ OpenSpec workflows     12 workflows; skills and commands                                     │
 │ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 2                                    │
+│ Repository governance  Single-maintainer GitFlow policy 3                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
@@ -872,7 +872,7 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 │ Coding agents          GitHub Copilot                                                        │
 │ OpenSpec workflows     12 workflows; skills and commands                                     │
 │ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 2                                    │
+│ Repository governance  Single-maintainer GitFlow policy 3                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
@@ -910,7 +910,7 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ • GitHub Copilot                                                                             │
 │ • OpenSpec global profile: verified; 12 workflows; skills and commands                       │
 │ • GitHub Copilot cloud agent: disabled                                                       │
-│ • Repository governance: Single-maintainer GitFlow policy 2; local handoff generated, live   │
+│ • Repository governance: Single-maintainer GitFlow policy 3; local handoff generated, live   │
 │ activation deferred                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
@@ -970,7 +970,7 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ Coding agents          GitHub Copilot                                                        │
 │ OpenSpec workflows     12 workflows; skills and commands                                     │
 │ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 2                                    │
+│ Repository governance  Single-maintainer GitFlow policy 3                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
@@ -1065,7 +1065,7 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Coding agents          GitHub Copilot                                                        │
 │ OpenSpec workflows     12 workflows; skills and commands                                     │
 │ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 2                                    │
+│ Repository governance  Single-maintainer GitFlow policy 3                                    │
 │ Governance handoff     Local handoff generated; live enforcement is not active               │
 │ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │

@@ -12,8 +12,8 @@ liftoff init --governance none
 ```
 
 Accepting the default or passing `--yes` authorizes only local project files. It
-does not run an agent, mutate Git, contact GitHub, configure security, install a
-ruleset, deploy, or create monitoring.
+does not run an agent, mutate Git, contact GitHub or Azure, configure security,
+install a ruleset, deploy, provision a runner, or create monitoring.
 
 ## Generated files
 
@@ -34,7 +34,7 @@ tools, fail-closed checks, immutable release evidence, build-once promotion,
 deployment and rollback, monitoring and health, DORA metrics, ruleset
 sequencing, negative tests, documentation, and workload adaptation.
 
-Policy version 2 also fixes platform decisions that generated projects should
+Policy version 3 also fixes platform decisions that generated projects should
 not repeatedly ask users to make:
 
 - Dev storage uses LRS; Staging and Production use ZRS. IaC state uses ZRS in
@@ -57,16 +57,45 @@ than creating a parallel stack or forcing replacement.
 ## Private Staging qualification
 
 DAST for a privately networked Staging environment uses an ephemeral
-GitHub-hosted larger runner with Azure VNet injection. Its Azure network
-configuration and runner group are the policy's sole organisation- or
-enterprise-level prerequisite: activation consumes an existing assignment but
-never creates one or substitutes a self-hosted runner.
+GitHub-hosted larger runner with Azure VNet injection. Activation reuses a
+suitable existing repository assignment. If none exists, policy version 3
+permits one narrow post-approval exception to provision the Azure network
+setting, organisation hosted-compute network configuration, selected-access
+runner group, and bounded larger runner required by that repository.
 
-Phase 0 must discover the exact runner group and labels and prove the repository
-can inspect the assignment. An implementation preflights that visibility on a
-standard hosted runner before scheduling DAST. Missing API access, assignment,
-or labels blocks qualification explicitly rather than leaving a required job
-queued or reporting success.
+Phase 0 first proves that private Staging DAST applies. It then discovers the
+repository's Staging subscription and tenant, existing runner resources, Azure
+and GitHub write authority, enterprise network policy, billing, state, names,
+address space, DNS, routing, costs, limits, and teardown ownership. Missing
+authority or an unresolved input blocks provisioning without partial mutation.
+No self-hosted runner is substituted.
+
+Every Azure runner-network resource, its state, egress cost, and teardown owner
+remain inside the repository's Staging subscription. The design cannot share a
+firewall, hub, route, state, or lifecycle with another repository or
+subscription. GitHub resources exist at organisation level but grant selected
+access only to the target repository and required workflows.
+
+The delegated runner subnet disables implicit default outbound access, denies
+unsolicited inbound connectivity, and uses exactly one egress mode:
+
+- Azure Firewall Basic only when an applicable policy requires domain-restricted
+  egress. Its HTTPS rules use a current GitHub meta domain set without the
+  retired static-IP template or TLS interception.
+- Azure NAT Gateway otherwise, with required protocols constrained by an NSG.
+  NAT and NSG controls do not filter HTTPS by domain.
+
+NAT Gateway cannot be attached to a firewall-routed runner subnet because it
+takes precedence and would bypass the firewall. The approved topology must also
+prove non-overlapping address space, same-subscription routing or peering,
+private DNS, security rules, and live private Staging reachability.
+
+A standard hosted preflight verifies the assignment and labels before scheduling
+DAST. Azure and GitHub resources, associations, egress, DNS, and reachability
+must all be read back successfully. Missing or partial evidence blocks
+qualification rather than leaving a required job queued or reporting success.
+Teardown reverses those dependencies and removes the Azure network only after
+GitHub scheduling, assignment, and service associations are gone.
 
 ## Release identity and automated completion
 
@@ -109,7 +138,10 @@ and API DAST as inapplicable.
 4. The agent performs read-only Phase 0 and reports repository identity,
    artifacts, working commands, refs, workflows and exact checks, rulesets,
    releases, environments, security, runners, deployments, monitoring, alerts,
-   health depth, platform capabilities, gaps, and inapplicable controls.
+   health depth, platform capabilities, gaps, and inapplicable controls. When
+   private Staging DAST applies without a suitable runner, it also reports the
+   complete subscription-local topology, one explicit egress mode, authority,
+   costs, limits, verification, and teardown plan.
 5. The agent proposes the current `main` SHA as the activation baseline,
    presents an ordered plan, and stops.
 6. Explicitly approve or revise the conversational plan. This is not a human
@@ -140,17 +172,23 @@ conflict remains outside Liftoff ownership and produces `handoff-partial`.
 After every conflict is removed or matches the current artifact, the next
 update records the full artifact set as `handoff-generated`.
 
+Projects generated with policy version 2 review the version-3 managed-core drift
+before replacement. `liftoff update` changes only the local handoff; it never
+provisions Azure or GitHub resources. Any active downstream runner change based
+on the external-only version-2 contract must reconcile its plan and
+implementation with version 3 before applying cloud or organisation resources.
+
 Setting `"governanceProfile": "none"` stops future rendering. Previously managed
 handoff files are reported once as orphans and left on disk; Liftoff never
 deletes them automatically or changes live repository settings.
 
 ## Capability gaps
 
-Phase 0 must report missing GitHub licenses, the VNet-injected larger runner
-assignment, Staging access, monitoring routes, parallel-version mechanisms, or
-statistically meaningful canary traffic. It must mark controls inapplicable or
-blocked rather than creating a skipped, hanging, duplicate, or success-shaped
-placeholder.
+Phase 0 must report missing GitHub licenses, runner-provisioning authority,
+VNet-injected assignment or reachability, Staging access, monitoring routes,
+parallel-version mechanisms, or statistically meaningful canary traffic. It
+must mark controls inapplicable or blocked rather than creating a skipped,
+hanging, partial, duplicate, or success-shaped placeholder.
 
 The official SLSA L3 generator is the policy's only action SHA-pinning
 exception because its reusable workflow contains mutable internal references.

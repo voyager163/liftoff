@@ -97,7 +97,7 @@ describe('migrate command', () => {
     expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '2',
+      policyVersion: '3',
       state: 'handoff-generated'
     });
     expect(manifest.project.workload).toMatchObject({

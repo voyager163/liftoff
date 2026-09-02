@@ -188,9 +188,14 @@ not active enforcement. Commit and push the repository, run the selected-agent
 launcher, review its read-only Phase 0 report, and explicitly approve the plan
 before the agent creates a governance change.
 
-Missing licenses, a private Staging runner, alert routes, parallel deployment,
-or sufficient canary traffic must be reported as blockers or inapplicable
-controls. Do not replace them with duplicate scanners or placeholder success.
+Missing licenses, runner-provisioning authority, a private Staging assignment or
+reachable network path, alert routes, parallel deployment, or sufficient canary
+traffic must be reported as blockers or inapplicable controls. When private
+Staging DAST applies and no suitable runner exists, Phase 0 may propose the
+policy's repository-dedicated provisioning exception, but it must stop for
+explicit approval before creating any Azure or GitHub resource. Do not replace
+missing capability with duplicate scanners, partial provisioning, or
+placeholder success.
 
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore the affected generated files and `liftoff.manifest.json` through version
