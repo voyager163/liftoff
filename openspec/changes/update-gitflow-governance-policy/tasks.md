@@ -19,13 +19,13 @@
 
 ## 4. Validate the complete handoff
 
-> Local validation note: this Microsoft-managed laptop blocks direct public
-> registries and requires `https://packagefeedproxy.microsoft.io/npm/`. The
-> focused governance suite and all registry-independent checks pass, but the
-> proxy currently returns missing-package errors for generated-stack and package
-> smoke installs. Tasks 4.2 and 4.3 remain pending until GitHub-hosted validation,
-> where public package access is available.
+> Validation note: this Microsoft-managed laptop blocks direct public registries
+> and requires `https://packagefeedproxy.microsoft.io/npm/`, whose current
+> package availability prevented local generated-stack and package-smoke
+> installs. GitHub-hosted CI completed those checks with public package access;
+> local `npm pack --dry-run --json` also confirmed both revised governance files
+> remain in the published package.
 
 - [x] 4.1 Run `openspec validate update-gitflow-governance-policy --strict` and resolve every artifact or delta-spec error.
-- [ ] 4.2 Run `npm run check` and verify the complete TypeScript build and test suite passes.
-- [ ] 4.3 Run `npm run smoke:package` and `npm pack --dry-run --json`, verifying the revised canonical policy and public governance documentation remain in the published package.
+- [x] 4.2 Run `npm run check` and verify the complete TypeScript build and test suite passes.
+- [x] 4.3 Run `npm run smoke:package` and `npm pack --dry-run --json`, verifying the revised canonical policy and public governance documentation remain in the published package.
