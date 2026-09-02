@@ -51,7 +51,7 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('rulesets idempotently last');
     expect(policy.length).toBeGreaterThan(40_000);
     expect(createHash('sha256').update(policy).digest('hex'))
-      .toMatchInlineSnapshot(`"f90887530e667f7f68b818f48af676b89d0f6703273202897310f668d6c96737"`);
+      .toMatchInlineSnapshot(`"f11021af916cecf364c1fd5b7fa1a460ec5588af43cdda002ee9be11c6d084ff"`);
     expect(policy).toBe(readFileSync(
       new URL(
         '../assets/governance/single-maintainer-gitflow/policy.md',
@@ -65,6 +65,13 @@ describe('canonical repository governance policy', () => {
   it.each([
     'required_approving_review_count: 0',
     'GITHUB_TOKEN',
+    'One exception only:',
+    'Pre-answered platform defaults',
+    'Provision nothing that no code uses',
+    'The SLSA L3 generator is the one approved exception to SHA-pinning',
+    'qualified release or hotfix candidate SHA',
+    'production `main` merge SHA',
+    'explicitly dispatch',
     'Trivy',
     'STOP FOR EXPLICIT USER APPROVAL',
     'governance/activation-baseline.json',
@@ -91,8 +98,11 @@ describe('canonical repository governance policy', () => {
   it('requires truthful blockers and adaptations instead of governance theatre', () => {
     const policy = renderCanonicalGovernancePolicy();
     expect(policy).toMatch(
-      /self-hosted runner group with Staging access exists[\s\S]*DAST cannot run without it/
+      /GitHub-hosted larger runner group with Azure VNet injection into Staging[\s\S]*DAST cannot run without it/
     );
+    expect(policy).toContain('Never silently skip DAST');
+    expect(policy).not.toContain('DAST must run on a self-hosted runner');
+    expect(policy).not.toContain('self-hosted runner group with Staging access exists');
     expect(policy).toMatch(
       /GitHub Advanced Security is licensed[\s\S]*Secret Protection, CodeQL and Copilot Autofix/
     );
@@ -107,6 +117,43 @@ describe('canonical repository governance policy', () => {
     );
     expect(policy).toContain('**Never gates.**');
     expect(policy).toContain('Keep `trivy config` disabled');
+  });
+
+  it('keeps settled platform defaults applicable and cost-aware', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('**Dev LRS · Staging ZRS · Production ZRS**');
+    expect(policy).toContain('**ZRS in every environment**, including bootstrap');
+    expect(policy).toContain('**Dev and Staging: no HA. Production: zone-redundant HA.**');
+    expect(policy).toContain('**User-assigned managed identity with OIDC federation**');
+    expect(policy).toContain('**Small — fewer than 1,000 users**');
+    expect(policy).toContain('**Cost-optimised with production safeguards**');
+    expect(policy).toContain('**GitHub Actions secret at the environment level.**');
+    expect(policy).toContain('**Active LTS only.**');
+    expect(policy).toContain('Apply a default only when the classified');
+    expect(policy).toContain('**known service limits**');
+    expect(policy).toContain('refactor the IaC to match the live resources and import');
+  });
+
+  it('binds candidates to production merges and coordinates token follow-on work', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('qualified release or hotfix candidate SHA');
+    expect(policy).toContain('production `main` merge SHA');
+    expect(policy).toContain('true merge that incorporates the exact qualified candidate SHA');
+    expect(policy).toContain('conflicting metadata blocks');
+    expect(policy).toContain('dispatch validation for the sync branch\'s exact head SHA');
+    expect(policy).toContain('never rely on a tag-push trigger');
+  });
+
+  it('keeps the SLSA exception narrow and rejects the legacy runner contract', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('**The SLSA L3 generator is the one approved exception to SHA-pinning.**');
+    expect(policy).toContain('explicit, narrow, expiring action-reference exception');
+    expect(policy).toContain('wildcard, blanket exemption');
+    expect(policy).toMatch(/Trivy\s+remains the sole owner of vulnerability allowlisting/);
+    expect(policy).toContain('Grype remains non-gating');
+    expect(() => validateGovernancePolicy(
+      `${policy}\nDAST must run on a self-hosted runner`
+    )).toThrow(/forbidden legacy contract fragment/);
   });
 
   it('keeps zero-approval repository scope and fail-closed sequencing fixed', () => {
@@ -222,7 +269,7 @@ describe('repository governance artifacts', () => {
     expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '1',
+      policyVersion: '2',
       state: 'handoff-generated'
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
