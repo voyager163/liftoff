@@ -19,9 +19,10 @@ Interactive sessions ask separately at the point each permission is needed.
 
 Selecting repository governance or passing `--yes` authorizes only deterministic
 local handoff files. It never authorizes agent execution, Git mutation, GitHub
-APIs, rulesets, security configuration, deployment, monitoring, file
-replacement, machine tools, or project dependencies. Live activation begins
-only after commit, push, read-only Phase 0, and explicit plan approval.
+APIs, Azure or other cloud resources, rulesets, security configuration,
+deployment, monitoring, file replacement, machine tools, or project
+dependencies. Live activation begins only after commit, push, read-only Phase 0,
+and explicit plan approval.
 
 ## CLI self-upgrade boundary
 

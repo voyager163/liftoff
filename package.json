@@ -1,6 +1,6 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.9.5",
+  "version": "0.9.6",
   "description": "Interactive CLI for governed GenAI, API, and Power Apps code app projects.",
   "type": "module",
   "license": "GPL-3.0-only",

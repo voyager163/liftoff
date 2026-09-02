@@ -6,7 +6,7 @@ import type {
 import { supportedStack } from './supported-stack.js';
 
 export const governancePolicySchemaVersion = 1 as const;
-export const governancePolicyVersion = '2' as const;
+export const governancePolicyVersion = '3' as const;
 export const governanceContextSchemaVersion = 1 as const;
 
 export const governanceArtifactPaths = {
@@ -43,7 +43,7 @@ export function renderCanonicalGovernancePolicy(): string {
 const requiredPolicyFragments = [
   'schemaVersion: 1',
   'profile: single-maintainer-gitflow',
-  'policyVersion: "2"',
+  'policyVersion: "3"',
   'develop` is the integration branch and the **default branch**',
   'main` is production truth',
   'release/X.Y.Z',
@@ -55,9 +55,32 @@ const requiredPolicyFragments = [
   'no required reviewers',
   'GITHUB_TOKEN',
   'Repository-scoped only',
-  'One exception only:',
+  'One provisioning exception only:',
   'GitHub-hosted larger runner with',
   'Azure VNet injection',
+  'private Staging DAST genuinely applies',
+  'If DAST is inapplicable, provision no runner networking',
+  'consume it without creating a duplicate',
+  'Any unresolved input is a blocker',
+  'Every Azure runner-network resource, remote state',
+  'Staging subscription.',
+  "Do not share or depend on another repository's or subscription's firewall",
+  'selected access for only this repository',
+  'Azure Firewall Basic',
+  'Azure NAT Gateway',
+  'takes precedence for new outbound connections',
+  'NAT Gateway and an NSG do not filter HTTPS',
+  'Disable implicit default outbound access',
+  'current GitHub meta endpoint',
+  'deny all unsolicited inbound connections',
+  'non-overlapping address space',
+  'private DNS',
+  'perform no TLS interception',
+  'A standard hosted preflight checks assignment',
+  'Do not mark the prerequisite satisfied until readback proves',
+  'maximum concurrency of one',
+  'Remove in dependency order',
+  'live Staging reachability',
   'Pre-answered platform defaults',
   'Dev LRS',
   'ZRS in every environment',
@@ -107,7 +130,12 @@ const requiredPolicyFragments = [
 
 const forbiddenPolicyFragments = [
   'DAST must run on a self-hosted runner',
-  'self-hosted runner group with Staging access exists'
+  'self-hosted runner group with Staging access exists',
+  'Consume it; never attempt to create it',
+  'Treat it as an **external prerequisite**',
+  'share a firewall across repository subscriptions',
+  'NAT Gateway may coexist with Azure Firewall',
+  'resource creation is sufficient proof of Staging connectivity'
 ] as const;
 
 export function validateGovernancePolicy(policy: string): void {
