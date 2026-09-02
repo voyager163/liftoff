@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "1"
+policyVersion: "2"
 state: handoff-generated
 ---
 
@@ -33,17 +33,59 @@ one-off.
   alternative" or a future phase. Do not treat the per-repository approach as a limitation to be
   worked around; it is the deliberate design. If a control genuinely cannot be enforced at repository
   scope, say so plainly and leave it out rather than proposing an org-level substitute.
+  **One exception only:** the VNet-injected runner group described below is an org/enterprise-level
+  prerequisite that already exists in this organisation. Consume it; never attempt to create it, and
+  never generalise it into a reason to propose other org-level controls.
 - **Automation identity is the built-in `GITHUB_TOKEN`.** Set the **GitHub Actions app** as the bypass
   actor where automation must act on a protected ref — no custom GitHub App is available, since
   installing one requires org ownership. Note that pushes made with `GITHUB_TOKEN` do not trigger
-  further workflows: never rely on a tag-push trigger, and do the follow-on work in the same workflow
-  run.
+  further workflows: never rely on a tag-push trigger. Create the tag, Release and durable evidence in
+  the successful production workflow. Where a checked back-merge needs another run, dispatch it
+  explicitly for the exact SHA and fail if that dispatch or its required checks do not succeed.
 - **GitHub Advanced Security is licensed org-wide.** Use Secret Protection, CodeQL and Copilot Autofix.
   Do not add third-party equivalents such as Gitleaks or Semgrep — they would duplicate licensed
   capability.
-- **Staging sits behind private networking.** DAST must run on a self-hosted runner with access to it.
+- **Staging sits behind private networking, and DAST runs on a GitHub-hosted larger runner with
+  Azure VNet injection.** Do not build a self-hosted runner VM. An ephemeral hosted runner has
+  nothing to patch and leaves no long-lived compute inside the Staging network for a compromised
+  workflow to pivot from.
+  **This is a deliberate, approved deviation** from guidance that assumes self-hosted runners for
+  private targets — implement it as written and do not re-argue it.
+  Note the dependency: VNet injection requires an Azure **network configuration** and a **runner
+  group**, both created at organisation or enterprise level. This is the one prerequisite a
+  repository genuinely cannot provision for itself, and it is the single exception to the
+  repository-scoped rule above. Treat it as an **external prerequisite**: check whether a runner
+  group with Staging connectivity exists, and if it does not, say so plainly and name it as a
+  blocker. Never silently skip DAST, and never substitute a self-hosted runner to work around it.
 - **The GitHub Release plus attestations are the audit record.** There is no external GRC or
   change-management system to integrate with.
+
+### Pre-answered platform defaults — use these, do not ask again
+
+These were decided once and apply to every repository. Ask only if the repository has a specific,
+stated reason to differ, and say what that reason is. Apply a default only when the classified
+workload actually uses that component; a database default does not justify provisioning a database.
+
+| Decision | Default |
+| --- | --- |
+| Storage redundancy | **Dev LRS · Staging ZRS · Production ZRS** |
+| IaC state storage | **ZRS in every environment**, including bootstrap |
+| Database high availability | **Dev and Staging: no HA. Production: zone-redundant HA.** |
+| Cloud identity for CI | **User-assigned managed identity with OIDC federation** per repository and environment. No app registrations, no client secrets, no long-lived credentials. |
+| Workload scale | **Small — fewer than 1,000 users** |
+| Budget profile | **Cost-optimised with production safeguards** |
+| Slack webhook storage | **GitHub Actions secret at the environment level.** Not Key Vault — the alerting path must not depend on network access to a private vault, which is exactly how an alert path fails silently. |
+| Dependency policy | **Active LTS only.** Pin runtime majors to Active LTS, add Dependabot ignore rules for non-LTS majors, and group updates per ecosystem. Do not re-litigate this every time a new major ships. |
+
+**Provision nothing that no code uses.** Do not add a managed service to the infrastructure until the
+application actually consumes it. Before adopting any managed service, state its cost and its
+**known service limits** — per-subscription rate caps in particular, which have long lead times to
+raise and are discovered far too late otherwise.
+
+**When infrastructure as code does not match what already exists in the cloud**, report the
+reconciliation plan before applying anything, refactor the IaC to match the live resources and import
+them. Do not build a parallel stack and migrate, force replacement, or treat the estate as externally
+managed.
 
 ## Basis
 
@@ -62,8 +104,11 @@ Report before you change anything.
 2. Language(s), package managers, and the build and test commands that genuinely work today.
 3. Anything already present: branches, workflows and their exact job names, rulesets, tags, releases,
    environments, deployment pipelines, security scanning.
-4. Whether a self-hosted runner group with Staging access exists. If it does not, say so plainly —
-   DAST cannot run without it, and the release lane will be unable to qualify a candidate.
+4. Whether a **GitHub-hosted larger runner group with Azure VNet injection into Staging** already
+   exists at organisation or enterprise level, whether the repository can inspect its assignment,
+   and its exact runner group and labels. If it does not, say so plainly — DAST cannot run without it,
+   the release lane cannot qualify a candidate, and the repo cannot create it for itself. Name it as a
+   blocker rather than substituting a self-hosted runner.
 5. What monitoring and alerting already exists — alert rules, action groups, where they route, and
    which components have no coverage at all. Name the gaps explicitly.
 6. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
@@ -88,17 +133,34 @@ skipped and why. Never ship a workflow that cannot pass.
   `develop` — or into the open release branch if one exists.
 - Nobody pushes directly to any protected branch, including me.
 
+### Automated completion without protected-branch bypass
+
+Release and hotfix back-merges use pull requests and the same required checks as every other protected
+branch change. Protected branch rulesets keep `bypass_actors: []`; the GitHub Actions bypass applies
+only to restricted release-tag creation.
+
+When `GITHUB_TOKEN` creates the back-merge pull request, the coordinating workflow must explicitly
+dispatch validation for the sync branch's exact head SHA, wait until every required context is
+`success`, verify the head did not move, and merge through the pull-request API. A hotfix targets the
+single open release branch when one exists, otherwise `develop`; multiple open release branches are
+an ambiguity and must fail. If the token-generated merge suppresses the normal `develop` push
+workflow, explicitly dispatch the required deployment or follow-on work for the resulting merge SHA.
+Missing, skipped, cancelled or failed checks, a failed dispatch, or an unexpected SHA all fail closed.
+
 ## Phase 2 — Release versioning on `main`
 
 Every production merge must produce a real, visible version.
 
 - Semantic versioning. The `release/X.Y.Z` or `hotfix/X.Y.Z` branch name is the single source of truth
-  for the version; nothing else declares it.
+  for the version. If an artifact format requires embedded version metadata, derive it from or verify
+  it against the branch version during candidate stabilisation; conflicting metadata blocks
+  qualification and never becomes a second source of truth.
 - Merges into `main` are true merge commits, never squashed, so both parents stay traceable.
 - After a successful production deploy — and only then — automation creates an annotated `vX.Y.Z` tag
   on that exact `main` merge commit and a matching **GitHub Release** targeting `main`.
 - The Release body must contain: the changelog between the previous tag and this one, the deployed
-  artifact digest, the source `develop` SHA the release was cut from, a link to the staging
+  artifact digest, the qualified release or hotfix candidate SHA, the production `main` merge SHA,
+  the source `develop` SHA the release was cut from, a link to the staging
   qualification run, the **evidence bundle digest** and links to the SBOM and scan reports, the
   **expected signer identity and OIDC issuer** an auditor should pin when verifying, and an AI
   Acceptable Use Policy attestation record. For a hotfix, include the incident reference. Attach the
@@ -117,17 +179,20 @@ Every production merge must produce a real, visible version.
 
 ## Phase 3 — Promotion: build once, promote the identical artifact
 
-The artifact is built once per candidate and recorded in a release manifest with its digest, SBOM
-digest, provenance attestation and scan results. Dev, Staging and Production all deploy that same
-digest. Never rebuild per environment; never resolve a floating tag like `latest`. Configuration
-differs per environment; the artifact does not.
+The artifact is built once per candidate and recorded in a release manifest with its release version,
+release branch, candidate SHA, digest, SBOM digest, provenance attestation and scan results. Dev,
+Staging and Production all deploy that same digest. Never rebuild per environment; never resolve a
+floating tag like `latest`. Configuration differs per environment; the artifact does not.
 
 - **Dev** — every push to `develop` deploys automatically. No gate.
 - **Staging** — a push to `release/**` or `hotfix/**` builds the candidate, scans it, generates its
   SBOM, deploys to Staging, then runs the qualification suite and DAST. It records a qualification
-  record bound to that exact digest and commit.
+  record bound to that exact version, branch, candidate SHA, artifact digest and evidence-bundle
+  digest.
 - **Production** — merging into `main` promotes. The workflow resolves the already-qualified digest,
-  verifies the attestation and qualification record bind to that exact commit and digest, and refuses
+  verifies the commit is a true merge that incorporates the exact qualified candidate SHA, and
+  verifies the attestation and qualification record bind that candidate to the version, artifact
+  digest and evidence digest being promoted. It records the distinct production merge SHA and refuses
   to proceed on any mismatch. Deployment is recorded through a GitHub Environment for the deployment
   history and audit trail only — configure it with **no required reviewers**, so promotion is never
   blocked waiting on a person.
@@ -425,10 +490,11 @@ Stage mapping:
   using `actions/attest-build-provenance`.
 - **`release/**` and `hotfix/**`** — the full gate, all bound to the promoted digest: Trivy scan of
   that exact digest, SBOM, **SLSA Build L3** provenance via `slsa-github-generator`, OSSF Scorecard,
-  deploy to Staging, then OWASP ZAP against the deployed instance on a self-hosted runner. DAST needs a
-  running application and belongs here and nowhere else. Also run Grype against the candidate SBOM to
-  produce an exploitability-ranked risk report for the Release body — report only, never blocking. The
-  qualification record must not be issuable if any of the gating checks fail.
+  deploy to Staging, then OWASP ZAP against the deployed instance on the VNet-injected GitHub-hosted
+  larger runner. DAST needs a running application and belongs here and nowhere else. Also run Grype
+  against the candidate SBOM to produce an exploitability-ranked risk report for the Release body —
+  report only, never blocking. The qualification record must not be issuable if any of the gating
+  checks fail.
 - **`main`** — verification only. Verify the L3 attestation, SBOM digest and qualification record all
   bind to the digest being promoted. No new scans; re-scanning would describe a rebuilt artifact.
 - **Scheduled** — re-scan released artifacts by running Grype against their **stored SBOMs**, which
@@ -447,6 +513,20 @@ Gating and evidence:
 - Commit an **AI Acceptable Use Policy** document. It is a documented policy and an attestation
   recorded in the Release, not an automated check.
 - Every scan emits a stable, named status check suitable for requiring by ruleset.
+
+**The SLSA L3 generator is the one approved exception to SHA-pinning.** The official
+`slsa-github-generator` reusable workflow invokes mutable `@main` references internally, so pinning
+the outer workflow by SHA cannot make the whole call graph immutable. Resolve the conflict narrowly:
+
+- Keep **SLSA Build L3** for release candidates. Do not downgrade to L2 to satisfy the pinning rule.
+- Pin the outer reusable workflow as tightly as the generator supports.
+- Record an **explicit, narrow, expiring action-reference exception** naming that exact workflow,
+  reason, expiry and introducing commit. This is distinct from vulnerability acceptance; Trivy
+  remains the sole owner of vulnerability allowlisting and Grype remains non-gating.
+- The SHA-pinning check must allow this single exception by exact name, fail when it expires, and keep
+  failing on every other unpinned reference. A wildcard, blanket exemption, differently named
+  workflow or disabled check is invalid.
+- Re-evaluate at each expiry; remove the exception if the generator gains pinned internals.
 
 ### Audit evidence — every stage must produce a durable, reviewable report
 
@@ -475,7 +555,8 @@ The evidence bundle contains, for each pipeline stage:
 
 And at bundle level:
 
-- The artifact digest, source commit SHA, release version and branch.
+- The artifact digest, qualified candidate SHA, production `main` merge SHA, source `develop` SHA,
+  release version and branch.
 - A `manifest.json` listing every file with its SHA-256.
 - The suppression allowlist exactly as it stood at that moment, with each entry's reason, expiry and
   the commit that introduced it.
@@ -564,8 +645,11 @@ evidence.
 
 A required check that is skipped stays pending forever and deadlocks the ruleset. Every required job
 must reach a terminal conclusion on every triggering event, including a deliberate successful
-"nothing to do" path. **If the self-hosted runner group is unavailable, DAST must fail loudly with a
-clear message rather than hang pending.**
+"nothing to do" path. Before scheduling DAST, run a preflight on a standard hosted runner that verifies
+the exact VNet-injected larger runner assignment and labels are visible to the repository. If the API
+cannot be read, the assignment is absent or the labels differ, fail loudly without scheduling DAST.
+The aggregate qualification check must then treat the skipped DAST dependency as not successful
+rather than hang pending or report success.
 
 **No required check may fail open.** A check that reports success when it could not actually do its
 job is worse than no check at all, because it manufactures false assurance and nothing ever looks
@@ -665,8 +749,10 @@ Inspect and report all of the following with evidence before changing anything:
 4. Secret Protection, Dependabot, Dependency Review, CodeQL, Copilot Autofix,
    Checkov, Trivy, Grype, ZAP, attestations, SLSA, Scorecard, licenses, and every
    required input or suppression policy.
-5. GitHub Actions runner labels and whether a private-network runner can reach
-   Staging.
+5. The exact GitHub-hosted larger runner group and labels, whether it is assigned
+   to the repository, whether its Azure VNet injection can reach Staging, and
+   whether a standard hosted preflight can verify that assignment before DAST is
+   scheduled.
 6. Live deployment mechanisms, parallel-version support, version-specific
    origins, traffic volume, statistically valid canary capacity, and provider
    status sources.
@@ -674,6 +760,10 @@ Inspect and report all of the following with evidence before changing anything:
    heartbeat coverage, alert-fire tests, dashboards, shallow/deep component
    health, dependency graph, recovery order, deployed versions/digests, and DORA
    event sources.
+8. Which settled platform defaults apply to components the workload actually
+   uses, the cost and known service limits of every required managed service, and
+   any live-resource drift that requires a refactor-and-import reconciliation
+   plan.
 
 Report every gap, blocker, inapplicable control, and GitFlow-versus-continuous-
 delivery conflict. Propose the current `main` SHA as the activation baseline for
