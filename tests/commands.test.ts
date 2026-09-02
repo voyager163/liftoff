@@ -268,7 +268,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
-      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 1');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 2');
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('managed-core');

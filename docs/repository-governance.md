@@ -34,6 +34,67 @@ tools, fail-closed checks, immutable release evidence, build-once promotion,
 deployment and rollback, monitoring and health, DORA metrics, ruleset
 sequencing, negative tests, documentation, and workload adaptation.
 
+Policy version 2 also fixes platform decisions that generated projects should
+not repeatedly ask users to make:
+
+- Dev storage uses LRS; Staging and Production use ZRS. IaC state uses ZRS in
+  every environment.
+- Database HA is off in Dev and Staging and zone-redundant in Production.
+- CI uses one user-assigned managed identity with OIDC federation per repository
+  and environment, without app registrations or long-lived credentials.
+- The default workload is small and cost-optimised with production safeguards.
+  Runtimes remain on Active LTS majors, with grouped dependency updates and
+  non-LTS major updates ignored.
+- Slack webhooks are required environment-level GitHub Actions secrets so the
+  alert path does not depend on private-vault connectivity.
+
+These are applicable defaults, not reasons to create unused resources. A
+managed service is included only when application code consumes it, after its
+cost and known service limits are stated. When live infrastructure differs from
+IaC, activation planning adapts the IaC and imports the live resource rather
+than creating a parallel stack or forcing replacement.
+
+## Private Staging qualification
+
+DAST for a privately networked Staging environment uses an ephemeral
+GitHub-hosted larger runner with Azure VNet injection. Its Azure network
+configuration and runner group are the policy's sole organisation- or
+enterprise-level prerequisite: activation consumes an existing assignment but
+never creates one or substitutes a self-hosted runner.
+
+Phase 0 must discover the exact runner group and labels and prove the repository
+can inspect the assignment. An implementation preflights that visibility on a
+standard hosted runner before scheduling DAST. Missing API access, assignment,
+or labels blocks qualification explicitly rather than leaving a required job
+queued or reporting success.
+
+## Release identity and automated completion
+
+Staging qualifies the release or hotfix candidate commit and binds it to the
+version, artifact digest, and evidence-bundle digest. A later true merge into
+`main` necessarily has a different SHA. Production verifies that the merge
+incorporates the exact qualified candidate, promotes the identical artifact,
+and records both identities:
+
+```text
+candidate SHA -> qualification -> artifact digest
+       |                              |
+       +---------- main merge SHA ----+
+                         |
+                         +-> deployment -> tag and GitHub Release
+```
+
+Package formats may require embedded version metadata, but that value must
+match the authoritative `release/X.Y.Z` or `hotfix/X.Y.Z` branch name.
+
+Release and hotfix back-merges remain pull-request-only and require successful
+checks. Because `GITHUB_TOKEN`-created events do not normally start more
+workflows, the coordinating workflow explicitly dispatches validation for the
+back-merge head and any required post-merge work for the resulting SHA. It does
+not push directly to a protected branch or rely on a tag push. Tag creation,
+Release publication, and durable evidence stay in the successful production
+workflow.
+
 `context.json` contains generated project facts only. GitHub repository state,
 runner access, licensed features, deployments, monitoring, alert routes,
 traffic, and rollout capabilities remain `undiscovered`. Power Apps context
@@ -85,7 +146,14 @@ deletes them automatically or changes live repository settings.
 
 ## Capability gaps
 
-Phase 0 must report missing GitHub licenses, private runners, staging access,
-monitoring routes, parallel-version mechanisms, or statistically meaningful
-canary traffic. It must mark controls inapplicable or blocked rather than
-creating a skipped, hanging, duplicate, or success-shaped placeholder.
+Phase 0 must report missing GitHub licenses, the VNet-injected larger runner
+assignment, Staging access, monitoring routes, parallel-version mechanisms, or
+statistically meaningful canary traffic. It must mark controls inapplicable or
+blocked rather than creating a skipped, hanging, duplicate, or success-shaped
+placeholder.
+
+The official SLSA L3 generator is the policy's only action SHA-pinning
+exception because its reusable workflow contains mutable internal references.
+The outer call is pinned as tightly as supported and the exact exception is
+narrow and expiring. It does not weaken pinning for any other action, create a
+second vulnerability allowlist, or make Grype a blocking gate.

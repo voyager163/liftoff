@@ -28,7 +28,7 @@ describe('planner', () => {
     expect(plan.framework.version).toBe('1.11.0');
     expect(plan.governanceProfile).toMatchObject({
       id: 'single-maintainer-gitflow',
-      policyVersion: '1',
+      policyVersion: '2',
       default: true
     });
 

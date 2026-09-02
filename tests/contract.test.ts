@@ -194,7 +194,7 @@ describe('manifest contract', () => {
     });
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '1',
+      policyVersion: '2',
       state: 'handoff-generated'
     });
     expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)

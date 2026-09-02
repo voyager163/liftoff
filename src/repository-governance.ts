@@ -6,7 +6,7 @@ import type {
 import { supportedStack } from './supported-stack.js';
 
 export const governancePolicySchemaVersion = 1 as const;
-export const governancePolicyVersion = '1' as const;
+export const governancePolicyVersion = '2' as const;
 export const governanceContextSchemaVersion = 1 as const;
 
 export const governanceArtifactPaths = {
@@ -43,7 +43,7 @@ export function renderCanonicalGovernancePolicy(): string {
 const requiredPolicyFragments = [
   'schemaVersion: 1',
   'profile: single-maintainer-gitflow',
-  'policyVersion: "1"',
+  'policyVersion: "2"',
   'develop` is the integration branch and the **default branch**',
   'main` is production truth',
   'release/X.Y.Z',
@@ -55,6 +55,21 @@ const requiredPolicyFragments = [
   'no required reviewers',
   'GITHUB_TOKEN',
   'Repository-scoped only',
+  'One exception only:',
+  'GitHub-hosted larger runner with',
+  'Azure VNet injection',
+  'Pre-answered platform defaults',
+  'Dev LRS',
+  'ZRS in every environment',
+  'Production: zone-redundant HA',
+  'User-assigned managed identity with OIDC federation',
+  'Small — fewer than 1,000 users',
+  'Cost-optimised with production safeguards',
+  'GitHub Actions secret at the environment level',
+  'Active LTS only',
+  'Provision nothing that no code uses',
+  'known service limits',
+  'refactor the IaC to match the live resources and import',
   'GitHub Secret Protection',
   'Dependabot + Dependency Review',
   'CodeQL + Copilot Autofix',
@@ -63,9 +78,15 @@ const requiredPolicyFragments = [
   'Grype',
   'OWASP ZAP',
   'slsa-github-generator',
+  'The SLSA L3 generator is the one approved exception to SHA-pinning',
+  'expiring action-reference exception',
+  'wildcard, blanket exemption',
   'OSSF Scorecard',
   'Explicitly excluded as duplicates',
   'build once',
+  'qualified release or hotfix candidate SHA',
+  'production `main` merge SHA',
+  'explicitly dispatch',
   'zero traffic',
   'fresh baseline revision',
   'Rollback must never be gated',
@@ -84,6 +105,11 @@ const requiredPolicyFragments = [
   'read the live rulesets'
 ] as const;
 
+const forbiddenPolicyFragments = [
+  'DAST must run on a self-hosted runner',
+  'self-hosted runner group with Staging access exists'
+] as const;
+
 export function validateGovernancePolicy(policy: string): void {
   const missing = requiredPolicyFragments.filter((fragment) =>
     !policy.includes(fragment)
@@ -91,6 +117,14 @@ export function validateGovernancePolicy(policy: string): void {
   if (missing.length > 0) {
     throw new Error(
       `Governance policy is missing required contract fragment: ${missing[0]}`
+    );
+  }
+  const forbidden = forbiddenPolicyFragments.find((fragment) =>
+    policy.includes(fragment)
+  );
+  if (forbidden) {
+    throw new Error(
+      `Governance policy contains forbidden legacy contract fragment: ${forbidden}`
     );
   }
   if (
