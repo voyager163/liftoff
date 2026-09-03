@@ -205,6 +205,25 @@ imports from the private runner, verify identity parity, locking, versioning,
 and a clean no-change plan, then retain the frozen local state read-only for 30
 days before secure deletion.
 
+If an Azure bootstrap fails with a namespace-not-registered error while
+`resource_provider_registrations = "none"` is configured, do not retry the same
+plan or enable broad auto-registration without review. Derive the provider set
+from the planned resource types, add explicit missing registrations, confirm
+subscription permission and terminal `Registered` readback, then regenerate a
+no-apply plan. VNet-injected runner networking requires both
+`Microsoft.Network` and `GitHub.Network`. Preserve successful registrations
+during teardown.
+
+If an ordinary Standard public IP requests
+`Microsoft.Network/AllowBringYourOwnPublicIpAddress`, do not register BYOIP
+unless the approved design actually imports a custom IP prefix. Remove
+accidental feature-triggering properties or use a reviewed supported API shape,
+then regenerate the no-apply plan.
+
+Do not use `AzurePlatformDNS` in an Allow NSG rule. The special tag is deny-only
+for disabling default platform DNS. Omit the rule when platform DNS is enabled,
+or allow TCP and UDP 53 to exact custom resolver addresses.
+
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore the affected generated files and `liftoff.manifest.json` through version
 control, then reinstall from the restored locks.

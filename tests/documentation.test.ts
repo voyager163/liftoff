@@ -379,11 +379,16 @@ describe('public documentation', () => {
     expect(policy).toContain('GitHub Secret Protection');
     expect(policy).toContain('Trivy');
     expect(policy).toContain('DORA');
-    expect(policy).toContain('policyVersion: "4"');
+    expect(policy).toContain('policyVersion: "5"');
     expect(governance).toContain('Azure Firewall Basic');
     expect(governance).toContain('Azure NAT Gateway');
     expect(governance).toContain("repository's Staging subscription");
     expect(governance).toMatch(/read-only\s+for exactly 30 days/);
+    expect(governance).toContain('resource_provider_registrations = "none"');
+    expect(governance).toContain('Microsoft.Network');
+    expect(governance).toContain('GitHub.Network');
+    expect(governance).toContain('Microsoft.Network/AllowBringYourOwnPublicIpAddress');
+    expect(governance).toContain('AzurePlatformDNS');
     expect(governance).toMatch(/never\s+provisions Azure or GitHub resources/);
     expect(safety).toContain('Azure or other cloud resources');
     expect(governance).toContain('reported once as orphans and left on disk');

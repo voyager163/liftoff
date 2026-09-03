@@ -268,7 +268,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
-      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 4');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 5');
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('managed-core');
@@ -562,11 +562,13 @@ describe('commands', () => {
         'prompts',
         'liftoff-repository-governance.prompt.md'
       ), 'utf8');
-      expect(governancePolicy).toContain('policyVersion: "4"');
+      expect(governancePolicy).toContain('policyVersion: "5"');
       expect(governancePolicy).toContain('One provisioning exception only:');
       expect(governancePolicy).toContain('Azure Firewall Basic');
       expect(governancePolicy).toContain('Azure NAT Gateway');
       expect(governancePolicy).toContain('30 days read-only after verified remote import');
+      expect(governancePolicy).toContain('Microsoft.Network');
+      expect(governancePolicy).toContain('GitHub.Network');
       expect(governanceLauncher.length).toBeLessThan(2_000);
       expect(governanceLauncher).toContain('.liftoff/governance/policy.md');
       expect(governanceLauncher).toContain('.liftoff/governance/context.json');

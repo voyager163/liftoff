@@ -381,7 +381,7 @@ describe('core-only update command', () => {
     const policyPath = path.join(root, ...governanceArtifactPaths.policy);
     const currentPolicy = renderCanonicalGovernancePolicy();
     const previousPolicy = currentPolicy.replace(
-      'policyVersion: "4"',
+      'policyVersion: "5"',
       'policyVersion: "2"'
     );
 
@@ -420,7 +420,7 @@ describe('core-only update command', () => {
     const upgradedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(upgradedManifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '4',
+      policyVersion: '5',
       state: 'handoff-generated'
     });
   });

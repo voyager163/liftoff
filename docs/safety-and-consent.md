@@ -29,6 +29,11 @@ single-writer. It is never transferred through GitHub artifacts or secrets,
 becomes read-only after verified remote import, and is securely deleted after
 the fixed 30-day retention period with non-sensitive evidence.
 
+Explicit Azure resource-provider registration is limited to namespaces used by
+the approved plan. Registration must reach `Registered` before dependent
+resources, and repository teardown must not unregister the retained
+subscription capability.
+
 ## CLI self-upgrade boundary
 
 `liftoff upgrade` is itself the narrow authorization to replace a supported

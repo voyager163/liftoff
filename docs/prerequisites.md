@@ -52,6 +52,11 @@ discovers an existing private management path or proposes the policy's bounded
 encrypted local-state bootstrap. Liftoff itself neither creates nor transfers
 state.
 
+Azure governance plans also inspect the AzureRM provider-registration mode,
+derive the minimal required namespace set, and verify subscription registration
+permission. Disabled auto-registration is not a blocker when the approved plan
+can register each missing namespace explicitly before dependent resources.
+
 ## Preview requirements without writes
 
 `liftoff plan` shows both generated artifacts and workstation requirements
