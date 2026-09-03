@@ -6,7 +6,7 @@ import type {
 import { supportedStack } from './supported-stack.js';
 
 export const governancePolicySchemaVersion = 1 as const;
-export const governancePolicyVersion = '3' as const;
+export const governancePolicyVersion = '4' as const;
 export const governanceContextSchemaVersion = 1 as const;
 
 export const governanceArtifactPaths = {
@@ -43,7 +43,7 @@ export function renderCanonicalGovernancePolicy(): string {
 const requiredPolicyFragments = [
   'schemaVersion: 1',
   'profile: single-maintainer-gitflow',
-  'policyVersion: "3"',
+  'policyVersion: "4"',
   'develop` is the integration branch and the **default branch**',
   'main` is production truth',
   'release/X.Y.Z',
@@ -61,7 +61,7 @@ const requiredPolicyFragments = [
   'private Staging DAST genuinely applies',
   'If DAST is inapplicable, provision no runner networking',
   'consume it without creating a duplicate',
-  'Any unresolved input is a blocker',
+  'unresolved input is a blocker',
   'Every Azure runner-network resource, remote state',
   'Staging subscription.',
   "Do not share or depend on another repository's or subscription's firewall",
@@ -81,9 +81,22 @@ const requiredPolicyFragments = [
   'maximum concurrency of one',
   'Remove in dependency order',
   'live Staging reachability',
+  'Prefer an existing approved',
+  'bootstrap-local',
+  'encrypted at rest on the approved workstation',
+  'copy local bootstrap state through GitHub artifacts',
+  'private Blob DNS and authenticated backend access',
+  'reviewed declarative imports',
+  'state locking and Blob',
+  'clean checkout produces a no-change plan',
+  'retention clock does not start',
+  'Retained local state must never run plan or apply',
+  'destroying the encryption key',
+  'The deletion record must contain no state payload',
   'Pre-answered platform defaults',
   'Dev LRS',
   'ZRS in every environment',
+  '30 days read-only after verified remote import',
   'Production: zone-redundant HA',
   'User-assigned managed identity with OIDC federation',
   'Small — fewer than 1,000 users',
@@ -135,7 +148,11 @@ const forbiddenPolicyFragments = [
   'Treat it as an **external prerequisite**',
   'share a firewall across repository subscriptions',
   'NAT Gateway may coexist with Azure Firewall',
-  'resource creation is sufficient proof of Staging connectivity'
+  'resource creation is sufficient proof of Staging connectivity',
+  'retain local bootstrap state indefinitely',
+  'upload local bootstrap state as a GitHub artifact',
+  'delete local bootstrap state immediately after import',
+  'retained local state remains an active backend'
 ] as const;
 
 export function validateGovernancePolicy(policy: string): void {

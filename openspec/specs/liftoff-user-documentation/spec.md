@@ -283,15 +283,16 @@ orphans rather than deletion, and no update mode activates remote governance.
 The packaged governance documentation SHALL expose the complete policy covering
 GitFlow, zero-approval repository rules, conditional repository-dedicated
 provisioning of the VNet-injected larger runner, per-subscription ownership,
-explicit outbound-mode selection, settled platform defaults, cost and
-service-limit disclosure, import-first infrastructure reconciliation, security
-stages and designated tools, the narrow SLSA L3 pinning exception, fail-closed
-checks, candidate-to-production merge identity, automated token-safe
-back-merges, immutable release evidence, build-once promotion, deployment and
-rollback, monitoring and health, DORA metrics, ruleset sequencing, negative
-tests, documentation, and workload adaptation. It SHALL identify fixed
-assumptions and every capability that Phase 0 must verify while preserving the
-Liftoff activation protocol.
+explicit outbound-mode selection, transient local-state bootstrap, verified
+remote adoption, 30-day read-only retention and secure deletion, settled
+platform defaults, cost and service-limit disclosure, import-first
+infrastructure reconciliation, security stages and designated tools, the narrow
+SLSA L3 pinning exception, fail-closed checks, candidate-to-production merge
+identity, automated token-safe back-merges, immutable release evidence,
+build-once promotion, deployment and rollback, monitoring and health, DORA
+metrics, ruleset sequencing, negative tests, documentation, and workload
+adaptation. It SHALL identify fixed assumptions and every capability that Phase
+0 must verify while preserving the Liftoff activation protocol.
 
 #### Scenario: Developer audits generated policy
 - **WHEN** a developer opens the canonical generated policy
@@ -307,6 +308,11 @@ Liftoff activation protocol.
 - **WHEN** documentation explains private Staging runner activation
 - **THEN** it distinguishes repository-owned Azure resources from organization-level GitHub hosted-compute resources
 - **AND** explains applicability, approval, Firewall Basic versus NAT Gateway selection, cost, private connectivity, readback, and teardown ordering
+
+#### Scenario: Developer reviews private-state bootstrap
+- **WHEN** documentation explains how to resolve a private-backend bootstrap cycle
+- **THEN** it explains local custody, prohibited transfer paths, verified remote import, the fixed 30-day read-only retention period, secure deletion, and required evidence
+- **AND** it never presents retained local state as an active backend
 
 #### Scenario: Developer traces a production release
 - **WHEN** documentation explains release qualification and promotion

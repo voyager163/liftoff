@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "3"
+policyVersion: "4"
 state: handoff-generated
 ---
 
@@ -71,6 +71,7 @@ workload actually uses that component; a database default does not justify provi
 | --- | --- |
 | Storage redundancy | **Dev LRS · Staging ZRS · Production ZRS** |
 | IaC state storage | **ZRS in every environment**, including bootstrap |
+| Local bootstrap state retention | **30 days read-only after verified remote import, then securely delete.** |
 | Database high availability | **Dev and Staging: no HA. Production: zone-redundant HA.** |
 | Cloud identity for CI | **User-assigned managed identity with OIDC federation** per repository and environment. No app registrations, no client secrets, no long-lived credentials. |
 | Workload scale | **Small — fewer than 1,000 users** |
@@ -113,7 +114,9 @@ Report before you change anything.
    organisation network configurations; billing owner; remote state owner; deterministic resource
    names; non-overlapping address space; Staging VNet, route, private DNS and security topology;
    required outbound policy; current costs and service limits; and dependency-ordered teardown
-   owner. Any unresolved input is a blocker, not permission to begin a partial bootstrap.
+   owner. Determine whether an approved private management path can already reach the remote backend
+   and, if not, whether the private-backend cycle requires the bounded local bootstrap below. Any
+   unresolved input is a blocker, not permission to begin a partial bootstrap.
 6. What monitoring and alerting already exists — alert rules, action groups, where they route, and
    which components have no coverage at all. Name the gaps explicitly.
 7. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
@@ -172,6 +175,34 @@ assignment, runner image, size, labels, status, concurrency, billing owner, expl
 private DNS resolution, and live Staging reachability. A standard hosted preflight checks assignment
 and labels before scheduling DAST; the larger-runner job proves the private target path. Missing,
 stale, denied, skipped, or partial evidence fails closed.
+
+**Break a private-state bootstrap cycle without transferring state.** Prefer an existing approved
+private management path that can reach the remote backend. If none exists and the private backend
+cannot be reached until repository networking and its restricted execution runner exist, an explicitly
+approved minimum local-state bootstrap may create only those access-establishing resources. Its phase
+is `bootstrap-local`, never `remote-ready`, and it cannot authorize application or unrelated
+infrastructure provisioning.
+
+Keep that local state encrypted at rest on the approved workstation, excluded from version control,
+and under one writer. Record resource identities and a state checksum without state content. Never
+copy local bootstrap state through GitHub artifacts, repository secrets, ordinary messaging, or
+another unapproved transfer path. Public access to the private state backend remains disabled.
+
+From the exact private execution runner, prove private Blob DNS and authenticated backend access,
+initialize the empty repository-owned ZRS backend, and use reviewed declarative imports to adopt every
+bootstrap resource without transferring the local state file. Remote import is verified only when
+each expected live resource identity appears exactly once in remote state, state locking and Blob
+versioning are active, and a clean checkout produces a no-change plan with no create, update, or
+destroy action. If any evidence is missing, the retention clock does not start, local state is not
+deleted, and normal provisioning remains blocked.
+
+After verified remote import, freeze the encrypted local bootstrap state as read-only evidence for
+exactly **30 days**. Retained local state must never run plan or apply. At expiry, securely delete the
+encrypted state and every approved temporary copy by destroying the encryption key and removing the
+encrypted files with platform-management evidence where available; do not claim unverifiable sector
+overwrites on copy-on-write filesystems or SSDs. Record the state identity or checksum, remote-import
+evidence, verification and scheduled deletion timestamps, actual deletion timestamp, operator,
+method, and outcome. The deletion record must contain no state payload, credential, or secret output.
 
 **Remove in dependency order.** Stop new scheduling and repository access first; delete the larger
 runner; remove repository and workflow access; detach and delete the runner group and hosted-compute
@@ -816,7 +847,9 @@ Inspect and report all of the following with evidence before changing anything:
    tenant, region, organisation and Azure write authority, enterprise network
    policy, billing, state, deterministic names, address space, route or peering,
    private DNS, inbound denial, strict-domain-egress requirement, explicit
-   Firewall Basic or NAT Gateway mode, costs, limits, and teardown ownership.
+   Firewall Basic or NAT Gateway mode, costs, limits, teardown ownership, remote
+   backend reachability, any bounded local-bootstrap need, state custody, remote
+   import evidence, and the fixed 30-day deletion schedule.
 7. Live deployment mechanisms, parallel-version support, version-specific
    origins, traffic volume, statistically valid canary capacity, and provider
    status sources.
@@ -845,12 +878,16 @@ OpenSpec or Spec Kit workflow. The generated Liftoff policy remains an input;
 Liftoff does not own, name, restore, or recreate that active change.
 
 When the approved plan includes the runner provisioning exception, treat it as
-a fail-closed state machine: remote state and the Azure network; delegated
-private subnet and exactly one explicit egress mode; Azure network setting and
-GitHub ID; organisation network configuration; selected-access group; bounded
-larger runner; complete API readback; private DNS and live Staging reachability;
-then DAST eligibility. Stop at the first failed transition and reconcile or
-remove partial resources in reverse dependency order.
+a fail-closed state machine. Use an existing private state path when available;
+otherwise progress through approved minimum `bootstrap-local`; delegated private
+subnet and exactly one explicit egress mode; Azure network setting and GitHub ID;
+organisation network configuration; selected-access group; bounded larger
+runner; private backend proof; declarative remote import; identity, locking,
+versioning and clean no-change verification; remote-ready state; private DNS and
+live Staging reachability; then DAST eligibility. Freeze verified local state
+read-only for 30 days and delete it with evidence at expiry. Stop at the first
+failed transition and reconcile or remove partial resources in reverse
+dependency order.
 
 Author workflows, exact ruleset payloads, runbooks, and documentation first.
 Observe every proposed required context green on all applicable paths, then

@@ -34,7 +34,7 @@ tools, fail-closed checks, immutable release evidence, build-once promotion,
 deployment and rollback, monitoring and health, DORA metrics, ruleset
 sequencing, negative tests, documentation, and workload adaptation.
 
-Policy version 3 also fixes platform decisions that generated projects should
+Policy version 4 also fixes platform decisions that generated projects should
 not repeatedly ask users to make:
 
 - Dev storage uses LRS; Staging and Production use ZRS. IaC state uses ZRS in
@@ -47,6 +47,8 @@ not repeatedly ask users to make:
   non-LTS major updates ignored.
 - Slack webhooks are required environment-level GitHub Actions secrets so the
   alert path does not depend on private-vault connectivity.
+- Encrypted local bootstrap state is retained read-only for 30 days after
+  verified remote import, then securely deleted with dated evidence.
 
 These are applicable defaults, not reasons to create unused resources. A
 managed service is included only when application code consumes it, after its
@@ -58,7 +60,7 @@ than creating a parallel stack or forcing replacement.
 
 DAST for a privately networked Staging environment uses an ephemeral
 GitHub-hosted larger runner with Azure VNet injection. Activation reuses a
-suitable existing repository assignment. If none exists, policy version 3
+suitable existing repository assignment. If none exists, policy version 4
 permits one narrow post-approval exception to provision the Azure network
 setting, organisation hosted-compute network configuration, selected-access
 runner group, and bounded larger runner required by that repository.
@@ -96,6 +98,34 @@ must all be read back successfully. Missing or partial evidence blocks
 qualification rather than leaving a required job queued or reporting success.
 Teardown reverses those dependencies and removes the Azure network only after
 GitHub scheduling, assignment, and service associations are gone.
+
+### Private state bootstrap and retention
+
+Phase 0 prefers an existing approved private execution path to the
+repository-owned ZRS backend. When public access is disabled and no such path
+exists, an approved governance change may use encrypted local OpenTofu state for
+only the minimum networking, private endpoint, DNS, network setting, and
+restricted runner resources needed to establish access. This
+`bootstrap-local` phase is not remote-ready and cannot authorize application
+provisioning.
+
+The local state remains gitignored, single-writer, encrypted on the approved
+workstation, and is never transferred through GitHub artifacts, repository
+secrets, or ordinary messages. From the exact private runner, reviewed import
+declarations adopt the resources into an empty ZRS backend without copying the
+local state file.
+
+Remote import is complete only after private Blob access, exact live-to-state
+resource identity, state locking, Blob versioning, and a clean-checkout
+no-change plan are verified. Failure starts no retention clock and keeps normal
+provisioning blocked.
+
+At successful verification, the local state becomes evidence-only and read-only
+for exactly 30 days. It cannot run plan or apply. At expiry, its encryption key
+and encrypted files are removed, along with every approved temporary copy. A
+dated record captures the state identity or checksum, verification evidence,
+scheduled and actual deletion, operator, method, and outcome without containing
+state data or secrets.
 
 ## Release identity and automated completion
 
@@ -172,11 +202,11 @@ conflict remains outside Liftoff ownership and produces `handoff-partial`.
 After every conflict is removed or matches the current artifact, the next
 update records the full artifact set as `handoff-generated`.
 
-Projects generated with policy version 2 review the version-3 managed-core drift
+Projects generated with policy versions 2 or 3 review the version-4 managed-core drift
 before replacement. `liftoff update` changes only the local handoff; it never
 provisions Azure or GitHub resources. Any active downstream runner change based
-on the external-only version-2 contract must reconcile its plan and
-implementation with version 3 before applying cloud or organisation resources.
+on an older contract must reconcile its plan and implementation with version 4
+before applying cloud or organisation resources.
 
 Setting `"governanceProfile": "none"` stops future rendering. Previously managed
 handoff files are reported once as orphans and left on disk; Liftoff never
