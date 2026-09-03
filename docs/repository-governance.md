@@ -34,7 +34,7 @@ tools, fail-closed checks, immutable release evidence, build-once promotion,
 deployment and rollback, monitoring and health, DORA metrics, ruleset
 sequencing, negative tests, documentation, and workload adaptation.
 
-Policy version 4 also fixes platform decisions that generated projects should
+Policy version 5 also fixes platform decisions that generated projects should
 not repeatedly ask users to make:
 
 - Dev storage uses LRS; Staging and Production use ZRS. IaC state uses ZRS in
@@ -49,6 +49,9 @@ not repeatedly ask users to make:
   alert path does not depend on private-vault connectivity.
 - Encrypted local bootstrap state is retained read-only for 30 days after
   verified remote import, then securely deleted with dated evidence.
+- Azure resource-provider namespaces are derived from the approved plan. When
+  auto-registration is disabled, each missing required namespace is registered
+  explicitly before dependent resources.
 
 These are applicable defaults, not reasons to create unused resources. A
 managed service is included only when application code consumes it, after its
@@ -60,7 +63,7 @@ than creating a parallel stack or forcing replacement.
 
 DAST for a privately networked Staging environment uses an ephemeral
 GitHub-hosted larger runner with Azure VNet injection. Activation reuses a
-suitable existing repository assignment. If none exists, policy version 4
+suitable existing repository assignment. If none exists, policy version 5
 permits one narrow post-approval exception to provision the Azure network
 setting, organisation hosted-compute network configuration, selected-access
 runner group, and bounded larger runner required by that repository.
@@ -98,6 +101,45 @@ must all be read back successfully. Missing or partial evidence blocks
 qualification rather than leaving a required job queued or reporting success.
 Teardown reverses those dependencies and removes the Azure network only after
 GitHub scheduling, assignment, and service associations are gone.
+
+### Azure resource-provider readiness
+
+Phase 0 derives the minimal namespace inventory from every approved Azure
+resource type and records AzureRM's registration mode and the execution
+identity's subscription registration permission. A hosted-runner network always
+requires at least `Microsoft.Network` and `GitHub.Network`; additional providers
+are included only when approved state, identity, monitoring, or application
+resources use them.
+
+When AzureRM automatic registration is enabled and sufficient, no duplicate
+explicit resources are added. When
+`resource_provider_registrations = "none"` disables it, every missing required
+namespace is registered explicitly. Dependent and billable resources remain
+blocked until live subscription readback reports each namespace as
+`Registered`.
+
+Every explicit resource has a direct or transitive dependency on its namespace
+registration. Existing registrations are no-ops. Pending, unauthorized,
+unregistering, or failed states require a revised no-apply plan rather than
+partial provisioning. Successful registrations remain subscription capabilities
+during repository teardown and are not automatically unregistered.
+
+Subscription features are narrower than provider namespaces. A
+`SubscriptionNotRegisteredForFeature` error does not authorize registering the
+named feature unless the approved resource design intentionally uses it.
+Unexpected feature requests require correction of the resource properties,
+provider behavior, or API shape and a revised no-apply plan.
+
+Ordinary Firewall and NAT Standard public IPs do not require BYOIP. If such a
+resource requests `Microsoft.Network/AllowBringYourOwnPublicIpAddress` without a
+custom IP prefix, the plan must remove accidental BYOIP properties or use a
+supported API shape; it must not register BYOIP merely to retry.
+
+Network service-tag rules also require semantic validation.
+`AzurePlatformDNS` is deny-only for intentionally disabling Azure platform DNS,
+not a valid Allow target. Default platform DNS needs no explicit NSG allow.
+Custom resolvers instead receive TCP and UDP port 53 allows to their exact IP
+addresses.
 
 ### Private state bootstrap and retention
 
@@ -202,10 +244,10 @@ conflict remains outside Liftoff ownership and produces `handoff-partial`.
 After every conflict is removed or matches the current artifact, the next
 update records the full artifact set as `handoff-generated`.
 
-Projects generated with policy versions 2 or 3 review the version-4 managed-core drift
+Projects generated with policy versions 2 through 4 review the version-5 managed-core drift
 before replacement. `liftoff update` changes only the local handoff; it never
 provisions Azure or GitHub resources. Any active downstream runner change based
-on an older contract must reconcile its plan and implementation with version 4
+on an older contract must reconcile its plan and implementation with version 5
 before applying cloud or organisation resources.
 
 Setting `"governanceProfile": "none"` stops future rendering. Previously managed

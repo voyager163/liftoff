@@ -6,7 +6,7 @@ import type {
 import { supportedStack } from './supported-stack.js';
 
 export const governancePolicySchemaVersion = 1 as const;
-export const governancePolicyVersion = '4' as const;
+export const governancePolicyVersion = '5' as const;
 export const governanceContextSchemaVersion = 1 as const;
 
 export const governanceArtifactPaths = {
@@ -43,7 +43,7 @@ export function renderCanonicalGovernancePolicy(): string {
 const requiredPolicyFragments = [
   'schemaVersion: 1',
   'profile: single-maintainer-gitflow',
-  'policyVersion: "4"',
+  'policyVersion: "5"',
   'develop` is the integration branch and the **default branch**',
   'main` is production truth',
   'release/X.Y.Z',
@@ -97,6 +97,26 @@ const requiredPolicyFragments = [
   'Dev LRS',
   'ZRS in every environment',
   '30 days read-only after verified remote import',
+  'Derive the minimal namespace set',
+  'Microsoft.Network',
+  'GitHub.Network',
+  'resource_provider_registrations = "none"',
+  'missing required namespace and no unrelated provider',
+  'provider-ready',
+  'terminal `Registered` readback',
+  'directly or transitively after its namespace registration',
+  'retained subscription capabilities',
+  'teardown from unregistering them',
+  'Register subscription features only for intended capabilities',
+  'SubscriptionNotRegisteredForFeature',
+  'Do not broaden subscription features',
+  'Microsoft.Network/AllowBringYourOwnPublicIpAddress',
+  'Do not register the BYOIP feature as a workaround',
+  "Validate every network service tag's direction and action",
+  'AzurePlatformDNS',
+  'used only in a Deny rule',
+  'Allow rule for that tag',
+  'allow TCP and UDP port 53 to the exact resolver addresses',
   'Production: zone-redundant HA',
   'User-assigned managed identity with OIDC federation',
   'Small — fewer than 1,000 users',
@@ -152,7 +172,14 @@ const forbiddenPolicyFragments = [
   'retain local bootstrap state indefinitely',
   'upload local bootstrap state as a GitHub artifact',
   'delete local bootstrap state immediately after import',
-  'retained local state remains an active backend'
+  'retained local state remains an active backend',
+  'provider registration may remain pending while resources are created',
+  'register all Azure providers',
+  'unregister provider registrations during teardown',
+  'resource_provider_registrations = "none" requires no explicit registrations',
+  'register AllowBringYourOwnPublicIpAddress for every Standard public IP',
+  'Allow AzurePlatformDNS in an outbound NSG rule',
+  'register any feature named by SubscriptionNotRegisteredForFeature'
 ] as const;
 
 export function validateGovernancePolicy(policy: string): void {

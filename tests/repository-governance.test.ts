@@ -51,7 +51,7 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('rulesets idempotently last');
     expect(policy.length).toBeGreaterThan(40_000);
     expect(createHash('sha256').update(policy).digest('hex'))
-      .toMatchInlineSnapshot(`"ebc5d27e71a585372342b7d382cca776d250c1efeb8701fd3e4c32a6c6f9038c"`);
+      .toMatchInlineSnapshot(`"10205fdadee3c258b606857f7365dd82b79b0df62d15e45feb41d50bdd6aaf49"`);
     expect(policy).toBe(readFileSync(
       new URL(
         '../assets/governance/single-maintainer-gitflow/policy.md',
@@ -97,6 +97,26 @@ describe('canonical repository governance policy', () => {
     'Retained local state must never run plan or apply',
     'destroying the encryption key',
     'The deletion record must contain no state payload',
+    'Derive the minimal namespace set',
+    'Microsoft.Network',
+    'GitHub.Network',
+    'resource_provider_registrations = "none"',
+    'missing required namespace and no unrelated provider',
+    'provider-ready',
+    'terminal `Registered` readback',
+    'directly or transitively after its namespace registration',
+    'retained subscription capabilities',
+    'teardown from unregistering them',
+    'Register subscription features only for intended capabilities',
+    'SubscriptionNotRegisteredForFeature',
+    'Do not broaden subscription features',
+    'Microsoft.Network/AllowBringYourOwnPublicIpAddress',
+    'Do not register the BYOIP feature as a workaround',
+    "Validate every network service tag's direction and action",
+    'AzurePlatformDNS',
+    'used only in a Deny rule',
+    'Allow rule for that tag',
+    'allow TCP and UDP port 53 to the exact resolver addresses',
     'Pre-answered platform defaults',
     'Provision nothing that no code uses',
     'The SLSA L3 generator is the one approved exception to SHA-pinning',
@@ -241,6 +261,35 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('The deletion record must contain no state payload');
   });
 
+  it('makes Azure resource providers ready before dependent provisioning', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('Derive and deduplicate the\nminimal namespace inventory');
+    expect(policy).toContain('Microsoft.Network');
+    expect(policy).toContain('GitHub.Network');
+    expect(policy).toContain('resource_provider_registrations = "none"');
+    expect(policy).toContain('explicitly register every\nmissing required namespace');
+    expect(policy).toContain('no unrelated provider');
+    expect(policy).toContain('provider-ready');
+    expect(policy).toContain('terminal `Registered` readback');
+    expect(policy).toContain('directly or transitively after its namespace registration');
+    expect(policy).toContain('retained subscription capabilities');
+    expect(policy).toContain('Prevent repository\nteardown from unregistering them');
+    expect(policy).toContain('empty resource group or a\npartial apply');
+  });
+
+  it('keeps subscription features and service tags aligned with intended capabilities', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('SubscriptionNotRegisteredForFeature');
+    expect(policy).toContain('Do not broaden subscription features');
+    expect(policy).toContain('Microsoft.Network/AllowBringYourOwnPublicIpAddress');
+    expect(policy).toContain('Do not register the BYOIP feature as a workaround');
+    expect(policy).toContain("Validate every network service tag's direction and action");
+    expect(policy).toContain('AzurePlatformDNS');
+    expect(policy).toContain('used only in a Deny rule');
+    expect(policy).toContain('never create an\nAllow rule for that tag');
+    expect(policy).toContain('allow TCP and UDP port 53 to the exact resolver addresses');
+  });
+
   it.each([
     'Consume it; never attempt to create it',
     'Treat it as an **external prerequisite**',
@@ -250,7 +299,14 @@ describe('canonical repository governance policy', () => {
     'retain local bootstrap state indefinitely',
     'upload local bootstrap state as a GitHub artifact',
     'delete local bootstrap state immediately after import',
-    'retained local state remains an active backend'
+    'retained local state remains an active backend',
+    'provider registration may remain pending while resources are created',
+    'register all Azure providers',
+    'unregister provider registrations during teardown',
+    'resource_provider_registrations = "none" requires no explicit registrations',
+    'register AllowBringYourOwnPublicIpAddress for every Standard public IP',
+    'Allow AzurePlatformDNS in an outbound NSG rule',
+    'register any feature named by SubscriptionNotRegisteredForFeature'
   ])('rejects unsafe runner policy wording: %s', (fragment) => {
     expect(() => validateGovernancePolicy(
       `${renderCanonicalGovernancePolicy()}\n${fragment}`
@@ -370,7 +426,7 @@ describe('repository governance artifacts', () => {
     expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '4',
+      policyVersion: '5',
       state: 'handoff-generated'
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>

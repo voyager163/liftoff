@@ -87,7 +87,7 @@ describe('catalogs', () => {
     ]);
     expect(governanceProfiles.find((profile) => profile.default)).toMatchObject({
       id: 'single-maintainer-gitflow',
-      policyVersion: '4'
+      policyVersion: '5'
     });
     expect(getGovernanceProfile('Single Maintainer GitFlow')?.id)
       .toBe('single-maintainer-gitflow');

@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "4"
+policyVersion: "5"
 state: handoff-generated
 ---
 
@@ -72,6 +72,7 @@ workload actually uses that component; a database default does not justify provi
 | Storage redundancy | **Dev LRS · Staging ZRS · Production ZRS** |
 | IaC state storage | **ZRS in every environment**, including bootstrap |
 | Local bootstrap state retention | **30 days read-only after verified remote import, then securely delete.** |
+| Azure provider registration | **Derive the minimal namespace set; when auto-registration is disabled, register every missing required provider explicitly before dependent resources.** |
 | Database high availability | **Dev and Staging: no HA. Production: zone-redundant HA.** |
 | Cloud identity for CI | **User-assigned managed identity with OIDC federation** per repository and environment. No app registrations, no client secrets, no long-lived credentials. |
 | Workload scale | **Small — fewer than 1,000 users** |
@@ -115,8 +116,10 @@ Report before you change anything.
    names; non-overlapping address space; Staging VNet, route, private DNS and security topology;
    required outbound policy; current costs and service limits; and dependency-ordered teardown
    owner. Determine whether an approved private management path can already reach the remote backend
-   and, if not, whether the private-backend cycle requires the bounded local bootstrap below. Any
-   unresolved input is a blocker, not permission to begin a partial bootstrap.
+   and, if not, whether the private-backend cycle requires the bounded local bootstrap below. Derive
+   every Azure resource-provider namespace from the approved resource types, record the AzureRM
+   registration mode and subscription registration permission, and read each live registration
+   state. Any unresolved input is a blocker, not permission to begin a partial bootstrap.
 6. What monitoring and alerting already exists — alert rules, action groups, where they route, and
    which components have no coverage at all. Name the gaps explicitly.
 7. Which components expose a health endpoint, and whether it is shallow (process is alive) or deep
@@ -175,6 +178,47 @@ assignment, runner image, size, labels, status, concurrency, billing owner, expl
 private DNS resolution, and live Staging reachability. A standard hosted preflight checks assignment
 and labels before scheduling DAST; the larger-runner job proves the private target path. Missing,
 stale, denied, skipped, or partial evidence fails closed.
+
+**Make Azure resource providers ready before dependent provisioning.** Derive and deduplicate the
+minimal namespace inventory from every approved bootstrap, state, network, identity, monitoring, and
+application resource type. A hosted-runner network always requires at least `Microsoft.Network` and
+`GitHub.Network`; include other namespaces only when approved resources use them.
+
+Record whether AzureRM automatic provider registration is enabled and whether the execution identity
+has the required subscription registration permission. When automatic registration is enabled and
+sufficient for every planned namespace, do not add duplicate explicit registrations. When
+`resource_provider_registrations = "none"` or equivalent disables it, explicitly register every
+missing required namespace and no unrelated provider.
+
+Provider inventory and registration form a `provider-ready` transition before `bootstrap-local`,
+remote state, runner networking, or application resources. An already `Registered` namespace is a
+no-op. An absent, unauthorized, `NotRegistered`, `Registering`, `Unregistering`, or failed namespace
+blocks every dependent and billable resource. Wait for terminal `Registered` readback and order every
+resource directly or transitively after its namespace registration. For the runner stack, all VNet,
+subnet, private DNS, private endpoint, firewall, public IP, NAT, NSG, route, and peering resources
+depend on `Microsoft.Network`; `GitHub.Network/networkSettings` also depends on `GitHub.Network`.
+
+Treat successful provider registrations as retained subscription capabilities. Prevent repository
+teardown from unregistering them: remove only repository-owned resources and record that the
+registration may have consumers outside this change. Never infer that an empty resource group or a
+partial apply proves provider readiness.
+
+**Register subscription features only for intended capabilities.** A
+`SubscriptionNotRegisteredForFeature` response is not permission to register the named feature.
+First prove that the approved resource design intentionally uses that capability. If it does not,
+correct the resource properties, pinned provider behavior, or API shape and regenerate the no-apply
+plan. Do not broaden subscription features merely to make a failed apply pass.
+
+Ordinary Firewall or NAT Standard public IPs do not require BYOIP. If one unexpectedly requests
+`Microsoft.Network/AllowBringYourOwnPublicIpAddress` without an approved custom IP prefix, remove
+properties that accidentally trigger BYOIP or use a reviewed supported API shape that does not
+request BYOIP. Do not register the BYOIP feature as a workaround.
+
+**Validate every network service tag's direction and action before apply.** `AzurePlatformDNS` is a
+special outbound tag used only in a Deny rule to disable Azure's default platform DNS; never create an
+Allow rule for that tag. When default Azure DNS remains enabled, no explicit NSG allow is required.
+When approved custom resolvers replace it, allow TCP and UDP port 53 to the exact resolver addresses
+and prove DNS reachability before dependent provisioning.
 
 **Break a private-state bootstrap cycle without transferring state.** Prefer an existing approved
 private management path that can reach the remote backend. If none exists and the private backend
@@ -849,7 +893,9 @@ Inspect and report all of the following with evidence before changing anything:
    private DNS, inbound denial, strict-domain-egress requirement, explicit
    Firewall Basic or NAT Gateway mode, costs, limits, teardown ownership, remote
    backend reachability, any bounded local-bootstrap need, state custody, remote
-   import evidence, and the fixed 30-day deletion schedule.
+   import evidence, the fixed 30-day deletion schedule, minimal Azure namespace
+   inventory, AzureRM registration mode, registration permission, and terminal
+   provider readiness.
 7. Live deployment mechanisms, parallel-version support, version-specific
    origins, traffic volume, statistically valid canary capacity, and provider
    status sources.
@@ -880,7 +926,8 @@ Liftoff does not own, name, restore, or recreate that active change.
 When the approved plan includes the runner provisioning exception, treat it as
 a fail-closed state machine. Use an existing private state path when available;
 otherwise progress through approved minimum `bootstrap-local`; delegated private
-subnet and exactly one explicit egress mode; Azure network setting and GitHub ID;
+namespace inventory and `provider-ready`; subnet and exactly one explicit egress
+mode; Azure network setting and GitHub ID;
 organisation network configuration; selected-access group; bounded larger
 runner; private backend proof; declarative remote import; identity, locking,
 versioning and clean no-change verification; remote-ready state; private DNS and
