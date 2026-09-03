@@ -375,6 +375,56 @@ describe('core-only update command', () => {
     expect(await readFile(policyPath, 'utf8')).toBe(currentPolicy);
   });
 
+  it('previews and applies a policy-v2 handoff upgrade without hand-editing the manifest', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const policyPath = path.join(root, ...governanceArtifactPaths.policy);
+    const currentPolicy = renderCanonicalGovernancePolicy();
+    const previousPolicy = currentPolicy.replace(
+      'policyVersion: "3"',
+      'policyVersion: "2"'
+    );
+
+    await simulateCoreUpgrade(
+      root,
+      'repository-governance-policy',
+      governanceArtifactPaths.policy,
+      previousPolicy
+    );
+    await editJson(manifestPath, (manifest) => {
+      manifest.liftoffVersion = '0.9.5';
+      manifest.governance.policyVersion = '2';
+    });
+    const before = await readFile(manifestPath, 'utf8');
+
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out)).toMatchObject({
+      schemaVersion: 2,
+      mode: 'check',
+      scope: 'managed-core',
+      projectVersion: '0.9.5',
+      entries: expect.arrayContaining([
+        expect.objectContaining({
+          logicalName: 'repository-governance-policy',
+          status: 'upgrade',
+          path: '.liftoff/governance/policy.md'
+        })
+      ])
+    });
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
+
+    const applied = await run(['update', '--json'], root);
+    expect(applied.code).toBe(0);
+    expect(await readFile(policyPath, 'utf8')).toBe(currentPolicy);
+    const upgradedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    expect(upgradedManifest.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '3',
+      state: 'handoff-generated'
+    });
+  });
+
   it('adopts governance into a v4 project without acquiring project authority', async () => {
     const root = await fixtureProject();
     await removeGovernanceMetadata(root);

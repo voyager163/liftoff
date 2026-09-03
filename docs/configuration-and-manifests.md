@@ -104,6 +104,11 @@ Readers support schemas v2, v3, v4, v5, and v6:
 - V6 separates managed-core update authority from project generation
   provenance.
 
+Enabled governance manifests retain their recorded positive-integer policy
+version. Readers accept historical policy versions up to the CLI's current
+version so `liftoff update --check` can report managed-core drift and plain
+update can migrate it. Malformed or future policy versions remain invalid.
+
 `liftoff update --check`, including `--check --json`, leaves an old manifest
 byte-for-byte unchanged. A successful plain update writes v6 only after the
 transaction succeeds. V2-v5 backend, frontend, database, dependency, container,
