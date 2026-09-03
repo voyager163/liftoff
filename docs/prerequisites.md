@@ -47,6 +47,11 @@ Azure and GitHub provisioning authority, Slack, and deployment access are
 discovered only during post-push Phase 0 and may be reported as gaps; they do
 not block local generation or authorize cloud mutation.
 
+When private backend access creates a runner bootstrap cycle, Phase 0 also
+discovers an existing private management path or proposes the policy's bounded
+encrypted local-state bootstrap. Liftoff itself neither creates nor transfers
+state.
+
 ## Preview requirements without writes
 
 `liftoff plan` shows both generated artifacts and workstation requirements

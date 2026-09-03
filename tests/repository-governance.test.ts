@@ -51,7 +51,7 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('rulesets idempotently last');
     expect(policy.length).toBeGreaterThan(40_000);
     expect(createHash('sha256').update(policy).digest('hex'))
-      .toMatchInlineSnapshot(`"2126efb1d1669034d8c4b9c8d23c51a30bc62df0f739b85931d0da5f13ce2a52"`);
+      .toMatchInlineSnapshot(`"ebc5d27e71a585372342b7d382cca776d250c1efeb8701fd3e4c32a6c6f9038c"`);
     expect(policy).toBe(readFileSync(
       new URL(
         '../assets/governance/single-maintainer-gitflow/policy.md',
@@ -69,7 +69,7 @@ describe('canonical repository governance policy', () => {
     'private Staging DAST genuinely applies',
     'If DAST is inapplicable, provision no runner networking',
     'consume it without creating a duplicate',
-    'Any unresolved input is a blocker',
+    'unresolved input is a blocker',
     'Every Azure runner-network resource, remote state',
     'Staging subscription.',
     "Do not share or depend on another repository's or subscription's firewall",
@@ -84,6 +84,19 @@ describe('canonical repository governance policy', () => {
     'A standard hosted preflight checks assignment',
     'Do not mark the prerequisite satisfied until readback proves',
     'live Staging reachability',
+    '30 days read-only after verified remote import',
+    'Prefer an existing approved',
+    'bootstrap-local',
+    'encrypted at rest on the approved workstation',
+    'copy local bootstrap state through GitHub artifacts',
+    'private Blob DNS and authenticated backend access',
+    'reviewed declarative imports',
+    'state locking and Blob',
+    'clean checkout produces a no-change plan',
+    'retention clock does not start',
+    'Retained local state must never run plan or apply',
+    'destroying the encryption key',
+    'The deletion record must contain no state payload',
     'Pre-answered platform defaults',
     'Provision nothing that no code uses',
     'The SLSA L3 generator is the one approved exception to SHA-pinning',
@@ -180,7 +193,7 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('Provision this stack only when private Staging DAST applies');
     expect(policy).toContain('If DAST is inapplicable, provision no runner networking');
     expect(policy).toContain('consume it without creating a duplicate');
-    expect(policy).toContain('Any unresolved input is a blocker');
+    expect(policy).toMatch(/Any\s+unresolved input is a blocker/);
     expect(policy).toContain('One provisioning exception only:');
     expect(policy).toContain('selected access for only this repository');
   });
@@ -212,12 +225,32 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('Do not mark the prerequisite satisfied until readback proves');
   });
 
+  it('fixes the encrypted local bootstrap-state retirement lifecycle', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('Prefer an existing approved');
+    expect(policy).toContain('bootstrap-local');
+    expect(policy).toContain('encrypted at rest on the approved workstation');
+    expect(policy).toMatch(/Never\s+copy local bootstrap state through GitHub artifacts/);
+    expect(policy).toContain('reviewed declarative imports');
+    expect(policy).toMatch(/state locking and Blob\s+versioning/);
+    expect(policy).toContain('clean checkout produces a no-change plan');
+    expect(policy).toContain('retention clock does not start');
+    expect(policy).toContain('read-only evidence for\nexactly **30 days**');
+    expect(policy).toContain('Retained local state must never run plan or apply');
+    expect(policy).toContain('destroying the encryption key');
+    expect(policy).toContain('The deletion record must contain no state payload');
+  });
+
   it.each([
     'Consume it; never attempt to create it',
     'Treat it as an **external prerequisite**',
     'share a firewall across repository subscriptions',
     'NAT Gateway may coexist with Azure Firewall',
-    'resource creation is sufficient proof of Staging connectivity'
+    'resource creation is sufficient proof of Staging connectivity',
+    'retain local bootstrap state indefinitely',
+    'upload local bootstrap state as a GitHub artifact',
+    'delete local bootstrap state immediately after import',
+    'retained local state remains an active backend'
   ])('rejects unsafe runner policy wording: %s', (fragment) => {
     expect(() => validateGovernancePolicy(
       `${renderCanonicalGovernancePolicy()}\n${fragment}`
@@ -337,7 +370,7 @@ describe('repository governance artifacts', () => {
     expect(manifest.artifactVersion).toBe(6);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '3',
+      policyVersion: '4',
       state: 'handoff-generated'
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>

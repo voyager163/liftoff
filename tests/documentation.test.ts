@@ -379,10 +379,11 @@ describe('public documentation', () => {
     expect(policy).toContain('GitHub Secret Protection');
     expect(policy).toContain('Trivy');
     expect(policy).toContain('DORA');
-    expect(policy).toContain('policyVersion: "3"');
+    expect(policy).toContain('policyVersion: "4"');
     expect(governance).toContain('Azure Firewall Basic');
     expect(governance).toContain('Azure NAT Gateway');
     expect(governance).toContain("repository's Staging subscription");
+    expect(governance).toMatch(/read-only\s+for exactly 30 days/);
     expect(governance).toMatch(/never\s+provisions Azure or GitHub resources/);
     expect(safety).toContain('Azure or other cloud resources');
     expect(governance).toContain('reported once as orphans and left on disk');

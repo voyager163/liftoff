@@ -197,6 +197,14 @@ explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
 
+If a private ZRS state backend cannot be reached because public network access
+is disabled and no approved private management path exists, do not enable
+public access or upload local state to GitHub. Use the policy's explicitly
+approved minimum `bootstrap-local` phase, adopt resources through declarative
+imports from the private runner, verify identity parity, locking, versioning,
+and a clean no-change plan, then retain the frozen local state read-only for 30
+days before secure deletion.
+
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore the affected generated files and `liftoff.manifest.json` through version
 control, then reinstall from the restored locks.

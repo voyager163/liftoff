@@ -24,6 +24,11 @@ deployment, monitoring, file replacement, machine tools, or project
 dependencies. Live activation begins only after commit, push, read-only Phase 0,
 and explicit plan approval.
 
+An approved downstream local-state bootstrap remains encrypted, gitignored, and
+single-writer. It is never transferred through GitHub artifacts or secrets,
+becomes read-only after verified remote import, and is securely deleted after
+the fixed 30-day retention period with non-sensitive evidence.
+
 ## CLI self-upgrade boundary
 
 `liftoff upgrade` is itself the narrow authorization to replace a supported

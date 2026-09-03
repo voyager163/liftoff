@@ -247,7 +247,7 @@ describe('manifest validation', () => {
     expect(enabled.artifactVersion).toBe(5);
     expect(enabled.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '3',
+      policyVersion: '4',
       state: 'handoff-generated'
     });
 
@@ -280,7 +280,7 @@ describe('manifest validation', () => {
     }));
     expect(partial.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '3',
+      policyVersion: '4',
       state: 'handoff-partial'
     });
     expect(partial.managedArtifacts.some((artifact) =>
@@ -313,9 +313,9 @@ describe('manifest validation', () => {
       [
         'future policy version',
         (manifest: Record<string, unknown>) => {
-          (manifest.governance as Record<string, unknown>).policyVersion = '4';
+          (manifest.governance as Record<string, unknown>).policyVersion = '5';
         },
-        /policyVersion cannot be newer than 3/
+        /policyVersion cannot be newer than 4/
       ],
       [
         'malformed policy version',
