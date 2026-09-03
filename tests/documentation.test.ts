@@ -358,6 +358,7 @@ describe('public documentation', () => {
     expect(manifests).toContain('`managedArtifacts`');
     expect(manifests).toContain('`projectArtifacts`');
     expect(manifests).toContain('grant update authority');
+    expect(manifests).toContain('Readers accept historical policy versions');
     expect(safety).toContain('cannot be restored or overwritten by any');
     expect(safety).toContain('outside manifest ownership');
     expect(cli).toContain('outside managed ownership');

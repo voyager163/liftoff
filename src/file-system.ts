@@ -770,9 +770,14 @@ function normalizeManifestGovernance(
     'policyVersion',
     'Manifest.governance'
   );
-  if (policyVersion !== governancePolicyVersion) {
+  if (!/^[1-9]\d*$/.test(policyVersion)) {
     throw new FileSystemError(
-      `Manifest governance policyVersion must be ${governancePolicyVersion}.`
+      'Manifest governance policyVersion must be a positive integer.'
+    );
+  }
+  if (Number(policyVersion) > Number(governancePolicyVersion)) {
+    throw new FileSystemError(
+      `Manifest governance policyVersion cannot be newer than ${governancePolicyVersion}.`
     );
   }
   if (state !== 'handoff-generated' && state !== 'handoff-partial') {

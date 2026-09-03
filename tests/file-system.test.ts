@@ -251,6 +251,15 @@ describe('manifest validation', () => {
       state: 'handoff-generated'
     });
 
+    const previousPolicy = await loadManifest(await v5ManifestRoot({}, (manifest) => {
+      (manifest.governance as Record<string, unknown>).policyVersion = '2';
+    }));
+    expect(previousPolicy.governance).toEqual({
+      profile: 'single-maintainer-gitflow',
+      policyVersion: '2',
+      state: 'handoff-generated'
+    });
+
     const disabled = await loadManifest(await v5ManifestRoot({
       governanceProfile: 'none'
     }));
@@ -302,11 +311,18 @@ describe('manifest validation', () => {
         /handoff-partial requires at least one applicable artifact/
       ],
       [
-        'wrong policy version',
+        'future policy version',
         (manifest: Record<string, unknown>) => {
-          (manifest.governance as Record<string, unknown>).policyVersion = '1';
+          (manifest.governance as Record<string, unknown>).policyVersion = '4';
         },
-        /policyVersion must be 3/
+        /policyVersion cannot be newer than 3/
+      ],
+      [
+        'malformed policy version',
+        (manifest: Record<string, unknown>) => {
+          (manifest.governance as Record<string, unknown>).policyVersion = 'legacy';
+        },
+        /policyVersion must be a positive integer/
       ],
       [
         'live enforcement field',
