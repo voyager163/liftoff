@@ -14,6 +14,7 @@ dependencies. No one permission implies another.
 | `--configure-openspec-profile` | The displayed global OpenSpec workflow, delivery, and profile changes | Tools, project files, dependencies, or Copilot cloud opt-in |
 | `--copilot-cloud` / `--no-copilot-cloud` | Enable or disable OpenSpec's project-local hosted Copilot agent files | Global profile changes, tools, dependencies, or unrelated project writes |
 | `--install-dependencies` | Locked project-local dependency commands after a successful merge | Machine tools, global profile changes, project decisions, or overwrites |
+| `liftoff governance apply-next --execute` | Execute at most one reviewed, graph-ready, evidence-ready governance transition | Earlier or later phases, broader resources, credentials outside the envelope, live plan/apply during baseline, force-push, reset, rebase, or unknown-file deletion |
 
 Interactive sessions ask separately at the point each permission is needed.
 
@@ -21,8 +22,9 @@ Selecting repository governance or passing `--yes` authorizes only deterministic
 local handoff files. It never authorizes agent execution, Git mutation, GitHub
 APIs, Azure or other cloud resources, rulesets, security configuration,
 deployment, monitoring, file replacement, machine tools, or project
-dependencies. Live activation begins only after commit, push, read-only Phase 0,
-and explicit plan approval.
+dependencies. `/liftoff-setup` first completes and archives the local bootstrap
+seed, then stops at authority gates. Live activation begins only after explicit
+commit/push approval, read-only Phase 0, and activation-plan approval.
 
 An approved downstream local-state bootstrap remains encrypted, gitignored, and
 single-writer. It is never transferred through GitHub artifacts or secrets,
@@ -93,6 +95,14 @@ Plain `liftoff update` preflights every eligible managed-core or authorized
 create-only provisioning path and applies those writes, managed-core moves or
 deletes, and the manifest as one rollback-capable transaction. Schema upgrades
 are committed only after the other mutations succeed.
+
+Managed update may install manifest v7, policy v6, activation-contract v1,
+phase graph, compatibility metadata, credential-policy schema, setup
+integrations, and compatibility aliases. It preserves user-owned activation
+state, approvals, immutable evidence, credential policies, active OpenSpec
+changes, and bootstrap retention/disposal records. If the current activation
+identity is future, unsupported, or graph-incompatible, update and setup block
+with a remedy instead of downgrading or rewriting state.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
@@ -181,3 +191,15 @@ Liftoff does not:
 - Run Microsoft's broad Code Apps marketplace installer.
 
 Those actions require their own review, authentication, and consent.
+
+Governance runner-preflight credentials have a stricter contract. Setup first
+uses an existing verified selected-repository GitHub App installation when it
+has the required read permissions. Otherwise it guides one fine-grained PAT:
+display name `<repo>-runner-preflight-read`, repository secret
+`RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
+repository metadata read, organization hosted-runner read and
+network-configuration read, no writes, and only the recorded workflow/job
+allowlist. The value must be entered through masked input only. Never paste or
+show it in chat, argv, command arguments, logs, evidence, generated files, or
+screenshots. If it appears there, treat it as compromised and manually revoke and
+rotate it before continuing.

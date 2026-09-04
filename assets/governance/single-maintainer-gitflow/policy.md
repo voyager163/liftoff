@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "5"
+policyVersion: "6"
 state: handoff-generated
 ---
 
@@ -10,6 +10,8 @@ state: handoff-generated
 Set up GitFlow branching, repository governance, and the security pipeline in this repository.
 This is my standard for every new repository, so implement it as a repeatable baseline rather than a
 one-off.
+
+The numbered policy sections below are capability chapters, not execution order. The packaged managed phase graph is the sole execution-order authority for activation transitions, dependencies, approvals, evidence, invalidation, rollback, and terminal states. If prose, generated tasks, or an agent response disagree with the graph, follow the graph and report the inconsistent source.
 
 ## Fixed context — these are settled, do not re-litigate them
 
@@ -925,16 +927,16 @@ Liftoff does not own, name, restore, or recreate that active change.
 
 When the approved plan includes the runner provisioning exception, treat it as
 a fail-closed state machine. Use an existing private state path when available;
-otherwise progress through approved minimum `bootstrap-local`; delegated private
-namespace inventory and `provider-ready`; subnet and exactly one explicit egress
-mode; Azure network setting and GitHub ID;
-organisation network configuration; selected-access group; bounded larger
-runner; private backend proof; declarative remote import; identity, locking,
-versioning and clean no-change verification; remote-ready state; private DNS and
-live Staging reachability; then DAST eligibility. Freeze verified local state
-read-only for 30 days and delete it with evidence at expiry. Stop at the first
-failed transition and reconcile or remove partial resources in reverse
-dependency order.
+otherwise progress through delegated private namespace inventory and
+`provider-ready` before approved minimum `bootstrap-local`; subnet and exactly
+one explicit egress mode; Azure network setting and GitHub ID; organisation
+network configuration; selected-access group; bounded larger runner and
+`runner-ready`; private backend proof; declarative remote import and
+`remote-import-verified`; identity, locking, versioning and clean no-change
+verification; `remote-ready` state; private DNS and live Staging reachability;
+then DAST eligibility. Freeze verified local state read-only for 30 days and
+delete it with evidence at expiry. Stop at the first failed transition and
+reconcile or remove partial resources in reverse dependency order.
 
 Author workflows, exact ruleset payloads, runbooks, and documentation first.
 Observe every proposed required context green on all applicable paths, then

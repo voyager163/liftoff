@@ -228,6 +228,27 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     },
     defaultMaxPositionals: 0
   },
+  governance: {
+    description: 'Inspect deterministic governance activation',
+    usage: '<status|plan|apply-next|resume|verify> [project-path]',
+    group: 'Operations',
+    flags: {
+      project: valueFlag('Liftoff project path', 'Project', 'path'),
+      execute: booleanFlag('Execute the reviewed governance apply-next plan; required for any mutation', 'Consent'),
+      json: booleanFlag('Emit machine-readable JSON', 'Output'),
+      ...helpFlag
+    },
+    subcommands: ['status', 'plan', 'apply-next', 'resume', 'verify'],
+    arguments: [{ syntax: 'project-path', description: 'Liftoff project to inspect' }],
+    defaultMaxPositionals: 0,
+    subcommandMaxPositionals: {
+      status: 1,
+      plan: 1,
+      'apply-next': 1,
+      resume: 1,
+      verify: 1
+    }
+  },
   dev: {
     description: 'Print Docker Compose helper commands',
     usage: '[up|down|logs|reset]',

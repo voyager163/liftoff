@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.9.9 - Initialize a governed application and prepare
+Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -105,12 +105,63 @@ regions    List or search provider regions
 
 Operations
 ──────────
-Command  Description
-───────  ────────────────────────────────────
-dev      Print Docker Compose helper commands
-infra    Print OpenTofu helper commands
+Command     Description
+──────────  ───────────────────────────────────────────
+governance  Inspect deterministic governance activation
+dev         Print Docker Compose helper commands
+infra       Print OpenTofu helper commands
 
 i Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots compact governance command help 1`] = `
+"LIFTOFF / GOVERNANCE
+Inspect deterministic governance activation
+
+Usage
+─────
+liftoff governance <status|plan|apply-next|resume|verify> [project-path]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────
+project-path  Liftoff project to inspect
+
+Subcommands
+───────────
+- status
+- plan
+- apply-next
+- resume
+- verify
+
+Project options
+───────────────
+Option            Description
+────────────────  ────────────────────
+--project <path>  Liftoff project path
+
+Consent options
+───────────────
+Option     Description
+─────────  ─────────────────────────────────────────────────────────────────────
+--execute  Execute the reviewed governance apply-next plan; required for any
+           mutation
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────
+--json  Emit machine-readable JSON
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
 "
 `;
 
@@ -335,7 +386,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.9.9 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -362,10 +413,42 @@ Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
 
 Operations
+Command: governance | Description: Inspect deterministic governance activation
 Command: dev | Description: Print Docker Compose helper commands
 Command: infra | Description: Print OpenTofu helper commands
 
 [info] Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots plain governance command help 1`] = `
+"LIFTOFF / GOVERNANCE - Inspect deterministic governance activation
+
+Usage
+Usage: liftoff governance <status|plan|apply-next|resume|verify> [project-path]
+
+Arguments
+Argument: project-path | Description: Liftoff project to inspect
+
+Subcommands
+- status
+- plan
+- apply-next
+- resume
+- verify
+
+Project options
+Option: --project <path> | Description: Liftoff project path
+
+Consent options
+Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
+
+Output options
+Option: --json | Description: Emit machine-readable JSON
+
+General options
+Option: --help | Description: Show command-specific help
+
 "
 `;
 
@@ -538,7 +621,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.9.9 - Initialize a governed application and prepare its local      │
+│ Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -575,12 +658,55 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ regions    List or search provider regions                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
-│ Command  Description                                                                         │
-│ ───────  ────────────────────────────────────                                                │
-│ dev      Print Docker Compose helper commands                                                │
-│ infra    Print OpenTofu helper commands                                                      │
+│ Command     Description                                                                      │
+│ ──────────  ───────────────────────────────────────────                                      │
+│ governance  Inspect deterministic governance activation                                      │
+│ dev         Print Docker Compose helper commands                                             │
+│ infra       Print OpenTofu helper commands                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 i Tip: Run \`liftoff help <command>\` for command-specific usage.
+"
+`;
+
+exports[`complete help screens > snapshots rich governance command help 1`] = `
+"┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
+│ Inspect deterministic governance activation                                                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff governance <status|plan|apply-next|resume|verify> [project-path]                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ──────────────────────────                                                     │
+│ project-path  Liftoff project to inspect                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • status                                                                                     │
+│ • plan                                                                                       │
+│ • apply-next                                                                                 │
+│ • resume                                                                                     │
+│ • verify                                                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option            Description                                                                │
+│ ────────────────  ────────────────────                                                       │
+│ --project <path>  Liftoff project path                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option     Description                                                                       │
+│ ─────────  ──────────────────────────────────────────────────────────────────────────        │
+│ --execute  Execute the reviewed governance apply-next plan; required for any mutation        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --json  Emit machine-readable JSON                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;
 

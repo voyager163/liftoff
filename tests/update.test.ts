@@ -25,6 +25,14 @@ import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
 import {
+  canonicalJson,
+  createActivationIdentity,
+  currentActivationIdentity,
+  phaseIds,
+  renderGovernanceChangeWritePlan,
+  type UserActivationState
+} from '../src/governance-activation/index.js';
+import {
   CaptureStream,
   scriptedTtyInput,
   ttyCaptureStream
@@ -152,6 +160,19 @@ async function editJson(
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
+const governancePathPartArrays = [
+  governanceArtifactPaths.policy,
+  governanceArtifactPaths.context,
+  governanceArtifactPaths.guide,
+  governanceArtifactPaths.phaseGraph,
+  governanceArtifactPaths.compatibility,
+  governanceArtifactPaths.credentialPolicySchema,
+  governanceArtifactPaths.setup['github-copilot'],
+  governanceArtifactPaths.setup.claude,
+  governanceArtifactPaths.alias['github-copilot'],
+  governanceArtifactPaths.alias.claude
+] as const;
+
 function convertV6ToV5(manifest: any): void {
   manifest.artifactVersion = 5;
   manifest.artifacts = [
@@ -165,6 +186,7 @@ function convertV6ToV5(manifest: any): void {
   ];
   delete manifest.managedArtifacts;
   delete manifest.projectArtifacts;
+  delete manifest.governance?.activationIdentity;
 }
 
 async function downgradeToV5(projectRoot: string): Promise<void> {
@@ -214,7 +236,7 @@ async function downgradeApiManifest(
   });
   if (artifactVersion < 5) {
     await Promise.all(
-      Object.values(governanceArtifactPaths).map((pathParts) =>
+      governancePathPartArrays.map((pathParts) =>
         rm(path.join(projectRoot, ...pathParts), { force: true })
       )
     );
@@ -238,7 +260,7 @@ async function removeGovernanceMetadata(
   });
   if (!options.keepFiles) {
     await Promise.all(
-      Object.values(governanceArtifactPaths).map((pathParts) =>
+      governancePathPartArrays.map((pathParts) =>
         rm(path.join(projectRoot, ...pathParts), { force: true })
       )
     );
@@ -260,6 +282,95 @@ async function simulateCoreUpgrade(
   });
 }
 
+function currentActivationState(activeChangeId: string | null): UserActivationState {
+  const phases = Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+    state: 'pending',
+    updatedAt: '2026-09-04T00:00:00.000Z',
+    evidence: [],
+    approvals: [],
+    blockers: []
+  }])) as unknown as UserActivationState['phases'];
+  return {
+    schemaVersion: currentActivationIdentity.activationStateSchemaVersion,
+    identity: currentActivationIdentity,
+    repository: {
+      id: 'R_update',
+      name: 'owner/update-app',
+      defaultBranch: 'develop'
+    },
+    activeChange: activeChangeId
+      ? { id: activeChangeId, kind: 'openspec' }
+      : null,
+    applicability: {
+      statePath: 'bootstrap-local',
+      privateStagingDast: true,
+      credentialRequired: false
+    },
+    phases,
+    createdAt: '2026-09-04T00:00:00.000Z',
+    updatedAt: '2026-09-04T00:00:00.000Z'
+  };
+}
+
+async function writeProjectOwnedFile(root: string, parts: readonly string[], content: string): Promise<void> {
+  await mkdir(path.dirname(path.join(root, ...parts)), { recursive: true });
+  await writeFile(path.join(root, ...parts), content, 'utf8');
+}
+
+async function installActiveGovernanceChange(
+  root: string,
+  options: { historicalMetadata?: boolean } = {}
+): Promise<{ changeId: string; paths: string[][] }> {
+  const historicalIdentity = createActivationIdentity('e'.repeat(64));
+  const writePlan = renderGovernanceChangeWritePlan({
+    projectName: 'Update App',
+    repositoryId: 'R_update',
+    repositoryName: 'owner/update-app',
+    defaultBranch: 'develop',
+    workflowKind: 'openspec',
+    baselineSha: 'a'.repeat(64),
+    evidenceIds: ['phase-0'],
+    approvedFacts: [
+      { id: 'repositoryId', value: 'R_update' },
+      { id: 'repositoryName', value: 'owner/update-app' }
+    ],
+    approvedAt: '2026-09-04T00:00:00.000Z',
+    approver: 'owner'
+  });
+  for (const file of writePlan.files) {
+    const value = options.historicalMetadata &&
+      file.pathParts.at(-1) === 'liftoff-governance.json'
+      ? `${canonicalJson({
+          ...JSON.parse(file.content),
+          activationIdentity: historicalIdentity,
+          phaseGraphHash: historicalIdentity.phaseGraphHash
+        })}\n`
+      : file.content;
+    await writeProjectOwnedFile(root, file.pathParts, value);
+  }
+  await writeProjectOwnedFile(
+    root,
+    ['governance', 'activation-state.json'],
+    `${canonicalJson(currentActivationState(writePlan.changeId))}\n`
+  );
+  return {
+    changeId: writePlan.changeId,
+    paths: [
+      ['governance', 'activation-state.json'],
+      ...writePlan.files.map((file) => [...file.pathParts])
+    ]
+  };
+}
+
+async function pathFingerprints(root: string, paths: readonly (readonly string[])[]): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  for (const parts of paths) {
+    const content = await readFile(path.join(root, ...parts));
+    result[parts.join('/')] = createHash('sha256').update(content).digest('hex');
+  }
+  return result;
+}
+
 describe('semver comparison', () => {
   it('orders releases and prereleases correctly', () => {
     expect(compareSemver('0.2.0', '0.2.0')).toBe(0);
@@ -271,7 +382,7 @@ describe('semver comparison', () => {
 });
 
 describe('core-only update command', () => {
-  it('reports no drift on a fresh schema-v6 project', async () => {
+  it('reports no drift on a fresh schema-v7 project', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const before = await readFile(manifestPath, 'utf8');
@@ -320,6 +431,17 @@ describe('core-only update command', () => {
       entries: [],
       provisioning: []
     });
+
+    const commandRunnerCalls: string[] = [];
+    const authorityRunner: CommandRunner = {
+      async run(command) {
+        commandRunnerCalls.push(`${command.executable} ${command.args.join(' ')}`);
+        throw new Error('update must not invoke command runners or remote adapters');
+      }
+    };
+    expect((await run(['update', '--check', '--json'], root, authorityRunner)).code).toBe(0);
+    expect((await run(['update', '--force', '--json'], root, authorityRunner)).code).toBe(0);
+    expect(commandRunnerCalls).toEqual([]);
 
     expect((await run(['update'], root)).code).toBe(0);
     expect((await run(['update', '--force'], root)).code).toBe(0);
@@ -381,7 +503,7 @@ describe('core-only update command', () => {
     const policyPath = path.join(root, ...governanceArtifactPaths.policy);
     const currentPolicy = renderCanonicalGovernancePolicy();
     const previousPolicy = currentPolicy.replace(
-      'policyVersion: "5"',
+      'policyVersion: "6"',
       'policyVersion: "2"'
     );
 
@@ -392,8 +514,10 @@ describe('core-only update command', () => {
       previousPolicy
     );
     await editJson(manifestPath, (manifest) => {
+      manifest.artifactVersion = 6;
       manifest.liftoffVersion = '0.9.5';
       manifest.governance.policyVersion = '2';
+      delete manifest.governance.activationIdentity;
     });
     const before = await readFile(manifestPath, 'utf8');
 
@@ -420,7 +544,8 @@ describe('core-only update command', () => {
     const upgradedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(upgradedManifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '5',
+      policyVersion: '6',
+      activationIdentity: expect.any(Object),
       state: 'handoff-generated'
     });
   });
@@ -437,7 +562,8 @@ describe('core-only update command', () => {
     const report = JSON.parse(check.out);
     expect(report.ownershipMigrationPending).toBe(true);
     expect(report.entries.every((entry: { logicalName: string }) =>
-      entry.logicalName.startsWith('repository-governance-')
+      entry.logicalName.startsWith('repository-governance-') ||
+      entry.logicalName.startsWith('liftoff-setup-')
     )).toBe(true);
 
     expect((await run(['update'], root)).code).toBe(0);
@@ -445,9 +571,10 @@ describe('core-only update command', () => {
     const manifest = JSON.parse(
       await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
     );
-    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.artifactVersion).toBe(7);
     expect(manifest.managedArtifacts.every((artifact: { logicalName: string }) =>
-      artifact.logicalName.startsWith('repository-governance-')
+      artifact.logicalName.startsWith('repository-governance-') ||
+      artifact.logicalName.startsWith('liftoff-setup-')
     )).toBe(true);
     expect(manifest.projectArtifacts.some((artifact: { logicalName: string }) =>
       artifact.logicalName === 'backend-main'
@@ -459,7 +586,7 @@ describe('core-only update command', () => {
     await removeGovernanceMetadata(root);
     const launcherPath = path.join(
       root,
-      ...governanceArtifactPaths['github-copilot']
+      ...governanceArtifactPaths.alias['github-copilot']
     );
     await mkdir(path.dirname(launcherPath), { recursive: true });
     await writeFile(launcherPath, 'developer launcher\n');
@@ -536,7 +663,7 @@ describe('core-only update command', () => {
     expect(await readFile(apiPath, 'utf8')).toBe(production);
     await expect(access(infrastructurePath)).rejects.toMatchObject({ code: 'ENOENT' });
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.artifactVersion).toBe(7);
     expect(manifest.projectArtifacts.find((artifact: { logicalName: string }) =>
       artifact.logicalName === 'go-backend-api'
     )).toMatchObject({
@@ -562,7 +689,7 @@ describe('core-only update command', () => {
       const manifest = JSON.parse(
         await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
       );
-      expect(manifest.artifactVersion).toBe(6);
+      expect(manifest.artifactVersion).toBe(7);
       expect(manifest.projectArtifacts.some((artifact: { logicalName: string }) =>
         artifact.logicalName === 'backend-main'
       )).toBe(true);
@@ -786,6 +913,84 @@ describe('core-only update command', () => {
       scope: 'managed-core',
       ownershipMigrationPending: false
     });
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
+  });
+
+  it('preserves user-owned activation state, evidence, approvals, credentials, records, and active changes', async () => {
+    const root = await fixtureProject();
+    const active = await installActiveGovernanceChange(root);
+    const userFiles = [
+      ...active.paths,
+      ['governance', 'evidence', 'manual-evidence.json'],
+      ['governance', 'approvals', 'manual-approval.json'],
+      ['governance', 'credentials', 'preflight-policy.json'],
+      ['governance', 'supersessions', 'manual-supersession.json'],
+      ['governance', 'reconciliation', 'manual-reconciliation.json']
+    ];
+    await writeProjectOwnedFile(root, ['governance', 'evidence', 'manual-evidence.json'], '{"user":"evidence"}\n');
+    await writeProjectOwnedFile(root, ['governance', 'approvals', 'manual-approval.json'], '{"user":"approval"}\n');
+    await writeProjectOwnedFile(root, ['governance', 'credentials', 'preflight-policy.json'], '{"user":"credential-metadata"}\n');
+    await writeProjectOwnedFile(root, ['governance', 'supersessions', 'manual-supersession.json'], '{"user":"supersession"}\n');
+    await writeProjectOwnedFile(root, ['governance', 'reconciliation', 'manual-reconciliation.json'], '{"user":"reconciliation"}\n');
+    await simulateCoreUpgrade(
+      root,
+      'repository-governance-policy',
+      governanceArtifactPaths.policy,
+      '# previous policy\n'
+    );
+    const before = await pathFingerprints(root, userFiles);
+
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(await pathFingerprints(root, userFiles)).toEqual(before);
+
+    const applied = await run(['update', '--force', '--json'], root);
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out).written).toContain('.liftoff/governance/policy.md');
+    expect(await pathFingerprints(root, userFiles)).toEqual(before);
+  });
+
+  it('blocks active governance metadata with an undeclared old graph identity', async () => {
+    const root = await fixtureProject();
+    await installActiveGovernanceChange(root, { historicalMetadata: true });
+    const watched = [
+      ['liftoff.manifest.json'],
+      ['governance', 'activation-state.json']
+    ];
+    await simulateCoreUpgrade(
+      root,
+      'repository-governance-policy',
+      governanceArtifactPaths.policy,
+      '# previous policy\n'
+    );
+    const before = await pathFingerprints(root, watched);
+
+    const result = await run(['update', '--json'], root);
+
+    expect(result.code).toBe(1);
+    const report = JSON.parse(result.out);
+    expect(report.status).toBe('blocked');
+    expect(report.reconciliation).toMatchObject({
+      status: 'blocked',
+      remedy: expect.stringContaining('Upgrade')
+    });
+    expect(report.reconciliation.issues.join(' ')).toMatch(/recognized|phaseGraphHash|explicit compatibility/i);
+    expect(await pathFingerprints(root, watched)).toEqual(before);
+  });
+
+  it('blocks unrecognized activation tuples without writing managed or user bytes', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    await editJson(manifestPath, (manifest) => {
+      manifest.governance.activationIdentity.phaseGraphHash = 'f'.repeat(64);
+    });
+    const before = await readFile(manifestPath, 'utf8');
+
+    const result = await run(['update', '--json'], root);
+
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('explicit compatibility map');
+    expect(result.err).toContain('recognized graph hashes');
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
   });
 

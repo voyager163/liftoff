@@ -191,7 +191,7 @@ describe('templates and filesystem', () => {
     const config = JSON.parse(contentAt('liftoff.config.json'));
     const manifest = JSON.parse(contentAt('liftoff.manifest.json'));
     expect(config.pattern).toBe('generic');
-    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.artifactVersion).toBe(7);
     expect(manifest.project.workload.pattern).toBe('generic');
     expect(contentAt('.env.example')).toContain('GENAI_PATTERN=generic');
     expect(contentAt('backend/config/settings.py')).toContain(
@@ -423,6 +423,9 @@ describe('templates and filesystem', () => {
     expect(contentAt('src/App.tsx')).not.toContain('Claims Workspace');
     expect(contentAt('README.md')).toContain('npx --no-install power-apps init');
     expect(contentAt('README.md')).toContain('GitHub Copilot, Claude Code');
+    expect(contentAt('README.md')).toContain('The setup baseline is local only');
+    expect(contentAt('README.md')).toContain('OpenTofu\nformat/init/validate');
+    expect(contentAt('README.md')).toContain('does not run a live plan or apply');
     expect(contentAt('README.md')).toContain('liftoff upgrade --check');
     expect(contentAt('README.md')).toContain('liftoff update --check');
     expect(contentAt('THIRD_PARTY_NOTICES.md')).toContain(
@@ -531,6 +534,12 @@ describe('templates and filesystem', () => {
 
     expect(readme).toContain('PYDANTIC_AI_MODEL');
     expect(readme).toContain('VITE_API_BASE_URL');
+    expect(readme).toContain('## Deterministic Setup');
+    expect(readme).toContain('Run `/liftoff-setup` from a selected agent');
+    expect(readme).toContain('completes, syncs, and archives the generated bootstrap seed');
+    expect(readme).toContain('tofu init -backend=false');
+    expect(readme).toContain('No baseline step runs a live OpenTofu plan or apply');
+    expect(readme).toContain('Absent components are recorded as');
     expect(readme).toContain('maintains only explicit Liftoff core files');
     expect(readme).toContain('liftoff update --check --json');
     expect(readme).toContain('liftoff upgrade --check');
@@ -557,6 +566,31 @@ describe('templates and filesystem', () => {
     expect(tofuReadme).toContain('ServiceBusConnection__clientId');
     expect(functionReadme).toContain('AzureWebJobsStorage');
     expect(functionReadme).toContain('python -m pytest -q');
+  });
+
+  it('renders generated README setup guidance differently when governance is disabled', () => {
+    const governed = buildArtifacts(buildProjectPlan({
+      projectName: 'Governed App',
+      projectType: 'standard',
+      apiStack: 'python',
+      cloud: 'azure',
+      includeFrontend: false
+    }, { requireProjectName: true })).find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
+    const disabled = buildArtifacts(buildProjectPlan({
+      projectName: 'Ungoverned App',
+      projectType: 'standard',
+      apiStack: 'python',
+      cloud: 'azure',
+      includeFrontend: false,
+      governanceProfile: 'none'
+    }, { requireProjectName: true })).find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
+
+    expect(governed).toContain('Run `/liftoff-setup` from a selected agent');
+    expect(governed).toContain('Commit and push are separate approvals');
+    expect(disabled).toContain('Repository governance is disabled');
+    expect(disabled).toContain('there is no `/liftoff-setup` integration');
+    expect(disabled).not.toContain('Run `/liftoff-setup` from a selected agent');
+    expect(disabled).toContain('strict OpenSpec validation');
   });
 
   it('documents both Spec Kit agents and the selected default integration', () => {

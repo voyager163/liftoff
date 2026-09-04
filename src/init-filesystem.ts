@@ -295,7 +295,11 @@ export async function assertSafeInitTarget(
 export async function withStagingArea<T>(
   operation: (area: StagingArea) => Promise<T>
 ): Promise<T> {
-  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-init-'));
+  const stagingParent = process.env.LIFTOFF_STAGING_ROOT
+    ? path.resolve(process.env.LIFTOFF_STAGING_ROOT)
+    : os.tmpdir();
+  await mkdir(stagingParent, { recursive: true });
+  const root = await mkdtemp(path.join(stagingParent, 'liftoff-init-'));
   const area: StagingArea = {
     root,
     origins: new Map(),

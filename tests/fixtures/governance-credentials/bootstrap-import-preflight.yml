@@ -1,0 +1,13 @@
+name: Runner preflight bootstrap import
+on:
+  workflow_dispatch:
+jobs:
+  bootstrap-import-preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Read runner configuration
+        env:
+          RUNNER_CONFIGURATION_READ_TOKEN: ${{ secrets.RUNNER_CONFIGURATION_READ_TOKEN }}
+        run: echo "metadata read preflight only"

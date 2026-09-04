@@ -4,25 +4,78 @@ import type {
   ProjectPlan
 } from './types.js';
 import { supportedStack } from './supported-stack.js';
+import {
+  canonicalJson
+} from './governance-activation/canonical-json.js';
+import {
+  buildGovernanceCompatibilityMetadata,
+  validateGovernanceCompatibilityMetadata,
+  type ManagedCompatibilityInventoryEntry
+} from './governance-activation/compatibility.js';
+import {
+  canonicalPhaseGraphJson,
+  currentActivationIdentity
+} from './governance-activation/graph.js';
+import {
+  activationContractVersion,
+  activationStateSchemaVersion,
+  approvalEnvelopeSchemaVersion,
+  credentialPolicySchemaVersion,
+  evidenceHeaderSchemaVersion,
+  governanceActivationPolicyVersion,
+  liftoffActivationPackageVersion,
+  liftoffManifestArtifactVersion,
+  phaseGraphSchemaVersion,
+  supersessionSchemaVersion
+} from './governance-activation/identity.js';
+import {
+  runnerPreflightDisplayNameTemplate,
+  runnerPreflightOrganizationPermissions,
+  runnerPreflightPatLifetimeDays,
+  runnerPreflightRepositoryPermissions,
+  runnerPreflightRotationLeadDays,
+  runnerPreflightSecretName
+} from './governance-activation/types.js';
 
 export const governancePolicySchemaVersion = 1 as const;
-export const governancePolicyVersion = '5' as const;
+export const governancePolicyVersion = '6' as const;
 export const governanceContextSchemaVersion = 1 as const;
+const governanceManagedCoreLogicalNames = [
+  'repository-governance-policy',
+  'repository-governance-context',
+  'repository-governance-guide',
+  'repository-governance-phase-graph',
+  'repository-governance-compatibility',
+  'repository-governance-credential-policy-schema',
+  'liftoff-setup-copilot',
+  'liftoff-setup-claude',
+  'repository-governance-copilot-launcher',
+  'repository-governance-claude-launcher'
+] as const;
 
 export const governanceArtifactPaths = {
   policy: ['.liftoff', 'governance', 'policy.md'],
   context: ['.liftoff', 'governance', 'context.json'],
   guide: ['.liftoff', 'governance', 'README.md'],
-  'github-copilot': [
-    '.github',
-    'prompts',
-    'liftoff-repository-governance.prompt.md'
-  ],
-  claude: [
-    '.claude',
-    'commands',
-    'liftoff-repository-governance.md'
-  ]
+  phaseGraph: ['.liftoff', 'governance', 'phase-graph.json'],
+  compatibility: ['.liftoff', 'governance', 'compatibility.json'],
+  credentialPolicySchema: ['.liftoff', 'governance', 'credential-policy.schema.json'],
+  setup: {
+    'github-copilot': ['.github', 'prompts', 'liftoff-setup.prompt.md'],
+    claude: ['.claude', 'commands', 'liftoff-setup.md']
+  },
+  alias: {
+    'github-copilot': [
+      '.github',
+      'prompts',
+      'liftoff-repository-governance.prompt.md'
+    ],
+    claude: [
+      '.claude',
+      'commands',
+      'liftoff-repository-governance.md'
+    ]
+  }
 } as const;
 
 const suppliedPolicy = readFileSync(
@@ -43,7 +96,9 @@ export function renderCanonicalGovernancePolicy(): string {
 const requiredPolicyFragments = [
   'schemaVersion: 1',
   'profile: single-maintainer-gitflow',
-  'policyVersion: "5"',
+  'policyVersion: "6"',
+  'capability chapters, not execution order',
+  'managed phase graph is the sole execution-order authority',
   'develop` is the integration branch and the **default branch**',
   'main` is production truth',
   'release/X.Y.Z',
@@ -174,6 +229,7 @@ const forbiddenPolicyFragments = [
   'delete local bootstrap state immediately after import',
   'retained local state remains an active backend',
   'provider registration may remain pending while resources are created',
+  'approved minimum `bootstrap-local`; delegated private',
   'register all Azure providers',
   'unregister provider registrations during teardown',
   'resource_provider_registrations = "none" requires no explicit registrations',
@@ -209,6 +265,7 @@ export function validateGovernancePolicy(policy: string): void {
 
 const secretValuePatterns = [
   /\bghp_[A-Za-z0-9]{20,}\b/,
+  /\bgh[orsup]_[A-Za-z0-9_]{20,}\b/,
   /\bgithub_pat_[A-Za-z0-9_]{20,}\b/,
   /https:\/\/hooks\.slack\.com\/services\/[A-Za-z0-9/]+/,
   /\bAccountKey=[^;\s]+/i,
@@ -221,6 +278,189 @@ export function assertGovernanceContentSafe(content: string): void {
       throw new Error('Governance artifact contains a credential-shaped value.');
     }
   }
+}
+
+function credentialPolicySchema(): Record<string, unknown> {
+  const activationIdentityProperties = {
+    liftoffVersion: { const: liftoffActivationPackageVersion },
+    manifestArtifactVersion: { const: liftoffManifestArtifactVersion },
+    policyVersion: { const: governanceActivationPolicyVersion },
+    activationContractVersion: { const: activationContractVersion },
+    phaseGraphSchemaVersion: { const: phaseGraphSchemaVersion },
+    phaseGraphHash: { const: currentActivationIdentity.phaseGraphHash },
+    activationStateSchemaVersion: { const: activationStateSchemaVersion },
+    evidenceHeaderSchemaVersion: { const: evidenceHeaderSchemaVersion },
+    approvalEnvelopeSchemaVersion: { const: approvalEnvelopeSchemaVersion },
+    supersessionSchemaVersion: { const: supersessionSchemaVersion },
+    credentialPolicySchemaVersion: { const: credentialPolicySchemaVersion }
+  } satisfies Record<string, unknown>;
+  return {
+    $schema: 'https://json-schema.org/draft/2020-12/schema',
+    $id: 'https://mission-control.local/liftoff/governance/credential-policy.schema.v1.json',
+    title: 'Liftoff governance credential policy v1',
+    type: 'object',
+    additionalProperties: false,
+    required: [
+      'schemaVersion',
+      'identity',
+      'repository',
+      'owner',
+      'authKind',
+      'displayNameTemplate',
+      'displayName',
+      'secretName',
+      'createdAt',
+      'expiresAt',
+      'rotationLeadDays',
+      'rotationDueAt',
+      'permissions',
+      'allowedWorkflows',
+      'nonForwarding',
+      'status',
+      'proof',
+      'app',
+      'pat'
+    ],
+    properties: {
+      schemaVersion: { const: credentialPolicySchemaVersion },
+      identity: {
+        type: 'object',
+        additionalProperties: false,
+        required: Object.keys(activationIdentityProperties),
+        properties: activationIdentityProperties
+      },
+      repository: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['id', 'owner', 'name', 'fullName'],
+        properties: {
+          id: { type: 'string', minLength: 1 },
+          owner: { type: 'string', minLength: 1 },
+          name: { type: 'string', minLength: 1 },
+          fullName: { type: 'string', minLength: 1 }
+        }
+      },
+      owner: { type: 'string', minLength: 1 },
+      authKind: { enum: ['github-app', 'fine-grained-pat'] },
+      displayNameTemplate: { const: runnerPreflightDisplayNameTemplate },
+      displayName: { type: 'string', pattern: '^[A-Za-z0-9_.-]+-runner-preflight-read$' },
+      secretName: { const: runnerPreflightSecretName },
+      createdAt: { type: 'string', format: 'date-time' },
+      expiresAt: { type: 'string', format: 'date-time' },
+      rotationLeadDays: { const: runnerPreflightRotationLeadDays },
+      rotationDueAt: { type: 'string', format: 'date-time' },
+      permissions: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['repository', 'organization'],
+        properties: {
+          repository: {
+            type: 'array',
+            const: [...runnerPreflightRepositoryPermissions]
+          },
+          organization: {
+            type: 'array',
+            const: [...runnerPreflightOrganizationPermissions]
+          }
+        }
+      },
+      allowedWorkflows: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['path', 'jobs'],
+          properties: {
+            path: { type: 'string', minLength: 1 },
+            jobs: {
+              type: 'array',
+              items: { type: 'string', minLength: 1 },
+              uniqueItems: true
+            }
+          }
+        }
+      },
+      nonForwarding: { const: true },
+      status: { enum: ['active', 'expiring', 'expired', 'compromised'] },
+      proof: {
+        type: 'object',
+        additionalProperties: false,
+        required: ['verifiedAt', 'readbackDigest', 'readbackProvider', 'payloadFree'],
+        properties: {
+          verifiedAt: { type: 'string', format: 'date-time' },
+          readbackDigest: { type: 'string', pattern: '^[a-f0-9]{64}$' },
+          readbackProvider: { enum: ['github-api', 'adapter-fixture'] },
+          payloadFree: { const: true }
+        }
+      },
+      app: {
+        anyOf: [
+          { type: 'null' },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['installationId', 'appSlug', 'selection', 'repositoryFullName', 'permissionsVerifiedAt', 'token'],
+            properties: {
+              installationId: { type: 'integer', minimum: 1 },
+              appSlug: { type: 'string', minLength: 1 },
+              selection: { const: 'selected-repository' },
+              repositoryFullName: { type: 'string', minLength: 1 },
+              permissionsVerifiedAt: { type: 'string', format: 'date-time' },
+              token: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['strategy', 'ttlSeconds', 'generatedBy'],
+                properties: {
+                  strategy: { const: 'installation-token' },
+                  ttlSeconds: { type: 'integer', minimum: 1, maximum: 3600 },
+                  generatedBy: { const: 'github-app' }
+                }
+              }
+            }
+          }
+        ]
+      },
+      pat: {
+        anyOf: [
+          { type: 'null' },
+          {
+            type: 'object',
+            additionalProperties: false,
+            required: ['lifetimeDays', 'selectedRepositoryOnly', 'createdBy'],
+            properties: {
+              lifetimeDays: { const: runnerPreflightPatLifetimeDays },
+              selectedRepositoryOnly: { const: true },
+              createdBy: { const: 'manual-masked-entry' }
+            }
+          }
+        ]
+      }
+    },
+    allOf: [
+      {
+        if: { properties: { authKind: { const: 'github-app' } }, required: ['authKind'] },
+        then: {
+          properties: {
+            app: { type: 'object' },
+            pat: { type: 'null' }
+          }
+        }
+      },
+      {
+        if: { properties: { authKind: { const: 'fine-grained-pat' } }, required: ['authKind'] },
+        then: {
+          properties: {
+            app: { type: 'null' },
+            pat: { type: 'object' }
+          }
+        }
+      }
+    ]
+  };
+}
+
+export function renderCredentialPolicySchema(): string {
+  return canonicalJson(credentialPolicySchema());
 }
 
 interface GovernanceCommand {
@@ -559,59 +799,120 @@ export function renderGovernanceContext(plan: ProjectPlan): string {
 function renderGovernanceGuide(plan: ProjectPlan): string {
   const launchers = plan.agents.map((agent) =>
     agent.id === 'github-copilot'
-      ? '- GitHub Copilot: `/liftoff-repository-governance` from the repository root.'
-      : '- Claude Code: `/liftoff-repository-governance` from the repository root.'
+      ? '- GitHub Copilot: `/liftoff-setup` (`/liftoff-repository-governance` remains an alias).'
+      : '- Claude Code: `/liftoff-setup` (`/liftoff-repository-governance` remains an alias).'
   ).join('\n');
-  return `# Repository governance handoff
+  return `# Liftoff deterministic setup
 
-State: **handoff generated; live enforcement is not active**.
+State: **managed setup generated; live enforcement is not active**.
 
 Liftoff generated deterministic policy and workload context only. It did not
 create or change branches, commits, tags, remotes, pull requests, releases,
 rulesets, GitHub settings, security features, environments, runners, cloud
 resources, deployments, monitoring, alerts, or Slack routes.
 
-## Before activation
+## Next command after init
 
-1. Review \`policy.md\` and \`context.json\`.
-2. Commit the complete project and push it to its intended GitHub repository.
-3. Invoke one selected-agent launcher:
+\`\`\`text
+liftoff init ${plan.safeProjectName}
+cd ${plan.safeProjectName}
+/liftoff-setup
+\`\`\`
+
+Use the generated setup integration from any selected agent:
 
 ${launchers}
 
-4. The agent performs read-only Phase 0, reports evidence, gaps,
-   inapplicable controls, the proposed current \`main\` activation SHA, and an
-   ordered plan.
-5. The agent stops. Explicitly approve or revise that conversational plan.
-   This approval is required before implementation and is distinct from the
-   policy's prohibition on human merge or deployment approval gates.
-6. After approval, the agent creates a new ${plan.specWorkflow.label}
-   governance change. Liftoff does not own or recreate that change.
+\`/liftoff-repository-governance\` is preserved only as a compatibility alias
+that enters the same Liftoff governance engine and user-owned activation state.
+
+## What setup does
+
+\`/liftoff-setup\` delegates every transition to
+\`liftoff governance status|plan|apply-next|resume|verify\`. The CLI resolves
+the project root, loads \`phase-graph.json\`, validates policy ${governancePolicyVersion},
+and records no separate setup-integration version.
+
+Before any live governance work, setup completes the deterministic baseline seed:
+\`liftoff validate\`, applicable backend tests, frontend build,
+\`docker compose config -q\`, \`tofu fmt -check -recursive\`,
+\`tofu init -backend=false\`, \`tofu validate\`, and strict ${plan.specWorkflow.label}
+checks. Missing project boundaries are recorded as inapplicable, not successful.
+The seed's completion means generated files were locally verified and archived;
+it does not mean product behavior, infrastructure, or enforcement exists.
+
+Questions are limited to repository publication, credentials, billed resources
+or policy exceptions, final enforcement, destructive cleanup, and external
+blockers. Rerun \`/liftoff-setup\` to resume; verified phases are not repeated.
+
+Runner-preflight credentials are deterministic. Setup first prefers an existing
+verified selected-repository GitHub App with the required read permissions. If a
+fine-grained PAT is required, use display name
+\`${runnerPreflightDisplayNameTemplate}\`, secret
+\`${runnerPreflightSecretName}\`, 30-day lifetime, current repository only,
+repository metadata read, organization hosted-runner and network-configuration
+read, no writes, and the recorded workflow/job allowlist. Enter the value only
+through the masked input; never paste or show it in chat, argv, command
+arguments, logs, evidence, files, or screenshots. A leaked value is compromised and must be
+manually revoked and rotated.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.
 `;
 }
 
-function renderAgentLauncher(plan: ProjectPlan): string {
-  return `# Activate Liftoff repository governance
+function renderSetupIntegration(): string {
+  return `# /liftoff-setup
 
-Require a committed and pushed GitHub repository. Read
-\`.liftoff/governance/policy.md\` and
-\`.liftoff/governance/context.json\` as the canonical inputs.
+Continue deterministic Liftoff setup for this repository through the same
+deterministic Liftoff governance engine used by compatibility aliases.
 
-Perform only the policy's read-only Phase 0. Report all evidence, gaps,
-inapplicable controls, GitFlow or continuous-delivery conflicts, the proposed
-current \`main\` activation baseline SHA, and the ordered implementation plan.
-Then stop for explicit user approval.
+Contract:
 
-Before approval, do not write files, create a ${plan.specWorkflow.label} change,
-mutate Git, call a mutating GitHub API, configure security, deploy, or create
-monitoring. After approval, create a new ${plan.specWorkflow.label} governance
-change from the discovered facts. Never treat the Liftoff handoff as live
-enforcement and never create or modify
-\`governance/activation-baseline.json\` before approval.
+1. Work from the current directory; the Liftoff CLI resolves the nearest project root.
+2. Invoke only these commands: \`liftoff governance status --json\`,
+   \`liftoff governance plan --json\`, \`liftoff governance apply-next --json\`,
+   \`liftoff governance resume --json\`, and \`liftoff governance verify --json\`.
+3. Explain blockers, approval requirements, and permitted next actions exactly
+   from command output.
+4. If a blocker may have changed, run \`liftoff governance resume --json\`.
+5. If a next transition is ready and approved, run
+   \`liftoff governance apply-next --json\`, then
+   \`liftoff governance verify --json\`.
+6. Never infer phase completion from prose, tasks, or local files. Never use a
+   separate activation state or duplicate the Liftoff engine.
 `;
+}
+
+function renderGovernanceAlias(): string {
+  return `# /liftoff-repository-governance
+
+Compatibility alias for \`/liftoff-setup\`.
+
+Enter the same deterministic Liftoff governance engine and user-owned activation
+state. Follow the \`/liftoff-setup\` contract exactly: invoke only
+\`liftoff governance status --json\`, \`liftoff governance plan --json\`,
+\`liftoff governance apply-next --json\`, \`liftoff governance resume --json\`,
+and \`liftoff governance verify --json\`; explain blockers, approvals, and
+results from their output; and never infer completion or create a separate path.
+`;
+}
+
+function managedCompatibilityInventory(
+  artifacts: readonly GeneratedArtifact[]
+): ManagedCompatibilityInventoryEntry[] {
+  return artifacts.map((artifact) => ({
+    logicalName: artifact.logicalName,
+    pathParts: artifact.pathParts,
+    lifecycle: 'managed-core',
+    contentHashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
+  }));
+}
+
+function sortedGovernancePathAllowlist(
+  artifacts: readonly GeneratedArtifact[]
+): readonly string[][] {
+  return artifacts.map((artifact) => [...artifact.pathParts]);
 }
 
 export function buildRepositoryGovernanceArtifacts(
@@ -623,7 +924,8 @@ export function buildRepositoryGovernanceArtifacts(
   const policy = renderCanonicalGovernancePolicy();
   const context = renderGovernanceContext(plan);
   const guide = `${renderGovernanceGuide(plan).trimEnd()}\n`;
-  const launcher = `${renderAgentLauncher(plan).trimEnd()}\n`;
+  const setupIntegration = `${renderSetupIntegration().trimEnd()}\n`;
+  const alias = `${renderGovernanceAlias().trimEnd()}\n`;
   const artifacts: GeneratedArtifact[] = [
     {
       logicalName: 'repository-governance-policy',
@@ -646,16 +948,62 @@ export function buildRepositoryGovernanceArtifacts(
       pathParts: [...governanceArtifactPaths.guide],
       content: guide
     },
-    ...plan.agents.map((agent): GeneratedArtifact => ({
+    {
+      logicalName: 'repository-governance-phase-graph',
+      category: 'governance',
+      lifecycle: 'managed-core',
+      pathParts: [...governanceArtifactPaths.phaseGraph],
+      content: canonicalPhaseGraphJson
+    },
+    {
+      logicalName: 'repository-governance-compatibility',
+      category: 'governance',
+      lifecycle: 'managed-core',
+      pathParts: [...governanceArtifactPaths.compatibility],
+      content: ''
+    },
+    {
+      logicalName: 'repository-governance-credential-policy-schema',
+      category: 'governance',
+      lifecycle: 'managed-core',
+      pathParts: [...governanceArtifactPaths.credentialPolicySchema],
+      content: renderCredentialPolicySchema()
+    },
+    ...plan.agents.flatMap((agent): GeneratedArtifact[] => [{
+      logicalName: agent.id === 'github-copilot'
+        ? 'liftoff-setup-copilot'
+        : 'liftoff-setup-claude',
+      category: 'governance',
+      lifecycle: 'managed-core',
+      pathParts: [...governanceArtifactPaths.setup[agent.id]],
+      content: setupIntegration
+    }, {
       logicalName: agent.id === 'github-copilot'
         ? 'repository-governance-copilot-launcher'
         : 'repository-governance-claude-launcher',
       category: 'governance',
       lifecycle: 'managed-core',
-      pathParts: [...governanceArtifactPaths[agent.id]],
-      content: launcher
-    }))
+      pathParts: [...governanceArtifactPaths.alias[agent.id]],
+      content: alias
+    }])
   ];
+  const compatibility = artifacts.find((artifact) =>
+    artifact.logicalName === 'repository-governance-compatibility'
+  );
+  if (!compatibility) {
+    throw new Error('Governance compatibility artifact was not rendered.');
+  }
+  const compatibilityMetadata = buildGovernanceCompatibilityMetadata(
+    managedCompatibilityInventory(artifacts),
+    governanceManagedCoreLogicalNames,
+    sortedGovernancePathAllowlist(artifacts)
+  );
+  validateGovernanceCompatibilityMetadata(compatibilityMetadata, {
+    logicalNameAllowlist: governanceManagedCoreLogicalNames,
+    pathAllowlist: sortedGovernancePathAllowlist(artifacts),
+    inventory: managedCompatibilityInventory(artifacts)
+  });
+  compatibility.content = `${canonicalJson(compatibilityMetadata)}\n`;
   for (const artifact of artifacts) {
     assertGovernanceContentSafe(artifact.content);
   }
