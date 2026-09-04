@@ -18,7 +18,7 @@ describe('planner', () => {
     expect(plan.workload).toBe('genai');
     expect(plan.region.slug).toBe('eastus');
     expect(plan.specWorkflow.id).toBe('openspec');
-    expect(plan.environments.map((environment) => environment.id)).toEqual(['dev', 'test', 'prod']);
+    expect(plan.environments.map((environment) => environment.id)).toEqual(['dev', 'staging', 'prod']);
     expect(plan.projectType.id).toBe('genai');
     expect(plan.apiStack.id).toBe('python-fastapi');
     expect(plan.approvedStack).toContain('PydanticAI');
@@ -148,6 +148,15 @@ describe('planner', () => {
 
   it('rejects ambiguous non-interactive regions', () => {
     expect(() => buildProjectPlan({ projectName: 'App', pattern: 'rag', cloud: 'azure', region: 'korea' }, { requireProjectName: true })).toThrow(/ambiguous/);
+  });
+
+  it('rejects the retired test deployment environment from CLI options', () => {
+    expect(() => buildProjectPlan({
+      projectName: 'App',
+      pattern: 'rag',
+      cloud: 'azure',
+      environments: ['test']
+    }, { requireProjectName: true })).toThrow(/Unknown environment: test\./);
   });
 
   it('keeps config-file values when flags are undefined', () => {
@@ -293,6 +302,11 @@ describe('planner', () => {
       }));
       await expect(loadConfigOptions('bad-governance.json', root)).rejects
         .toThrow(/governanceProfile has unsupported value/);
+      await writeFile(path.join(root, 'bad-environment.json'), JSON.stringify({
+        environments: ['test']
+      }));
+      await expect(loadConfigOptions('bad-environment.json', root)).rejects
+        .toThrow(/Configuration field environments contains unsupported value "test"/);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

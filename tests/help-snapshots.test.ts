@@ -54,7 +54,7 @@ describe('reference and helper presentation hierarchy', () => {
     [['providers'], 'azure'],
     [['regions', 'search', 'korea'], 'koreacentral'],
     [['dev', 'logs'], 'docker compose logs -f'],
-    [['infra', 'plan', '--env', 'test'], 'tofu plan -var-file=environments/test.tfvars']
+    [['infra', 'plan', '--env', 'staging'], 'tofu plan -var-file=environments/staging.tfvars']
   ] as const) {
     it(`renders ${args.join(' ')} consistently in rich and plain modes`, async () => {
       const rich = await screen([...args], 100);

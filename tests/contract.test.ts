@@ -33,7 +33,7 @@ const renderMatrixEntry = (options: ProjectOptions) =>
   buildArtifacts(buildProjectPlan(options, { requireProjectName: true }));
 
 describe('manifest contract', () => {
-  it('keeps generated logical names append-only against the checked-in snapshot', async () => {
+  it('keeps generated logical names aligned with the reviewed stable contract', async () => {
     const snapshot = JSON.parse(await readFile(path.join(fixturesDir, 'logical-names.json'), 'utf8')) as Record<string, string[]>;
 
     for (const entry of matrix) {
@@ -42,9 +42,9 @@ describe('manifest contract', () => {
         .sort();
       expect(
         names,
-        `logicalName set changed for plan "${entry.key}". Logical names are an append-only public contract: ` +
-          'never rename or remove one (add a CLI-side alias when a rename is unavoidable). ' +
-          'If you intentionally ADDED artifacts, regenerate tests/fixtures/logical-names.json.'
+        `logicalName set changed for plan "${entry.key}". Non-environment logical names are append-only; ` +
+          'environment-derived names may change only with an explicit environment retirement in the main spec. ' +
+          'Update tests/fixtures/logical-names.json only after reviewing that contract.'
       ).toEqual(snapshot[entry.key]);
     }
   });
@@ -78,7 +78,7 @@ describe('manifest contract', () => {
         }
         if (artifact.lifecycle === 'project') {
           expect(artifact.provisioningGroup).toMatch(
-            /^(base|frontend|power-apps-starter|environment:(dev|test|prod))$/
+            /^(base|frontend|power-apps-starter|environment:(dev|staging|prod))$/
           );
         } else {
           expect(artifact.provisioningGroup).toBeUndefined();
@@ -225,7 +225,7 @@ describe('manifest contract', () => {
         cloud: 'azure',
         region: 'eastus',
         frontend: false,
-        environments: ['dev', 'test', 'prod']
+        environments: ['dev', 'staging', 'prod']
       });
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
@@ -331,6 +331,29 @@ describe('manifest contract', () => {
       );
 
       await expect(loadManifest(tempRoot)).rejects.toThrow(/Standard manifests cannot record a GenAI pattern/);
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects retired test deployment environments in manifests', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-contract-'));
+    const projectRoot = path.join(tempRoot, 'invalid-environment');
+    try {
+      await writeArtifacts(projectRoot, renderMatrixEntry({
+        projectName: 'Invalid Environment',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure'
+      }));
+      const manifestPath = path.join(projectRoot, 'liftoff.manifest.json');
+      const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+      manifest.project.workload.environments = ['dev', 'test', 'prod'];
+      await writeFile(manifestPath, JSON.stringify(manifest, null, 2), 'utf8');
+
+      await expect(loadManifest(projectRoot)).rejects.toThrow(
+        /Manifest project workload environment "test" is invalid/
+      );
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

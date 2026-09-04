@@ -2,8 +2,8 @@ import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import {
   apiStacks,
+  canonicalDefaultEnvironments,
   canonicalizeCodingAgents,
-  environments,
   getApiStack,
   getCodingAgent,
   getEnvironment,
@@ -527,7 +527,7 @@ function approvedStackFor(workload: WorkloadPlan): string[] {
 
 function resolveEnvironments(values?: string[]): { values: EnvironmentDefinition[]; issues: string[] } {
   if (!values || values.length === 0) {
-    return { values: environments, issues: [] };
+    return { values: canonicalDefaultEnvironments, issues: [] };
   }
 
   const issues: string[] = [];

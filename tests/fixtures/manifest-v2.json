@@ -11,7 +11,7 @@
     "specWorkflow": "openspec",
     "environments": [
       "dev",
-      "test",
+      "staging",
       "prod"
     ]
   },
@@ -467,21 +467,21 @@
       "contentHash": "sha256:e0e1030dab3e21683df0f2d37a55769b68eb2e42439af607161c3fa8fb903ef9"
     },
     {
-      "logicalName": "environment-test-backend",
+      "logicalName": "environment-staging-backend",
       "category": "environment",
       "pathParts": [
         "environments",
-        "test",
+        "staging",
         "backend.env"
       ],
       "contentHash": "sha256:173d21262bd570fa658d32b496c07984b66729aaaf98fe812fae3564ecd2390a"
     },
     {
-      "logicalName": "environment-test-functions",
+      "logicalName": "environment-staging-functions",
       "category": "environment",
       "pathParts": [
         "environments",
-        "test",
+        "staging",
         "functions.env"
       ],
       "contentHash": "sha256:742fd66ffd3d0c7645971079fc84a9123a8d44709190b4eea150c4716aa2e2f4"
@@ -615,14 +615,14 @@
       "contentHash": "sha256:0eca28f7785e8861e9a665bff6b75564b695facc11ea0979c1d04ab61480f5e6"
     },
     {
-      "logicalName": "opentofu-test-tfvars",
+      "logicalName": "opentofu-staging-tfvars",
       "category": "infrastructure",
       "pathParts": [
         "infrastructure",
         "opentofu",
         "azure",
         "environments",
-        "test.tfvars"
+        "staging.tfvars"
       ],
       "contentHash": "sha256:1ff1c79f2e1c96417f6139b82d3ee9277d15859a4f332dd9f00faf965362c5a9"
     },

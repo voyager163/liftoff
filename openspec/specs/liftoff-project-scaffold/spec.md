@@ -153,10 +153,10 @@ The system SHALL configure cloud services and local substitutes behind stable ap
 - **THEN** the application uses Azure Service Bus through the same messaging interface
 
 ### Requirement: Generated projects include environment-specific configuration
-The system SHALL generate selected dev, test, and prod configuration templates for GenAI and standard API application runtime, applicable Azure Functions workers, local development, and infrastructure. Power Apps code apps SHALL not generate those API environment templates or invent Power Platform environment configuration.
+The system SHALL generate selected dev, staging, and prod configuration templates for GenAI and standard API application runtime, applicable Azure Functions workers, local development, and infrastructure. Power Apps code apps SHALL not generate those API environment templates or invent Power Platform environment configuration.
 
 #### Scenario: Generate selected environments
-- **WHEN** a developer selects dev, test, and prod environments for an API workload
+- **WHEN** a developer selects dev, staging, and prod environments for an API workload
 - **THEN** the generated project includes environment-specific configuration files for all selected environments
 
 #### Scenario: Generate Function worker settings templates

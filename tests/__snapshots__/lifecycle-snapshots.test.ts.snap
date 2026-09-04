@@ -224,7 +224,7 @@ Governance handoff Local handoff generated; live enforcement is not active
 Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments              dev, test, prod
+Environments              dev, staging, prod
 Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
@@ -613,7 +613,7 @@ Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
 Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
-Environments: dev, test, prod
+Environments: dev, staging, prod
 Approved stack: Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
@@ -991,7 +991,7 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments              dev, test, prod                                                    │
+│ Environments              dev, staging, prod                                                 │
 │ Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure        │
 │ Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu      │
 │ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
