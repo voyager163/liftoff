@@ -5,6 +5,7 @@ Run `liftoff help` or command-specific help for the authoritative syntax:
 ```bash
 liftoff init --help
 liftoff migrate --help
+liftoff governance --help
 liftoff upgrade --help
 liftoff update --help
 ```
@@ -15,7 +16,7 @@ duplicates, and extra positional arguments fail before generation.
 ## Lifecycle
 
 ```text
-install -> upgrade CLI -> plan -> init or migrate -> validate and doctor -> update project -> dev and infra helpers
+install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate, doctor, governance verify -> update project -> dev and infra helpers
 ```
 
 | Command | Behavior |
@@ -25,6 +26,11 @@ install -> upgrade CLI -> plan -> init or migrate -> validate and doctor -> upda
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
+| `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
+| `liftoff governance plan [project]` | Previews ready and blocked phase transitions, required evidence, approval gates, permitted mutations, and cost-envelope impact without writes |
+| `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
+| `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
+| `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
@@ -41,7 +47,7 @@ install -> upgrade CLI -> plan -> init or migrate -> validate and doctor -> upda
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
 
-Generation, validation, doctor, and update consume the packaged
+Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
 Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
 1.0 release lines; these commands never resolve mutable latest versions.
@@ -77,8 +83,38 @@ options rather than ignoring them.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
-local policy handoff only; `none` omits it. See
+local deterministic setup handoff only; `none` omits it. See
 [repository governance](repository-governance.md).
+
+## Governance setup commands
+
+```bash
+liftoff governance status [project] [--json]
+liftoff governance plan [project] [--json]
+liftoff governance apply-next [project] [--json] [--execute]
+liftoff governance resume [project] [--json]
+liftoff governance verify [project] [--json]
+```
+
+These commands are strict and project-aware. Unknown governance subcommands,
+unknown flags, invalid `--execute` placement, or extra positionals fail before
+project discovery or mutation. `status`, `plan`, and `verify` are read-only.
+`apply-next` previews by default; `--execute` is the explicit request to save the
+reviewed plan and execute at most one phase whose dependencies, evidence, and
+approval envelope are satisfied. `resume` rechecks blockers and downstream
+readiness without repeating verified operations.
+
+Governance JSON uses versioned objects and includes the complete activation
+version vector: creating Liftoff version, manifest artifact version 7, policy
+version 6, activation-contract version 1, graph/state/evidence/approval/
+supersession/credential schema versions, and the phase-graph hash. It never
+emits a setup-skill version. Future identities, unsupported compatibility
+tuples, and unrecognized graph hashes block without rewriting state; the remedy
+names the exact field and required Liftoff upgrade.
+
+`/liftoff-setup` and the compatibility alias `/liftoff-repository-governance`
+call these commands instead of inferring phase completion from prose or task
+checkboxes.
 
 OpenSpec projects use all 12 OpenSpec 1.11 workflows with both skills and
 commands. `--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
@@ -138,10 +174,12 @@ liftoff update --check --json
 
 Plain `liftoff update` is imperative and prompt-free. It applies safe new,
 missing, untouched-upgrade, clean-move, and recorded-state changes only for
-explicit `managed-core` artifacts. Core conflicts are skipped and core orphans
-are reported without deletion. During legacy governance adoption, preserved
-unrecorded conflicts remain outside managed ownership and set local state to
-`handoff-partial`.
+explicit `managed-core` artifacts. For manifest v7 this includes governance
+policy, context, guide, phase graph, compatibility metadata, credential-policy
+schema, setup integrations, and selected-agent compatibility aliases. Core
+conflicts are skipped and core orphans are reported without deletion. During
+legacy governance adoption, preserved unrecorded conflicts remain outside
+managed ownership and set local state to `handoff-partial`.
 
 Application source, tests, dependencies and locks, database assets, Docker and
 Compose files, environment files, documentation, Power Apps starter files, and
@@ -157,9 +195,10 @@ adopted as provenance; any differing destination blocks the group even with
 recreates or deletes project files.
 
 Use `--check` whenever no project bytes may change. Human check mode prints
-managed-core drift, ownership-only manifest migration, and authorized
-provisioning. It recommends `--force` only for core conflicts. `--check
---force` is invalid because check mode never authorizes writes.
+managed-core drift, ownership-only manifest v2-v7 migration, activation-identity
+compatibility, reconciliation-required state, and authorized provisioning. It
+recommends `--force` only for core conflicts. `--check --force` is invalid
+because check mode never authorizes writes.
 
 `--json` selects output format, not safety. `liftoff update --json` applies safe
 changes and emits the versioned apply result. `liftoff update --check --json`
@@ -176,7 +215,7 @@ production projects adopt them through a separately reviewed project change.
 The existing `liftoff migrate` command only adopts a non-Liftoff source into a
 fresh target; it is not an in-place template upgrade.
 
-### Migration from 0.6.x
+### Migration from 0.6.x and earlier manifest readers
 
 The `--apply` flag was removed in 0.7.0. These are historical 0.6.x commands,
 not current syntax:
@@ -190,6 +229,12 @@ not current syntax:
 Invoking removed syntax fails during argument parsing, before project discovery
 or filesystem access.
 
+Current readers support manifest artifact versions v2, v3, v4, v5, v6, and v7.
+All current writes use v7. Supported historical reads are normalized through an
+explicit compatibility map; future versions, individually known but unsupported
+tuples, and unknown phase-graph hashes block and report an upgrade or
+reconciliation remedy instead of downgrading or fabricating evidence.
+
 ## JSON and exit codes
 
 Machine-readable maintenance contracts bypass decorative presentation:
@@ -197,6 +242,9 @@ Machine-readable maintenance contracts bypass decorative presentation:
 ```bash
 liftoff validate --json
 liftoff doctor --json
+liftoff governance status --json
+liftoff governance plan --json
+liftoff governance verify --json
 liftoff upgrade --json
 liftoff upgrade --check --json
 liftoff update --json
@@ -205,7 +253,7 @@ liftoff update --check --json
 
 Each JSON object has a top-level numeric `schemaVersion`. Update JSON uses
 schema version 2 and includes `scope: "managed-core"`, ownership-migration
-state, and a separate provisioning collection.
+state, activation compatibility, and a separate provisioning collection.
 Operational warnings, such as a dirty-worktree warning before JSON apply, are
 written to stderr so stdout remains one parseable JSON object.
 

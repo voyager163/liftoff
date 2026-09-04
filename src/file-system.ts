@@ -36,12 +36,23 @@ import type {
 import { validateFrameworkInstallation } from './framework-validation.js';
 import {
   isManagedCoreLogicalName,
+  managedCoreLogicalNames,
   legacyProvisioningGroup
 } from './artifact-lifecycle.js';
 import {
   governanceArtifactPaths,
   governancePolicyVersion
 } from './repository-governance.js';
+import {
+  currentActivationIdentity
+} from './governance-activation/graph.js';
+import {
+  validateActivationIdentity
+} from './governance-activation/validators.js';
+import {
+  validateGovernanceCompatibilityMetadata,
+  type ManagedCompatibilityInventoryEntry
+} from './governance-activation/compatibility.js';
 
 export class FileSystemError extends Error {
   constructor(message: string) {
@@ -203,7 +214,7 @@ export async function writeArtifacts(targetRoot: string, artifacts: GeneratedArt
   }
 }
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5, 6];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5, 6, 7];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
@@ -213,6 +224,7 @@ const LEGACY_SEED_LOGICAL_NAMES = new Set([
   'openspec-seed-proposal',
   'openspec-seed-design',
   'openspec-seed-tasks',
+  'openspec-seed-spec',
   'openspec-spec-placeholder',
   'spec-kit-constitution',
   'specs-placeholder'
@@ -253,11 +265,13 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
   }
   if (!SUPPORTED_MANIFEST_VERSIONS.includes(artifactVersion)) {
     throw new FileSystemError(
-      `Unsupported manifest artifactVersion ${JSON.stringify(artifactVersion)}; this CLI supports version ${SUPPORTED_MANIFEST_VERSIONS.join(', ')}. ` +
-        'Regenerate the project with this CLI or use the Liftoff version that generated it.'
+      `Unsupported manifest artifactVersion ${JSON.stringify(artifactVersion)}: found ${JSON.stringify(artifactVersion)}; ` +
+        `supported values are ${SUPPORTED_MANIFEST_VERSIONS.join(', ')}; write version is 7. ` +
+        `Minimum Liftoff ${currentActivationIdentity.liftoffVersion} is required for manifest v7. ` +
+        'Regenerate the project with this CLI, upgrade the CLI for future manifests, or use the Liftoff version that generated this project; no downgrade or write was performed.'
     );
   }
-  if (artifactVersion === 6) {
+  if (artifactVersion === 6 || artifactVersion === 7) {
     assertOnlyFields(
       raw,
       [
@@ -302,13 +316,13 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
   let managedArtifacts: ManifestManagedArtifact[];
   let projectArtifacts: ManifestProjectArtifact[];
   let filteredLegacySeedOwnership = false;
-  if (artifactVersion === 6) {
+  if (artifactVersion === 6 || artifactVersion === 7) {
     managedArtifacts = normalizeManifestManagedArtifacts(
       raw.managedArtifacts,
       'Manifest.managedArtifacts'
     );
     projectArtifacts = normalizeManifestProjectArtifacts(raw.projectArtifacts);
-    validateV6ArtifactAuthority(managedArtifacts, projectArtifacts);
+    validateV6AndV7ArtifactAuthority(managedArtifacts, projectArtifacts);
   } else {
     const normalizedArtifacts = normalizeManifestManagedArtifacts(
       raw.artifacts,
@@ -336,7 +350,7 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
   }
   validateManifestArtifactUniqueness(managedArtifacts, projectArtifacts);
   const manifest: LiftoffManifest = {
-    artifactVersion: artifactVersion as 2 | 3 | 4 | 5 | 6,
+    artifactVersion: artifactVersion as 2 | 3 | 4 | 5 | 6 | 7,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project,
@@ -762,7 +776,9 @@ function normalizeManifestGovernance(
   }
   assertOnlyFields(
     value,
-    ['profile', 'policyVersion', 'state'],
+    artifactVersion === 7
+      ? ['profile', 'policyVersion', 'state', 'activationIdentity']
+      : ['profile', 'policyVersion', 'state'],
     'Manifest.governance'
   );
   const policyVersion = requiredString(
@@ -775,15 +791,48 @@ function normalizeManifestGovernance(
       'Manifest governance policyVersion must be a positive integer.'
     );
   }
-  if (Number(policyVersion) > Number(governancePolicyVersion)) {
+  const supportedPolicyVersions = artifactVersion === 7
+    ? [governancePolicyVersion]
+    : ['1', '2', '3', '4', '5', governancePolicyVersion];
+  if (!supportedPolicyVersions.includes(policyVersion)) {
     throw new FileSystemError(
-      `Manifest governance policyVersion cannot be newer than ${governancePolicyVersion}.`
+      `Manifest governance policyVersion cannot be newer than ${governancePolicyVersion}. ` +
+        `Unsupported Manifest.governance.policyVersion: found ${JSON.stringify(policyVersion)}; ` +
+        `supported values for artifactVersion ${artifactVersion} are ${supportedPolicyVersions.map((value) => JSON.stringify(value)).join(', ')}. ` +
+        `Minimum Liftoff ${currentActivationIdentity.liftoffVersion} is required for policy ${governancePolicyVersion}; ` +
+        'upgrade the CLI for future policy identities or restore a supported manifest without writing.'
+    );
+  }
+  if (artifactVersion === 7 && policyVersion !== governancePolicyVersion) {
+    throw new FileSystemError(
+      `Manifest governance policyVersion must be ${governancePolicyVersion} for artifactVersion 7.`
     );
   }
   if (state !== 'handoff-generated' && state !== 'handoff-partial') {
     throw new FileSystemError(
       'Enabled manifest governance requires handoff-generated or handoff-partial state.'
     );
+  }
+  if (artifactVersion === 7) {
+    let activationIdentity;
+    try {
+      activationIdentity = validateActivationIdentity(value.activationIdentity);
+    } catch (error) {
+      throw new FileSystemError(
+        `Manifest governance activationIdentity is invalid: ${errorMessage(error)}`
+      );
+    }
+    if (activationIdentity.policyVersion !== policyVersion) {
+      throw new FileSystemError(
+        'Manifest governance activationIdentity.policyVersion must match policyVersion.'
+      );
+    }
+    return {
+      profile: profile.id,
+      policyVersion,
+      activationIdentity,
+      state
+    };
   }
   return {
     profile: profile.id,
@@ -915,7 +964,7 @@ function normalizeProjectProvisioningGroup(
   throw new FileSystemError(`${scope}.provisioningGroup is invalid.`);
 }
 
-function validateV6ArtifactAuthority(
+function validateV6AndV7ArtifactAuthority(
   managedArtifacts: readonly ManifestManagedArtifact[],
   projectArtifacts: readonly ManifestProjectArtifact[]
 ): void {
@@ -962,13 +1011,27 @@ const governanceLogicalPaths = new Map<string, readonly string[]>([
   ['repository-governance-policy', governanceArtifactPaths.policy],
   ['repository-governance-context', governanceArtifactPaths.context],
   ['repository-governance-guide', governanceArtifactPaths.guide],
+  ['repository-governance-phase-graph', governanceArtifactPaths.phaseGraph],
+  ['repository-governance-compatibility', governanceArtifactPaths.compatibility],
+  [
+    'repository-governance-credential-policy-schema',
+    governanceArtifactPaths.credentialPolicySchema
+  ],
+  [
+    'liftoff-setup-copilot',
+    governanceArtifactPaths.setup['github-copilot']
+  ],
+  [
+    'liftoff-setup-claude',
+    governanceArtifactPaths.setup.claude
+  ],
   [
     'repository-governance-copilot-launcher',
-    governanceArtifactPaths['github-copilot']
+    governanceArtifactPaths.alias['github-copilot']
   ],
   [
     'repository-governance-claude-launcher',
-    governanceArtifactPaths.claude
+    governanceArtifactPaths.alias.claude
   ]
 ]);
 
@@ -998,6 +1061,14 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
     'repository-governance-policy',
     'repository-governance-context',
     'repository-governance-guide',
+    'repository-governance-phase-graph',
+    'repository-governance-compatibility',
+    'repository-governance-credential-policy-schema',
+    ...manifest.project.agents.map((agent) =>
+      agent === 'github-copilot'
+        ? 'liftoff-setup-copilot'
+        : 'liftoff-setup-claude'
+    ),
     ...manifest.project.agents.map((agent) =>
       agent === 'github-copilot'
         ? 'repository-governance-copilot-launcher'
@@ -1070,6 +1141,45 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
       } else {
         issues.push(`Unable to access artifact ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`);
       }
+    }
+  }
+  const compatibilityArtifact = manifest.managedArtifacts.find((artifact) =>
+    artifact.logicalName === 'repository-governance-compatibility'
+  );
+  if (
+    compatibilityArtifact &&
+    manifest.governance.profile !== 'none' &&
+    manifest.governance.profile !== 'unspecified'
+  ) {
+    try {
+      const bytes = await readProjectFile(projectRoot, compatibilityArtifact.pathParts);
+      if (bytes === undefined) {
+        issues.push(
+          `Missing artifact ${compatibilityArtifact.logicalName} at ${compatibilityArtifact.pathParts.join('/')}`
+        );
+      } else {
+        const expectedInventory: ManagedCompatibilityInventoryEntry[] =
+          manifest.managedArtifacts.map((artifact) => ({
+            logicalName: artifact.logicalName,
+            pathParts: artifact.pathParts,
+            lifecycle: 'managed-core',
+            contentHashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
+          }));
+        validateGovernanceCompatibilityMetadata(
+          JSON.parse(bytes.toString('utf8')) as unknown,
+          manifest.governance.state === 'handoff-generated'
+            ? {
+                logicalNameAllowlist: managedCoreLogicalNames,
+                pathAllowlist: manifest.managedArtifacts.map((artifact) => artifact.pathParts),
+                inventory: expectedInventory
+              }
+            : {
+                logicalNameAllowlist: managedCoreLogicalNames
+              }
+        );
+      }
+    } catch (error) {
+      issues.push(`Invalid repository-governance-compatibility at ${compatibilityArtifact.pathParts.join('/')}: ${errorMessage(error)}`);
     }
   }
   for (const artifact of manifest.projectArtifacts) {

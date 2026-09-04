@@ -593,11 +593,11 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
           value: 'Local handoff generated; live enforcement is not active'
         },
         {
-          label: 'Governance launchers',
+          label: 'Governance setup integrations',
           value: plan.agents.map((agent) =>
             agent.id === 'github-copilot'
-              ? '.github/prompts/liftoff-repository-governance.prompt.md'
-              : '.claude/commands/liftoff-repository-governance.md'
+              ? '.github/prompts/liftoff-setup.prompt.md'
+              : '.claude/commands/liftoff-setup.md'
           ).join(', ')
         },
         {

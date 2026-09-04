@@ -9,6 +9,7 @@ import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import { loadManifest, validateGeneratedProject, writeArtifacts } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
+import { currentActivationIdentity } from '../src/governance-activation/index.js';
 import type { ProjectOptions } from '../src/types.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -169,7 +170,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('writes schema v6 with framework, governance, and separated ownership', async () => {
+  it('writes schema v7 with framework, governance identity, and separated ownership', async () => {
     const artifacts = renderMatrixEntry({
       projectName: 'Manifest V3',
       pattern: 'rag',
@@ -181,10 +182,10 @@ describe('manifest contract', () => {
       artifactVersion: number;
       project: { agents: string[]; workload: { kind: string } };
       framework: { state: string; adapter: string; contractVersion: string };
-      governance: { profile: string; policyVersion: string; state: string };
+      governance: { profile: string; policyVersion: string; activationIdentity: unknown; state: string };
     };
 
-    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.artifactVersion).toBe(7);
     expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
     expect(manifest.framework).toEqual({
@@ -194,11 +195,12 @@ describe('manifest contract', () => {
     });
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '5',
+      policyVersion: '6',
+      activationIdentity: currentActivationIdentity,
       state: 'handoff-generated'
     });
     expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)
-      .toHaveLength(5);
+      .toHaveLength(10);
     expect((manifest as unknown as { projectArtifacts: unknown[] }).projectArtifacts.length)
       .toBeGreaterThan(0);
   });
@@ -230,7 +232,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('records and reloads generic as an explicit schema-v6 GenAI identity', async () => {
+  it('records and reloads generic as an explicit schema-v7 GenAI identity', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-generic-contract-'));
     const projectRoot = path.join(tempRoot, 'generic-app');
     try {
@@ -241,7 +243,7 @@ describe('manifest contract', () => {
       }));
 
       const manifest = await loadManifest(projectRoot);
-      expect(manifest.artifactVersion).toBe(6);
+      expect(manifest.artifactVersion).toBe(7);
       expect(manifest.project.workload).toMatchObject({
         kind: 'genai',
         apiStack: 'python-fastapi',

@@ -110,6 +110,7 @@ try {
 
   assertPackageContains(packResult, 'package.json');
   assertPackageContains(packResult, 'README.md');
+  assertPackageContains(packResult, 'DEVELOPER.md');
   assertPackageContains(packResult, 'LICENSE');
   for (const documentationPath of [
     'docs/getting-started.md',

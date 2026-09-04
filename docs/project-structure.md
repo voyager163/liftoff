@@ -23,7 +23,15 @@ project/
 |   `-- governance/             # managed-core local handoff when enabled
 |       |-- policy.md
 |       |-- context.json
-|       `-- README.md
+|       |-- README.md
+|       |-- phase-graph.json
+|       |-- compatibility.json
+|       `-- credential-policy.schema.json
+|-- governance/                 # user-owned activation state after setup starts
+|   |-- activation-state.json
+|   |-- approvals/
+|   |-- evidence/
+|   `-- credentials/
 |-- backend/
 |   `-- uv.lock                 # Python stacks only
 |-- database/
@@ -43,8 +51,10 @@ project/
 |-- .claude/skills/openspec-*/ and .claude/commands/opsx/  # OpenSpec + Claude
 |-- .github/workflows/copilot-setup-steps.yml              # optional hosted agent
 |-- .github/agents/openspec.agent.md                       # optional hosted agent
-|-- .github/prompts/liftoff-repository-governance.prompt.md
-|   or .claude/commands/liftoff-repository-governance.md
+|-- .github/prompts/liftoff-setup.prompt.md
+|-- .github/prompts/liftoff-repository-governance.prompt.md # compatibility alias
+|   or .claude/commands/liftoff-setup.md
+|   and .claude/commands/liftoff-repository-governance.md
 |-- frontend/                  # only when selected
 |-- functions/<worker-name>/  # only for worker-enabled GenAI patterns
 `-- migration/legacy/         # only after liftoff migrate
@@ -77,6 +87,10 @@ project/
 - OpenSpec projects receive all 12 pinned workflows as both skills and commands
   for supported selected-agent surfaces. The two hosted Copilot agent files are
   generated only after explicit opt-in.
+- `/liftoff-setup` is generated when repository governance is enabled. It calls
+  `liftoff governance status|plan|apply-next|resume|verify` and has no model
+  selection or separate setup-skill version. `/liftoff-repository-governance` is
+  a compatibility alias for the same state.
 
 ### Conditional areas
 
@@ -111,14 +125,16 @@ project/
 |   |-- hooks/
 |   |-- pages/
 |   `-- providers/
+|-- .liftoff/governance/        # managed-core setup files when enabled
+|-- governance/                 # user-owned activation state after setup starts
 `-- openspec/ or .specify/
 ```
 
 The exact selected-agent governance launcher is generated only when the
 repository-governance profile is enabled. It is Liftoff-owned; neighboring
 framework files remain framework-owned. Agent-created governance changes and
-`governance/activation-baseline.json` remain user-owned and are not listed in
-the manifest.
+`governance/activation-state.json`, approvals, evidence, credentials, and
+supersession records remain user-owned and are not listed as managed artifacts.
 
 This root follows the pinned official Microsoft starter. It includes the
 Power Apps SDK, Vite plugin, and project-local CLI through locked npm
@@ -127,6 +143,19 @@ dependencies.
 Liftoff intentionally does not generate `backend/`, `database/`,
 `docker-compose.yml`, `environments/`, `infrastructure/`, or
 `power.config.json` for this workload.
+
+## Managed versus user-owned governance artifacts
+
+`liftoff.manifest.json` v7 records managed-core hashes for the governance policy,
+context, guide, phase graph, compatibility metadata, credential-policy schema,
+setup integrations, and compatibility aliases. `liftoff update` may reconcile
+only those managed-core paths. It preserves user-owned activation state,
+immutable evidence, approvals, credential policies, active OpenSpec changes, and
+project source.
+
+Manifest paths are stored as path-part arrays and validated on Windows, macOS,
+and Linux. Generated setup content is identified by managed content hashes; the
+activation version vector and graph hash describe the behavior contract.
 
 ## GenAI integration configuration
 

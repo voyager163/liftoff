@@ -66,7 +66,8 @@ describe('public documentation', () => {
   it('keeps the root README concise and puts the interactive first-use path first', async () => {
     const readme = await repositoryFile('README.md');
     const install = 'npm install -g @msn-control/liftoff@latest';
-    const init = 'liftoff init';
+    const init = 'liftoff init my-project';
+    const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, three workloads');
 
     expect(readme.split('\n').length).toBeLessThan(130);
@@ -74,6 +75,10 @@ describe('public documentation', () => {
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
     expect(readme.indexOf(init)).toBeLessThan(workloadSection);
+    expect(readme.indexOf('cd my-project')).toBeGreaterThan(readme.indexOf(init));
+    expect(readme.indexOf(setup)).toBeGreaterThan(readme.indexOf('cd my-project'));
+    expect(readme).toMatch(/completes,\s+syncs, and archives the generated bootstrap seed/);
+    expect(readme).toContain('No model selection is required for setup');
     expect(readme).toContain('GenAI application');
     expect(readme).toContain('API application');
     expect(readme).toContain('Power Apps code app');
@@ -93,6 +98,7 @@ describe('public documentation', () => {
       .map((match) => match[1])
       .join('\n');
     expect(bashExamples).not.toMatch(/liftoff init .+--/);
+    expect(bashExamples).not.toContain('liftoff init\n');
     expect(bashExamples).not.toContain('liftoff create');
   });
 
@@ -115,13 +121,14 @@ describe('public documentation', () => {
   });
 
   it('ships every progressive guide and resolves all local Markdown links', async () => {
-    for (const file of ['README.md', 'CONTRIBUTING.md', ...requiredDocs]) {
+    for (const file of ['README.md', 'CONTRIBUTING.md', 'DEVELOPER.md', ...requiredDocs]) {
       await access(path.join(repositoryRoot, file));
       await expectLocalLinksToResolve(file);
     }
 
     const packageJson = JSON.parse(await repositoryFile('package.json'));
     expect(packageJson.files).toContain('docs');
+    expect(packageJson.files).toContain('DEVELOPER.md');
   });
 
   it('documents distinct workload questions, outputs, prerequisites, and deferred actions', async () => {
@@ -345,11 +352,11 @@ describe('public documentation', () => {
     expect(gettingStarted).toContain('local files only');
     expect(workloads).toContain('repository-governance');
     expect(cli).toContain('--governance single-maintainer-gitflow|none');
-    expect(existing).toContain('schema v6');
+    expect(existing).toContain('manifest artifact version 7');
     expect(prerequisites).toMatch(/no additional initialization\s+prerequisite/);
     expect(safety).toMatch(/never authorizes agent execution/);
     expect(structure).toContain('.liftoff/');
-    expect(manifests).toContain('manifest schema v6');
+    expect(manifests).toContain('manifest artifact version 7');
     expect(manifests).toContain('handoff-partial');
     expect(troubleshooting).toContain('handoff-generated');
     expect(troubleshooting).toContain('no ownership entry');
@@ -358,40 +365,80 @@ describe('public documentation', () => {
     expect(manifests).toContain('`managedArtifacts`');
     expect(manifests).toContain('`projectArtifacts`');
     expect(manifests).toContain('grant update authority');
-    expect(manifests).toContain('Readers accept historical policy versions');
+    expect(manifests).toContain('the complete compatibility tuple is supported');
     expect(safety).toContain('cannot be restored or overwritten by any');
     expect(safety).toContain('outside manifest ownership');
-    expect(cli).toContain('outside managed ownership');
+    expect(cli).toMatch(/outside\s+managed ownership/);
     expect(contributing).toContain('Maintain the repository-governance profile');
     for (const phrase of [
       'single-maintainer-gitflow',
-      'handoff-generated',
-      'handoff-partial',
-      'live enforcement is not active',
+      'manifest v7',
+      'managed-core files',
+      'user-owned activation state',
       'read-only Phase 0',
-      'Explicitly approve',
-      'governance/activation-baseline.json',
-      'required contexts green and deliberately red',
-      'rulesets last'
+      'approval envelope',
+      'evidence-ready, approved phase',
+      'green-red-proof',
+      'rulesets-applied',
+      'bootstrap-state-disposed'
     ]) {
       expect(governance).toContain(phrase);
     }
     expect(policy).toContain('GitHub Secret Protection');
     expect(policy).toContain('Trivy');
     expect(policy).toContain('DORA');
-    expect(policy).toContain('policyVersion: "5"');
-    expect(governance).toContain('Azure Firewall Basic');
-    expect(governance).toContain('Azure NAT Gateway');
-    expect(governance).toContain("repository's Staging subscription");
-    expect(governance).toMatch(/read-only\s+for exactly 30 days/);
-    expect(governance).toContain('resource_provider_registrations = "none"');
-    expect(governance).toContain('Microsoft.Network');
-    expect(governance).toContain('GitHub.Network');
-    expect(governance).toContain('Microsoft.Network/AllowBringYourOwnPublicIpAddress');
-    expect(governance).toContain('AzurePlatformDNS');
-    expect(governance).toMatch(/never\s+provisions Azure or GitHub resources/);
+    expect(policy).toContain('policyVersion: "6"');
+    expect(governance).toContain('GitHub-hosted larger runner');
+    expect(governance).toMatch(/Azure\s+VNet injection/);
+    expect(governance).toContain('selected-repository GitHub App');
+    expect(governance).toMatch(/read-only\s+evidence for exactly 30 days/);
+    expect(governance).toMatch(/never\s+provisions\s+Azure or GitHub resources/i);
     expect(safety).toContain('Azure or other cloud resources');
-    expect(governance).toContain('reported once as orphans and left on disk');
+    expect(governance).toContain('become reported orphans and remain on disk');
+  });
+
+  it('documents deterministic setup identity, credentials, and baseline gates', async () => {
+    const [readme, gettingStarted, governance, cli, manifests, safety, troubleshooting, developer] =
+      await Promise.all([
+        repositoryFile('README.md'),
+        repositoryFile('docs/getting-started.md'),
+        repositoryFile('docs/repository-governance.md'),
+        repositoryFile('docs/cli-reference.md'),
+        repositoryFile('docs/configuration-and-manifests.md'),
+        repositoryFile('docs/safety-and-consent.md'),
+        repositoryFile('docs/troubleshooting.md'),
+        repositoryFile('DEVELOPER.md')
+      ]);
+    const all = [readme, gettingStarted, governance, cli, manifests, safety, troubleshooting, developer].join('\n');
+
+    expect(readme).toContain('liftoff init my-project');
+    expect(readme).toContain('/liftoff-setup');
+    expect(gettingStarted).toContain('tofu init -backend=false');
+    expect(gettingStarted).toContain('The baseline does not run `tofu plan`, `tofu apply`');
+    expect(gettingStarted).toContain('Absent components are inapplicable');
+    expect(governance).toContain('capability chapters, not');
+    expect(governance).toContain('seed-valid');
+    expect(governance).toContain('bootstrap-state-disposed');
+    expect(governance).toContain('Workflow/job allowlist');
+    expect(cli).toContain('liftoff governance apply-next [project] [--json] [--execute]');
+    expect(cli).toMatch(/It never\s+emits a setup-skill version/);
+    expect(manifests).toContain('Readers support artifact versions v2, v3, v4, v5, v6, and v7');
+    expect(safety).toContain('liftoff governance apply-next --execute');
+    expect(troubleshooting).toContain('`identity-incompatible`');
+    expect(developer).toContain('"liftoffVersion": "0.10.0"');
+    expect(developer).toContain('"policyVersion": "6"');
+    expect(developer).toContain('"activationContractVersion": 1');
+    expect(developer).toContain('"manifestArtifactVersion": 7');
+    expect(developer).toContain('b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7');
+    expect(developer).toContain('There is no separate `/liftoff-setup` skill version');
+    expect(developer).toContain('CLI SemVer');
+    expect(developer).toContain('Compatibility maintenance');
+    expect(all).toContain('RUNNER_CONFIGURATION_READ_TOKEN');
+    expect(all).toContain('<repo>-runner-preflight-read');
+    expect(all).toContain('selected-repository GitHub App');
+    expect(all).toMatch(/Never paste or show the\s+value in chat, argv, command arguments,\s+logs, evidence/);
+    expect(all).not.toMatch(/gh secret set[^\n]*(?:github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)/);
+    expect(all).not.toMatch(/setupSkillVersion|skillVersion/);
   });
 
   it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {

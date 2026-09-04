@@ -5,6 +5,11 @@ export const managedCoreLogicalNames = [
   'repository-governance-policy',
   'repository-governance-context',
   'repository-governance-guide',
+  'repository-governance-phase-graph',
+  'repository-governance-compatibility',
+  'repository-governance-credential-policy-schema',
+  'liftoff-setup-copilot',
+  'liftoff-setup-claude',
   'repository-governance-copilot-launcher',
   'repository-governance-claude-launcher'
 ] as const;

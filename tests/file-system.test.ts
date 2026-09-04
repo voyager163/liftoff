@@ -15,6 +15,10 @@ import {
 } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
+import {
+  currentActivationIdentity,
+  createActivationIdentity
+} from '../src/governance-activation/index.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const cleanups: string[] = [];
@@ -100,6 +104,7 @@ async function v5ManifestRoot(
   ];
   delete manifest.managedArtifacts;
   delete manifest.projectArtifacts;
+  delete (manifest.governance as Record<string, unknown> | undefined)?.activationIdentity;
   mutate?.(manifest);
   await writeFile(
     path.join(root, 'liftoff.manifest.json'),
@@ -118,6 +123,30 @@ async function v6ManifestRoot(
     projectType: 'standard',
     apiStack: 'node',
     cloud: 'azure'
+  }, { requireProjectName: true }));
+  const manifest = JSON.parse(
+    artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
+  ) as Record<string, unknown>;
+  mutate?.(manifest);
+  await writeFile(
+    path.join(root, 'liftoff.manifest.json'),
+    `${JSON.stringify(manifest, null, 2)}\n`
+  );
+  return root;
+}
+
+async function v7ManifestRoot(
+  values: Partial<Parameters<typeof buildProjectPlan>[0]> = {},
+  mutate?: (manifest: Record<string, unknown>) => void
+): Promise<string> {
+  const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-v7-'));
+  cleanups.push(root);
+  const artifacts = buildArtifacts(buildProjectPlan({
+    projectName: 'Manifest V7',
+    projectType: 'standard',
+    apiStack: 'node',
+    cloud: 'azure',
+    ...values
   }, { requireProjectName: true }));
   const manifest = JSON.parse(
     artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
@@ -247,7 +276,7 @@ describe('manifest validation', () => {
     expect(enabled.artifactVersion).toBe(5);
     expect(enabled.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '5',
+      policyVersion: '6',
       state: 'handoff-generated'
     });
 
@@ -280,7 +309,7 @@ describe('manifest validation', () => {
     }));
     expect(partial.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '5',
+      policyVersion: '6',
       state: 'handoff-partial'
     });
     expect(partial.managedArtifacts.some((artifact) =>
@@ -313,9 +342,9 @@ describe('manifest validation', () => {
       [
         'future policy version',
         (manifest: Record<string, unknown>) => {
-          (manifest.governance as Record<string, unknown>).policyVersion = '6';
+          (manifest.governance as Record<string, unknown>).policyVersion = '7';
         },
-        /policyVersion cannot be newer than 5/
+        /policyVersion cannot be newer than 6/
       ],
       [
         'malformed policy version',
@@ -362,9 +391,9 @@ describe('manifest validation', () => {
     [
       'unknown manifest version',
       (manifest: Record<string, unknown>) => {
-        manifest.artifactVersion = 7;
+        manifest.artifactVersion = 8;
       },
-      /Unsupported manifest artifactVersion 7.*2, 3, 4, 5, 6/
+      /Unsupported manifest artifactVersion 8.*2, 3, 4, 5, 6, 7/
     ],
     [
       'mutable Power Apps starter ref',
@@ -503,8 +532,85 @@ describe('manifest validation', () => {
       },
       /duplicate artifact path/
     ]
-  ])('rejects invalid v6 authority: %s', async (_name, mutate, expected) => {
+  ])('rejects invalid current authority: %s', async (_name, mutate, expected) => {
     await expect(loadManifest(await v6ManifestRoot(mutate))).rejects.toThrow(expected);
+  });
+
+  it('loads strict v7 governed and disabled variants without fabricating identity', async () => {
+    const governed = await loadManifest(await v7ManifestRoot());
+    expect(governed.artifactVersion).toBe(7);
+    expect(governed.governance.profile).toBe('single-maintainer-gitflow');
+    expect(governed.governance.state).toBe('handoff-generated');
+    expect(governed.governance.activationIdentity).toEqual(currentActivationIdentity);
+
+    const disabled = await loadManifest(await v7ManifestRoot({ governanceProfile: 'none' }));
+    expect(disabled.governance).toEqual({ profile: 'none', state: 'disabled' });
+    expect('activationIdentity' in disabled.governance).toBe(false);
+  });
+
+  it('rejects a v7 manifest with a non-current historical graph identity', async () => {
+    const oldIdentity = createActivationIdentity('e'.repeat(64));
+    await expect(loadManifest(await v7ManifestRoot({}, (value) => {
+      const governance = value.governance as Record<string, unknown>;
+      governance.activationIdentity = oldIdentity;
+    }))).rejects.toThrow(/explicit compatibility map|recognized graph hashes/);
+  });
+
+  it.each([
+    [
+      'future policy',
+      (manifest: Record<string, unknown>) => {
+        const governance = manifest.governance as Record<string, unknown>;
+        governance.policyVersion = '7';
+        governance.activationIdentity = {
+          ...currentActivationIdentity,
+          policyVersion: '7'
+        };
+      },
+      /activationIdentity is invalid|policyVersion/
+    ],
+    [
+      'unsupported tuple',
+      (manifest: Record<string, unknown>) => {
+        const governance = manifest.governance as Record<string, unknown>;
+        governance.activationIdentity = {
+          ...currentActivationIdentity,
+          policyVersion: '5'
+        };
+      },
+      /explicit compatibility map|policyVersion/
+    ],
+    [
+      'unknown graph hash',
+      (manifest: Record<string, unknown>) => {
+        const governance = manifest.governance as Record<string, unknown>;
+        governance.activationIdentity = {
+          ...currentActivationIdentity,
+          phaseGraphHash: '9'.repeat(64)
+        };
+      },
+      /explicit compatibility map|graph hash/
+    ],
+    [
+      'extra governed field',
+      (manifest: Record<string, unknown>) => {
+        (manifest.governance as Record<string, unknown>).extra = true;
+      },
+      /unknown field/
+    ],
+    [
+      'disabled identity',
+      (manifest: Record<string, unknown>) => {
+        const disabled = manifest.governance as Record<string, unknown>;
+        disabled.profile = 'none';
+        disabled.state = 'disabled';
+        disabled.activationIdentity = currentActivationIdentity;
+        delete disabled.policyVersion;
+      },
+      /unknown field/
+    ]
+  ])('rejects invalid v7 governance identity: %s', async (_name, mutate, expected) => {
+    await expect(loadManifest(await v7ManifestRoot({}, mutate))).rejects.toThrow(expected);
   });
 
   it.each([
