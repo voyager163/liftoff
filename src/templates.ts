@@ -878,14 +878,14 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 function renderGeneratedUpdateGuide(plan: ProjectPlan): string {
   const governance = plan.governanceProfile.id === 'none'
     ? 'Repository governance is disabled for this project, so Liftoff does not generate setup integrations, a managed phase graph, credential-policy schema, or post-init setup command.'
-    : '`single-maintainer-gitflow` repository governance generates deterministic setup artifacts only. Review `.liftoff/governance/README.md`, then run `/liftoff-setup` from a selected agent. The compatibility launcher `/liftoff-repository-governance` enters the same engine. Live enforcement requires evidence and explicit approval; it is never inferred from generated files.';
+    : '`single-maintainer-gitflow` repository governance generates deterministic setup artifacts only. Review `.liftoff/governance/README.md`, then run `/liftoff-setup` from a selected agent. Live enforcement requires evidence and explicit approval; it is never inferred from generated files.';
   return `## Safe Liftoff Updates
 
 \`liftoff upgrade\` replaces a supported global Liftoff CLI installation; it does not inspect or modify this project. Check and apply CLI replacement separately with \`liftoff upgrade --check\` and \`liftoff upgrade\`.
 
 ${governance}
 
-\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, credential-policy schema, setup integrations, and selected-agent compatibility aliases. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
+\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, credential-policy schema, and selected-agent \`/liftoff-setup\` integrations. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
 
 Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
 

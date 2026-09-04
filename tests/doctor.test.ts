@@ -410,12 +410,12 @@ describe('doctor command', () => {
     manifest.governance.state = 'handoff-partial';
     manifest.managedArtifacts = manifest.managedArtifacts.filter(
       (artifact: { logicalName: string }) =>
-        artifact.logicalName !== 'repository-governance-copilot-launcher'
+        artifact.logicalName !== 'liftoff-setup-copilot'
     );
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(
-      path.join(root, ...governanceArtifactPaths.alias['github-copilot']),
-      'developer launcher\n'
+      path.join(root, ...governanceArtifactPaths.setup['github-copilot']),
+      'developer setup\n'
     );
 
     expect((await run(['validate'], root)).code).toBe(0);

@@ -693,7 +693,7 @@ The system SHALL include repository governance among common project decisions fo
 - **AND** flags override configuration through the normal defined-value merge
 
 ### Requirement: Plan preview distinguishes handoff from enforcement
-The project plan preview SHALL identify the selected governance profile, policy version, managed-core handoff artifacts, selected-agent launchers, and deferred post-push activation. `liftoff plan` SHALL remain side-effect free and SHALL not require a Git repository, remote, GitHub authentication, or governance platform capability.
+The project plan preview SHALL identify the selected governance profile, policy version, managed-core handoff artifacts, selected-agent `/liftoff-setup` integrations, and deferred post-push activation. `liftoff plan` SHALL remain side-effect free and SHALL not require a Git repository, remote, GitHub authentication, or governance platform capability.
 
 #### Scenario: Preview enabled governance
 - **WHEN** a developer runs `liftoff plan` with the profile enabled

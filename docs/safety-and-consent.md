@@ -98,11 +98,12 @@ are committed only after the other mutations succeed.
 
 Managed update may install manifest v7, policy v6, activation-contract v1,
 phase graph, compatibility metadata, credential-policy schema, setup
-integrations, and compatibility aliases. It preserves user-owned activation
-state, approvals, immutable evidence, credential policies, active OpenSpec
-changes, and bootstrap retention/disposal records. If the current activation
-identity is future, unsupported, or graph-incompatible, update and setup block
-with a remedy instead of downgrading or rewriting state.
+integrations, and forced removal of exact retired generated setup-alias entries
+from older manifests. It preserves user-owned activation state, approvals,
+immutable evidence, credential policies, active OpenSpec changes, and bootstrap
+retention/disposal records. If the current activation identity is future,
+unsupported, or graph-incompatible, update and setup block with a remedy instead
+of downgrading or rewriting state.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than

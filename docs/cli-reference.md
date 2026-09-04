@@ -112,9 +112,8 @@ emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
 names the exact field and required Liftoff upgrade.
 
-`/liftoff-setup` and the compatibility alias `/liftoff-repository-governance`
-call these commands instead of inferring phase completion from prose or task
-checkboxes.
+`/liftoff-setup` calls these commands instead of inferring phase completion from
+prose or task checkboxes.
 
 OpenSpec projects use all 12 OpenSpec 1.11 workflows with both skills and
 commands. `--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
@@ -176,10 +175,11 @@ Plain `liftoff update` is imperative and prompt-free. It applies safe new,
 missing, untouched-upgrade, clean-move, and recorded-state changes only for
 explicit `managed-core` artifacts. For manifest v7 this includes governance
 policy, context, guide, phase graph, compatibility metadata, credential-policy
-schema, setup integrations, and selected-agent compatibility aliases. Core
-conflicts are skipped and core orphans are reported without deletion. During
-legacy governance adoption, preserved unrecorded conflicts remain outside
-managed ownership and set local state to `handoff-partial`.
+schema, and selected-agent `/liftoff-setup` integrations. Core conflicts are
+skipped and core orphans are reported without deletion. During legacy governance
+adoption, preserved unrecorded conflicts remain outside managed ownership and
+set local state to `handoff-partial`. Forced update may remove exact retired
+generated setup-alias entries from older manifests after review.
 
 Application source, tests, dependencies and locks, database assets, Docker and
 Compose files, environment files, documentation, Power Apps starter files, and

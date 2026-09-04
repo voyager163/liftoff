@@ -200,7 +200,7 @@ describe('manifest contract', () => {
       state: 'handoff-generated'
     });
     expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)
-      .toHaveLength(10);
+      .toHaveLength(8);
     expect((manifest as unknown as { projectArtifacts: unknown[] }).projectArtifacts.length)
       .toBeGreaterThan(0);
   });

@@ -48,9 +48,7 @@ const governanceManagedCoreLogicalNames = [
   'repository-governance-compatibility',
   'repository-governance-credential-policy-schema',
   'liftoff-setup-copilot',
-  'liftoff-setup-claude',
-  'repository-governance-copilot-launcher',
-  'repository-governance-claude-launcher'
+  'liftoff-setup-claude'
 ] as const;
 
 export const governanceArtifactPaths = {
@@ -63,18 +61,6 @@ export const governanceArtifactPaths = {
   setup: {
     'github-copilot': ['.github', 'prompts', 'liftoff-setup.prompt.md'],
     claude: ['.claude', 'commands', 'liftoff-setup.md']
-  },
-  alias: {
-    'github-copilot': [
-      '.github',
-      'prompts',
-      'liftoff-repository-governance.prompt.md'
-    ],
-    claude: [
-      '.claude',
-      'commands',
-      'liftoff-repository-governance.md'
-    ]
   }
 } as const;
 
@@ -799,8 +785,8 @@ export function renderGovernanceContext(plan: ProjectPlan): string {
 function renderGovernanceGuide(plan: ProjectPlan): string {
   const launchers = plan.agents.map((agent) =>
     agent.id === 'github-copilot'
-      ? '- GitHub Copilot: `/liftoff-setup` (`/liftoff-repository-governance` remains an alias).'
-      : '- Claude Code: `/liftoff-setup` (`/liftoff-repository-governance` remains an alias).'
+      ? '- GitHub Copilot: `/liftoff-setup`.'
+      : '- Claude Code: `/liftoff-setup`.'
   ).join('\n');
   return `# Liftoff deterministic setup
 
@@ -822,9 +808,6 @@ cd ${plan.safeProjectName}
 Use the generated setup integration from any selected agent:
 
 ${launchers}
-
-\`/liftoff-repository-governance\` is preserved only as a compatibility alias
-that enters the same Liftoff governance engine and user-owned activation state.
 
 ## What setup does
 
@@ -864,8 +847,8 @@ read-back, never inferred from these local files.
 function renderSetupIntegration(): string {
   return `# /liftoff-setup
 
-Continue deterministic Liftoff setup for this repository through the same
-deterministic Liftoff governance engine used by compatibility aliases.
+Continue deterministic Liftoff setup for this repository through the Liftoff
+governance engine.
 
 Contract:
 
@@ -881,20 +864,6 @@ Contract:
    \`liftoff governance verify --json\`.
 6. Never infer phase completion from prose, tasks, or local files. Never use a
    separate activation state or duplicate the Liftoff engine.
-`;
-}
-
-function renderGovernanceAlias(): string {
-  return `# /liftoff-repository-governance
-
-Compatibility alias for \`/liftoff-setup\`.
-
-Enter the same deterministic Liftoff governance engine and user-owned activation
-state. Follow the \`/liftoff-setup\` contract exactly: invoke only
-\`liftoff governance status --json\`, \`liftoff governance plan --json\`,
-\`liftoff governance apply-next --json\`, \`liftoff governance resume --json\`,
-and \`liftoff governance verify --json\`; explain blockers, approvals, and
-results from their output; and never infer completion or create a separate path.
 `;
 }
 
@@ -925,7 +894,6 @@ export function buildRepositoryGovernanceArtifacts(
   const context = renderGovernanceContext(plan);
   const guide = `${renderGovernanceGuide(plan).trimEnd()}\n`;
   const setupIntegration = `${renderSetupIntegration().trimEnd()}\n`;
-  const alias = `${renderGovernanceAlias().trimEnd()}\n`;
   const artifacts: GeneratedArtifact[] = [
     {
       logicalName: 'repository-governance-policy',
@@ -969,7 +937,7 @@ export function buildRepositoryGovernanceArtifacts(
       pathParts: [...governanceArtifactPaths.credentialPolicySchema],
       content: renderCredentialPolicySchema()
     },
-    ...plan.agents.flatMap((agent): GeneratedArtifact[] => [{
+    ...plan.agents.map((agent): GeneratedArtifact => ({
       logicalName: agent.id === 'github-copilot'
         ? 'liftoff-setup-copilot'
         : 'liftoff-setup-claude',
@@ -977,15 +945,7 @@ export function buildRepositoryGovernanceArtifacts(
       lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.setup[agent.id]],
       content: setupIntegration
-    }, {
-      logicalName: agent.id === 'github-copilot'
-        ? 'repository-governance-copilot-launcher'
-        : 'repository-governance-claude-launcher',
-      category: 'governance',
-      lifecycle: 'managed-core',
-      pathParts: [...governanceArtifactPaths.alias[agent.id]],
-      content: alias
-    }])
+    }))
   ];
   const compatibility = artifacts.find((artifact) =>
     artifact.logicalName === 'repository-governance-compatibility'

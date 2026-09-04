@@ -15,6 +15,7 @@ import {
 } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
+import { retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
 import {
   currentActivationIdentity,
   createActivationIdentity
@@ -22,6 +23,8 @@ import {
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const cleanups: string[] = [];
+const validHash = `sha256:${'a'.repeat(64)}`;
+const retiredAlias = retiredManagedCoreIdentities[0];
 
 interface TestManifest {
   artifactVersion?: unknown;
@@ -304,7 +307,7 @@ describe('manifest validation', () => {
       (manifest.governance as Record<string, unknown>).state = 'handoff-partial';
       manifest.artifacts = (manifest.artifacts as Array<Record<string, unknown>>)
         .filter((artifact) =>
-          artifact.logicalName !== 'repository-governance-copilot-launcher'
+          artifact.logicalName !== 'liftoff-setup-copilot'
         );
     }));
     expect(partial.governance).toEqual({
@@ -313,7 +316,7 @@ describe('manifest validation', () => {
       state: 'handoff-partial'
     });
     expect(partial.managedArtifacts.some((artifact) =>
-      artifact.logicalName === 'repository-governance-copilot-launcher'
+      artifact.logicalName === 'liftoff-setup-copilot'
     )).toBe(false);
   });
 
@@ -361,14 +364,14 @@ describe('manifest validation', () => {
         /inapplicable or unknown field: enforced/
       ],
       [
-        'missing launcher',
+        'missing setup integration',
         (manifest: Record<string, unknown>) => {
           manifest.artifacts = (manifest.artifacts as Array<Record<string, unknown>>)
             .filter((artifact) =>
-              artifact.logicalName !== 'repository-governance-copilot-launcher'
+              artifact.logicalName !== 'liftoff-setup-copilot'
             );
         },
-        /missing artifact repository-governance-copilot-launcher/
+        /missing artifact liftoff-setup-copilot/
       ],
       [
         'managed activation baseline',
@@ -385,6 +388,28 @@ describe('manifest validation', () => {
   ])('rejects invalid v5 governance: %s', async (_name, mutate, expected) => {
     await expect(loadManifest(await v5ManifestRoot({}, mutate))).rejects
       .toThrow(expected);
+  });
+
+  it('rejects unknown retired alias names while normalizing legacy artifacts', async () => {
+    await expect(loadManifest(await v5ManifestRoot({}, (manifest) => {
+      (manifest.artifacts as Array<Record<string, unknown>>).push({
+        logicalName: 'repository-governance-unknown-launcher',
+        category: 'governance',
+        pathParts: ['.github', 'prompts', 'unknown.md'],
+        contentHash: validHash
+      });
+    }))).rejects.toThrow(/unknown retired managed-core alias logical name/);
+  });
+
+  it('rejects non-exact retired alias identity while normalizing legacy artifacts', async () => {
+    await expect(loadManifest(await v5ManifestRoot({}, (manifest) => {
+      (manifest.artifacts as Array<Record<string, unknown>>).push({
+        logicalName: retiredAlias.logicalName,
+        category: retiredAlias.category,
+        pathParts: ['.github', 'prompts', 'wrong.prompt.md'],
+        contentHash: validHash
+      });
+    }))).rejects.toThrow(/Retired managed-core artifact .* invalid identity/);
   });
 
   it.each([
@@ -542,10 +567,124 @@ describe('manifest validation', () => {
     expect(governed.governance.profile).toBe('single-maintainer-gitflow');
     expect(governed.governance.state).toBe('handoff-generated');
     expect(governed.governance.activationIdentity).toEqual(currentActivationIdentity);
+    expect(governed.managedArtifacts.filter((artifact) =>
+      artifact.category === 'governance'
+    )).toHaveLength(7);
+    expect(governed.managedArtifacts.some((artifact) =>
+      artifact.logicalName === retiredAlias.logicalName ||
+      artifact.pathParts.join('/').includes('liftoff-repository-governance')
+    )).toBe(false);
 
     const disabled = await loadManifest(await v7ManifestRoot({ governanceProfile: 'none' }));
     expect(disabled.governance).toEqual({ profile: 'none', state: 'disabled' });
     expect('activationIdentity' in disabled.governance).toBe(false);
+  });
+
+  it('loads exact retired alias identities only as a migration bridge', async () => {
+    const legacyEntry = {
+      logicalName: retiredAlias.logicalName,
+      category: retiredAlias.category,
+      pathParts: [...retiredAlias.pathParts],
+      contentHash: validHash
+    };
+
+    const v2 = await loadManifest(await manifestRoot((manifest) => {
+      manifest.artifacts.push(legacyEntry);
+    }));
+    expect(v2.managedArtifacts).toContainEqual(legacyEntry);
+
+    const v3 = await loadManifest(await manifestRoot((manifest) => {
+      manifest.artifactVersion = 3;
+      const project = manifest.project as Record<string, unknown>;
+      project.projectType = 'genai';
+      project.apiStack = 'python-fastapi';
+      project.agents = ['github-copilot'];
+      manifest.framework = {
+        state: 'initialized',
+        adapter: 'openspec',
+        contractVersion: '1.11.0'
+      };
+      manifest.artifacts.push(legacyEntry);
+    }));
+    expect(v3.managedArtifacts).toContainEqual(legacyEntry);
+
+    const v4 = await loadManifest(await v5ManifestRoot({}, (manifest) => {
+      manifest.artifactVersion = 4;
+      (manifest.artifacts as Array<Record<string, unknown>>).push(legacyEntry);
+    }));
+    expect(v4.managedArtifacts).toContainEqual(legacyEntry);
+
+    const v5 = await loadManifest(await v5ManifestRoot({}, (manifest) => {
+      (manifest.artifacts as Array<Record<string, unknown>>).push(legacyEntry);
+    }));
+    expect(v5.managedArtifacts).toContainEqual(legacyEntry);
+
+    const v6 = await loadManifest(await v7ManifestRoot({}, (manifest) => {
+      manifest.artifactVersion = 6;
+      delete (manifest.governance as Record<string, unknown>).activationIdentity;
+      (manifest.managedArtifacts as Array<Record<string, unknown>>).push(legacyEntry);
+    }));
+    expect(v6.managedArtifacts).toContainEqual(legacyEntry);
+
+    const v7 = await loadManifest(await v7ManifestRoot({}, (manifest) => {
+      (manifest.managedArtifacts as Array<Record<string, unknown>>).push(legacyEntry);
+    }));
+    expect(v7.managedArtifacts).toContainEqual(legacyEntry);
+  });
+
+  it.each([
+    [
+      'wrong retired alias category',
+      (manifest: Record<string, unknown>) => {
+        (manifest.managedArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: retiredAlias.logicalName,
+          category: 'documentation',
+          pathParts: [...retiredAlias.pathParts],
+          contentHash: validHash
+        });
+      },
+      /Retired managed-core artifact .* invalid identity/
+    ],
+    [
+      'wrong retired alias path',
+      (manifest: Record<string, unknown>) => {
+        (manifest.managedArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: retiredAlias.logicalName,
+          category: retiredAlias.category,
+          pathParts: ['.github', 'prompts', 'wrong.prompt.md'],
+          contentHash: validHash
+        });
+      },
+      /Retired managed-core artifact .* invalid identity/
+    ],
+    [
+      'retired alias in project provenance',
+      (manifest: Record<string, unknown>) => {
+        (manifest.projectArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: retiredAlias.logicalName,
+          category: retiredAlias.category,
+          pathParts: [...retiredAlias.pathParts],
+          generatedBy: '0.10.0',
+          generationHash: validHash,
+          provisioningGroup: 'base'
+        });
+      },
+      /cannot contain a retired managed-core logical name/
+    ],
+    [
+      'unknown retired alias name',
+      (manifest: Record<string, unknown>) => {
+        (manifest.managedArtifacts as Array<Record<string, unknown>>).push({
+          logicalName: 'repository-governance-unknown-launcher',
+          category: retiredAlias.category,
+          pathParts: ['.github', 'prompts', 'unknown.md'],
+          contentHash: validHash
+        });
+      },
+      /unknown retired managed-core alias logical name/
+    ]
+  ])('rejects invalid retired alias bridge identity: %s', async (_name, mutate, expected) => {
+    await expect(loadManifest(await v7ManifestRoot({}, mutate))).rejects.toThrow(expected);
   });
 
   it('rejects a v7 manifest with a non-current historical graph identity', async () => {

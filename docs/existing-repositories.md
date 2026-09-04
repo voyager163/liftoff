@@ -92,8 +92,8 @@ and run `openspec update`.
 Projects created before manifest artifact version 7 automatically preview the
 default deterministic setup handoff as new named drift. Plain update safely
 adopts collision-free policy, context, guide, phase graph, compatibility
-metadata, credential-policy schema, setup integrations, and selected-agent
-aliases without rewriting a configuration that omitted `governanceProfile`.
+metadata, credential-policy schema, and selected-agent setup integrations
+without rewriting a configuration that omitted `governanceProfile`.
 Existing different files remain unowned conflicts and the v7 manifest records
 `handoff-partial`.
 Resolving every conflict promotes a later update to `handoff-generated`.

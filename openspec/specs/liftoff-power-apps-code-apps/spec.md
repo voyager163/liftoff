@@ -134,7 +134,7 @@ The system SHALL offer the common repository-governance profile to Power Apps co
 
 #### Scenario: Enable governance for Power Apps
 - **WHEN** a developer accepts the default repository-governance profile for a Power Apps project
-- **THEN** Liftoff generates the canonical handoff and selected-agent launchers
+- **THEN** Liftoff generates the canonical handoff and selected-agent `/liftoff-setup` integrations
 - **AND** context identifies the actual root application install, lint, and build commands
 
 #### Scenario: Classify container controls

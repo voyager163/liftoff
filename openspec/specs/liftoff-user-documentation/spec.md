@@ -243,7 +243,7 @@ The system SHALL document that Liftoff OpenSpec projects require all 12 OpenSpec
 - **THEN** it states that `--yes`, `--force`, tool installation, dependency installation, global-profile configuration, and cloud-agent opt-in have distinct scopes
 
 ### Requirement: Documentation explains repository-governance selection and activation
-The system SHALL provide packaged and generated documentation for the governance profile choice, enabled default, opt-out, local artifact set, manifest state, post-push agent launcher, read-only Phase 0, explicit approval boundary, selected-framework change creation, and live enforcement sequence. It SHALL state prominently that generated policy is not active GitHub governance.
+The system SHALL provide packaged and generated documentation for the governance profile choice, enabled default, opt-out, local artifact set, manifest state, post-push `/liftoff-setup` integration, read-only Phase 0, explicit approval boundary, selected-framework change creation, and live enforcement sequence. It SHALL state prominently that generated policy is not active GitHub governance.
 
 #### Scenario: New user follows interactive onboarding
 - **WHEN** a developer reads getting-started or workload guidance
@@ -300,12 +300,12 @@ such conflicts promotes the manifest to `handoff-generated`, opt-out creates
 orphans rather than deletion, and no update mode activates remote governance.
 
 #### Scenario: Existing user previews adoption
-- **WHEN** a user reads upgrade guidance for a pre-v6 project
+- **WHEN** a user reads upgrade guidance for a pre-v7 project
 - **THEN** it directs the user to run `liftoff update --check`
-- **AND** explains the expected schema-v6 ownership migration and governance core drift
+- **AND** explains the expected schema-v7 ownership migration and governance core drift
 
 #### Scenario: Existing governance file conflicts
-- **WHEN** troubleshooting describes a collision at a generated policy or launcher path
+- **WHEN** troubleshooting describes a collision at a generated policy or setup path
 - **THEN** it tells the user to review the exact file before considering `--force`
 - **AND** explains the partial local handoff state and that the preserved file has no Liftoff manifest entry
 - **AND** does not recommend deleting, bypassing, or remotely applying anything to make update pass
@@ -378,6 +378,7 @@ guide SHALL present `liftoff init` followed by `/liftoff-setup` as the primary
 journey. They SHALL explain seed completion, local baseline checks, commit/push,
 Phase 0, limited approval gates, autonomous resumption, normal development,
 release flow, and the distinction between model explanation and CLI authority.
+They SHALL NOT present retired generated setup aliases as usable commands.
 
 #### Scenario: Developer finishes initialization
 - **WHEN** the developer reads completion output or the generated README
@@ -402,6 +403,11 @@ release flow, and the distinction between model explanation and CLI authority.
 - **WHEN** a prior run stopped on a blocker
 - **THEN** documentation instructs the developer to rerun `/liftoff-setup`
 - **AND** explains that verified phases are idempotent and not repeated
+
+#### Scenario: Developer reads setup command guidance
+- **WHEN** documentation lists generated setup commands
+- **THEN** `/liftoff-setup` is the only visible command
+- **AND** retired generated setup aliases are mentioned only as force-update removal debt, not as invocation options
 
 #### Scenario: Developer enters a credential
 - **WHEN** PAT fallback is required
