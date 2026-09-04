@@ -194,12 +194,12 @@ The system SHALL document that `backend/workers` is for backend-adjacent or cont
 - **WHEN** a developer reads the generated project README or functions documentation
 - **THEN** the documentation explains where to place Azure Functions workers and where to place reusable orchestration logic
 
-### Requirement: Generated projects include a v6 Liftoff manifest
-The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v6. It SHALL record the manifest-writing CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, optional workload preferences, managed-core artifacts with reconciliation hashes, and project artifacts with generation provenance. Framework-owned, desired-state, and one-time seed content SHALL remain outside managed-core hash authority.
+### Requirement: Generated projects include a v7 Liftoff manifest
+The system SHALL include `liftoff.manifest.json` at the root of every generated project using manifest schema v7. It SHALL record the manifest-writing CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, activation identity, optional workload preferences, managed-core artifacts with reconciliation hashes, and project artifacts with generation provenance. Framework-owned, desired-state, and one-time seed content SHALL remain outside managed-core hash authority.
 
 #### Scenario: Manifest accompanies every initialized workload
 - **WHEN** a developer initializes a GenAI, standard API, or Power Apps project
-- **THEN** the project root contains a schema-v6 manifest with exactly the workload, governance, managed-core, and project-provenance fields applicable to that project
+- **THEN** the project root contains a schema-v7 manifest with exactly the workload, governance, managed-core, and project-provenance fields applicable to that project
 
 #### Scenario: Manifest validates against generated files
 - **WHEN** `liftoff validate` runs against a freshly initialized project
@@ -207,17 +207,17 @@ The system SHALL include `liftoff.manifest.json` at the root of every generated 
 
 #### Scenario: Enabled governance records only handoff state
 - **WHEN** a project enables `single-maintainer-gitflow`
-- **THEN** its v6 manifest records the profile, policy version, and `handoff-generated` state
+- **THEN** its v7 manifest records the profile, policy version, activation identity, and `handoff-generated` state
 - **AND** it does not claim live GitHub enforcement
 
 #### Scenario: Disabled governance omits handoff artifacts
 - **WHEN** a project selects `none`
-- **THEN** its v6 manifest records governance as disabled
-- **AND** contains no managed governance policy, context, guide, or launcher entry
+- **THEN** its v7 manifest records governance as disabled
+- **AND** contains no managed governance policy, context, guide, or setup integration entry
 
 #### Scenario: Power Apps manifest omits API identity
 - **WHEN** a Power Apps code app is initialized
-- **THEN** its v6 workload identity records the pinned starter source and plugin preference
+- **THEN** its v7 workload identity records the pinned starter source and plugin preference
 - **AND** it does not invent an API stack, GenAI pattern, cloud, region, API frontend flag, or API environments
 
 #### Scenario: Framework and seed ownership remains external
@@ -228,8 +228,8 @@ The system SHALL include `liftoff.manifest.json` at the root of every generated 
 ### Requirement: Governance handoff participates in transactional staging
 Enabled governance artifacts SHALL be rendered into the same temporary staging area, assigned explicit managed-core ownership, validated, preflighted, and merged under the same collision, symlink, authorization, lock, and rollback contract as other Liftoff-generated files.
 
-#### Scenario: Governance launcher collides with a file
-- **WHEN** an existing target contains different bytes at an enabled governance launcher path
+#### Scenario: Governance setup integration collides with a file
+- **WHEN** an existing target contains different bytes at an enabled governance setup-integration path
 - **THEN** initialization reports that exact regular-file replacement
 - **AND** does not overwrite it without the existing interactive authorization or `--force`
 
@@ -479,7 +479,8 @@ The system SHALL render each Dockerfile base and Docker Compose service image fr
 When repository governance is enabled, the system SHALL generate
 `/liftoff-setup` integrations for every selected agent and a managed
 machine-readable phase definition. The integrations SHALL contain no model
-selection and SHALL delegate state transitions to the Liftoff CLI.
+selection, SHALL delegate state transitions to the Liftoff CLI, and SHALL NOT
+generate any alternate visible setup command or alias.
 
 #### Scenario: Generate Copilot setup
 - **WHEN** GitHub Copilot is selected
@@ -494,11 +495,6 @@ selection and SHALL delegate state transitions to the Liftoff CLI.
 - **THEN** their setup integrations reference the same managed phase graph and user-owned activation state
 - **AND** neither integration declares or asks for a model
 
-#### Scenario: Existing governance launcher is invoked
-- **WHEN** a developer uses `/liftoff-repository-governance`
-- **THEN** it acts as a compatibility alias for the governance portion of `/liftoff-setup`
-- **AND** does not create a separate activation path
-
 ### Requirement: Generated manifests identify the activation contract
 Governed projects SHALL use `liftoff.manifest.json` artifact version 7. The
 manifest SHALL record the creating Liftoff semantic version, policy version,
@@ -512,6 +508,6 @@ normal content hashes instead of introducing an independent skill version.
 - **THEN** every activation identity matches the generated policy, phase graph, schemas, and supported engine constants
 
 #### Scenario: Setup integration wording changes
-- **WHEN** only the thin skill or compatibility launcher bytes change
+- **WHEN** only the thin setup integration bytes change
 - **THEN** its managed content hash changes
 - **AND** no setup-skill version changes or is introduced

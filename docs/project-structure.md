@@ -52,9 +52,7 @@ project/
 |-- .github/workflows/copilot-setup-steps.yml              # optional hosted agent
 |-- .github/agents/openspec.agent.md                       # optional hosted agent
 |-- .github/prompts/liftoff-setup.prompt.md
-|-- .github/prompts/liftoff-repository-governance.prompt.md # compatibility alias
 |   or .claude/commands/liftoff-setup.md
-|   and .claude/commands/liftoff-repository-governance.md
 |-- frontend/                  # only when selected
 |-- functions/<worker-name>/  # only for worker-enabled GenAI patterns
 `-- migration/legacy/         # only after liftoff migrate
@@ -89,8 +87,7 @@ project/
   generated only after explicit opt-in.
 - `/liftoff-setup` is generated when repository governance is enabled. It calls
   `liftoff governance status|plan|apply-next|resume|verify` and has no model
-  selection or separate setup-skill version. `/liftoff-repository-governance` is
-  a compatibility alias for the same state.
+  selection or separate setup-skill version.
 
 ### Conditional areas
 
@@ -148,8 +145,9 @@ Liftoff intentionally does not generate `backend/`, `database/`,
 
 `liftoff.manifest.json` v7 records managed-core hashes for the governance policy,
 context, guide, phase graph, compatibility metadata, credential-policy schema,
-setup integrations, and compatibility aliases. `liftoff update` may reconcile
-only those managed-core paths. It preserves user-owned activation state,
+and setup integrations. `liftoff update` may reconcile only those managed-core
+paths. Forced update may remove exact retired generated setup-alias ownership
+from older manifests after review. It preserves user-owned activation state,
 immutable evidence, approvals, credential policies, active OpenSpec changes, and
 project source.
 

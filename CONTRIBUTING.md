@@ -265,8 +265,9 @@ metadata and the activation protocol are rendered by
 `src/repository-governance.ts`. Keep policy schema/version, required invariant
 fragments, workload context adapters, exact artifact paths, logical names,
 manifest v7 activation identity, compatibility metadata, and Copilot/Claude
-`/liftoff-setup` plus `/liftoff-repository-governance` alias compatibility
-synchronized. See [DEVELOPER.md](DEVELOPER.md) before changing version axes.
+`/liftoff-setup` integrations synchronized. Retired generated setup aliases are
+migration-only and may be removed by forced update; do not present them as usable
+commands. See [DEVELOPER.md](DEVELOPER.md) before changing version axes.
 
 Policy or activation changes require focused repository-governance, governance
 activation, credential, manifest migration, update adoption/opt-out, framework

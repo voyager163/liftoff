@@ -193,8 +193,9 @@ completes, syncs, and archives the generated bootstrap seed with local baseline
 checks, then stops at explicit authority gates for commit/push, credentials,
 billed infrastructure or exceptions, final enforcement, destructive cleanup, or
 external blockers. Rerun `/liftoff-setup` to resume; verified phases are not
-repeated. `/liftoff-repository-governance` is only a compatibility alias for the
-same engine and state.
+repeated. Older generated setup aliases are retired; after review,
+`liftoff update --force` removes exact modified retired alias entries from older
+manifests.
 
 Missing licenses, runner-provisioning authority, a private Staging assignment or
 reachable network path, alert routes, parallel deployment, or sufficient canary

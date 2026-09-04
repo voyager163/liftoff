@@ -1305,18 +1305,48 @@ interface UpdateSummary {
   conflict: number;
   moved: number;
   orphan: number;
+  retired: number;
+  retiredRemoved: number;
+  retiredAbsent: number;
+  retiredConflict: number;
   refresh: number;
   unchanged: number;
 }
 
 function summarizeEntries(entries: ReconcileEntry[]): UpdateSummary {
-  const summary: UpdateSummary = { new: 0, missing: 0, upgrade: 0, conflict: 0, moved: 0, orphan: 0, refresh: 0, unchanged: 0 };
+  const summary: UpdateSummary = {
+    new: 0,
+    missing: 0,
+    upgrade: 0,
+    conflict: 0,
+    moved: 0,
+    orphan: 0,
+    retired: 0,
+    retiredRemoved: 0,
+    retiredAbsent: 0,
+    retiredConflict: 0,
+    refresh: 0,
+    unchanged: 0
+  };
   for (const entry of entries) {
     if (entry.status === 'unchanged') {
       if (entry.refreshHash) {
         summary.refresh += 1;
       } else {
         summary.unchanged += 1;
+      }
+      continue;
+    }
+    if (entry.status === 'retired-conflict') {
+      summary.retiredConflict += 1;
+      continue;
+    }
+    if (entry.status === 'retired') {
+      summary.retired += 1;
+      if (entry.destinationOccupied === false) {
+        summary.retiredAbsent += 1;
+      } else {
+        summary.retiredRemoved += 1;
       }
       continue;
     }
@@ -1341,7 +1371,10 @@ function entryMarker(entry: ReconcileEntry): string {
     case 'moved':
       return entry.cleanMove ? '>' : '!';
     case 'orphan':
+    case 'retired':
       return '-';
+    case 'retired-conflict':
+      return '!';
     default:
       return '~';
   }
@@ -1582,7 +1615,13 @@ async function preflightUpdate(
       entry.status === 'upgrade' ||
       entry.status === 'moved' && (entry.cleanMove === true || force) ||
       entry.status === 'conflict' && force;
+    const deletesDestination =
+      entry.status === 'retired' ||
+      entry.status === 'retired-conflict' && force;
     if (writesDestination) {
+      await resolveProjectPath(projectRoot, entry.pathParts);
+    }
+    if (deletesDestination) {
       await resolveProjectPath(projectRoot, entry.pathParts);
     }
     if (
@@ -2133,6 +2172,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       cliVersion: liftoffVersion,
       projectVersion: manifest.liftoffVersion,
       entries: [],
+      removed: [],
       provisioning: [],
       ownershipMigrationPending: false,
       manifestChanges: plannedManifestChanges,
@@ -2191,6 +2231,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         written: [],
+        removed: [],
         skipped: [],
         provisioning: [],
         ownershipMigrationPending,
@@ -2229,6 +2270,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           status: entry.status,
           path: manifestDisplayPath(entry.pathParts),
           previousPath: entry.previousPathParts ? manifestDisplayPath(entry.previousPathParts) : undefined,
+          fileDeleted: entry.status === 'retired' || entry.status === 'retired-conflict'
+            ? entry.destinationOccupied !== false
+            : undefined,
           reason: entry.reason
         })),
         provisioning: provisioningJson(provisioningPlans),
@@ -2312,15 +2356,16 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       ) +
       (manifestRewritePending ? 1 : 0) +
       stateMigration.mutations.length;
+    const toRetire = summary.retired;
     presentation.status(
       'warning',
       'Liftoff core maintenance available',
-      `${toWrite} to write, ${summary.conflict} core conflict(s), ${summary.orphan} core orphan(s), ${summary.unchanged} core unchanged`
+      `${toWrite} to write, ${toRetire} retired alias ownership record(s) to remove (${summary.retiredRemoved} file deletion(s)), ${summary.conflict + summary.retiredConflict} core conflict(s), ${summary.orphan} core orphan(s), ${summary.unchanged} core unchanged`
     );
-    if (toWrite > 0) {
+    if (toWrite > 0 || toRetire > 0) {
       presentation.command('liftoff update');
     }
-    if (summary.conflict > 0) {
+    if (summary.conflict > 0 || summary.retiredConflict > 0) {
       presentation.command('liftoff update --force');
     }
     return 2;
@@ -2342,6 +2387,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   maybeInjectUpdateFailure(context.env, 'after-preflight');
 
   const written: ReconcileEntry[] = [];
+  const retired: ReconcileEntry[] = [];
   const skipped: ReconcileEntry[] = [];
   const mutations: ProjectFileMutation[] = [];
   for (const entry of entries) {
@@ -2367,6 +2413,18 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           }
           mutations.push({ type: 'delete', pathParts: entry.previousPathParts! });
           written.push(entry);
+        } else {
+          skipped.push(entry);
+        }
+        break;
+      case 'retired':
+        mutations.push({ type: 'delete', pathParts: entry.pathParts });
+        retired.push(entry);
+        break;
+      case 'retired-conflict':
+        if (force) {
+          mutations.push({ type: 'delete', pathParts: entry.pathParts });
+          retired.push(entry);
         } else {
           skipped.push(entry);
         }
@@ -2420,6 +2478,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     entry.rendered?.category === 'governance' &&
     !oldByName.has(entry.logicalName)
   );
+  const hasProtectedRetiredAlias = skipped.some((entry) =>
+    entry.status === 'retired-conflict'
+  );
   const nextProjectArtifacts = appendProvisionedProjectArtifacts(
     manifest.projectArtifacts,
     provisioningPlans
@@ -2441,7 +2502,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     delete nextManifest.project.defaultAgent;
   }
   if (
-    hasUnrecordedGovernanceConflict &&
+    (hasUnrecordedGovernanceConflict || hasProtectedRetiredAlias) &&
     nextManifest.governance.profile !== 'none'
   ) {
     nextManifest.governance.state = 'handoff-partial';
@@ -2458,6 +2519,16 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   });
   for (const entry of entries) {
     if (entry.status === 'orphan') {
+      const previous = oldByName.get(entry.logicalName)!;
+      if (
+        plan.governanceProfile.id === 'none' &&
+        previous.category === 'governance'
+      ) {
+        continue;
+      }
+      nextManifest.managedArtifacts.push(previous);
+    }
+    if (entry.status === 'retired-conflict' && !force) {
       const previous = oldByName.get(entry.logicalName)!;
       if (
         plan.governanceProfile.id === 'none' &&
@@ -2500,7 +2571,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       schemaVersion: 2,
       mode: 'apply',
       scope: 'managed-core',
-      status: blockedProvisioning.length > 0
+      status: blockedProvisioning.length > 0 || skipped.length > 0
         ? 'partial'
         : reconciliation.status === 'reconciliation-required'
           ? 'reconciliation-required'
@@ -2508,8 +2579,24 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       cliVersion: liftoffVersion,
       projectVersion: manifest.liftoffVersion,
       written: written.map((entry) => manifestDisplayPath(entry.pathParts)),
+      removed: retired.map((entry) => ({
+        logicalName: entry.logicalName,
+        status: entry.status === 'retired-conflict'
+          ? 'force-retired'
+          : entry.destinationOccupied === false
+            ? 'retired-absent'
+            : 'retired',
+        path: manifestDisplayPath(entry.pathParts),
+        fileDeleted: entry.destinationOccupied !== false,
+        reason: entry.reason
+      })),
       stateWritten: stateMigration.mutations.map((mutation) => manifestDisplayPath(mutation.pathParts)),
-      skipped: skipped.map((entry) => ({ path: manifestDisplayPath(entry.pathParts), reason: entry.reason })),
+      skipped: skipped.map((entry) => ({
+        logicalName: entry.logicalName,
+        status: entry.status,
+        path: manifestDisplayPath(entry.pathParts),
+        reason: entry.reason
+      })),
       provisioning: provisioningJson(provisioningPlans),
       ownershipMigrationPending,
       manifestChanges: manifestChanges(manifest, nextManifest),
@@ -2527,6 +2614,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Applied Liftoff core changes',
       written.map((entry) => `wrote ${entryDisplay(entry)}`)
+    );
+  }
+  const retiredDeleted = retired.filter((entry) => entry.destinationOccupied !== false);
+  const retiredAbsent = retired.filter((entry) => entry.destinationOccupied === false);
+  if (retiredDeleted.length > 0) {
+    presentation.bullets(
+      'Removed retired Liftoff aliases',
+      retiredDeleted.map((entry) => `removed ${entryDisplay(entry)}  ${entry.reason}`)
+    );
+  }
+  if (retiredAbsent.length > 0) {
+    presentation.bullets(
+      'Retired absent Liftoff alias ownership',
+      retiredAbsent.map((entry) => `removed manifest ownership for ${entryDisplay(entry)}  ${entry.reason}`)
     );
   }
   if (stateMigration.status === 'migrate') {
@@ -2559,7 +2660,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Skipped Liftoff core conflicts',
       skipped.map((entry) =>
-        `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
+        entry.status === 'retired-conflict'
+          ? `protected retired alias ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (delete it manually or use --force to remove)'}`
+          : `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
       )
     );
   }
@@ -2586,6 +2689,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     'Updated project',
     [
       `${written.length} core written`,
+      `${retired.length} retired ownership removed`,
+      `${retiredDeleted.length} retired file deleted`,
       `${provisioned.length} project provisioned`,
       ...(blockedProvisioning.length > 0
         ? [`${blockedProvisioning.length} provisioning group(s) blocked`]

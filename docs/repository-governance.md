@@ -15,9 +15,8 @@ cd my-project
 ```
 
 `/liftoff-setup` completes the generated bootstrap seed, then enters the
-deterministic Liftoff governance engine and its read-only Phase 0 discovery. The older
-`/liftoff-repository-governance` launcher is a compatibility alias for the same
-engine and user-owned activation state; it is not a separate activation path.
+deterministic Liftoff governance engine, user-owned activation state, and
+read-only Phase 0 discovery.
 
 ## Managed files and user-owned state
 
@@ -31,10 +30,12 @@ Enabled governance adds managed-core files:
 .liftoff/governance/compatibility.json
 .liftoff/governance/credential-policy.schema.json
 .github/prompts/liftoff-setup.prompt.md                # Copilot selected
-.github/prompts/liftoff-repository-governance.prompt.md # compatibility alias
 .claude/commands/liftoff-setup.md                      # Claude selected
-.claude/commands/liftoff-repository-governance.md       # compatibility alias
 ```
+
+Older generated setup aliases are retired. Use `liftoff update --force` after
+review to remove exact modified retired alias entries from older manifests; do
+not invoke them as commands.
 
 User-owned execution state is separate and is never advanced by
 `liftoff update`:
@@ -170,8 +171,9 @@ seed blocks Phase 0. Exactly one compatible active governance change is resumed.
 Multiple overlapping changes require a schema-valid supersession or archive
 record before any phase advances.
 
-Managed updates install new policy, graph, schema, compatibility metadata, setup
-integrations, and aliases without touching user-owned state. When a policy,
+Managed updates install new policy, graph, schema, compatibility metadata, and
+setup integrations without touching user-owned state. Forced update can remove
+exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
 reports `reconciliation-required`, invalidates only affected descendants, and
 waits for explicit acknowledgement of the current compatible identity and exact

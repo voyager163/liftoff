@@ -357,9 +357,7 @@ describe('repository governance artifacts', () => {
       'repository-governance-compatibility',
       'repository-governance-credential-policy-schema',
       'liftoff-setup-copilot',
-      'repository-governance-copilot-launcher',
-      'liftoff-setup-claude',
-      'repository-governance-claude-launcher'
+      'liftoff-setup-claude'
     ]);
     expect(all.map((artifact) => artifact.pathParts)).toEqual([
       [...governanceArtifactPaths.policy],
@@ -369,9 +367,7 @@ describe('repository governance artifacts', () => {
       [...governanceArtifactPaths.compatibility],
       [...governanceArtifactPaths.credentialPolicySchema],
       [...governanceArtifactPaths.setup['github-copilot']],
-      [...governanceArtifactPaths.alias['github-copilot']],
-      [...governanceArtifactPaths.setup.claude],
-      [...governanceArtifactPaths.alias.claude]
+      [...governanceArtifactPaths.setup.claude]
     ]);
     for (const artifact of all) {
       expect(artifact.category).toBe('governance');
@@ -388,12 +384,12 @@ describe('repository governance artifacts', () => {
     expect(copilotOnly.map((artifact) => artifact.logicalName))
       .not.toContain('liftoff-setup-claude');
     expect(copilotOnly.map((artifact) => artifact.logicalName))
-      .toContain('repository-governance-copilot-launcher');
+      .not.toContain('repository-governance-copilot-launcher');
     expect(copilotOnly.map((artifact) => artifact.logicalName))
       .toContain('liftoff-setup-copilot');
   });
 
-  it('keeps setup integrations thin, equivalent, engine-only, and alias-backed', () => {
+  it('keeps setup integrations thin, equivalent, engine-only, and alias-free', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan());
     const policy = artifacts.find((artifact) =>
       artifact.logicalName === 'repository-governance-policy'
@@ -401,17 +397,15 @@ describe('repository governance artifacts', () => {
     const setup = artifacts.filter((artifact) => artifact.logicalName.startsWith('liftoff-setup-'));
     expect(setup).toHaveLength(2);
     expect(new Set(setup.map((artifact) => artifact.content)).size).toBe(1);
-    for (const launcher of artifacts.filter((artifact) =>
-      artifact.logicalName.startsWith('liftoff-setup-') ||
-      artifact.logicalName.endsWith('launcher')
-    )) {
+    for (const launcher of setup) {
       expect(launcher.content.length).toBeLessThan(1_500);
       expect(launcher.content).toContain('liftoff governance status --json');
       expect(launcher.content).toContain('liftoff governance plan --json');
       expect(launcher.content).toContain('liftoff governance apply-next --json');
       expect(launcher.content).toContain('liftoff governance resume --json');
       expect(launcher.content).toContain('liftoff governance verify --json');
-      expect(launcher.content).toMatch(/same\s+deterministic Liftoff governance engine/);
+      expect(launcher.content).toMatch(/Liftoff\s+governance engine/);
+      expect(launcher.content).not.toContain('liftoff-repository-governance');
       expect(launcher.content).not.toMatch(/\bmodel\b/i);
       expect(launcher.content).not.toMatch(/skill[- ]?version/i);
       expect(launcher.content).not.toContain('Phase 4 — Security pipeline');
@@ -452,8 +446,6 @@ describe('repository governance artifacts', () => {
       governanceArtifactPaths.credentialPolicySchema,
       governanceArtifactPaths.setup['github-copilot'],
       governanceArtifactPaths.setup.claude,
-      governanceArtifactPaths.alias['github-copilot'],
-      governanceArtifactPaths.alias.claude
     ];
     for (const parts of pathPartArrays) {
       expect(path.posix.join('/repo', ...parts)).toContain('/repo/');
@@ -487,7 +479,7 @@ describe('repository governance artifacts', () => {
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
-    )).toHaveLength(10);
+    )).toHaveLength(8);
     expect(manifest.liftoffVersion).toBe(liftoffVersion);
     expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.10.0');
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
@@ -524,6 +516,8 @@ describe('repository governance artifacts', () => {
     expect(JSON.stringify(parsedCompatibility)).not.toMatch(/setupSkillVersion|skillVersion/);
     expect(parsedCompatibility.managedCore.updateInventory.map((entry) => entry.logicalName))
       .toContain('repository-governance-compatibility');
+    expect(JSON.stringify(parsedCompatibility.managedCore)).not.toContain('repository-governance-copilot-launcher');
+    expect(JSON.stringify(parsedCompatibility.managedCore)).not.toContain('liftoff-repository-governance');
     const parsedSchema = JSON.parse(schema.content);
     expect(parsedSchema.additionalProperties).toBe(false);
     expect(parsedSchema.properties.identity.additionalProperties).toBe(false);
