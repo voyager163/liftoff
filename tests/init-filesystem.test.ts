@@ -365,14 +365,14 @@ describe('transactional merge', () => {
         target,
         '.github',
         'prompts',
-        'liftoff-repository-governance.prompt.md'
+        'liftoff-setup.prompt.md'
       );
       const policyRelative = path.join('.liftoff', 'governance', 'policy.md');
       const contextRelative = path.join('.liftoff', 'governance', 'context.json');
       const launcherRelative = path.join(
         '.github',
         'prompts',
-        'liftoff-repository-governance.prompt.md'
+        'liftoff-setup.prompt.md'
       );
       await mkdir(path.dirname(contextPath), { recursive: true });
       await mkdir(path.dirname(launcherPath), { recursive: true });
@@ -392,9 +392,9 @@ describe('transactional merge', () => {
             '{"same":true}\n'
           ),
           artifact(
-            'repository-governance-copilot-launcher',
-            ['.github', 'prompts', 'liftoff-repository-governance.prompt.md'],
-            'generated launcher\n'
+            'liftoff-setup-copilot',
+            ['.github', 'prompts', 'liftoff-setup.prompt.md'],
+            'generated setup\n'
           ),
           artifact('manifest', ['liftoff.manifest.json'], '{"artifactVersion":5}\n')
         ], 'liftoff');

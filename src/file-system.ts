@@ -36,6 +36,9 @@ import type {
 import { validateFrameworkInstallation } from './framework-validation.js';
 import {
   isManagedCoreLogicalName,
+  isRetiredManagedCoreArtifactIdentity,
+  isRetiredManagedCoreLogicalName,
+  isUnknownRetiredManagedCoreAliasLogicalName,
   managedCoreLogicalNames,
   legacyProvisioningGroup
 } from './artifact-lifecycle.js';
@@ -331,12 +334,23 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
     const artifacts = normalizedArtifacts.filter(
       (artifact) => !LEGACY_NON_PROVENANCE_LOGICAL_NAMES.has(artifact.logicalName)
     );
+    for (const artifact of artifacts) {
+      if (isUnknownRetiredManagedCoreAliasLogicalName(artifact.logicalName)) {
+        throw new FileSystemError(
+          `Manifest artifact ${artifact.logicalName} is an unknown retired managed-core alias logical name.`
+        );
+      }
+    }
     filteredLegacySeedOwnership = artifacts.length !== normalizedArtifacts.length;
     managedArtifacts = artifacts.filter((artifact) =>
-      isManagedCoreLogicalName(artifact.logicalName)
+      isManagedCoreLogicalName(artifact.logicalName) ||
+      isRetiredManagedCoreLogicalName(artifact.logicalName)
     );
     projectArtifacts = artifacts
-      .filter((artifact) => !isManagedCoreLogicalName(artifact.logicalName))
+      .filter((artifact) =>
+        !isManagedCoreLogicalName(artifact.logicalName) &&
+        !isRetiredManagedCoreLogicalName(artifact.logicalName)
+      )
       .map((artifact) => ({
         logicalName: artifact.logicalName,
         category: artifact.category,
@@ -969,16 +983,46 @@ function validateV6AndV7ArtifactAuthority(
   projectArtifacts: readonly ManifestProjectArtifact[]
 ): void {
   for (const artifact of managedArtifacts) {
-    if (!isManagedCoreLogicalName(artifact.logicalName)) {
+    if (isManagedCoreLogicalName(artifact.logicalName)) {
+      continue;
+    }
+    if (isRetiredManagedCoreLogicalName(artifact.logicalName)) {
+      if (
+        !isRetiredManagedCoreArtifactIdentity(
+          artifact.logicalName,
+          artifact.category,
+          artifact.pathParts
+        )
+      ) {
+        throw new FileSystemError(
+          `Retired managed-core artifact ${artifact.logicalName} has invalid identity.`
+        );
+      }
+      continue;
+    }
+    if (isUnknownRetiredManagedCoreAliasLogicalName(artifact.logicalName)) {
       throw new FileSystemError(
-        `Manifest managed artifact ${artifact.logicalName} is not an explicit managed-core logical name.`
+        `Manifest managed artifact ${artifact.logicalName} is an unknown retired managed-core alias logical name.`
       );
     }
+    throw new FileSystemError(
+      `Manifest managed artifact ${artifact.logicalName} is not an explicit managed-core logical name.`
+    );
   }
   for (const artifact of projectArtifacts) {
     if (isManagedCoreLogicalName(artifact.logicalName)) {
       throw new FileSystemError(
         `Manifest project artifact ${artifact.logicalName} cannot contain a managed-core logical name.`
+      );
+    }
+    if (isRetiredManagedCoreLogicalName(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest project artifact ${artifact.logicalName} cannot contain a retired managed-core logical name.`
+      );
+    }
+    if (isUnknownRetiredManagedCoreAliasLogicalName(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest project artifact ${artifact.logicalName} cannot contain an unknown retired managed-core alias logical name.`
       );
     }
   }
@@ -1024,14 +1068,6 @@ const governanceLogicalPaths = new Map<string, readonly string[]>([
   [
     'liftoff-setup-claude',
     governanceArtifactPaths.setup.claude
-  ],
-  [
-    'repository-governance-copilot-launcher',
-    governanceArtifactPaths.alias['github-copilot']
-  ],
-  [
-    'repository-governance-claude-launcher',
-    governanceArtifactPaths.alias.claude
   ]
 ]);
 
@@ -1046,11 +1082,27 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
   const governanceArtifacts = manifest.managedArtifacts.filter((artifact) =>
     governanceLogicalPaths.has(artifact.logicalName)
   );
+  const retiredGovernanceArtifacts = manifest.managedArtifacts.filter((artifact) =>
+    isRetiredManagedCoreLogicalName(artifact.logicalName)
+  );
+  for (const artifact of retiredGovernanceArtifacts) {
+    if (
+      !isRetiredManagedCoreArtifactIdentity(
+        artifact.logicalName,
+        artifact.category,
+        artifact.pathParts
+      )
+    ) {
+      throw new FileSystemError(
+        `Retired managed-core artifact ${artifact.logicalName} has invalid identity.`
+      );
+    }
+  }
   if (manifest.governance.profile === 'unspecified') {
     return;
   }
   if (manifest.governance.profile === 'none') {
-    if (governanceArtifacts.length > 0) {
+    if (governanceArtifacts.length > 0 || retiredGovernanceArtifacts.length > 0) {
       throw new FileSystemError(
         'Disabled manifest governance cannot own governance handoff artifacts.'
       );
@@ -1068,11 +1120,6 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
       agent === 'github-copilot'
         ? 'liftoff-setup-copilot'
         : 'liftoff-setup-claude'
-    ),
-    ...manifest.project.agents.map((agent) =>
-      agent === 'github-copilot'
-        ? 'repository-governance-copilot-launcher'
-        : 'repository-governance-claude-launcher'
     )
   ];
   const missing: string[] = [];
@@ -1102,15 +1149,19 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
       `Enabled manifest governance is missing artifact ${missing[0]}.`
     );
   }
-  if (manifest.governance.state === 'handoff-partial' && missing.length === 0) {
+  if (
+    manifest.governance.state === 'handoff-partial' &&
+    missing.length === 0 &&
+    retiredGovernanceArtifacts.length === 0
+  ) {
     throw new FileSystemError(
-      'Manifest governance state handoff-partial requires at least one applicable artifact to remain outside Liftoff ownership.'
+      'Manifest governance state handoff-partial requires at least one applicable artifact to remain outside Liftoff ownership or one protected retired alias to remain tracked.'
     );
   }
   for (const artifact of governanceArtifacts) {
     if (!required.includes(artifact.logicalName)) {
       throw new FileSystemError(
-        `Manifest governance contains inapplicable launcher ${artifact.logicalName}.`
+        `Manifest governance contains inapplicable setup integration ${artifact.logicalName}.`
       );
     }
   }
@@ -1126,6 +1177,16 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
 
   const issues: string[] = [];
   for (const artifact of manifest.managedArtifacts) {
+    if (isRetiredManagedCoreLogicalName(artifact.logicalName)) {
+      try {
+        await resolveProjectPath(projectRoot, artifact.pathParts);
+      } catch (error) {
+        issues.push(
+          `Unsafe retired managed-core path for ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`
+        );
+      }
+      continue;
+    }
     try {
       const targetPath = await resolveProjectPath(projectRoot, artifact.pathParts);
       const bytes = await readFile(targetPath);
@@ -1158,8 +1219,14 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
           `Missing artifact ${compatibilityArtifact.logicalName} at ${compatibilityArtifact.pathParts.join('/')}`
         );
       } else {
+        const hasRetiredManagedArtifacts = manifest.managedArtifacts.some((artifact) =>
+          isRetiredManagedCoreLogicalName(artifact.logicalName)
+        );
+        const currentManagedArtifacts = manifest.managedArtifacts.filter((artifact) =>
+          !isRetiredManagedCoreLogicalName(artifact.logicalName)
+        );
         const expectedInventory: ManagedCompatibilityInventoryEntry[] =
-          manifest.managedArtifacts.map((artifact) => ({
+          currentManagedArtifacts.map((artifact) => ({
             logicalName: artifact.logicalName,
             pathParts: artifact.pathParts,
             lifecycle: 'managed-core',
@@ -1167,10 +1234,12 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
           }));
         validateGovernanceCompatibilityMetadata(
           JSON.parse(bytes.toString('utf8')) as unknown,
-          manifest.governance.state === 'handoff-generated'
+          hasRetiredManagedArtifacts
+            ? undefined
+            : manifest.governance.state === 'handoff-generated'
             ? {
                 logicalNameAllowlist: managedCoreLogicalNames,
-                pathAllowlist: manifest.managedArtifacts.map((artifact) => artifact.pathParts),
+                pathAllowlist: currentManagedArtifacts.map((artifact) => artifact.pathParts),
                 inventory: expectedInventory
               }
             : {

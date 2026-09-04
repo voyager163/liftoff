@@ -152,8 +152,9 @@ category or filename:
 The manifest is a CLI-owned transaction record rather than an ordinary
 template artifact. Current managed core is limited to the exact repository
 governance policy, context, guide, phase graph, compatibility metadata,
-credential-policy schema, `/liftoff-setup` integrations, and selected-agent
-compatibility aliases. A name such as `config.go`, a `configuration` category,
+credential-policy schema, and selected-agent `/liftoff-setup` integrations.
+Forced update may remove exact retired generated setup-alias entries from older
+manifests after review. A name such as `config.go`, a `configuration` category,
 or a path under `.github` does not grant update authority.
 
 User-owned governance artifacts are deliberately excluded from managed-core

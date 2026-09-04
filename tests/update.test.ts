@@ -14,6 +14,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
+import { validateGeneratedProject } from '../src/file-system.js';
 import { compareSemver } from '../src/semver.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -21,6 +22,7 @@ import {
   governanceArtifactPaths,
   renderCanonicalGovernancePolicy
 } from '../src/repository-governance.js';
+import { retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
 import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
@@ -92,7 +94,8 @@ async function powerAppsFixtureProject(codeAppsPlugin = false): Promise<string> 
 async function run(
   args: string[],
   cwd: string,
-  runner?: CommandRunner
+  runner?: CommandRunner,
+  env?: NodeJS.ProcessEnv
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
@@ -100,7 +103,8 @@ async function run(
     cwd,
     stdout,
     stderr,
-    ...(runner ? { runner } : {})
+    ...(runner ? { runner } : {}),
+    ...(env ? { env } : {})
   });
   return { code, out: stdout.text(), err: stderr.text() };
 }
@@ -168,10 +172,52 @@ const governancePathPartArrays = [
   governanceArtifactPaths.compatibility,
   governanceArtifactPaths.credentialPolicySchema,
   governanceArtifactPaths.setup['github-copilot'],
-  governanceArtifactPaths.setup.claude,
-  governanceArtifactPaths.alias['github-copilot'],
-  governanceArtifactPaths.alias.claude
+  governanceArtifactPaths.setup.claude
 ] as const;
+
+type RetiredAliasLogicalName = (typeof retiredManagedCoreIdentities)[number]['logicalName'];
+
+const legacyAliasContent: Record<RetiredAliasLogicalName, string> = {
+  'repository-governance-copilot-launcher': '# /liftoff-repository-governance\n\nRetired generated Copilot setup alias.\n',
+  'repository-governance-claude-launcher': '# /liftoff-repository-governance\n\nRetired generated Claude setup alias.\n'
+};
+
+async function addRetiredAliasOwnership(
+  root: string,
+  options: {
+    logicalNames?: readonly RetiredAliasLogicalName[];
+    absent?: boolean;
+    modified?: boolean;
+  } = {}
+): Promise<void> {
+  const selected = retiredManagedCoreIdentities.filter((identity) =>
+    options.logicalNames === undefined ||
+    options.logicalNames.includes(identity.logicalName)
+  );
+  for (const identity of selected) {
+    const content = legacyAliasContent[identity.logicalName];
+    if (!options.absent) {
+      await writeProjectOwnedFile(root, identity.pathParts, content);
+      if (options.modified) {
+        await writeProjectOwnedFile(
+          root,
+          identity.pathParts,
+          `${content}Developer customization.\n`
+        );
+      }
+    }
+  }
+  await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    for (const identity of selected) {
+      manifest.managedArtifacts.push({
+        logicalName: identity.logicalName,
+        category: identity.category,
+        pathParts: identity.pathParts,
+        contentHash: sha(legacyAliasContent[identity.logicalName])
+      });
+    }
+  });
+}
 
 function convertV6ToV5(manifest: any): void {
   manifest.artifactVersion = 5;
@@ -581,35 +627,232 @@ describe('core-only update command', () => {
     )).toBe(true);
   });
 
-  it('preserves an unrecorded governance launcher conflict as a partial handoff', async () => {
+  it('ignores an unrecorded retired alias file because it has no manifest ownership', async () => {
     const root = await fixtureProject();
-    await removeGovernanceMetadata(root);
+    const identity = retiredManagedCoreIdentities[0];
     const launcherPath = path.join(
       root,
-      ...governanceArtifactPaths.alias['github-copilot']
+      ...identity.pathParts
     );
     await mkdir(path.dirname(launcherPath), { recursive: true });
-    await writeFile(launcherPath, 'developer launcher\n');
+    await writeFile(launcherPath, 'developer retained old launcher\n');
 
     expect((await run(['update'], root)).code).toBe(0);
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.governance.state).toBe('handoff-generated');
+    expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName === identity.logicalName
+    )).toBe(false);
+    expect(await readFile(launcherPath, 'utf8')).toBe('developer retained old launcher\n');
+  });
+
+  it('checks and removes clean retired alias ownership without touching bytes in check mode', async () => {
+    const root = await fixtureProject();
+    await addRetiredAliasOwnership(root);
+    const watched = [
+      ['liftoff.manifest.json'],
+      ...retiredManagedCoreIdentities.map((identity) => [...identity.pathParts])
+    ];
+    const before = await pathFingerprints(root, watched);
+
+    const check = await run(['update', '--check', '--json'], root);
+
+    expect(check.code).toBe(2);
+    const checkReport = JSON.parse(check.out);
+    expect(checkReport.entries).toEqual(expect.arrayContaining(
+      retiredManagedCoreIdentities.map((identity) =>
+        expect.objectContaining({
+          logicalName: identity.logicalName,
+          status: 'retired',
+          path: identity.pathParts.join('/'),
+          fileDeleted: true
+        })
+      )
+    ));
+    expect(checkReport.summary).toMatchObject({
+      retired: 2,
+      retiredRemoved: 2,
+      retiredAbsent: 0,
+      retiredConflict: 0
+    });
+    expect(await pathFingerprints(root, watched)).toEqual(before);
+
+    const applied = await run(['update', '--json'], root);
+
+    expect(applied.code).toBe(0);
+    const applyReport = JSON.parse(applied.out);
+    expect(applyReport.removed).toEqual(expect.arrayContaining(
+      retiredManagedCoreIdentities.map((identity) =>
+        expect.objectContaining({
+          logicalName: identity.logicalName,
+          status: 'retired',
+          path: identity.pathParts.join('/'),
+          fileDeleted: true
+        })
+      )
+    ));
+    for (const identity of retiredManagedCoreIdentities) {
+      await expect(access(path.join(root, ...identity.pathParts)))
+        .rejects.toMatchObject({ code: 'ENOENT' });
+    }
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.governance.state).toBe('handoff-generated');
+    expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName.startsWith('repository-governance-') &&
+      artifact.logicalName.endsWith('-launcher')
+    )).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+    expect((await run(['update', '--check', '--json'], root)).code).toBe(0);
+  });
+
+  it('retires already absent alias ownership without counting a file deletion', async () => {
+    const root = await fixtureProject();
+    await addRetiredAliasOwnership(root, {
+      logicalNames: ['repository-governance-copilot-launcher'],
+      absent: true
+    });
+
+    const applied = await run(['update', '--json'], root);
+
+    expect(applied.code).toBe(0);
+    const report = JSON.parse(applied.out);
+    expect(report.removed).toContainEqual(expect.objectContaining({
+      logicalName: 'repository-governance-copilot-launcher',
+      status: 'retired-absent',
+      path: '.github/prompts/liftoff-repository-governance.prompt.md',
+      fileDeleted: false
+    }));
+    expect(report.summary).toMatchObject({
+      retired: 1,
+      retiredRemoved: 0,
+      retiredAbsent: 1
+    });
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName === 'repository-governance-copilot-launcher'
+    )).toBe(false);
+  });
+
+  it('protects modified retired aliases unless force removes the exact alias', async () => {
+    const root = await fixtureProject();
+    const identity = retiredManagedCoreIdentities[0];
+    await addRetiredAliasOwnership(root, {
+      logicalNames: [identity.logicalName],
+      modified: true
+    });
+    const aliasPath = path.join(root, ...identity.pathParts);
+    const modified = await readFile(aliasPath, 'utf8');
+    const watched = [['liftoff.manifest.json'], [...identity.pathParts]];
+    const beforeCheck = await pathFingerprints(root, watched);
+
+    const check = await run(['update', '--check', '--json'], root);
+
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).entries).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'retired-conflict',
+      path: identity.pathParts.join('/'),
+      fileDeleted: true
+    }));
+    expect(await pathFingerprints(root, watched)).toEqual(beforeCheck);
+
+    const plain = await run(['update', '--json'], root);
+
+    expect(plain.code).toBe(0);
+    const plainReport = JSON.parse(plain.out);
+    expect(plainReport.status).toBe('partial');
+    expect(plainReport.removed).toEqual([]);
+    expect(plainReport.skipped).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'retired-conflict',
+      path: identity.pathParts.join('/')
+    }));
+    expect(await readFile(aliasPath, 'utf8')).toBe(modified);
     let manifest = JSON.parse(
       await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
     );
     expect(manifest.governance.state).toBe('handoff-partial');
-    expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
-      artifact.logicalName === 'repository-governance-copilot-launcher'
-    )).toBe(false);
-    expect(await readFile(launcherPath, 'utf8')).toBe('developer launcher\n');
+    expect(manifest.managedArtifacts).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      pathParts: identity.pathParts
+    }));
 
-    await rm(launcherPath);
-    expect((await run(['update'], root)).code).toBe(0);
+    const forced = await run(['update', '--force', '--json'], root);
+
+    expect(forced.code).toBe(0);
+    const forcedReport = JSON.parse(forced.out);
+    expect(forcedReport.removed).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'force-retired',
+      path: identity.pathParts.join('/'),
+      fileDeleted: true
+    }));
+    await expect(access(aliasPath)).rejects.toMatchObject({ code: 'ENOENT' });
     manifest = JSON.parse(
       await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
     );
     expect(manifest.governance.state).toBe('handoff-generated');
     expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
-      artifact.logicalName === 'repository-governance-copilot-launcher'
-    )).toBe(true);
+      artifact.logicalName === identity.logicalName
+    )).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+  });
+
+  it('leaves unrelated managed-core orphans untouched', async () => {
+    const root = await fixtureProject();
+    const orphanPathParts = governanceArtifactPaths.policy;
+    const orphanBefore = await readFile(path.join(root, ...orphanPathParts), 'utf8');
+    await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+      expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
+        artifact.logicalName === 'repository-governance-policy'
+      )).toBe(true);
+    });
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.governanceProfile = 'none';
+    });
+
+    const applied = await run(['update', '--force', '--json'], root);
+
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out).summary.orphan).toBeGreaterThan(0);
+    expect(await readFile(path.join(root, ...orphanPathParts), 'utf8'))
+      .toBe(orphanBefore);
+    const manifest = JSON.parse(
+      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+    );
+    expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
+      artifact.logicalName === 'repository-governance-policy'
+    )).toBe(false);
+  });
+
+  it('rolls back retired alias deletion and manifest rewrite when the update transaction fails', async () => {
+    const root = await fixtureProject();
+    const identity = retiredManagedCoreIdentities[0];
+    await addRetiredAliasOwnership(root, {
+      logicalNames: [identity.logicalName]
+    });
+    const aliasPath = path.join(root, ...identity.pathParts);
+    const aliasBefore = await readFile(aliasPath, 'utf8');
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const manifestBefore = await readFile(manifestPath, 'utf8');
+
+    const failed = await run(
+      ['update', '--json'],
+      root,
+      undefined,
+      { ...process.env, LIFTOFF_UPDATE_INJECT_FAILURE: 'before-path:liftoff.manifest.json' }
+    );
+
+    expect(failed.code).toBe(1);
+    expect(failed.err).toContain('All applied changes were rolled back');
+    expect(await readFile(aliasPath, 'utf8')).toBe(aliasBefore);
+    expect(await readFile(manifestPath, 'utf8')).toBe(manifestBefore);
   });
 
   it('preserves governance files when the managed profile is disabled', async () => {

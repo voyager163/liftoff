@@ -1,8 +1,21 @@
 import { createHash } from 'node:crypto';
 import { readProjectFile } from './file-system.js';
+import {
+  isRetiredManagedCoreArtifactIdentity,
+  retiredManagedCoreIdentityFor
+} from './artifact-lifecycle.js';
 import type { GeneratedArtifact, LiftoffManifest } from './types.js';
 
-export type ReconcileStatus = 'unchanged' | 'new' | 'missing' | 'upgrade' | 'conflict' | 'moved' | 'orphan';
+export type ReconcileStatus =
+  | 'unchanged'
+  | 'new'
+  | 'missing'
+  | 'upgrade'
+  | 'conflict'
+  | 'moved'
+  | 'orphan'
+  | 'retired'
+  | 'retired-conflict';
 
 export interface ReconcileEntry {
   logicalName: string;
@@ -197,6 +210,53 @@ export async function reconcileProject(
   }
 
   for (const recorded of recordedByName.values()) {
+    const retiredIdentity = retiredManagedCoreIdentityFor(recorded.logicalName);
+    if (retiredIdentity) {
+      if (
+        !isRetiredManagedCoreArtifactIdentity(
+          recorded.logicalName,
+          recorded.category,
+          recorded.pathParts
+        )
+      ) {
+        entries.push({
+          logicalName: recorded.logicalName,
+          status: 'orphan',
+          pathParts: recorded.pathParts,
+          reason: 'retired logical name is not at an exact retired identity; no automatic deletion is allowed'
+        });
+        continue;
+      }
+      const disk = await readDisk(projectRoot, recorded.pathParts);
+      if (disk === undefined) {
+        entries.push({
+          logicalName: recorded.logicalName,
+          status: 'retired',
+          pathParts: recorded.pathParts,
+          destinationOccupied: false,
+          reason: `retired setup alias for ${retiredIdentity.replacementLogicalName} is already absent; recorded state will be removed`
+        });
+        continue;
+      }
+      if (hashBytes(disk) === recorded.contentHash) {
+        entries.push({
+          logicalName: recorded.logicalName,
+          status: 'retired',
+          pathParts: recorded.pathParts,
+          destinationOccupied: true,
+          reason: `retired setup alias for ${retiredIdentity.replacementLogicalName} is untouched; update will delete it and remove manifest ownership`
+        });
+        continue;
+      }
+      entries.push({
+        logicalName: recorded.logicalName,
+        status: 'retired-conflict',
+        pathParts: recorded.pathParts,
+        destinationOccupied: true,
+        reason: `retired setup alias for ${retiredIdentity.replacementLogicalName} was modified; plain update preserves it and records handoff-partial, or use --force to delete this exact retired alias`
+      });
+      continue;
+    }
     const disk = await readDisk(projectRoot, recorded.pathParts);
     if (disk === undefined) {
       continue; // already removed by the user; nothing to report or retain

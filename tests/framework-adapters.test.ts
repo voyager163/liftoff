@@ -369,12 +369,12 @@ describe('framework ownership boundaries', () => {
         'repository-governance-policy',
         'repository-governance-context',
         'repository-governance-guide',
-        'repository-governance-copilot-launcher'
+        'liftoff-setup-copilot'
       ])
     );
     expect(partition.framework.some((item) =>
       item.pathParts.join('/') ===
-        '.github/prompts/liftoff-repository-governance.prompt.md'
+        '.github/prompts/liftoff-setup.prompt.md'
     )).toBe(false);
     expect([...manifest.managedArtifacts, ...manifest.projectArtifacts].some(
       (item) => item.pathParts[0] === '.specify'
@@ -390,7 +390,7 @@ describe('framework ownership boundaries', () => {
     };
     expect(openSpecPartition.seed.map((item) => item.logicalName)).toContain('openspec-config');
     expect(openSpecPartition.managedCore.some((item) =>
-      item.logicalName === 'repository-governance-copilot-launcher'
+      item.logicalName === 'liftoff-setup-copilot'
     )).toBe(true);
     expect([...openSpecManifest.managedArtifacts, ...openSpecManifest.projectArtifacts].some(
       (item) => item.pathParts[0] === 'openspec'

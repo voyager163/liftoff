@@ -15,7 +15,7 @@ The system SHALL expose repository governance as an append-only catalog selectio
 #### Scenario: Opt out interactively
 - **WHEN** a developer disables repository governance during initialization
 - **THEN** the resolved plan records `none`
-- **AND** no repository-governance policy, context, guide, or agent launcher is rendered
+- **AND** no repository-governance policy, context, guide, or setup integration is rendered
 
 #### Scenario: Select noninteractively
 - **WHEN** a developer supplies `--governance single-maintainer-gitflow` or `--governance none`
@@ -507,7 +507,7 @@ the presence of policy, workflow, or ruleset source files.
 
 #### Scenario: Governance adoption is partial
 - **WHEN** a legacy update preserves one or more unrecorded conflicting handoff destinations
-- **THEN** validation accepts the truthful schema-v6 managed-core ownership record
+- **THEN** validation accepts the truthful schema-v7 managed-core ownership record
 - **AND** doctor warns that the local handoff is incomplete and directs the developer to inspect conflicts before considering `--force`
 
 ### Requirement: Transient local bootstrap state has a fixed retirement lifecycle

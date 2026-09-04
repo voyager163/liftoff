@@ -40,7 +40,7 @@ Automation can select the neutral starting point explicitly with
 - Docker Compose and Azure OpenTofu.
 - Optional Vue frontend and pattern-specific Azure Functions workers.
 - Versioned repository-governance policy, workload context, guide, and
-  selected-agent launcher unless `none` is selected.
+  selected-agent `/liftoff-setup` integration unless `none` is selected.
 
 ### Deferred actions
 
@@ -107,7 +107,7 @@ environment, API frontend, Docker, or OpenTofu selection.
 - `liftoff.config.json`, manifest-v7 `liftoff.manifest.json`, starter provenance,
   and third-party attribution.
 - Official OpenSpec or Spec Kit output and every selected agent marker.
-- The common local governance policy and selected-agent launcher, with backend,
+- The common local governance policy and selected-agent `/liftoff-setup` integration, with backend,
   container, OpenTofu, custom deployment, and API DAST controls marked
   inapplicable.
 
