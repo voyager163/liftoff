@@ -101,6 +101,10 @@ Public user guides are plain Markdown under `docs/`; the root README remains a
 short landing page. Static README assets live under `docs/assets/`. No
 documentation generator is required.
 
+Release-owned compatibility, deterministic setup version vectors, bump rules,
+graph integrity, credential leak tests, cross-agent equivalence, and npm trusted
+publishing requirements live in [DEVELOPER.md](DEVELOPER.md).
+
 When editing documentation:
 
 ```bash
@@ -258,14 +262,18 @@ The complete supplied standard is stored at
 `assets/governance/single-maintainer-gitflow/policy.md`. Generated policy
 metadata and the activation protocol are rendered by
 `src/repository-governance.ts`. Keep policy schema/version, required invariant
-fragments, workload context adapters, exact artifact paths, logical names, and
-Copilot/Claude launcher compatibility synchronized.
+fragments, workload context adapters, exact artifact paths, logical names,
+manifest v7 activation identity, compatibility metadata, and Copilot/Claude
+`/liftoff-setup` plus `/liftoff-repository-governance` alias compatibility
+synchronized. See [DEVELOPER.md](DEVELOPER.md) before changing version axes.
 
-Policy changes require the focused repository-governance contract tests,
-workload matrix, schema-v5 reader/writer tests, update adoption and opt-out
-tests, framework ownership tests, documentation links, and package smoke. Never
-add a broad `.github` or `.claude` ownership pattern, an active framework change,
-or `governance/activation-baseline.json` to Liftoff-managed artifacts.
+Policy or activation changes require focused repository-governance, governance
+activation, credential, manifest migration, update adoption/opt-out, framework
+ownership, documentation-link, package-surface, graph/hash, seed strict
+validation, and cross-agent setup equivalence tests. Never add a broad `.github`
+or `.claude` ownership pattern, an active framework change, user-owned
+activation state/evidence/approvals/credentials, or supersession records to
+Liftoff-managed artifacts.
 
 ## Propose behavior changes
 
@@ -286,8 +294,9 @@ openspec validate <change-name> --strict
   or workflows change.
 - Confirm generated projects contain no credentials or environment-specific
   values.
-- Do not change persisted manifest identity or append-only identifiers without
-  an explicit compatibility design.
+- Do not change persisted manifest identity, activation version vectors, graph
+  hashes, schema versions, compatibility maps, or append-only identifiers without
+  an explicit compatibility design and migration/remedy tests.
 - Include generated-project verification when templates or dependencies
   change.
 

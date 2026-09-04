@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import os from 'node:os';
@@ -13,6 +13,13 @@ import {
 } from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
+import {
+  buildFineGrainedPatCredentialPolicy,
+  canonicalJson,
+  currentActivationIdentity,
+  phaseIds,
+  type UserActivationState
+} from '../src/governance-activation/index.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type {
   CommandResult,
@@ -143,6 +150,61 @@ async function run(
   return { code, out: stdout.text(), err: stderr.text() };
 }
 
+async function writeJson(root: string, parts: readonly string[], value: unknown): Promise<void> {
+  await mkdir(path.dirname(path.join(root, ...parts)), { recursive: true });
+  await writeFile(path.join(root, ...parts), `${canonicalJson(value)}\n`, 'utf8');
+}
+
+async function removeBootstrapSeeds(root: string): Promise<void> {
+  const changes = path.join(root, 'openspec', 'changes');
+  let entries;
+  try {
+    entries = await readdir(changes, { withFileTypes: true });
+  } catch {
+    return;
+  }
+  await Promise.all(entries
+    .filter((entry) => entry.isDirectory() && entry.name.startsWith('bootstrap-'))
+    .map((entry) => rm(path.join(changes, entry.name), { recursive: true, force: true })));
+}
+
+function activationState(
+  mutate?: (state: UserActivationState) => void
+): UserActivationState {
+  const phases = Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
+    state: 'pending',
+    updatedAt: '2026-09-04T00:00:00.000Z',
+    evidence: [],
+    approvals: [],
+    blockers: []
+  }])) as unknown as UserActivationState['phases'];
+  const state: UserActivationState = {
+    schemaVersion: currentActivationIdentity.activationStateSchemaVersion,
+    identity: currentActivationIdentity,
+    repository: {
+      id: 'R_doctor',
+      name: 'owner/doctor-app',
+      defaultBranch: 'develop'
+    },
+    activeChange: null,
+    applicability: {
+      statePath: 'bootstrap-local',
+      privateStagingDast: true,
+      credentialRequired: false
+    },
+    phases,
+    createdAt: '2026-09-04T00:00:00.000Z',
+    updatedAt: '2026-09-04T00:00:00.000Z'
+  };
+  mutate?.(state);
+  return state;
+}
+
+function projectCheck(report: any, id: string): any {
+  const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+  return project.checks.find((check: { id?: string }) => check.id === id);
+}
+
 describe('doctor exit-code model', () => {
   it('exits 0 with warnings only and 1 on any failure', () => {
     const warnOnly = [{ title: 'X', checks: [{ label: 'a', severity: 'warn' as const, detail: '' }, { label: 'b', severity: 'ok' as const, detail: '' }] }];
@@ -223,6 +285,124 @@ describe('doctor command', () => {
     });
   }, 30_000);
 
+  it('reports an active generated seed as seed-incomplete with a setup remedy', async () => {
+    const root = await fixtureProject();
+
+    const report = JSON.parse((await run(['doctor', '--json'], root)).out);
+
+    expect(projectCheck(report, 'governance-seed-incomplete')).toMatchObject({
+      severity: 'warn',
+      state: 'seed-incomplete',
+      remedy: expect.stringContaining('/liftoff-setup')
+    });
+  }, 30_000);
+
+  it('distinguishes phase-blocked, evidence-stale, enforcement-incomplete, and disposal-pending', async () => {
+    const root = await fixtureProject();
+    await removeBootstrapSeeds(root);
+    await writeJson(root, ['governance', 'activation-state.json'], activationState((state) => {
+      state.phases['seed-valid'] = {
+        state: 'verified',
+        updatedAt: '2026-09-04T00:00:00.000Z',
+        evidence: [{
+          phaseId: 'seed-valid',
+          evidenceId: 'missing-evidence',
+          headerDigest: 'a'.repeat(64),
+          result: 'verified'
+        }],
+        approvals: [],
+        blockers: []
+      };
+      state.phases['phase-0-complete'] = {
+        state: 'blocked',
+        updatedAt: '2026-09-04T00:00:00.000Z',
+        evidence: [],
+        approvals: [],
+        blockers: ['external subscription design is unresolved']
+      };
+      state.phases['enforcement-approved'] = {
+        state: 'approved',
+        updatedAt: '2026-09-04T00:00:00.000Z',
+        evidence: [],
+        approvals: ['enforcement-approval'],
+        blockers: []
+      };
+      state.bootstrapState = {
+        status: 'retained',
+        remoteImportEvidenceId: 'remote-import',
+        remoteImportEvidenceDigest: 'b'.repeat(64),
+        retainedAt: '2026-08-01T00:00:00.000Z',
+        disposeAfter: '2026-08-31T00:00:00.000Z',
+        encryptedStatePathParts: [['.liftoff', 'state', 'bootstrap.tfstate.enc']],
+        encryptionKeyPathParts: [['.liftoff', 'state', 'bootstrap.key']]
+      };
+    }));
+
+    const report = JSON.parse((await run(['doctor', '--json'], root)).out);
+
+    expect(projectCheck(report, 'governance-phase-blocked')).toMatchObject({
+      state: 'phase-blocked',
+      remedy: expect.stringContaining('governance resume')
+    });
+    expect(projectCheck(report, 'governance-evidence-stale')).toMatchObject({
+      state: 'evidence-stale',
+      severity: 'fail'
+    });
+    expect(projectCheck(report, 'governance-enforcement-incomplete')).toMatchObject({
+      state: 'enforcement-incomplete'
+    });
+    expect(projectCheck(report, 'governance-disposal-pending')).toMatchObject({
+      state: 'disposal-pending',
+      remedy: expect.stringContaining('destructive disposal')
+    });
+  }, 30_000);
+
+  it('reports credential-expiring and identity-incompatible with exact remedies', async () => {
+    const expiringRoot = await fixtureProject();
+    await removeBootstrapSeeds(expiringRoot);
+    await writeJson(expiringRoot, ['governance', 'activation-state.json'], activationState((state) => {
+      state.applicability.credentialRequired = true;
+    }));
+    const credential = buildFineGrainedPatCredentialPolicy({
+      repository: {
+        id: 'R_doctor',
+        owner: 'owner',
+        name: 'doctor-app',
+        fullName: 'owner/doctor-app'
+      },
+      allowedWorkflows: [{ path: '.github/workflows/preflight.yml', jobs: ['runner-preflight'] }],
+      createdAt: new Date('2026-08-01T00:00:00.000Z'),
+      proof: {
+        verifiedAt: '2026-08-01T00:00:00.000Z',
+        readbackDigest: 'c'.repeat(64),
+        readbackProvider: 'adapter-fixture',
+        payloadFree: true
+      }
+    });
+    await writeJson(expiringRoot, ['governance', 'credentials', 'preflight-policy.json'], credential);
+    const expiring = JSON.parse((await run(['doctor', '--json'], expiringRoot)).out);
+    expect(projectCheck(expiring, 'governance-credential-expiring')).toMatchObject({
+      state: 'credential-expiring',
+      remedy: expect.stringContaining('masked enrollment')
+    });
+
+    const incompatibleRoot = await fixtureProject();
+    await writeJson(incompatibleRoot, ['governance', 'activation-state.json'], {
+      ...activationState(),
+      identity: {
+        ...currentActivationIdentity,
+        phaseGraphHash: 'f'.repeat(64)
+      }
+    });
+    const incompatible = JSON.parse((await run(['doctor', '--json'], incompatibleRoot)).out);
+    expect(projectCheck(incompatible, 'governance-identity-incompatible')).toMatchObject({
+      severity: 'fail',
+      state: 'identity-incompatible',
+      detail: expect.stringContaining('explicit compatibility map'),
+      remedy: expect.stringContaining('explicit versioned import mapping')
+    });
+  }, 30_000);
+
   it('warns when governance adoption preserves an unowned conflict', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
@@ -234,7 +414,7 @@ describe('doctor command', () => {
     );
     await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
     await writeFile(
-      path.join(root, ...governanceArtifactPaths['github-copilot']),
+      path.join(root, ...governanceArtifactPaths.alias['github-copilot']),
       'developer launcher\n'
     );
 

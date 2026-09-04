@@ -16,6 +16,13 @@ import {
   validateGovernancePolicy
 } from '../src/repository-governance.js';
 import { buildArtifacts } from '../src/templates.js';
+import {
+  canonicalPhaseGraphHash,
+  canonicalPhaseGraphJson,
+  currentActivationIdentity,
+  validateGovernanceCompatibilityMetadata,
+  validateManagedPhaseGraph
+} from '../src/governance-activation/index.js';
 
 function plan(values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}) {
   return buildProjectPlan({
@@ -49,9 +56,11 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('STOP FOR EXPLICIT USER APPROVAL');
     expect(policy).toContain('governance/activation-baseline.json');
     expect(policy).toContain('rulesets idempotently last');
+    expect(policy).toContain('capability chapters, not execution order');
+    expect(policy).toContain('managed phase graph is the sole execution-order authority');
     expect(policy.length).toBeGreaterThan(40_000);
     expect(createHash('sha256').update(policy).digest('hex'))
-      .toMatchInlineSnapshot(`"10205fdadee3c258b606857f7365dd82b79b0df62d15e45feb41d50bdd6aaf49"`);
+      .toMatchInlineSnapshot(`"9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"`);
     expect(policy).toBe(readFileSync(
       new URL(
         '../assets/governance/single-maintainer-gitflow/policy.md',
@@ -277,6 +286,14 @@ describe('canonical repository governance policy', () => {
     expect(policy).toContain('empty resource group or a\npartial apply');
   });
 
+  it('states canonical graph ordering instead of contradictory capability prose', () => {
+    const policy = renderCanonicalGovernancePolicy();
+    expect(policy).toContain('provider-ready` before approved minimum `bootstrap-local`');
+    expect(policy).toContain('bounded larger runner and\n`runner-ready`; private backend proof');
+    expect(policy).toContain('declarative remote import and\n`remote-import-verified`');
+    expect(policy).not.toContain('approved minimum `bootstrap-local`; delegated private\nnamespace inventory and `provider-ready`');
+  });
+
   it('keeps subscription features and service tags aligned with intended capabilities', () => {
     const policy = renderCanonicalGovernancePolicy();
     expect(policy).toContain('SubscriptionNotRegisteredForFeature');
@@ -335,15 +352,25 @@ describe('repository governance artifacts', () => {
       'repository-governance-policy',
       'repository-governance-context',
       'repository-governance-guide',
+      'repository-governance-phase-graph',
+      'repository-governance-compatibility',
+      'repository-governance-credential-policy-schema',
+      'liftoff-setup-copilot',
       'repository-governance-copilot-launcher',
+      'liftoff-setup-claude',
       'repository-governance-claude-launcher'
     ]);
     expect(all.map((artifact) => artifact.pathParts)).toEqual([
       [...governanceArtifactPaths.policy],
       [...governanceArtifactPaths.context],
       [...governanceArtifactPaths.guide],
-      [...governanceArtifactPaths['github-copilot']],
-      [...governanceArtifactPaths.claude]
+      [...governanceArtifactPaths.phaseGraph],
+      [...governanceArtifactPaths.compatibility],
+      [...governanceArtifactPaths.credentialPolicySchema],
+      [...governanceArtifactPaths.setup['github-copilot']],
+      [...governanceArtifactPaths.alias['github-copilot']],
+      [...governanceArtifactPaths.setup.claude],
+      [...governanceArtifactPaths.alias.claude]
     ]);
     for (const artifact of all) {
       expect(artifact.category).toBe('governance');
@@ -358,24 +385,39 @@ describe('repository governance artifacts', () => {
     expect(copilotOnly.map((artifact) => artifact.logicalName))
       .not.toContain('repository-governance-claude-launcher');
     expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .not.toContain('liftoff-setup-claude');
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
       .toContain('repository-governance-copilot-launcher');
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .toContain('liftoff-setup-copilot');
   });
 
-  it('keeps launchers thin and requires pushed Phase 0 plus approval', () => {
+  it('keeps setup integrations thin, equivalent, engine-only, and alias-backed', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan());
     const policy = artifacts.find((artifact) =>
       artifact.logicalName === 'repository-governance-policy'
     )!.content;
+    const setup = artifacts.filter((artifact) => artifact.logicalName.startsWith('liftoff-setup-'));
+    expect(setup).toHaveLength(2);
+    expect(new Set(setup.map((artifact) => artifact.content)).size).toBe(1);
     for (const launcher of artifacts.filter((artifact) =>
+      artifact.logicalName.startsWith('liftoff-setup-') ||
       artifact.logicalName.endsWith('launcher')
     )) {
-      expect(launcher.content.length).toBeLessThan(2_000);
-      expect(launcher.content).toContain('.liftoff/governance/policy.md');
-      expect(launcher.content).toContain('.liftoff/governance/context.json');
-      expect(launcher.content).toContain('committed and pushed');
-      expect(launcher.content).toContain('read-only Phase 0');
-      expect(launcher.content).toContain('stop for explicit user approval');
+      expect(launcher.content.length).toBeLessThan(1_500);
+      expect(launcher.content).toContain('liftoff governance status --json');
+      expect(launcher.content).toContain('liftoff governance plan --json');
+      expect(launcher.content).toContain('liftoff governance apply-next --json');
+      expect(launcher.content).toContain('liftoff governance resume --json');
+      expect(launcher.content).toContain('liftoff governance verify --json');
+      expect(launcher.content).toMatch(/same\s+deterministic Liftoff governance engine/);
+      expect(launcher.content).not.toMatch(/\bmodel\b/i);
+      expect(launcher.content).not.toMatch(/skill[- ]?version/i);
       expect(launcher.content).not.toContain('Phase 4 — Security pipeline');
+      expect(launcher.content).not.toMatch(/\bgit (?:commit|push|merge|rebase|reset)\b/i);
+      expect(launcher.content).not.toMatch(/\bgh\s+/i);
+      expect(launcher.content).not.toMatch(/\baz\s+/i);
+      expect(launcher.content).not.toMatch(/\bopenspec\s+(?:new|archive|sync|validate|propose)\b/i);
       expect(launcher.content).not.toBe(policy);
     }
   });
@@ -400,7 +442,19 @@ describe('repository governance artifacts', () => {
     expect(buildRepositoryGovernanceArtifacts(selectedPlan)).toEqual(
       buildRepositoryGovernanceArtifacts(selectedPlan)
     );
-    for (const parts of Object.values(governanceArtifactPaths)) {
+    const pathPartArrays = [
+      governanceArtifactPaths.policy,
+      governanceArtifactPaths.context,
+      governanceArtifactPaths.guide,
+      governanceArtifactPaths.phaseGraph,
+      governanceArtifactPaths.compatibility,
+      governanceArtifactPaths.credentialPolicySchema,
+      governanceArtifactPaths.setup['github-copilot'],
+      governanceArtifactPaths.setup.claude,
+      governanceArtifactPaths.alias['github-copilot'],
+      governanceArtifactPaths.alias.claude
+    ];
+    for (const parts of pathPartArrays) {
       expect(path.posix.join('/repo', ...parts)).toContain('/repo/');
       expect(path.win32.join('C:\\repo', ...parts)).toContain('C:\\repo\\');
     }
@@ -418,20 +472,22 @@ describe('repository governance artifacts', () => {
     }
   });
 
-  it('writes schema-v5 handoff identity and exact durable hashes', () => {
+  it('writes policy-v6 manifest-v7 governed identity and exact durable hashes', () => {
     const artifacts = buildArtifacts(plan());
     const manifest = JSON.parse(
       artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
     );
-    expect(manifest.artifactVersion).toBe(6);
+    expect(manifest.artifactVersion).toBe(7);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '5',
+      policyVersion: '6',
+      activationIdentity: currentActivationIdentity,
       state: 'handoff-generated'
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
-    )).toHaveLength(5);
+    )).toHaveLength(10);
+    expect(manifest.liftoffVersion).toBe(currentActivationIdentity.liftoffVersion);
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
       artifact.pathParts.join('/') === 'governance/activation-baseline.json'
     )).toBe(false);
@@ -439,6 +495,39 @@ describe('repository governance artifacts', () => {
       artifact.pathParts.join('/').includes('/changes/') &&
       artifact.category === 'governance'
     )).toBe(false);
+  });
+
+  it('generates canonical managed graph, compatibility metadata, and strict credential policy schema bytes', () => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan({ agents: ['copilot'] }));
+    const graph = artifacts.find((artifact) =>
+      artifact.logicalName === 'repository-governance-phase-graph'
+    )!;
+    const compatibility = artifacts.find((artifact) =>
+      artifact.logicalName === 'repository-governance-compatibility'
+    )!;
+    const schema = artifacts.find((artifact) =>
+      artifact.logicalName === 'repository-governance-credential-policy-schema'
+    )!;
+    expect(graph.content).toBe(canonicalPhaseGraphJson);
+    expect(createHash('sha256').update(graph.content).digest('hex')).toBe(canonicalPhaseGraphHash);
+    expect(() => validateManagedPhaseGraph(JSON.parse(graph.content))).not.toThrow();
+    const parsedCompatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibility.content));
+    expect(parsedCompatibility.schemaVersion).toBe(1);
+    expect(parsedCompatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
+    expect(parsedCompatibility.manifest.writeVersion).toBe(7);
+    expect(parsedCompatibility.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
+    expect(parsedCompatibility.activation.recognizedGraphHashes).toEqual([canonicalPhaseGraphHash]);
+    expect(parsedCompatibility.activation.graphMappings).toEqual([]);
+    expect(parsedCompatibility.activation.historicalStateMigrations).toEqual([]);
+    expect(JSON.stringify(parsedCompatibility)).not.toMatch(/setupSkillVersion|skillVersion/);
+    expect(parsedCompatibility.managedCore.updateInventory.map((entry) => entry.logicalName))
+      .toContain('repository-governance-compatibility');
+    const parsedSchema = JSON.parse(schema.content);
+    expect(parsedSchema.additionalProperties).toBe(false);
+    expect(parsedSchema.properties.identity.additionalProperties).toBe(false);
+    expect(parsedSchema.properties.displayNameTemplate.const).toBe('<repo>-runner-preflight-read');
+    expect(parsedSchema.properties.secretName.const).toBe('RUNNER_CONFIGURATION_READ_TOKEN');
+    expect(parsedSchema.properties.nonForwarding.const).toBe(true);
   });
 });
 

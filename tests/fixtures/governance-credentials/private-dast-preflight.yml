@@ -1,0 +1,13 @@
+name: Runner preflight private DAST
+on:
+  workflow_dispatch:
+jobs:
+  private-dast-preflight:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Read hosted runner and network configuration
+        env:
+          RUNNER_CONFIGURATION_READ_TOKEN: ${{ secrets.RUNNER_CONFIGURATION_READ_TOKEN }}
+        run: echo "private DAST preflight only"

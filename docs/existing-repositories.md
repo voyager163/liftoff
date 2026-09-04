@@ -65,6 +65,7 @@ Use:
 
 ```bash
 liftoff validate
+liftoff governance status --json
 liftoff update --check
 liftoff update
 ```
@@ -88,26 +89,36 @@ Select both delivery modes and every workflow in the profile picker. Plain
 hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
 and run `openspec update`.
 
-Projects created before manifest schema v6 automatically preview the default
-repository-governance handoff as new named drift. Plain update safely adopts
-collision-free policy, context, guide, and selected-agent launchers without
-rewriting a configuration that omitted `governanceProfile`. Existing different
-files remain unowned conflicts and the v6 manifest records `handoff-partial`.
+Projects created before manifest artifact version 7 automatically preview the
+default deterministic setup handoff as new named drift. Plain update safely
+adopts collision-free policy, context, guide, phase graph, compatibility
+metadata, credential-policy schema, setup integrations, and selected-agent
+aliases without rewriting a configuration that omitted `governanceProfile`.
+Existing different files remain unowned conflicts and the v7 manifest records
+`handoff-partial`.
 Resolving every conflict promotes a later update to `handoff-generated`.
 Selecting `none` leaves previously managed handoff files as undeleted orphans
 while unrecorded conflicts remain user-owned. No update mode runs an agent or
 activates GitHub settings.
 
-Projects carrying governance policy versions 2 through 4 preview policy version 5 as
-managed-core drift. Review the private-runner and bootstrap-state retirement
-contracts before replacement. Updating the handoff never provisions Azure or
-GitHub resources; reconcile any active downstream runner change with version 5
-before applying its infrastructure.
+Projects carrying governance policy versions 2 through 5 preview policy version
+6, manifest v7, and activation-contract v1 as managed-core drift. Review the
+canonical phase graph, private-runner credential contract, bootstrap-state
+retention/disposal contract, and active-change reconciliation before
+replacement. Updating the handoff never provisions Azure or GitHub resources;
+any active downstream governance change must acknowledge the supported
+activation identity and exact graph hash before applying infrastructure.
 
-The schema-v6 transition releases every legacy non-core artifact into project
+The manifest-v7 transition releases every legacy non-core artifact into project
 provenance without writing, restoring, moving, or deleting its path.
 Intentionally removed infrastructure stays absent and production source stays
 byte-for-byte unchanged.
+
+Supported readers normalize manifest v2-v6 and write only v7 after all
+preflights pass. Future versions, unsupported policy/contract/schema tuples,
+unknown graph hashes, unversioned activation state, or prose-only task history
+block with explicit upgrade, import-mapping, or reconciliation remedies. Liftoff
+never fabricates evidence from old checkboxes.
 
 Major supported-stack releases apply to new scaffolds. Existing projects adopt
 runtime, lock, Docker, provider, framework, and application changes through a

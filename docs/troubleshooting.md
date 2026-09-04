@@ -158,7 +158,7 @@ failed update, but Liftoff keeps no backup after success.
 
 For a new governance policy or launcher conflict, review that exact local file
 before considering `liftoff update --force`; do not delete it or activate remote
-governance merely to make update pass. The schema-v6 manifest records
+governance merely to make update pass. The manifest-v7 record stores
 `handoff-partial` and no ownership entry for each preserved unrecorded conflict.
 Run `liftoff update --check` to inspect the remaining paths. Once each path is
 absent or matches the current artifact, plain update promotes the handoff to
@@ -184,9 +184,13 @@ the existing project files and infrastructure are project-owned.
 ## Governance handoff exists but nothing is enforced
 
 That is the expected initial state. The manifest records `handoff-generated`,
-not active enforcement. Commit and push the repository, run the selected-agent
-launcher, review its read-only Phase 0 report, and explicitly approve the plan
-before the agent creates a governance change.
+not active enforcement. Run `/liftoff-setup` from a selected agent. It first
+completes, syncs, and archives the generated bootstrap seed with local baseline
+checks, then stops at explicit authority gates for commit/push, credentials,
+billed infrastructure or exceptions, final enforcement, destructive cleanup, or
+external blockers. Rerun `/liftoff-setup` to resume; verified phases are not
+repeated. `/liftoff-repository-governance` is only a compatibility alias for the
+same engine and state.
 
 Missing licenses, runner-provisioning authority, a private Staging assignment or
 reachable network path, alert routes, parallel deployment, or sufficient canary
@@ -223,6 +227,52 @@ then regenerate the no-apply plan.
 Do not use `AzurePlatformDNS` in an Allow NSG rule. The special tag is deny-only
 for disabling default platform DNS. Omit the rule when platform DNS is enabled,
 or allow TCP and UDP 53 to exact custom resolver addresses.
+
+## Governance doctor reports a blocked state
+
+`liftoff doctor` and `liftoff governance status --json` use precise states:
+
+| State | Remedy |
+| --- | --- |
+| `seed-incomplete` | Run `/liftoff-setup`; fix failing local baseline checks and rerun until the seed is archived. |
+| `phase-blocked` | Read the blocking phase, evidence requirement, and approval gate; satisfy the named prerequisite rather than skipping it. |
+| `evidence-stale` | Regenerate evidence from the current baseline, activation identity, graph hash, and phase input digest. |
+| `credential-expiring` | Rotate before the recorded lead time using the same App or PAT policy. |
+| `reconciliation-required` | Review the policy/contract/schema/graph change and acknowledge the current compatible identity before applying another phase. |
+| `identity-incompatible` | Upgrade to the reported minimum Liftoff version or provide an explicit supported migration/import mapping. |
+| `enforcement-incomplete` | Prove exact required contexts green and deliberately red, then approve final enforcement before ruleset mutation. |
+| `disposal-pending` | After day 30, approve destructive disposal of retained bootstrap state and rerun setup. |
+
+Do not hand-edit task checkboxes to clear these states. Tasks are projections of
+validated phase evidence.
+
+## Runner-preflight credential setup is blocked
+
+Setup first prefers an existing verified selected-repository GitHub App with the
+required read permissions. If none is available, create one fine-grained PAT with
+exactly these fields: display name `<repo>-runner-preflight-read`, secret
+`RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
+repository metadata read, organization hosted-runner read and
+network-configuration read, no writes, and the recorded workflow/job allowlist
+(`.github/workflows/bootstrap-import-preflight.yml` job
+`bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job
+`private-dast-preflight` unless the generated policy records a narrower
+applicable set).
+
+Enter the value only through the masked input. Never paste or show the value in
+chat, argv, command arguments, logs, evidence, files, or screenshots. A leaked value is
+compromised; manually revoke it, create a replacement, update the repository
+secret through setup, and rerun `liftoff governance verify --json`.
+
+## Governance identity or manifest migration is blocked
+
+Current Liftoff reads manifest v2-v7 and writes v7. It resumes only explicit
+compatible tuples: policy version 6, activation contract 1, schema-v1 activation
+artifacts, and a recognized phase-graph hash. Future versions, individually
+known but unsupported combinations, unknown graph hashes, or unversioned ad hoc
+state block without rewriting files. Use the exact upgrade, import-mapping, or
+reconciliation remedy printed by status or update; do not downgrade the
+manifest or copy evidence between identities.
 
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore the affected generated files and `liftoff.manifest.json` through version
@@ -295,6 +345,7 @@ The old command has no compatibility alias.
 ```bash
 liftoff help
 liftoff init --help
+liftoff governance --help
 liftoff update --help
 ```
 

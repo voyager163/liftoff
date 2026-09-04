@@ -268,7 +268,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
-      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 5');
+      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 6');
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('managed-core');
@@ -539,12 +539,18 @@ describe('commands', () => {
       expect(code).toBe(0);
       expect(stdout.text()).toContain('Initialized claims-api');
       expect(stdout.text()).toContain('local handoff generated, live activation deferred');
-      expect(stdout.text()).toContain('Handoff generated; commit and push before read-only Phase 0');
+      expect(stdout.text()).toContain('Deterministic setup generated; run /liftoff-setup next');
       expect(stdout.text()).toContain('Deferred project dependencies');
       expect(runner.calls.some((command) => command.args.includes('venv'))).toBe(false);
       const projectRoot = path.join(tempRoot, 'claims-api');
       expect(await readdir(projectRoot)).toContain('liftoff.manifest.json');
       expect(runner.calls.some((command) => command.executable === 'gh')).toBe(false);
+      expect(runner.calls.filter((command) => command.executable === 'git').every((command) =>
+        command.args[0] === 'rev-parse'
+      )).toBe(true);
+      expect(runner.calls.some((command) =>
+        /(?:secret|credential|ruleset|enforcement)/iu.test(`${command.executable} ${command.args.join(' ')}`)
+      )).toBe(false);
       expect(runner.calls.filter((command) => command.executable === 'az').every((command) =>
         command.args[0] === 'version' ||
         (command.args[0] === 'account' && command.args[1] === 'show')
@@ -560,9 +566,9 @@ describe('commands', () => {
         projectRoot,
         '.github',
         'prompts',
-        'liftoff-repository-governance.prompt.md'
+        'liftoff-setup.prompt.md'
       ), 'utf8');
-      expect(governancePolicy).toContain('policyVersion: "5"');
+      expect(governancePolicy).toContain('policyVersion: "6"');
       expect(governancePolicy).toContain('One provisioning exception only:');
       expect(governancePolicy).toContain('Azure Firewall Basic');
       expect(governancePolicy).toContain('Azure NAT Gateway');
@@ -570,8 +576,9 @@ describe('commands', () => {
       expect(governancePolicy).toContain('Microsoft.Network');
       expect(governancePolicy).toContain('GitHub.Network');
       expect(governanceLauncher.length).toBeLessThan(2_000);
-      expect(governanceLauncher).toContain('.liftoff/governance/policy.md');
-      expect(governanceLauncher).toContain('.liftoff/governance/context.json');
+      expect(governanceLauncher).toContain('liftoff governance status --json');
+      expect(governanceLauncher).toContain('liftoff governance verify --json');
+      expect(governanceLauncher).not.toMatch(/\bmodel\b/i);
       expect(governanceLauncher).not.toContain('Private Staging runner provisioning contract');
 
       const validateCode = await runCommand(parseArgs(['validate', 'claims-api']), { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream() });

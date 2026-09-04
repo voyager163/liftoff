@@ -11,26 +11,33 @@ Spec Kit and integrates GitHub Copilot, Claude Code, or both from the first comm
 
 ## Start here
 
-Install the published CLI from canonical npm, then launch the guided experience:
+Install the published CLI from canonical npm:
 
 ```bash
 npm install -g @msn-control/liftoff@latest
-liftoff init
 ```
+
+Primary path:
+
+```text
+liftoff init my-project
+cd my-project
+/liftoff-setup
+```
+
+`liftoff init` asks for workload, spec workflow, agents, readiness, and plan
+confirmation before writing local files. Repository governance is enabled by
+default as a local deterministic handoff. `/liftoff-setup` then completes,
+syncs, and archives the generated bootstrap seed through local baseline checks,
+then stops at explicit authority gates for repository publication, credentials,
+billed infrastructure or exceptions, final enforcement, destructive cleanup, and
+external blockers. No model selection is required for setup; the CLI phase graph,
+evidence, and approvals are authoritative.
 
 After the first self-upgrade-capable release is installed globally through npm,
 later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
 This replaces the CLI only; generated projects use `liftoff update` separately
-for Liftoff-managed core files.
-
-Liftoff asks you to choose a workload and spec workflow, select one or more coding
-agents with Space, review workstation readiness, and confirm the project plan before
-it writes. Repository governance is enabled by default as a local handoff; live
-activation remains deferred until commit, push, read-only Phase 0, and explicit
-plan approval. OpenSpec projects include all 12 OpenSpec 1.11 workflows as both
-skills and commands. A mismatched global OpenSpec profile and the default-off
-GitHub-hosted Copilot coding agent each require separate consent. After
-initialization:
+for Liftoff-managed core files. Useful read-only checks:
 
 ```bash
 liftoff validate
@@ -88,22 +95,23 @@ write failures.
 | [Getting started](docs/getting-started.md) | Install safely and complete the first interactive project |
 | [Workloads](docs/workloads.md) | Compare GenAI, API, and Power Apps choices and outputs |
 | [Spec workflows and agents](docs/spec-workflows-and-agents.md) | Configure OpenSpec, Spec Kit, Copilot, Claude, and the optional Code Apps plugin |
-| [Repository governance](docs/repository-governance.md) | Review the default local policy handoff, Phase 0, approval, activation, and existing-project adoption |
+| [Repository governance](docs/repository-governance.md) | Review `/liftoff-setup`, phase order, authority gates, evidence, credentials, and compatibility |
 | [Existing repositories](docs/existing-repositories.md) | Understand in-place, child-directory, and migration behavior |
 | [Prerequisites](docs/prerequisites.md) | Review plan-derived runtimes, tools, authentication, and dependency setup |
 | [Supported stack baseline](docs/supported-stack.md) | Review pinned runtimes, frameworks, dependency locks, images, and refresh policy |
-| [Safety and consent](docs/safety-and-consent.md) | Review staging, overwrite, install, rollback, and ownership guarantees |
+| [Safety and consent](docs/safety-and-consent.md) | Review staging, overwrite, setup authority, credential, rollback, and ownership guarantees |
 | [Telemetry and privacy](docs/telemetry.md) | Review collected fields, opt-outs, Azure processing, and retention |
 | [CLI reference](docs/cli-reference.md) | Find commands, flags, terminal modes, JSON, and exit-code contracts |
 | [Generated project structure](docs/project-structure.md) | Locate workload-specific and conditional generated areas |
-| [Configuration and manifests](docs/configuration-and-manifests.md) | Edit desired state and understand manifest schema v4 |
+| [Configuration and manifests](docs/configuration-and-manifests.md) | Edit desired state, manifest v7, activation identity, and managed artifacts |
 | [Azure deployment](docs/azure-deployment.md) | Review generated Azure and OpenTofu contracts for API workloads |
 | [Troubleshooting](docs/troubleshooting.md) | Recover from registry, readiness, validation, update, and plugin issues |
+| [Developer guide](DEVELOPER.md) | Maintain version vectors, compatibility maps, release checks, and publishing |
 
 ## Contributing and security
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for build, test, packaging, starter-refresh,
-and release procedures. Report vulnerabilities through the private process in
-[SECURITY.md](SECURITY.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPER.md](DEVELOPER.md) for build,
+test, packaging, starter-refresh, compatibility, and release procedures. Report
+vulnerabilities through the private process in [SECURITY.md](SECURITY.md).
 
 Liftoff is licensed under [GPL-3.0-only](LICENSE).

@@ -15,6 +15,7 @@ import type {
   LiftoffManifest,
   ManifestWorkload,
   ProjectPlan,
+  ExternalCommand,
   ArtifactLifecycle,
   ProjectProvisioningGroup
 } from './types.js';
@@ -30,6 +31,9 @@ import {
   buildRepositoryGovernanceArtifacts,
   governancePolicyVersion
 } from './repository-governance.js';
+import {
+  currentActivationIdentity
+} from './governance-activation/graph.js';
 import {
   OPEN_SPEC_DELIVERY,
   OPEN_SPEC_PROFILE,
@@ -300,7 +304,7 @@ export function buildManifest(
           environments: plan.environments.map((environment) => environment.id)
         };
   return {
-    artifactVersion: 6,
+    artifactVersion: 7,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -323,6 +327,7 @@ export function buildManifest(
       : {
           profile: plan.governanceProfile.id,
           policyVersion: governancePolicyVersion,
+          activationIdentity: currentActivationIdentity,
           state: 'handoff-generated'
         },
     managedArtifacts: artifacts
@@ -538,7 +543,8 @@ function addSpecWorkflowArtifacts(
       addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
       addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderPowerAppsSeedProposal(plan));
       addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderPowerAppsSeedDesign(plan));
-      addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
+      addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks(plan));
+      addSeed('openspec-seed-spec', 'seed', ['openspec', 'changes', changeName, 'specs', seedCapabilityId(plan), 'spec.md'], renderSeedSpec(plan));
       addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
     } else {
       addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderPowerAppsSpecKitConstitution(plan));
@@ -554,7 +560,8 @@ function addSpecWorkflowArtifacts(
     addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
     addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
     addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
-    addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks());
+    addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks(plan));
+    addSeed('openspec-seed-spec', 'seed', ['openspec', 'changes', changeName, 'specs', seedCapabilityId(plan), 'spec.md'], renderSeedSpec(plan));
     addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
   } else {
     addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
@@ -598,22 +605,32 @@ githubCopilot:
 function renderPowerAppsSeedProposal(
   plan: Extract<ProjectPlan, { workload: 'power-apps-code-app' }>
 ): string {
+  const capability = seedCapabilityId(plan);
   return `# Proposal: bootstrap-${plan.safeProjectName}
 
 ## Why
 
-Establish the first governed feature on the generated ${plan.projectName} Power Apps code app.
+Bootstrap the generated ${plan.projectName} Power Apps code app baseline created by Mission Control Liftoff.
 
 ## What Changes
 
-- Define the initial React user experience and routes.
-- Add connector-backed data access through generated service modules.
-- Keep Power Apps environment binding, authentication, connections, and deployment explicit.
+- Establish the generated React, Vite, TypeScript, Tailwind CSS, Power Apps SDK, workflow, and governance baseline.
+- Confirm that tenant binding, authentication, connector choices, solution packaging, deployment, and domain-specific product behavior are deferred to follow-up changes.
+
+## Capabilities
+
+### New Capabilities
+
+- \`${capability}\`: Generated Power Apps code app baseline for this Liftoff project.
+
+### Modified Capabilities
+
+- None.
 
 ## Impact
 
-- Affected source: \`src/\`
-- No Liftoff-owned backend API, Docker stack, Azure resources, or \`power.config.json\`.
+- Generated Power Apps starter files, package metadata, workflow files, and governance files.
+- No Liftoff-owned backend API, Docker stack, Azure resources, \`power.config.json\`, tenant binding, credentials, or deployment.
 `;
 }
 
@@ -627,12 +644,27 @@ function renderPowerAppsSeedDesign(
 The project uses React, Vite, TypeScript, Tailwind CSS, and Microsoft's Power Apps SDK.
 It was initialized from \`${plan.starter.path}\` at \`${plan.starter.commit}\`.
 
+## Goals / Non-Goals
+
+**Goals:**
+
+- Keep the generated baseline aligned to the approved Mission Control Power Apps code app stack.
+- Verify only deterministic local scaffold checks before archiving this bootstrap change.
+
+**Non-Goals:**
+
+- Define domain-specific product behavior, including screens, connector behavior, tenant binding, solution packaging, deployment, or credentials, in the bootstrap change.
+
 ## Decisions
 
 - Keep pages under \`src/pages\` and shared UI under \`src/components\`.
 - Keep connector and generated service boundaries explicit under \`src\`.
 - Use TanStack Query for server state and Zustand only for local client state.
 - Bind to a tenant and environment only through Microsoft's Power Apps CLI.
+
+## Risks / Trade-offs
+
+- Follow-up product changes own real business behavior; this seed only proves the generated local baseline is coherent.
 `;
 }
 
@@ -724,6 +756,41 @@ ${backendCommands}
 ${frontendCommands}${functionCommands}`;
 }
 
+function renderDeterministicSetupGuide(plan: ApiProjectPlan): string {
+  const backend = plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi'
+    ? '`uv run --project backend python -m pytest -q backend/tests`'
+    : plan.apiStack.id === 'node-fastify'
+      ? '`npm test` from `backend/` after `npm ci` and `npm run build`'
+      : '`go test ./...` from `backend/`';
+  const frontend = plan.includeFrontend
+    ? '- Frontend build: `npm run build` from `frontend/` after `npm ci`.'
+    : '- Frontend build: inapplicable because no frontend was generated.';
+  const governance = plan.governanceProfile.id === 'none'
+    ? 'Repository governance is disabled, so there is no `/liftoff-setup` integration, managed phase graph, or post-init governance activation path.'
+    : 'Run `/liftoff-setup` from a selected agent. It completes, syncs, and archives the generated bootstrap seed, then stops at explicit authority gates. Commit and push are separate approvals, and rerunning `/liftoff-setup` resumes idempotently without repeating verified phases.';
+  return `## Deterministic Setup
+
+${governance}
+
+The local baseline contains only applicable checks:
+
+- \`liftoff validate\`
+- Backend tests: ${backend}
+${frontend}
+- \`docker compose config -q\`
+- \`tofu fmt -check -recursive\`
+- \`tofu init -backend=false\`
+- \`tofu validate\`
+- strict ${plan.specWorkflow.label} validation
+
+No baseline step runs a live OpenTofu plan or apply, starts containers, deploys,
+mutates GitHub, or asks for cloud credentials. Absent components are recorded as
+inapplicable rather than simulated. After setup archives the seed, use normal
+OpenSpec or Spec Kit changes for features and the governed GitFlow release path
+after activation evidence is green.
+`;
+}
+
 function renderAdvisoryReadinessGuide(plan: ApiProjectPlan): string {
   const selected: WorkstationRequirementId[] = [
     'docker',
@@ -808,14 +875,17 @@ Copy \`.env.example\` to \`.env\`, then configure only the integrations you use:
 `;
 }
 
-function renderGeneratedUpdateGuide(): string {
+function renderGeneratedUpdateGuide(plan: ProjectPlan): string {
+  const governance = plan.governanceProfile.id === 'none'
+    ? 'Repository governance is disabled for this project, so Liftoff does not generate setup integrations, a managed phase graph, credential-policy schema, or post-init setup command.'
+    : '`single-maintainer-gitflow` repository governance generates deterministic setup artifacts only. Review `.liftoff/governance/README.md`, then run `/liftoff-setup` from a selected agent. The compatibility launcher `/liftoff-repository-governance` enters the same engine. Live enforcement requires evidence and explicit approval; it is never inferred from generated files.';
   return `## Safe Liftoff Updates
 
 \`liftoff upgrade\` replaces a supported global Liftoff CLI installation; it does not inspect or modify this project. Check and apply CLI replacement separately with \`liftoff upgrade --check\` and \`liftoff upgrade\`.
 
-\`single-maintainer-gitflow\` repository governance generates a local handoff only. Review \`.liftoff/governance/README.md\`, commit and push the project, then run a selected-agent launcher for read-only Phase 0. Live enforcement requires a separately approved governance change.
+${governance}
 
-\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, and selected-agent launchers. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
+\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, credential-policy schema, setup integrations, and selected-agent compatibility aliases. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
 
 Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
 
@@ -843,6 +913,7 @@ Generated by Mission Control Liftoff.
 - Cache and local messaging: Redis
 - Local development: Docker Compose
 ${plan.includeFrontend ? '- Frontend: Vue 3 with Tailwind\n' : ''}
+${renderDeterministicSetupGuide(plan)}
 ## Local Development
 
 \`\`\`bash
@@ -853,7 +924,7 @@ The backend API is available on port 8000. Health and readiness endpoints are av
 
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
-${renderGeneratedUpdateGuide()}
+${renderGeneratedUpdateGuide(plan)}
 ## Infrastructure
 
 \`\`\`bash
@@ -900,6 +971,7 @@ Generated by Mission Control Liftoff.
 - Local development: Docker Compose
 ${functionsStackLine}
 ${plan.includeFrontend ? '- Frontend: Vue 3 with Tailwind\n' : ''}
+${renderDeterministicSetupGuide(plan)}
 ## Local Development
 
 \`\`\`bash
@@ -911,7 +983,7 @@ The backend API is available on port 8000. Scalar is exposed at \`/scalar\`.
 
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
-${renderGeneratedUpdateGuide()}
+${renderGeneratedUpdateGuide(plan)}
 ## Infrastructure
 
 \`\`\`bash
@@ -2917,6 +2989,7 @@ ${functionsRule}
 }
 
 function renderSeedProposal(plan: ApiProjectPlan): string {
+  const capability = seedCapabilityId(plan);
   if (plan.workload === 'standard') {
     return `## Why
 
@@ -2925,13 +2998,13 @@ Bootstrap the generated ${plan.apiStack.label} standard application baseline cre
 ## What Changes
 
 - Establish the approved backend, infrastructure, local development, and governance baseline.
-- Capture follow-up product requirements through spec-driven changes.
+- Confirm that domain-specific product behavior is deferred to follow-up spec-driven changes.
 
 ## Capabilities
 
 ### New Capabilities
 
-- \`${plan.apiStack.id}-application-baseline\`: Generated standard application baseline for this Liftoff project.
+- \`${capability}\`: Generated standard application baseline for this Liftoff project.
 
 ### Modified Capabilities
 
@@ -2952,14 +3025,14 @@ Bootstrap the generated ${pattern.label} application baseline created by Mission
 ## What Changes
 
 - Establish the approved backend, infrastructure, local development, and governance baseline.
-- Capture follow-up product requirements through spec-driven changes.
+- Confirm that domain-specific product behavior is deferred to follow-up spec-driven changes.
 ${functionsChange}
 
 ## Capabilities
 
 ### New Capabilities
 
-- \`${pattern.id}-application-baseline\`: Generated application baseline for this Liftoff project.
+- \`${capability}\`: Generated application baseline for this Liftoff project.
 
 ### Modified Capabilities
 
@@ -2982,10 +3055,12 @@ This standard project was generated with Liftoff using ${plan.apiStack.label}, A
 **Goals:**
 
 - Keep the generated baseline aligned to the approved Mission Control stack.
+- Verify only deterministic local scaffold checks before archiving this bootstrap change.
 
 **Non-Goals:**
 
 - Define domain-specific product behavior in the bootstrap change.
+- Deploy infrastructure, start containers, mutate GitHub, or perform cloud plan/apply operations.
 
 ## Decisions
 
@@ -2996,7 +3071,7 @@ This standard project was generated with Liftoff using ${plan.apiStack.label}, A
 
 ## Risks / Trade-offs
 
-- The baseline contains placeholders that product-specific changes should replace.
+- Follow-up product changes own real business behavior; this seed only proves the generated local baseline is coherent.
 `;
   }
 
@@ -3011,10 +3086,12 @@ This project was generated with Liftoff using ${pattern.label}, Azure, OpenTofu,
 **Goals:**
 
 - Keep the generated baseline aligned to the approved Mission Control stack.
+- Verify only deterministic local scaffold checks before archiving this bootstrap change.
 
 **Non-Goals:**
 
 - Define domain-specific product behavior in the bootstrap change.
+- Deploy infrastructure, start containers, mutate GitHub, or perform cloud plan/apply operations.
 
 ## Decisions
 
@@ -3025,16 +3102,249 @@ ${functionsDecision}
 
 ## Risks / Trade-offs
 
-- The baseline contains placeholders that product-specific changes should replace.
+- Follow-up product changes own real business behavior; this seed only proves the generated local baseline is coherent.
 `;
 }
 
-function renderSeedTasks(): string {
-  return `## 1. Bootstrap Review
+function seedCapabilityId(plan: ProjectPlan): string {
+  if (plan.workload === 'power-apps-code-app') {
+    return 'power-apps-code-app-baseline';
+  }
+  if (plan.workload === 'standard') {
+    return `${plan.apiStack.id}-application-baseline`;
+  }
+  return `${genAiPattern(plan).id}-application-baseline`;
+}
 
-- [ ] 1.1 Review generated baseline and replace placeholders with domain-specific requirements.
-- [ ] 1.2 Validate local Docker Compose startup.
-- [ ] 1.3 Validate OpenTofu plan for the first target environment.
+function renderSeedSpec(plan: ProjectPlan): string {
+  const capability = seedCapabilityId(plan);
+  if (plan.workload === 'power-apps-code-app') {
+    return `## ADDED Requirements
+
+### Requirement: Generated Power Apps code app baseline is locally verifiable
+The bootstrap seed SHALL describe only the generated Power Apps code app scaffold, workflow configuration, and local validation boundary. Domain-specific screens, connector behavior, tenant binding, solution packaging, deployment, credentials, and other product behavior SHALL be deferred to later changes.
+
+#### Scenario: Generated baseline is present
+- **WHEN** the \`bootstrap-${plan.safeProjectName}\` change is generated
+- **THEN** it declares the \`${capability}\` capability
+- **AND** the generated React, Vite, TypeScript, Tailwind CSS, Power Apps SDK, workflow, and governance files are in scope
+
+#### Scenario: Product behavior is deferred
+- **WHEN** the bootstrap change is completed
+- **THEN** no domain-specific connector, tenant, environment, solution, credential, deployment, backend API, Docker, or OpenTofu behavior is introduced
+
+#### Scenario: Local baseline checks pass
+- **WHEN** deterministic setup verifies the seed
+- **THEN** \`liftoff validate\`, the root frontend build, and strict OpenSpec validation have passed
+- **AND** backend, Docker, worker, and OpenTofu checks are recorded as inapplicable without placeholder commands
+`;
+  }
+
+  if (plan.workload === 'standard') {
+    return `## ADDED Requirements
+
+### Requirement: Generated ${plan.apiStack.label} baseline is locally verifiable
+The bootstrap seed SHALL describe only the generated ${plan.apiStack.label} backend, optional frontend, Docker Compose, OpenTofu, workflow configuration, and governance baseline. Domain-specific product behavior SHALL be deferred to later changes.
+
+#### Scenario: Generated baseline is present
+- **WHEN** the \`bootstrap-${plan.safeProjectName}\` change is generated
+- **THEN** it declares the \`${capability}\` capability
+- **AND** the generated backend, database, Docker Compose, OpenTofu, workflow, and governance files are in scope
+
+#### Scenario: Product behavior is deferred
+- **WHEN** the bootstrap change is completed
+- **THEN** no domain-specific API, data model, UI, deployment, GitHub, or cloud mutation is introduced
+
+#### Scenario: Local baseline checks pass
+- **WHEN** deterministic setup verifies the seed
+- **THEN** \`liftoff validate\`, backend tests, Docker Compose configuration validation, OpenTofu formatting, backend-disabled initialization, OpenTofu validation, and strict OpenSpec validation have passed
+- **AND** frontend checks are run only when a frontend was generated
+`;
+  }
+
+  const pattern = genAiPattern(plan);
+  const worker = hasFunctionWorker(plan)
+    ? 'Azure Functions worker, '
+    : '';
+  return `## ADDED Requirements
+
+### Requirement: Generated ${pattern.label} baseline is locally verifiable
+The bootstrap seed SHALL describe only the generated FastAPI/PydanticAI backend, ${worker}optional frontend, Docker Compose, OpenTofu, workflow configuration, and governance baseline. Domain-specific product behavior SHALL be deferred to later changes.
+
+#### Scenario: Generated baseline is present
+- **WHEN** the \`bootstrap-${plan.safeProjectName}\` change is generated
+- **THEN** it declares the \`${capability}\` capability
+- **AND** the generated GenAI backend, database, Docker Compose, OpenTofu, workflow, governance${hasFunctionWorker(plan) ? ', and worker' : ''} files are in scope
+
+#### Scenario: Product behavior is deferred
+- **WHEN** the bootstrap change is completed
+- **THEN** no domain-specific prompts, tools, retrieval corpus, agent policy, UI, deployment, GitHub, or cloud mutation is introduced
+
+#### Scenario: Local baseline checks pass
+- **WHEN** deterministic setup verifies the seed
+- **THEN** \`liftoff validate\`, backend tests,${hasFunctionWorker(plan) ? ' worker tests,' : ''} Docker Compose configuration validation, OpenTofu formatting, backend-disabled initialization, OpenTofu validation, and strict OpenSpec validation have passed
+- **AND** frontend checks are run only when a frontend was generated
+`;
+}
+
+interface SeedTaskCheck {
+  id: string;
+  label: string;
+  command?: ExternalCommand;
+  cwd?: readonly string[];
+  inapplicable?: string;
+}
+
+function seedTaskChecks(plan: ProjectPlan): SeedTaskCheck[] {
+  const checks: SeedTaskCheck[] = [
+    {
+      id: '2.1',
+      label: 'Run Liftoff manifest validation',
+      command: { executable: 'liftoff', args: ['validate'] }
+    }
+  ];
+  if (plan.workload === 'power-apps-code-app') {
+    checks.push({
+      id: '2.2',
+      label: 'Record backend tests as inapplicable',
+      inapplicable: 'no Liftoff backend is generated for Power Apps code apps'
+    });
+  } else if (plan.workload === 'genai' || plan.apiStack.id === 'python-fastapi') {
+    checks.push({
+      id: '2.2',
+      label: 'Run backend tests',
+      command: { executable: 'uv', args: ['run', '--project', 'backend', 'python', '-m', 'pytest', '-q', 'backend/tests'] }
+    });
+  } else if (plan.apiStack.id === 'node-fastify') {
+    checks.push({
+      id: '2.2',
+      label: 'Run backend tests',
+      command: { executable: 'npm', args: ['test'] },
+      cwd: ['backend']
+    });
+  } else {
+    checks.push({
+      id: '2.2',
+      label: 'Run backend tests',
+      command: { executable: 'go', args: ['test', './...'] },
+      cwd: ['backend']
+    });
+  }
+
+  if (plan.workload === 'genai' && hasFunctionWorker(plan)) {
+    checks.push({
+      id: '2.3',
+      label: 'Run generated worker tests',
+      command: { executable: 'uv', args: ['run', '--project', '../../backend', '--directory', '.', 'python', '-m', 'pytest', '-q'] },
+      cwd: ['functions', functionWorkerName(plan)]
+    });
+  } else {
+    checks.push({
+      id: '2.3',
+      label: 'Record worker tests as inapplicable',
+      inapplicable: 'no generated worker boundary is present'
+    });
+  }
+
+  if (plan.workload === 'power-apps-code-app') {
+    checks.push({
+      id: '2.4',
+      label: 'Run frontend build',
+      command: { executable: 'npm', args: ['run', 'build'] }
+    });
+  } else if (plan.includeFrontend) {
+    checks.push({
+      id: '2.4',
+      label: 'Run frontend build',
+      command: { executable: 'npm', args: ['run', 'build'] },
+      cwd: ['frontend']
+    });
+  } else {
+    checks.push({
+      id: '2.4',
+      label: 'Record frontend build as inapplicable',
+      inapplicable: 'no generated frontend is present'
+    });
+  }
+
+  if (plan.workload === 'power-apps-code-app') {
+    checks.push({
+      id: '2.5',
+      label: 'Record Docker Compose validation as inapplicable',
+      inapplicable: 'no generated Docker Compose boundary is present'
+    });
+    checks.push({
+      id: '2.6',
+      label: 'Record OpenTofu formatting as inapplicable',
+      inapplicable: 'no generated OpenTofu boundary is present'
+    });
+    checks.push({
+      id: '2.7',
+      label: 'Record OpenTofu initialization as inapplicable',
+      inapplicable: 'no generated OpenTofu boundary is present'
+    });
+    checks.push({
+      id: '2.8',
+      label: 'Record OpenTofu validation as inapplicable',
+      inapplicable: 'no generated OpenTofu boundary is present'
+    });
+  } else {
+    checks.push({
+      id: '2.5',
+      label: 'Validate Docker Compose configuration without startup',
+      command: { executable: 'docker', args: ['compose', 'config', '-q'] }
+    });
+    checks.push({
+      id: '2.6',
+      label: 'Check OpenTofu formatting',
+      command: { executable: 'tofu', args: ['fmt', '-check', '-recursive'] },
+      cwd: ['infrastructure', 'opentofu', 'azure']
+    });
+    checks.push({
+      id: '2.7',
+      label: 'Initialize OpenTofu without a remote backend',
+      command: { executable: 'tofu', args: ['init', '-backend=false'] },
+      cwd: ['infrastructure', 'opentofu', 'azure']
+    });
+    checks.push({
+      id: '2.8',
+      label: 'Validate OpenTofu configuration without plan or apply',
+      command: { executable: 'tofu', args: ['validate'] },
+      cwd: ['infrastructure', 'opentofu', 'azure']
+    });
+  }
+
+  checks.push({
+    id: '2.9',
+    label: 'Run strict OpenSpec validation',
+    command: { executable: 'openspec', args: ['validate', `bootstrap-${plan.safeProjectName}`, '--strict'] }
+  });
+  return checks;
+}
+
+function renderSeedTaskCheck(check: SeedTaskCheck): string {
+  if (!check.command) {
+    return `- [ ] ${check.id} ${check.label}: inapplicable because ${check.inapplicable}.`;
+  }
+  const cwd = check.cwd && check.cwd.length > 0 ? ` from \`${check.cwd.join('/')}\`` : '';
+  return `- [ ] ${check.id} ${check.label}${cwd}: \`${formatCommand(check.command)}\`.`;
+}
+
+function renderSeedTasks(plan: ProjectPlan): string {
+  return `## 1. Bootstrap Scope
+
+- [ ] 1.1 Confirm generated baseline files, \`liftoff.manifest.json\`, OpenSpec configuration, and the \`${seedCapabilityId(plan)}\` delta spec are present.
+- [ ] 1.2 Confirm domain-specific product behavior is deferred to follow-up OpenSpec changes; do not replace generated placeholders in this bootstrap change.
+
+## 2. Local Baseline Checks
+
+${seedTaskChecks(plan).map(renderSeedTaskCheck).join('\n')}
+
+## 3. Completion
+
+- [ ] 3.1 After every applicable local check succeeds and every absent component is recorded inapplicable, archive with \`openspec archive bootstrap-${plan.safeProjectName} --yes\`. OpenSpec archive updates the main specs as part of archive; do not pass \`--skip-specs\`.
+
+No task in this bootstrap seed starts containers, runs cloud plan/apply, mutates GitHub, or implements domain-specific product behavior.
 `;
 }
 

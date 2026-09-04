@@ -1,269 +1,224 @@
-# Repository governance handoff
+# Repository governance and deterministic setup
 
-Repository governance is a common Liftoff project choice. The default
-`single-maintainer-gitflow` profile generates a deterministic local handoff;
-`none` opts out:
+Repository governance is enabled by default through the
+`single-maintainer-gitflow` profile; `--governance none` opts out. Initialization
+writes local managed-core artifacts only. It does not run an agent, mutate Git,
+contact GitHub or Azure, configure rulesets, provision runners, deploy, or start
+monitoring.
 
-**Local handoff generated; live enforcement is not active.**
+Primary path after initialization:
 
-```bash
-liftoff plan --governance single-maintainer-gitflow
-liftoff init --governance none
+```text
+liftoff init my-project
+cd my-project
+/liftoff-setup
 ```
 
-Accepting the default or passing `--yes` authorizes only local project files. It
-does not run an agent, mutate Git, contact GitHub or Azure, configure security,
-install a ruleset, deploy, provision a runner, or create monitoring.
+`/liftoff-setup` completes the generated bootstrap seed, then enters the
+deterministic Liftoff governance engine and its read-only Phase 0 discovery. The older
+`/liftoff-repository-governance` launcher is a compatibility alias for the same
+engine and user-owned activation state; it is not a separate activation path.
 
-## Generated files
+## Managed files and user-owned state
 
-An enabled profile adds durable, hash-managed artifacts:
+Enabled governance adds managed-core files:
 
 ```text
 .liftoff/governance/policy.md
 .liftoff/governance/context.json
 .liftoff/governance/README.md
-.github/prompts/liftoff-repository-governance.prompt.md  # Copilot selected
-.claude/commands/liftoff-repository-governance.md        # Claude selected
+.liftoff/governance/phase-graph.json
+.liftoff/governance/compatibility.json
+.liftoff/governance/credential-policy.schema.json
+.github/prompts/liftoff-setup.prompt.md                # Copilot selected
+.github/prompts/liftoff-repository-governance.prompt.md # compatibility alias
+.claude/commands/liftoff-setup.md                      # Claude selected
+.claude/commands/liftoff-repository-governance.md       # compatibility alias
 ```
 
-The complete canonical policy is also packaged with Liftoff at
-[`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
-It covers GitFlow, zero-human-approval repository rules, designated security
-tools, fail-closed checks, immutable release evidence, build-once promotion,
-deployment and rollback, monitoring and health, DORA metrics, ruleset
-sequencing, negative tests, documentation, and workload adaptation.
-
-Policy version 5 also fixes platform decisions that generated projects should
-not repeatedly ask users to make:
-
-- Dev storage uses LRS; Staging and Production use ZRS. IaC state uses ZRS in
-  every environment.
-- Database HA is off in Dev and Staging and zone-redundant in Production.
-- CI uses one user-assigned managed identity with OIDC federation per repository
-  and environment, without app registrations or long-lived credentials.
-- The default workload is small and cost-optimised with production safeguards.
-  Runtimes remain on Active LTS majors, with grouped dependency updates and
-  non-LTS major updates ignored.
-- Slack webhooks are required environment-level GitHub Actions secrets so the
-  alert path does not depend on private-vault connectivity.
-- Encrypted local bootstrap state is retained read-only for 30 days after
-  verified remote import, then securely deleted with dated evidence.
-- Azure resource-provider namespaces are derived from the approved plan. When
-  auto-registration is disabled, each missing required namespace is registered
-  explicitly before dependent resources.
-
-These are applicable defaults, not reasons to create unused resources. A
-managed service is included only when application code consumes it, after its
-cost and known service limits are stated. When live infrastructure differs from
-IaC, activation planning adapts the IaC and imports the live resource rather
-than creating a parallel stack or forcing replacement.
-
-## Private Staging qualification
-
-DAST for a privately networked Staging environment uses an ephemeral
-GitHub-hosted larger runner with Azure VNet injection. Activation reuses a
-suitable existing repository assignment. If none exists, policy version 5
-permits one narrow post-approval exception to provision the Azure network
-setting, organisation hosted-compute network configuration, selected-access
-runner group, and bounded larger runner required by that repository.
-
-Phase 0 first proves that private Staging DAST applies. It then discovers the
-repository's Staging subscription and tenant, existing runner resources, Azure
-and GitHub write authority, enterprise network policy, billing, state, names,
-address space, DNS, routing, costs, limits, and teardown ownership. Missing
-authority or an unresolved input blocks provisioning without partial mutation.
-No self-hosted runner is substituted.
-
-Every Azure runner-network resource, its state, egress cost, and teardown owner
-remain inside the repository's Staging subscription. The design cannot share a
-firewall, hub, route, state, or lifecycle with another repository or
-subscription. GitHub resources exist at organisation level but grant selected
-access only to the target repository and required workflows.
-
-The delegated runner subnet disables implicit default outbound access, denies
-unsolicited inbound connectivity, and uses exactly one egress mode:
-
-- Azure Firewall Basic only when an applicable policy requires domain-restricted
-  egress. Its HTTPS rules use a current GitHub meta domain set without the
-  retired static-IP template or TLS interception.
-- Azure NAT Gateway otherwise, with required protocols constrained by an NSG.
-  NAT and NSG controls do not filter HTTPS by domain.
-
-NAT Gateway cannot be attached to a firewall-routed runner subnet because it
-takes precedence and would bypass the firewall. The approved topology must also
-prove non-overlapping address space, same-subscription routing or peering,
-private DNS, security rules, and live private Staging reachability.
-
-A standard hosted preflight verifies the assignment and labels before scheduling
-DAST. Azure and GitHub resources, associations, egress, DNS, and reachability
-must all be read back successfully. Missing or partial evidence blocks
-qualification rather than leaving a required job queued or reporting success.
-Teardown reverses those dependencies and removes the Azure network only after
-GitHub scheduling, assignment, and service associations are gone.
-
-### Azure resource-provider readiness
-
-Phase 0 derives the minimal namespace inventory from every approved Azure
-resource type and records AzureRM's registration mode and the execution
-identity's subscription registration permission. A hosted-runner network always
-requires at least `Microsoft.Network` and `GitHub.Network`; additional providers
-are included only when approved state, identity, monitoring, or application
-resources use them.
-
-When AzureRM automatic registration is enabled and sufficient, no duplicate
-explicit resources are added. When
-`resource_provider_registrations = "none"` disables it, every missing required
-namespace is registered explicitly. Dependent and billable resources remain
-blocked until live subscription readback reports each namespace as
-`Registered`.
-
-Every explicit resource has a direct or transitive dependency on its namespace
-registration. Existing registrations are no-ops. Pending, unauthorized,
-unregistering, or failed states require a revised no-apply plan rather than
-partial provisioning. Successful registrations remain subscription capabilities
-during repository teardown and are not automatically unregistered.
-
-Subscription features are narrower than provider namespaces. A
-`SubscriptionNotRegisteredForFeature` error does not authorize registering the
-named feature unless the approved resource design intentionally uses it.
-Unexpected feature requests require correction of the resource properties,
-provider behavior, or API shape and a revised no-apply plan.
-
-Ordinary Firewall and NAT Standard public IPs do not require BYOIP. If such a
-resource requests `Microsoft.Network/AllowBringYourOwnPublicIpAddress` without a
-custom IP prefix, the plan must remove accidental BYOIP properties or use a
-supported API shape; it must not register BYOIP merely to retry.
-
-Network service-tag rules also require semantic validation.
-`AzurePlatformDNS` is deny-only for intentionally disabling Azure platform DNS,
-not a valid Allow target. Default platform DNS needs no explicit NSG allow.
-Custom resolvers instead receive TCP and UDP port 53 allows to their exact IP
-addresses.
-
-### Private state bootstrap and retention
-
-Phase 0 prefers an existing approved private execution path to the
-repository-owned ZRS backend. When public access is disabled and no such path
-exists, an approved governance change may use encrypted local OpenTofu state for
-only the minimum networking, private endpoint, DNS, network setting, and
-restricted runner resources needed to establish access. This
-`bootstrap-local` phase is not remote-ready and cannot authorize application
-provisioning.
-
-The local state remains gitignored, single-writer, encrypted on the approved
-workstation, and is never transferred through GitHub artifacts, repository
-secrets, or ordinary messages. From the exact private runner, reviewed import
-declarations adopt the resources into an empty ZRS backend without copying the
-local state file.
-
-Remote import is complete only after private Blob access, exact live-to-state
-resource identity, state locking, Blob versioning, and a clean-checkout
-no-change plan are verified. Failure starts no retention clock and keeps normal
-provisioning blocked.
-
-At successful verification, the local state becomes evidence-only and read-only
-for exactly 30 days. It cannot run plan or apply. At expiry, its encryption key
-and encrypted files are removed, along with every approved temporary copy. A
-dated record captures the state identity or checksum, verification evidence,
-scheduled and actual deletion, operator, method, and outcome without containing
-state data or secrets.
-
-## Release identity and automated completion
-
-Staging qualifies the release or hotfix candidate commit and binds it to the
-version, artifact digest, and evidence-bundle digest. A later true merge into
-`main` necessarily has a different SHA. Production verifies that the merge
-incorporates the exact qualified candidate, promotes the identical artifact,
-and records both identities:
+User-owned execution state is separate and is never advanced by
+`liftoff update`:
 
 ```text
-candidate SHA -> qualification -> artifact digest
-       |                              |
-       +---------- main merge SHA ----+
-                         |
-                         +-> deployment -> tag and GitHub Release
+governance/activation-state.json
+governance/approvals/
+governance/evidence/
+governance/credentials/preflight-policy.json
 ```
 
-Package formats may require embedded version metadata, but that value must
-match the authoritative `release/X.Y.Z` or `hotfix/X.Y.Z` branch name.
+The complete policy is packaged at
+[`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
+Policy version 6 treats numbered policy sections as capability chapters, not
+execution order. The managed phase graph is the sole execution-order authority.
 
-Release and hotfix back-merges remain pull-request-only and require successful
-checks. Because `GITHUB_TOKEN`-created events do not normally start more
-workflows, the coordinating workflow explicitly dispatches validation for the
-back-merge head and any required post-merge work for the resulting SHA. It does
-not push directly to a protected branch or rely on a tag push. Tag creation,
-Release publication, and durable evidence stay in the successful production
-workflow.
+## Canonical phase graph
 
-`context.json` contains generated project facts only. GitHub repository state,
-runner access, licensed features, deployments, monitoring, alert routes,
-traffic, and rollout capabilities remain `undiscovered`. Power Apps context
-explicitly marks Liftoff backend, Docker, OpenTofu, custom container promotion,
-and API DAST as inapplicable.
+The activation graph is packaged as `.liftoff/governance/phase-graph.json` and
+records phase IDs, dependencies, applicability, allowed mutations, evidence,
+approvals, rollback boundaries, and terminal states:
 
-## Activate after commit and push
+```text
+seed-valid
+  -> seed-verified
+  -> seed-archived
+  -> committed
+  -> pushed
+  -> phase-0-complete
+  -> activation-approved
+  -> credential-ready
+  -> provider-ready
+  -> state-path-selected
+       |-> existing-private-path ----------------------|
+       `-> bootstrap-local -> runner-ready             |
+                            -> private-backend-proof    |
+                            -> remote-import-verified --|
+  -> remote-ready
+  -> application-foundation
+  -> workflow-source-ready
+  -> dev-proof
+  -> staging-qualified
+  -> production-rehearsed
+  -> green-red-proof
+  -> enforcement-approved
+  -> rulesets-applied
+  -> live-readback
+  -> bootstrap-state-disposed
+```
 
-1. Review the policy and context.
-2. Commit the project and push it to the intended GitHub repository.
-3. Run `/liftoff-repository-governance` with a selected agent.
-4. The agent performs read-only Phase 0 and reports repository identity,
-   artifacts, working commands, refs, workflows and exact checks, rulesets,
-   releases, environments, security, runners, deployments, monitoring, alerts,
-   health depth, platform capabilities, gaps, and inapplicable controls. When
-   private Staging DAST applies without a suitable runner, it also reports the
-   complete subscription-local topology, one explicit egress mode, authority,
-   costs, limits, verification, and teardown plan.
-5. The agent proposes the current `main` SHA as the activation baseline,
-   presents an ordered plan, and stops.
-6. Explicitly approve or revise the conversational plan. This is not a human
-   merge or deployment approval gate.
-7. After approval, the agent creates a new OpenSpec or Spec Kit governance
-   change, proves required contexts green and deliberately red, applies
-   repository-scoped rulesets last, and reads live enforcement back.
+If policy prose, generated tasks, or an agent response orders a transition
+differently, the graph wins. Provider readiness precedes `bootstrap-local`;
+restricted runner readiness precedes private backend proof; private backend proof
+precedes declarative remote import; and only an existing private path or verified
+remote import can satisfy `remote-ready`.
 
-The user-owned `governance/activation-baseline.json` is created only after
-approval. Liftoff never owns or recreates it or the agent-created governance
-change. Complete local handoffs say `handoff-generated`, partial adoptions say
-`handoff-partial`, and neither state means `active`.
+## Bootstrap seed and local baseline
+
+Before commit/push or Phase 0, setup completes, syncs, and archives the generated
+`bootstrap-<project>` OpenSpec seed. It runs only local, applicable checks:
+
+- `liftoff validate`
+- backend tests from the generated README
+- frontend build when a frontend exists
+- `docker compose config -q` when Compose exists
+- `tofu fmt -check -recursive`
+- `tofu init -backend=false`
+- `tofu validate`
+- strict OpenSpec validation
+
+Absent components are recorded as inapplicable. The baseline never starts
+containers, runs a live `tofu plan` or `tofu apply`, deploys, mutates GitHub, or
+requires cloud credentials. A failed check keeps the seed active; rerun
+`/liftoff-setup` after remediation and verified phases are not repeated.
+
+## Questions and approval envelopes
+
+Deterministic defaults and discovered facts do not become conversational
+questions. Setup may ask only at these authority gates:
+
+1. repository creation, initial commit, remote, or push;
+2. credential enrollment;
+3. billed infrastructure, policy exceptions, and cost ceiling;
+4. final ruleset enforcement;
+5. destructive cleanup, including day-30 bootstrap-state disposal;
+6. external platform blockers that require changed authority or design.
+
+Every approval envelope records the reviewed plan digest, allowed resource
+types, destinations, permissions, cost ceiling, destructive scope, policy
+exceptions, expiry, and baseline SHA. Retries inside the same envelope do not
+ask again; expanded resources, destinations, permissions, cost, exceptions, or
+destructive effects require a new approval.
+
+## Credentials for runner preflight
+
+When `GITHUB_TOKEN` cannot read required hosted-runner metadata, setup first
+prefers an existing verified selected-repository GitHub App installation with the
+required read permissions. Liftoff does not install or broaden an App.
+
+If no approved App is available, setup guides one fine-grained PAT with exactly:
+
+| Field | Value |
+| --- | --- |
+| Display name | `<repo>-runner-preflight-read` |
+| Repository secret | `RUNNER_CONFIGURATION_READ_TOKEN` |
+| Lifetime | 30 days |
+| Repository scope | current repository only |
+| Repository permission | metadata read |
+| Organization permissions | hosted-runner read and network-configuration read |
+| Writes | none |
+| Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
+
+Enter the value only through Liftoff's masked input. Never paste or show the
+value in chat, argv, command arguments, logs, evidence, files, or screenshots. A value
+that appears in any of those places is compromised and must be manually revoked
+and rotated before setup can continue.
+
+The recorded credential policy is payload-free: it stores auth kind, display
+name, secret name, owner, repository, expiry, rotation lead, permissions,
+allowed workflows/jobs, non-forwarding rules, and readback evidence, never the
+secret value.
+
+## Evidence authority and active changes
+
+Task checkboxes are a projection of phase state, not authority. Evidence
+documents carry repository identity, activation version vector, graph hash, phase
+contract digest, input digest, baseline SHA, phase ID, timestamp, producer, and
+result. Setup and `liftoff governance verify` reject missing, stale,
+contradictory, future-version, or graph-incompatible evidence.
+
+There may be only one active governance source of truth. An unfinished bootstrap
+seed blocks Phase 0. Exactly one compatible active governance change is resumed.
+Multiple overlapping changes require a schema-valid supersession or archive
+record before any phase advances.
+
+Managed updates install new policy, graph, schema, compatibility metadata, setup
+integrations, and aliases without touching user-owned state. When a policy,
+activation-contract, schema, or graph-hash change affects active work, status
+reports `reconciliation-required`, invalidates only affected descendants, and
+waits for explicit acknowledgement of the current compatible identity and exact
+graph hash.
+
+## Private staging and bootstrap retention
+
+Private Staging DAST uses an ephemeral GitHub-hosted larger runner with Azure
+VNet injection only when genuinely applicable. Phase 0 discovers repository,
+subscription, authority, billing, network, DNS, cost, teardown, and capability
+facts read-only. If DAST is inapplicable, no runner networking is provisioned.
+
+When a private ZRS backend cannot be reached and no existing private management
+path is approved, the bounded `bootstrap-local` branch may create only the
+access-establishing resources needed to reach the backend. Local bootstrap state
+is encrypted, gitignored, single-writer, never uploaded or copied through GitHub
+artifacts or secrets, and cannot authorize application provisioning.
+
+After verified declarative import, backend identity parity, state locking, Blob
+versioning, and a clean-checkout no-change plan, local state becomes read-only
+evidence for exactly 30 days. Disposal deletes the encryption key and approved
+temporary copies and records a dated non-secret outcome. Provider registrations
+remain retained subscription capabilities and are not unregistered during
+teardown.
+
+## Commands
+
+The generated setup integrations call only strict, project-aware CLI commands:
+
+```bash
+liftoff governance status --json
+liftoff governance plan --json
+liftoff governance apply-next --json --execute
+liftoff governance resume --json
+liftoff governance verify --json
+```
+
+`status`, `plan`, and `verify` are read-only. `apply-next` previews mutations
+unless `--execute` is supplied, and even then executes at most one graph-ready,
+evidence-ready, approved phase. Unknown subcommands, flags, or extra positionals
+fail before project discovery or mutation.
 
 ## Existing projects
 
-Configurations without `governanceProfile` normalize to the enabled default
-without rewriting `liftoff.config.json`:
-
-```bash
-liftoff update --check
-liftoff update
-```
-
-Check mode previews the schema-v6 manifest and new named core artifacts without
-writing. Plain update applies collision-free files; differing existing files
-remain managed-core conflicts unless individually reviewed with `--force`. An unrecorded
-conflict remains outside Liftoff ownership and produces `handoff-partial`.
-After every conflict is removed or matches the current artifact, the next
-update records the full artifact set as `handoff-generated`.
-
-Projects generated with policy versions 2 through 4 review the version-5 managed-core drift
-before replacement. `liftoff update` changes only the local handoff; it never
-provisions Azure or GitHub resources. Any active downstream runner change based
-on an older contract must reconcile its plan and implementation with version 5
-before applying cloud or organisation resources.
-
-Setting `"governanceProfile": "none"` stops future rendering. Previously managed
-handoff files are reported once as orphans and left on disk; Liftoff never
-deletes them automatically or changes live repository settings.
-
-## Capability gaps
-
-Phase 0 must report missing GitHub licenses, runner-provisioning authority,
-VNet-injected assignment or reachability, Staging access, monitoring routes,
-parallel-version mechanisms, or statistically meaningful canary traffic. It
-must mark controls inapplicable or blocked rather than creating a skipped,
-hanging, partial, duplicate, or success-shaped placeholder.
-
-The official SLSA L3 generator is the policy's only action SHA-pinning
-exception because its reusable workflow contains mutable internal references.
-The outer call is pinned as tightly as supported and the exact exception is
-narrow and expiring. It does not weaken pinning for any other action, create a
-second vulnerability allowlist, or make Grype a blocking gate.
+Projects without `governanceProfile` normalize to the enabled default during
+read, then `liftoff update --check` previews manifest v7 and managed-core drift.
+Plain `liftoff update` writes v7 only after preflights pass. It never provisions
+Azure or GitHub resources and never advances activation state. Setting
+`"governanceProfile": "none"` stops future rendering; previously managed files
+become reported orphans and remain on disk for manual review.

@@ -61,7 +61,7 @@ workload rather than silently ignored.
 
 ## `liftoff.manifest.json`: CLI-owned compatibility record
 
-New projects use manifest schema v6. Its common project identity includes the
+New projects use manifest artifact version 7. Its common project identity includes the
 name, spec workflow, selected agents, and applicable Spec Kit default. A
 discriminated `project.workload` object contains only fields valid for one
 workload:
@@ -81,8 +81,10 @@ The manifest also records:
   Liftoff version, `generationHash`, and provisioning group. These hashes never
   authorize update writes.
 - OS-neutral path-part arrays.
-- Repository governance profile, policy version, and local
-  `handoff-generated`, `handoff-partial`, or disabled state.
+- Repository governance profile, policy version 6, activation-contract version
+  1, graph/state/evidence/approval/supersession/credential schema versions, the
+  exact phase-graph hash, and local `handoff-generated`, `handoff-partial`, or
+  disabled state.
 
 Power Apps source identity uses explicit repository, path, and 40-character
 commit fields. It is not inferred from mutable URLs or generated file paths.
@@ -93,7 +95,7 @@ paths, or hashes.
 
 ## Compatibility
 
-Readers support schemas v2, v3, v4, v5, and v6:
+Readers support artifact versions v2, v3, v4, v5, v6, and v7:
 
 - V2 normalizes the legacy flat API identity and records framework state as
   uncertain without inventing agents.
@@ -103,19 +105,33 @@ Readers support schemas v2, v3, v4, v5, and v6:
   enforcement.
 - V6 separates managed-core update authority from project generation
   provenance.
+- V7 adds deterministic setup identity: manifest artifact version 7, policy
+  version 6, activation-contract version 1, schema-v1 activation artifacts, and
+  the canonical phase-graph hash. Governance-disabled v7 manifests use the
+  disabled variant and do not fabricate activation identity.
 
 Enabled governance manifests retain their recorded positive-integer policy
-version. Readers accept historical policy versions up to the CLI's current
-version so `liftoff update --check` can report managed-core drift and plain
-update can migrate it. Malformed or future policy versions remain invalid.
+version only when the complete compatibility tuple is supported. Readers accept
+historical v2-v6 manifests so `liftoff update --check` can report managed-core
+drift and plain update can migrate them to v7. Malformed or future manifest,
+policy, contract, schema, or graph identities remain invalid or blocked without
+rewrite.
 
 `liftoff update --check`, including `--check --json`, leaves an old manifest
-byte-for-byte unchanged. A successful plain update writes v6 only after the
-transaction succeeds. V2-v5 backend, frontend, database, dependency, container,
+byte-for-byte unchanged. A successful plain update writes v7 only after the
+transaction succeeds. V2-v6 backend, frontend, database, dependency, container,
 environment, documentation, Power Apps, and infrastructure entries become
 project provenance without reading or changing current production bytes.
-Intentionally deleted files remain absent. Only exact current core logical
-names retain write authority.
+Intentionally deleted files remain absent. Only exact current core logical names
+retain write authority.
+
+The compatibility map is explicit; Liftoff does not use numeric less-than
+comparisons to infer safety. Supported v7 identity resumes when policy 6,
+activation contract 1, schema versions 1, and a recognized graph hash match.
+Future identities, individually known versions in unsupported combinations,
+unversioned ad hoc governance state, and unknown graph hashes block with an
+upgrade, import-mapping, or reconciliation remedy. No reader converts prose,
+filenames, or checked tasks into evidence.
 
 ## Artifact ownership
 
@@ -132,17 +148,25 @@ category or filename:
 
 The manifest is a CLI-owned transaction record rather than an ordinary
 template artifact. Current managed core is limited to the exact repository
-governance policy, context, guide, and selected-agent launchers. A name such as
-`config.go`, a `configuration` category, or a path under `.github` does not
-grant update authority.
+governance policy, context, guide, phase graph, compatibility metadata,
+credential-policy schema, `/liftoff-setup` integrations, and selected-agent
+compatibility aliases. A name such as `config.go`, a `configuration` category,
+or a path under `.github` does not grant update authority.
+
+User-owned governance artifacts are deliberately excluded from managed-core
+hashes: `governance/activation-state.json`, approvals, evidence, credential
+policies, supersession records, active OpenSpec changes, and bootstrap
+retention/disposal records. Update may report reconciliation-required status for
+those files, but it does not advance, reset, or delete a phase.
 
 ## Contract conventions
 
-- Writers use `artifactVersion` 6; readers support v2, v3, v4, v5, and v6.
+- Writers use `artifactVersion` 7; readers support v2, v3, v4, v5, v6, and v7.
 - Artifact logical names and catalog identifiers are append-only.
 - Rendering is deterministic and does not depend on timestamps, host versions,
   or network state.
-- `.liftoff/` is reserved for future CLI-managed state.
+- `.liftoff/governance/` contains managed setup definitions; `governance/`
+  contains user-owned activation state.
 - Machine-readable paths are path-part arrays, never platform-joined strings.
 - Exit codes are 0 for success or clean, 1 for failure, and 2 for detected
   drift in check mode.

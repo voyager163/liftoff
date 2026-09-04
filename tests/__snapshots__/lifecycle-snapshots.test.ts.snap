@@ -13,27 +13,27 @@ Initialize the project and prepare its workstation
 ? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project                snapshot-app
-Project type           Standard application
-API stack              Go / Huma / Chi
-Cloud                  Azure
-Region                 East US / eastus
-Frontend               Not generated
-Spec workflow          OpenSpec
-Coding agents          GitHub Copilot
-OpenSpec workflows     12 workflows; skills and commands
-Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 5
-Governance handoff     Local handoff generated; live enforcement is not active
-Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Project                   snapshot-app
+Project type              Standard application
+API stack                 Go / Huma / Chi
+Cloud                     Azure
+Region                    East US / eastus
+Frontend                  Not generated
+Spec workflow             OpenSpec
+Coding agents             GitHub Copilot
+OpenSpec workflows        12 workflows; skills and commands
+Copilot cloud agent       Disabled (default)
+Repository governance     Single-maintainer GitFlow policy 6
+Governance handoff Local handoff generated; live enforcement is not active
+Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments           dev
+Environments              dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure         OpenTofu for Azure
+Infrastructure            OpenTofu for Azure
 
 ? Initialize project? [Y/n]: i Cancelled: Initialization stopped; no destination files were changed.
 ",
@@ -56,27 +56,27 @@ Initialize the project and prepare its workstation
 ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project                snapshot-app
-Project type           Standard application
-API stack              Go / Huma / Chi
-Cloud                  Azure
-Region                 East US / eastus
-Frontend               Not generated
-Spec workflow          OpenSpec
-Coding agents          GitHub Copilot
-OpenSpec workflows     12 workflows; skills and commands
-Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 5
-Governance handoff     Local handoff generated; live enforcement is not active
-Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Project                   snapshot-app
+Project type              Standard application
+API stack                 Go / Huma / Chi
+Cloud                     Azure
+Region                    East US / eastus
+Frontend                  Not generated
+Spec workflow             OpenSpec
+Coding agents             GitHub Copilot
+OpenSpec workflows        12 workflows; skills and commands
+Copilot cloud agent       Disabled (default)
+Repository governance     Single-maintainer GitFlow policy 6
+Governance handoff Local handoff generated; live enforcement is not active
+Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments           dev
+Environments              dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure         OpenTofu for Azure
+Infrastructure            OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -108,27 +108,27 @@ Initialize the project and prepare its workstation
 ◆: Review resolved plan
 Resolved project plan
 ─────────────────────
-Project                snapshot-app
-Project type           Standard application
-API stack              Go / Huma / Chi
-Cloud                  Azure
-Region                 East US / eastus
-Frontend               Not generated
-Spec workflow          OpenSpec
-Coding agents          GitHub Copilot
-OpenSpec workflows     12 workflows; skills and commands
-Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 5
-Governance handoff     Local handoff generated; live enforcement is not active
-Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Project                   snapshot-app
+Project type              Standard application
+API stack                 Go / Huma / Chi
+Cloud                     Azure
+Region                    East US / eastus
+Frontend                  Not generated
+Spec workflow             OpenSpec
+Coding agents             GitHub Copilot
+OpenSpec workflows        12 workflows; skills and commands
+Copilot cloud agent       Disabled (default)
+Repository governance     Single-maintainer GitFlow policy 6
+Governance handoff Local handoff generated; live enforcement is not active
+Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments           dev
+Environments              dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure         OpenTofu for Azure
+Infrastructure            OpenTofu for Azure
 
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -159,7 +159,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 5; local handoff
+- Repository governance: Single-maintainer GitFlow policy 6; local handoff
 generated, live activation deferred
 
 Deferred advisory checks
@@ -178,12 +178,11 @@ Completion
 Target                 <workspace>/snapshot-app
 Spec workflow          OpenSpec
 Coding agents          GitHub Copilot
-Repository governance Handoff generated; commit and push before read-only Phase
-0
+Repository governance  Deterministic setup generated; run /liftoff-setup next
 
 Next recommended command
 ────────────────────────
-$ liftoff validate "<workspace>/snapshot-app"
+$ /liftoff-setup
 
 ",
 }
@@ -210,27 +209,27 @@ apiStack     node-fastify    fastify in package.json
 ◆: Review migration plan
 Resolved migration plan
 ───────────────────────
-Project                legacy-node
-Project type           Standard application
-API stack              Node.js / Fastify / TypeScript
-Cloud                  Azure
-Region                 East US / eastus
-Frontend               Not generated
-Spec workflow          OpenSpec
-Coding agents          GitHub Copilot
-OpenSpec workflows     12 workflows; skills and commands
-Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 5
-Governance handoff     Local handoff generated; live enforcement is not active
-Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Project                   legacy-node
+Project type              Standard application
+API stack                 Node.js / Fastify / TypeScript
+Cloud                     Azure
+Region                    East US / eastus
+Frontend                  Not generated
+Spec workflow             OpenSpec
+Coding agents             GitHub Copilot
+OpenSpec workflows        12 workflows; skills and commands
+Copilot cloud agent       Disabled (default)
+Repository governance     Single-maintainer GitFlow policy 6
+Governance handoff Local handoff generated; live enforcement is not active
+Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments           dev, test, prod
+Environments              dev, test, prod
 Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure         OpenTofu for Azure
+Infrastructure            OpenTofu for Azure
 
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
@@ -307,29 +306,29 @@ exports[`complete onboarding screens > snapshots the compact plan screen 1`] = `
 Preview project decisions, artifacts, and workstation requirements
 Project decisions
 ─────────────────
-Project                liftoff-preview
-Project type           Standard application
-API stack              Go / Huma / Chi
-Cloud                  Azure
-Region                 East US / eastus
-Frontend               Not generated
-Spec workflow          OpenSpec
-Coding agents          GitHub Copilot
-OpenSpec workflows     12 workflows; skills and commands
-Copilot cloud agent    Disabled (default)
-Repository governance  Single-maintainer GitFlow policy 5
-Governance handoff     Local handoff generated; live enforcement is not active
-Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md
+Project                   liftoff-preview
+Project type              Standard application
+API stack                 Go / Huma / Chi
+Cloud                     Azure
+Region                    East US / eastus
+Frontend                  Not generated
+Spec workflow             OpenSpec
+Coding agents             GitHub Copilot
+OpenSpec workflows        12 workflows; skills and commands
+Copilot cloud agent       Disabled (default)
+Repository governance     Single-maintainer GitFlow policy 6
+Governance handoff Local handoff generated; live enforcement is not active
+Governance setup integrations  .github/prompts/liftoff-setup.prompt.md
 Governance activation Deferred until commit, push, read-only Phase 0, and
 explicit plan approval
-Environments           dev
+Environments              dev
 Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis,
 Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker
 Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
-Infrastructure         OpenTofu for Azure
+Infrastructure            OpenTofu for Azure
 
-Artifacts (38)
+Artifacts (43)
 ──────────────
 Artifact                   Lifecycle                  Path
 ─────────────────────────  ─────────────────────────  ──────────────────────────
@@ -389,6 +388,10 @@ openspec-seed-design       seed                       openspec/changes/bootstrap
                                                       -liftoff-preview/design.md
 openspec-seed-tasks        seed                       openspec/changes/bootstrap
                                                       -liftoff-preview/tasks.md
+openspec-seed-spec         seed                       openspec/changes/bootstrap
+                                                      -liftoff-preview/specs/go-
+                                                      huma-application-baseline/
+                                                      spec.md
 openspec-spec-placeholder  seed                       openspec/specs/.gitkeep
 repository-governance-pol  managed-core               .liftoff/governance/policy
 icy                                                   .md
@@ -396,6 +399,14 @@ repository-governance-con  managed-core               .liftoff/governance/contex
 text                                                  t.json
 repository-governance-gui  managed-core               .liftoff/governance/README
 de                                                    .md
+repository-governance-pha  managed-core               .liftoff/governance/phase-
+se-graph                                              graph.json
+repository-governance-com  managed-core               .liftoff/governance/compat
+patibility                                            ibility.json
+repository-governance-cre  managed-core               .liftoff/governance/creden
+dential-policy-schema                                 tial-policy.schema.json
+liftoff-setup-copilot      managed-core               .github/prompts/liftoff-se
+                                                      tup.prompt.md
 repository-governance-cop  managed-core               .github/prompts/liftoff-re
 ilot-launcher                                         pository-governance.prompt
                                                       .md
@@ -437,9 +448,9 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 5
+Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
-Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
@@ -474,9 +485,9 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 5
+Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
-Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
@@ -517,9 +528,9 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 5
+Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
-Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
@@ -551,7 +562,7 @@ Configured integrations
 - GitHub Copilot
 - OpenSpec global profile: verified; 12 workflows; skills and commands
 - GitHub Copilot cloud agent: disabled
-- Repository governance: Single-maintainer GitFlow policy 5; local handoff generated, live activation deferred
+- Repository governance: Single-maintainer GitFlow policy 6; local handoff generated, live activation deferred
 
 Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
@@ -564,10 +575,10 @@ Completion
 Target: <workspace>/snapshot-app
 Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
-Repository governance: Handoff generated; commit and push before read-only Phase 0
+Repository governance: Deterministic setup generated; run /liftoff-setup next
 
 Next recommended command
-$ liftoff validate "<workspace>/snapshot-app"
+$ /liftoff-setup
 
 ",
 }
@@ -598,9 +609,9 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 5
+Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
-Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev, test, prod
 Approved stack: Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
@@ -675,16 +686,16 @@ Spec workflow: OpenSpec
 Coding agents: GitHub Copilot
 OpenSpec workflows: 12 workflows; skills and commands
 Copilot cloud agent: Disabled (default)
-Repository governance: Single-maintainer GitFlow policy 5
+Repository governance: Single-maintainer GitFlow policy 6
 Governance handoff: Local handoff generated; live enforcement is not active
-Governance launchers: .github/prompts/liftoff-repository-governance.prompt.md
+Governance setup integrations: .github/prompts/liftoff-setup.prompt.md
 Governance activation: Deferred until commit, push, read-only Phase 0, and explicit plan approval
 Environments: dev
 Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-Artifacts (38)
+Artifacts (43)
 Artifact: root-readme | Lifecycle: project (base) | Path: README.md
 Artifact: root-gitignore | Lifecycle: project (base) | Path: .gitignore
 Artifact: liftoff-config | Lifecycle: desired-state | Path: liftoff.config.json
@@ -717,10 +728,15 @@ Artifact: openspec-seed-change-metadata | Lifecycle: seed | Path: openspec/chang
 Artifact: openspec-seed-proposal | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/proposal.md
 Artifact: openspec-seed-design | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/design.md
 Artifact: openspec-seed-tasks | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/tasks.md
+Artifact: openspec-seed-spec | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/specs/go-huma-application-baseline/spec.md
 Artifact: openspec-spec-placeholder | Lifecycle: seed | Path: openspec/specs/.gitkeep
 Artifact: repository-governance-policy | Lifecycle: managed-core | Path: .liftoff/governance/policy.md
 Artifact: repository-governance-context | Lifecycle: managed-core | Path: .liftoff/governance/context.json
 Artifact: repository-governance-guide | Lifecycle: managed-core | Path: .liftoff/governance/README.md
+Artifact: repository-governance-phase-graph | Lifecycle: managed-core | Path: .liftoff/governance/phase-graph.json
+Artifact: repository-governance-compatibility | Lifecycle: managed-core | Path: .liftoff/governance/compatibility.json
+Artifact: repository-governance-credential-policy-schema | Lifecycle: managed-core | Path: .liftoff/governance/credential-policy.schema.json
+Artifact: liftoff-setup-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-setup.prompt.md
 Artifact: repository-governance-copilot-launcher | Lifecycle: managed-core | Path: .github/prompts/liftoff-repository-governance.prompt.md
 Artifact: manifest | Lifecycle: manifest | Path: liftoff.manifest.json
 
@@ -755,26 +771,26 @@ exports[`complete onboarding screens > snapshots the rich conflict consent and c
 ◆: Configure project
 ? Generate the single-maintainer GitFlow governance handoff? [Y/n]: ? Set up the GitHub-hosted Copilot coding agent? This writes .github/workflows/copilot-setup-steps.yml and .github/agents/openspec.agent.md. [y/N]: ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project                snapshot-app                                                          │
-│ Project type           Standard application                                                  │
-│ API stack              Go / Huma / Chi                                                       │
-│ Cloud                  Azure                                                                 │
-│ Region                 East US / eastus                                                      │
-│ Frontend               Not generated                                                         │
-│ Spec workflow          OpenSpec                                                              │
-│ Coding agents          GitHub Copilot                                                        │
-│ OpenSpec workflows     12 workflows; skills and commands                                     │
-│ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 5                                    │
-│ Governance handoff     Local handoff generated; live enforcement is not active               │
-│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Project                   snapshot-app                                                       │
+│ Project type              Standard application                                               │
+│ API stack                 Go / Huma / Chi                                                    │
+│ Cloud                     Azure                                                              │
+│ Region                    East US / eastus                                                   │
+│ Frontend                  Not generated                                                      │
+│ Spec workflow             OpenSpec                                                           │
+│ Coding agents             GitHub Copilot                                                     │
+│ OpenSpec workflows        12 workflows; skills and commands                                  │
+│ Copilot cloud agent       Disabled (default)                                                 │
+│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Governance handoff        Local handoff generated; live enforcement is not active            │
+│ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments           dev                                                                   │
+│ Environments              dev                                                                │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
-│ Infrastructure         OpenTofu for Azure                                                    │
+│ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
+│ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ? Initialize project? [Y/n]: i Cancelled: Initialization stopped; no destination files were changed.
 ",
@@ -807,26 +823,26 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 ◆: Discover project context
 ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project                snapshot-app                                                          │
-│ Project type           Standard application                                                  │
-│ API stack              Go / Huma / Chi                                                       │
-│ Cloud                  Azure                                                                 │
-│ Region                 East US / eastus                                                      │
-│ Frontend               Not generated                                                         │
-│ Spec workflow          OpenSpec                                                              │
-│ Coding agents          GitHub Copilot                                                        │
-│ OpenSpec workflows     12 workflows; skills and commands                                     │
-│ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 5                                    │
-│ Governance handoff     Local handoff generated; live enforcement is not active               │
-│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Project                   snapshot-app                                                       │
+│ Project type              Standard application                                               │
+│ API stack                 Go / Huma / Chi                                                    │
+│ Cloud                     Azure                                                              │
+│ Region                    East US / eastus                                                   │
+│ Frontend                  Not generated                                                      │
+│ Spec workflow             OpenSpec                                                           │
+│ Coding agents             GitHub Copilot                                                     │
+│ OpenSpec workflows        12 workflows; skills and commands                                  │
+│ Copilot cloud agent       Disabled (default)                                                 │
+│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Governance handoff        Local handoff generated; live enforcement is not active            │
+│ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments           dev                                                                   │
+│ Environments              dev                                                                │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
-│ Infrastructure         OpenTofu for Azure                                                    │
+│ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
+│ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -862,26 +878,26 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 ◆: Discover project context
 ◆: Review resolved plan
 ┌─ Resolved project plan ──────────────────────────────────────────────────────────────────────┐
-│ Project                snapshot-app                                                          │
-│ Project type           Standard application                                                  │
-│ API stack              Go / Huma / Chi                                                       │
-│ Cloud                  Azure                                                                 │
-│ Region                 East US / eastus                                                      │
-│ Frontend               Not generated                                                         │
-│ Spec workflow          OpenSpec                                                              │
-│ Coding agents          GitHub Copilot                                                        │
-│ OpenSpec workflows     12 workflows; skills and commands                                     │
-│ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 5                                    │
-│ Governance handoff     Local handoff generated; live enforcement is not active               │
-│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Project                   snapshot-app                                                       │
+│ Project type              Standard application                                               │
+│ API stack                 Go / Huma / Chi                                                    │
+│ Cloud                     Azure                                                              │
+│ Region                    East US / eastus                                                   │
+│ Frontend                  Not generated                                                      │
+│ Spec workflow             OpenSpec                                                           │
+│ Coding agents             GitHub Copilot                                                     │
+│ OpenSpec workflows        12 workflows; skills and commands                                  │
+│ Copilot cloud agent       Disabled (default)                                                 │
+│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Governance handoff        Local handoff generated; live enforcement is not active            │
+│ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments           dev                                                                   │
+│ Environments              dev                                                                │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
-│ Infrastructure         OpenTofu for Azure                                                    │
+│ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
+│ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve destination
 ◆: Check workstation readiness
@@ -910,7 +926,7 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ • GitHub Copilot                                                                             │
 │ • OpenSpec global profile: verified; 12 workflows; skills and commands                       │
 │ • GitHub Copilot cloud agent: disabled                                                       │
-│ • Repository governance: Single-maintainer GitFlow policy 5; local handoff generated, live   │
+│ • Repository governance: Single-maintainer GitFlow policy 6; local handoff generated, live   │
 │ activation deferred                                                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred advisory checks ───────────────────────────────────────────────────────────────────┐
@@ -925,11 +941,11 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ Target                 <workspace>/snapshot-app                                              │
 │ Spec workflow          OpenSpec                                                              │
 │ Coding agents          GitHub Copilot                                                        │
-│ Repository governance  Handoff generated; commit and push before read-only Phase 0           │
+│ Repository governance  Deterministic setup generated; run /liftoff-setup next                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 Next recommended command
 ────────────────────────
-$ liftoff validate "<workspace>/snapshot-app"
+$ /liftoff-setup
 
 ",
 }
@@ -960,26 +976,26 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Review migration plan
 ┌─ Resolved migration plan ────────────────────────────────────────────────────────────────────┐
-│ Project                legacy-node                                                           │
-│ Project type           Standard application                                                  │
-│ API stack              Node.js / Fastify / TypeScript                                        │
-│ Cloud                  Azure                                                                 │
-│ Region                 East US / eastus                                                      │
-│ Frontend               Not generated                                                         │
-│ Spec workflow          OpenSpec                                                              │
-│ Coding agents          GitHub Copilot                                                        │
-│ OpenSpec workflows     12 workflows; skills and commands                                     │
-│ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 5                                    │
-│ Governance handoff     Local handoff generated; live enforcement is not active               │
-│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Project                   legacy-node                                                        │
+│ Project type              Standard application                                               │
+│ API stack                 Node.js / Fastify / TypeScript                                     │
+│ Cloud                     Azure                                                              │
+│ Region                    East US / eastus                                                   │
+│ Frontend                  Not generated                                                      │
+│ Spec workflow             OpenSpec                                                           │
+│ Coding agents             GitHub Copilot                                                     │
+│ OpenSpec workflows        12 workflows; skills and commands                                  │
+│ Copilot cloud agent       Disabled (default)                                                 │
+│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Governance handoff        Local handoff generated; live enforcement is not active            │
+│ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments           dev, test, prod                                                       │
+│ Environments              dev, test, prod                                                    │
 │ Approved stack Fastify, TypeScript, Drizzle, Vitest, Scalar, PostgreSQL, Redis, Azure        │
 │ Service Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu      │
-│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
-│ Infrastructure         OpenTofu for Azure                                                    │
+│ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
+│ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ◆: Resolve fresh migration target
 ◆: Check workstation readiness
@@ -1055,28 +1071,28 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Preview project decisions, artifacts, and workstation requirements                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project decisions ──────────────────────────────────────────────────────────────────────────┐
-│ Project                liftoff-preview                                                       │
-│ Project type           Standard application                                                  │
-│ API stack              Go / Huma / Chi                                                       │
-│ Cloud                  Azure                                                                 │
-│ Region                 East US / eastus                                                      │
-│ Frontend               Not generated                                                         │
-│ Spec workflow          OpenSpec                                                              │
-│ Coding agents          GitHub Copilot                                                        │
-│ OpenSpec workflows     12 workflows; skills and commands                                     │
-│ Copilot cloud agent    Disabled (default)                                                    │
-│ Repository governance  Single-maintainer GitFlow policy 5                                    │
-│ Governance handoff     Local handoff generated; live enforcement is not active               │
-│ Governance launchers   .github/prompts/liftoff-repository-governance.prompt.md               │
+│ Project                   liftoff-preview                                                    │
+│ Project type              Standard application                                               │
+│ API stack                 Go / Huma / Chi                                                    │
+│ Cloud                     Azure                                                              │
+│ Region                    East US / eastus                                                   │
+│ Frontend                  Not generated                                                      │
+│ Spec workflow             OpenSpec                                                           │
+│ Coding agents             GitHub Copilot                                                     │
+│ OpenSpec workflows        12 workflows; skills and commands                                  │
+│ Copilot cloud agent       Disabled (default)                                                 │
+│ Repository governance     Single-maintainer GitFlow policy 6                                 │
+│ Governance handoff        Local handoff generated; live enforcement is not active            │
+│ Governance setup integrations  .github/prompts/liftoff-setup.prompt.md                       │
 │ Governance activation Deferred until commit, push, read-only Phase 0, and explicit plan      │
 │ approval                                                                                     │
-│ Environments           dev                                                                   │
+│ Environments              dev                                                                │
 │ Approved stack Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Azure Service   │
 │ Bus, Azure Blob Storage, Azure Communication Services, Docker Compose, OpenTofu              │
-│ Local development      Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit           │
-│ Infrastructure         OpenTofu for Azure                                                    │
+│ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
+│ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Artifacts (38) ─────────────────────────────────────────────────────────────────────────────┐
+┌─ Artifacts (43) ─────────────────────────────────────────────────────────────────────────────┐
 │ Artifact                         Lifecycle                  Path                             │
 │ ───────────────────────────────  ─────────────────────────  ──────────────────────────────── │
 │ root-readme                      project (base)             README.md                        │
@@ -1128,10 +1144,21 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │                                                             ff-preview/design.md             │
 │ openspec-seed-tasks              seed                       openspec/changes/bootstrap-lifto │
 │                                                             ff-preview/tasks.md              │
+│ openspec-seed-spec               seed                       openspec/changes/bootstrap-lifto │
+│                                                             ff-preview/specs/go-huma-applica │
+│                                                             tion-baseline/spec.md            │
 │ openspec-spec-placeholder        seed                       openspec/specs/.gitkeep          │
 │ repository-governance-policy     managed-core               .liftoff/governance/policy.md    │
 │ repository-governance-context    managed-core               .liftoff/governance/context.json │
 │ repository-governance-guide      managed-core               .liftoff/governance/README.md    │
+│ repository-governance-phase-gra  managed-core               .liftoff/governance/phase-graph. │
+│ ph                                                          json                             │
+│ repository-governance-compatibi  managed-core               .liftoff/governance/compatibilit │
+│ lity                                                        y.json                           │
+│ repository-governance-credentia  managed-core               .liftoff/governance/credential-p │
+│ l-policy-schema                                             olicy.schema.json                │
+│ liftoff-setup-copilot            managed-core               .github/prompts/liftoff-setup.pr │
+│                                                             ompt.md                          │
 │ repository-governance-copilot-l  managed-core               .github/prompts/liftoff-reposito │
 │ auncher                                                     ry-governance.prompt.md          │
 │ manifest                         manifest                   liftoff.manifest.json            │

@@ -1,12 +1,25 @@
-import { access, mkdtemp, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { access, mkdir, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { Writable } from 'node:stream';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { formatCommand, NodeCommandRunner } from '../src/process-runner.js';
 import { CaptureStream } from './helpers.js';
 
 const cleanups: string[] = [];
+const scratchRoot = path.join(process.cwd(), '.cache', 'process-runner-tests');
+let counter = 0;
+
+async function testRoot(name: string): Promise<string> {
+  counter += 1;
+  const root = path.join(scratchRoot, `${name}-${process.pid}-${counter}`);
+  await mkdir(root, { recursive: true });
+  cleanups.push(root);
+  return root;
+}
+
+beforeEach(async () => {
+  await mkdir(scratchRoot, { recursive: true });
+});
 
 afterEach(async () => {
   while (cleanups.length > 0) {
@@ -16,8 +29,7 @@ afterEach(async () => {
 
 describe('external command runner', () => {
   it('passes hostile-looking arguments literally without shell interpolation', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-runner-'));
-    cleanups.push(root);
+    const root = await testRoot('literal-args');
     const sentinel = path.join(root, 'shell-expanded');
     const literal = `; touch ${sentinel}`;
     const result = await new NodeCommandRunner().run({
@@ -61,6 +73,33 @@ describe('external command runner', () => {
 
     expect(result).toMatchObject({ status: 0, stdout: '€', timedOut: false });
     expect(Buffer.concat(chunks)).toEqual(Buffer.from('€'));
+  });
+
+  it('redacts sensitive stdin echoes from returned and streamed output across chunks', async () => {
+    const token = 'github_pat_abcdefghijklmnopqrstuvwxyz1234567890';
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    const result = await new NodeCommandRunner().run({
+      executable: process.execPath,
+      args: [
+        '-e',
+        'process.stdin.on("data", (chunk) => { const value = String(chunk); process.stdout.write(value.slice(0, 18)); setTimeout(() => process.stdout.write(value.slice(18)), 5); process.stderr.write(`err:${value}`); });'
+      ]
+    }, {
+      stdin: token,
+      stream: true,
+      stdout,
+      stderr,
+      redactValues: [token]
+    });
+
+    expect(result.status).toBe(0);
+    expect(result.stdout).not.toContain(token);
+    expect(result.stderr).not.toContain(token);
+    expect(stdout.text()).not.toContain(token);
+    expect(stderr.text()).not.toContain(token);
+    expect(`${result.stdout}${result.stderr}${stdout.text()}${stderr.text()}`)
+      .toContain('<redacted-sensitive-value>');
   });
 
   it('terminates timed-out probes and records the timeout', async () => {

@@ -1,3 +1,5 @@
+import type { ActivationIdentity } from './governance-activation/types.js';
+
 export type PatternId =
   | 'generic'
   | 'rag'
@@ -278,14 +280,24 @@ export type ManifestWorkload =
   | ManifestStandardApiWorkload
   | ManifestPowerAppsCodeAppWorkload;
 
-export interface ManifestGovernance {
-  profile: ManifestGovernanceProfileId;
-  state: 'disabled' | 'handoff-generated' | 'handoff-partial' | 'unspecified';
-  policyVersion?: string;
-}
+export type ManifestGovernance =
+  | {
+      profile: 'none';
+      state: 'disabled';
+    }
+  | {
+      profile: 'unspecified';
+      state: 'unspecified';
+    }
+  | {
+      profile: Exclude<GovernanceProfileId, 'none'>;
+      state: 'handoff-generated' | 'handoff-partial';
+      policyVersion: string;
+      activationIdentity?: ActivationIdentity;
+    };
 
 export interface LiftoffManifest {
-  artifactVersion: 2 | 3 | 4 | 5 | 6;
+  artifactVersion: 2 | 3 | 4 | 5 | 6 | 7;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
   project: {

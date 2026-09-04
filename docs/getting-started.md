@@ -38,12 +38,14 @@ a reviewed project change.
 
 See [prerequisites](prerequisites.md) for the complete plan-derived tool model.
 
-## 2. Start interactive initialization
+## 2. Start the primary path
 
 From the directory that should contain the project, run:
 
-```bash
-liftoff init
+```text
+liftoff init my-project
+cd my-project
+/liftoff-setup
 ```
 
 The guided flow asks for:
@@ -69,8 +71,15 @@ there, validates the complete result, and only then merges it into the target.
 OpenSpec projects use all 12 OpenSpec 1.11 workflows as both skills and commands.
 If the global OpenSpec profile differs, Liftoff displays the exact global change
 and asks separately before staging.
-Governance activation is a later selected-agent action after commit and push;
-see [repository governance](repository-governance.md).
+
+When governance is enabled, `/liftoff-setup` is the next selected-agent action.
+It has no model-selection requirement: safety comes from the Liftoff CLI phase
+graph, local evidence, approval envelopes, and readback. Setup first completes,
+syncs, and archives the generated `bootstrap-<project>` seed. Only then does it
+reach explicit authority gates for repository commit/push, credentials, billed
+infrastructure or policy exceptions, final enforcement, destructive cleanup, and
+external blockers. Commit and push are never implicit in `liftoff init`, `--yes`,
+or read-only checks.
 
 For deterministic generic generation, use `--type genai --pattern generic`.
 
@@ -86,26 +95,53 @@ a project name creates a named child directory.
 Read [existing repositories](existing-repositories.md) before initializing a
 non-empty target.
 
-## 4. Validate the result
+## 4. Local baseline setup verifies
 
-Run maintenance commands from the generated project root:
+`/liftoff-setup` runs only local, project-applicable baseline checks before it
+archives the seed:
+
+```bash
+liftoff validate
+# backend tests from the generated README when a backend exists
+# frontend build from the generated README when a frontend exists
+docker compose config -q
+tofu fmt -check -recursive
+tofu init -backend=false
+tofu validate
+openspec validate --strict
+```
+
+Absent components are inapplicable: a Power Apps project does not fabricate
+backend, Docker, or OpenTofu success, and an API project without a frontend skips
+frontend build evidence. The baseline does not run `tofu plan`, `tofu apply`,
+start containers, deploy, mutate GitHub, or require cloud credentials. If a check
+fails, the seed remains active and `/liftoff-setup` resumes idempotently after
+you fix the blocker; verified phases are not repeated.
+
+You can run read-only maintenance at any time:
 
 ```bash
 liftoff validate
 liftoff doctor
+liftoff governance status --json
+liftoff governance plan --json
+liftoff governance verify --json
 ```
 
 `validate` checks durable generated artifacts and framework markers. `doctor`
-adds read-only workstation, runtime, authentication, dependency, and
-workload-specific diagnostics.
+adds read-only workstation, runtime, authentication, dependency,
+workload-specific, and governance-state diagnostics.
 
-Next steps depend on the selected workload:
+After setup archives the seed and you explicitly approve repository publication,
+normal development follows your selected workflow:
 
 - GenAI and API projects: copy `.env.example` to `.env`, install the generated
   stack dependencies, then use `liftoff dev` and `liftoff infra` to print local
   development and infrastructure commands.
 - Power Apps projects: run `npm ci`, then `npm run dev`. Environment binding,
   connector addition, and `power-apps push` are deliberately deferred.
+- OpenSpec or Spec Kit changes drive normal feature work; release and hotfix
+  flows follow the governed GitFlow plan after activation evidence is green.
 
 See [workloads](workloads.md) for exact generated outputs and deferred actions.
 

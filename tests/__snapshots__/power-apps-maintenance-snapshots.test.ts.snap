@@ -76,6 +76,12 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
           "state": "handoff-generated",
         },
         {
+          "id": "governance-seed-incomplete",
+          "label": "governance seed",
+          "severity": "warn",
+          "state": "seed-incomplete",
+        },
+        {
           "id": "framework-contract",
           "label": "framework contract",
           "severity": "ok",
@@ -145,7 +151,7 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
   ],
   "summary": {
     "failures": 0,
-    "warnings": 3,
+    "warnings": 4,
   },
 }
 `;
@@ -159,7 +165,7 @@ exports[`Power Apps maintenance presentation > snapshots ready, skipped, advisor
   "Optional Code Apps plugin",
   "[warn] GitHub Copilot: code-apps-preview@power-platform-skills is not listed by GitHub Copilot. - Open GitHub Copilot and add the marketplace with \`/plugin marketplace add microsoft/power-platform-skills\`, then install \`/plugin install code-apps-preview@power-platform-skills\`. Do not run \`/create-code-app\` in this project; use the connector and deployment skills after Liftoff creates the application.",
   "[warn] Claude Code: code-apps-preview@power-platform-skills is not listed by Claude Code. - Open Claude Code and add the marketplace with \`/plugin marketplace add microsoft/power-platform-skills\`, then install \`/plugin install code-apps-preview@power-platform-skills\`. Do not run \`/create-code-app\` in this project; use the connector and deployment skills after Liftoff creates the application.",
-  "[warn] Doctor summary: 0 failure(s), 3 warning(s)",
+  "[warn] Doctor summary: 0 failure(s), 4 warning(s)",
 ]
 `;
 

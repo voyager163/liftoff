@@ -127,6 +127,21 @@ import {
   PresentationSession,
   type PresentationSessionOptions
 } from './terminal.js';
+import { governanceCommand } from './governance-activation/commands.js';
+import { loadActivationState as loadCurrentActivationState } from './governance-activation/activation-state.js';
+import {
+  planHistoricalActivationStateMigration,
+  updateFailureInjectionEnv,
+  type ActivationStateMigrationPlan
+} from './governance-activation/migration.js';
+import { currentActivationIdentity } from './governance-activation/graph.js';
+import {
+  governanceChangeMetadataFileName,
+  reconcileActiveGovernanceChange,
+  validateGovernanceChangeMetadata,
+  type GovernanceActiveReconciliationResult
+} from './governance-activation/source-of-truth.js';
+import { governanceDoctorChecks } from './governance-activation/doctor.js';
 import type {
   ApiStackId,
   ApiProjectPlan,
@@ -175,6 +190,7 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
   const jsonMode = !helpRequested && (
     parsed.command === 'doctor' ||
     parsed.command === 'update' ||
+    parsed.command === 'governance' ||
     parsed.command === 'upgrade' ||
     parsed.command === 'validate'
   ) &&
@@ -224,6 +240,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return await migrateCommand(parsed, executionContext);
       case 'doctor':
         return await doctorCommand(parsed, executionContext);
+      case 'governance':
+        return await governanceCommand(parsed, executionContext);
       case 'dev':
         return helperCommand(parsed, executionContext, 'docker compose');
       case 'infra':
@@ -437,10 +455,12 @@ async function initCommand(parsed: ParsedArgs, context: ExecutionContext): Promi
           label: 'Repository governance',
           value: plan.governanceProfile.id === 'none'
             ? 'Disabled'
-            : 'Handoff generated; commit and push before read-only Phase 0'
+            : 'Deterministic setup generated; run /liftoff-setup next'
         }
       ],
-      `liftoff validate ${JSON.stringify(target.root)}`
+      plan.governanceProfile.id === 'none'
+        ? `liftoff validate ${JSON.stringify(target.root)}`
+        : '/liftoff-setup'
     );
     return 0;
   } finally {
@@ -1097,7 +1117,11 @@ async function executeMigration(
     await assertNewOrEmptyDirectory(targetRoot);
 
     presentation.stage('Check workstation readiness');
-    const readinessRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-migrate-readiness-'));
+    const readinessParent = process.env.LIFTOFF_STAGING_ROOT
+      ? path.resolve(process.env.LIFTOFF_STAGING_ROOT)
+      : os.tmpdir();
+    await mkdir(readinessParent, { recursive: true });
+    const readinessRoot = await mkdtemp(path.join(readinessParent, 'liftoff-migrate-readiness-'));
     const readiness = await (async () => {
       try {
         return await ensureWorkstationReady(
@@ -1636,10 +1660,12 @@ function selectUpdatePreconditions(
 function assertAuthorizedUpdateMutations(
   mutations: readonly ProjectFileMutation[],
   entries: readonly ReconcileEntry[],
-  provisioningPlans: readonly ProvisioningGroupPlan[]
+  provisioningPlans: readonly ProvisioningGroupPlan[],
+  additionalAuthorizedPaths: readonly string[][] = []
 ): void {
   const authorized = new Set<string>([
-    updateSnapshotKey(['liftoff.manifest.json'])
+    updateSnapshotKey(['liftoff.manifest.json']),
+    ...additionalAuthorizedPaths.map((pathParts) => updateSnapshotKey(pathParts))
   ]);
   for (const entry of entries) {
     if (entry.rendered && entry.rendered.lifecycle !== 'managed-core') {
@@ -1668,6 +1694,269 @@ function assertAuthorizedUpdateMutations(
         `Update mutation is outside managed-core or authorized provisioning scope: ${manifestDisplayPath(mutation.pathParts)}`
       );
     }
+  }
+}
+
+interface ManifestChange {
+  field: string;
+  from: unknown;
+  to: unknown;
+}
+
+interface ManagedUpdateReconciliationReport {
+  status: 'not-required' | 'reconciliation-required' | 'blocked';
+  changedIdentityFields: readonly ManifestChange[];
+  phaseImpact: {
+    preservedPhaseIds: readonly string[];
+    invalidPhaseIds: readonly string[];
+  };
+  issues: readonly string[];
+  remedy?: string;
+}
+
+function identityFieldChanges(
+  from: Partial<Record<keyof typeof currentActivationIdentity, unknown>>,
+  to = currentActivationIdentity
+): ManifestChange[] {
+  return (Object.keys(to) as (keyof typeof currentActivationIdentity)[])
+    .filter((field) => from[field] !== undefined && from[field] !== to[field])
+    .map((field) => ({
+      field: `activationIdentity.${field}`,
+      from: from[field],
+      to: to[field]
+    }));
+}
+
+function manifestChanges(
+  manifest: LiftoffManifest,
+  plannedManifest: LiftoffManifest
+): ManifestChange[] {
+  const changes: ManifestChange[] = [];
+  if (manifest.artifactVersion !== plannedManifest.artifactVersion) {
+    changes.push({
+      field: 'artifactVersion',
+      from: manifest.artifactVersion,
+      to: plannedManifest.artifactVersion
+    });
+  }
+  if (manifest.liftoffVersion !== plannedManifest.liftoffVersion) {
+    changes.push({
+      field: 'liftoffVersion',
+      from: manifest.liftoffVersion,
+      to: plannedManifest.liftoffVersion
+    });
+  }
+  if (
+    manifest.governance.profile !== 'none' &&
+    manifest.governance.profile !== 'unspecified' &&
+    plannedManifest.governance.profile !== 'none' &&
+    plannedManifest.governance.profile !== 'unspecified'
+  ) {
+    if (manifest.governance.policyVersion !== plannedManifest.governance.policyVersion) {
+      changes.push({
+        field: 'governance.policyVersion',
+        from: manifest.governance.policyVersion,
+        to: plannedManifest.governance.policyVersion
+      });
+    }
+    const fromIdentity = manifest.governance.activationIdentity;
+    const toIdentity = plannedManifest.governance.activationIdentity;
+    if (toIdentity) {
+      if (!fromIdentity) {
+        changes.push({
+          field: 'governance.activationIdentity',
+          from: null,
+          to: toIdentity
+        });
+      } else {
+        changes.push(...identityFieldChanges(fromIdentity, toIdentity));
+      }
+    }
+  }
+  return changes;
+}
+
+function stateMigrationReconciliation(
+  stateMigration: ActivationStateMigrationPlan
+): ManagedUpdateReconciliationReport {
+  if (stateMigration.status === 'blocked') {
+    return {
+      status: 'blocked',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: stateMigration.report.issues,
+      remedy: 'Preserve governance/activation-state.json byte-for-byte and provide an explicit versioned import mapping; checkboxes, filenames, and prose cannot become evidence.'
+    };
+  }
+  if (stateMigration.status === 'migrate') {
+    return {
+      status: 'reconciliation-required',
+      changedIdentityFields: identityFieldChanges(stateMigration.report.fromIdentity, stateMigration.report.toIdentity),
+      phaseImpact: {
+        preservedPhaseIds: stateMigration.report.preservedPhaseIds,
+        invalidPhaseIds: stateMigration.report.invalidPhaseIds
+      },
+      issues: [
+        `Historical activation state will be migrated with the managed update transaction; evidence bytes are preserved and ${stateMigration.report.reconciliationPath} records the explicit graph mapping.`
+      ],
+      remedy: 'Run governance status/verify after update and acknowledge the reconciliation record before executing affected phases.'
+    };
+  }
+  return {
+    status: 'not-required',
+    changedIdentityFields: [],
+    phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+    issues: []
+  };
+}
+
+function activeChangePathParts(stateKind: 'openspec' | 'spec-kit', changeId: string): string[] {
+  return stateKind === 'openspec'
+    ? ['openspec', 'changes', changeId]
+    : ['specs', changeId];
+}
+
+async function activeChangeReconciliationReport(
+  projectRoot: string
+): Promise<ManagedUpdateReconciliationReport> {
+  let loaded;
+  try {
+    loaded = await loadCurrentActivationState(projectRoot);
+  } catch {
+    return {
+      status: 'not-required',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: []
+    };
+  }
+  const activeChange = loaded?.state.activeChange;
+  if (!activeChange) {
+    return {
+      status: 'not-required',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: []
+    };
+  }
+  const metadataPathParts = [
+    ...activeChangePathParts(activeChange.kind, activeChange.id),
+    governanceChangeMetadataFileName
+  ];
+  const bytes = await readProjectFile(projectRoot, metadataPathParts);
+  if (bytes === undefined) {
+    return {
+      status: 'blocked',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: [
+        `${metadataPathParts.join('/')} is missing for active change ${activeChange.id}; no update mode can infer it from tasks or prose.`
+      ],
+      remedy: 'Restore schema-valid governance metadata or record an explicit supersession before continuing setup.'
+    };
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(bytes.toString('utf8')) as unknown;
+  } catch (error) {
+    return {
+      status: 'blocked',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: [`Unable to parse ${metadataPathParts.join('/')}: ${error instanceof Error ? error.message : String(error)}`],
+      remedy: 'Restore schema-valid governance metadata; no update mode can infer active governance from checkboxes, filenames, or prose.'
+    };
+  }
+  let reconciliation: GovernanceActiveReconciliationResult;
+  try {
+    const metadata = validateGovernanceChangeMetadata(parsed);
+    reconciliation = reconcileActiveGovernanceChange({ metadata, evidence: [] });
+  } catch (error) {
+    return {
+      status: 'blocked',
+      changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: [`Invalid ${metadataPathParts.join('/')}: ${error instanceof Error ? error.message : String(error)}`],
+      remedy: 'Restore schema-valid governance metadata; no update mode can infer active governance from checkboxes, filenames, or prose.'
+    };
+  }
+  if (reconciliation.status === 'not-required') {
+    return {
+      status: 'not-required',
+      changedIdentityFields: [],
+      phaseImpact: {
+        preservedPhaseIds: reconciliation.preservedPhaseIds,
+        invalidPhaseIds: reconciliation.invalidPhaseIds
+      },
+      issues: []
+    };
+  }
+  if (reconciliation.status === 'blocked') {
+    return {
+      status: 'blocked',
+      changedIdentityFields: [],
+      phaseImpact: {
+        preservedPhaseIds: reconciliation.preservedPhaseIds,
+        invalidPhaseIds: reconciliation.invalidPhaseIds
+      },
+      issues: reconciliation.issues,
+      remedy: 'Upgrade Liftoff or add an explicit compatibility mapping before executing affected governance phases.'
+    };
+  }
+  return {
+    status: 'reconciliation-required',
+    changedIdentityFields: identityFieldChanges(reconciliation.fromIdentity, reconciliation.toIdentity),
+    phaseImpact: {
+      preservedPhaseIds: reconciliation.preservedPhaseIds,
+      invalidPhaseIds: reconciliation.invalidPhaseIds
+    },
+    issues: reconciliation.issues,
+    remedy: 'Managed definitions and manifest may be updated, but governance status/verify will block affected execution until the active change acknowledges the installed identity.'
+  };
+}
+
+function combineReconciliationReports(
+  reports: readonly ManagedUpdateReconciliationReport[]
+): ManagedUpdateReconciliationReport {
+  if (reports.some((report) => report.status === 'blocked')) {
+    return {
+      status: 'blocked',
+      changedIdentityFields: reports.flatMap((report) => report.changedIdentityFields),
+      phaseImpact: {
+        preservedPhaseIds: [],
+        invalidPhaseIds: [...new Set(reports.flatMap((report) => report.phaseImpact.invalidPhaseIds))]
+      },
+      issues: reports.flatMap((report) => report.issues),
+      remedy: reports.find((report) => report.remedy)?.remedy
+    };
+  }
+  if (reports.some((report) => report.status === 'reconciliation-required')) {
+    return {
+      status: 'reconciliation-required',
+      changedIdentityFields: reports.flatMap((report) => report.changedIdentityFields),
+      phaseImpact: {
+        preservedPhaseIds: [...new Set(reports.flatMap((report) => report.phaseImpact.preservedPhaseIds))],
+        invalidPhaseIds: [...new Set(reports.flatMap((report) => report.phaseImpact.invalidPhaseIds))]
+      },
+      issues: reports.flatMap((report) => report.issues),
+      remedy: reports.find((report) => report.remedy)?.remedy
+    };
+  }
+  return {
+    status: 'not-required',
+    changedIdentityFields: [],
+    phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+    issues: []
+  };
+}
+
+function maybeInjectUpdateFailure(
+  env: NodeJS.ProcessEnv | undefined,
+  stage: string
+): void {
+  const requested = env?.[updateFailureInjectionEnv] ?? process.env[updateFailureInjectionEnv];
+  if (requested === stage) {
+    throw new Error(`Injected managed-update failure at ${stage}.`);
   }
 }
 
@@ -1823,12 +2112,44 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const entries = await reconcileProject(manifest, render, projectRoot);
   const summary = summarizeEntries(entries);
   const ownershipMigrationPending =
-    manifest.artifactVersion !== 6 ||
+    manifest.artifactVersion !== 7 ||
     manifestHadFilteredLegacyNonDurableOwnership(manifest);
   const plannedManifest = buildManifest(renderPlan, render, {
     frameworkState: manifest.framework.state,
     projectArtifacts: manifest.projectArtifacts
   });
+  const plannedManifestChanges = manifestChanges(manifest, plannedManifest);
+  const stateMigration = await planHistoricalActivationStateMigration(projectRoot);
+  const reconciliation = combineReconciliationReports([
+    stateMigrationReconciliation(stateMigration),
+    await activeChangeReconciliationReport(projectRoot)
+  ]);
+  if (reconciliation.status === 'blocked') {
+    const blockedReport = {
+      schemaVersion: 2,
+      mode: check ? 'check' : 'apply',
+      scope: 'managed-core',
+      status: 'blocked',
+      cliVersion: liftoffVersion,
+      projectVersion: manifest.liftoffVersion,
+      entries: [],
+      provisioning: [],
+      ownershipMigrationPending: false,
+      manifestChanges: plannedManifestChanges,
+      activationStateMigration: stateMigration.report,
+      reconciliation,
+      summary
+    };
+    if (jsonMode) {
+      presentation.rawStdout(`${JSON.stringify(blockedReport, null, 2)}\n`);
+    } else {
+      presentation.status('error', 'Managed update blocked', reconciliation.issues.join('; '));
+      if (reconciliation.remedy) {
+        presentation.remedy(reconciliation.remedy);
+      }
+    }
+    return 1;
+  }
   const workloadIntentChanged = !sameWorkloadIntent(
     plannedManifest.project.workload,
     manifest.project.workload
@@ -1839,7 +2160,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   const drift =
     hasDrift(entries) ||
     manifestRewritePending ||
-    provisioningPlans.length > 0;
+    provisioningPlans.length > 0 ||
+    stateMigration.status === 'migrate';
   const visible = entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash);
 
   if (!drift) {
@@ -1848,22 +2170,36 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         schemaVersion: 2,
         mode: 'check',
         scope: 'managed-core',
+        status: reconciliation.status === 'reconciliation-required' ? 'reconciliation-required' : 'current',
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         entries: [],
         provisioning: [],
         ownershipMigrationPending,
+        manifestChanges: plannedManifestChanges,
+        activationIdentity: manifest.governance.profile !== 'none' && manifest.governance.profile !== 'unspecified'
+          ? manifest.governance.activationIdentity ?? null
+          : null,
+        activationStateMigration: stateMigration.report,
+        reconciliation,
         summary
       } : {
         schemaVersion: 2,
         mode: 'apply',
         scope: 'managed-core',
+        status: reconciliation.status === 'reconciliation-required' ? 'reconciliation-required' : 'current',
         cliVersion: liftoffVersion,
         projectVersion: manifest.liftoffVersion,
         written: [],
         skipped: [],
         provisioning: [],
         ownershipMigrationPending,
+        manifestChanges: plannedManifestChanges,
+        activationIdentity: manifest.governance.profile !== 'none' && manifest.governance.profile !== 'unspecified'
+          ? manifest.governance.activationIdentity ?? null
+          : null,
+        activationStateMigration: stateMigration.report,
+        reconciliation,
         summary
       }, null, 2)}\n`);
       return 0;
@@ -1897,6 +2233,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         })),
         provisioning: provisioningJson(provisioningPlans),
         ownershipMigrationPending,
+        manifestChanges: plannedManifestChanges,
+        activationIdentity: plannedManifest.governance.profile !== 'none' && plannedManifest.governance.profile !== 'unspecified'
+          ? plannedManifest.governance.activationIdentity ?? null
+          : null,
+        activationStateMigration: stateMigration.report,
+        reconciliation,
         summary
       }, null, 2)}\n`);
       return 2;
@@ -1930,7 +2272,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     }
     const manifestMaintenance = [
       ownershipMigrationPending
-        ? 'release legacy project artifacts from Liftoff update authority in manifest schema v6; no production file will be written'
+        ? 'release legacy project artifacts from Liftoff update authority in manifest schema v7; no production file will be written'
         : undefined,
       workloadIntentChanged
         ? 'record the requested project configuration intent after safe provisioning'
@@ -1938,6 +2280,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     ].filter((item): item is string => item !== undefined);
     if (manifestMaintenance.length > 0) {
       presentation.bullets('Manifest maintenance', manifestMaintenance);
+    }
+    if (stateMigration.status === 'migrate') {
+      presentation.bullets('Activation-state migration', [
+        `${stateMigration.report.path}: explicit compatibility mapping preserves evidence bytes and stages ${stateMigration.report.reconciliationPath}`
+      ]);
+    }
+    if (reconciliation.status === 'reconciliation-required') {
+      presentation.bullets('Reconciliation required after update', [
+        ...reconciliation.changedIdentityFields.map((field) =>
+          `${field.field}: ${JSON.stringify(field.from)} -> ${JSON.stringify(field.to)}`
+        ),
+        `invalid phases: ${reconciliation.phaseImpact.invalidPhaseIds.join(', ') || 'none'}`,
+        reconciliation.remedy ?? 'Run governance status/verify before executing affected phases.'
+      ]);
     }
     const toWrite =
       summary.new +
@@ -1954,7 +2310,8 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           ),
         0
       ) +
-      (manifestRewritePending ? 1 : 0);
+      (manifestRewritePending ? 1 : 0) +
+      stateMigration.mutations.length;
     presentation.status(
       'warning',
       'Liftoff core maintenance available',
@@ -1982,6 +2339,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   }
   presentation.stage('Apply safe Liftoff core changes', projectRoot);
   await preflightUpdate(projectRoot, entries, force);
+  maybeInjectUpdateFailure(context.env, 'after-preflight');
 
   const written: ReconcileEntry[] = [];
   const skipped: ReconcileEntry[] = [];
@@ -2049,6 +2407,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       provisioned.push(entry);
     }
   }
+  for (const mutation of stateMigration.mutations) {
+    mutations.push(mutation);
+  }
 
   const oldByName = new Map(
     manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
@@ -2112,14 +2473,26 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     pathParts: ['liftoff.manifest.json'],
     content: `${JSON.stringify(nextManifest, null, 2)}\n`
   });
-  assertAuthorizedUpdateMutations(mutations, entries, provisioningPlans);
+  assertAuthorizedUpdateMutations(
+    mutations,
+    entries,
+    provisioningPlans,
+    stateMigration.mutations.map((mutation) => mutation.pathParts)
+  );
   await applyProjectFileTransaction(projectRoot, mutations, {
-    preconditions: selectUpdatePreconditions(
-      updateSnapshots,
-      entries,
-      mutations,
-      provisioned.map((entry) => entry.rendered.pathParts)
-    )
+    onBeforeMutation: async (mutation, index) => {
+      maybeInjectUpdateFailure(context.env, `before-mutation:${index}`);
+      maybeInjectUpdateFailure(context.env, `before-path:${mutation.pathParts.join('/')}`);
+    },
+    preconditions: [
+      ...selectUpdatePreconditions(
+        updateSnapshots,
+        entries,
+        mutations,
+        provisioned.map((entry) => entry.rendered.pathParts)
+      ),
+      ...stateMigration.preconditions
+    ]
   });
 
   if (jsonMode) {
@@ -2127,13 +2500,24 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       schemaVersion: 2,
       mode: 'apply',
       scope: 'managed-core',
-      status: blockedProvisioning.length > 0 ? 'partial' : 'applied',
+      status: blockedProvisioning.length > 0
+        ? 'partial'
+        : reconciliation.status === 'reconciliation-required'
+          ? 'reconciliation-required'
+          : 'applied',
       cliVersion: liftoffVersion,
       projectVersion: manifest.liftoffVersion,
       written: written.map((entry) => manifestDisplayPath(entry.pathParts)),
+      stateWritten: stateMigration.mutations.map((mutation) => manifestDisplayPath(mutation.pathParts)),
       skipped: skipped.map((entry) => ({ path: manifestDisplayPath(entry.pathParts), reason: entry.reason })),
       provisioning: provisioningJson(provisioningPlans),
       ownershipMigrationPending,
+      manifestChanges: manifestChanges(manifest, nextManifest),
+      activationIdentity: nextManifest.governance.profile !== 'none' && nextManifest.governance.profile !== 'unspecified'
+        ? nextManifest.governance.activationIdentity ?? null
+        : null,
+      activationStateMigration: stateMigration.report,
+      reconciliation,
       summary
     }, null, 2)}\n`);
     return 0;
@@ -2143,6 +2527,12 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Applied Liftoff core changes',
       written.map((entry) => `wrote ${entryDisplay(entry)}`)
+    );
+  }
+  if (stateMigration.status === 'migrate') {
+    presentation.bullets(
+      'Migrated activation state',
+      stateMigration.mutations.map((mutation) => `wrote ${manifestDisplayPath(mutation.pathParts)}; evidence bytes preserved`)
     );
   }
   if (provisioned.length > 0) {
@@ -2178,6 +2568,18 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Orphaned Liftoff core artifacts',
       orphans.map((entry) => `orphan ${entryDisplay(entry)}  ${entry.reason}`)
+    );
+  }
+  if (reconciliation.status === 'reconciliation-required') {
+    presentation.bullets(
+      'Reconciliation required',
+      [
+        ...reconciliation.changedIdentityFields.map((field) =>
+          `${field.field}: ${JSON.stringify(field.from)} -> ${JSON.stringify(field.to)}`
+        ),
+        `invalid phases: ${reconciliation.phaseImpact.invalidPhaseIds.join(', ') || 'none'}`,
+        reconciliation.remedy ?? 'Run governance status/verify before executing affected phases.'
+      ]
     );
   }
   presentation.completion(
@@ -2738,6 +3140,7 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
       detail,
       ...(remedy ? { remedy } : {})
     });
+    checks.push(...await governanceDoctorChecks(projectRoot, manifest));
   }
 
   checks.push(...await frameworkDoctorChecks(projectRoot, manifest));
@@ -2768,7 +3171,7 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
     const driftCount =
       entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash).length +
       provisioningPlans.length +
-      (manifest.artifactVersion === 6 ? 0 : 1);
+      (manifest.artifactVersion === 7 ? 0 : 1);
     if (driftCount > 0) {
       checks.push({
         label: 'managed core',

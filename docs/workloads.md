@@ -104,7 +104,7 @@ environment, API frontend, Docker, or OpenTofu selection.
 - React, Vite, TypeScript, Tailwind, and the Power Apps SDK and Vite plugin.
 - Locked root `package.json` and `package-lock.json`.
 - Project-local `power-apps` CLI supplied by the generated dependency graph.
-- `liftoff.config.json`, schema-v6 `liftoff.manifest.json`, starter provenance,
+- `liftoff.config.json`, manifest-v7 `liftoff.manifest.json`, starter provenance,
   and third-party attribution.
 - Official OpenSpec or Spec Kit output and every selected agent marker.
 - The common local governance policy and selected-agent launcher, with backend,
