@@ -1,4 +1,5 @@
 import type { ParsedArgs } from './types.js';
+import { canonicalDefaultEnvironmentIds } from './catalogs.js';
 
 type FlagKind = 'boolean' | 'value';
 export type CommandGroup = 'Onboarding' | 'Maintenance' | 'Reference' | 'Operations';
@@ -82,7 +83,7 @@ const projectFlags = {
   cloud: valueFlag('Cloud provider', 'Project', 'provider', 'azure'),
   region: valueFlag('Cloud deployment region', 'Project', 'region', 'eastus'),
   frontend: booleanFlag('Include the Vue frontend starter', 'Project', true, 'false'),
-  environments: valueFlag('Comma-separated environments', 'Project', 'list', 'dev,test,prod'),
+  environments: valueFlag('Comma-separated environments', 'Project', 'list', canonicalDefaultEnvironmentIds.join(',')),
   spec: valueFlag('Spec-driven framework', 'Framework', 'framework', 'openspec'),
   agents: valueFlag('Comma-separated AI coding agents', 'Framework', 'list', 'copilot'),
   'default-agent': valueFlag('Primary agent for Spec Kit when multiple agents are selected', 'Framework', 'agent'),

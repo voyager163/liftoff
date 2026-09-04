@@ -16,6 +16,7 @@ import {
   validateGovernancePolicy
 } from '../src/repository-governance.js';
 import { buildArtifacts } from '../src/templates.js';
+import { liftoffVersion } from '../src/version.js';
 import {
   canonicalPhaseGraphHash,
   canonicalPhaseGraphJson,
@@ -487,7 +488,8 @@ describe('repository governance artifacts', () => {
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
     )).toHaveLength(10);
-    expect(manifest.liftoffVersion).toBe(currentActivationIdentity.liftoffVersion);
+    expect(manifest.liftoffVersion).toBe(liftoffVersion);
+    expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.10.0');
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
       artifact.pathParts.join('/') === 'governance/activation-baseline.json'
     )).toBe(false);

@@ -243,9 +243,9 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
       case 'governance':
         return await governanceCommand(parsed, executionContext);
       case 'dev':
-        return helperCommand(parsed, executionContext, 'docker compose');
+        return await helperCommand(parsed, executionContext, 'docker compose');
       case 'infra':
-        return helperCommand(parsed, executionContext, 'tofu');
+        return await helperCommand(parsed, executionContext, 'tofu');
       default:
         presentation.error(
           `Unknown command: ${parsed.command}`,
@@ -3480,16 +3480,22 @@ function buildDevCommand(parsed: ParsedArgs): string {
 
 function buildInfraCommand(parsed: ParsedArgs): string {
   const env = readStringFlag(parsed.flags, 'env') ?? 'dev';
+  const environment = getEnvironment(env);
+  if (!environment) {
+    throw new PlanValidationError([
+      `Unsupported environment: ${env}. Supported environments: dev, staging, prod.`
+    ]);
+  }
   switch (parsed.subcommand) {
     case 'apply':
-      return `tofu apply -var-file=environments/${env}.tfvars`;
+      return `tofu apply -var-file=environments/${environment.id}.tfvars`;
     case 'output':
       return 'tofu output';
     case 'init':
       return 'tofu init';
     case 'plan':
     default:
-      return `tofu plan -var-file=environments/${env}.tfvars`;
+      return `tofu plan -var-file=environments/${environment.id}.tfvars`;
   }
 }
 

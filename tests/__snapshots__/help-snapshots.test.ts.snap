@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare
+Mission Control Liftoff 0.10.1 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -193,7 +193,7 @@ Option                      Description
 --region <region>           Cloud deployment region (default: eastus)
 --frontend / --no-frontend  Include the Vue frontend starter (default: false)
 --environments <list>       Comma-separated environments (default:
-                            dev,test,prod)
+                            dev,staging,prod)
 --config <file>             Load deterministic project options from JSON
 
 Framework options
@@ -386,7 +386,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.10.1 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -470,7 +470,7 @@ Option: --pattern <pattern> | Description: GenAI application pattern
 Option: --cloud <provider> | Description: Cloud provider (default: azure)
 Option: --region <region> | Description: Cloud deployment region (default: eastus)
 Option: --frontend / --no-frontend | Description: Include the Vue frontend starter (default: false)
-Option: --environments <list> | Description: Comma-separated environments (default: dev,test,prod)
+Option: --environments <list> | Description: Comma-separated environments (default: dev,staging,prod)
 Option: --config <file> | Description: Load deterministic project options from JSON
 
 Framework options
@@ -621,7 +621,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.10.0 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.10.1 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -733,7 +733,7 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │ --cloud <provider>          Cloud provider (default: azure)                                  │
 │ --region <region>           Cloud deployment region (default: eastus)                        │
 │ --frontend / --no-frontend  Include the Vue frontend starter (default: false)                │
-│ --environments <list>       Comma-separated environments (default: dev,test,prod)            │
+│ --environments <list>       Comma-separated environments (default: dev,staging,prod)         │
 │ --config <file>             Load deterministic project options from JSON                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐

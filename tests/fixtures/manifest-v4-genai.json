@@ -13,7 +13,7 @@
       "frontend": true,
       "environments": [
         "dev",
-        "test",
+        "staging",
         "prod"
       ]
     },

@@ -74,7 +74,7 @@ describe('interactive presentation', () => {
         specWorkflow: 'spec-kit',
         agents: ['github-copilot', 'claude'],
         defaultAgent: 'claude',
-        environments: ['dev', 'test', 'prod']
+        environments: ['dev', 'staging', 'prod']
       });
 
       expect(output.text()).toContain('Project name is required');

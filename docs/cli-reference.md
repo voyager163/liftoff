@@ -63,7 +63,7 @@ Common noninteractive inputs include:
 --cloud azure
 --region <slug>
 --frontend | --no-frontend
---environments dev,test,prod
+--environments dev,staging,prod
 --spec openspec|spec-kit
 --agents copilot,claude
 --default-agent copilot|claude

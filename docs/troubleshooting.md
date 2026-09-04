@@ -173,6 +173,10 @@ ordinary update intentionally reports nothing for those project-owned
 differences. Review and migrate them as production changes. The existing
 `liftoff migrate` command does not perform an in-place Liftoff project upgrade.
 
+If validation reports an unsupported `test` deployment environment, change the
+desired-state and manifest environment selection to `staging` and review any
+project-owned `environments/test` or `test.tfvars` content before renaming it.
+
 ## Generic GenAI project now needs a specialization
 
 `pattern: generic` records that no specialized architecture was selected at

@@ -13,6 +13,9 @@ Supported edits are reconciled by `liftoff update`:
   provisions that component once only when its destinations are absent or
   byte-identical; a differing destination blocks the complete component and
   cannot be forced.
+- Supported API deployment environments are exactly `dev`, `staging`, and
+  `prod`. The retired `test` identifier is rejected in configuration and
+  manifests; replace it with `staging` before validation or update.
 - Removing or re-enabling a previously provisioned component never deletes,
   restores, or overwrites its project-owned files.
 - Power Apps can change the optional Code Apps plugin preference; only manifest

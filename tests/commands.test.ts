@@ -362,6 +362,18 @@ describe('commands', () => {
     }
   });
 
+  it('rejects retired test deployment environment in helper commands', async () => {
+    const stderr = new CaptureStream();
+    const code = await runCommand(parseArgs(['infra', 'plan', '--env', 'test']), {
+      cwd: process.cwd(),
+      stdout: new CaptureStream(),
+      stderr
+    });
+
+    expect(code).toBe(1);
+    expect(stderr.text()).toContain('Unsupported environment: test. Supported environments: dev, staging, prod.');
+  });
+
   it('validates Power Apps provenance and framework markers without policing project bytes', async () => {
     const root = await createFixtureProject({
       projectName: 'Validate App',
@@ -869,7 +881,7 @@ describe('commands', () => {
       const code = await runCommand(
         parseArgs([
           'init', 'orders-api', '--no-genai', '--api', 'go', '--cloud', 'azure',
-          '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--environments', 'dev,test,prod', '--yes'
+          '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--environments', 'dev,staging,prod', '--yes'
         ]),
         { cwd: tempRoot, stdout, stderr, runner: new ReadyInitRunner() }
       );
