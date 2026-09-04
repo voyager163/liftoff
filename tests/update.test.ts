@@ -833,18 +833,18 @@ describe('core-only update command', () => {
     const root = await standardFixtureProject('go');
     const configPath = path.join(root, 'liftoff.config.json');
     await editJson(configPath, (config) => {
-      config.environments = ['dev', 'test'];
+      config.environments = ['dev', 'staging'];
     });
     expect((await run(['update'], root)).code).toBe(0);
 
-    const backendEnv = path.join(root, 'environments', 'test', 'backend.env');
+    const backendEnv = path.join(root, 'environments', 'staging', 'backend.env');
     const tfvars = path.join(
       root,
       'infrastructure',
       'opentofu',
       'azure',
       'environments',
-      'test.tfvars'
+      'staging.tfvars'
     );
     await expect(access(backendEnv)).resolves.toBeUndefined();
     await expect(access(tfvars)).resolves.toBeUndefined();
@@ -857,7 +857,7 @@ describe('core-only update command', () => {
 
     await rm(backendEnv);
     await editJson(configPath, (config) => {
-      config.environments = ['dev', 'test'];
+      config.environments = ['dev', 'staging'];
     });
     expect((await run(['update'], root)).code).toBe(0);
     await expect(access(backendEnv)).rejects.toMatchObject({ code: 'ENOENT' });

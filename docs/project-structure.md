@@ -40,7 +40,7 @@ project/
 |   `-- models/ or schema/
 |-- environments/
 |   |-- dev/
-|   |-- test/
+|   |-- staging/
 |   `-- prod/
 |-- infrastructure/
 |   `-- opentofu/

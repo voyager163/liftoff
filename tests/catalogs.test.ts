@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   apiStacks,
+  canonicalDefaultEnvironmentIds,
+  canonicalDefaultEnvironments,
   canonicalizeCodingAgents,
   codingAgents,
+  environments,
   frameworkDefinitions,
   governanceProfiles,
   getGovernanceProfile,
   getApiStack,
   getDefaultRegion,
+  getEnvironment,
   patterns,
   projectTypes,
   providers,
@@ -60,6 +64,13 @@ describe('catalogs', () => {
 
   it('defaults Azure to East US', () => {
     expect(getDefaultRegion('azure').slug).toBe('eastus');
+  });
+
+  it('defines the supported deployment environments in canonical order', () => {
+    expect(environments.map((environment) => environment.id)).toEqual(['dev', 'staging', 'prod']);
+    expect(getEnvironment('test')).toBeUndefined();
+    expect(canonicalDefaultEnvironmentIds).toEqual(['dev', 'staging', 'prod']);
+    expect(canonicalDefaultEnvironments.map((environment) => environment.id)).toEqual(['dev', 'staging', 'prod']);
   });
 
   it('disambiguates natural Korea region input', () => {

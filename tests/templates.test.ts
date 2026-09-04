@@ -643,7 +643,7 @@ describe('templates and filesystem', () => {
       projectName: 'Claims Copilot With An Extremely Long Workload Name That Exceeds Azure Limits',
       pattern: 'rag',
       cloud: 'azure',
-      environments: ['dev', 'test', 'prod']
+      environments: ['dev', 'staging', 'prod']
     }, { requireProjectName: true });
     const names = buildAzureResourceNames(plan, 'prod', 'abcdef123456');
 
@@ -656,7 +656,7 @@ describe('templates and filesystem', () => {
     expect(names.keyVault.length).toBeLessThanOrEqual(24);
 
     const artifacts = buildArtifacts(plan);
-    const suffixes = ['dev', 'test', 'prod'].map((environment) => {
+    const suffixes = ['dev', 'staging', 'prod'].map((environment) => {
       const content = artifacts.find(
         (artifact) => artifact.pathParts.join('/') === `infrastructure/opentofu/azure/environments/${environment}.tfvars`
       )?.content ?? '';

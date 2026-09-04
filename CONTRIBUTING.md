@@ -87,7 +87,8 @@ project.
 
 Filesystem and manifest changes must remain portable across Windows, macOS,
 and Linux. Use Node.js path utilities rather than hardcoded separators, and
-preserve append-only manifest logical names and catalog identifiers.
+preserve append-only manifest logical names and catalog identifiers unless a
+main-spec change explicitly retires an environment and its derived names.
 
 Terminal presentation changes must preserve the rich, compact, plain,
 `NO_COLOR`, JSON, version, and stdout/stderr contracts. Update focused renderer
@@ -295,8 +296,8 @@ openspec validate <change-name> --strict
 - Confirm generated projects contain no credentials or environment-specific
   values.
 - Do not change persisted manifest identity, activation version vectors, graph
-  hashes, schema versions, compatibility maps, or append-only identifiers without
-  an explicit compatibility design and migration/remedy tests.
+  hashes, schema versions, compatibility maps, or stable identifiers without an
+  explicit main-spec decision and migration or rejection-remedy tests.
 - Include generated-project verification when templates or dependencies
   change.
 

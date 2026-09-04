@@ -87,7 +87,7 @@ async function run(
 async function addDrift(projectRoot: string): Promise<void> {
   const configPath = path.join(projectRoot, 'liftoff.config.json');
   const config = JSON.parse(await readFile(configPath, 'utf8'));
-  config.environments = ['dev', 'test'];
+  config.environments = ['dev', 'staging'];
   await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
 }
 

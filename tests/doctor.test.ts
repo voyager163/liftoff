@@ -747,7 +747,7 @@ describe('doctor command', () => {
     const root = await fixtureProject();
     const configPath = path.join(root, 'liftoff.config.json');
     const config = JSON.parse(await readFile(configPath, 'utf8'));
-    config.environments = ['dev', 'test'];
+    config.environments = ['dev', 'staging'];
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 
     const result = await run(['doctor'], root);
@@ -781,7 +781,7 @@ describe('doctor command', () => {
     const root = await fixtureProject();
     const configPath = path.join(root, 'liftoff.config.json');
     const config = JSON.parse(await readFile(configPath, 'utf8'));
-    config.environments = ['dev', 'test'];
+    config.environments = ['dev', 'staging'];
     await writeFile(configPath, JSON.stringify(config, null, 2), 'utf8');
 
     const result = await run(

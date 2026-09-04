@@ -5,8 +5,8 @@ import { createInterface } from 'node:readline/promises';
 import type { Readable } from 'node:stream';
 import {
   apiStacks,
+  canonicalDefaultEnvironmentIds,
   codingAgents,
-  environments,
   getApiStack,
   getCodingAgent,
   getFrameworkDefinition,
@@ -409,9 +409,10 @@ export class InteractivePrompter {
   }
 
   private async askEnvironments(): Promise<string[]> {
-    const answer = (await this.question('Environments', 'dev,test,prod')).trim();
+    const defaultEnvironmentInput = canonicalDefaultEnvironmentIds.join(',');
+    const answer = (await this.question('Environments', defaultEnvironmentInput)).trim();
     if (!answer) {
-      return environments.map((environment) => environment.id);
+      return [...canonicalDefaultEnvironmentIds];
     }
     return answer.split(',').map((value) => value.trim()).filter(Boolean);
   }

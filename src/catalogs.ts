@@ -275,11 +275,26 @@ export const azureRegions: RegionDefinition[] = [
   }
 ];
 
+export const canonicalDefaultEnvironmentIds = [
+  'dev',
+  'staging',
+  'prod'
+] as const satisfies readonly EnvironmentId[];
+
 export const environments: EnvironmentDefinition[] = [
   { id: 'dev', label: 'Development', description: 'Low-cost local and Azure development defaults.' },
-  { id: 'test', label: 'Test', description: 'Production-like validation configuration with modest scale.' },
+  { id: 'staging', label: 'Staging', description: 'Production-like validation configuration with modest scale.' },
   { id: 'prod', label: 'Production', description: 'Production-oriented settings and stricter security controls.' }
 ];
+
+export const canonicalDefaultEnvironments: EnvironmentDefinition[] =
+  canonicalDefaultEnvironmentIds.map((id) => {
+    const environment = environments.find((candidate) => candidate.id === id);
+    if (!environment) {
+      throw new Error(`Default environment ${id} is missing from the environment catalog.`);
+    }
+    return environment;
+  });
 
 export const specWorkflows: SpecWorkflowDefinition[] = [
   {
