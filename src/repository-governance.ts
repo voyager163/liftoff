@@ -855,12 +855,15 @@ Contract:
 1. Work from the current directory; the Liftoff CLI resolves the nearest project root.
 2. Invoke only these commands: \`liftoff governance status --json\`,
    \`liftoff governance plan --json\`, \`liftoff governance apply-next --json\`,
+   \`liftoff governance apply-next --json --execute\`,
    \`liftoff governance resume --json\`, and \`liftoff governance verify --json\`.
 3. Explain blockers, approval requirements, and permitted next actions exactly
    from command output.
 4. If a blocker may have changed, run \`liftoff governance resume --json\`.
-5. If a next transition is ready and approved, run
-   \`liftoff governance apply-next --json\`, then
+5. Use \`liftoff governance apply-next --json\` only to preview exact operations.
+   If the transition is ready and its approval status is \`not-required\` or
+   \`reused\`, run
+   \`liftoff governance apply-next --json --execute\`, then
    \`liftoff governance verify --json\`.
 6. Never infer phase completion from prose, tasks, or local files. Never use a
    separate activation state or duplicate the Liftoff engine.

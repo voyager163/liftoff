@@ -402,8 +402,12 @@ describe('repository governance artifacts', () => {
       expect(launcher.content).toContain('liftoff governance status --json');
       expect(launcher.content).toContain('liftoff governance plan --json');
       expect(launcher.content).toContain('liftoff governance apply-next --json');
+      expect(launcher.content).toContain('liftoff governance apply-next --json --execute');
       expect(launcher.content).toContain('liftoff governance resume --json');
       expect(launcher.content).toContain('liftoff governance verify --json');
+      expect(launcher.content).toMatch(
+        /Use `liftoff governance apply-next --json` only to preview[\s\S]+approval status is `not-required` or\s+`reused`[\s\S]+run\s+`liftoff governance apply-next --json --execute`/
+      );
       expect(launcher.content).toMatch(/Liftoff\s+governance engine/);
       expect(launcher.content).not.toContain('liftoff-repository-governance');
       expect(launcher.content).not.toMatch(/\bmodel\b/i);

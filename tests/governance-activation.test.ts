@@ -366,6 +366,33 @@ describe('phase readiness calculation', () => {
     expect(incompatible.phases['seed-valid'].state).toBe('identity-incompatible');
   });
 
+  it('does not let downstream evidence bypass a newly blocked dependency', () => {
+    const result = calculatePhaseReadiness({
+      state: validState(),
+      approvals: [],
+      evidence: [
+        evidence('seed-valid'),
+        evidence('seed-verified'),
+        evidence('seed-archived'),
+        evidence('committed'),
+        evidence('pushed')
+      ],
+      phaseBlockers: {
+        'seed-archived': ['Archived seed main capability is invalid.']
+      },
+      now
+    });
+
+    expect(result.phases['seed-archived']).toMatchObject({
+      state: 'blocked',
+      blockers: ['Archived seed main capability is invalid.']
+    });
+    expect(result.phases.committed.state).toBe('blocked');
+    expect(result.phases.pushed.state).toBe('blocked');
+    expect(result.phases['phase-0-complete'].state).toBe('blocked');
+    expect(result.nextReadyPhase).toBeNull();
+  });
+
   it('requires approval gates before readiness can advance protected phases', () => {
     const priorEvidence: EvidenceHeader[] = [
       evidence('seed-valid'),

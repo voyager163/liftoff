@@ -8,6 +8,7 @@ import {
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
   canonicalApprovalEnvelopeHash,
+  canonicalSha256,
   currentActivationIdentity,
   evidenceContextForPhase,
   governanceChangeMetadataFileName,
@@ -194,9 +195,12 @@ async function writeEvidence(root: string, name: string, value: unknown): Promis
   await writeFile(path.join(root, 'governance', 'evidence', `${name}.json`), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
 
-async function writeApproval(root: string, phaseId: PhaseId): Promise<ApprovalEnvelope> {
+async function writeApproval(
+  root: string,
+  phaseId: PhaseId,
+  state: UserActivationState = validState()
+): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-  const state = validState();
   const context = evidenceContextForPhase(phaseId, {
     repositoryId: state.repository.id,
     identity: currentActivationIdentity,
@@ -344,12 +348,211 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     expect(result.err).toBe('');
   });
 
+  it('distinguishes consistent verification from setup completion before activation starts', async () => {
+    const root = await writeProject('verify-not-started');
+
+    const result = await run(['governance', 'verify', '--json'], root);
+
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.out)).toMatchObject({
+      ok: true,
+      consistent: true,
+      verificationStatus: 'consistent',
+      complete: false,
+      setupStatus: 'not-started',
+      stateSource: 'not-started',
+      nextReadyPhase: 'seed-valid',
+      summary: expect.stringContaining('setup has not started')
+    });
+  });
+
+  it('reports setup in progress until every phase reaches a successful terminal state', async () => {
+    const root = await writeProject('verify-in-progress');
+    const state = validState();
+    const evidence = header('seed-valid');
+    state.phases['seed-valid'] = {
+      state: 'verified',
+      updatedAt: '2026-09-04T00:00:00.000Z',
+      evidence: [{
+        phaseId: 'seed-valid',
+        evidenceId: 'seed-valid-current',
+        headerDigest: canonicalSha256(evidence),
+        result: 'verified'
+      }],
+      approvals: [],
+      blockers: []
+    };
+    await writeState(root, state);
+    await writeEvidence(root, 'seed-valid-current', evidence);
+
+    const result = await run(['governance', 'verify', '--json'], root);
+
+    expect(result.code, result.out).toBe(0);
+    expect(JSON.parse(result.out)).toMatchObject({
+      ok: true,
+      verificationStatus: 'consistent',
+      complete: false,
+      setupStatus: 'in-progress',
+      stateSource: 'user',
+      nextReadyPhase: 'seed-verified'
+    });
+  });
+
+  it('reports setup complete only when every phase is successfully terminal', async () => {
+    const root = await writeProject('verify-complete');
+    const state = validState();
+    for (const phase of canonicalPhaseGraph.phases) {
+      const phaseId = phase.id;
+      if (phase.applicability.kind !== 'always') {
+        continue;
+      }
+      const resultState = phase.terminalStates.find((candidate) => candidate !== 'failed')!;
+      if (resultState === 'approved') {
+        state.phases[phaseId] = {
+          state: resultState,
+          updatedAt: '2026-09-04T00:00:00.000Z',
+          evidence: [],
+          approvals: [],
+          blockers: []
+        };
+        continue;
+      }
+      const evidence = header(phaseId, { result: resultState });
+      const evidenceId = `${phaseId}-complete`;
+      const providers = phase.evidence.liveReadbackProviders;
+      state.phases[phaseId] = {
+        state: resultState,
+        updatedAt: '2026-09-04T00:00:00.000Z',
+        evidence: [{
+          phaseId,
+          evidenceId,
+          headerDigest: canonicalSha256(evidence),
+          result: resultState
+        }],
+        approvals: [],
+        blockers: []
+      };
+      await writeEvidence(
+        root,
+        evidenceId,
+        providers.length === 0
+          ? evidence
+          : {
+              evidenceId,
+              header: evidence,
+              liveReadback: providers.map((provider) => liveProof(phaseId, provider))
+            }
+      );
+    }
+    for (const phaseId of [
+      'committed',
+      'pushed',
+      'activation-approved',
+      'application-foundation',
+      'enforcement-approved',
+      'rulesets-applied'
+    ] as const) {
+      const approval = await writeApproval(root, phaseId, state);
+      state.phases[phaseId] = {
+        ...state.phases[phaseId],
+        approvals: [approval.id]
+      };
+    }
+    await writeState(root, state);
+
+    const result = await run(['governance', 'verify', '--json'], root);
+
+    expect(result.code, result.out).toBe(0);
+    expect(JSON.parse(result.out), result.out).toMatchObject({
+      ok: true,
+      verificationStatus: 'consistent',
+      complete: true,
+      setupStatus: 'complete',
+      stateSource: 'user',
+      nextReadyPhase: null
+    });
+  });
+
+  it('rejects terminal states that the phase graph does not allow', async () => {
+    const root = await writeProject('verify-illegal-terminal');
+    const state = validState();
+    const evidence = header('seed-valid', { result: 'inapplicable' });
+    state.phases['seed-valid'] = {
+      state: 'inapplicable',
+      updatedAt: '2026-09-04T00:00:00.000Z',
+      evidence: [{
+        phaseId: 'seed-valid',
+        evidenceId: 'seed-valid-illegal',
+        headerDigest: canonicalSha256(evidence),
+        result: 'inapplicable'
+      }],
+      approvals: [],
+      blockers: []
+    };
+    await writeState(root, state);
+    await writeEvidence(root, 'seed-valid-illegal', evidence);
+
+    const status = await run(['governance', 'status', '--json'], root);
+    expect(status.code).toBe(0);
+    expect(JSON.parse(status.out)).toMatchObject({
+      nextReadyPhase: null
+    });
+    expect(JSON.parse(status.out).phases.find((phase: { id: string }) =>
+      phase.id === 'seed-valid'
+    )).toMatchObject({
+      state: 'blocked',
+      blockers: [expect.stringContaining('not an allowed terminal state')]
+    });
+
+    const result = await run(['governance', 'verify', '--json'], root);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out)).toMatchObject({
+      verificationStatus: 'inconsistent',
+      setupStatus: 'in-progress',
+      complete: false
+    });
+    expect(JSON.parse(result.out).checks.find((check: { id: string }) =>
+      check.id === 'phase-terminal-state'
+    ).issues).toContainEqual(expect.stringContaining('not an allowed terminal state'));
+  });
+
+  it('rejects forbidden evidence before conditional applicability can mask it', async () => {
+    const root = await writeProject('verify-inapplicable-illegal-evidence');
+    await writeState(root, validState());
+    const evidence = header('state-path-selected', { result: 'disposed' });
+    await writeEvidence(root, 'state-path-selected-illegal', evidence);
+
+    const status = await run(['governance', 'status', '--json'], root);
+
+    expect(status.code).toBe(0);
+    expect(JSON.parse(status.out).phases.find((phase: { id: string }) =>
+      phase.id === 'state-path-selected'
+    )).toMatchObject({
+      state: 'blocked',
+      blockers: [expect.stringContaining('not an allowed terminal state')]
+    });
+
+    const verify = await run(['governance', 'verify', '--json'], root);
+    expect(verify.code).toBe(1);
+    expect(JSON.parse(verify.out).checks.find((check: { id: string }) =>
+      check.id === 'phase-terminal-state'
+    )).toMatchObject({
+      status: 'failed',
+      issues: [expect.stringContaining('Evidence state-path-selected-illegal reports disposed')]
+    });
+  });
+
   it('renders concise human output for every subcommand and keeps apply-next preview read-only', async () => {
     const root = await writeProject('human');
     for (const subcommand of ['status', 'plan', 'resume', 'verify'] as const) {
       const result = await run(['governance', subcommand], root);
       expect(result.code).toBe(0);
       expect(result.out).toContain(`GOVERNANCE ${subcommand.toUpperCase()}`);
+      if (subcommand === 'verify') {
+        expect(result.out).toContain('setup-completion');
+        expect(result.out).toContain('setup has not started');
+      }
       expect(result.err).toBe('');
     }
 
@@ -541,7 +744,17 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     await writeFile(path.join(root, '.liftoff', 'governance', 'phase-graph.json'), '{bad', 'utf8');
     const badGraph = await run(['governance', 'verify', '--json'], root);
     expect(badGraph.code).toBe(1);
-    expect(JSON.parse(badGraph.out).checks[0].issues[0]).toContain('Unable to parse .liftoff/governance/phase-graph.json');
+    expect(JSON.parse(badGraph.out)).toMatchObject({
+      ok: false,
+      consistent: false,
+      verificationStatus: 'inconsistent',
+      complete: false,
+      setupStatus: 'indeterminate',
+      stateSource: 'unavailable',
+      summary: expect.stringContaining('completion is indeterminate')
+    });
+    expect(JSON.parse(badGraph.out).checks[0].issues[0])
+      .toContain('Unable to parse .liftoff/governance/phase-graph.json');
 
     await writeFile(
       path.join(root, '.liftoff', 'governance', 'phase-graph.json'),
@@ -558,6 +771,34 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     const badEvidence = await run(['governance', 'verify', '--json'], root);
     expect(badEvidence.code).toBe(1);
     expect(JSON.parse(badEvidence.out).checks[0].issues[0]).toContain('Invalid governance/evidence/bad.json');
+  });
+
+  it('keeps the verification failure envelope when a later verification check throws', async () => {
+    const root = await writeProject('malformed-task-projection');
+    await writeState(root, validState({
+      activeChange: { id: 'governance-activation', kind: 'openspec' }
+    }));
+    await mkdir(path.join(root, 'openspec', 'changes', 'governance-activation'), { recursive: true });
+    await writeFile(
+      path.join(root, 'openspec', 'changes', 'governance-activation', 'tasks.md'),
+      '- [ ] 1.1 Unknown phase <!-- liftoff-phase: not-a-phase -->\n',
+      'utf8'
+    );
+
+    const result = await run(['governance', 'verify', '--json'], root);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out)).toMatchObject({
+      ok: false,
+      consistent: false,
+      verificationStatus: 'inconsistent',
+      complete: false,
+      setupStatus: 'indeterminate',
+      stateSource: 'unavailable',
+      summary: expect.stringContaining('completion is indeterminate')
+    });
+    expect(JSON.parse(result.out).checks[0].issues[0])
+      .toContain('Task projection references unknown phase not-a-phase');
   });
 
   it('detects stale evidence, missing live readback, and checked tasks without authoritative evidence', async () => {
