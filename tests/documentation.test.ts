@@ -21,7 +21,7 @@ const requiredDocs = [
 ] as const;
 
 async function repositoryFile(name: string): Promise<string> {
-  return readFile(path.join(repositoryRoot, name), 'utf8');
+  return (await readFile(path.join(repositoryRoot, name), 'utf8')).replace(/\r\n/g, '\n');
 }
 
 function localMarkdownTargets(markdown: string): string[] {
