@@ -47,5 +47,9 @@
 - [x] 7.1 Update CLI, governance, generated-guide, and developer documentation for target pinning, classifications, coverage, local/live consent, exit codes, and future-upgrade boundaries; verify documentation contracts and packaged links.
 - [x] 7.2 Add an assessment scenario matrix for fresh and seed-valid-completed setup, archived/blocked seeds, completed activation, supported historical manifests, unsupported state/graph identities, project customization, and approved exceptions across standard, GenAI, and Power Apps workloads; verify report truthfulness and no phase advancement.
 - [x] 7.3 Extend installed-package smoke coverage for local assessment/help/report assets and opt-in live behavior with controlled read-only fixtures; verify installed CLI behavior matches generated integration commands without contacting production services.
-- [ ] 7.4 Include the new path, parser, read-only, and integration suites in the existing Windows/macOS/Linux CI matrix and obtain platform results before release; verify CRLF, path separators, spaces, case handling, and supported symlink/junction safeguards.
+- [x] 7.4 Include the new path, parser, read-only, and integration suites in the existing Windows/macOS/Linux CI matrix and obtain platform results before release; verify CRLF, path separators, spaces, case handling, and supported symlink/junction safeguards.
 - [x] 7.5 Run the focused assessment/ownership/governance suites, TypeScript build, repository checks, package smoke, and strict OpenSpec validation, including the separate bootstrap-recovery regressions when combined; confirm assessment never commits, publishes, provisions, or migrates a project.
+
+Cross-platform candidate evidence: CI run `33964379478` passed on
+`b791a46bf3ef405c4b064a596cd8668f6354dbd3`, including Linux, macOS, Windows,
+package smoke, generated containers, both npm template lanes, and Power Apps.

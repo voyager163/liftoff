@@ -722,7 +722,14 @@ Selecting a repository-governance profile or passing `--yes` SHALL authorize onl
 The CLI SHALL expose a `governance` command group with `status`, `plan`,
 `apply-next`, `resume`, and `verify` subcommands. Commands SHALL use strict
 argument validation, project-root discovery, versioned JSON output, responsive
-human output, and existing independent consent boundaries.
+human output, and existing independent consent boundaries. Apply-next SHALL
+identify the selected phase and, for execution, the successfully executed phase.
+Its legacy `nextReadyPhase` field SHALL retain selection semantics; subsequent
+status or verify output SHALL provide post-transition readiness. OpenSpec
+failures SHALL include bounded, sanitized diagnostics when safe to display.
+Ordinary progress on an intact active bootstrap seed before governance begins
+SHALL be reported as incomplete, not inconsistent solely because archival is
+pending.
 
 #### Scenario: Run governance status outside a project
 - **WHEN** no project manifest can be resolved
@@ -758,6 +765,16 @@ human output, and existing independent consent boundaries.
 - **THEN** `ok` and `consistent` are true while `complete` is false
 - **AND** `setupStatus` is `not-started` with the next ready phase
 
+#### Scenario: A valid bootstrap seed is still active
+- **WHEN** the generated seed is intact, no competing governance change exists, and no archive or later completion has been recorded
+- **THEN** verification reports consistency independently of the pending baseline or archive phases
+- **AND** `complete` remains false and publication remains approval-gated
+
+#### Scenario: Active seed contradicts stored archive completion
+- **WHEN** activation state already claims the seed was archived but it is still active
+- **THEN** verification reports the contradiction as inconsistent
+- **AND** it does not treat the seed as ordinary pending bootstrap work
+
 #### Scenario: Verification cannot inspect state
 - **WHEN** `liftoff governance verify --json` encounters a malformed governance artifact
 - **THEN** `ok` and `consistent` are false while `complete` is false
@@ -771,3 +788,120 @@ human output, and existing independent consent boundaries.
 #### Scenario: Unsupported governance syntax is supplied
 - **WHEN** a misspelled subcommand, unknown flag, or excess positional argument is used
 - **THEN** parsing fails before project discovery or mutation
+
+#### Scenario: Distinguish selection from post-transition readiness
+- **WHEN** apply-next successfully executes `seed-valid`
+- **THEN** `selectedPhase` and `executedPhase` both identify `seed-valid`
+- **AND** the subsequent verify response identifies `seed-verified` as the next ready phase
+- **AND** failed execution reports no successfully executed phase
+
+#### Scenario: Explain an OpenSpec validation failure
+- **WHEN** OpenSpec exits unsuccessfully with a safe diagnostic
+- **THEN** the failure includes the command, exit condition, and bounded diagnostic without terminal control sequences
+
+#### Scenario: Diagnostic includes credential-shaped content
+- **WHEN** OpenSpec output includes a credential detected by the shared credential policy
+- **THEN** the diagnostic is withheld before truncation and the response explains why
+- **AND** raw credentials are not copied into JSON, human output, or activation state
+
+### Requirement: CLI exposes a strictly read-only governance assessment
+The CLI SHALL expose `liftoff governance assess [project] [--json] [--live]`
+with existing safe project discovery, command-specific help, and the optional
+`--project` alternative. The command SHALL default to local-only assessment.
+Only `assess` SHALL accept `--live`; assessment SHALL reject execution, force,
+installation, automatic-upgrade, and output-file flags before project access.
+Existing governance subcommand meanings SHALL remain unchanged.
+
+#### Scenario: Run a local assessment
+- **WHEN** the developer invokes `liftoff governance assess --json` inside a Liftoff project
+- **THEN** the CLI returns the local assessment without network requests or project writes
+- **AND** live-only comparisons are explicitly unobserved
+
+#### Scenario: Request live comparison
+- **WHEN** the developer invokes `liftoff governance assess --live --json`
+- **THEN** only supported scoped read operations are authorized
+- **AND** the command does not enroll credentials or execute remediation
+
+#### Scenario: Reject mutation flags
+- **WHEN** assessment receives `--execute`, `--force`, or an installation or upgrade flag
+- **THEN** argument validation fails before project discovery, network calls, or writes
+
+#### Scenario: Reject misplaced live flag
+- **WHEN** another governance subcommand receives `--live`
+- **THEN** parsing fails rather than broadening that subcommand's behavior
+
+#### Scenario: Show help without a project
+- **WHEN** `liftoff governance assess --help` runs outside a project
+- **THEN** it describes local/live behavior, output, limitations, and exit codes
+- **AND** performs no project or credential discovery
+
+#### Scenario: Resolve a project on supported operating systems
+- **WHEN** assessment is invoked from a nested directory or with an explicit project path containing spaces on Windows, macOS, or Linux
+- **THEN** it resolves the intended Liftoff project through the existing safe path rules
+- **AND** conflicting positional and `--project` targets are rejected
+
+### Requirement: Assessment output distinguishes alignment, differences, and incomplete coverage
+Valid assessment invocations SHALL produce a schema-v1 report with
+`readOnly: true`, mode, pinned target, recorded identity availability, findings,
+provenance, diagnostics, coverage, and outcome. Human and JSON output SHALL
+derive from the same report. Exit 0 SHALL mean fully observed alignment or
+explicit `not-applicable` disabled governance; exit 2 SHALL mean `differences`
+or `partial`; exit 1 SHALL mean an invalid or unsafe request/input or catalog
+error. Accepted exceptions SHALL remain visible differences, not exact
+alignment.
+
+#### Scenario: Fully observed controls match
+- **WHEN** every applicable catalog control has valid required proof and no difference or exception
+- **THEN** outcome is `aligned` and exit code is 0
+
+#### Scenario: Known difference is observed
+- **WHEN** complete observation finds outdated, missing, conflicting, or approved-exception controls
+- **THEN** outcome is `differences` and exit code is 2
+- **AND** the report distinguishes actionable differences from accepted exceptions
+
+#### Scenario: Some proof cannot be collected
+- **WHEN** applicable proof or applicability remains unknown
+- **THEN** outcome is `partial` and exit code is 2
+- **AND** known differences and coverage limitations are both retained
+
+#### Scenario: A report cannot be trusted
+- **WHEN** a syntactically valid JSON invocation encounters an unsafe path, malformed required input, or invalid packaged catalog
+- **THEN** it returns a versioned error report with safe diagnostics and exit code 1
+- **AND** does not emit a success-shaped fallback
+
+#### Scenario: Governance is explicitly disabled
+- **WHEN** the resolved project profile is `none`
+- **THEN** outcome is `not-applicable` and exit code is 0
+- **AND** neither human nor JSON output describes governance as aligned or activated
+
+### Requirement: Infrastructure recipes use the selected project's actual context
+Inside a known API project, infrastructure helpers SHALL render the generated
+OpenTofu module directory and an environment declared by that project. If no
+environment override is provided, they SHALL use the first selected environment.
+They SHALL remain printed-only and SHALL resolve paths portably on Windows,
+macOS, and Linux.
+
+#### Scenario: Project selects only production
+- **WHEN** the project declares only `prod` and the developer requests an infrastructure plan recipe
+- **THEN** the recipe targets the generated module and `prod.tfvars`
+- **AND** it does not reference nonexistent `dev.tfvars`
+
+#### Scenario: Requested environment is absent
+- **WHEN** a helper requests an environment not declared by the project
+- **THEN** it reports the unsupported project environment instead of printing an unusable recipe
+
+#### Scenario: Project path contains spaces
+- **WHEN** a helper resolves the generated module from a project path containing spaces on a supported host
+- **THEN** the printed command preserves that path as one argument
+- **AND** no infrastructure command is executed
+
+### Requirement: Dependency-failure output states the real preservation boundary
+Dependency setup failure output SHALL distinguish protected package/lock
+metadata from other project files that dependency lifecycle scripts may have
+modified. It SHALL NOT claim the entire scaffold was preserved unless that
+guarantee was actually enforced.
+
+#### Scenario: Installation fails after running scripts
+- **WHEN** a dependency command fails and protected metadata is restored
+- **THEN** the output states which metadata was protected or restored
+- **AND** tells the developer that other file changes may require review
