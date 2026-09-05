@@ -14,6 +14,7 @@ import {
 import { PresentationSession } from './terminal.js';
 import type { ParsedArgs } from './types.js';
 import { liftoffVersion } from './version.js';
+import { isTelemetryExcludedCommand } from './telemetry/contract.js';
 
 export interface CliTelemetryHooks {
   beforeCommand(stderr: NodeJS.WritableStream, env: NodeJS.ProcessEnv): Promise<boolean>;
@@ -96,7 +97,7 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 1;
   }
 
-  const telemetryReady = await safelyPrepareTelemetry(
+  const telemetryReady = !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
     () => telemetry.beforeCommand(stderr, env)
   );
 

@@ -153,6 +153,14 @@ The manifest is a CLI-owned transaction record rather than an ordinary
 template artifact. Current managed core is limited to the exact repository
 governance policy, context, guide, phase graph, compatibility metadata,
 credential-policy schema, and selected-agent `/liftoff-setup` integrations.
+Enabled projects also own only the exact assessment integrations:
+`liftoff-governance-assess-copilot` at
+`.github/prompts/liftoff-governance-assess.prompt.md` and
+`liftoff-governance-assess-claude` at
+`.claude/commands/liftoff-governance-assess.md`, for selected agents only.
+Older supported inventories without these entries remain readable and expose
+safe managed-core update drift. Unowned collisions stay outside ownership even
+with force; assessment never grants write authority for files it reads.
 Forced update may remove exact retired generated setup-alias entries from older
 manifests after review. A name such as `config.go`, a `configuration` category,
 or a path under `.github` does not grant update authority.
@@ -173,7 +181,9 @@ those files, but it does not advance, reset, or delete a phase.
   contains user-owned activation state.
 - Machine-readable paths are path-part arrays, never platform-joined strings.
 - Exit codes are 0 for success or clean, 1 for failure, and 2 for detected
-  drift in check mode.
+  drift in check mode. Assessment also uses 2 for partial coverage or differences
+  including approved exceptions; disabled governance exits 0 as not-applicable,
+  never as an alignment claim.
 - JSON outputs carry a numeric top-level `schemaVersion`.
 
 See [safety and consent](safety-and-consent.md) for reconciliation and rollback

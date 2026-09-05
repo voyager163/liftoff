@@ -17,6 +17,7 @@ import {
 } from '../src/repository-governance.js';
 import { buildArtifacts } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
+import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import {
   canonicalPhaseGraphHash,
   canonicalPhaseGraphJson,
@@ -357,7 +358,9 @@ describe('repository governance artifacts', () => {
       'repository-governance-compatibility',
       'repository-governance-credential-policy-schema',
       'liftoff-setup-copilot',
-      'liftoff-setup-claude'
+      'liftoff-setup-claude',
+      'liftoff-governance-assess-copilot',
+      'liftoff-governance-assess-claude'
     ]);
     expect(all.map((artifact) => artifact.pathParts)).toEqual([
       [...governanceArtifactPaths.policy],
@@ -367,7 +370,9 @@ describe('repository governance artifacts', () => {
       [...governanceArtifactPaths.compatibility],
       [...governanceArtifactPaths.credentialPolicySchema],
       [...governanceArtifactPaths.setup['github-copilot']],
-      [...governanceArtifactPaths.setup.claude]
+      [...governanceArtifactPaths.setup.claude],
+      [...governanceArtifactPaths.assessment['github-copilot']],
+      [...governanceArtifactPaths.assessment.claude]
     ]);
     for (const artifact of all) {
       expect(artifact.category).toBe('governance');
@@ -387,7 +392,94 @@ describe('repository governance artifacts', () => {
       .not.toContain('repository-governance-copilot-launcher');
     expect(copilotOnly.map((artifact) => artifact.logicalName))
       .toContain('liftoff-setup-copilot');
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .toContain('liftoff-governance-assess-copilot');
+    expect(copilotOnly.map((artifact) => artifact.logicalName))
+      .not.toContain('liftoff-governance-assess-claude');
   });
+
+  it('keeps assessment integrations equivalent, canonical-command-only, and read-only', () => {
+    const assessment = buildRepositoryGovernanceArtifacts(plan()).filter((artifact) =>
+      artifact.logicalName.startsWith('liftoff-governance-assess-')
+    );
+    expect(assessment).toHaveLength(2);
+    expect(new Set(assessment.map((artifact) => artifact.content)).size).toBe(1);
+    for (const artifact of assessment) {
+      expect(artifact.lifecycle).toBe('managed-core');
+      expect(artifact.content.length).toBeLessThan(2_000);
+      expect([...artifact.content.matchAll(/`(liftoff [^`]+)`/g)].map((match) => match[1]))
+        .toEqual([
+          'liftoff governance assess --json',
+          'liftoff governance assess --live --json'
+        ]);
+      expect(artifact.content).toContain('Only when the developer explicitly requests live reads');
+      expect(artifact.content).toContain('Stop after explaining the report');
+      expect(artifact.content).toContain('Preserve classifications exactly');
+      expect(artifact.content).toContain('installed CLI');
+      expect(artifact.content).toContain('No commit, push, activation, or credential enrollment');
+      for (const parts of [
+        governanceArtifactPaths.policy,
+        governanceArtifactPaths.context,
+        governanceArtifactPaths.guide
+      ]) {
+        expect(artifact.content).toContain(parts.join('/'));
+      }
+      expect(artifact.content).not.toMatch(/skill[- ]?version|\bmodel\b/i);
+      expect(artifact.content).not.toContain('liftoff-repository-governance');
+      expect(artifact.content).not.toMatch(/\b(?:gh|az|git|npm|npx|openspec|tofu)\s+\w+/);
+    }
+  });
+
+  for (const specWorkflow of ['openspec', 'spec-kit'] as const) {
+    for (const agents of [['copilot'], ['claude'], ['copilot', 'claude']]) {
+      it(`renders only selected assessment integrations for ${specWorkflow}/${agents.join('+')}`, () => {
+        const selected = plan({
+          specWorkflow,
+          agents,
+          ...(specWorkflow === 'spec-kit' && agents.length > 1 ? { defaultAgent: 'copilot' } : {})
+        });
+        const artifacts = buildArtifacts(selected);
+        const integrations = artifacts.filter((artifact) =>
+          artifact.logicalName.startsWith('liftoff-governance-assess-')
+        );
+        expect(integrations.map((artifact) => artifact.pathParts)).toEqual(
+          selected.agents.map((agent) => [...governanceArtifactPaths.assessment[agent.id]])
+        );
+        const manifest = JSON.parse(artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content);
+        const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(
+          artifacts.find((artifact) => artifact.logicalName === 'repository-governance-compatibility')!.content
+        ));
+        for (const integration of integrations) {
+          expect(manifest.managedArtifacts).toContainEqual({
+            logicalName: integration.logicalName,
+            category: 'governance',
+            pathParts: integration.pathParts,
+            contentHash: `sha256:${createHash('sha256').update(integration.content).digest('hex')}`
+          });
+          expect(compatibility.managedCore.updateInventory).toContainEqual({
+            logicalName: integration.logicalName,
+            pathParts: integration.pathParts,
+            lifecycle: 'managed-core',
+            contentHashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
+          });
+        }
+        expect(manifest.artifactVersion).toBe(7);
+        expect(manifest.governance.activationIdentity).toEqual(currentActivationIdentity);
+        expect(manifest.governance.policyVersion).toBe('6');
+        expect(artifacts.some((artifact) => artifact.logicalName.includes('repository-governance-') &&
+          artifact.logicalName.endsWith('-launcher'))).toBe(false);
+        const guide = artifacts.find((artifact) => artifact.logicalName === 'repository-governance-guide')!.content;
+        expect(guide.indexOf('/liftoff-setup')).toBeLessThan(guide.indexOf('/liftoff-governance-assess'));
+        expect(guide).toContain('primary post-init path');
+        expect(buildRepositoryGovernanceArtifacts(plan({
+          specWorkflow,
+          agents,
+          governanceProfile: 'none',
+          ...(specWorkflow === 'spec-kit' && agents.length > 1 ? { defaultAgent: 'copilot' } : {})
+        }))).toEqual([]);
+      });
+    }
+  }
 
   it('keeps setup integrations thin, equivalent, engine-only, and alias-free', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan());
@@ -436,6 +528,33 @@ describe('repository governance artifacts', () => {
     });
   });
 
+  it.each([
+    ['genai', { pattern: 'rag' }],
+    ['standard', { projectType: 'standard', apiStack: 'node', pattern: undefined }],
+    ['power-apps', { projectType: 'power-apps-code-app', pattern: undefined, cloud: undefined }]
+  ] as const)('documents assessment without replacing setup in generated %s guides', (_name, values) => {
+    const artifacts = buildArtifacts(plan(values));
+    const readme = _name === 'power-apps' ? 'power-apps-readme' : 'root-readme';
+    for (const logicalName of [readme, 'repository-governance-guide']) {
+      const content = artifacts.find((artifact) => artifact.logicalName === logicalName)!.content;
+      expect(content.indexOf('/liftoff-setup')).toBeLessThan(content.indexOf('/liftoff-governance-assess'));
+      for (const phrase of [
+        'liftoff governance assess --json', 'liftoff governance assess --live --json',
+        'installed CLI', 'never registry latest', 'no network access',
+        'existing permissions', 'not-observed', 'approved-exception', 'provenance',
+        'stdout only', 'Exit 0', 'exit 2', 'exit 1', 'never updates or upgrades anything',
+        'Unowned collisions stay unowned', 'force cannot bypass compatibility',
+        'Reports cannot complete Phase 0', 'telemetry and disclosure entirely',
+        'HEAD, and origin metadata', 'never `git status`', 'project policy version',
+        'normalized `facts`', 'current active-baseline', 'saved-plan/evidence receipts',
+        'future-dated approvals', 'do not fabricate or hand-edit activation state'
+      ]) {
+        expect(content.replace(/\s+/g, ' ')).toContain(phrase);
+      }
+      expect(content).not.toContain('liftoff-repository-governance');
+    }
+  });
+
   it('renders identical bytes and path identities repeatedly', () => {
     const selectedPlan = plan();
     expect(buildRepositoryGovernanceArtifacts(selectedPlan)).toEqual(
@@ -450,6 +569,8 @@ describe('repository governance artifacts', () => {
       governanceArtifactPaths.credentialPolicySchema,
       governanceArtifactPaths.setup['github-copilot'],
       governanceArtifactPaths.setup.claude,
+      governanceArtifactPaths.assessment['github-copilot'],
+      governanceArtifactPaths.assessment.claude
     ];
     for (const parts of pathPartArrays) {
       expect(path.posix.join('/repo', ...parts)).toContain('/repo/');
@@ -483,7 +604,7 @@ describe('repository governance artifacts', () => {
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
-    )).toHaveLength(8);
+    )).toHaveLength(10);
     expect(manifest.liftoffVersion).toBe(liftoffVersion);
     expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.10.0');
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
@@ -528,6 +649,31 @@ describe('repository governance artifacts', () => {
     expect(parsedSchema.properties.displayNameTemplate.const).toBe('<repo>-runner-preflight-read');
     expect(parsedSchema.properties.secretName.const).toBe('RUNNER_CONFIGURATION_READ_TOKEN');
     expect(parsedSchema.properties.nonForwarding.const).toBe(true);
+  });
+
+  it.each([
+    ['wrong logical name', 'logicalName', 'liftoff-governance-assess-other'],
+    ['wrong path', 'pathParts', ['.github', 'prompts', 'neighbor.prompt.md']],
+    ['unselected agent path', 'pathParts', [...governanceArtifactPaths.assessment.claude]],
+    ['wrong lifecycle', 'lifecycle', 'project']
+  ])('rejects an assessment compatibility inventory with %s', (_name, field, value) => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan({ agents: ['copilot'] }));
+    const metadata = JSON.parse(artifacts.find((artifact) =>
+      artifact.logicalName === 'repository-governance-compatibility'
+    )!.content);
+    metadata.managedCore.updateInventory.find((entry: { logicalName: string }) =>
+      entry.logicalName === 'liftoff-governance-assess-copilot'
+    )[String(field)] = value;
+    expect(() => validateGovernanceCompatibilityMetadata(metadata, {
+      logicalNameAllowlist: managedCoreLogicalNames,
+      pathAllowlist: artifacts.map((artifact) => artifact.pathParts),
+      inventory: artifacts.map((artifact) => ({
+        logicalName: artifact.logicalName,
+        pathParts: artifact.pathParts,
+        lifecycle: 'managed-core',
+        contentHashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
+      }))
+    })).toThrow(/expected managed update inventory|lifecycle must be managed-core/);
   });
 });
 

@@ -1,5 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
+import { liftoffPackageName } from './package-identity.js';
 
 interface PackageIdentity {
   name: string;
@@ -47,6 +48,20 @@ function assertIdentity(label: string, expected: string, observed: string): void
   }
 }
 
+function isNpmSemver(value: string): boolean {
+  if (value.length > 256 || value !== value.trim()) return false;
+  const numeric = '(?:0|[1-9]\\d*)';
+  const prereleaseIdentifier = '(?:0|[1-9]\\d*|\\d*[A-Za-z-][0-9A-Za-z-]*)';
+  const buildIdentifier = '[0-9A-Za-z-]+';
+  const validSyntax = new RegExp(
+    `^${numeric}\\.${numeric}\\.${numeric}` +
+    `(?:-${prereleaseIdentifier}(?:\\.${prereleaseIdentifier})*)?` +
+    `(?:\\+${buildIdentifier}(?:\\.${buildIdentifier})*)?$`
+  ).test(value);
+  if (!validSyntax) return false;
+  return value.split(/[+-]/u, 1)[0]!.split('.').every((part) => Number.isSafeInteger(Number(part)));
+}
+
 export async function verifyReleaseIdentity(
   options: ReleaseIdentityOptions,
   dependencies: ReleaseIdentityDependencies = defaultDependencies
@@ -60,6 +75,13 @@ export async function verifyReleaseIdentity(
   const lockPackages = record(packageLockRecord.packages, `${packageLockPath} packages`);
   const lockRoot = packageIdentity(lockPackages[''], `${packageLockPath} packages[""]`);
 
+  assertIdentity('package.json name', liftoffPackageName, packageJson.name);
+  if (!isNpmSemver(packageJson.version)) {
+    throw new Error(
+      `Release identity mismatch for package.json version: expected valid npm SemVer, ` +
+      `observed ${JSON.stringify(packageJson.version)}.`
+    );
+  }
   assertIdentity('package-lock.json name', packageJson.name, packageLock.name);
   assertIdentity('package-lock.json version', packageJson.version, packageLock.version);
   assertIdentity('package-lock.json root package name', packageJson.name, lockRoot.name);

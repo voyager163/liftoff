@@ -10,6 +10,7 @@ import {
 } from '../src/published-verifier.js';
 
 interface HarnessOptions {
+  packageVersion?: string;
   observedVersion?: string;
   registryUnavailable?: boolean;
   installedVersion?: string;
@@ -73,8 +74,11 @@ function verifierHarness(options: HarnessOptions = {}): {
     now: () => state.time,
     wait: async (milliseconds) => { state.time += milliseconds; },
     readJson: async (filePath) => filePath === path.join(process.cwd(), 'package.json')
-      ? { name: '@msn-control/liftoff', version: '0.3.3' }
-      : { name: '@msn-control/liftoff', version: options.installedVersion ?? '0.3.3' },
+      ? { name: '@msn-control/liftoff', version: options.packageVersion ?? '0.3.3' }
+      : {
+          name: '@msn-control/liftoff',
+          version: options.installedVersion ?? options.packageVersion ?? '0.3.3'
+        },
     makeTempRoot: async () => {
       state.tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-verifier-test-'));
       return state.tempRoot;
@@ -129,6 +133,22 @@ describe('published package verifier', () => {
       'upgrade',
       'plan'
     ]);
+  });
+
+  it('rejects legacy version-command compatibility for every other release', async () => {
+    const { dependencies, state } = verifierHarness({
+      packageVersion: '0.3.4',
+      observedVersion: '0.3.4'
+    });
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag: 'latest',
+      allowLegacyVersionCommand: true
+    }, dependencies)).rejects.toThrow(
+      'Legacy version-command compatibility is allowed only for immutable @msn-control/liftoff@0.3.3.'
+    );
+    expect(state.npmCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
   });
 
   it('uses the Windows global node_modules layout when resolving the installed entrypoint', async () => {

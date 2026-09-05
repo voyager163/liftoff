@@ -187,6 +187,7 @@ export interface ApplyNextPreview {
   authorized: boolean;
   reason: string;
   message: string;
+  selectedPhase: PhaseId | null;
   nextReadyPhase: PhaseId | null;
   approval: SavedTransitionPlan['approval'] | null;
   proposedMutations: {
@@ -204,6 +205,7 @@ export interface ApplyNextPreview {
 
 export interface ApplyNextExecutionResult extends Omit<ApplyNextPreview, 'applied' | 'savedPlan' | 'noWrites'> {
   applied: boolean;
+  executedPhase: PhaseId | null;
   savedPlan: {
     pathParts: readonly string[];
     digest: string;
@@ -1338,7 +1340,7 @@ export function rollbackPlanFromCompletedOperations(
   };
 }
 
-function planDigestFor(input: {
+export function planDigestFor(input: {
   phase: PhaseGraphNode;
   transitionDigest: string;
   operations: readonly TransitionOperation[];
@@ -1450,6 +1452,7 @@ export async function previewApplyNext(input: {
       authorized: false,
       reason: 'blocked',
       message: blockers[0] ?? 'No phase is ready for execution.',
+      selectedPhase: nextReadyPhase,
       nextReadyPhase,
       approval: plan?.approval ?? null,
       proposedMutations: {
@@ -1472,6 +1475,7 @@ export async function previewApplyNext(input: {
       authorized: false,
       reason: 'approval-required',
       message: plan.approval.evaluation.reasons.join('; '),
+      selectedPhase: nextReadyPhase,
       nextReadyPhase,
       approval: plan.approval,
       proposedMutations: {
@@ -1495,6 +1499,7 @@ export async function previewApplyNext(input: {
     message: input.execute
       ? 'Execution requested; the plan must be saved and revalidated before any mutation.'
       : 'Preview only. Rerun with --execute to save this plan and execute at most one phase.',
+    selectedPhase: nextReadyPhase,
     nextReadyPhase,
     approval: plan.approval,
     proposedMutations: {
@@ -2319,6 +2324,7 @@ export async function executeApplyNext(input: {
     return {
       ...preview,
       applied: false,
+      executedPhase: null,
       noWrites: false,
       executedOperations: [],
       evidence: null,
@@ -2334,6 +2340,7 @@ export async function executeApplyNext(input: {
     return {
       ...preview,
       applied: false,
+      executedPhase: null,
       noWrites: false,
       executedOperations: [],
       evidence: null,
@@ -2356,6 +2363,8 @@ export async function executeApplyNext(input: {
       authorized: false,
       reason: 'stale-after-plan-save',
       message: freshnessIssues.join(' '),
+      selectedPhase: initialPlan.phaseId,
+      executedPhase: null,
       nextReadyPhase: freshInspection.readiness.nextReadyPhase,
       approval: initialPlan.approval,
       proposedMutations: {
@@ -2488,6 +2497,8 @@ export async function executeApplyNext(input: {
     authorized: true,
     reason: 'phase-executed',
     message: `Executed one phase: ${phase.id}.`,
+    selectedPhase: phase.id,
+    executedPhase: phase.id,
     nextReadyPhase: phase.id,
     approval: initialPlan.approval,
     proposedMutations: {
@@ -2531,6 +2542,8 @@ function executionBlockedResult(
     authorized: false,
     reason: 'blocked',
     message: blocker,
+    selectedPhase: plan.phaseId,
+    executedPhase: null,
     nextReadyPhase: plan.phaseId,
     approval: plan.approval,
     proposedMutations: {

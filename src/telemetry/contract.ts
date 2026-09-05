@@ -49,6 +49,8 @@ export const telemetryCommands = [
   'infra:output'
 ] as const;
 
+export const telemetryExcludedCommands = ['governance:assess'] as const;
+
 export type TelemetryCommand = (typeof telemetryCommands)[number];
 export type TelemetryOutcome = 'success' | 'failure';
 
@@ -87,7 +89,13 @@ export function isTelemetryCliVersion(value: unknown): value is string {
   return typeof value === 'string' && telemetryCliVersionPattern.test(value);
 }
 
+export function isTelemetryExcludedCommand(input: TelemetryCommandInput): boolean {
+  const candidate = input.subcommand ? `${input.command}:${input.subcommand}` : input.command;
+  return telemetryExcludedCommands.some((command) => command === candidate);
+}
+
 export function canonicalTelemetryCommand(input: TelemetryCommandInput): TelemetryCommand | undefined {
+  if (isTelemetryExcludedCommand(input)) return undefined;
   if (
     input.command === undefined ||
     input.command === 'help' ||

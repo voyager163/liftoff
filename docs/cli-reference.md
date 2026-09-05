@@ -6,6 +6,7 @@ Run `liftoff help` or command-specific help for the authoritative syntax:
 liftoff init --help
 liftoff migrate --help
 liftoff governance --help
+liftoff governance assess --help
 liftoff upgrade --help
 liftoff update --help
 ```
@@ -31,6 +32,7 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
+| `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
@@ -104,6 +106,14 @@ reviewed plan and execute at most one phase whose dependencies, evidence, and
 approval envelope are satisfied. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
+Apply-next JSON names the attempted phase in `selectedPhase` and reports
+`executedPhase` on execution (`null` on failure). For compatibility its existing
+`nextReadyPhase` field can refer to the phase just attempted, not the next
+post-transition phase. Read `nextReadyPhase` from the subsequent `status` or
+`verify` result. Status/resume preserve `storedState` and `storedBlockers` when
+an archived baseline is `retryable`; only explicit execution may replace that
+failure with verified evidence.
+
 Governance JSON uses versioned objects and includes the complete activation
 version vector: creating Liftoff version, manifest artifact version 7, policy
 version 6, activation-contract version 1, graph/state/evidence/approval/
@@ -125,6 +135,76 @@ consent. Noninteractive `init` and `migrate` require
 `--configure-openspec-profile` to authorize the displayed
 `openspec config set` commands. The flag has no effect during `plan`, which
 never inspects or changes machine configuration.
+
+## Read-only governance assessment
+
+```bash
+liftoff governance assess [project] [--json]
+liftoff governance assess [project] --live [--json]
+liftoff governance assess --project "path with spaces" --json
+```
+
+Use an optional positional project or `--project`, never both. Nested working
+directories resolve to the nearest Liftoff project. Help needs no project or
+credential discovery. Only `assess` accepts `--live`; assessment rejects
+`--execute` (including `--execute=false`), `--force`, installation, automatic
+upgrade, and output-file flags before project access.
+
+The pinned target is the **installed CLI**, including its packaged policy
+version/content digest, activation identity, phase-graph hash, and control
+catalog schema/digest. It never resolves registry latest or upgrades anything.
+The schema-v1 report (`readOnly: true`) separates target, recorded baseline,
+declared configuration, and observed enforcement, with expected/observed values,
+scope, provenance, impact, diagnostics, and advisory recommendations.
+It shows the project policy version when available. JSON observations may retain
+optional normalized `facts` alongside evaluator predicate values; these are
+sanitized details rather than raw provider payloads.
+
+The default is **local-only with no network access**, registry lookup, project
+script execution, or GitHub/Azure credential requirement. Assessment works
+before commit, push, or activation. Every assessment invocation, including
+`--live` and `--help`, skips telemetry and disclosure entirely. Local Git reads
+use only repository root, HEAD, and origin metadata, never `git status`, which
+can execute clean filters. `--live` opts into bounded read-only metadata
+access using existing permissions and verified repository/environment/resource
+bindings. It does not log in, enroll credentials, broaden permissions, register
+providers, download state blobs, or mutate GitHub or Azure.
+Azure scope and evidence-backed applicability require a current active-baseline
+and referenced, validated saved-plan/evidence receipts, not placeholder digests,
+future-dated approvals, or inferred bindings. Missing bindings remain
+`not-observed`. Do not fabricate or hand-edit state, baselines, receipts, or
+evidence as remediation; missing proof requires separately approved setup or
+governance work.
+
+Findings are `aligned`, `outdated`, `missing`, `conflicting`,
+`approved-exception`, `inapplicable`, or `not-observed`. Coverage preserves
+unknown applicability, stale or unavailable proof, and unsupported evaluators.
+Denied access, masked 404s, or incomplete collection are not proof of absence.
+Local matches do not prove live enforcement; local-only reports normally have
+partial coverage. See [finding meanings](repository-governance.md#read-only-governance-assessment).
+
+| Outcome | Exit | Meaning |
+| --- | --- | --- |
+| `aligned` | 0 | Every applicable catalog control has fresh required proof and matches |
+| `not-applicable` | 0 | Governance is explicitly disabled; not an alignment claim |
+| `partial` | 2 | Applicability or required proof is unknown; known differences remain visible |
+| `differences` | 2 | Complete observation found differences, including approved exceptions |
+| `error` | 1 | Invalid invocation/input, unsafe paths, malformed required artifacts, or an invalid catalog prevent a trustworthy report |
+
+Human and JSON output derive from the same report, emitted only to stdout.
+Exit 2 is advisory, not proof that governance is broken or authorization to
+repair it. Neither assessment mode changes project files, Git, state,
+approvals, evidence, or remotes, or runs recommendations. A report cannot
+complete Phase 0 or advance activation.
+
+`/liftoff-governance-assess` is a selected-agent explanation wrapper, not a setup
+alias; `/liftoff-setup` remains the primary post-init path. Compatible older
+projects install the integration through normal `liftoff update --check` and
+guarded `liftoff update`. Unowned collisions remain protected even with
+`--force`. Unsupported activation mappings may be diagnosed without migration;
+force cannot bypass compatibility or overwrite project-owned files. A future
+governance upgrade requires fresh observations, its own reviewed plan, and
+separate authority.
 
 ## CLI upgrade modes
 

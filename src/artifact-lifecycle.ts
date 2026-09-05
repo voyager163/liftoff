@@ -9,7 +9,9 @@ export const managedCoreLogicalNames = [
   'repository-governance-compatibility',
   'repository-governance-credential-policy-schema',
   'liftoff-setup-copilot',
-  'liftoff-setup-claude'
+  'liftoff-setup-claude',
+  'liftoff-governance-assess-copilot',
+  'liftoff-governance-assess-claude'
 ] as const;
 
 const managedCoreLogicalNameSet = new Set<string>(managedCoreLogicalNames);

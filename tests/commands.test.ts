@@ -3,7 +3,7 @@ import { Readable } from 'node:stream';
 import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { parseArgs } from '../src/args.js';
+import { formatCommandHelp, getCommandHelp, parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
 import { dependencyResumeCommand } from '../src/project-dependencies.js';
 import {
@@ -48,6 +48,31 @@ class FrameworkFailureRunner extends ReadyInitRunner {
       stderr: this.behavior === 'failure' ? 'initializer failed\n' : '',
       timedOut: false
     };
+  }
+}
+
+class DependencyFailureRunner extends ReadyInitRunner {
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (
+      (command.executable === 'npm' || command.executable === 'npm.cmd') &&
+      command.args[0] === 'ci'
+    ) {
+      this.calls.push(command);
+      this.callDetails.push({ command, options });
+      return {
+        command,
+        displayCommand: [command.executable, ...command.args].join(' '),
+        status: 1,
+        signal: null,
+        stdout: '',
+        stderr: 'dependency install failed\n',
+        timedOut: false
+      };
+    }
+    return super.run(command, options);
   }
 }
 
@@ -132,6 +157,98 @@ describe('commands', () => {
     expect(() => parseArgs(['regions', 'typo'])).toThrow(/Unsupported regions subcommand/);
     expect(() => parseArgs(['validate', 'one', 'two'])).toThrow(/Too many positional arguments/);
     expect(() => parseArgs(['create', 'app'])).toThrow(/replaced by `liftoff init`/);
+  });
+
+  it.each([
+    ['governance', 'assess'],
+    ['governance', 'assess', '--json'],
+    ['governance', 'assess', '--live', '--json'],
+    ['governance', 'assess', 'project with spaces', '--json'],
+    ['governance', 'assess', '--project', 'project with spaces', '--live'],
+    ['governance', 'assess', '--project=project with spaces', '--live=false', '--json=false'],
+    ['governance', 'assess', '--help']
+  ])('parses the read-only assessment invocation %j', (...argv) => {
+    const parsed = parseArgs(argv);
+    expect(parsed.command).toBe('governance');
+    expect(parsed.subcommand).toBe('assess');
+    expect(parsed.positional.length).toBeLessThanOrEqual(1);
+    expect(Object.keys(parsed.flags).every((flag) =>
+      ['project', 'json', 'live', 'help'].includes(flag)
+    )).toBe(true);
+  });
+
+  it.each([
+    '--execute', '--execute=true', '--execute=false', '--force', '--force=false',
+    '--install-tools', '--install-dependencies', '--upgrade', '--auto-upgrade',
+    '--output=report.json', '--yes'
+  ])('rejects assessment mutation or installation flag %s even with help', (flag) => {
+    for (const suffix of [[], ['--help']]) {
+      expect(() => parseArgs(['governance', 'assess', flag, ...suffix]))
+        .toThrow(/not allowed|Unknown flag/);
+    }
+  });
+
+  it.each(['status', 'plan', 'apply-next', 'resume', 'verify'])(
+    'rejects --live on governance %s without changing existing flags',
+    (subcommand) => {
+      for (const live of ['--live', '--live=true', '--live=false']) {
+        expect(() => parseArgs(['governance', subcommand, live]))
+          .toThrow(/--live is allowed only/);
+      }
+      expect(parseArgs(['governance', subcommand, '--json']).flags.json).toBe(true);
+    }
+  );
+
+  it('rejects ambiguous assessment targets and malformed live flags', () => {
+    for (const explicit of ['other', 'same']) {
+      expect(() => parseArgs(['governance', 'assess', 'same', '--project', explicit]))
+        .toThrow(/either positionally or with --project/);
+    }
+    expect(() => parseArgs(['governance', '--live'])).toThrow(/--live is allowed only/);
+    expect(() => parseArgs(['governance', 'assess', 'one', 'two']))
+      .toThrow(/Too many positional/);
+    expect(() => parseArgs(['governance', 'assess', '--live=maybe']))
+      .toThrow(/expects true or false/);
+    expect(() => parseArgs(['governance', 'assess', '--live', '--live']))
+      .toThrow(/provided only once/);
+    expect(() => parseArgs(['governance', 'assess', '--no-live']))
+      .toThrow(/does not support/);
+  });
+
+  it('describes assessment target, consent, output, limitations, and exits in help', () => {
+    const help = getCommandHelp('governance', 'assess');
+    expect(help.usage).toBe('liftoff governance assess [project-path] [--json] [--live]');
+    expect(help.subcommands).toEqual([]);
+    expect(help.optionGroups.flatMap((group) => group.entries.map((entry) => entry.syntax)))
+      .toEqual(['--project <path>', '--live', '--json', '--help']);
+    const rendered = formatCommandHelp('governance', 'assess');
+    for (const phrase of [
+      'installed CLI', 'Local-only', 'no network', 'not-applicable',
+      'partial coverage', 'approved exceptions', 'not-observed', 'Exit 0',
+      '2:', '1:', 'schema-v1', 'stdout', 'never write state or evidence'
+    ]) {
+      expect(rendered).toContain(phrase);
+    }
+    expect(rendered).not.toContain('--execute');
+  });
+
+  it('shows assessment-specific help before project or credential discovery', async () => {
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    const runner = new ReadyInitRunner();
+    const code = await runCommand(parseArgs(['governance', 'assess', '--live', '--json', '--help']), {
+      cwd: path.join(process.cwd(), 'unavailable-assessment-help-project'),
+      stdout,
+      stderr,
+      runner
+    });
+    expect(code).toBe(0);
+    expect(stdout.text()).toContain('Usage: liftoff governance assess [project-path] [--json] [--live]');
+    expect(stdout.text()).toContain('installed CLI');
+    expect(stdout.text()).toContain('partial coverage');
+    expect(stdout.text()).not.toContain('--execute');
+    expect(stderr.text()).toBe('');
+    expect(runner.calls).toEqual([]);
   });
 
   it('rejects missing and malformed flag values', () => {
@@ -362,6 +479,52 @@ describe('commands', () => {
     }
   });
 
+  it('prints project-aware OpenTofu commands and enforces selected environments', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Infrastructure Helper App',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['staging', 'prod'],
+      specWorkflow: 'openspec',
+      agents: ['copilot'],
+      includeFrontend: false
+    });
+    try {
+      const infrastructureRoot = path.join(root, 'infrastructure', 'opentofu', 'azure');
+      const defaultOutput = new CaptureStream();
+      expect(await runCommand(parseArgs(['infra', 'plan']), {
+        cwd: path.join(root, 'backend'),
+        stdout: defaultOutput,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(defaultOutput.text()).toContain(`tofu -chdir=${infrastructureRoot}`);
+      expect(defaultOutput.text()).toContain('-var-file=environments/staging.tfvars');
+
+      const selectedOutput = new CaptureStream();
+      expect(await runCommand(parseArgs(['infra', 'apply', '--env', 'prod']), {
+        cwd: root,
+        stdout: selectedOutput,
+        stderr: new CaptureStream()
+      })).toBe(0);
+      expect(selectedOutput.text()).toContain(`tofu -chdir=${infrastructureRoot}`);
+      expect(selectedOutput.text()).toContain('apply -var-file=environments/prod.tfvars');
+
+      const rejectedError = new CaptureStream();
+      expect(await runCommand(parseArgs(['infra', 'plan', '--env', 'dev']), {
+        cwd: root,
+        stdout: new CaptureStream(),
+        stderr: rejectedError
+      })).toBe(1);
+      expect(rejectedError.text()).toContain(
+        'Environment dev is not selected for this project. Selected environments: staging, prod.'
+      );
+    } finally {
+      await rm(path.dirname(root), { recursive: true, force: true });
+    }
+  });
+
   it('rejects retired test deployment environment in helper commands', async () => {
     const stderr = new CaptureStream();
     const code = await runCommand(parseArgs(['infra', 'plan', '--env', 'test']), {
@@ -552,6 +715,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Initialized claims-api');
       expect(stdout.text()).toContain('local handoff generated, live activation deferred');
       expect(stdout.text()).toContain('Deterministic setup generated; run /liftoff-setup next');
+      expect(runner.calls.some((command) => command.args.includes('assess'))).toBe(false);
       expect(stdout.text()).toContain('Deferred project dependencies');
       expect(runner.calls.some((command) => command.args.includes('venv'))).toBe(false);
       const projectRoot = path.join(tempRoot, 'claims-api');
@@ -592,6 +756,19 @@ describe('commands', () => {
       expect(governanceLauncher).toContain('liftoff governance verify --json');
       expect(governanceLauncher).not.toMatch(/\bmodel\b/i);
       expect(governanceLauncher).not.toContain('Private Staging runner provisioning contract');
+      const assessmentLauncher = await readFile(path.join(
+        projectRoot,
+        '.github',
+        'prompts',
+        'liftoff-governance-assess.prompt.md'
+      ), 'utf8');
+      expect(assessmentLauncher).toContain('liftoff governance assess --json');
+      await expect(access(path.join(
+        projectRoot,
+        '.claude',
+        'commands',
+        'liftoff-governance-assess.md'
+      ))).rejects.toMatchObject({ code: 'ENOENT' });
 
       const validateCode = await runCommand(parseArgs(['validate', 'claims-api']), { cwd: tempRoot, stdout: new CaptureStream(), stderr: new CaptureStream() });
       expect(validateCode).toBe(0);
@@ -873,6 +1050,37 @@ describe('commands', () => {
     }
   });
 
+  it('limits dependency failure preservation claims to protected metadata', async () => {
+    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-dependency-failure-message-'));
+    const stdout = new CaptureStream();
+    const stderr = new CaptureStream();
+    try {
+      const code = await runCommand(
+        parseArgs([
+          'init', 'dependency-failure-app', '--no-genai', '--api', 'node',
+          '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec',
+          '--no-frontend', '--environments', 'dev', '--yes',
+          '--install-dependencies'
+        ]),
+        {
+          cwd: tempRoot,
+          stdout,
+          stderr,
+          runner: new DependencyFailureRunner()
+        }
+      );
+      const output = `${stdout.text()}\n${stderr.text()}`;
+      expect(code).toBe(1);
+      expect(output).toContain('Protected dependency metadata preserved');
+      expect(output).toContain(
+        'Dependency scripts may have changed other project files; review the working tree before retrying.'
+      );
+      expect(output).not.toContain('Scaffold preserved');
+    } finally {
+      await rm(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('creates a standard Go project non-interactively', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-create-'));
     const stdout = new CaptureStream();
@@ -952,7 +1160,14 @@ describe('commands', () => {
         const doctorOutput = new CaptureStream();
         await runCommand(
           parseArgs(['doctor', '--json']),
-          { cwd: projectRoot, stdout: doctorOutput, stderr: new CaptureStream() }
+          {
+            cwd: projectRoot,
+            stdout: doctorOutput,
+            stderr: new CaptureStream(),
+            stableReleaseLookup: async () => {
+              throw new Error('offline');
+            }
+          }
         );
         const doctor = JSON.parse(doctorOutput.text());
         expect(doctor.layers.map((layer: { title: string }) => layer.title)).toContain('Project');

@@ -57,6 +57,7 @@ interface PackageIdentity {
 
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
+const LEGACY_VERSION_COMMAND_RELEASE = '0.3.3';
 
 function commandOutput(result: CommandResult): string {
   return [result.error, result.stderr, result.stdout].filter(Boolean).join('\n').trim();
@@ -134,6 +135,15 @@ export async function verifyPublishedPackage(
   if (identity.name !== liftoffPackageName) {
     throw new Error(
       `Published package identity must be ${liftoffPackageName}; observed ${identity.name}.`
+    );
+  }
+  if (
+    options.allowLegacyVersionCommand === true &&
+    identity.version !== LEGACY_VERSION_COMMAND_RELEASE
+  ) {
+    throw new Error(
+      `Legacy version-command compatibility is allowed only for immutable ` +
+      `${liftoffPackageName}@${LEGACY_VERSION_COMMAND_RELEASE}.`
     );
   }
   await waitForPublishedVersion(

@@ -466,6 +466,84 @@ describe('public documentation', () => {
     expect(security).toContain('A successful installation of an older mirrored version does not make that version supported');
   });
 
+  it('documents pinned, read-only assessment, honest coverage, and exact integration ownership', async () => {
+    const [cli, governance, developer, manifests, structure] = await Promise.all([
+      repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/repository-governance.md'),
+      repositoryFile('DEVELOPER.md'),
+      repositoryFile('docs/configuration-and-manifests.md'),
+      repositoryFile('docs/project-structure.md')
+    ]);
+    for (const source of [cli, governance, developer]) {
+      const content = source.replace(/\s+/g, ' ');
+      for (const phrase of [
+        'installed CLI', 'registry latest', 'local-only', 'read-only',
+        'existing permissions', 'recorded', 'declared', 'observed',
+        'provenance', 'coverage', 'approved-exception', 'not-observed',
+        '/liftoff-governance-assess', '/liftoff-setup'
+      ]) {
+        expect(content.toLowerCase()).toContain(phrase.toLowerCase());
+      }
+      for (const classification of [
+        'aligned', 'outdated', 'missing', 'conflicting', 'approved-exception',
+        'inapplicable', 'not-observed'
+      ]) {
+        expect(source).toContain(`\`${classification}\``);
+      }
+      expect(content).toMatch(/future governance upgrade.*(?:fresh|plan|approval)/i);
+      expect(content).not.toContain('liftoff governance upgrade');
+    }
+    expect(cli).toContain('`--execute=false`');
+    expect(cli).toMatch(/Only `assess` accepts `--live`/);
+    expect(cli).toContain('| `not-applicable` | 0 |');
+    expect(cli).toContain('| `partial` | 2 |');
+    expect(cli).toContain('| `differences` | 2 |');
+    expect(cli).toContain('| `error` | 1 |');
+    expect(governance).toMatch(/Neither installing the integration nor running it activates,\s+updates, upgrades, or migrates/);
+    expect(governance).toMatch(/Unowned conflicting destinations remain unowned even with\s+`--force`/);
+    expect(governance).toContain('Initialization never\nruns assessment');
+    expect(developer).toContain('no independent\nassessment-skill version');
+    expect(developer).toContain('explicit unsupported coverage');
+    expect(developer).toContain('filesystem fingerprints and injected operation');
+    expect(developer).toContain('Windows/macOS/Linux');
+    for (const logicalName of ['liftoff-governance-assess-copilot', 'liftoff-governance-assess-claude']) {
+      expect(manifests).toContain(logicalName);
+      expect(developer).toContain(logicalName);
+    }
+    for (const location of [
+      '.github/prompts/liftoff-governance-assess.prompt.md',
+      '.claude/commands/liftoff-governance-assess.md'
+    ]) {
+      expect(governance).toContain(location);
+      expect(manifests).toContain(location);
+      expect(structure).toContain(location);
+    }
+  });
+
+  it('documents non-executing Git reads, telemetry exclusion, and validated assessment bindings', async () => {
+    const [cli, governance, developer, telemetry] = await Promise.all([
+      repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/repository-governance.md'),
+      repositoryFile('DEVELOPER.md'),
+      repositoryFile('docs/telemetry.md')
+    ]);
+    for (const source of [cli, governance, developer]) {
+      const content = source.replace(/\s+/g, ' ');
+      for (const phrase of [
+        'telemetry and disclosure entirely', 'HEAD', 'origin metadata',
+        '`git status`', 'clean filters', 'project policy version', '`facts`',
+        'predicate values', 'current active-baseline', 'saved-plan/evidence receipts',
+        'future-dated approvals', 'inferred bindings', 'Missing bindings remain'
+      ]) {
+        expect(content).toContain(phrase);
+      }
+      expect(content).toMatch(/(?:Do not fabricate|never suggest manually fabricating)/);
+    }
+    expect(telemetry).toContain('`liftoff governance assess` skips telemetry and disclosure entirely');
+    expect(telemetry).toContain('`--live` and `--help`');
+    expect(telemetry).toContain('writes no disclosure state');
+  });
+
   it('keeps the docs directory limited to Markdown and static assets', async () => {
     const entries = await readdir(path.join(repositoryRoot, 'docs'), { recursive: true });
     expect(entries.every((entry) => /\.(?:md|svg)$/.test(String(entry)) || !String(entry).includes('.'))).toBe(true);
