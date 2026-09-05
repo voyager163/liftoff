@@ -14,7 +14,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
-import { validateGeneratedProject } from '../src/file-system.js';
+import { loadManifest, validateGeneratedProject } from '../src/file-system.js';
 import { compareSemver } from '../src/semver.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -22,7 +22,7 @@ import {
   governanceArtifactPaths,
   renderCanonicalGovernancePolicy
 } from '../src/repository-governance.js';
-import { retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
+import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
 import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
@@ -172,8 +172,55 @@ const governancePathPartArrays = [
   governanceArtifactPaths.compatibility,
   governanceArtifactPaths.credentialPolicySchema,
   governanceArtifactPaths.setup['github-copilot'],
-  governanceArtifactPaths.setup.claude
+  governanceArtifactPaths.setup.claude,
+  governanceArtifactPaths.assessment['github-copilot'],
+  governanceArtifactPaths.assessment.claude
 ] as const;
+
+const assessmentIdentities = [
+  {
+    logicalName: 'liftoff-governance-assess-copilot',
+    pathParts: governanceArtifactPaths.assessment['github-copilot']
+  },
+  {
+    logicalName: 'liftoff-governance-assess-claude',
+    pathParts: governanceArtifactPaths.assessment.claude
+  }
+] as const;
+
+async function removeAssessmentInventory(
+  root: string,
+  options: { keepFiles?: boolean } = {}
+): Promise<void> {
+  const names = new Set<string>(assessmentIdentities.map((entry) => entry.logicalName));
+  const paths = new Set(assessmentIdentities.map((entry) => entry.pathParts.join('\0')));
+  const compatibilityPath = path.join(root, ...governanceArtifactPaths.compatibility);
+  await editJson(compatibilityPath, (metadata) => {
+    metadata.managedCore.logicalNameAllowlist = metadata.managedCore.logicalNameAllowlist.filter(
+      (name: string) => !names.has(name)
+    );
+    metadata.managedCore.pathAllowlist = metadata.managedCore.pathAllowlist.filter(
+      (parts: string[]) => !paths.has(parts.join('\0'))
+    );
+    metadata.managedCore.updateInventory = metadata.managedCore.updateInventory.filter(
+      (entry: { logicalName: string }) => !names.has(entry.logicalName)
+    );
+  });
+  const compatibilityHash = sha(await readFile(compatibilityPath, 'utf8'));
+  await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    manifest.managedArtifacts = manifest.managedArtifacts.filter(
+      (entry: { logicalName: string }) => !names.has(entry.logicalName)
+    );
+    manifest.managedArtifacts.find(
+      (entry: { logicalName: string }) => entry.logicalName === 'repository-governance-compatibility'
+    ).contentHash = compatibilityHash;
+  });
+  if (!options.keepFiles) {
+    await Promise.all(assessmentIdentities.map((identity) =>
+      rm(path.join(root, ...identity.pathParts), { force: true })
+    ));
+  }
+}
 
 type RetiredAliasLogicalName = (typeof retiredManagedCoreIdentities)[number]['logicalName'];
 
@@ -608,8 +655,7 @@ describe('core-only update command', () => {
     const report = JSON.parse(check.out);
     expect(report.ownershipMigrationPending).toBe(true);
     expect(report.entries.every((entry: { logicalName: string }) =>
-      entry.logicalName.startsWith('repository-governance-') ||
-      entry.logicalName.startsWith('liftoff-setup-')
+      isManagedCoreLogicalName(entry.logicalName)
     )).toBe(true);
 
     expect((await run(['update'], root)).code).toBe(0);
@@ -619,12 +665,259 @@ describe('core-only update command', () => {
     );
     expect(manifest.artifactVersion).toBe(7);
     expect(manifest.managedArtifacts.every((artifact: { logicalName: string }) =>
-      artifact.logicalName.startsWith('repository-governance-') ||
-      artifact.logicalName.startsWith('liftoff-setup-')
+      isManagedCoreLogicalName(artifact.logicalName)
     )).toBe(true);
     expect(manifest.projectArtifacts.some((artifact: { logicalName: string }) =>
       artifact.logicalName === 'backend-main'
     )).toBe(true);
+  });
+
+  it.each([5, 6, 7])('installs assessment integrations as safe drift from a supported v%s inventory', async (version) => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    await removeAssessmentInventory(root);
+    if (version === 5) {
+      await downgradeToV5(root);
+    } else if (version === 6) {
+      await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+        manifest.artifactVersion = 6;
+        delete manifest.governance.activationIdentity;
+      });
+    }
+    const previous = await loadManifest(root);
+    expect(previous.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+    const watched = [
+      ['liftoff.manifest.json'],
+      ...previous.managedArtifacts.map((entry) => entry.pathParts)
+    ];
+    const before = await pathFingerprints(root, watched);
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).entries).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'new',
+      path: identity.pathParts.join('/')
+    }));
+    expect(await pathFingerprints(root, watched)).toEqual(before);
+    await expect(access(path.join(root, ...identity.pathParts))).rejects.toMatchObject({ code: 'ENOENT' });
+
+    const applied = await run(['update', '--json'], root);
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out).written).toContain(identity.pathParts.join('/'));
+    const manifest = await loadManifest(root);
+    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.governance).toMatchObject({
+      policyVersion: '6',
+      activationIdentity: currentActivationIdentity,
+      state: 'handoff-generated'
+    });
+    expect(manifest.managedArtifacts).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      category: 'governance',
+      pathParts: [...identity.pathParts]
+    }));
+    expect(manifest.managedArtifacts.some((entry) => entry.logicalName === assessmentIdentities[1].logicalName)).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+    expect((await run(['update', '--check', '--json'], root)).code).toBe(0);
+  });
+
+  it('adopts identical unrecorded assessment bytes without changing them', async () => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    const destination = path.join(root, ...identity.pathParts);
+    const before = await readFile(destination);
+    await removeAssessmentInventory(root, { keepFiles: true });
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).entries).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'unchanged',
+      reason: expect.stringContaining('unrecorded destination already matches')
+    }));
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+    expect(await readFile(destination)).toEqual(before);
+    expect((await loadManifest(root)).managedArtifacts).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      contentHash: sha(before.toString('utf8'))
+    }));
+  });
+
+  it('preserves unowned assessment collisions and framework neighbors even under force', async () => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    await removeAssessmentInventory(root);
+    const custom = '# Project-owned assessment command\r\nDo not replace.\r\n';
+    await writeProjectOwnedFile(root, identity.pathParts, custom);
+    const neighbors = [
+      ['.github', 'prompts', 'opsx-custom.prompt.md'],
+      ['.claude', 'commands', 'spec-kit-custom.md'],
+      ['governance', 'assessment-report.json']
+    ];
+    for (const parts of neighbors) {
+      await writeProjectOwnedFile(root, parts, 'project-owned neighboring bytes\n');
+    }
+    const protectedPaths = [[...identity.pathParts], ...neighbors];
+    const before = await pathFingerprints(root, protectedPaths);
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).entries).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'conflict',
+      reason: expect.stringContaining('not owned')
+    }));
+    for (const args of [['update', '--json'], ['update', '--force', '--json']]) {
+      const applied = await run(args, root, undefined, {
+        ...process.env,
+        LIFTOFF_UPDATE_INJECT_FAILURE: `before-path:${identity.pathParts.join('/')}`
+      });
+      expect(applied.code).toBe(0);
+      expect(JSON.parse(applied.out).skipped).toContainEqual(expect.objectContaining({
+        logicalName: identity.logicalName,
+        status: 'conflict'
+      }));
+      const manifest = await loadManifest(root);
+      expect(manifest.governance.state).toBe('handoff-partial');
+      expect(manifest.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
+      expect(await pathFingerprints(root, protectedPaths)).toEqual(before);
+      expect(await validateGeneratedProject(root)).toEqual([]);
+    }
+    await rm(path.join(root, ...identity.pathParts));
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+    expect((await loadManifest(root)).governance.state).toBe('handoff-generated');
+  });
+
+  it('never suggests force can resolve an unowned assessment destination', async () => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    await removeAssessmentInventory(root);
+    const custom = '# Independently owned assessment\n';
+    await writeProjectOwnedFile(root, identity.pathParts, custom);
+
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('Unowned destinations remain protected');
+    expect(check.out).toContain('--force cannot overwrite it');
+    expect(check.out).not.toContain('liftoff update --force');
+    for (const args of [['update'], ['update', '--force']]) {
+      const applied = await run(args, root);
+      expect(applied.code).toBe(0);
+      expect(applied.out).toContain('protected unowned destination');
+      expect(applied.out).toContain('--force cannot overwrite it');
+      expect(applied.out).not.toContain('use --force to overwrite');
+      expect(await readFile(path.join(root, ...identity.pathParts), 'utf8')).toBe(custom);
+      expect((await loadManifest(root)).managedArtifacts.some((entry) =>
+        entry.logicalName === identity.logicalName
+      )).toBe(false);
+    }
+  });
+
+  it('protects unowned common governance files during first forced adoption', async () => {
+    const root = await fixtureProject();
+    await removeGovernanceMetadata(root, { keepFiles: true });
+    const policyPath = path.join(root, ...governanceArtifactPaths.policy);
+    const custom = '# Independently owned governance policy\n';
+    await writeFile(policyPath, custom);
+
+    const applied = await run(['update', '--force', '--json'], root, undefined, {
+      ...process.env,
+      LIFTOFF_UPDATE_INJECT_FAILURE: `before-path:${governanceArtifactPaths.policy.join('/')}`
+    });
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out).skipped).toContainEqual(expect.objectContaining({
+      logicalName: 'repository-governance-policy',
+      status: 'conflict'
+    }));
+    expect(await readFile(policyPath, 'utf8')).toBe(custom);
+    const manifest = await loadManifest(root);
+    expect(manifest.governance.state).toBe('handoff-partial');
+    expect(manifest.managedArtifacts.some((entry) => entry.logicalName === 'repository-governance-policy')).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+  });
+
+  it('force-updates owned conflicts while preserving neighboring unowned conflicts', async () => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    await removeAssessmentInventory(root);
+    const unowned = '# Independently owned assessment\n';
+    await writeProjectOwnedFile(root, identity.pathParts, unowned);
+    const policyPath = path.join(root, ...governanceArtifactPaths.policy);
+    const currentPolicy = await readFile(policyPath, 'utf8');
+    await simulateCoreUpgrade(root, 'repository-governance-policy', governanceArtifactPaths.policy, '# Previous policy\n');
+    await writeFile(policyPath, '# Modified previous policy\n');
+
+    const check = await run(['update', '--check'], root);
+    expect(check.code).toBe(2);
+    expect(check.out).toContain('liftoff update --force');
+    expect(check.out).toContain('Unowned destinations remain protected');
+    const applied = await run(['update', '--force', '--json'], root);
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out).written).toContain(governanceArtifactPaths.policy.join('/'));
+    expect(JSON.parse(applied.out).written).not.toContain(identity.pathParts.join('/'));
+    expect(JSON.parse(applied.out).skipped).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName
+    }));
+    expect(await readFile(policyPath, 'utf8')).toBe(currentPolicy);
+    expect(await readFile(path.join(root, ...identity.pathParts), 'utf8')).toBe(unowned);
+    const manifest = await loadManifest(root);
+    expect(manifest.governance.state).toBe('handoff-partial');
+    expect(manifest.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+  });
+
+  it('guards modified managed assessment integrations until explicit force', async () => {
+    const root = await fixtureProject();
+    const identity = assessmentIdentities[0];
+    const destination = path.join(root, ...identity.pathParts);
+    const current = await readFile(destination, 'utf8');
+    await simulateCoreUpgrade(root, identity.logicalName, identity.pathParts, '# Prior managed assessment\n');
+    const custom = '# Prior managed assessment\nDeveloper modification.\n';
+    await writeFile(destination, custom);
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).entries).toContainEqual(expect.objectContaining({
+      logicalName: identity.logicalName,
+      status: 'conflict'
+    }));
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+    expect(await readFile(destination, 'utf8')).toBe(custom);
+    expect((await loadManifest(root)).managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(true);
+    expect((await run(['update', '--force', '--json'], root)).code).toBe(0);
+    expect(await readFile(destination, 'utf8')).toBe(current);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+  });
+
+  it('preserves activation/evidence bytes and rolls back a failed assessment inventory adoption', async () => {
+    const root = await fixtureProject();
+    await removeAssessmentInventory(root);
+    const active = await installActiveGovernanceChange(root);
+    const evidence = ['governance', 'evidence', 'assessment-retained.json'];
+    await writeProjectOwnedFile(root, evidence, '{\r\n  "userOwned": true\r\n}\r\n');
+    const protectedPaths = [...active.paths, evidence];
+    const before = await pathFingerprints(root, protectedPaths);
+    const managed = (await loadManifest(root)).managedArtifacts.map((entry) => entry.pathParts);
+    const rollbackPaths = [['liftoff.manifest.json'], ...managed, ...protectedPaths];
+    const rollbackBefore = await pathFingerprints(root, rollbackPaths);
+
+    const check = await run(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(await pathFingerprints(root, rollbackPaths)).toEqual(rollbackBefore);
+    const failed = await run(
+      ['update', '--json'],
+      root,
+      undefined,
+      { ...process.env, LIFTOFF_UPDATE_INJECT_FAILURE: 'before-path:liftoff.manifest.json' }
+    );
+    expect(failed.code).toBe(1);
+    expect(failed.err).toContain('All applied changes were rolled back');
+    expect(await pathFingerprints(root, rollbackPaths)).toEqual(rollbackBefore);
+    await expect(access(path.join(root, ...assessmentIdentities[0].pathParts)))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+    expect(await pathFingerprints(root, protectedPaths)).toEqual(before);
+    expect((await loadManifest(root)).managedArtifacts.some((entry) =>
+      protectedPaths.some((parts) => parts.join('\0') === entry.pathParts.join('\0'))
+    )).toBe(false);
   });
 
   it('ignores an unrecorded retired alias file because it has no manifest ownership', async () => {
@@ -873,6 +1166,76 @@ describe('core-only update command', () => {
       state: 'disabled'
     });
     expect(manifest.managedArtifacts).toEqual([]);
+  });
+
+  it.each([
+    {
+      label: 'project name',
+      mutate: (config: any) => {
+        config.projectName = 'Renamed Update App';
+      },
+      expected: 'Project name changes'
+    },
+    {
+      label: 'cloud',
+      mutate: (config: any) => {
+        config.cloud = 'aws';
+      },
+      expected: 'Cloud changes'
+    },
+    {
+      label: 'region',
+      mutate: (config: any) => {
+        config.region = 'westus2';
+      },
+      expected: 'Region changes'
+    }
+  ])('rejects $label identity changes before any update write', async ({
+    mutate,
+    expected
+  }) => {
+    const root = await fixtureProject();
+    const configPath = path.join(root, 'liftoff.config.json');
+    await editJson(configPath, mutate);
+    const watched = [
+      ['liftoff.config.json'],
+      ['liftoff.manifest.json'],
+      [...governanceArtifactPaths.context],
+      ['infrastructure', 'opentofu', 'azure', 'environments', 'dev.tfvars']
+    ];
+    const before = await pathFingerprints(root, watched);
+
+    for (const args of [['update'], ['update', '--force']]) {
+      const result = await run(args, root);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain(expected);
+      expect(result.err).toContain('separately reviewed project migration');
+      expect(await pathFingerprints(root, watched)).toEqual(before);
+    }
+  });
+
+  it('refuses to disable governance while activation state exists', async () => {
+    const root = await fixtureProject();
+    const active = await installActiveGovernanceChange(root);
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.governanceProfile = 'none';
+    });
+    const watched = [
+      ['liftoff.config.json'],
+      ['liftoff.manifest.json'],
+      [...governanceArtifactPaths.policy],
+      ...active.paths
+    ];
+    const before = await pathFingerprints(root, watched);
+
+    for (const args of [['update'], ['update', '--check'], ['update', '--force']]) {
+      const result = await run(args, root);
+      expect(result.code).toBe(1);
+      expect(result.err).toContain('cannot be disabled');
+      expect(result.err).toContain('separately supported deactivation');
+      expect(result.err).toContain('does not infer deactivation');
+      expect(await pathFingerprints(root, watched)).toEqual(before);
+    }
   });
 
   it('migrates v5 ownership without changing modified or deleted project files', async () => {

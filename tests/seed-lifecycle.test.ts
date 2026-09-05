@@ -10,8 +10,10 @@ import {
   completeGeneratedSeedLifecycle,
   generatedSeedCapabilityId,
   generatedSeedChangeName,
-  selectSeedBaselineChecks
+  selectSeedBaselineChecks,
+  verifyGeneratedSeedBaselineForPhase
 } from '../src/governance-activation/seed-lifecycle.js';
+import { validateUserActivationState } from '../src/governance-activation/validators.js';
 import { liftoffPackageName } from '../src/package-identity.js';
 import { buildProjectPlan } from '../src/planner.js';
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
@@ -49,8 +51,11 @@ async function writeFrameworkMarkers(root: string, plan: ProjectPlan): Promise<v
   }
 }
 
-async function fixtureProject(options: ProjectOptions): Promise<{ root: string; plan: ProjectPlan }> {
-  const parent = await testWorkspace('liftoff-seed');
+async function fixtureProject(
+  options: ProjectOptions,
+  workspacePrefix = 'liftoff-seed'
+): Promise<{ root: string; plan: ProjectPlan }> {
+  const parent = await testWorkspace(workspacePrefix);
   const plan = buildProjectPlan(options, { requireProjectName: true });
   const root = path.join(parent, plan.safeProjectName);
   await writeArtifacts(root, buildArtifacts(plan));
@@ -112,6 +117,7 @@ class SeedLifecycleRunner implements CommandRunner {
   constructor(private readonly options: {
     failCommand?: (command: ExternalCommand) => boolean;
     archive?: boolean;
+    failure?: Partial<Pick<CommandResult, 'stderr' | 'stdout' | 'errorCode' | 'errorMessage' | 'timedOut' | 'status'>>;
   } = {}) {}
 
   async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
@@ -119,7 +125,8 @@ class SeedLifecycleRunner implements CommandRunner {
     if (this.options.failCommand?.(command)) {
       return this.result(command, {
         status: 1,
-        stderr: 'configured failure\n'
+        stderr: 'configured failure\n',
+        ...this.options.failure
       });
     }
     if (command.executable === 'openspec' && command.args[0] === 'archive') {
@@ -163,6 +170,18 @@ class SeedLifecycleRunner implements CommandRunner {
       timedOut: false,
       ...values
     };
+  }
+}
+
+class RealOpenSpecSeedRunner extends SeedLifecycleRunner {
+  private readonly openspec = new NodeCommandRunner();
+
+  override async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
+    if (command.executable === 'openspec') {
+      this.calls.push({ command, cwd: options?.cwd });
+      return this.openspec.run(command, { ...options, timeoutMs: 30_000 });
+    }
+    return super.run(command, options);
   }
 }
 
@@ -326,6 +345,10 @@ describe('seed artifact lifecycle', () => {
       const skill = await readFile(skillPath, 'utf8');
       expect(skill).toContain('liftoff governance apply-next --json');
       expect(skill).toContain('liftoff governance apply-next --json --execute');
+      expect(skill).toContain('`selectedPhase`');
+      expect(skill).toContain('`executedPhase`');
+      expect(skill).toContain('not post-transition readiness');
+      expect(skill).toContain('do not repeatedly retry an unchanged failure');
       expect(skill).toMatch(
         /Use `liftoff governance apply-next --json` only to preview[\s\S]+approval status is `not-required` or\s+`reused`[\s\S]+run\s+`liftoff governance apply-next --json --execute`/
       );
@@ -337,6 +360,7 @@ describe('seed artifact lifecycle', () => {
       applied: false,
       authorized: true,
       reason: 'execute-required',
+      selectedPhase: 'seed-valid',
       nextReadyPhase: 'seed-valid',
       noWrites: true
     });
@@ -349,6 +373,8 @@ describe('seed artifact lifecycle', () => {
     expect(JSON.parse(applied.out)).toMatchObject({
       applied: true,
       reason: 'phase-executed',
+      selectedPhase: 'seed-valid',
+      executedPhase: 'seed-valid',
       nextReadyPhase: 'seed-valid',
       evidence: { result: 'verified' }
     });
@@ -364,10 +390,10 @@ describe('seed artifact lifecycle', () => {
     expect(JSON.parse(status.out).nextReadyPhase).toBe('seed-verified');
 
     const verify = await runCli(['governance', 'verify', '--json'], root);
-    expect(verify.code).toBe(1);
+    expect(verify.code).toBe(0);
     expect(JSON.parse(verify.out)).toMatchObject({
-      ok: false,
-      verificationStatus: 'inconsistent',
+      ok: true,
+      verificationStatus: 'consistent',
       setupStatus: 'in-progress',
       complete: false,
       stateSource: 'user'
@@ -414,6 +440,17 @@ describe('seed artifact lifecycle', () => {
         expect(['bash', 'sh', 'cmd', 'powershell', 'true', 'echo']).not.toContain(check.applicability.command.executable);
         expect(check.applicability.command.args.join(' ')).not.toMatch(/&&|\|\||placeholder|success/i);
       }
+    }
+    for (const manifest of [apiManifest, powerManifest]) {
+      const changeName = generatedSeedChangeName(manifest);
+      const active = selectSeedBaselineChecks(manifest, changeName, 'active');
+      const archived = selectSeedBaselineChecks(manifest, changeName, 'archived');
+      expect(archived.filter((check) => check.id !== 'openspec-strict'))
+        .toEqual(active.filter((check) => check.id !== 'openspec-strict'));
+      expect(active.find((check) => check.id === 'openspec-strict')?.applicability)
+        .toMatchObject({ command: { executable: 'openspec', args: ['validate', changeName, '--strict'] } });
+      expect(archived.find((check) => check.id === 'openspec-strict')?.applicability)
+        .toMatchObject({ command: { executable: 'openspec', args: ['validate', '--all', '--strict'] } });
     }
   });
 
@@ -501,6 +538,409 @@ describe('seed artifact lifecycle', () => {
     );
     expect(strict.status, `${strict.stdout}${strict.stderr}`).toBe(0);
     expect(await fileExists(path.join(root, 'openspec', 'changes', changeName))).toBe(false);
+  });
+
+  it('activates an externally archived seed through the generated skill without rearchiving', async ({ skip }) => {
+    if (!(await openspecAvailable())) {
+      skip();
+      return;
+    }
+    const { root } = await fixtureProject({
+      projectName: 'Prearchived Go Baseline',
+      projectType: 'standard',
+      apiStack: 'go',
+      cloud: 'azure',
+      specWorkflow: 'openspec',
+      agents: ['copilot', 'claude'],
+      includeFrontend: true
+    }, 'liftoff archived seed with spaces');
+    const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    const changeName = generatedSeedChangeName(manifest);
+    const runner = new RealOpenSpecSeedRunner();
+    const archived = await runner.run(
+      { executable: 'openspec', args: ['archive', changeName, '--yes', '--json'] },
+      { cwd: root }
+    );
+    expect(archived.status, `${archived.stdout}${archived.stderr}`).toBe(0);
+    const archiveRoot = path.join(root, 'openspec', 'changes', 'archive');
+    const archiveNames = await readdir(archiveRoot);
+    const archiveFiles = [
+      ['.openspec.yaml'], ['proposal.md'], ['design.md'], ['tasks.md'],
+      ['specs', generatedSeedCapabilityId(manifest.project.workload), 'spec.md']
+    ];
+    const archiveContents = await Promise.all(archiveFiles.map((parts) =>
+      readFile(path.join(archiveRoot, archiveNames[0]!, ...parts), 'utf8')
+    ));
+    expect(await fileExists(path.join(root, 'governance', 'activation-state.json'))).toBe(false);
+    for (const parts of [
+      ['.github', 'prompts', 'liftoff-setup.prompt.md'],
+      ['.claude', 'commands', 'liftoff-setup.md']
+    ]) {
+      expect(await readFile(path.join(root, ...parts), 'utf8'))
+        .toContain('`liftoff governance apply-next --json --execute`');
+    }
+
+    const resumed = await runCli(['governance', 'resume', '--json'], root, { runner });
+    expect(JSON.parse(resumed.out)).toMatchObject({
+      stateSource: 'not-started',
+      nextReadyPhase: 'seed-valid',
+      noWrites: true
+    });
+    for (const [phase, next] of [
+      ['seed-valid', 'seed-verified'],
+      ['seed-verified', 'seed-archived'],
+      ['seed-archived', null]
+    ] as const) {
+      const preview = await runCli(['governance', 'apply-next', '--json'], root, { runner });
+      expect(preview.code, preview.out).toBe(0);
+      expect(JSON.parse(preview.out)).toMatchObject({
+        applied: false,
+        authorized: true,
+        noWrites: true,
+        nextReadyPhase: phase,
+        selectedPhase: phase
+      });
+      const applied = await runCli(
+        ['governance', 'apply-next', '--json', '--execute'], root, { runner }
+      );
+      expect(applied.code, `${applied.out}${applied.err}`).toBe(0);
+      expect(JSON.parse(applied.out)).toMatchObject({
+        applied: true,
+        selectedPhase: phase,
+        executedPhase: phase,
+        evidence: { result: 'verified' }
+      });
+      const verified = await runCli(['governance', 'verify', '--json'], root, { runner });
+      expect(verified.code, verified.out).toBe(0);
+      expect(JSON.parse(verified.out)).toMatchObject({
+        consistent: true,
+        complete: false,
+        nextReadyPhase: next
+      });
+    }
+
+    const status = await runCli(['governance', 'status', '--json'], root, { runner });
+    expect(JSON.parse(status.out).phases.find((phase: { id: string }) => phase.id === 'committed'))
+      .toMatchObject({ state: 'blocked', approval: { status: 'approval-required' } });
+    expect(runner.calls.filter(({ command }) => command.args[0] === 'archive')).toHaveLength(1);
+    expect(runner.calls.filter(({ command }) => command.executable === 'openspec' && command.args[0] === 'validate')
+      .map(({ command }) => command.args)).toEqual([
+      ['validate', '--all', '--strict'],
+      ['validate', '--all', '--strict']
+    ]);
+    for (const check of selectSeedBaselineChecks(manifest).filter((check) => check.id !== 'openspec-strict')) {
+      if (check.applicability.applicable) {
+        expect(runner.calls).toContainEqual({
+          command: check.applicability.command,
+          cwd: path.join(root, ...check.applicability.cwdPathParts)
+        });
+      }
+    }
+    expect(runner.calls.some(({ command }) => ['git', 'gh', 'az'].includes(command.executable))).toBe(false);
+    expect(await readdir(archiveRoot)).toEqual(archiveNames);
+    expect(await Promise.all(archiveFiles.map((parts) =>
+      readFile(path.join(archiveRoot, archiveNames[0]!, ...parts), 'utf8')
+    ))).toEqual(archiveContents);
+    expect(await fileExists(path.join(root, 'openspec', 'changes', changeName))).toBe(false);
+  }, 60_000);
+
+  it.for(['fresh', 'seed-valid-completed'] as const)(
+    'completes an active bootstrap without repeating completed seed validation (%s)',
+    async (entryPoint, { skip }) => {
+      if (!(await openspecAvailable())) {
+        skip();
+        return;
+      }
+      const { root } = await fixtureProject({
+        projectName: `Active Seed ${entryPoint}`,
+        projectType: 'standard',
+        apiStack: 'go',
+        cloud: 'azure',
+        specWorkflow: 'openspec',
+        includeFrontend: false
+      });
+      const runner = new RealOpenSpecSeedRunner();
+      const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+      const changeName = generatedSeedChangeName(manifest);
+      const statePath = path.join(root, 'governance', 'activation-state.json');
+      const evidenceRoot = path.join(root, 'governance', 'evidence');
+      let existingSeedPhase;
+      let existingEvidence: string | undefined;
+      if (entryPoint === 'seed-valid-completed') {
+        const completed = await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner });
+        expect(completed.code, completed.out).toBe(0);
+        const state = validateUserActivationState(JSON.parse(await readFile(statePath, 'utf8')));
+        existingSeedPhase = state.phases['seed-valid'];
+        existingEvidence = await readFile(path.join(evidenceRoot, `${existingSeedPhase.evidence[0]!.evidenceId}.json`), 'utf8');
+      }
+      const resume = await runCli(['governance', 'resume', '--json'], root, { runner });
+      expect(resume.code, resume.out).toBe(0);
+      expect(JSON.parse(resume.out)).toMatchObject({
+        stateSource: entryPoint === 'fresh' ? 'not-started' : 'user',
+        nextReadyPhase: entryPoint === 'fresh' ? 'seed-valid' : 'seed-verified',
+        noWrites: true
+      });
+      const initialVerify = await runCli(['governance', 'verify', '--json'], root, { runner });
+      expect(initialVerify.code, initialVerify.out).toBe(0);
+      expect(JSON.parse(initialVerify.out)).toMatchObject({ consistent: true, complete: false });
+      const remaining = entryPoint === 'fresh'
+        ? ['seed-valid', 'seed-verified', 'seed-archived']
+        : ['seed-verified', 'seed-archived'];
+      for (const phase of remaining) {
+        const preview = await runCli(['governance', 'apply-next', '--json'], root, { runner });
+        expect(preview.code, preview.out).toBe(0);
+        expect(JSON.parse(preview.out)).toMatchObject({ selectedPhase: phase, noWrites: true });
+        const applied = await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner });
+        expect(applied.code, applied.out).toBe(0);
+        expect(JSON.parse(applied.out)).toMatchObject({ executedPhase: phase, applied: true });
+        const verify = await runCli(['governance', 'verify', '--json'], root, { runner });
+        expect(verify.code, verify.out).toBe(0);
+        expect(JSON.parse(verify.out)).toMatchObject({ consistent: true, complete: false });
+      }
+      const final = await runCli(['governance', 'status', '--json'], root, { runner });
+      expect(JSON.parse(final.out).phases.find((phase: { id: string }) => phase.id === 'committed'))
+        .toMatchObject({ state: 'blocked', approval: { status: 'approval-required' } });
+      expect(JSON.parse(final.out).nextReadyPhase).toBeNull();
+      const finalState = validateUserActivationState(JSON.parse(await readFile(statePath, 'utf8')));
+      if (existingSeedPhase) {
+        expect(finalState.phases['seed-valid']).toEqual(existingSeedPhase);
+        expect(await readFile(path.join(evidenceRoot, `${existingSeedPhase.evidence[0]!.evidenceId}.json`), 'utf8'))
+          .toBe(existingEvidence);
+      }
+      expect((await readdir(evidenceRoot)).filter((name) => name.startsWith('seed-valid-'))).toHaveLength(1);
+      expect(runner.calls.filter(({ command }) => command.executable === 'openspec').map(({ command }) => command.args))
+        .toEqual([
+          ['validate', changeName, '--strict'],
+          ['validate', changeName, '--strict'],
+          ['archive', changeName, '--yes', '--json'],
+          ['validate', '--all', '--strict']
+        ]);
+      expect(runner.calls.some(({ command }) => ['git', 'gh', 'az'].includes(command.executable))).toBe(false);
+    },
+    60_000
+  );
+
+  it.each(['missing-artifact', 'recorded-archive', 'overlapping-seed'] as const)(
+    'does not hide a genuine active-seed inconsistency (%s)',
+    async (fault) => {
+      const { root } = await fixtureProject({
+        projectName: 'Active Seed Integrity',
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec'
+      });
+      expect((await runCli(['governance', 'apply-next', '--json', '--execute'], root)).code).toBe(0);
+      if (fault === 'missing-artifact') {
+        await rm(path.join(root, 'openspec', 'changes', 'bootstrap-active-seed-integrity', 'design.md'));
+      } else if (fault === 'overlapping-seed') {
+        await mkdir(path.join(root, 'openspec', 'changes', 'bootstrap-unexpected'));
+      } else {
+        const statePath = path.join(root, 'governance', 'activation-state.json');
+        const state = validateUserActivationState(JSON.parse(await readFile(statePath, 'utf8')));
+        state.phases['seed-archived'].state = 'verified';
+        await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+      }
+      const result = await runCli(['governance', 'verify', '--json'], root);
+      expect(result.code, result.out).toBe(1);
+      expect(JSON.parse(result.out)).toMatchObject({ consistent: false, complete: false });
+      expect(JSON.parse(result.out).checks.find((check: { id: string }) => check.id === 'active-source-of-truth'))
+        .toMatchObject({ status: 'failed' });
+    }
+  );
+
+  it.each(['local-check', 'legacy-blocker'] as const)(
+    'retries an archived baseline without changing state during reads (%s)',
+    async (failureKind) => {
+      const { root } = await fixtureProject({
+        projectName: `Archived Retry ${failureKind}`,
+        projectType: 'standard',
+        apiStack: 'go',
+        cloud: 'azure',
+        specWorkflow: 'openspec',
+        includeFrontend: false
+      });
+      const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+      const archived = await archiveGeneratedSeedForPhase(root, new SeedLifecycleRunner());
+      expect(archived.status).toBe('archived');
+      const first = await runCli(['governance', 'apply-next', '--json', '--execute'], root);
+      expect(first.code, first.out).toBe(0);
+      const statePath = path.join(root, 'governance', 'activation-state.json');
+      const evidenceRoot = path.join(root, 'governance', 'evidence');
+      const evidenceBefore = await readdir(evidenceRoot);
+
+      if (failureKind === 'legacy-blocker') {
+        const state = validateUserActivationState(JSON.parse(await readFile(statePath, 'utf8')));
+        state.phases['seed-verified'] = {
+          ...state.phases['seed-verified'],
+          state: 'blocked',
+          blockers: [
+            `Run strict OpenSpec validation failed: openspec validate ${generatedSeedChangeName(manifest)} --strict (exit status 1)`
+          ]
+        };
+        await writeFile(statePath, `${JSON.stringify(state, null, 2)}\n`, 'utf8');
+      } else {
+        const failed = await runCli(
+          ['governance', 'apply-next', '--json', '--execute'], root,
+          { runner: new SeedLifecycleRunner({ failCommand: (command) => command.executable === 'go' }) }
+        );
+        expect(failed.code).toBe(1);
+        expect(JSON.parse(failed.out)).toMatchObject({
+          applied: false,
+          executedPhase: null,
+          selectedPhase: 'seed-verified',
+          evidence: null
+        });
+      }
+      const failureState = await readFile(statePath, 'utf8');
+      const before = validateUserActivationState(JSON.parse(failureState));
+      expect(before.phases['seed-verified']).toMatchObject({ state: 'blocked', evidence: [] });
+      const plansBefore = await readdir(path.join(root, 'governance', 'plans'));
+      const readsRunner = new SeedLifecycleRunner();
+      for (const command of ['status', 'plan', 'resume', 'verify', 'apply-next']) {
+        const read = await runCli(['governance', command, '--json'], root, { runner: readsRunner });
+        expect(read.code, `${command}: ${read.out}`).toBe(0);
+        if (command === 'resume') {
+          expect(JSON.parse(read.out)).toMatchObject({
+            nextReadyPhase: 'seed-verified',
+            noWrites: true
+          });
+          expect(JSON.parse(read.out).phases.find((phase: { id: string }) => phase.id === 'seed-verified'))
+            .toMatchObject({
+              state: 'ready',
+              storedState: 'blocked',
+              storedBlockers: before.phases['seed-verified'].blockers,
+              retryable: true
+            });
+        }
+      }
+      expect(readsRunner.calls).toEqual([]);
+      expect(await readFile(statePath, 'utf8')).toBe(failureState);
+      expect(await readdir(evidenceRoot)).toEqual(evidenceBefore);
+      expect(await readdir(path.join(root, 'governance', 'plans'))).toEqual(plansBefore);
+
+      const stillFailing = await runCli(
+        ['governance', 'apply-next', '--json', '--execute'], root,
+        { runner: new SeedLifecycleRunner({ failCommand: (command) => command.executable === 'go' }) }
+      );
+      expect(stillFailing.code).toBe(1);
+      expect(JSON.parse(stillFailing.out).evidence).toBeNull();
+      expect(await readdir(evidenceRoot)).toEqual(evidenceBefore);
+      const fixedRunner = new SeedLifecycleRunner();
+      const recovered = await runCli(
+        ['governance', 'apply-next', '--json', '--execute'], root, { runner: fixedRunner }
+      );
+      expect(recovered.code, recovered.out).toBe(0);
+      expect(JSON.parse(recovered.out)).toMatchObject({
+        applied: true,
+        executedPhase: 'seed-verified',
+        evidence: { result: 'verified' }
+      });
+      expect(validateUserActivationState(JSON.parse(await readFile(statePath, 'utf8'))).phases['seed-verified'])
+        .toMatchObject({ state: 'verified', blockers: [] });
+      for (const check of selectSeedBaselineChecks(manifest, undefined, 'archived')) {
+        if (check.applicability.applicable) {
+          expect(fixedRunner.calls).toContainEqual({
+            command: check.applicability.command,
+            cwd: path.join(root, ...check.applicability.cwdPathParts)
+          });
+        }
+      }
+      expect(fixedRunner.calls.some(({ command }) => ['git', 'gh', 'az'].includes(command.executable))).toBe(false);
+    }
+  );
+
+  it('repairs a strict-invalid archived spec and resumes the baseline through real OpenSpec', async ({ skip }) => {
+    if (!(await openspecAvailable())) {
+      skip();
+      return;
+    }
+    const { root } = await fixtureProject({
+      projectName: 'Archived Spec Repair',
+      projectType: 'standard',
+      apiStack: 'go',
+      cloud: 'azure',
+      specWorkflow: 'openspec',
+      includeFrontend: false
+    });
+    const runner = new RealOpenSpecSeedRunner();
+    expect((await archiveGeneratedSeedForPhase(root, runner)).status).toBe('archived');
+    expect((await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner })).code).toBe(0);
+    const specPath = path.join(root, 'openspec', 'specs', 'go-huma-application-baseline', 'spec.md');
+    const validSpec = await readFile(specPath, 'utf8');
+    await writeFile(specPath, validSpec.replaceAll('SHALL', 'should'), 'utf8');
+
+    const failed = await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner });
+    expect(failed.code, failed.out).toBe(1);
+    expect(JSON.parse(failed.out)).toMatchObject({
+      applied: false,
+      selectedPhase: 'seed-verified',
+      executedPhase: null,
+      evidence: null,
+      message: expect.stringContaining('openspec validate --all --strict')
+    });
+    expect(JSON.parse(failed.out).message).toContain('go-huma-application-baseline');
+    await writeFile(specPath, validSpec, 'utf8');
+    const resume = await runCli(['governance', 'resume', '--json'], root, { runner });
+    expect(JSON.parse(resume.out).nextReadyPhase).toBe('seed-verified');
+    for (const phase of ['seed-verified', 'seed-archived']) {
+      const applied = await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner });
+      expect(applied.code, applied.out).toBe(0);
+      expect(JSON.parse(applied.out).executedPhase).toBe(phase);
+      expect((await runCli(['governance', 'verify', '--json'], root, { runner })).code).toBe(0);
+    }
+    expect(runner.calls.filter(({ command }) => command.args[0] === 'archive')).toHaveLength(1);
+  }, 60_000);
+
+  it.each(['missing', 'fallback-purpose'] as const)(
+    'does not verify an archived baseline with an invalid main capability (%s)',
+    async (fault) => {
+      const { root } = await fixtureProject({
+        projectName: 'Archived Integrity Guard',
+        projectType: 'power-apps-code-app',
+        specWorkflow: 'openspec'
+      });
+      expect((await archiveGeneratedSeedForPhase(root, new SeedLifecycleRunner())).status).toBe('archived');
+      const specPath = path.join(root, 'openspec', 'specs', 'power-apps-code-app-baseline', 'spec.md');
+      if (fault === 'missing') {
+        await rm(specPath);
+      } else {
+        await writeFile(specPath, '## Purpose\n\nTBD - created by archiving change bootstrap-archived-integrity-guard.\n\n## Requirements\n', 'utf8');
+      }
+      const runner = new SeedLifecycleRunner();
+      const result = await verifyGeneratedSeedBaselineForPhase(root, runner);
+      expect(result).toMatchObject({ status: 'blocked', checks: [] });
+      expect(runner.calls).toEqual([]);
+    }
+  );
+
+  it.each([
+    { name: 'stderr', failure: { stderr: '\u001b[31mRequirement is missing SHALL\u001b[0m\u0000' }, expected: 'Requirement is missing SHALL' },
+    { name: 'stdout', failure: { stderr: '', stdout: 'Unknown item: bootstrap-archived' }, expected: 'Unknown item: bootstrap-archived' },
+    { name: 'truncation', failure: { stderr: 'Long diagnostic '.repeat(300) }, expected: '[truncated]' },
+    { name: 'credential', failure: { stderr: `Output ${'github_pat_'}${'x'.repeat(40)}` }, expected: 'diagnostic withheld' },
+    { name: 'credential beyond limit', failure: { stderr: `${'x'.repeat(3000)} AccountKey=sensitive-value;` }, expected: 'diagnostic withheld' },
+    { name: 'credential in stdout', failure: { stderr: 'Validation failed', stdout: `ghp_${'y'.repeat(40)}` }, expected: 'diagnostic withheld' }
+  ])('bounds and sanitizes OpenSpec failure diagnostics ($name)', async ({ failure, expected }) => {
+    const { root } = await fixtureProject({
+      projectName: 'Safe Diagnostics',
+      projectType: 'power-apps-code-app',
+      specWorkflow: 'openspec'
+    });
+    const failed = await runCli(['governance', 'apply-next', '--json', '--execute'], root, {
+      runner: new SeedLifecycleRunner({
+        failCommand: (command) => command.executable === 'openspec',
+        failure
+      })
+    });
+    expect(failed.code).toBe(1);
+    const body = JSON.parse(failed.out);
+    expect(body).toMatchObject({ applied: false, executedPhase: null, evidence: null });
+    expect(body.message).toContain(expected);
+    expect(body.message.length).toBeLessThan(2400);
+    const state = await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8');
+    for (const content of [failed.out, failed.err, state]) {
+      expect(content).not.toMatch(/github_pat_|ghp_|AccountKey=|sensitive-value/u);
+    }
+    expect(body.message).not.toMatch(/[\u0000\u001b]/u);
   });
 
   it('blocks an archived seed until the synchronized main specs pass strict validation', async () => {

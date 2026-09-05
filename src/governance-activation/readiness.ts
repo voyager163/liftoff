@@ -45,6 +45,7 @@ export interface ReadinessInput {
   identity?: ActivationIdentity;
   now?: Date;
   phaseBlockers?: Partial<Record<PhaseId, readonly string[]>>;
+  retryArchivedSeedBaseline?: boolean;
 }
 
 const terminalStates = new Set<PhaseState>([
@@ -231,7 +232,11 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       phases[node.id] = { phaseId: node.id, state: 'running', blockers: [] };
       continue;
     }
-    if (stored.state === 'blocked' && stored.blockers.length > 0) {
+    if (
+      stored.state === 'blocked' &&
+      stored.blockers.length > 0 &&
+      !(node.id === 'seed-verified' && input.retryArchivedSeedBaseline)
+    ) {
       phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: stored.blockers };
       continue;
     }

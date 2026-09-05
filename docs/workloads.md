@@ -1,5 +1,12 @@
 # Workloads
 
+Liftoff generates starter projects and governance definitions, not a blanket
+production-readiness guarantee. Catalog scaffold labels and complete file
+generation do not prove every GenAI behavior, worker deployment, authentication,
+private-network path, or operational safeguard is implemented. Review the
+[documented capability follow-ups](../DEVELOPER.md#broader-audit-follow-ups)
+before deploying generated applications unchanged.
+
 Liftoff asks for one workload first, then routes only the questions,
 prerequisites, generated artifacts, and maintenance checks that apply to it.
 

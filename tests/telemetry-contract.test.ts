@@ -7,11 +7,12 @@ import {
   isTelemetryCliVersion,
   telemetryClientFields,
   telemetryCommands,
+  telemetryExcludedCommands,
   telemetryStorageFields
 } from '../src/telemetry/contract.js';
 
 describe('telemetry contract', () => {
-  it('stays in parity with every explicit CLI command and subcommand', () => {
+  it('covers explicit CLI commands except the exact read-only telemetry exclusions', () => {
     const expected = new Set<string>(['version']);
     for (const [command, definition] of Object.entries(commandDefinitions)) {
       expected.add(command);
@@ -19,7 +20,9 @@ describe('telemetry contract', () => {
         expected.add(`${command}:${subcommand}`);
       }
     }
-    expect([...telemetryCommands].sort()).toEqual([...expected].sort());
+    expect([...telemetryCommands, ...telemetryExcludedCommands].sort()).toEqual([...expected].sort());
+    expect(telemetryExcludedCommands).toEqual(['governance:assess']);
+    expect(telemetryCommands.some((command) => telemetryExcludedCommands.some((excluded) => excluded === String(command)))).toBe(false);
   });
 
   it('defines the exact client and storage fields', () => {
@@ -47,6 +50,8 @@ describe('telemetry contract', () => {
     expect(canonicalTelemetryCommand({ command: 'upgrade', flags: {} })).toBe('upgrade');
     expect(canonicalTelemetryCommand({ command: 'upgrade', flags: { check: true } })).toBe('upgrade');
     expect(canonicalTelemetryCommand({ command: 'unknown', flags: {} })).toBeUndefined();
+    expect(canonicalTelemetryCommand({ command: 'governance', subcommand: 'assess', flags: {} })).toBeUndefined();
+    expect(canonicalTelemetryCommand({ command: 'governance', subcommand: 'assess', flags: { help: true } })).toBeUndefined();
   });
 
   it('maps only exit status into the event and adds server time separately', () => {

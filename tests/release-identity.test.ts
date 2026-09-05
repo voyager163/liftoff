@@ -67,6 +67,48 @@ describe('release identity verifier', () => {
     });
   });
 
+  it('rejects a consistently renamed non-canonical package', async () => {
+    await withReleaseRoot({ packageName: '@other/liftoff' }, async (packageRoot) => {
+      await expect(verifyReleaseIdentity({ packageRoot })).rejects.toThrow(
+        'Release identity mismatch for package.json name: expected "@msn-control/liftoff", observed "@other/liftoff".'
+      );
+    });
+  });
+
+  it.each([
+    '1',
+    '1.2',
+    '01.2.3',
+    '1.02.3',
+    '1.2.03',
+    '1.2.3-01',
+    'v1.2.3',
+    '1.2.3\n',
+    '999999999999999999999.0.0',
+    '1.9007199254740992.0',
+    '1.0.9007199254740992',
+    `1.2.3+${'a'.repeat(251)}`,
+    'not-a-version'
+  ])('rejects invalid npm SemVer %s', async (packageVersion) => {
+    await withReleaseRoot({ packageVersion }, async (packageRoot) => {
+      await expect(verifyReleaseIdentity({ packageRoot })).rejects.toThrow(
+        `expected valid npm SemVer, observed ${JSON.stringify(packageVersion)}`
+      );
+    });
+  });
+
+  it.each(['1.2.3-beta.1', '1.2.3+build.7', '1.2.3-rc.1+build.7', '9007199254740991.0.0'])(
+    'accepts valid npm SemVer %s',
+    async (packageVersion) => {
+      await withReleaseRoot({ packageVersion }, async (packageRoot) => {
+        await expect(verifyReleaseIdentity({ packageRoot })).resolves.toMatchObject({
+          name: packageName,
+          version: packageVersion
+        });
+      });
+    }
+  );
+
   it('rejects a lockfile-version mismatch with expected and observed values', async () => {
     await withReleaseRoot({ lockVersion: '0.3.4' }, async (packageRoot) => {
       await expect(verifyReleaseIdentity({ packageRoot })).rejects.toThrow(

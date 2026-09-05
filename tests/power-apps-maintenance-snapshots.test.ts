@@ -16,7 +16,10 @@ async function run(args: string[], cwd: string): Promise<{
     cwd,
     stdout,
     stderr,
-    runner: new ReadyInitRunner()
+    runner: new ReadyInitRunner(),
+    stableReleaseLookup: async () => {
+      throw new Error('offline');
+    }
   });
   return { code, stdout: stdout.text(), stderr: stderr.text() };
 }

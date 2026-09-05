@@ -27,17 +27,25 @@ The system SHALL expose repository governance as an append-only catalog selectio
 - **AND** identifies the accepted profile values
 
 ### Requirement: The selected profile generates one canonical managed-core handoff
-The system SHALL render a versioned canonical policy, schema-versioned workload context, activation guide, and thin launcher for each selected coding agent as explicitly named managed-core Liftoff artifacts. The policy and context SHALL live under `.liftoff/governance`; a Copilot launcher SHALL use the reserved explicit GitHub prompt path and a Claude launcher SHALL use the reserved explicit Claude command path. Launchers SHALL reference the canonical files instead of duplicating the policy.
+The system SHALL render a versioned canonical policy, schema-versioned workload
+context, activation guide, and thin setup and read-only assessment launchers for
+each selected coding agent as explicitly named managed-core Liftoff artifacts.
+The policy and context SHALL live under `.liftoff/governance`; Copilot launchers
+SHALL use their reserved explicit GitHub prompt paths and Claude launchers SHALL
+use their reserved explicit Claude command paths. Launchers SHALL reference the
+canonical files and CLI instead of duplicating policy or evaluation logic.
+`/liftoff-setup` SHALL remain the sole setup entry point; the assessment
+integration SHALL not be a setup alias.
 
 #### Scenario: Generate for Copilot and Claude
 - **WHEN** a project selects `single-maintainer-gitflow`, GitHub Copilot, and Claude Code
-- **THEN** the project contains the canonical policy, context, guide, Copilot launcher, and Claude launcher
+- **THEN** the project contains the canonical policy, context, guide, and both setup and assessment launchers for each selected agent
 - **AND** each file has a stable logical name and manifest content hash
 
 #### Scenario: Generate for one agent
 - **WHEN** a project selects only GitHub Copilot
-- **THEN** Liftoff renders the canonical handoff and Copilot launcher
-- **AND** it does not render or require the Claude launcher
+- **THEN** Liftoff renders the canonical handoff and Copilot setup and assessment launchers
+- **AND** it does not render or require Claude launchers
 
 #### Scenario: Render paths cross-platform
 - **WHEN** the same governed plan is rendered on Windows, macOS, and Linux
@@ -85,19 +93,21 @@ The generated context SHALL identify the selected workload, artifact form, appro
 - **AND** does not authorize an agent run or any GitHub, deployment, or ruleset action
 
 ### Requirement: Agent activation begins with read-only Phase 0
-The generated launchers SHALL instruct the selected agent to require a committed
-and pushed repository, read the canonical policy and context, and perform a
-read-only classification before proposing changes. Phase 0 SHALL inspect
-artifact type, languages, package managers, working build and test commands,
-branches, default branch, workflows and exact job names, rulesets, tags,
-releases, environments, deployments, security scanning, runner access,
-monitoring and alert routing, component health depth, and platform capabilities.
-When private Staging DAST applies, Phase 0 SHALL also inspect the repository's
-Staging subscription, existing runner and network resources, Azure and GitHub
-permissions, enterprise network-configuration policy, address space, private
-DNS and routing, egress requirements, cost, state ownership, and teardown
-authority. It SHALL report gaps, inapplicable controls, and an ordered plan,
-then stop for explicit user approval.
+The generated setup launchers SHALL instruct the selected agent to require a
+committed and pushed repository before governance Phase 0, read the canonical
+policy and context, and perform a read-only classification before proposing
+changes. Phase 0 SHALL inspect artifact type, languages, package managers,
+working build and test commands, branches, default branch, workflows and exact
+job names, rulesets, tags, releases, environments, deployments, security
+scanning, runner access, monitoring and alert routing, component health depth,
+and platform capabilities. When private Staging DAST applies, Phase 0 SHALL also
+inspect the repository's Staging subscription, existing runner and network
+resources, Azure and GitHub permissions, enterprise network-configuration
+policy, address space, private DNS and routing, egress requirements, cost, state
+ownership, and teardown authority. It SHALL report gaps, inapplicable controls,
+and an ordered plan, then stop for explicit user approval. The separate
+read-only assessment SHALL not require commit, push, or activation and SHALL
+not satisfy Phase 0 or its approval gate merely by producing a report.
 
 #### Scenario: Run before a remote exists
 - **WHEN** an agent is asked to activate governance without a resolvable GitHub repository
@@ -112,6 +122,11 @@ then stop for explicit user approval.
 #### Scenario: User has not approved the plan
 - **WHEN** Phase 0 has reported its findings but the user has not explicitly approved the proposed work
 - **THEN** the agent does not create a spec change, branch, workflow, ruleset, environment, cloud resource, network configuration, runner group, or larger runner
+
+#### Scenario: Assess before publication
+- **WHEN** a developer requests only a governance assessment on an unpublished Liftoff project
+- **THEN** assessment may report local differences and unobserved live controls
+- **AND** it does not create a remote, push the repository, or advance Phase 0
 
 ### Requirement: Azure resource providers are ready before dependent provisioning
 The canonical profile SHALL derive the minimal Azure resource-provider

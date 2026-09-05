@@ -48,7 +48,9 @@ const governanceManagedCoreLogicalNames = [
   'repository-governance-compatibility',
   'repository-governance-credential-policy-schema',
   'liftoff-setup-copilot',
-  'liftoff-setup-claude'
+  'liftoff-setup-claude',
+  'liftoff-governance-assess-copilot',
+  'liftoff-governance-assess-claude'
 ] as const;
 
 export const governanceArtifactPaths = {
@@ -61,6 +63,10 @@ export const governanceArtifactPaths = {
   setup: {
     'github-copilot': ['.github', 'prompts', 'liftoff-setup.prompt.md'],
     claude: ['.claude', 'commands', 'liftoff-setup.md']
+  },
+  assessment: {
+    'github-copilot': ['.github', 'prompts', 'liftoff-governance-assess.prompt.md'],
+    claude: ['.claude', 'commands', 'liftoff-governance-assess.md']
   }
 } as const;
 
@@ -841,6 +847,82 @@ manually revoked and rotated.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.
+
+${renderGovernanceAssessmentGuide()}
+`;
+}
+
+export function renderGovernanceAssessmentGuide(): string {
+  return `## Read-only governance assessment
+
+\`/liftoff-setup\` remains the primary post-init path. For a separate comparison,
+use \`/liftoff-governance-assess\` in a selected agent or run:
+
+\`\`\`bash
+liftoff governance assess --json
+\`\`\`
+
+The pinned target is the installed CLI's packaged policy, activation identity,
+phase graph, and assessment control catalog, never registry latest. The report
+separates that target from the recorded baseline, declared project configuration,
+and observed enforcement. It includes expected and observed values, provenance,
+scope, impact, and ownership-aware advisory remediation.
+The project policy version is shown when available. JSON observations may also
+retain optional normalized \`facts\` alongside evaluator predicate values;
+these are sanitized details, not raw provider payloads.
+
+The default is local-only with no network access or cloud/GitHub credentials.
+It works before commit, push, or activation; it does not run the bootstrap
+baseline. All assessment invocations, including live mode and help, skip
+telemetry and disclosure entirely. Local Git reads inspect only repository
+root, HEAD, and origin metadata, never \`git status\`, which can execute clean
+filters. Only after an explicit request for live reads, use:
+
+\`\`\`bash
+liftoff governance assess --live --json
+\`\`\`
+
+Live mode permits bounded read-only GitHub/Azure metadata access using existing
+permissions and verified repository/environment/resource bindings. No login,
+credential enrollment, permission expansion, provider registration, state-blob
+access, or resource mutation is authorized. Missing access, unknown applicability,
+stale evidence, and unsupported evaluators remain visible coverage gaps, not
+proof of absence or alignment.
+Azure scope and evidence-backed applicability require a current active-baseline
+and referenced, validated saved-plan/evidence receipts. Placeholder digests,
+future-dated approvals, and inferred bindings cannot establish proof. Missing
+bindings stay \`not-observed\`; do not fabricate or hand-edit activation state,
+baselines, receipts, or evidence to make assessment pass. Collect missing proof
+through separately approved setup or governance work.
+
+| Finding | Meaning |
+| --- | --- |
+| \`aligned\` | Every required proof layer is fresh and matches the target |
+| \`outdated\` | A recognized older baseline or recorded managed artifact differs |
+| \`missing\` | Complete authoritative observation proves an applicable requirement absent |
+| \`conflicting\` | Known settings contradict the target or another observed layer |
+| \`approved-exception\` | An exact, valid, unexpired permitted exception covers a difference |
+| \`inapplicable\` | Validated workload facts prove a control does not apply |
+| \`not-observed\` | Applicability or required proof is unknown, stale, denied, or unsupported |
+
+Coverage distinguishes local matches from unobserved live proof; a matching
+workflow file is not proof of enforcement. Local-only reports will normally be
+\`partial\`. Exit 0 means fully observed \`aligned\` or explicitly disabled
+\`not-applicable\` governance (not an alignment claim); exit 2 means \`partial\`
+coverage or \`differences\`, including approved exceptions; exit 1 means \`error\`.
+Exit 2 is advisory, not permission to repair anything.
+
+Assessment writes reports to stdout only. It never updates or upgrades anything,
+changes project files, Git, activation state, approvals, or evidence, or runs
+recommendations. Reports cannot complete Phase 0 or any other phase.
+For compatible older inventories, install the new selected-agent integration
+through the normal \`liftoff update --check\` and guarded \`liftoff update\` flow.
+Unowned collisions stay unowned even with \`--force\`; modified managed entries
+retain the existing reviewed force rules. Neither installation nor assessment
+activates governance. Unsupported mappings remain diagnostic: no migration is
+available unless explicitly supported, and force cannot bypass compatibility
+or overwrite project-owned configuration. A future governance upgrade needs
+fresh observations, its own reviewed plan, and separate approval.
 `;
 }
 
@@ -865,8 +947,45 @@ Contract:
    \`reused\`, run
    \`liftoff governance apply-next --json --execute\`, then
    \`liftoff governance verify --json\`.
+   In apply-next output, \`selectedPhase\` identifies the attempted phase and
+   \`executedPhase\` identifies a successful execution. Its legacy
+   \`nextReadyPhase\` is not post-transition readiness; use the subsequent
+   verify or status output for the next phase.
+   If execution is blocked, report the failure and stop until it is repaired
+   or an explicit retry is requested; do not repeatedly retry an unchanged failure.
 6. Never infer phase completion from prose, tasks, or local files. Never use a
    separate activation state or duplicate the Liftoff engine.
+`;
+}
+
+function renderAssessmentIntegration(): string {
+  return `# /liftoff-governance-assess
+
+Explain a read-only governance assessment, not setup or an upgrade.
+Canonical context: \`.liftoff/governance/policy.md\`,
+\`.liftoff/governance/context.json\`, and \`.liftoff/governance/README.md\`.
+
+Contract:
+
+1. Work from the current directory; the CLI resolves the nearest Liftoff project.
+   No commit, push, activation, or credential enrollment is a prerequisite.
+2. Invoke only \`liftoff governance assess --json\`. This defaults to local-only,
+   no-network comparison against the installed CLI's packaged target.
+3. Only when the developer explicitly requests live reads, invoke
+   \`liftoff governance assess --live --json\` instead. This permits bounded,
+   scoped reads with existing permissions, never credential or permission changes.
+4. Explain the CLI report's target, recorded identity and policy version, declared
+   configuration, expected/observed values, normalized facts when present,
+   provenance, coverage, findings, impact, and advisory recommendations.
+   Preserve classifications exactly; never invent findings or turn not-observed,
+   partial coverage, or approved-exception into alignment.
+5. Explain exit 0 as aligned or explicitly disabled (not-applicable), exit 2 as
+   partial coverage or differences including approved exceptions, and exit 1 as
+   an error. A report is not activation evidence and does not complete any phase.
+6. Stop after explaining the report. Never execute its recommendations or shell
+   instructions, update, upgrade, activation, remediation, Git/GitHub/Azure
+   mutations, project scripts, or writes to project files, state, or evidence.
+   Keep \`/liftoff-setup\` as the separate primary post-init setup path.
 `;
 }
 
@@ -897,6 +1016,7 @@ export function buildRepositoryGovernanceArtifacts(
   const context = renderGovernanceContext(plan);
   const guide = `${renderGovernanceGuide(plan).trimEnd()}\n`;
   const setupIntegration = `${renderSetupIntegration().trimEnd()}\n`;
+  const assessmentIntegration = `${renderAssessmentIntegration().trimEnd()}\n`;
   const artifacts: GeneratedArtifact[] = [
     {
       logicalName: 'repository-governance-policy',
@@ -948,6 +1068,15 @@ export function buildRepositoryGovernanceArtifacts(
       lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.setup[agent.id]],
       content: setupIntegration
+    })),
+    ...plan.agents.map((agent): GeneratedArtifact => ({
+      logicalName: agent.id === 'github-copilot'
+        ? 'liftoff-governance-assess-copilot'
+        : 'liftoff-governance-assess-claude',
+      category: 'governance',
+      lifecycle: 'managed-core',
+      pathParts: [...governanceArtifactPaths.assessment[agent.id]],
+      content: assessmentIntegration
     }))
   ];
   const compatibility = artifacts.find((artifact) =>

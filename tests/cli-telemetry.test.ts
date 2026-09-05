@@ -13,6 +13,18 @@ function telemetryHooks(): CliTelemetryHooks & {
 }
 
 describe('CLI telemetry integration', () => {
+  it.for([[], ['--live'], ['--help']])('does not run telemetry or disclosure for assessment %s', async (flags) => {
+    const hooks = telemetryHooks();
+    const code = await runCli({
+      argv: ['governance', 'assess', ...flags],
+      stdout: new CaptureStream(), stderr: new CaptureStream(), telemetry: hooks,
+      execute: async () => 2
+    });
+    expect(code).toBe(2);
+    expect(hooks.beforeCommand).not.toHaveBeenCalled();
+    expect(hooks.afterCommand).not.toHaveBeenCalled();
+  });
+
   it('runs disclosure before execution and tracks the original success', async () => {
     const calls: string[] = [];
     const hooks: CliTelemetryHooks = {

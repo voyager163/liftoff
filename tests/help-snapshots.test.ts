@@ -45,6 +45,17 @@ describe('complete help screens', () => {
         }
       });
     }
+
+    it(`snapshots ${layout.name} governance assessment help`, async () => {
+      const result = await screen(['governance', 'assess', '--help'], layout.columns);
+      expect(result.err).toBe('');
+      expect(result.out).toContain('liftoff governance assess [project-path] [--json] [--live]');
+      expect(result.out).not.toContain('--execute');
+      expect(result.out).toMatchSnapshot();
+      if (layout.name === 'rich') {
+        expect(result.out.split('\n').every((line) => visibleLength(line) <= layout.columns)).toBe(true);
+      }
+    });
   }
 });
 

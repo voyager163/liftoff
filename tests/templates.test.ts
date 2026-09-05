@@ -569,28 +569,89 @@ describe('templates and filesystem', () => {
   });
 
   it('renders generated README setup guidance differently when governance is disabled', () => {
-    const governed = buildArtifacts(buildProjectPlan({
-      projectName: 'Governed App',
-      projectType: 'standard',
-      apiStack: 'python',
-      cloud: 'azure',
-      includeFrontend: false
-    }, { requireProjectName: true })).find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
-    const disabled = buildArtifacts(buildProjectPlan({
-      projectName: 'Ungoverned App',
-      projectType: 'standard',
-      apiStack: 'python',
-      cloud: 'azure',
-      includeFrontend: false,
-      governanceProfile: 'none'
-    }, { requireProjectName: true })).find((artifact) => artifact.pathParts.join('/') === 'README.md')?.content ?? '';
+    const plans = [
+      {
+        governed: buildProjectPlan({
+          projectName: 'Governed Standard App',
+          projectType: 'standard',
+          apiStack: 'python',
+          cloud: 'azure',
+          environments: ['prod'],
+          includeFrontend: false
+        }, { requireProjectName: true }),
+        disabled: buildProjectPlan({
+          projectName: 'Ungoverned Standard App',
+          projectType: 'standard',
+          apiStack: 'python',
+          cloud: 'azure',
+          environments: ['prod'],
+          includeFrontend: false,
+          governanceProfile: 'none'
+        }, { requireProjectName: true })
+      },
+      {
+        governed: buildProjectPlan({
+          projectName: 'Governed GenAI App',
+          pattern: 'prompt',
+          cloud: 'azure',
+          environments: ['prod'],
+          includeFrontend: false
+        }, { requireProjectName: true }),
+        disabled: buildProjectPlan({
+          projectName: 'Ungoverned GenAI App',
+          pattern: 'prompt',
+          cloud: 'azure',
+          environments: ['prod'],
+          includeFrontend: false,
+          governanceProfile: 'none'
+        }, { requireProjectName: true })
+      }
+    ];
+    const contentAt = (artifacts: ReturnType<typeof buildArtifacts>, ...pathParts: string[]) =>
+      artifacts.find((artifact) =>
+        path.join(...artifact.pathParts) === path.join(...pathParts)
+      )?.content ?? '';
 
-    expect(governed).toContain('Run `/liftoff-setup` from a selected agent');
-    expect(governed).toContain('Commit and push are separate approvals');
-    expect(disabled).toContain('Repository governance is disabled');
-    expect(disabled).toContain('there is no `/liftoff-setup` integration');
-    expect(disabled).not.toContain('Run `/liftoff-setup` from a selected agent');
-    expect(disabled).toContain('strict OpenSpec validation');
+    for (const plan of plans) {
+      const governedArtifacts = buildArtifacts(plan.governed);
+      const disabledArtifacts = buildArtifacts(plan.disabled);
+      const governed = contentAt(governedArtifacts, 'README.md');
+      const governedTofu = contentAt(
+        governedArtifacts,
+        'infrastructure',
+        'opentofu',
+        'azure',
+        'README.md'
+      );
+      const disabled = contentAt(disabledArtifacts, 'README.md');
+      const disabledTofu = contentAt(
+        disabledArtifacts,
+        'infrastructure',
+        'opentofu',
+        'azure',
+        'README.md'
+      );
+
+      expect(governed).toContain('Run `/liftoff-setup` from a selected agent');
+      expect(governed).toContain('Commit and push are separate approvals');
+      expect(governed).toContain('separately approved `application-foundation`');
+      expect(governed).toContain('An unavailable production adapter remains a');
+      expect(governedTofu).toContain('## Governance Gate');
+      expect(governedTofu).toContain('separately approved `application-foundation`');
+      expect(governedTofu).toContain('An unavailable production adapter remains a blocker');
+
+      expect(disabled).toContain('Repository governance is disabled');
+      expect(disabled).toContain('there is no `/liftoff-setup` integration');
+      expect(disabled).not.toContain('Run `/liftoff-setup` from a selected agent');
+      expect(disabled).not.toContain('separately approved `application-foundation`');
+      expect(disabled).toContain('strict OpenSpec validation');
+      expect(disabledTofu).not.toContain('## Governance Gate');
+
+      for (const readme of [governed, governedTofu, disabled, disabledTofu]) {
+        expect(readme).toContain('environments/prod.tfvars');
+        expect(readme).not.toContain('environments/dev.tfvars');
+      }
+    }
   });
 
   it('documents both Spec Kit agents and the selected default integration', () => {

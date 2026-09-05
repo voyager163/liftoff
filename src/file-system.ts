@@ -258,6 +258,10 @@ export async function loadManifest(projectRoot: string): Promise<LiftoffManifest
     throw new FileSystemError(`Unable to read liftoff.manifest.json: ${errorMessage(error)}`);
   }
 
+  return parseManifest(raw);
+}
+
+export function parseManifest(raw: unknown): LiftoffManifest {
   if (!isRecord(raw)) {
     throw new FileSystemError('Manifest root must be a JSON object.');
   }
@@ -399,7 +403,7 @@ function optionalString(record: Record<string, unknown>, key: string, scope: str
   return value;
 }
 
-function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
+export function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
   if (!isRecord(project)) {
     throw new FileSystemError('Manifest.project must be a JSON object.');
   }
@@ -708,7 +712,7 @@ function normalizeV4ManifestWorkload(
     : { kind, ...common };
 }
 
-function normalizeManifestFramework(
+export function normalizeManifestFramework(
   value: unknown,
   artifactVersion: number,
   project: LiftoffManifest['project']
@@ -1068,8 +1072,24 @@ const governanceLogicalPaths = new Map<string, readonly string[]>([
   [
     'liftoff-setup-claude',
     governanceArtifactPaths.setup.claude
+  ],
+  [
+    'liftoff-governance-assess-copilot',
+    governanceArtifactPaths.assessment['github-copilot']
+  ],
+  [
+    'liftoff-governance-assess-claude',
+    governanceArtifactPaths.assessment.claude
   ]
 ]);
+
+const assessmentLogicalNames = [
+  'liftoff-governance-assess-copilot',
+  'liftoff-governance-assess-claude'
+] as const;
+const preAssessmentManagedCoreLogicalNames = managedCoreLogicalNames.filter((logicalName) =>
+  !assessmentLogicalNames.some((assessment) => assessment === logicalName)
+);
 
 function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
   if ([...manifest.managedArtifacts, ...manifest.projectArtifacts].some((artifact) =>
@@ -1098,6 +1118,28 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
       );
     }
   }
+  const applicableAssessment: string[] = manifest.project.agents.map((agent) =>
+    agent === 'github-copilot'
+      ? 'liftoff-governance-assess-copilot'
+      : 'liftoff-governance-assess-claude'
+  );
+  for (const artifact of governanceArtifacts.filter((entry) =>
+    assessmentLogicalNames.some((logicalName) => entry.logicalName === logicalName)
+  )) {
+    if (!applicableAssessment.includes(artifact.logicalName)) {
+      throw new FileSystemError(
+        `Manifest governance contains inapplicable assessment integration ${artifact.logicalName}.`
+      );
+    }
+    if (
+      artifact.category !== 'governance' ||
+      artifact.pathParts.join('\0') !== governanceLogicalPaths.get(artifact.logicalName)!.join('\0')
+    ) {
+      throw new FileSystemError(
+        `Manifest governance artifact ${artifact.logicalName} has invalid identity.`
+      );
+    }
+  }
   if (manifest.governance.profile === 'unspecified') {
     return;
   }
@@ -1122,8 +1164,12 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
         : 'liftoff-setup-claude'
     )
   ];
+  const applicable = [...required, ...applicableAssessment];
+  const hasAssessmentInventory = governanceArtifacts.some((artifact) =>
+    applicableAssessment.includes(artifact.logicalName)
+  );
   const missing: string[] = [];
-  for (const logicalName of required) {
+  for (const logicalName of applicable) {
     const artifact = manifest.managedArtifacts.find((entry) =>
       entry.logicalName === logicalName
     );
@@ -1144,9 +1190,13 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
       );
     }
   }
-  if (manifest.governance.state === 'handoff-generated' && missing.length > 0) {
+  // Supported older complete inventories predate assessment integrations.
+  const missingRequired = missing.filter((logicalName) =>
+    hasAssessmentInventory || required.includes(logicalName)
+  );
+  if (manifest.governance.state === 'handoff-generated' && missingRequired.length > 0) {
     throw new FileSystemError(
-      `Enabled manifest governance is missing artifact ${missing[0]}.`
+      `Enabled manifest governance is missing artifact ${missingRequired[0]}.`
     );
   }
   if (
@@ -1159,9 +1209,12 @@ function validateGovernanceArtifactIdentity(manifest: LiftoffManifest): void {
     );
   }
   for (const artifact of governanceArtifacts) {
-    if (!required.includes(artifact.logicalName)) {
+    if (!applicable.includes(artifact.logicalName)) {
+      const integration = assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
+        ? 'assessment'
+        : 'setup';
       throw new FileSystemError(
-        `Manifest governance contains inapplicable setup integration ${artifact.logicalName}.`
+        `Manifest governance contains inapplicable ${integration} integration ${artifact.logicalName}.`
       );
     }
   }
@@ -1232,18 +1285,28 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
             lifecycle: 'managed-core',
             contentHashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
           }));
+        const compatibility = validateGovernanceCompatibilityMetadata(
+          JSON.parse(bytes.toString('utf8')) as unknown
+        );
+        const predatesAssessment = !currentManagedArtifacts.some((artifact) =>
+          assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
+        ) && compatibility.managedCore.logicalNameAllowlist.join('\0') ===
+          preAssessmentManagedCoreLogicalNames.join('\0');
+        const logicalNameAllowlist = predatesAssessment
+          ? preAssessmentManagedCoreLogicalNames
+          : managedCoreLogicalNames;
         validateGovernanceCompatibilityMetadata(
-          JSON.parse(bytes.toString('utf8')) as unknown,
+          compatibility,
           hasRetiredManagedArtifacts
             ? undefined
             : manifest.governance.state === 'handoff-generated'
             ? {
-                logicalNameAllowlist: managedCoreLogicalNames,
+                logicalNameAllowlist,
                 pathAllowlist: currentManagedArtifacts.map((artifact) => artifact.pathParts),
                 inventory: expectedInventory
               }
             : {
-                logicalNameAllowlist: managedCoreLogicalNames
+                logicalNameAllowlist
               }
         );
       }

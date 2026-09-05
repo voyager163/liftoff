@@ -7,6 +7,10 @@ import {
   applyProjectFileTransaction,
   deleteProjectFile,
   loadManifest,
+  manifestHadFilteredLegacyNonDurableOwnership,
+  normalizeManifestFramework,
+  normalizeManifestProject,
+  parseManifest,
   resolveProjectPath,
   validateArtifactPathParts,
   validateGeneratedProject,
@@ -16,6 +20,7 @@ import {
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
+import { governanceArtifactPaths } from '../src/repository-governance.js';
 import {
   currentActivationIdentity,
   createActivationIdentity
@@ -163,6 +168,79 @@ async function v7ManifestRoot(
 }
 
 describe('manifest validation', () => {
+  it.each([2, 3, 4, 5, 6, 7])('purely parses v%s with exactly the strict loader semantics', async (version) => {
+    const root = version < 5
+      ? await namedManifestRoot(version === 4 ? 'manifest-v4-standard.json' : `manifest-v${version}.json`)
+      : version === 5
+        ? await v5ManifestRoot()
+        : await v7ManifestRoot({}, (manifest) => {
+            if (version === 6) {
+              manifest.artifactVersion = 6;
+              delete (manifest.governance as Record<string, unknown>).activationIdentity;
+            }
+          });
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const content = await readFile(manifestPath, 'utf8');
+    const raw = JSON.parse(content);
+    const original = structuredClone(raw);
+    const loaded = await loadManifest(root);
+    const parsed = parseManifest(raw);
+    expect(parsed).toEqual(loaded);
+    expect(raw).toEqual(original);
+    expect(manifestHadFilteredLegacyNonDurableOwnership(parsed))
+      .toBe(manifestHadFilteredLegacyNonDurableOwnership(loaded));
+    if (version < 7) {
+      expect(parsed.governance).not.toHaveProperty('activationIdentity');
+    }
+    await rm(manifestPath);
+    expect(parseManifest(raw)).toEqual(parsed);
+    await expect(loadManifest(root)).rejects.toThrow(/Unable to read liftoff.manifest.json/);
+  });
+
+  it.each([
+    ['unsafe managed path', (value: any) => {
+      value.managedArtifacts[0].pathParts = ['..', 'outside.json'];
+    }, /unsafe path part/],
+    ['unsupported activation tuple', (value: any) => {
+      value.governance.activationIdentity.phaseGraphHash = 'f'.repeat(64);
+    }, /explicit compatibility map|recognized graph hashes/],
+    ['future manifest schema', (value: any) => {
+      value.artifactVersion = 8;
+    }, /Unsupported manifest artifactVersion/],
+    ['project-owned managed name', (value: any) => {
+      value.managedArtifacts[0].logicalName = 'project-owned-workflow';
+    }, /not an explicit managed-core logical name/]
+  ])('keeps pure parsing and the mutation loader fail-closed for %s', async (_name, mutate, expected) => {
+    const root = await v7ManifestRoot({}, mutate);
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const before = await readFile(manifestPath, 'utf8');
+    const raw = JSON.parse(before);
+    const original = structuredClone(raw);
+    expect(() => parseManifest(raw)).toThrow(expected);
+    await expect(loadManifest(root)).rejects.toThrow(expected);
+    expect(raw).toEqual(original);
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
+  });
+
+  it('exports strict project and framework header normalizers without an activation gate', async () => {
+    const root = await v7ManifestRoot();
+    const raw = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    raw.governance.activationIdentity.phaseGraphHash = 'f'.repeat(64);
+    const project = normalizeManifestProject(raw.project, raw.artifactVersion);
+    const framework = normalizeManifestFramework(raw.framework, raw.artifactVersion, project);
+    expect(project.name).toBe('Manifest V7');
+    expect(framework).toMatchObject({ state: 'initialized', adapter: 'openspec' });
+    expect(() => parseManifest(raw)).toThrow(/explicit compatibility map|recognized graph hashes/);
+    expect(() => normalizeManifestProject({ ...raw.project, unexpected: true }, 7))
+      .toThrow(/unexpected/);
+    expect(() => normalizeManifestFramework({ ...raw.framework, unexpected: true }, 7, project))
+      .toThrow(/unexpected/);
+    expect(() => normalizeManifestFramework({ ...raw.framework, contractVersion: 'latest' }, 7, project))
+      .toThrow(/valid semantic version/);
+    expect(() => normalizeManifestFramework({ ...raw.framework, adapter: 'spec-kit' }, 7, project))
+      .toThrow(/must match/);
+  });
+
   it('loads the supported frozen manifest', async () => {
     const root = await manifestRoot();
     const manifest = await loadManifest(root);
@@ -569,7 +647,7 @@ describe('manifest validation', () => {
     expect(governed.governance.activationIdentity).toEqual(currentActivationIdentity);
     expect(governed.managedArtifacts.filter((artifact) =>
       artifact.category === 'governance'
-    )).toHaveLength(7);
+    )).toHaveLength(8);
     expect(governed.managedArtifacts.some((artifact) =>
       artifact.logicalName === retiredAlias.logicalName ||
       artifact.pathParts.join('/').includes('liftoff-repository-governance')
@@ -578,6 +656,119 @@ describe('manifest validation', () => {
     const disabled = await loadManifest(await v7ManifestRoot({ governanceProfile: 'none' }));
     expect(disabled.governance).toEqual({ profile: 'none', state: 'disabled' });
     expect('activationIdentity' in disabled.governance).toBe(false);
+  });
+
+  it.each([5, 6, 7])('loads a supported v%s inventory from before assessment integrations', async (version) => {
+    const root = await v7ManifestRoot({ agents: ['copilot', 'claude'] }, (manifest) => {
+      manifest.artifactVersion = version;
+      const prior = (manifest.managedArtifacts as Array<Record<string, unknown>>)
+        .filter((artifact) => !String(artifact.logicalName).startsWith('liftoff-governance-assess-'));
+      if (version < 7) {
+        delete (manifest.governance as Record<string, unknown>).activationIdentity;
+      }
+      if (version === 5) {
+        manifest.artifacts = [
+          ...prior,
+          ...(manifest.projectArtifacts as Array<Record<string, unknown>>).map((artifact) => ({
+            logicalName: artifact.logicalName,
+            category: artifact.category,
+            pathParts: artifact.pathParts,
+            contentHash: artifact.generationHash
+          }))
+        ];
+        delete manifest.managedArtifacts;
+        delete manifest.projectArtifacts;
+      } else {
+        manifest.managedArtifacts = prior;
+      }
+    });
+    const before = await readFile(path.join(root, 'liftoff.manifest.json'));
+    const manifest = await loadManifest(root);
+    expect(manifest.artifactVersion).toBe(version);
+    expect(manifest.governance.state).toBe('handoff-generated');
+    expect(manifest.managedArtifacts).toHaveLength(8);
+    expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(before);
+  });
+
+  it('loads a partial assessment adoption without inventing missing ownership', async () => {
+    const root = await v7ManifestRoot({}, (manifest) => {
+      (manifest.governance as Record<string, unknown>).state = 'handoff-partial';
+      manifest.managedArtifacts = (manifest.managedArtifacts as Array<Record<string, unknown>>)
+        .filter((artifact) => artifact.logicalName !== 'liftoff-governance-assess-copilot');
+    });
+    const manifest = await loadManifest(root);
+    expect(manifest.governance.state).toBe('handoff-partial');
+    expect(manifest.managedArtifacts.some((artifact) =>
+      artifact.logicalName === 'liftoff-governance-assess-copilot'
+    )).toBe(false);
+  });
+
+  it.each([
+    ['wrong path', { pathParts: ['.github', 'prompts', 'neighbor.prompt.md'] }, /invalid identity/],
+    ['wrong agent path', { pathParts: [...governanceArtifactPaths.assessment.claude] }, /invalid identity/],
+    ['wrong category', { category: 'documentation' }, /invalid identity/],
+    ['unselected agent', {
+      logicalName: 'liftoff-governance-assess-claude',
+      pathParts: [...governanceArtifactPaths.assessment.claude]
+    }, /inapplicable assessment integration/],
+    ['unknown logical name', { logicalName: 'liftoff-governance-assess-other' }, /not an explicit managed-core/],
+    ['traversal', { pathParts: ['.github', 'prompts', '..', 'outside.md'] }, /unsafe path part/],
+    ['embedded separator', { pathParts: ['.github', 'prompts/neighbor.prompt.md'] }, /unsafe path part/],
+    ['drive-qualified', { pathParts: ['C:', 'neighbor.prompt.md'] }, /unsafe path part/],
+    ['UNC', { pathParts: ['\\\\host\\share', 'neighbor.prompt.md'] }, /unsafe path part/]
+  ])('rejects assessment authority with %s', async (_name, overrides, expected) => {
+    const root = await v7ManifestRoot({}, (manifest) => {
+      const entry = (manifest.managedArtifacts as Array<Record<string, unknown>>).find((artifact) =>
+        artifact.logicalName === 'liftoff-governance-assess-copilot'
+      )!;
+      Object.assign(entry, overrides);
+    });
+    const before = await readFile(path.join(root, 'liftoff.manifest.json'));
+    await expect(loadManifest(root)).rejects.toThrow(expected);
+    expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(before);
+  });
+
+  it('rejects assessment ownership in project provenance or a disabled profile', async () => {
+    await expect(loadManifest(await v7ManifestRoot({}, (manifest) => {
+      const entries = manifest.managedArtifacts as Array<Record<string, unknown>>;
+      const index = entries.findIndex((artifact) => artifact.logicalName === 'liftoff-governance-assess-copilot');
+      const [entry] = entries.splice(index, 1);
+      (manifest.projectArtifacts as Array<Record<string, unknown>>).push({
+        logicalName: entry.logicalName,
+        category: entry.category,
+        pathParts: entry.pathParts,
+        generatedBy: '0.10.3',
+        generationHash: entry.contentHash,
+        provisioningGroup: 'base'
+      });
+    }))).rejects.toThrow(/cannot contain a managed-core logical name/);
+    await expect(loadManifest(await v7ManifestRoot({ governanceProfile: 'none' }, (manifest) => {
+      (manifest.managedArtifacts as Array<Record<string, unknown>>).push({
+        logicalName: 'liftoff-governance-assess-copilot',
+        category: 'governance',
+        pathParts: [...governanceArtifactPaths.assessment['github-copilot']],
+        contentHash: validHash
+      });
+    }))).rejects.toThrow(/Disabled manifest governance cannot own/);
+  });
+
+  it('requires all selected assessment entries once a complete inventory records assessment', async () => {
+    await expect(loadManifest(await v7ManifestRoot({ agents: ['copilot', 'claude'] }, (manifest) => {
+      manifest.managedArtifacts = (manifest.managedArtifacts as Array<Record<string, unknown>>)
+        .filter((artifact) => artifact.logicalName !== 'liftoff-governance-assess-claude');
+    }))).rejects.toThrow(/missing artifact liftoff-governance-assess-claude/);
+  });
+
+  it('does not infer assessment agent authority from a legacy unselected manifest', async () => {
+    await expect(loadManifest(await manifestRoot((manifest) => {
+      const entry = {
+        logicalName: 'liftoff-governance-assess-copilot',
+        category: 'governance',
+        pathParts: [...governanceArtifactPaths.assessment['github-copilot']],
+        contentHash: validHash
+      };
+      manifest.artifacts.push(entry);
+    }))).rejects.toThrow(/inapplicable assessment integration/);
   });
 
   it('loads exact retired alias identities only as a migration bridge', async () => {

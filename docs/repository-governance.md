@@ -18,6 +18,13 @@ cd my-project
 deterministic Liftoff governance engine, user-owned activation state, and
 read-only Phase 0 discovery.
 
+**Current activation limits:** local bootstrap is implemented, but the CLI does
+not yet wire every production phase executor or expose approval persistence
+and secure credential enrollment through the command-only setup flow. Missing
+capabilities stop with a blocker; they are not completed by assessment or by
+hand-editing evidence. See the [developer follow-up plan](../DEVELOPER.md#activation-completeness-and-separate-follow-up-plan)
+for the remaining activation work.
+
 ## Managed files and user-owned state
 
 Enabled governance adds managed-core files:
@@ -31,6 +38,8 @@ Enabled governance adds managed-core files:
 .liftoff/governance/credential-policy.schema.json
 .github/prompts/liftoff-setup.prompt.md                # Copilot selected
 .claude/commands/liftoff-setup.md                      # Claude selected
+.github/prompts/liftoff-governance-assess.prompt.md    # Copilot selected
+.claude/commands/liftoff-governance-assess.md           # Claude selected
 ```
 
 Older generated setup aliases are retired. Use `liftoff update --force` after
@@ -51,6 +60,97 @@ The complete policy is packaged at
 [`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
 Policy version 6 treats numbered policy sections as capability chapters, not
 execution order. The managed phase graph is the sole execution-order authority.
+
+## Read-only governance assessment
+
+`/liftoff-governance-assess` is separate from `/liftoff-setup`, which remains the
+primary post-init path. Both OpenSpec and Spec Kit receive only their selected
+agents' assessment integrations when governance is enabled. Initialization never
+runs assessment. It needs no commit, push, activation, or cloud credentials:
+
+```bash
+liftoff governance assess --json
+```
+
+The pinned target is the **installed CLI** and its packaged policy, activation
+identity, phase graph, and assessment control catalog, never registry latest.
+The report compares four distinct layers: target, recorded project baseline,
+declared project configuration, and observed enforcement. Each finding includes
+expected and observed values, scope, provenance and capture metadata, impact,
+and ownership-aware advisory remediation. Matching CLI versions or generated
+hashes alone do not prove alignment.
+The project policy version is shown when available. JSON observations may also
+retain optional normalized `facts` alongside evaluator predicate values so a
+predicate result does not hide observed configuration. Raw provider payloads are
+not retained.
+
+The default is **local-only with no network access** or registry lookup.
+All assessment invocations, including `--live` and `--help`, skip telemetry and
+disclosure entirely. Local Git reads inspect only repository root, HEAD, and
+origin metadata, never `git status`, which can execute clean filters.
+Applicable live proof stays unobserved. Only an explicit live-read request
+allows the agent wrapper to substitute:
+
+```bash
+liftoff governance assess --live --json
+```
+
+Live mode performs bounded read-only GitHub/Azure metadata access with existing
+permissions and verified repository/environment/resource bindings. Runner
+organization metadata is limited to already-bound assignment IDs. Azure reads
+do not guess a default subscription or search unrelated resources. Neither mode
+enrolls credentials, expands permissions, registers providers, reads state blobs,
+executes project code, runs scanners or infrastructure tools, or changes local
+or remote configuration.
+Azure scope and evidence-backed applicability require a current active-baseline
+and referenced, validated saved-plan/evidence receipts. Placeholder digests,
+future-dated approvals, and inferred bindings cannot establish proof. Missing
+bindings remain `not-observed`. Do not fabricate or hand-edit activation state,
+baselines, receipts, or evidence to manufacture alignment; use separately
+approved setup or governance work to obtain trustworthy proof.
+
+| Finding | Meaning |
+| --- | --- |
+| `aligned` | All required proof layers are available, fresh, and match the target |
+| `outdated` | A recognized older baseline or recorded managed artifact differs from the target |
+| `missing` | Complete authoritative observation proves an applicable requirement absent |
+| `conflicting` | Known settings contradict the target, or declared and observed layers disagree |
+| `approved-exception` | An exact, catalog-permitted, valid, unexpired approval covers the difference |
+| `inapplicable` | Validated workload facts establish that the control does not apply |
+| `not-observed` | Applicability or required proof is unknown, stale, denied, unsupported, or incomplete |
+
+Coverage counts unknown applicability, unobserved live proof, and unsupported
+evaluators explicitly. A local workflow declaration is not proof that its check
+is enforced. Denied access, masked 404s, incomplete pagination, and timeouts are
+not proof of absence. Single-maintainer expectations follow the canonical
+zero-required-reviewer policy rather than generic peer-review advice.
+Approved exceptions remain differences; free-form or expired claims cannot
+waive controls or hide coverage gaps.
+
+Human and schema-v1 JSON reports share `readOnly: true`, target and project
+identities, findings, diagnostics, provenance, and coverage. Exit **0** means
+fully observed `aligned` or explicitly disabled `not-applicable` governance
+(not an alignment claim). Exit **2** means `partial` coverage or `differences`,
+including approved exceptions. Exit **1** means `error`: invalid/unsafe input
+or an invalid packaged catalog prevents a trustworthy report. Local-only runs
+normally return partial coverage. Exit 2 is advisory, not proof that governance
+is broken or permission to remediate.
+
+Reports go to stdout only, never activation state or evidence. Assessment cannot
+complete Phase 0, satisfy an approval gate, or advance any phase. The wrapper
+explains the CLI's classifications without inventing findings or executing
+recommendations. Neither installing the integration nor running it activates,
+updates, upgrades, or migrates the project.
+
+Older supported inventories without assessment entries remain readable. Use
+`liftoff update --check`, then normal guarded `liftoff update` to install the
+selected integrations. Unowned conflicting destinations remain unowned even with
+`--force`; only already-managed modifications follow reviewed force rules.
+Unsupported activation tuples can still receive safe identity and coverage
+diagnostics, but no migration is available without an explicit supported mapping.
+Force cannot bypass compatibility or overwrite project-owned configuration.
+A future governance upgrade must reobserve facts and obtain its own reviewed
+plan and approvals; an assessment report supplies no mutation authority.
 
 ## Canonical phase graph
 
@@ -110,6 +210,14 @@ Absent components are recorded as inapplicable. The baseline never starts
 containers, runs a live `tofu plan` or `tofu apply`, deploys, mutates GitHub, or
 requires cloud credentials. A failed check keeps the seed active; rerun
 `/liftoff-setup` after remediation and verified phases are not repeated.
+
+If the seed was already archived before setup began, it stays archived.
+Setup still runs the entire applicable local baseline, but strict OpenSpec
+validation targets the synchronized spec set with `openspec validate --all
+--strict`, not the inactive bootstrap change name. The expected main capability
+must exist with a concrete Purpose. A failed archived baseline can be retried
+after repair: `resume` reports readiness without rewriting stored state, and
+`apply-next --json --execute` reruns the checks before saving verified evidence.
 
 ## Questions and approval envelopes
 
@@ -172,7 +280,7 @@ Multiple overlapping changes require a schema-valid supersession or archive
 record before any phase advances.
 
 Managed updates install new policy, graph, schema, compatibility metadata, and
-setup integrations without touching user-owned state. Forced update can remove
+setup and assessment integrations without touching user-owned state. Forced update can remove
 exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
 reports `reconciliation-required`, invalidates only affected descendants, and
@@ -219,7 +327,16 @@ evidence-ready, approved phase. Here, approved means its approval status is
 fail before project discovery or mutation. Verification reports consistency
 separately from setup completion: a valid not-started or in-progress state may
 have `ok: true` and `verificationStatus: "consistent"` while `complete` remains
-false.
+false. An intact bootstrap seed awaiting baseline verification or archive is
+also incomplete rather than inconsistent. Missing or overlapping seeds, or an
+active seed contradicting recorded archive completion, still fail verification.
+
+Apply-next reports `selectedPhase` for the attempted transition and
+`executedPhase` only when execution succeeds (otherwise `null`). Its legacy
+`nextReadyPhase` field is not post-transition readiness; use the subsequent
+status or verify response for the next phase. OpenSpec failures include bounded
+diagnostics with terminal controls removed; credential-shaped output is
+withheld rather than copied into state or command output.
 
 ## Existing projects
 

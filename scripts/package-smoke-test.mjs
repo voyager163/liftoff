@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { mkdtemp, mkdir, readFile, readdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -91,6 +92,22 @@ function resolveInstalledEntrypoint(prefix) {
   return path.join(modulesDirectory, '@msn-control', 'liftoff', 'dist', 'cli.js');
 }
 
+async function treeDigest(root) {
+  const digest = createHash('sha256');
+  async function visit(parts) {
+    const entries = await readdir(path.join(root, ...parts), { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
+      const child = [...parts, entry.name];
+      digest.update(child.join('/'));
+      if (entry.isDirectory()) await visit(child);
+      else if (entry.isFile()) digest.update(await readFile(path.join(root, ...child)));
+      else throw new Error('Unexpected non-regular smoke fixture entry.');
+    }
+  }
+  await visit([]);
+  return digest.digest('hex');
+}
+
 try {
   const packDirectory = path.join(tempRoot, 'pack');
   const installPrefix = path.join(tempRoot, 'global');
@@ -141,12 +158,16 @@ try {
   assertPackageContains(packResult, 'dist/power-apps-templates.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
+  assertPackageContains(packResult, 'dist/governance-assessment/engine.js');
+  assertPackageContains(packResult, 'dist/governance-assessment/live.js');
+  assertPackageContains(packResult, 'dist/governance-assessment/catalog.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
   assertPackageContains(packResult, 'assets/supported-stack.json');
   assertPackageContains(
     packResult,
     'assets/governance/single-maintainer-gitflow/policy.md'
   );
+  assertPackageContains(packResult, 'assets/governance/single-maintainer-gitflow/assessment-controls.json');
   assertPackageContains(packResult, 'assets/locks/node-backend/package.json');
   assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
   assertPackageContains(packResult, 'assets/locks/frontend/package.json');
@@ -420,6 +441,49 @@ try {
   });
   if (!badSubcommand.stderr.includes('Unsupported dev subcommand') || badSubcommand.stdout.includes('docker compose')) {
     throw new Error('Installed liftoff fell back from an unsupported dev subcommand');
+  }
+
+  const assessHelp = run(process.execPath, [liftoffEntrypoint, 'governance', 'assess', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!assessHelp.stdout.includes('assess') || !assessHelp.stdout.includes('--live')) {
+    throw new Error('Installed governance assessment help does not expose local/live scope.');
+  }
+  const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
+  const { buildArtifacts: installedArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
+  const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const assessmentProject = path.join(tempRoot, 'assessment project');
+  await installedWrite(assessmentProject, installedArtifacts(installedPlan({
+    projectName: 'Assessment Smoke', projectType: 'standard', apiStack: 'go',
+    cloud: 'azure', region: 'eastus', specWorkflow: 'openspec', agents: ['copilot', 'claude'],
+    includeFrontend: false
+  }, { requireProjectName: true })));
+  const assessmentBefore = await treeDigest(assessmentProject);
+  for (const flags of [[], ['--live']]) {
+    const assessment = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'assess', '--json', ...flags], {
+      cwd: assessmentProject, env: npmEnv
+    });
+    const report = JSON.parse(assessment.stdout);
+    if (assessment.status !== 2 || report.schemaVersion !== 1 || report.readOnly !== true ||
+        report.outcome !== 'partial' || report.target?.cliVersion !== packResult.version ||
+        report.mode !== (flags.length ? 'live' : 'local') || report.coverage?.unobserved < 1) {
+      throw new Error(`Installed assessment returned an invalid coverage report: ${assessment.stdout}`);
+    }
+  }
+  if (await treeDigest(assessmentProject) !== assessmentBefore) {
+    throw new Error('Installed assessment changed project files.');
+  }
+  const governanceRoot = path.join(assessmentProject, 'governance');
+  await mkdir(governanceRoot, { recursive: true });
+  await writeFile(path.join(governanceRoot, 'activation-state.json'), JSON.stringify({ schemaVersion: 99 }), 'utf8');
+  const unsupportedBefore = await treeDigest(assessmentProject);
+  const unsupported = runFailure(process.execPath, [liftoffEntrypoint, 'governance', 'assess', '--json'], {
+    cwd: assessmentProject, env: npmEnv
+  });
+  const unsupportedReport = JSON.parse(unsupported.stdout);
+  if (unsupported.status !== 2 || unsupportedReport.projectIdentity?.stateSource !== 'unsupported' ||
+      await treeDigest(assessmentProject) !== unsupportedBefore) {
+    throw new Error('Installed assessment did not preserve and explain unsupported activation state.');
   }
 
   console.log(`Package smoke test passed for ${packResult.name}@${packResult.version}`);

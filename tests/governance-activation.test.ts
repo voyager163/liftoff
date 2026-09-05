@@ -311,6 +311,41 @@ describe('canonical graph hashes and release integrity', () => {
 });
 
 describe('phase readiness calculation', () => {
+  it('limits archived baseline retries to blocked seed verification and preserves evidence gates', () => {
+    const state = validState();
+    state.phases['seed-verified'] = {
+      ...state.phases['seed-verified'],
+      state: 'blocked',
+      blockers: ['A prior baseline command failed.']
+    };
+    const input = { state, approvals: [], evidence: [evidence('seed-valid')], now };
+    expect(calculatePhaseReadiness(input).phases['seed-verified'].state).toBe('blocked');
+    expect(calculatePhaseReadiness({
+      ...input, retryArchivedSeedBaseline: true
+    }).phases['seed-verified'].state).toBe('ready');
+    expect(state.phases['seed-verified'].state).toBe('blocked');
+
+    for (const records of [
+      [evidence('seed-valid', 'failed')],
+      [{ ...evidence('seed-valid'), inputDigest: '9'.repeat(64) }],
+      [evidence('seed-valid'), evidence('seed-verified', 'failed')]
+    ]) {
+      expect(calculatePhaseReadiness({
+        ...input, evidence: records, retryArchivedSeedBaseline: true
+      }).phases['seed-verified'].state).not.toBe('ready');
+    }
+    state.phases['seed-valid'] = {
+      ...state.phases['seed-valid'],
+      state: 'blocked',
+      blockers: ['Seed validation must be repaired separately.']
+    };
+    const stillBlocked = calculatePhaseReadiness({
+      ...input, evidence: [], retryArchivedSeedBaseline: true
+    });
+    expect(stillBlocked.phases['seed-valid'].state).toBe('blocked');
+    expect(stillBlocked.phases['seed-verified'].state).toBe('blocked');
+  });
+
   it('reports ready, blocked, verified, failed, inapplicable, and identity-incompatible states', () => {
     const initial = calculatePhaseReadiness({
       state: validState(),
