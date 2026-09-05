@@ -16,6 +16,7 @@ import type {
   CommandResult,
   RunCommandOptions
 } from '../src/process-runner.js';
+import { formatCommand } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
 
 class FrameworkFailureRunner extends ReadyInitRunner {
@@ -493,13 +494,17 @@ describe('commands', () => {
     });
     try {
       const infrastructureRoot = path.join(root, 'infrastructure', 'opentofu', 'azure');
+      const expectedPrefix = formatCommand({
+        executable: 'tofu',
+        args: [`-chdir=${infrastructureRoot.split(path.sep).join('/')}`]
+      });
       const defaultOutput = new CaptureStream();
       expect(await runCommand(parseArgs(['infra', 'plan']), {
         cwd: path.join(root, 'backend'),
         stdout: defaultOutput,
         stderr: new CaptureStream()
       })).toBe(0);
-      expect(defaultOutput.text()).toContain(`tofu -chdir=${infrastructureRoot}`);
+      expect(defaultOutput.text()).toContain(expectedPrefix);
       expect(defaultOutput.text()).toContain('-var-file=environments/staging.tfvars');
 
       const selectedOutput = new CaptureStream();
@@ -508,7 +513,7 @@ describe('commands', () => {
         stdout: selectedOutput,
         stderr: new CaptureStream()
       })).toBe(0);
-      expect(selectedOutput.text()).toContain(`tofu -chdir=${infrastructureRoot}`);
+      expect(selectedOutput.text()).toContain(expectedPrefix);
       expect(selectedOutput.text()).toContain('apply -var-file=environments/prod.tfvars');
 
       const rejectedError = new CaptureStream();
