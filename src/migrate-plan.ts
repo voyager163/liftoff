@@ -6,6 +6,9 @@ export interface SeededGroup {
   tasks: string[];
 }
 
+export const migrationChangeName = 'migrate-to-liftoff';
+export const migrationCapabilityId = 'legacy-source-adoption';
+
 const staged = (sourcePath: string) => `migration/legacy/${sourcePath}`;
 
 export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProjectPlan): SeededGroup[] {
@@ -94,7 +97,7 @@ export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProject
 }
 
 export function renderMigrationTasks(groups: SeededGroup[]): string {
-  const lines: string[] = ['# Tasks: migrate-to-liftoff', ''];
+  const lines: string[] = [`# Tasks: ${migrationChangeName}`, ''];
   groups.forEach((group, groupIndex) => {
     lines.push(`## ${groupIndex + 1}. ${group.title}`, '');
     group.tasks.forEach((task, taskIndex) => {
@@ -109,7 +112,7 @@ export function renderMigrationProposal(plan: ApiProjectPlan, inventory: LegacyI
   const typeSpecific = plan.workload === 'genai'
     ? `- Pattern: ${plan.pattern.label}`
     : `- API stack: ${plan.apiStack.label}`;
-  return `# Proposal: migrate-to-liftoff
+  return `# Proposal: ${migrationChangeName}
 
 ## Why
 
@@ -120,6 +123,16 @@ Adopt the existing project \`${inventory.rootName}\` into Liftoff governance by 
 - Legacy source is staged read-only at \`migration/legacy/\` (gitignored) and ported into the Liftoff layout task by task.
 - Dependencies, configuration, application code, data, tests, CI, and Docker assets move to their Liftoff locations.
 - The staging copy is deleted at the end; the original project directory is never modified.
+
+## Capabilities
+
+### New Capabilities
+
+- \`${migrationCapabilityId}\`: Controlled adoption of staged legacy source into the generated Liftoff project without changing the source project or inventing application behavior.
+
+### Modified Capabilities
+
+- None.
 
 ## Completion Gate
 
@@ -132,6 +145,67 @@ ${typeSpecific}
 - Cloud: ${plan.provider.label} (${plan.region.slug})
 - Frontend: ${plan.includeFrontend ? 'yes' : 'no'}
 - Spec workflow: ${plan.specWorkflow.label}
+`;
+}
+
+export function renderMigrationDesign(plan: ApiProjectPlan, inventory: LegacyInventory): string {
+  return `# Design: ${migrationChangeName}
+
+## Context
+
+The existing \`${inventory.rootName}\` source is copied into \`migration/legacy/\` inside a fresh ${plan.apiStack.label} Liftoff scaffold. The copy is reference material for reviewed adoption; the original source remains outside the mutation boundary.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- Reconcile dependencies, configuration, application code, tests, data migrations, CI, and container assets through explicit pending tasks.
+- Preserve observable legacy behavior while moving it into the generated project structure.
+- Keep the source project unchanged and remove the temporary staging copy only after verification.
+
+**Non-Goals:**
+
+- Infer or invent domain-specific requirements, prompts, routes, data models, authorization policy, or deployment behavior.
+- Automatically complete migration tasks or claim semantic equivalence before project tests and review pass.
+- Run cloud plan/apply operations or mutate GitHub as part of this change.
+
+## Decisions
+
+- Treat \`migration/legacy/\` as read-only reference input for task-by-task adoption.
+- Keep every generated adoption task unchecked until its implementation is reviewed.
+- Require project tests, \`liftoff validate\`, and \`liftoff doctor\` before archival.
+
+## Risks / Trade-offs
+
+- Static scanning cannot understand application semantics, so unrecognized material remains an explicit placement decision.
+- The generated scaffold provides structure, but behavior preservation still requires implementation review and tests.
+`;
+}
+
+export function renderMigrationSpec(): string {
+  return `## Purpose
+
+Define the controlled adoption boundary for staged legacy source so an existing application can move into a fresh Liftoff scaffold without changing the source project or inventing domain-specific behavior.
+
+## ADDED Requirements
+
+### Requirement: Legacy source adoption is explicit and behavior-preserving
+The migration change SHALL use the staged legacy copy only as reviewed reference input, SHALL keep source-adoption work pending until implemented, and SHALL preserve existing application behavior unless a separately reviewed requirement explicitly changes it.
+
+#### Scenario: Adoption work is generated
+- **WHEN** Liftoff creates the \`${migrationChangeName}\` change
+- **THEN** dependencies, configuration, application code, tests, data, CI, containers, and unrecognized material are represented by explicit pending tasks
+- **AND** no task is marked complete automatically
+
+#### Scenario: Domain behavior is not invented
+- **WHEN** the generated migration artifacts describe the adoption boundary
+- **THEN** they do not invent project-specific routes, prompts, data models, authorization rules, or deployment behavior
+- **AND** unresolved placement or behavior decisions remain pending for review
+
+#### Scenario: Migration completion is verified
+- **WHEN** the migration change is ready to archive
+- **THEN** its adoption tasks are complete and project tests, \`liftoff validate\`, and \`liftoff doctor\` have passed
+- **AND** the temporary \`migration/legacy/\` copy is removed while the original source remains unchanged
 `;
 }
 

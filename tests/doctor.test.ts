@@ -1,9 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { createServer } from 'node:http';
-import type { AddressInfo } from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import {
   createFixtureProject,
@@ -45,29 +43,12 @@ afterAll(() => {
 });
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   process.env.LIFTOFF_REGISTRY = unreachableRegistry;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
 });
-
-async function withRegistryVersion(version: string, callback: () => Promise<void>): Promise<void> {
-  const server = createServer((_request, response) => {
-    response.writeHead(200, { 'content-type': 'application/json' });
-    response.end(JSON.stringify({
-      name: '@msn-control/liftoff',
-      version
-    }));
-  });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address() as AddressInfo;
-  process.env.LIFTOFF_REGISTRY = `http://127.0.0.1:${address.port}`;
-  try {
-    await callback();
-  } finally {
-    await new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()));
-  }
-}
 
 async function fixtureProject(pattern = 'prompt'): Promise<string> {
   const projectRoot = await createFixtureProject({
@@ -129,6 +110,28 @@ class PluginDoctorRunner extends ReadyInitRunner {
   }
 }
 
+class TimedOutStackRunner extends ReadyInitRunner {
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (command.executable === 'node' && command.args[0] === '-e') {
+      this.calls.push(command);
+      this.callDetails.push({ command, options });
+      return {
+        command,
+        displayCommand: [command.executable, ...command.args].join(' '),
+        status: null,
+        signal: 'SIGKILL',
+        stdout: '',
+        stderr: '',
+        timedOut: true
+      };
+    }
+    return super.run(command, options);
+  }
+}
+
 async function run(
   args: string[],
   cwd: string,
@@ -145,6 +148,9 @@ async function run(
     stdout,
     stderr,
     runner,
+    stableReleaseLookup: async () => {
+      throw new Error('offline');
+    },
     ...context
   });
   return { code, out: stdout.text(), err: stderr.text() };
@@ -429,7 +435,7 @@ describe('doctor command', () => {
       severity: 'warn',
       state: 'handoff-partial',
       detail: expect.stringContaining('outside Liftoff ownership'),
-      remedy: expect.stringMatching(/update --check.*update --force/)
+      remedy: expect.stringMatching(/update --check.*resolve unowned destinations manually.*update --force.*only already-managed/)
     });
   }, 30_000);
 
@@ -437,24 +443,40 @@ describe('doctor command', () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-freshness-'));
     cleanups.push(elsewhere);
 
-    await withRegistryVersion(liftoffVersion, async () => {
-      const current = await run(['doctor'], elsewhere);
-      expect(current.out).toContain(`cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`);
-    });
+    const current = await run(
+      ['doctor'],
+      elsewhere,
+      new ReadyInitRunner(),
+      {
+        stableReleaseLookup: async () => ({
+          name: '@msn-control/liftoff',
+          version: liftoffVersion
+        })
+      }
+    );
+    expect(current.out).toContain(`cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`);
 
-    await withRegistryVersion('99.0.0', async () => {
-      const newer = await run(['doctor', '--json'], elsewhere);
-      const report = JSON.parse(newer.out);
-      const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
-      const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
-      expect(freshness).toMatchObject({
-        severity: 'warn',
-        detail: `Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`
-      });
-      expect(freshness.remedy).toContain('@msn-control/liftoff@99.0.0');
-      expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
-      expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
+    const newer = await run(
+      ['doctor', '--json'],
+      elsewhere,
+      new ReadyInitRunner(),
+      {
+        stableReleaseLookup: async () => ({
+          name: '@msn-control/liftoff',
+          version: '99.0.0'
+        })
+      }
+    );
+    const report = JSON.parse(newer.out);
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
+    expect(freshness).toMatchObject({
+      severity: 'warn',
+      detail: `Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`
     });
+    expect(freshness.remedy).toContain('@msn-control/liftoff@99.0.0');
+    expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
+    expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
   }, 30_000);
 
   it('reports shared requirement identifiers, states, severities, and authentication health', async () => {
@@ -654,7 +676,10 @@ describe('doctor command', () => {
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     const workload = manifest.project.workload;
     manifest.artifacts = [
-      ...manifest.managedArtifacts,
+      ...manifest.managedArtifacts.filter((artifact: { logicalName: string }) =>
+        artifact.logicalName !== 'liftoff-governance-assess-copilot' &&
+        artifact.logicalName !== 'liftoff-governance-assess-claude'
+      ),
       ...manifest.projectArtifacts.map((artifact: Record<string, unknown>) => ({
         logicalName: artifact.logicalName,
         category: artifact.category,
@@ -694,18 +719,34 @@ describe('doctor command', () => {
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
   }, 30_000);
 
-  it('ignores and preserves stale managed-registry configuration', async () => {
+  it('keeps canonical freshness lookup independent from registry overrides', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-mirror-'));
     cleanups.push(elsewhere);
     const npmrcPath = path.join(elsewhere, '.npmrc');
     const npmrc = 'registry=https://stale.example.invalid/npm/\n';
     await writeFile(npmrcPath, npmrc, 'utf8');
-
-    await withRegistryVersion('99.0.0', async () => {
-      const result = await run(['doctor'], elsewhere);
-      expect(result.out).toContain(`Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`);
-      expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
+    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
+      new Response(JSON.stringify({
+        name: '@msn-control/liftoff',
+        version: liftoffVersion
+      }), { status: 200 })
+    );
+    const stdout = new CaptureStream();
+    const code = await runCommand(parseArgs(['doctor']), {
+      cwd: elsewhere,
+      stdout,
+      stderr: new CaptureStream(),
+      runner: new ReadyInitRunner(),
+      env: { LIFTOFF_REGISTRY: 'https://malicious.example.test/npm/' }
     });
+    expect(code).toBe(0);
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      'https://registry.npmjs.org/%40msn-control%2Fliftoff/latest'
+    );
+    expect(stdout.text()).toContain(
+      `cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`
+    );
+    expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
   }, 30_000);
 
   it('distinguishes a stale configured mirror from canonical freshness', async () => {
@@ -863,4 +904,23 @@ it('runs only the selected standard API runtime checks', async () => {
   const goEnvironment = goReport.layers.find((layer: { title: string }) => layer.title === 'Environment');
   expect(goEnvironment.checks.map((check: { label: string }) => check.label)).toContain('go');
   expect(goEnvironment.checks.map((check: { label: string }) => check.label)).not.toContain('python3');
+}, 30_000);
+
+it('bounds default stack probes and reports an explicit timeout', async () => {
+  const root = await standardFixtureProject('node');
+  const runner = new TimedOutStackRunner();
+  const result = await run(['doctor', '--json'], root, runner);
+  const report = JSON.parse(result.out);
+  const project = report.layers.find((layer: { title: string }) => layer.title === 'Project');
+  expect(project.checks.find((check: { label: string }) =>
+    check.label === 'node-fastify project'
+  )).toMatchObject({
+    severity: 'fail',
+    detail: 'stack validation timed out'
+  });
+  const stackProbe = runner.callDetails.find(({ command }) =>
+    command.executable === 'node' && command.args[0] === '-e'
+  );
+  expect(stackProbe?.options?.timeoutMs).toBe(15_000);
+  expect(result.code).toBe(1);
 }, 30_000);

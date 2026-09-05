@@ -6,10 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { patterns } from '../src/catalogs.js';
 import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
-import { loadManifest, validateGeneratedProject, writeArtifacts } from '../src/file-system.js';
+import { loadManifest, validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { currentActivationIdentity } from '../src/governance-activation/index.js';
+import { governanceArtifactPaths } from '../src/repository-governance.js';
+import { reconcileProject } from '../src/reconcile.js';
 import type { ProjectOptions } from '../src/types.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
@@ -62,6 +64,63 @@ describe('manifest contract', () => {
             'artifact content must depend only on the plan and template code (no timestamps, randomness, or environment)'
         ).toEqual(artifact);
       }
+    }
+  });
+
+  it('validates a prior complete compatibility inventory and reports assessment additions as new drift', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-prior-assessment-inventory-'));
+    try {
+      const current = renderMatrixEntry({
+        projectName: 'Prior Assessment Inventory',
+        projectType: 'standard',
+        apiStack: 'node',
+        agents: ['copilot']
+      });
+      const names = new Set(['liftoff-governance-assess-copilot', 'liftoff-governance-assess-claude']);
+      const assessmentPaths = new Set(Object.values(governanceArtifactPaths.assessment)
+        .map((parts) => parts.join('\0')));
+      const metadata = JSON.parse(current.find((artifact) =>
+        artifact.logicalName === 'repository-governance-compatibility'
+      )!.content);
+      metadata.managedCore.logicalNameAllowlist = metadata.managedCore.logicalNameAllowlist
+        .filter((name: string) => !names.has(name));
+      metadata.managedCore.pathAllowlist = metadata.managedCore.pathAllowlist
+        .filter((parts: string[]) => !assessmentPaths.has(parts.join('\0')));
+      metadata.managedCore.updateInventory = metadata.managedCore.updateInventory
+        .filter((entry: { logicalName: string }) => !names.has(entry.logicalName));
+      const compatibilityContent = `${JSON.stringify(metadata, null, 2)}\n`;
+      const previous = JSON.parse(current.find((artifact) => artifact.logicalName === 'manifest')!.content);
+      previous.managedArtifacts = previous.managedArtifacts
+        .filter((entry: { logicalName: string }) => !names.has(entry.logicalName));
+      previous.managedArtifacts.find((entry: { logicalName: string }) =>
+        entry.logicalName === 'repository-governance-compatibility'
+      ).contentHash = `sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`;
+      const manifestContent = `${JSON.stringify(previous, null, 2)}\n`;
+      await writeArtifacts(root, current.filter((artifact) => !names.has(artifact.logicalName)).map((artifact) => ({
+        ...artifact,
+        content: artifact.logicalName === 'repository-governance-compatibility'
+          ? compatibilityContent
+          : artifact.logicalName === 'manifest'
+            ? manifestContent
+            : artifact.content
+      })));
+      await writeProjectFile(
+        root,
+        ['.github', 'skills', 'openspec-apply-change', 'SKILL.md'],
+        '# Framework-owned marker\n'
+      );
+      const manifest = await loadManifest(root);
+      expect(manifest.governance.state).toBe('handoff-generated');
+      expect(await validateGeneratedProject(root)).toEqual([]);
+      const drift = await reconcileProject(manifest, current, root);
+      expect(drift).toContainEqual(expect.objectContaining({
+        logicalName: 'liftoff-governance-assess-copilot',
+        pathParts: [...governanceArtifactPaths.assessment['github-copilot']],
+        status: 'new'
+      }));
+      expect(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')).toBe(manifestContent);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
@@ -200,7 +259,7 @@ describe('manifest contract', () => {
       state: 'handoff-generated'
     });
     expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)
-      .toHaveLength(8);
+      .toHaveLength(10);
     expect((manifest as unknown as { projectArtifacts: unknown[] }).projectArtifacts.length)
       .toBeGreaterThan(0);
   });

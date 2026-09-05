@@ -53,6 +53,8 @@ project/
 |-- .github/agents/openspec.agent.md                       # optional hosted agent
 |-- .github/prompts/liftoff-setup.prompt.md
 |   or .claude/commands/liftoff-setup.md
+|-- .github/prompts/liftoff-governance-assess.prompt.md
+|   or .claude/commands/liftoff-governance-assess.md
 |-- frontend/                  # only when selected
 |-- functions/<worker-name>/  # only for worker-enabled GenAI patterns
 `-- migration/legacy/         # only after liftoff migrate
@@ -88,6 +90,9 @@ project/
 - `/liftoff-setup` is generated when repository governance is enabled. It calls
   `liftoff governance status|plan|apply-next|resume|verify` and has no model
   selection or separate setup-skill version.
+- `/liftoff-governance-assess` is a separate selected-agent, read-only wrapper
+  around `liftoff governance assess --json`. It is local-only unless live reads
+  are explicitly requested; it never runs automatically or replaces setup.
 
 ### Conditional areas
 
@@ -127,8 +132,8 @@ project/
 `-- openspec/ or .specify/
 ```
 
-The exact selected-agent governance launcher is generated only when the
-repository-governance profile is enabled. It is Liftoff-owned; neighboring
+The exact selected-agent setup and assessment launchers are generated only when the
+repository-governance profile is enabled. They are Liftoff-owned; neighboring
 framework files remain framework-owned. Agent-created governance changes and
 `governance/activation-state.json`, approvals, evidence, credentials, and
 supersession records remain user-owned and are not listed as managed artifacts.
@@ -145,7 +150,7 @@ Liftoff intentionally does not generate `backend/`, `database/`,
 
 `liftoff.manifest.json` v7 records managed-core hashes for the governance policy,
 context, guide, phase graph, compatibility metadata, credential-policy schema,
-and setup integrations. `liftoff update` may reconcile only those managed-core
+and setup and assessment integrations. `liftoff update` may reconcile only those managed-core
 paths. Forced update may remove exact retired generated setup-alias ownership
 from older manifests after review. It preserves user-owned activation state,
 immutable evidence, approvals, credential policies, active OpenSpec changes, and

@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.10.3 - Initialize a governed application and prepare
+Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -106,8 +106,8 @@ regions    List or search provider regions
 Operations
 ──────────
 Command     Description
-──────────  ───────────────────────────────────────────
-governance  Inspect deterministic governance activation
+──────────  ─────────────────────────────────────────────────────────
+governance  Inspect governance activation and assess policy alignment
 dev         Print Docker Compose helper commands
 infra       Print OpenTofu helper commands
 
@@ -115,13 +115,60 @@ i Tip: Run \`liftoff help <command>\` for command-specific usage.
 "
 `;
 
-exports[`complete help screens > snapshots compact governance command help 1`] = `
-"LIFTOFF / GOVERNANCE
-Inspect deterministic governance activation
+exports[`complete help screens > snapshots compact governance assessment help 1`] = `
+"LIFTOFF / GOVERNANCE ASSESS
+Read-only comparison against the installed CLI policy, activation identity, and
+control catalog. Local-only by default: no network or credentials required. Exit
+0: aligned or explicitly disabled (not-applicable); 2: partial coverage or
+differences, including approved exceptions; 1: invalid or unsafe input. This is
+not setup, an upgrade, or permission to remediate.
 
 Usage
 ─────
-liftoff governance <status|plan|apply-next|resume|verify> [project-path]
+liftoff governance assess [project-path] [--json] [--live]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────
+project-path  Liftoff project to inspect
+
+Project options
+───────────────
+Option            Description
+────────────────  ────────────────────
+--project <path>  Liftoff project path
+
+Consent options
+───────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────────────────
+--live  Opt into bounded repository/resource-scoped GitHub/Azure reads using
+        existing permissions; denied or unavailable proof stays not-observed
+
+Output options
+──────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit the schema-v1 report with pinned target, findings, provenance, and
+        coverage to stdout; never write state or evidence
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact governance command help 1`] = `
+"LIFTOFF / GOVERNANCE
+Inspect governance activation and assess policy alignment
+
+Usage
+─────
+liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
 
 Arguments
 ─────────
@@ -136,6 +183,7 @@ Subcommands
 - apply-next
 - resume
 - verify
+- assess
 
 Project options
 ───────────────
@@ -149,6 +197,8 @@ Option     Description
 ─────────  ─────────────────────────────────────────────────────────────────────
 --execute  Execute the reviewed governance apply-next plan; required for any
            mutation
+--live     Assess only: request bounded read-only GitHub/Azure metadata with
+           existing permissions
 
 Output options
 ──────────────
@@ -386,7 +436,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.10.3 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -413,7 +463,7 @@ Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
 
 Operations
-Command: governance | Description: Inspect deterministic governance activation
+Command: governance | Description: Inspect governance activation and assess policy alignment
 Command: dev | Description: Print Docker Compose helper commands
 Command: infra | Description: Print OpenTofu helper commands
 
@@ -421,11 +471,35 @@ Command: infra | Description: Print OpenTofu helper commands
 "
 `;
 
-exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Inspect deterministic governance activation
+exports[`complete help screens > snapshots plain governance assessment help 1`] = `
+"LIFTOFF / GOVERNANCE ASSESS - Read-only comparison against the installed CLI policy, activation identity, and control catalog. Local-only by default: no network or credentials required. Exit 0: aligned or explicitly disabled (not-applicable); 2: partial coverage or differences, including approved exceptions; 1: invalid or unsafe input. This is not setup, an upgrade, or permission to remediate.
 
 Usage
-Usage: liftoff governance <status|plan|apply-next|resume|verify> [project-path]
+Usage: liftoff governance assess [project-path] [--json] [--live]
+
+Arguments
+Argument: project-path | Description: Liftoff project to inspect
+
+Project options
+Option: --project <path> | Description: Liftoff project path
+
+Consent options
+Option: --live | Description: Opt into bounded repository/resource-scoped GitHub/Azure reads using existing permissions; denied or unavailable proof stays not-observed
+
+Output options
+Option: --json | Description: Emit the schema-v1 report with pinned target, findings, provenance, and coverage to stdout; never write state or evidence
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain governance command help 1`] = `
+"LIFTOFF / GOVERNANCE - Inspect governance activation and assess policy alignment
+
+Usage
+Usage: liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
 
 Arguments
 Argument: project-path | Description: Liftoff project to inspect
@@ -436,12 +510,14 @@ Subcommands
 - apply-next
 - resume
 - verify
+- assess
 
 Project options
 Option: --project <path> | Description: Liftoff project path
 
 Consent options
 Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
+Option: --live | Description: Assess only: request bounded read-only GitHub/Azure metadata with existing permissions
 
 Output options
 Option: --json | Description: Emit machine-readable JSON
@@ -621,7 +697,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.10.3 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -659,8 +735,8 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command     Description                                                                      │
-│ ──────────  ───────────────────────────────────────────                                      │
-│ governance  Inspect deterministic governance activation                                      │
+│ ──────────  ─────────────────────────────────────────────────────────                        │
+│ governance  Inspect governance activation and assess policy alignment                        │
 │ dev         Print Docker Compose helper commands                                             │
 │ infra       Print OpenTofu helper commands                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -668,12 +744,53 @@ i Tip: Run \`liftoff help <command>\` for command-specific usage.
 "
 `;
 
-exports[`complete help screens > snapshots rich governance command help 1`] = `
-"┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
-│ Inspect deterministic governance activation                                                  │
+exports[`complete help screens > snapshots rich governance assessment help 1`] = `
+"┌─ LIFTOFF / GOVERNANCE ASSESS ────────────────────────────────────────────────────────────────┐
+│ Read-only comparison against the installed CLI policy, activation identity, and control      │
+│ catalog. Local-only by default: no network or credentials required. Exit 0: aligned or       │
+│ explicitly disabled (not-applicable); 2: partial coverage or differences, including approved │
+│ exceptions; 1: invalid or unsafe input. This is not setup, an upgrade, or permission to      │
+│ remediate.                                                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
-│ liftoff governance <status|plan|apply-next|resume|verify> [project-path]                     │
+│ liftoff governance assess [project-path] [--json] [--live]                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ──────────────────────────                                                     │
+│ project-path  Liftoff project to inspect                                                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option            Description                                                                │
+│ ────────────────  ────────────────────                                                       │
+│ --project <path>  Liftoff project path                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --live  Opt into bounded repository/resource-scoped GitHub/Azure reads using existing        │
+│         permissions; denied or unavailable proof stays not-observed                          │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --json  Emit the schema-v1 report with pinned target, findings, provenance, and coverage to  │
+│         stdout; never write state or evidence                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich governance command help 1`] = `
+"┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
+│ Inspect governance activation and assess policy alignment                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
 │ Argument      Description                                                                    │
@@ -686,6 +803,7 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 │ • apply-next                                                                                 │
 │ • resume                                                                                     │
 │ • verify                                                                                     │
+│ • assess                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
@@ -694,8 +812,10 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option     Description                                                                       │
-│ ─────────  ──────────────────────────────────────────────────────────────────────────        │
+│ ─────────  ───────────────────────────────────────────────────────────────────────────────── │
 │ --execute  Execute the reviewed governance apply-next plan; required for any mutation        │
+│ --live     Assess only: request bounded read-only GitHub/Azure metadata with existing        │
+│            permissions                                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

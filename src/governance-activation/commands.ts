@@ -15,6 +15,7 @@ import {
 import type { PresentationSession } from '../terminal.js';
 import type { LiftoffManifest, ParsedArgs } from '../types.js';
 import type { CommandRunner } from '../process-runner.js';
+import { governanceAssessmentCommand } from '../governance-assessment/command.js';
 import {
   activationStateFilePathParts,
   loadActivationState,
@@ -59,6 +60,7 @@ import {
   type GovernanceSourceOfTruthInspection
 } from './source-of-truth.js';
 import {
+  discoverGeneratedSeed,
   inspectArchivedSeedIntegrity,
   type ArchivedSeedIntegrity
 } from './seed-lifecycle.js';
@@ -132,6 +134,8 @@ interface GovernanceInspection {
   sourceOfTruth: GovernanceSourceOfTruthInspection;
   credential: CredentialInspection;
   archivedSeedIntegrity: ArchivedSeedIntegrity;
+  retryArchivedSeedBaseline: boolean;
+  expectedActiveSeed: boolean;
 }
 
 interface CredentialInspection {
@@ -602,6 +606,23 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     evidence
   });
   const archivedSeedIntegrity = await inspectArchivedSeedIntegrity(projectRoot, manifest);
+  const archivedBaselineBlocked =
+    state.phases['seed-verified'].state === 'blocked' &&
+    archivedSeedIntegrity.status === 'valid';
+  const seedDiscovery = sourceOfTruth.status === 'seed-blocked' || archivedBaselineBlocked
+    ? await discoverGeneratedSeed(projectRoot)
+    : undefined;
+  const retryArchivedSeedBaseline = archivedBaselineBlocked && seedDiscovery?.state === 'archived';
+  const archiveAndLaterPhases = phaseIds.slice(phaseIds.indexOf('seed-archived'));
+  const expectedActiveSeed =
+    sourceOfTruth.status === 'seed-blocked' &&
+    sourceOfTruth.candidates.length === 0 &&
+    seedDiscovery?.state === 'active' &&
+    state.activeChange === null &&
+    archiveAndLaterPhases.every((phaseId) =>
+      state.phases[phaseId].state === 'pending' || state.phases[phaseId].state === 'blocked'
+    ) &&
+    !evidence.some((record) => archiveAndLaterPhases.includes(record.header.phaseId));
   const now = new Date();
   const credential = await inspectCredentialPolicy(projectRoot, state);
   const contexts = buildEvidenceContexts(graph.graph, state, now);
@@ -612,6 +633,7 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     approvals,
     evidence,
     transitionContexts: contexts,
+    retryArchivedSeedBaseline,
     phaseBlockers: archivedSeedIntegrity.status === 'invalid'
       ? { 'seed-archived': archivedSeedIntegrity.issues }
       : undefined,
@@ -631,7 +653,9 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     readiness,
     sourceOfTruth,
     credential,
-    archivedSeedIntegrity
+    archivedSeedIntegrity,
+    retryArchivedSeedBaseline,
+    expectedActiveSeed
   };
 }
 
@@ -705,6 +729,8 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
       label: phase.label,
       state: inspection.readiness.phases[phase.id].state,
       storedState: inspection.state.phases[phase.id].state,
+      storedBlockers: inspection.state.phases[phase.id].blockers,
+      retryable: phase.id === 'seed-verified' && inspection.retryArchivedSeedBaseline,
       blockers: inspection.readiness.phases[phase.id].blockers,
       evidence: {
         schema: phase.evidence.schema,
@@ -769,6 +795,13 @@ function renderStatusHuman(inspection: GovernanceInspection, command: Governance
     );
   }
   const next = inspection.readiness.nextReadyPhase ?? 'none';
+  if (inspection.retryArchivedSeedBaseline) {
+    presentation.status(
+      'pending',
+      'Archived baseline retry',
+      `The prior baseline failure is preserved. Explicit execution reruns all local checks: ${inspection.state.phases['seed-verified'].blockers.join('; ')}`
+    );
+  }
   presentation.status(next === 'none' ? 'info' : 'pending', 'Next ready phase', next);
   if (inspection.readiness.nextReadyPhase) {
     const phase = phaseMap(inspection.graph.graph)[inspection.readiness.nextReadyPhase];
@@ -1083,6 +1116,13 @@ function credentialPolicyCheck(inspection: GovernanceInspection): VerificationCh
 
 function activeSourceOfTruthCheck(inspection: GovernanceInspection): VerificationCheck {
   const source = inspection.sourceOfTruth;
+  if (inspection.expectedActiveSeed) {
+    return {
+      id: 'active-source-of-truth',
+      status: 'skipped',
+      issues: ['The generated bootstrap seed is still active; governance creation remains gated until its baseline and archive phases finish.']
+    };
+  }
   if (source.status === 'selected' || source.status === 'none') {
     if (source.status === 'selected' && source.reconciliation.status !== 'not-required') {
       return {
@@ -1303,6 +1343,9 @@ function renderApplyNextHuman(
     result.reason,
     result.message
   );
+  if (result.selectedPhase) {
+    presentation.status('info', 'Selected phase', result.selectedPhase);
+  }
   presentation.table('Proposed operations', ['Adapter', 'Action', 'Mutation', 'Remote', 'Destructive'], result.proposedMutations.operations.map((op) => [
     op.adapter,
     op.actionId,
@@ -1325,12 +1368,22 @@ function renderApplyNextHuman(
     if (result.stateHash) {
       presentation.status('info', 'State hash', result.stateHash);
     }
+    if (result.executedPhase) {
+      presentation.status(
+        'info',
+        'Next phase',
+        'Run governance verify or status for post-transition readiness.'
+      );
+    }
   } else {
     presentation.status('info', 'Preview only', 'No writes occurred; rerun with --execute to execute at most one phase.');
   }
 }
 
 export async function governanceCommand(parsed: ParsedArgs, context: GovernanceCommandContext): Promise<number> {
+  if (parsed.subcommand === 'assess') {
+    return governanceAssessmentCommand(parsed, context);
+  }
   const presentation = context.presentation;
   const jsonMode = readBooleanFlag(parsed.flags, 'json') ?? false;
   const subcommand = parseGovernanceSubcommand(parsed);

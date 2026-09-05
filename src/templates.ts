@@ -29,7 +29,8 @@ import { formatCommand } from './process-runner.js';
 import { formatContainerImage, supportedStack } from './supported-stack.js';
 import {
   buildRepositoryGovernanceArtifacts,
-  governancePolicyVersion
+  governancePolicyVersion,
+  renderGovernanceAssessmentGuide
 } from './repository-governance.js';
 import {
   currentActivationIdentity
@@ -885,13 +886,46 @@ function renderGeneratedUpdateGuide(plan: ProjectPlan): string {
 
 ${governance}
 
-\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, credential-policy schema, and selected-agent \`/liftoff-setup\` integrations. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
+\`liftoff update\` maintains only explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent \`/liftoff-setup\` and \`/liftoff-governance-assess\` integrations. Use \`liftoff update --check\` for a read-only core report, or \`liftoff update --check --json\` as an automation gate that exits 0 when core state is clean and 2 when maintenance is available.
 
 Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
 
 Project template modernization is a separately reviewed production change and is not performed by ordinary update or by the existing non-Liftoff \`migrate\` command. Managed-core conflicts are skipped by default; after reviewing every listed core path, \`liftoff update --force\` may replace only those core conflicts. Managed-core orphans remain on disk, and update never installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful core overwrite.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
+
+${plan.governanceProfile.id === 'none'
+  ? 'No `/liftoff-governance-assess` integration is generated while governance is disabled.'
+  : renderGovernanceAssessmentGuide()}
+`;
+}
+
+function selectedEnvironmentId(plan: ApiProjectPlan): string {
+  return plan.environments[0]?.id ?? 'dev';
+}
+
+function renderRootInfrastructureGuide(plan: ApiProjectPlan): string {
+  const environment = selectedEnvironmentId(plan);
+  const governanceGate = plan.governanceProfile.id === 'none'
+    ? ''
+    : `These commands are reference material, not the next setup action. Do not run this
+sequence until the separately approved \`application-foundation\` governance phase
+authorizes the exact infrastructure mutation. \`/liftoff-setup\` can evaluate and
+resume managed phases, but it does not imply that every managed phase has an
+executable production adapter. An unavailable production adapter remains a
+blocker; do not bypass it by running the reference commands directly.
+
+`;
+  return `## Infrastructure
+
+${governanceGate}\`\`\`bash
+cd infrastructure/opentofu/azure
+tofu init
+tofu plan -var-file=environments/${environment}.tfvars
+tofu apply -var-file=environments/${environment}.tfvars
+\`\`\`
+
+The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
 `;
 }
 
@@ -925,17 +959,7 @@ The backend API is available on port 8000. Health and readiness endpoints are av
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
 ${renderGeneratedUpdateGuide(plan)}
-## Infrastructure
-
-\`\`\`bash
-cd infrastructure/opentofu/azure
-tofu init
-tofu plan -var-file=environments/dev.tfvars
-tofu apply -var-file=environments/dev.tfvars
-\`\`\`
-
-The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
-
+${renderRootInfrastructureGuide(plan)}
 ${renderSpecWorkflowGuide(plan)}
 `;
   }
@@ -984,17 +1008,7 @@ The backend API is available on port 8000. Scalar is exposed at \`/scalar\`.
 ${renderGeneratedConfigurationGuide(plan)}
 ${renderDirectBuildAndTestGuide(plan)}
 ${renderGeneratedUpdateGuide(plan)}
-## Infrastructure
-
-\`\`\`bash
-cd infrastructure/opentofu/azure
-tofu init
-tofu plan -var-file=environments/dev.tfvars
-tofu apply -var-file=environments/dev.tfvars
-\`\`\`
-
-The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
-
+${renderRootInfrastructureGuide(plan)}
 ${renderSpecWorkflowGuide(plan)}
 ${functionsSection}
 ${genericSection}
@@ -2836,7 +2850,18 @@ function renderTofuRemoteStateExample(): string {
 }
 
 function renderTofuReadme(plan: ApiProjectPlan): string {
-  const env = plan.environments[0]?.id ?? 'dev';
+  const env = selectedEnvironmentId(plan);
+  const governanceGate = plan.governanceProfile.id === 'none' ? '' : `
+## Governance Gate
+
+The commands below are reference material, not authorization to mutate Azure.
+Do not run the plan/apply, ACR build, or image-replacement sequence until the
+separately approved \`application-foundation\` governance phase authorizes the
+exact operation. \`/liftoff-setup\` can evaluate and resume managed phases, but it
+does not imply that every managed phase has an executable production adapter.
+An unavailable production adapter remains a blocker; do not bypass it by running
+these commands directly.
+`;
   const functionSection = plan.workload === 'genai' && hasFunctionWorker(plan) ? `
 ## Azure Functions Worker
 
@@ -2845,6 +2870,7 @@ This project includes an Azure Functions worker under \`functions/${functionWork
   return `# Azure OpenTofu
 
 Azure is the complete V1 provider for this Liftoff project.
+${governanceGate}
 
 ## Bootstrap Infrastructure
 

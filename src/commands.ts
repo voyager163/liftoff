@@ -76,7 +76,16 @@ import {
   type MergeResult,
   type StagingArea
 } from './init-filesystem.js';
-import { renderMigrationChecklist, renderMigrationProposal, renderMigrationTasks, seedMigrationGroups } from './migrate-plan.js';
+import {
+  migrationCapabilityId,
+  migrationChangeName,
+  renderMigrationChecklist,
+  renderMigrationDesign,
+  renderMigrationProposal,
+  renderMigrationSpec,
+  renderMigrationTasks,
+  seedMigrationGroups
+} from './migrate-plan.js';
 import {
   buildOpenSpecProfileWriteCommands,
   configureOpenSpecProfile,
@@ -128,7 +137,10 @@ import {
   type PresentationSessionOptions
 } from './terminal.js';
 import { governanceCommand } from './governance-activation/commands.js';
-import { loadActivationState as loadCurrentActivationState } from './governance-activation/activation-state.js';
+import {
+  activationStateFilePathParts,
+  loadActivationState as loadCurrentActivationState
+} from './governance-activation/activation-state.js';
 import {
   planHistoricalActivationStateMigration,
   updateFailureInjectionEnv,
@@ -147,6 +159,7 @@ import type {
   ApiProjectPlan,
   GeneratedArtifact,
   LiftoffManifest,
+  ManifestManagedArtifact,
   ManifestProjectArtifact,
   ParsedArgs,
   ProjectProvisioningGroup,
@@ -204,7 +217,7 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
   const executionContext: ExecutionContext = { ...context, presentation };
   try {
     if (parsed.command && readBooleanFlag(parsed.flags, 'help')) {
-      renderCommandHelp(parsed.command, presentation);
+      renderCommandHelp(parsed.command, presentation, parsed.subcommand);
       return 0;
     }
     switch (parsed.command) {
@@ -811,7 +824,14 @@ async function handleProjectDependencies(
       'Project dependencies failed',
       `${result.failed?.label ?? 'dependency command'}: ${result.detail ?? 'unknown failure'}`
     );
-    presentation.status('info', 'Scaffold preserved', projectRoot);
+    presentation.status(
+      'info',
+      'Protected dependency metadata preserved',
+      'Package manifests and lock metadata were checked and restored when changed.'
+    );
+    presentation.warning(
+      'Dependency scripts may have changed other project files; review the working tree before retrying.'
+    );
     if (result.restoredMutations.length > 0) {
       presentation.warning(
         `Restored protected files: ${result.restoredMutations.join(', ')}`
@@ -1002,21 +1022,49 @@ function migrationPlanArtifacts(
     return {
       artifacts: [
         {
+          logicalName: 'migration-change-metadata',
+          category: 'seed',
+          lifecycle: 'seed',
+          pathParts: ['openspec', 'changes', migrationChangeName, '.openspec.yaml'],
+          content: 'schema: spec-driven\n'
+        },
+        {
           logicalName: 'migration-proposal',
           category: 'seed',
           lifecycle: 'seed',
-          pathParts: ['openspec', 'changes', 'migrate-to-liftoff', 'proposal.md'],
+          pathParts: ['openspec', 'changes', migrationChangeName, 'proposal.md'],
           content: renderMigrationProposal(plan, inventory)
+        },
+        {
+          logicalName: 'migration-design',
+          category: 'seed',
+          lifecycle: 'seed',
+          pathParts: ['openspec', 'changes', migrationChangeName, 'design.md'],
+          content: renderMigrationDesign(plan, inventory)
         },
         {
           logicalName: 'migration-tasks',
           category: 'seed',
           lifecycle: 'seed',
-          pathParts: ['openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'],
+          pathParts: ['openspec', 'changes', migrationChangeName, 'tasks.md'],
           content: renderMigrationTasks(groups)
+        },
+        {
+          logicalName: 'migration-spec',
+          category: 'seed',
+          lifecycle: 'seed',
+          pathParts: [
+            'openspec',
+            'changes',
+            migrationChangeName,
+            'specs',
+            migrationCapabilityId,
+            'spec.md'
+          ],
+          content: renderMigrationSpec()
         }
       ],
-      location: 'openspec/changes/migrate-to-liftoff/ (run it with your agent workflow, e.g. /opsx:apply migrate-to-liftoff)'
+      location: `openspec/changes/${migrationChangeName}/ (run it with your agent workflow, e.g. /opsx:apply ${migrationChangeName})`
     };
   }
   return {
@@ -1173,6 +1221,28 @@ async function executeMigration(
       await stageMigrationSource(area, sourceRoot);
       await writeStagedArtifacts(area, migrationPlan.artifacts, 'seed');
       await writeStagedArtifacts(area, [partition.manifest], 'liftoff');
+      if (plan.specWorkflow.id === 'openspec') {
+        const command = {
+          executable: plan.framework.executable,
+          args: ['validate', migrationChangeName, '--strict']
+        };
+        presentation.stage('Validate generated migration plan', migrationChangeName);
+        presentation.command(formatCommand(command));
+        const result = await runner.run(command, {
+          cwd: area.root,
+          env: context.env,
+          timeoutMs: 30_000
+        });
+        if (result.status !== 0 || result.timedOut || result.errorCode) {
+          const detail = result.timedOut
+            ? 'command timed out'
+            : result.errorMessage || result.stderr.trim().split(/\r?\n/)[0] ||
+              `exit status ${result.status}`;
+          throw new Error(
+            `Generated migration plan failed strict validation: ${result.displayCommand}: ${detail}`
+          );
+        }
+      }
       presentation.stage('Validate staged migration');
       await validateStagedTree(area);
       const stagedIssues = await validateGeneratedProject(area.root);
@@ -1603,12 +1673,32 @@ function planWithBlockedProvisioning(
   };
 }
 
+function isUnownedUpdateConflict(
+  entry: ReconcileEntry,
+  recordedByName: ReadonlyMap<string, ManifestManagedArtifact>
+): boolean {
+  if (entry.status === 'moved') {
+    return entry.destinationOccupied === true && entry.destinationMatches !== true;
+  }
+  if (entry.status !== 'conflict') {
+    return false;
+  }
+  const recorded = recordedByName.get(entry.logicalName);
+  return !recorded ||
+    recorded.category !== entry.rendered?.category ||
+    recorded.pathParts.join('\0') !== entry.pathParts.join('\0');
+}
+
 async function preflightUpdate(
   projectRoot: string,
   entries: ReconcileEntry[],
-  force: boolean
+  force: boolean,
+  recordedByName: ReadonlyMap<string, ManifestManagedArtifact>
 ): Promise<void> {
   for (const entry of entries) {
+    if (isUnownedUpdateConflict(entry, recordedByName)) {
+      continue;
+    }
     const writesDestination =
       entry.status === 'new' ||
       entry.status === 'missing' ||
@@ -2030,6 +2120,9 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         captureProjectFileSnapshot(projectRoot, ['liftoff.config.json'])
       ]);
   const manifest = await loadManifest(projectRoot);
+  const oldByName = new Map(
+    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
+  );
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
     presentation.error(
       `This project was written by Liftoff ${manifest.liftoffVersion}, which is newer than this CLI (${liftoffVersion}).`,
@@ -2039,8 +2132,26 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   }
 
   const config = await loadConfigOptions('liftoff.config.json', projectRoot);
-  const plan = buildProjectPlan(config, { requireProjectName: true });
   const recordedWorkload = manifest.project.workload;
+  if (
+    recordedWorkload.kind !== 'power-apps-code-app' &&
+    config.cloud !== undefined &&
+    config.cloud !== recordedWorkload.cloud
+  ) {
+    presentation.error(
+      `Cloud changes (${recordedWorkload.cloud} -> ${config.cloud}) are a migration, not an update.`,
+      'Restore liftoff.config.json or perform the cloud change through a separately reviewed project migration.'
+    );
+    return 1;
+  }
+  const plan = buildProjectPlan(config, { requireProjectName: true });
+  if (plan.projectName !== manifest.project.name) {
+    presentation.error(
+      `Project name changes (${manifest.project.name} -> ${plan.projectName}) are a migration, not an update.`,
+      'Restore liftoff.config.json or perform the rename through a separately reviewed project migration.'
+    );
+    return 1;
+  }
   if (plan.workload !== recordedWorkload.kind) {
     const involvesPowerApps =
       plan.workload === 'power-apps-code-app' ||
@@ -2070,6 +2181,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       return 1;
     }
   } else if (plan.workload !== 'power-apps-code-app' && recordedWorkload.kind !== 'power-apps-code-app') {
+    if (plan.provider.id !== recordedWorkload.cloud) {
+      presentation.error(
+        `Cloud changes (${recordedWorkload.cloud} -> ${plan.provider.id}) are a migration, not an update.`,
+        'Restore liftoff.config.json or perform the cloud change through a separately reviewed project migration.'
+      );
+      return 1;
+    }
+    if (plan.region.slug !== recordedWorkload.region) {
+      presentation.error(
+        `Region changes (${recordedWorkload.region} -> ${plan.region.slug}) are a migration, not an update.`,
+        'Restore liftoff.config.json or perform the region change through a separately reviewed project migration.'
+      );
+      return 1;
+    }
     if (plan.apiStack.id !== recordedWorkload.apiStack) {
       presentation.error(
         `API stack changes (${recordedWorkload.apiStack} -> ${plan.apiStack.id}) are a migration, not an update.`,
@@ -2086,6 +2211,18 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
       );
       return 1;
     }
+  }
+  if (
+    manifest.governance.profile !== 'none' &&
+    manifest.governance.profile !== 'unspecified' &&
+    plan.governanceProfile.id === 'none' &&
+    await readProjectFile(projectRoot, [...activationStateFilePathParts]) !== undefined
+  ) {
+    presentation.error(
+      'Repository governance cannot be disabled by update while governance/activation-state.json exists.',
+      'Restore liftoff.config.json or complete a separately supported deactivation and reconciliation workflow before disabling governance. This Liftoff release does not infer deactivation or the absence of live enforcement.'
+    );
+    return 1;
   }
   if (plan.specWorkflow.id !== manifest.project.specWorkflow) {
     presentation.error(
@@ -2365,7 +2502,20 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     if (toWrite > 0 || toRetire > 0) {
       presentation.command('liftoff update');
     }
-    if (summary.conflict > 0 || summary.retiredConflict > 0) {
+    const unownedConflicts = entries.filter((entry) => isUnownedUpdateConflict(entry, oldByName));
+    if (unownedConflicts.length > 0) {
+      presentation.bullets(
+        'Unowned destinations remain protected',
+        unownedConflicts.map((entry) =>
+          `${entryDisplay(entry)}: review and resolve this unowned destination manually; --force cannot overwrite it`
+        )
+      );
+    }
+    if (entries.some((entry) =>
+      !isUnownedUpdateConflict(entry, oldByName) &&
+      (entry.status === 'conflict' || entry.status === 'retired-conflict' ||
+        entry.status === 'moved' && !entry.cleanMove)
+    )) {
       presentation.command('liftoff update --force');
     }
     return 2;
@@ -2383,7 +2533,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     }
   }
   presentation.stage('Apply safe Liftoff core changes', projectRoot);
-  await preflightUpdate(projectRoot, entries, force);
+  await preflightUpdate(projectRoot, entries, force, oldByName);
   maybeInjectUpdateFailure(context.env, 'after-preflight');
 
   const written: ReconcileEntry[] = [];
@@ -2403,7 +2553,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         written.push(entry);
         break;
       case 'moved':
-        if (entry.cleanMove || force) {
+        if (!isUnownedUpdateConflict(entry, oldByName) && (entry.cleanMove || force)) {
           if (!entry.destinationMatches) {
             mutations.push({
               type: 'write',
@@ -2430,7 +2580,7 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
         }
         break;
       case 'conflict':
-        if (force) {
+        if (force && !isUnownedUpdateConflict(entry, oldByName)) {
           mutations.push({
             type: 'write',
             pathParts: entry.pathParts,
@@ -2469,9 +2619,6 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     mutations.push(mutation);
   }
 
-  const oldByName = new Map(
-    manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
-  );
   const skippedByName = new Map(skipped.map((entry) => [entry.logicalName, entry]));
   const hasUnrecordedGovernanceConflict = skipped.some((entry) =>
     entry.status === 'conflict' &&
@@ -2660,9 +2807,11 @@ async function updateCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     presentation.bullets(
       'Skipped Liftoff core conflicts',
       skipped.map((entry) =>
-        entry.status === 'retired-conflict'
-          ? `protected retired alias ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (delete it manually or use --force to remove)'}`
-          : `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
+        isUnownedUpdateConflict(entry, oldByName)
+          ? `protected unowned destination ${entryDisplay(entry)}  ${entry.reason} (resolve manually; --force cannot overwrite it)`
+          : entry.status === 'retired-conflict'
+            ? `protected retired alias ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (delete it manually or use --force to remove)'}`
+            : `skipped ${entryDisplay(entry)}  ${entry.reason}${force ? '' : ' (use --force to overwrite)'}`
       )
     );
   }
@@ -2818,31 +2967,57 @@ interface DoctorLayer {
   checks: DoctorCheck[];
 }
 
-function versionedBinaryCheck(
+const doctorProbeTimeoutMs = 15_000;
+
+async function versionedBinaryCheck(
   label: string,
   command: string,
   args: string[],
   minimum: readonly [number, number],
-  remedy: string
-): DoctorCheck {
-  const result = spawnSync(command, args, { encoding: 'utf8' });
+  remedy: string,
+  runner: CommandRunner
+): Promise<{ check: DoctorCheck; available: boolean }> {
+  const result = await runner.run(
+    { executable: command, args },
+    { timeoutMs: doctorProbeTimeoutMs }
+  );
+  if (result.timedOut) {
+    return {
+      check: { label, severity: 'fail', detail: 'version probe timed out', remedy },
+      available: false
+    };
+  }
   if (result.status !== 0) {
-    return { label, severity: 'fail', detail: 'not found', remedy };
+    return {
+      check: { label, severity: 'fail', detail: 'not found', remedy },
+      available: result.errorCode !== 'ENOENT'
+    };
   }
 
   const output = (result.stdout || result.stderr).split('\n')[0].trim();
   const match = output.match(/(\d+)\.(\d+)/);
   if (!match) {
-    return { label, severity: 'fail', detail: `unable to determine version from "${output}"`, remedy };
+    return {
+      check: { label, severity: 'fail', detail: `unable to determine version from "${output}"`, remedy },
+      available: true
+    };
   }
   const found: readonly [number, number] = [Number(match[1]), Number(match[2])];
   if (found[0] < minimum[0] || found[0] === minimum[0] && found[1] < minimum[1]) {
-    return { label, severity: 'fail', detail: `${output} is below ${minimum.join('.')}`, remedy };
+    return {
+      check: { label, severity: 'fail', detail: `${output} is below ${minimum.join('.')}`, remedy },
+      available: true
+    };
   }
-  return { label, severity: 'ok', detail: output };
+  return {
+    check: { label, severity: 'ok', detail: output },
+    available: true
+  };
 }
 
-function pythonRuntime(): { command: string; versionArgs: string[]; commandArgs: string[] } | undefined {
+async function pythonRuntime(
+  runner: CommandRunner
+): Promise<{ command: string; versionArgs: string[]; commandArgs: string[] } | undefined> {
   const [major, minor] = (
     supportedStack.runtimes.python.minimumVersion ??
     supportedStack.runtimes.python.version
@@ -2858,15 +3033,24 @@ function pythonRuntime(): { command: string; versionArgs: string[]; commandArgs:
       { command: 'python3', versionArgs: ['--version'], commandArgs: [] },
       { command: 'python', versionArgs: ['--version'], commandArgs: [] }
     ];
-  return candidates.find((candidate) =>
-    versionedBinaryCheck(
+  let available: (typeof candidates)[number] | undefined;
+  for (const candidate of candidates) {
+    const probe = await versionedBinaryCheck(
       'python',
       candidate.command,
       candidate.versionArgs,
       minimum,
-      `install Python ${major}.${minor} or newer`
-    ).severity === 'ok'
-  ) ?? candidates.find((candidate) => binaryPresent(candidate.command));
+      `install Python ${major}.${minor} or newer`,
+      runner
+    );
+    if (probe.check.severity === 'ok') {
+      return candidate;
+    }
+    if (probe.available && !available) {
+      available = candidate;
+    }
+  }
+  return available;
 }
 
 function doctorCheckFromProbe(probe: RequirementProbeResult): DoctorCheck {
@@ -2999,7 +3183,11 @@ async function frameworkDoctorChecks(
   ];
 }
 
-function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorCheck {
+async function stackProjectCheck(
+  projectRoot: string,
+  apiStack: ApiStackId,
+  runner: CommandRunner
+): Promise<DoctorCheck> {
   const requiredMetadata: Record<ApiStackId, string[]> = {
     'python-fastapi': ['backend/pyproject.toml', 'backend/uv.lock'],
     'node-fastify': ['backend/package.json', 'backend/package-lock.json'],
@@ -3032,37 +3220,52 @@ function stackProjectCheck(projectRoot: string, apiStack: ApiStackId): DoctorChe
       };
     }
   }
-  let result: { status: number | null; stdout: string; stderr: string };
+  let result: Awaited<ReturnType<CommandRunner['run']>>;
   switch (apiStack) {
     case 'python-fastapi':
       {
-        const python = pythonRuntime();
+        const python = await pythonRuntime(runner);
         if (!python) {
           return { label: 'python project', severity: 'skipped', detail: 'python is unavailable' };
         }
 
-        result = runReadOnly(
+        result = await runReadOnly(
           python.command,
           [...python.commandArgs, '-c', 'from pathlib import Path; p=Path("backend/apis/main.py"); compile(p.read_text(), str(p), "exec")'],
-          projectRoot
+          projectRoot,
+          runner
         );
       }
       break;
     case 'node-fastify':
-      result = runReadOnly(
+      result = await runReadOnly(
         'node',
         ['-e', 'const f=require("fs"); JSON.parse(f.readFileSync("backend/package.json")); JSON.parse(f.readFileSync("backend/tsconfig.json"));'],
-        projectRoot
+        projectRoot,
+        runner
       );
       break;
     case 'go-huma':
-      if (!binaryPresent('go')) {
+      result = await runReadOnly(
+        'go',
+        ['mod', 'edit', '-json'],
+        path.join(projectRoot, 'backend'),
+        runner
+      );
+      if (result.errorCode === 'ENOENT') {
         return { label: 'go project', severity: 'skipped', detail: 'go is unavailable' };
       }
-      result = runReadOnly('go', ['mod', 'edit', '-json'], path.join(projectRoot, 'backend'));
       break;
   }
 
+  if (result.timedOut) {
+    return {
+      label: `${apiStack} project`,
+      severity: 'fail',
+      detail: 'stack validation timed out',
+      remedy: `repair the generated ${apiStack} backend configuration`
+    };
+  }
   if (result.status === 0) {
     return { label: `${apiStack} project`, severity: 'ok', detail: 'stack configuration is valid' };
   }
@@ -3095,14 +3298,24 @@ async function powerAppsProjectCheck(projectRoot: string): Promise<DoctorCheck> 
   };
 }
 
-function runReadOnly(command: string, args: string[], cwd: string): { status: number | null; stdout: string; stderr: string } {
-  const result = spawnSync(command, args, { cwd, encoding: 'utf8' });
-  return { status: result.status, stdout: result.stdout, stderr: result.stderr };
+function runReadOnly(
+  command: string,
+  args: string[],
+  cwd: string,
+  runner: CommandRunner
+): Promise<Awaited<ReturnType<CommandRunner['run']>>> {
+  return runner.run(
+    { executable: command, args },
+    { cwd, timeoutMs: doctorProbeTimeoutMs }
+  );
 }
 
-function binaryPresent(command: string): boolean {
-  const probe = process.platform === 'win32' ? 'where' : 'which';
-  return spawnSync(probe, [command], { encoding: 'utf8' }).status === 0;
+async function binaryPresent(command: string, runner: CommandRunner): Promise<boolean> {
+  const result = await runner.run(
+    { executable: command, args: ['--version'] },
+    { timeoutMs: doctorProbeTimeoutMs }
+  );
+  return result.status === 0 && !result.timedOut;
 }
 
 async function azureCloudChecks(runner: CommandRunner): Promise<DoctorCheck[]> {
@@ -3175,7 +3388,11 @@ async function cliLayer(
   return { title: 'CLI', checks };
 }
 
-async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Promise<DoctorLayer> {
+async function projectLayer(
+  projectRoot: string,
+  manifest: LiftoffManifest,
+  runner: CommandRunner
+): Promise<DoctorLayer> {
   const checks: DoctorCheck[] = [];
 
   const issues = await validateGeneratedProject(projectRoot);
@@ -3233,9 +3450,9 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
         ? `local ${manifest.governance.profile} policy ${manifest.governance.policyVersion} handoff is incomplete; one or more exact destinations remain outside Liftoff ownership`
         : `local ${manifest.governance.profile} policy ${manifest.governance.policyVersion} handoff is intact; live enforcement is not inferred`);
     const remedy = governanceIssue
-      ? 'inspect with liftoff update --check; run liftoff update for safe repairs or use --force only after reviewing exact conflicts; neither activates GitHub governance'
+      ? 'inspect with liftoff update --check; run liftoff update for safe repairs or use --force only after reviewing exact already-managed conflicts; unowned destinations require manual resolution; neither activates GitHub governance'
       : partialHandoff
-        ? 'inspect liftoff update --check; use liftoff update --force only after reviewing each governance conflict'
+        ? 'inspect liftoff update --check; resolve unowned destinations manually; liftoff update --force may replace only already-managed conflicts or remove exact retired aliases after review'
         : undefined;
     checks.push({
       id: 'repository-governance',
@@ -3260,7 +3477,11 @@ async function projectLayer(projectRoot: string, manifest: LiftoffManifest): Pro
     });
     checks.push(await powerAppsProjectCheck(projectRoot));
   } else {
-    checks.push(stackProjectCheck(projectRoot, manifest.project.workload.apiStack));
+    checks.push(await stackProjectCheck(
+      projectRoot,
+      manifest.project.workload.apiStack,
+      runner
+    ));
   }
 
   try {
@@ -3448,11 +3669,7 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
   }
 
   const releaseLookup = context.stableReleaseLookup ?? (() =>
-    lookupStableRelease({
-      registry: context.env?.LIFTOFF_REGISTRY ??
-        process.env.LIFTOFF_REGISTRY ??
-        canonicalNpmRegistry
-    }));
+    lookupStableRelease({ registry: canonicalNpmRegistry }));
   const configuredRegistryLookup =
     context.configuredRegistryTargetLookup ??
     ((targetVersion) => checkConfiguredRegistryTarget(targetVersion, {
@@ -3480,7 +3697,7 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
     }
 
     if (manifest) {
-      layers.push(await projectLayer(projectRoot, manifest));
+      layers.push(await projectLayer(projectRoot, manifest, runner));
       layers.push(await runtimeLayer(projectRoot, dockerAvailable, runner, manifest));
 
       if (manifest.project.workload.kind === 'power-apps-code-app') {
@@ -3495,8 +3712,9 @@ async function doctorCommand(parsed: ParsedArgs, context: ExecutionContext): Pro
           ? patterns.find((candidate) => candidate.id === workload.pattern)
           : undefined;
         if (pattern?.worker && cloud === 'azure') {
+          const functionsAvailable = await binaryPresent('func', runner);
           cloudChecks.checks.push(
-            binaryPresent('func')
+            functionsAvailable
               ? { label: 'functions tooling', severity: 'ok', detail: 'Azure Functions Core Tools installed' }
               : { label: 'functions tooling', severity: 'warn', detail: 'Azure Functions Core Tools not found', remedy: 'npm install -g azure-functions-core-tools@4' }
           );
@@ -3533,6 +3751,10 @@ async function helperCommand(
   tool: 'docker compose' | 'tofu'
 ): Promise<number> {
   const projectRoot = await findProjectRoot(context.cwd);
+  let infraProject: {
+    root: string;
+    environments: readonly string[];
+  } | undefined;
   if (projectRoot) {
     const manifest = await loadManifest(projectRoot);
     if (manifest.project.workload.kind === 'power-apps-code-app') {
@@ -3555,9 +3777,15 @@ async function helperCommand(
       );
       return 0;
     }
+    infraProject = {
+      root: projectRoot,
+      environments: manifest.project.workload.environments
+    };
   }
 
-  const command = parsed.command === 'dev' ? buildDevCommand(parsed) : buildInfraCommand(parsed);
+  const command = parsed.command === 'dev'
+    ? buildDevCommand(parsed)
+    : buildInfraCommand(parsed, infraProject);
   context.presentation.commandIdentity(
     parsed.command ?? tool,
     `${tool} helper command`
@@ -3583,25 +3811,53 @@ function buildDevCommand(parsed: ParsedArgs): string {
   }
 }
 
-function buildInfraCommand(parsed: ParsedArgs): string {
-  const env = readStringFlag(parsed.flags, 'env') ?? 'dev';
+function buildInfraCommand(
+  parsed: ParsedArgs,
+  project?: {
+    root: string;
+    environments: readonly string[];
+  }
+): string {
+  const requestedEnvironment = readStringFlag(parsed.flags, 'env');
+  const env = requestedEnvironment ?? project?.environments[0] ?? 'dev';
   const environment = getEnvironment(env);
   if (!environment) {
     throw new PlanValidationError([
       `Unsupported environment: ${env}. Supported environments: dev, staging, prod.`
     ]);
   }
+  if (
+    project &&
+    requestedEnvironment !== undefined &&
+    !project.environments.includes(environment.id)
+  ) {
+    throw new PlanValidationError([
+      `Environment ${environment.id} is not selected for this project. ` +
+      `Selected environments: ${project.environments.join(', ')}.`
+    ]);
+  }
+  const infrastructureRoot = project
+    ? path.join(project.root, 'infrastructure', 'opentofu', 'azure')
+        .split(path.sep)
+        .join('/')
+    : undefined;
+  const args = infrastructureRoot ? [`-chdir=${infrastructureRoot}`] : [];
   switch (parsed.subcommand) {
     case 'apply':
-      return `tofu apply -var-file=environments/${environment.id}.tfvars`;
+      args.push('apply', `-var-file=environments/${environment.id}.tfvars`);
+      break;
     case 'output':
-      return 'tofu output';
+      args.push('output');
+      break;
     case 'init':
-      return 'tofu init';
+      args.push('init');
+      break;
     case 'plan':
     default:
-      return `tofu plan -var-file=environments/${environment.id}.tfvars`;
+      args.push('plan', `-var-file=environments/${environment.id}.tfvars`);
+      break;
   }
+  return formatCommand({ executable: 'tofu', args });
 }
 
 async function optionsFromParsedArgs(parsed: ParsedArgs, cwd: string, includeProjectName: boolean): Promise<ProjectOptions> {
@@ -3682,8 +3938,12 @@ function renderGeneralHelp(presentation: PresentationSession): void {
   presentation.status('info', 'Tip', help.hint);
 }
 
-function renderCommandHelp(command: string, presentation: PresentationSession): void {
-  const help = getCommandHelp(command);
+function renderCommandHelp(
+  command: string,
+  presentation: PresentationSession,
+  subcommand?: string
+): void {
+  const help = getCommandHelp(command, subcommand);
   presentation.commandIdentity(help.command, help.description);
   presentation.section('Usage', [
     presentation.stdout.layout === 'plain' ? `Usage: ${help.usage}` : help.usage

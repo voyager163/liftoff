@@ -5,6 +5,12 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import {
+  NodeCommandRunner,
+  type CommandResult,
+  type RunCommandOptions
+} from '../src/process-runner.js';
+import type { ExternalCommand } from '../src/types.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import { OPEN_SPEC_WORKFLOW_IDS } from '../src/openspec-profile.js';
 
@@ -76,6 +82,58 @@ async function hashTree(root: string): Promise<Map<string, string>> {
   };
   await walk(root);
   return hashes;
+}
+
+async function openspecAvailable(): Promise<boolean> {
+  const result = await new NodeCommandRunner().run(
+    { executable: 'openspec', args: ['--version'] },
+    { timeoutMs: 10_000 }
+  );
+  return result.status === 0 && !result.timedOut && result.errorCode === undefined;
+}
+
+class RealMigrationValidationRunner extends ReadyInitRunner {
+  readonly realRunner = new NodeCommandRunner();
+
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (
+      command.executable === 'openspec' &&
+      command.args.join(' ') === 'validate migrate-to-liftoff --strict'
+    ) {
+      this.calls.push(command);
+      this.callDetails.push({ command, options });
+      return this.realRunner.run(command, options);
+    }
+    return super.run(command, options);
+  }
+}
+
+class MigrationValidationFailureRunner extends ReadyInitRunner {
+  override async run(
+    command: ExternalCommand,
+    options?: RunCommandOptions
+  ): Promise<CommandResult> {
+    if (
+      command.executable === 'openspec' &&
+      command.args.join(' ') === 'validate migrate-to-liftoff --strict'
+    ) {
+      this.calls.push(command);
+      this.callDetails.push({ command, options });
+      return {
+        command,
+        displayCommand: 'openspec validate migrate-to-liftoff --strict',
+        status: 1,
+        signal: null,
+        stdout: '',
+        stderr: 'generated delta is invalid\n',
+        timedOut: false
+      };
+    }
+    return super.run(command, options);
+  }
 }
 
 describe('migrate command', () => {
@@ -244,14 +302,33 @@ describe('migrate command', () => {
 
   it('emits an OpenSpec change seeded from the scan with nothing silently dropped', async () => {
     const { parent, source } = await buildLegacyFixture();
-    await run(['migrate', source, '--region', 'eastus', '--yes'], parent);
+    const sourceBefore = await hashTree(source);
+    const canRunOpenSpec = await openspecAvailable();
+    const runner = canRunOpenSpec
+      ? new RealMigrationValidationRunner()
+      : new ReadyInitRunner();
+    await run(['migrate', source, '--region', 'eastus', '--yes'], parent, runner);
     const target = path.join(parent, 'legacy-app-liftoff');
+    const changeRoot = path.join(target, 'openspec', 'changes', 'migrate-to-liftoff');
 
-    const proposal = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'proposal.md'), 'utf8');
+    expect(await readFile(path.join(changeRoot, '.openspec.yaml'), 'utf8'))
+      .toBe('schema: spec-driven\n');
+    const proposal = await readFile(path.join(changeRoot, 'proposal.md'), 'utf8');
     expect(proposal).toContain('Completion Gate');
     expect(proposal).toContain('liftoff validate');
+    expect(proposal).toContain('`legacy-source-adoption`');
+    expect(await readFile(path.join(changeRoot, 'design.md'), 'utf8'))
+      .toContain('Infer or invent domain-specific requirements');
+    const spec = await readFile(
+      path.join(changeRoot, 'specs', 'legacy-source-adoption', 'spec.md'),
+      'utf8'
+    );
+    expect(spec).toContain('## Purpose');
+    expect(spec).toContain('## ADDED Requirements');
+    expect(spec).toContain('no task is marked complete automatically');
 
-    const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
+    const tasksPath = path.join(changeRoot, 'tasks.md');
+    const tasks = await readFile(tasksPath, 'utf8');
     expect(tasks).toContain('migration/legacy/requirements.txt');
     expect(tasks).toContain('backend/pyproject.toml');
     expect(tasks).toMatch(/Map variables from migration\/legacy\/\.env/);
@@ -261,6 +338,42 @@ describe('migrate command', () => {
     expect(tasks).toMatch(/Decide placement for migration\/legacy\/src/);
     expect(tasks).toContain('Delete migration/legacy/');
     expect(tasks).toMatch(/- \[ \] \d+\.\d+ /);
+    expect(tasks).not.toContain('- [x]');
+    expect(runner.callDetails).toContainEqual(expect.objectContaining({
+      command: {
+        executable: 'openspec',
+        args: ['validate', 'migrate-to-liftoff', '--strict']
+      },
+      options: expect.objectContaining({
+        cwd: expect.stringMatching(/liftoff-init-/),
+        timeoutMs: 30_000
+      })
+    }));
+
+    if (canRunOpenSpec) {
+      const realRunner = new NodeCommandRunner();
+      const strict = await realRunner.run(
+        { executable: 'openspec', args: ['validate', 'migrate-to-liftoff', '--strict'] },
+        { cwd: target, timeoutMs: 30_000 }
+      );
+      expect(strict.status, `${strict.stdout}${strict.stderr}`).toBe(0);
+
+      const archive = await realRunner.run(
+        {
+          executable: 'openspec',
+          args: ['archive', 'bootstrap-legacy-app', '--yes', '--json']
+        },
+        { cwd: target, timeoutMs: 30_000 }
+      );
+      expect(archive.status, `${archive.stdout}${archive.stderr}`).toBe(0);
+      const all = await realRunner.run(
+        { executable: 'openspec', args: ['validate', '--all', '--strict'] },
+        { cwd: target, timeoutMs: 30_000 }
+      );
+      expect(all.status, `${all.stdout}${all.stderr}`).toBe(0);
+      expect(await readFile(tasksPath, 'utf8')).toBe(tasks);
+    }
+    expect(await hashTree(source)).toEqual(sourceBefore);
   });
 
   it('emits MIGRATION.md for non-OpenSpec workflows', async () => {
@@ -274,6 +387,23 @@ describe('migrate command', () => {
     const checklist = await readFile(path.join(target, 'MIGRATION.md'), 'utf8');
     expect(checklist).toContain('Completion Gate');
     expect(checklist).toContain('migration/legacy/requirements.txt');
+  });
+
+  it('fails strict migration validation before merging the target', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const before = await hashTree(source);
+    const result = await run(
+      ['migrate', source, '--region', 'eastus', '--yes'],
+      parent,
+      new MigrationValidationFailureRunner()
+    );
+
+    expect(result.code).toBe(1);
+    expect(result.err).toContain('Generated migration plan failed strict validation');
+    expect(result.err).toContain('generated delta is invalid');
+    await expect(access(path.join(parent, 'legacy-app-liftoff')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await hashTree(source)).toEqual(before);
   });
 
   it.each([

@@ -69,6 +69,9 @@ async function run(
     stdout,
     stderr,
     runner: options.runner ?? new ReadyInitRunner(),
+    stableReleaseLookup: async () => {
+      throw new Error('offline');
+    },
     terminal: {
       snapshot: options.snapshot ?? true,
       columns,

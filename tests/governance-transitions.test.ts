@@ -420,6 +420,7 @@ describe('controlled governance apply-next transitions', () => {
       execute: false,
       applied: false,
       reason: 'execute-required',
+      selectedPhase: 'seed-valid',
       noWrites: true,
       nextReadyPhase: 'seed-valid'
     });
@@ -439,6 +440,8 @@ describe('controlled governance apply-next transitions', () => {
     const body = JSON.parse(result.out);
     expect(body).toMatchObject({
       applied: true,
+      selectedPhase: 'seed-valid',
+      executedPhase: 'seed-valid',
       nextReadyPhase: 'seed-valid',
       evidence: { result: 'verified' }
     });
@@ -459,6 +462,10 @@ describe('controlled governance apply-next transitions', () => {
     await writeSeed(root, 'blocked');
     const first = await run(['governance', 'apply-next', '--json', '--execute'], root, new FailingOpenSpecRunner());
     expect(first.code).toBe(1);
+    expect(JSON.parse(first.out)).toMatchObject({
+      selectedPhase: 'seed-valid',
+      executedPhase: null
+    });
     const state = JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')) as UserActivationState;
     expect(state.phases['seed-valid'].state).toBe('blocked');
     expect(state.phases['seed-valid'].blockers).toHaveLength(1);

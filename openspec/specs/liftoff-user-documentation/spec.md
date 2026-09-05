@@ -413,3 +413,74 @@ They SHALL NOT present retired generated setup aliases as usable commands.
 - **WHEN** PAT fallback is required
 - **THEN** documentation gives the deterministic fields and requires a masked input channel
 - **AND** warns never to paste or show the value in chat, command arguments, logs, evidence, or screenshots
+
+### Requirement: Documentation distinguishes assessment from update and activation
+Public, generated governance, and developer documentation SHALL describe
+`/liftoff-governance-assess` and `liftoff governance assess` as read-only
+comparison, with local-only default and explicit live observation. Guidance
+SHALL identify the installed CLI as the pinned target, describe classifications,
+coverage, provenance and exit codes, and preserve `/liftoff-setup` as the primary
+post-init path. Assessment SHALL not be presented as an upgrade, migration,
+activation, or alternative setup alias.
+
+#### Scenario: Developer wants to see differences
+- **WHEN** a developer reads assessment guidance
+- **THEN** it explains target versus recorded baseline versus declared configuration versus observed enforcement
+- **AND** identifies expected value, observed value, evidence, impact, and advisory remediation in the report
+
+#### Scenario: Developer does not want network access
+- **WHEN** the developer follows the default assessment example
+- **THEN** it uses the local-only form and requires no cloud or GitHub credentials
+- **AND** explains why applicable live controls remain unobserved
+
+#### Scenario: Developer requests live assessment
+- **WHEN** documentation introduces `--live`
+- **THEN** it states the bounded existing-permission read scope and no-mutation boundary
+- **AND** explains that unavailable access means not observed rather than missing or aligned
+
+#### Scenario: Assessment is partial or excepted
+- **WHEN** a report has incomplete coverage or an approved exception
+- **THEN** guidance does not describe exit 2 as proof that governance is broken or as permission to repair it
+- **AND** does not describe partial coverage or an exception as exact full-policy alignment
+
+#### Scenario: Upgrade is blocked by compatibility
+- **WHEN** assessment identifies an unsupported policy or graph mapping
+- **THEN** guidance names the unavailable migration capability without suggesting a nonexistent command
+- **AND** states that force-update cannot overwrite user-owned configuration or bypass compatibility
+
+#### Scenario: Developer installs a newer assessment integration
+- **WHEN** an existing compatible project needs the new selected-agent command
+- **THEN** documentation points to the normal managed-core update flow and its conflict safeguards
+- **AND** states that neither installing the integration nor running it activates governance
+
+#### Scenario: Maintainer extends policy assessment coverage
+- **WHEN** the developer guide describes a new control or evaluator
+- **THEN** it requires stable IDs, policy/catalog digest coherence, explicit unsupported coverage, deterministic fixtures, read-only operation tests, and cross-platform path coverage
+- **AND** does not introduce a manually maintained assessment-skill version
+
+### Requirement: Generated infrastructure guidance is environment-correct and authority-aware
+Generated root and infrastructure guidance SHALL reference environments that
+were actually selected. For governed projects it SHALL distinguish reference
+commands from authorized phase execution and SHALL not present direct
+infrastructure mutations as an ungated next step. It SHALL identify unavailable
+production activation capabilities as blockers rather than claiming that a
+command-only setup flow already implements them.
+
+#### Scenario: Governed project documentation is read
+- **WHEN** generated guidance describes infrastructure plan or apply operations
+- **THEN** it requires the relevant separately approved governance phase before execution
+- **AND** does not bypass the setup authority boundary
+
+#### Scenario: Ungoverned project documentation is read
+- **WHEN** a project explicitly disables governance
+- **THEN** reference infrastructure recipes remain available without fabricated governance activation
+- **AND** they use an environment the project actually contains
+
+#### Scenario: A production-only project is generated
+- **WHEN** `prod` is the first or only selected environment
+- **THEN** generated examples do not reference a nonexistent development variable file
+
+#### Scenario: Maintainer reads audit follow-up guidance
+- **WHEN** the developer guide describes the patch's architectural review
+- **THEN** it distinguishes implemented functionality from known deferred activation and generated-application work
+- **AND** recommends incremental domain/adapter/generator separation rather than claiming the entire CLI was rewritten

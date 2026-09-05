@@ -1,4 +1,5 @@
 import { readdir, readFile } from 'node:fs/promises';
+import { stripVTControlCharacters } from 'node:util';
 import {
   loadManifest,
   resolveProjectPath,
@@ -8,6 +9,7 @@ import { getPattern } from '../catalogs.js';
 import { toSafeProjectName } from '../planner.js';
 import type { CommandResult, CommandRunner } from '../process-runner.js';
 import { formatCommand } from '../process-runner.js';
+import { detectCredentialLeaks } from './credentials.js';
 import type {
   ExternalCommand,
   LiftoffManifest,
@@ -159,7 +161,8 @@ function isWorkerWorkload(workload: ManifestWorkload): workload is Extract<Manif
 
 export function selectSeedBaselineChecks(
   manifest: LiftoffManifest,
-  changeName = generatedSeedChangeName(manifest)
+  changeName = generatedSeedChangeName(manifest),
+  seedState: 'active' | 'archived' = 'active'
 ): SeedBaselineCheck[] {
   const workload = manifest.project.workload;
   const checks: SeedBaselineCheck[] = [
@@ -347,7 +350,12 @@ export function selectSeedBaselineChecks(
     label: 'Run strict OpenSpec validation',
     applicability: {
       applicable: true,
-      command: { executable: 'openspec', args: ['validate', changeName, '--strict'] },
+      command: {
+        executable: 'openspec',
+        args: seedState === 'archived'
+          ? ['validate', '--all', '--strict']
+          : ['validate', changeName, '--strict']
+      },
       cwdPathParts: []
     }
   });
@@ -541,6 +549,14 @@ export async function discoverGeneratedSeed(projectRoot: string): Promise<Genera
 }
 
 function checkFailureDetail(result: CommandResult): string {
+  if (result.command.executable === 'openspec') {
+    const condition = result.timedOut ? 'command timed out' : `exit status ${result.status ?? 'unknown'}`;
+    const output = [result.errorCode, result.errorMessage, result.stderr, result.stdout]
+      .filter(Boolean)
+      .join('\n');
+    const diagnostic = sanitizeOpenSpecDiagnostic(output);
+    return diagnostic ? `${condition}; ${diagnostic}` : condition;
+  }
   if (result.timedOut) {
     return 'command timed out';
   }
@@ -548,6 +564,23 @@ function checkFailureDetail(result: CommandResult): string {
     return [result.errorCode, result.errorMessage].filter(Boolean).join(': ');
   }
   return `exit status ${result.status ?? 'unknown'}`;
+}
+
+function sanitizeOpenSpecDiagnostic(output: string): string {
+  const plain = stripVTControlCharacters(output)
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, '')
+    .trim();
+  const scan = detectCredentialLeaks([{
+    source: 'process-log',
+    label: 'OpenSpec failure diagnostic',
+    text: plain
+  }]);
+  if (scan.status === 'compromised') {
+    return `OpenSpec diagnostic withheld: credential-shaped content detected. ${scan.guidance.join(' ')}`;
+  }
+  const limit = 2048;
+  const suffix = '\n[truncated]';
+  return plain.length > limit ? `${plain.slice(0, limit - suffix.length)}${suffix}` : plain;
 }
 
 async function validateAllOpenSpecAfterArchive(
@@ -744,7 +777,20 @@ export async function verifyGeneratedSeedBaselineForPhase(
       checks: []
     };
   }
-  const checks = selectSeedBaselineChecks(manifest, discovery.changeName);
+  if (discovery.state === 'archived') {
+    const integrity = await inspectArchivedSeedIntegrity(projectRoot, manifest);
+    if (integrity.status !== 'valid') {
+      return {
+        status: 'blocked',
+        changeName: discovery.changeName,
+        issues: integrity.status === 'invalid'
+          ? integrity.issues
+          : ['Archived seed changed during baseline discovery; rerun setup after restoring the archive.'],
+        checks: []
+      };
+    }
+  }
+  const checks = selectSeedBaselineChecks(manifest, discovery.changeName, discovery.state);
   const outcomes = await runSeedBaselineChecks(projectRoot, runner, checks);
   const failures = outcomes.filter((outcome) => outcome.status === 'failed');
   if (failures.length > 0) {

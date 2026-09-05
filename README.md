@@ -106,7 +106,7 @@ write failures.
 | [Getting started](docs/getting-started.md) | Install safely and complete the first interactive project |
 | [Workloads](docs/workloads.md) | Compare GenAI, API, and Power Apps choices and outputs |
 | [Spec workflows and agents](docs/spec-workflows-and-agents.md) | Configure OpenSpec, Spec Kit, Copilot, Claude, and the optional Code Apps plugin |
-| [Repository governance](docs/repository-governance.md) | Review `/liftoff-setup`, phase order, authority gates, evidence, credentials, and compatibility |
+| [Repository governance](docs/repository-governance.md) | Review `/liftoff-setup`, read-only `/liftoff-governance-assess`, authority gates, evidence, and compatibility |
 | [Existing repositories](docs/existing-repositories.md) | Understand in-place, child-directory, and migration behavior |
 | [Prerequisites](docs/prerequisites.md) | Review plan-derived runtimes, tools, authentication, and dependency setup |
 | [Supported stack baseline](docs/supported-stack.md) | Review pinned runtimes, frameworks, dependency locks, images, and refresh policy |

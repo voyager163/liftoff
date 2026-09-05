@@ -7,7 +7,7 @@ the CLI to work. It creates no persistent installation or session identifier.
 
 ## Event contract
 
-Each recognized command can send at most one event after it finishes:
+Each telemetry-eligible command can send at most one event after it finishes:
 
 ```json
 {
@@ -21,8 +21,14 @@ Each recognized command can send at most one event after it finishes:
 
 `outcome` is `success` for exit code zero and `failure` for every nonzero exit
 code. It is an exit-status class, not an error diagnosis. Help requests are
-recorded as `help`, and rejected input that never resolves to a recognized
-command is not recorded.
+recorded as `help`, except assessment help as described below. Rejected input
+that never resolves to a recognized command is not recorded.
+
+`liftoff governance assess` skips telemetry and disclosure entirely, including
+`--live` and `--help`. It sends no telemetry event, displays no disclosure notice,
+and writes no disclosure state, regardless of the default telemetry setting.
+Opting into live assessment authorizes only its scoped read-only observations,
+not telemetry delivery.
 
 `upgrade` is recorded only as the aggregate command value. Check/apply mode,
 target or configured-registry details, installation origin, paths, npm output,

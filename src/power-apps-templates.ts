@@ -6,6 +6,7 @@ import {
 } from './power-apps-assets.js';
 import type { AddArtifact } from './template-types.js';
 import type { PowerAppsCodeAppProjectPlan } from './types.js';
+import { renderGovernanceAssessmentGuide } from './repository-governance.js';
 import {
   OPEN_SPEC_DELIVERY,
   OPEN_SPEC_PROFILE,
@@ -141,6 +142,9 @@ The Power Apps starter, package metadata, lockfile, source, assets, and this REA
 For an existing OpenSpec project, change workflow delivery with \`openspec config profile\` and refresh framework-owned files with \`openspec update\`. Plain \`liftoff update\` does not regenerate OpenSpec integrations.
 
 ${governanceGuidance}
+${plan.governanceProfile.id === 'none'
+  ? '\nNo `/liftoff-governance-assess` integration is generated while governance is disabled.\n'
+  : `\n${renderGovernanceAssessmentGuide()}`}
 ${pluginGuidance}
 ## Source
 
