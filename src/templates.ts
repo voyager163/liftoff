@@ -3116,10 +3116,25 @@ function seedCapabilityId(plan: ProjectPlan): string {
   return `${genAiPattern(plan).id}-application-baseline`;
 }
 
+function seedCapabilityPurpose(plan: ProjectPlan): string {
+  if (plan.workload === 'power-apps-code-app') {
+    return `Define the generated ${plan.projectName} Power Apps code app baseline that setup verifies and archives before domain-specific implementation or deployment begins.`;
+  }
+  if (plan.workload === 'standard') {
+    return `Define the generated ${plan.apiStack.label} application baseline that setup verifies and archives before domain-specific implementation or deployment begins.`;
+  }
+  return `Define the generated ${genAiPattern(plan).label} application baseline that setup verifies and archives before domain-specific implementation or deployment begins.`;
+}
+
 function renderSeedSpec(plan: ProjectPlan): string {
   const capability = seedCapabilityId(plan);
+  const purpose = seedCapabilityPurpose(plan);
   if (plan.workload === 'power-apps-code-app') {
-    return `## ADDED Requirements
+    return `## Purpose
+
+${purpose}
+
+## ADDED Requirements
 
 ### Requirement: Generated Power Apps code app baseline is locally verifiable
 The bootstrap seed SHALL describe only the generated Power Apps code app scaffold, workflow configuration, and local validation boundary. Domain-specific screens, connector behavior, tenant binding, solution packaging, deployment, credentials, and other product behavior SHALL be deferred to later changes.
@@ -3141,7 +3156,11 @@ The bootstrap seed SHALL describe only the generated Power Apps code app scaffol
   }
 
   if (plan.workload === 'standard') {
-    return `## ADDED Requirements
+    return `## Purpose
+
+${purpose}
+
+## ADDED Requirements
 
 ### Requirement: Generated ${plan.apiStack.label} baseline is locally verifiable
 The bootstrap seed SHALL describe only the generated ${plan.apiStack.label} backend, optional frontend, Docker Compose, OpenTofu, workflow configuration, and governance baseline. Domain-specific product behavior SHALL be deferred to later changes.
@@ -3166,7 +3185,11 @@ The bootstrap seed SHALL describe only the generated ${plan.apiStack.label} back
   const worker = hasFunctionWorker(plan)
     ? 'Azure Functions worker, '
     : '';
-  return `## ADDED Requirements
+  return `## Purpose
+
+${purpose}
+
+## ADDED Requirements
 
 ### Requirement: Generated ${pattern.label} baseline is locally verifiable
 The bootstrap seed SHALL describe only the generated FastAPI/PydanticAI backend, ${worker}optional frontend, Docker Compose, OpenTofu, workflow configuration, and governance baseline. Domain-specific product behavior SHALL be deferred to later changes.
@@ -3342,7 +3365,7 @@ ${seedTaskChecks(plan).map(renderSeedTaskCheck).join('\n')}
 
 ## 3. Completion
 
-- [ ] 3.1 After every applicable local check succeeds and every absent component is recorded inapplicable, archive with \`openspec archive bootstrap-${plan.safeProjectName} --yes\`. OpenSpec archive updates the main specs as part of archive; do not pass \`--skip-specs\`.
+- [ ] 3.1 After every applicable local check succeeds and every absent component is recorded inapplicable, archive with \`openspec archive bootstrap-${plan.safeProjectName} --yes\`, then require \`openspec validate --all --strict\` to pass. OpenSpec archive updates the main specs as part of archive; do not pass \`--skip-specs\`.
 
 No task in this bootstrap seed starts containers, runs cloud plan/apply, mutates GitHub, or implements domain-specific product behavior.
 `;

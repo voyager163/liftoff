@@ -74,6 +74,11 @@ export type GeneratedSeedDiscovery =
   | { state: 'archived'; changeName: string; detail: string }
   | { state: 'blocked'; changeName: string; issues: readonly string[] };
 
+export type ArchivedSeedIntegrity =
+  | { status: 'not-applicable' | 'not-archived'; changeName: string; issues: readonly [] }
+  | { status: 'valid'; changeName: string; capabilityId: string; issues: readonly [] }
+  | { status: 'invalid'; changeName: string; capabilityId: string; issues: readonly string[] };
+
 export type GeneratedSeedLifecycleResult =
   | {
       status: 'archived';
@@ -112,7 +117,13 @@ export type SeedPhaseArchiveResult =
       archiveSyncBehavior?: string;
       detail: string;
     }
-  | { status: 'blocked'; changeName: string; issues: readonly string[] };
+  | {
+      status: 'blocked';
+      changeName: string;
+      issues: readonly string[];
+      retryableAfterRepair?: boolean;
+      archiveCompleted?: boolean;
+    };
 
 const seedChangePathParts = (changeName: string) => ['openspec', 'changes', changeName] as const;
 
@@ -410,6 +421,52 @@ async function archivedBootstrapChangeExists(projectRoot: string, changeName: st
   return entries.some((entry) => entry.isDirectory() && entry.name.endsWith(changeName));
 }
 
+function mainSpecPurpose(markdown: string): string | null {
+  const match = markdown.match(/^## Purpose\s*\r?\n+([\s\S]*?)(?=\r?\n##\s+)/mu);
+  return match?.[1]?.trim() || null;
+}
+
+export async function inspectArchivedSeedIntegrity(
+  projectRoot: string,
+  suppliedManifest?: LiftoffManifest
+): Promise<ArchivedSeedIntegrity> {
+  const manifest = suppliedManifest ?? await loadManifest(projectRoot);
+  const changeName = generatedSeedChangeName(manifest);
+  if (manifest.project.specWorkflow !== 'openspec') {
+    return { status: 'not-applicable', changeName, issues: [] };
+  }
+  if (!(await archivedBootstrapChangeExists(projectRoot, changeName))) {
+    return { status: 'not-archived', changeName, issues: [] };
+  }
+  const capabilityId = generatedSeedCapabilityId(manifest.project.workload);
+  const pathParts = ['openspec', 'specs', capabilityId, 'spec.md'] as const;
+  let spec: string;
+  try {
+    spec = await readRequiredProjectText(projectRoot, pathParts);
+  } catch (error) {
+    return {
+      status: 'invalid',
+      changeName,
+      capabilityId,
+      issues: [
+        `Archived seed ${changeName} has no synchronized main capability spec at ${pathParts.join('/')}: ${errorMessage(error)}`
+      ]
+    };
+  }
+  const purpose = mainSpecPurpose(spec);
+  if (!purpose || purpose.startsWith('TBD - created by archiving change')) {
+    return {
+      status: 'invalid',
+      changeName,
+      capabilityId,
+      issues: [
+        `Archived seed ${changeName} has no concrete Purpose in ${pathParts.join('/')}; repair the synchronized main spec before setup continues.`
+      ]
+    };
+  }
+  return { status: 'valid', changeName, capabilityId, issues: [] };
+}
+
 export async function discoverGeneratedSeed(projectRoot: string): Promise<GeneratedSeedDiscovery> {
   const manifest = await loadManifest(projectRoot);
   const changeName = generatedSeedChangeName(manifest);
@@ -491,6 +548,32 @@ function checkFailureDetail(result: CommandResult): string {
     return [result.errorCode, result.errorMessage].filter(Boolean).join(': ');
   }
   return `exit status ${result.status ?? 'unknown'}`;
+}
+
+async function validateAllOpenSpecAfterArchive(
+  projectRoot: string,
+  runner: CommandRunner,
+  changeName: string
+): Promise<
+  | { status: 'passed'; command: CommandResult }
+  | { status: 'blocked'; issues: readonly string[]; retryableAfterRepair: true }
+> {
+  const command = {
+    executable: 'openspec',
+    args: ['validate', '--all', '--strict']
+  };
+  const result = await runner.run(command, { cwd: projectRoot });
+  if (result.status !== 0 || result.timedOut || result.errorCode) {
+    return {
+      status: 'blocked',
+      issues: [
+        `OpenSpec post-archive strict validation failed: ${formatCommand(command)} (${checkFailureDetail(result)}). ` +
+          `The seed ${changeName} is archived; repair the synchronized main spec, then rerun setup so the archived seed is revalidated.`
+      ],
+      retryableAfterRepair: true
+    };
+  }
+  return { status: 'passed', command: result };
 }
 
 async function runSeedBaselineCheck(
@@ -683,10 +766,32 @@ export async function archiveGeneratedSeedForPhase(
 ): Promise<SeedPhaseArchiveResult> {
   const discovery = await discoverGeneratedSeed(projectRoot);
   if (discovery.state === 'archived') {
+    const integrity = await inspectArchivedSeedIntegrity(projectRoot);
+    if (integrity.status === 'invalid') {
+      return {
+        status: 'blocked',
+        changeName: discovery.changeName,
+        issues: integrity.issues,
+        retryableAfterRepair: true
+      };
+    }
+    const validation = await validateAllOpenSpecAfterArchive(
+      projectRoot,
+      runner,
+      discovery.changeName
+    );
+    if (validation.status === 'blocked') {
+      return {
+        status: 'blocked',
+        changeName: discovery.changeName,
+        issues: validation.issues,
+        retryableAfterRepair: validation.retryableAfterRepair
+      };
+    }
     return {
       status: 'already-archived',
       changeName: discovery.changeName,
-      detail: discovery.detail
+      detail: `${discovery.detail} The synchronized main specs remain strict-valid.`
     };
   }
   if (discovery.state === 'blocked') {
@@ -715,13 +820,37 @@ export async function archiveGeneratedSeedForPhase(
       ]
     };
   }
+  const integrity = await inspectArchivedSeedIntegrity(projectRoot);
+  if (integrity.status === 'invalid') {
+    return {
+      status: 'blocked',
+      changeName: discovery.changeName,
+      issues: integrity.issues,
+      retryableAfterRepair: true,
+      archiveCompleted: true
+    };
+  }
+  const validation = await validateAllOpenSpecAfterArchive(
+    projectRoot,
+    runner,
+    discovery.changeName
+  );
+  if (validation.status === 'blocked') {
+    return {
+      status: 'blocked',
+      changeName: discovery.changeName,
+      issues: validation.issues,
+      retryableAfterRepair: validation.retryableAfterRepair,
+      archiveCompleted: true
+    };
+  }
   return {
     status: 'archived',
     changeName: discovery.changeName,
     capabilityId: discovery.capabilityId,
     archive,
     archiveSyncBehavior: 'OpenSpec archive updates main specs as part of archive; the lifecycle engine intentionally never passes --skip-specs.',
-    detail: 'Generated seed was archived after prior seed validation and baseline verification evidence.'
+    detail: 'Generated seed was archived and the synchronized main specs passed strict validation.'
   };
 }
 
@@ -731,10 +860,19 @@ export async function completeGeneratedSeedLifecycle(
 ): Promise<GeneratedSeedLifecycleResult> {
   const discovery = await discoverGeneratedSeed(projectRoot);
   if (discovery.state === 'archived') {
+    const archive = await archiveGeneratedSeedForPhase(projectRoot, runner);
+    if (archive.status === 'blocked') {
+      return {
+        status: 'blocked',
+        changeName: archive.changeName,
+        issues: archive.issues,
+        checks: []
+      };
+    }
     return {
       status: 'already-archived',
-      changeName: discovery.changeName,
-      detail: discovery.detail
+      changeName: archive.changeName,
+      detail: archive.detail
     };
   }
   if (discovery.state === 'blocked') {

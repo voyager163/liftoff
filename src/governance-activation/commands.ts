@@ -59,6 +59,10 @@ import {
   type GovernanceSourceOfTruthInspection
 } from './source-of-truth.js';
 import {
+  inspectArchivedSeedIntegrity,
+  type ArchivedSeedIntegrity
+} from './seed-lifecycle.js';
+import {
   executeApplyNext,
   previewApplyNext,
   type ApplyNextExecutionResult,
@@ -127,6 +131,7 @@ interface GovernanceInspection {
   readiness: ReadinessResult;
   sourceOfTruth: GovernanceSourceOfTruthInspection;
   credential: CredentialInspection;
+  archivedSeedIntegrity: ArchivedSeedIntegrity;
 }
 
 interface CredentialInspection {
@@ -146,6 +151,28 @@ interface VerificationCheck {
   issues: readonly string[];
 }
 
+type SetupCompletionStatus = 'not-started' | 'in-progress' | 'complete';
+
+interface GovernanceVerificationResult {
+  schemaVersion: 1;
+  command: 'governance verify';
+  projectRoot: string;
+  readOnly: true;
+  ok: boolean;
+  consistent: boolean;
+  verificationStatus: 'consistent' | 'inconsistent';
+  complete: boolean;
+  setupStatus: SetupCompletionStatus;
+  stateSource: GovernanceInspection['stateSource'];
+  summary: string;
+  activationIdentity: UserActivationState['identity'];
+  graphHash: string;
+  activeChange: UserActivationState['activeChange'];
+  activeSourceOfTruth: GovernanceSourceOfTruthInspection;
+  nextReadyPhase: PhaseId | null;
+  checks: readonly VerificationCheck[];
+}
+
 const governanceSubcommands = new Set<GovernanceSubcommand>([
   'status',
   'plan',
@@ -162,6 +189,17 @@ const terminalEvidenceStates = new Set<PhaseState>([
   'inapplicable',
   'retained',
   'disposed'
+]);
+const successfulSetupStates = new Set<PhaseState>([
+  'approved',
+  'verified',
+  'inapplicable',
+  'retained',
+  'disposed'
+]);
+const terminalPhaseStates = new Set<PhaseState>([
+  ...successfulSetupStates,
+  'failed'
 ]);
 
 function errorMessage(error: unknown): string {
@@ -563,6 +601,7 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     state,
     evidence
   });
+  const archivedSeedIntegrity = await inspectArchivedSeedIntegrity(projectRoot, manifest);
   const now = new Date();
   const credential = await inspectCredentialPolicy(projectRoot, state);
   const contexts = buildEvidenceContexts(graph.graph, state, now);
@@ -573,6 +612,9 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     approvals,
     evidence,
     transitionContexts: contexts,
+    phaseBlockers: archivedSeedIntegrity.status === 'invalid'
+      ? { 'seed-archived': archivedSeedIntegrity.issues }
+      : undefined,
     now
   });
   return {
@@ -588,7 +630,8 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     evidenceFreshness,
     readiness,
     sourceOfTruth,
-    credential
+    credential,
+    archivedSeedIntegrity
   };
 }
 
@@ -882,6 +925,40 @@ function validateStateEvidence(inspection: GovernanceInspection): VerificationCh
   return { id: 'state-evidence', status: issues.length === 0 ? 'passed' : 'failed', issues };
 }
 
+function validatePhaseTerminalStates(inspection: GovernanceInspection): VerificationCheck {
+  const issues: string[] = [];
+  for (const phase of inspection.graph.graph.phases) {
+    const allowed = phase.terminalStates as readonly string[];
+    const stored = inspection.state.phases[phase.id].state;
+    const selected = selectLatestPhaseEvidence(
+      inspection.evidence.filter((record) => record.header.phaseId === phase.id),
+      inspection.contexts[phase.id]
+    ).selected;
+    if (selected && !allowed.includes(selected.header.result)) {
+      issues.push(
+        `Evidence ${selected.evidenceId} reports ${selected.header.result}, ` +
+          `which is not an allowed terminal state for ${phase.id}.`
+      );
+    }
+    if (terminalPhaseStates.has(stored) && !allowed.includes(stored)) {
+      issues.push(`Phase ${phase.id} is stored as ${stored}, which is not an allowed terminal state.`);
+    }
+    const calculated = inspection.readiness.phases[phase.id].state;
+    if (
+      calculated !== 'identity-incompatible' &&
+      terminalPhaseStates.has(calculated) &&
+      !allowed.includes(calculated)
+    ) {
+      issues.push(`Phase ${phase.id} resolves to ${calculated}, which is not an allowed terminal state.`);
+    }
+  }
+  return {
+    id: 'phase-terminal-state',
+    status: issues.length === 0 ? 'passed' : 'failed',
+    issues
+  };
+}
+
 function validateEvidenceFreshnessCheck(inspection: GovernanceInspection): VerificationCheck {
   const issues = phaseIds.flatMap((phaseId) => {
     const freshness = inspection.evidenceFreshness[phaseId];
@@ -890,6 +967,21 @@ function validateEvidenceFreshnessCheck(inspection: GovernanceInspection): Verif
       : freshness.issues.map((issue) => `${phaseId}: ${issue}`);
   });
   return { id: 'evidence-freshness', status: issues.length === 0 ? 'passed' : 'failed', issues };
+}
+
+function archivedSeedIntegrityCheck(inspection: GovernanceInspection): VerificationCheck {
+  if (inspection.archivedSeedIntegrity.status === 'invalid') {
+    return {
+      id: 'archived-seed-integrity',
+      status: 'failed',
+      issues: inspection.archivedSeedIntegrity.issues
+    };
+  }
+  return {
+    id: 'archived-seed-integrity',
+    status: inspection.archivedSeedIntegrity.status === 'valid' ? 'passed' : 'skipped',
+    issues: []
+  };
 }
 
 function validateReadinessCheck(inspection: GovernanceInspection): VerificationCheck {
@@ -1050,8 +1142,10 @@ async function verifyChecks(inspection: GovernanceInspection): Promise<Verificat
     },
     activeChangeIdentityCheck(inspection),
     activeSourceOfTruthCheck(inspection),
+    archivedSeedIntegrityCheck(inspection),
     validateEvidenceFreshnessCheck(inspection),
     validateStateEvidence(inspection),
+    validatePhaseTerminalStates(inspection),
     credentialPolicyCheck(inspection),
     liveReadbackCheck(inspection),
     await activeTaskProjectionCheck(inspection),
@@ -1059,14 +1153,64 @@ async function verifyChecks(inspection: GovernanceInspection): Promise<Verificat
   ];
 }
 
-async function verifyJson(inspection: GovernanceInspection): Promise<Record<string, unknown>> {
+function setupCompletion(inspection: GovernanceInspection): {
+  status: SetupCompletionStatus;
+  complete: boolean;
+  summary: string;
+} {
+  if (inspection.stateSource === 'not-started') {
+    return {
+      status: 'not-started',
+      complete: false,
+      summary: `Verification is consistent, but setup has not started. Next ready phase: ${inspection.readiness.nextReadyPhase ?? 'none'}.`
+    };
+  }
+  const terminal = inspection.readiness.phases['bootstrap-state-disposed'].state;
+  const everyPhaseComplete = inspection.graph.graph.phases.every((phase) => {
+    const phaseId = phase.id;
+    const state = inspection.readiness.phases[phaseId].state;
+    return state !== 'identity-incompatible' &&
+      successfulSetupStates.has(state) &&
+      (phase.terminalStates as readonly string[]).includes(state);
+  });
+  if (everyPhaseComplete && (terminal === 'disposed' || terminal === 'inapplicable')) {
+    return {
+      status: 'complete',
+      complete: true,
+      summary: 'Verification is consistent and deterministic setup is complete.'
+    };
+  }
+  return {
+    status: 'in-progress',
+    complete: false,
+    summary: inspection.readiness.nextReadyPhase
+      ? `Verification is consistent, but setup is incomplete. Next ready phase: ${inspection.readiness.nextReadyPhase}.`
+      : 'Verification is consistent, but setup is incomplete and currently blocked.'
+  };
+}
+
+async function verifyJson(inspection: GovernanceInspection): Promise<GovernanceVerificationResult> {
   const checks = await verifyChecks(inspection);
+  const consistent = checks.every((check) => check.status !== 'failed');
+  const completion = setupCompletion(inspection);
+  const summary = consistent
+    ? completion.summary
+    : 'Verification found inconsistent governance state; setup is not complete.';
+  const setupStatus = consistent || completion.status === 'not-started'
+    ? completion.status
+    : 'in-progress';
   return {
     schemaVersion: 1,
     command: 'governance verify',
     projectRoot: inspection.projectRoot,
     readOnly: true,
-    ok: checks.every((check) => check.status !== 'failed'),
+    ok: consistent,
+    consistent,
+    verificationStatus: consistent ? 'consistent' : 'inconsistent',
+    complete: consistent && completion.complete,
+    setupStatus,
+    stateSource: inspection.stateSource,
+    summary,
     activationIdentity: inspection.state.identity,
     graphHash: inspection.graph.hash,
     activeChange: inspection.state.activeChange,
@@ -1078,8 +1222,13 @@ async function verifyJson(inspection: GovernanceInspection): Promise<Record<stri
 
 async function renderVerifyHuman(inspection: GovernanceInspection, presentation: PresentationSession): Promise<number> {
   const result = await verifyJson(inspection);
-  const checks = result.checks as VerificationCheck[];
+  const checks = result.checks;
   presentation.commandIdentity('governance verify', 'Read-only activation verification');
+  presentation.status(
+    result.complete ? 'success' : result.consistent ? 'pending' : 'error',
+    'setup-completion',
+    result.summary
+  );
   for (const check of checks) {
     presentation.status(check.status === 'failed' ? 'error' : check.status === 'skipped' ? 'info' : 'success', check.id, check.issues[0]);
   }
@@ -1099,6 +1248,16 @@ function renderInspectionFailure(
     projectRoot,
     readOnly: true,
     ok: false,
+    ...(subcommand === 'verify'
+      ? {
+          consistent: false,
+          verificationStatus: 'inconsistent',
+          complete: false,
+          setupStatus: 'indeterminate',
+          stateSource: 'unavailable',
+          summary: 'Verification could not inspect governance state; setup completion is indeterminate.'
+        }
+      : {}),
     checks: [{
       id: 'inspection',
       status: 'failed',
@@ -1238,12 +1397,16 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     return 0;
   }
   if (subcommand === 'verify') {
-    if (jsonMode) {
-      const result = await verifyJson(inspection);
-      json(presentation, result);
-      return result.ok === true ? 0 : 1;
+    try {
+      if (jsonMode) {
+        const result = await verifyJson(inspection);
+        json(presentation, result);
+        return result.ok === true ? 0 : 1;
+      }
+      return await renderVerifyHuman(inspection, presentation);
+    } catch (error) {
+      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode);
     }
-    return await renderVerifyHuman(inspection, presentation);
   }
 
   const execute = readBooleanFlag(parsed.flags, 'execute') ?? false;

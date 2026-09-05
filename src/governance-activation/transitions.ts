@@ -156,6 +156,7 @@ export interface PhaseAdapterOutcome {
   fileMutations?: readonly ProjectFileMutation[];
   completedOperations?: readonly TransitionOperation[];
   cleanupWarnings?: readonly string[];
+  retryableWithoutStateMutation?: boolean;
 }
 
 export interface GovernancePhaseAdapter {
@@ -1775,7 +1776,14 @@ async function executeSeedOperations(input: PhaseAdapterExecutionInput): Promise
   }
   const result = await archiveGeneratedSeedForPhase(input.inspection.projectRoot, input.runner);
   if (result.status === 'blocked') {
-    return { status: 'blocked', blocker: result.issues[0] ?? 'Seed archive failed.', completedOperations: [] };
+    return {
+      status: 'blocked',
+      blocker: result.issues[0] ?? 'Seed archive failed.',
+      completedOperations: result.archiveCompleted
+        ? input.plan.operations.filter((op) => op.actionId === 'openspec.seed.archive')
+        : [],
+      retryableWithoutStateMutation: result.retryableAfterRepair
+    };
   }
   return {
     status: 'completed',
@@ -2386,6 +2394,20 @@ export async function executeApplyNext(input: {
   const completedOperations = outcome.completedOperations ?? [];
   if (outcome.status === 'blocked') {
     const blocker = outcome.blocker ?? `Phase ${phase.id} blocked.`;
+    if (outcome.retryableWithoutStateMutation) {
+      const stateHash = freshInspection.loadedState?.contentHash ??
+        activationStateContentHash(canonicalJson(freshInspection.state));
+      return executionBlockedResult(
+        freshInspection,
+        initialPlan,
+        saved,
+        blocker,
+        completedOperations,
+        stateHash,
+        outcome.cleanupWarnings ?? [],
+        false
+      );
+    }
     const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker, now });
     const write = await writeOutcomeTransaction({
       projectRoot: freshInspection.projectRoot,
@@ -2395,6 +2417,24 @@ export async function executeApplyNext(input: {
     return executionBlockedResult(freshInspection, initialPlan, saved, blocker, completedOperations, write.stateHash, outcome.cleanupWarnings ?? []);
   }
   const resultState = outcome.resultState ?? 'verified';
+  if (!(phase.terminalStates as readonly string[]).includes(resultState)) {
+    const blocker = `Phase adapter returned ${resultState}, which is not an allowed terminal state for ${phase.id}.`;
+    const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker, now });
+    const write = await writeOutcomeTransaction({
+      projectRoot: freshInspection.projectRoot,
+      plan: initialPlan,
+      nextState
+    });
+    return executionBlockedResult(
+      freshInspection,
+      initialPlan,
+      saved,
+      blocker,
+      completedOperations,
+      write.stateHash,
+      outcome.cleanupWarnings ?? []
+    );
+  }
   let evidenceRecord: PhaseEvidenceRecord | undefined;
   let evidenceParts: readonly string[] | undefined;
   let evidenceReference: UserActivationState['phases'][PhaseId]['evidence'][number] | undefined;
@@ -2477,7 +2517,8 @@ function executionBlockedResult(
   blocker: string,
   completedOperations: readonly TransitionOperation[],
   stateHashValue: string,
-  cleanupWarnings: readonly string[] = []
+  cleanupWarnings: readonly string[] = [],
+  stateWritten = true
 ): ApplyNextExecutionResult {
   const phase = phaseById(inspection.graph, plan.phaseId);
   const rollbackPlan = rollbackPlanForPhase(phase, completedOperations);
@@ -2502,7 +2543,7 @@ function executionBlockedResult(
     blockers: [blocker],
     executedOperations: [
       ...completedOperations,
-      stateWriteOperation(phase)
+      ...(stateWritten ? [stateWriteOperation(phase)] : [])
     ],
     evidence: null,
     stateHash: stateHashValue,

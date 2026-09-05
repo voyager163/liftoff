@@ -206,6 +206,7 @@ The generated setup integrations call only strict, project-aware CLI commands:
 ```bash
 liftoff governance status --json
 liftoff governance plan --json
+liftoff governance apply-next --json
 liftoff governance apply-next --json --execute
 liftoff governance resume --json
 liftoff governance verify --json
@@ -213,8 +214,12 @@ liftoff governance verify --json
 
 `status`, `plan`, and `verify` are read-only. `apply-next` previews mutations
 unless `--execute` is supplied, and even then executes at most one graph-ready,
-evidence-ready, approved phase. Unknown subcommands, flags, or extra positionals
-fail before project discovery or mutation.
+evidence-ready, approved phase. Here, approved means its approval status is
+`not-required` or `reused`. Unknown subcommands, flags, or extra positionals
+fail before project discovery or mutation. Verification reports consistency
+separately from setup completion: a valid not-started or in-progress state may
+have `ok: true` and `verificationStatus: "consistent"` while `complete` remains
+false.
 
 ## Existing projects
 
