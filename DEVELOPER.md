@@ -82,6 +82,12 @@ changes in another.
   declared capability specs, and must pass strict validation immediately.
 - Copilot and Claude `/liftoff-setup` integrations must be behaviorally
   equivalent, command-only, model-agnostic, and free of skill-version fields.
+  They must distinguish the read-only `apply-next --json` preview from
+  `apply-next --json --execute`, and execute only when approval status is
+  `not-required` or `reused`.
+- Governance verification must report state consistency separately from setup
+  progress. A consistent `not-started` or `in-progress` result is not complete;
+  completion requires every phase to have a successful terminal state.
 - Credential tests must prove PAT/App policy equivalence, exact workflow/job
   allowlists, masked input, no command-argument/file/log/evidence leaks, and
   compromised revoke/rotate guidance.
@@ -95,7 +101,8 @@ Run the smallest focused command while iterating:
 ```bash
 npx vitest run tests/documentation.test.ts
 npx vitest run tests/templates.test.ts tests/repository-governance.test.ts
-npx vitest run tests/governance-activation.test.ts tests/governance-credentials.test.ts
+npx vitest run tests/governance-activation.test.ts tests/governance-commands.test.ts tests/governance-credentials.test.ts
+npx vitest run tests/seed-lifecycle.test.ts
 npm run build
 openspec validate add-deterministic-liftoff-setup --strict
 ```

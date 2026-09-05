@@ -52,6 +52,17 @@ environments, documentation, and infrastructure are project-owned after
 generation and remain outside every update mode, including `--force`. Use
 `liftoff update --check --json` for a read-only core-maintenance gate.
 
+Projects generated before `0.10.2` may still display the retired
+`/liftoff-repository-governance` command. Review `liftoff update --check`, then
+remove that generated alias with:
+
+```bash
+liftoff upgrade
+liftoff update --force
+```
+
+Reload the coding-agent session afterward so its command index refreshes.
+
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 
 ## One flow, three workloads

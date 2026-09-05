@@ -44,10 +44,52 @@ export interface ReadinessInput {
   transitionContexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
   identity?: ActivationIdentity;
   now?: Date;
+  phaseBlockers?: Partial<Record<PhaseId, readonly string[]>>;
 }
+
+const terminalStates = new Set<PhaseState>([
+  'approved',
+  'verified',
+  'failed',
+  'inapplicable',
+  'retained',
+  'disposed'
+]);
 
 function phaseMap(graph: ManagedPhaseGraph): Record<PhaseId, PhaseGraphNode> {
   return Object.fromEntries(graph.phases.map((phase) => [phase.id, phase])) as Record<PhaseId, PhaseGraphNode>;
+}
+
+function propagatedPhaseBlockers(
+  graph: ManagedPhaseGraph,
+  explicit: Partial<Record<PhaseId, readonly string[]>>
+): Partial<Record<PhaseId, readonly string[]>> {
+  const propagated: Partial<Record<PhaseId, readonly string[]>> = {};
+  for (const node of graph.phases) {
+    const direct = explicit[node.id] ?? [];
+    if (direct.length > 0) {
+      propagated[node.id] = direct;
+      continue;
+    }
+    const inherited = node.dependencies.flatMap((dependency) => {
+      const alternatives = dependency.anyOf.map((phaseId) => ({
+        phaseId,
+        blockers: propagated[phaseId] ?? []
+      }));
+      if (alternatives.length === 0 || alternatives.some((entry) => entry.blockers.length === 0)) {
+        return [];
+      }
+      return [
+        `${dependency.description} Blocked upstream: ${alternatives
+          .map((entry) => `${entry.phaseId}: ${entry.blockers.join('; ')}`)
+          .join(' | ')}`
+      ];
+    });
+    if (inherited.length > 0) {
+      propagated[node.id] = inherited;
+    }
+  }
+  return propagated;
 }
 
 function applicabilityApplies(node: PhaseGraphNode, state: UserActivationState): boolean {
@@ -123,13 +165,10 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
   const approvals = input.approvals.map((approval) => validateApprovalEnvelope(approval));
   const evidence = input.evidence.map((entry, index) => evidenceRecord(entry, index));
   const byId = phaseMap(graph);
+  const externalPhaseBlockers = propagatedPhaseBlockers(graph, input.phaseBlockers ?? {});
   for (const node of graph.phases) {
     const stored = input.state.phases[node.id];
     const blockers: string[] = [];
-    if (!applicabilityApplies(node, input.state)) {
-      phases[node.id] = { phaseId: node.id, state: 'inapplicable', blockers: [] };
-      continue;
-    }
     const recordsForPhase = evidence.filter((record) => rawRecordPhaseId(record) === node.id);
     const context = input.transitionContexts?.[node.id] ?? evidenceContextForPhase(node.id, {
       repositoryId: input.state.repository.id,
@@ -138,20 +177,45 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       now
     });
     const selectedEvidence = selectLatestPhaseEvidence(recordsForPhase, context);
+    if (
+      selectedEvidence.selected &&
+      !(node.terminalStates as readonly string[]).includes(selectedEvidence.selected.header.result)
+    ) {
+      phases[node.id] = {
+        phaseId: node.id,
+        state: 'blocked',
+        blockers: [
+          `Evidence ${selectedEvidence.selected.evidenceId} reports ${selectedEvidence.selected.header.result}, ` +
+            `which is not an allowed terminal state for ${node.id}.`
+        ]
+      };
+      continue;
+    }
+    if (
+      terminalStates.has(stored.state) &&
+      !(node.terminalStates as readonly string[]).includes(stored.state)
+    ) {
+      phases[node.id] = {
+        phaseId: node.id,
+        state: 'blocked',
+        blockers: [`Stored state ${stored.state} is not an allowed terminal state for ${node.id}.`]
+      };
+      continue;
+    }
+    if (!applicabilityApplies(node, input.state)) {
+      phases[node.id] = { phaseId: node.id, state: 'inapplicable', blockers: [] };
+      continue;
+    }
+    const externalBlockers = externalPhaseBlockers[node.id] ?? [];
+    if (externalBlockers.length > 0) {
+      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: externalBlockers };
+      continue;
+    }
     if (selectedEvidence.selected?.header.result === 'failed' || stored.state === 'failed') {
       phases[node.id] = {
         phaseId: node.id,
         state: 'failed',
         blockers: selectedEvidence.selected?.header.result === 'failed' ? [] : stored.blockers
-      };
-      continue;
-    }
-    if (selectedEvidence.selected) {
-      const foundEvidence = selectedEvidence.selected.header;
-      phases[node.id] = {
-        phaseId: node.id,
-        state: foundEvidence.result === 'retained' ? 'retained' : foundEvidence.result,
-        blockers: []
       };
       continue;
     }
@@ -202,6 +266,15 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
     }
     if (blockers.length > 0) {
       phases[node.id] = { phaseId: node.id, state: 'blocked', blockers };
+      continue;
+    }
+    if (selectedEvidence.selected) {
+      const foundEvidence = selectedEvidence.selected.header;
+      phases[node.id] = {
+        phaseId: node.id,
+        state: foundEvidence.result === 'retained' ? 'retained' : foundEvidence.result,
+        blockers: []
+      };
       continue;
     }
     if (stored.state === 'approved' && (node.terminalStates as readonly string[]).includes('approved')) {

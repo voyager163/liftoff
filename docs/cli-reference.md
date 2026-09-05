@@ -30,7 +30,7 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff governance plan [project]` | Previews ready and blocked phase transitions, required evidence, approval gates, permitted mutations, and cost-envelope impact without writes |
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
-| `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback |
+| `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
 | `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
@@ -244,6 +244,8 @@ liftoff validate --json
 liftoff doctor --json
 liftoff governance status --json
 liftoff governance plan --json
+liftoff governance apply-next --json
+liftoff governance apply-next --json --execute
 liftoff governance verify --json
 liftoff upgrade --json
 liftoff upgrade --check --json

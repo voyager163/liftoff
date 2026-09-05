@@ -470,6 +470,44 @@ describe('controlled governance apply-next transitions', () => {
     expect(body.blockers).toEqual(['No phase is ready for execution.']);
   });
 
+  it('blocks adapter results that are not terminal states for the phase', async () => {
+    const root = await writeProject('illegal-adapter-result');
+    const adapter: GovernancePhaseAdapter = {
+      phaseId: 'seed-valid',
+      async execute() {
+        return {
+          status: 'completed',
+          resultState: 'inapplicable',
+          completedOperations: []
+        };
+      }
+    };
+    const base = inspectionFor({ root, phaseId: 'seed-valid', source: sourceNone() });
+
+    const result = await import('../src/governance-activation/transitions.js').then((module) =>
+      module.executeApplyNext({
+        inspection: base,
+        reinspect: async () => base,
+        adapters: { phases: { 'seed-valid': adapter } },
+        now
+      })
+    );
+
+    expect(result).toMatchObject({
+      applied: false,
+      reason: 'blocked',
+      evidence: null,
+      blockers: [expect.stringContaining('not an allowed terminal state')]
+    });
+    const state = JSON.parse(
+      await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')
+    ) as UserActivationState;
+    expect(state.phases['seed-valid']).toMatchObject({
+      state: 'blocked',
+      evidence: []
+    });
+  });
+
   it('rolls back local file mutations when evidence/state transaction fails', async () => {
     const root = await writeProject('rollback');
     const adapter: GovernancePhaseAdapter = {
@@ -577,6 +615,8 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     for (const phaseId of ['seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed'] as const) {
       await writeEvidence(root, evidenceRecord(phaseId, state));
     }
+    await writeApproval(root, state, 'committed');
+    await writeApproval(root, state, 'pushed');
     const runner = new Phase0Runner();
     const result = await run(['governance', 'apply-next', '--json', '--execute'], root, runner);
     expect(result.code).toBe(0);
