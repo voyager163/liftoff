@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { devNull } from 'node:os';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -51,10 +50,11 @@ import {
 } from './governance-activation-fixtures.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-transition-tests-${process.pid}`);
+const emptyGitConfig = path.join(scratchRoot, 'empty.gitconfig');
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 const now = new Date('2026-09-04T00:00:00.000Z');
 const isolatedGitEnvironment = {
-  GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull,
+  GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: emptyGitConfig, GIT_CONFIG_SYSTEM: emptyGitConfig,
   GIT_CONFIG_COUNT: '0', GIT_CONFIG_PARAMETERS: ''
 };
 let counter = 0;
@@ -440,6 +440,7 @@ async function inspectionFor(input: {
 beforeEach(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
   await mkdir(scratchRoot, { recursive: true });
+  await writeFile(emptyGitConfig, '');
 });
 
 describe('controlled governance apply-next transitions', () => {
