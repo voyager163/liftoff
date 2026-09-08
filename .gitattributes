@@ -1,5 +1,4 @@
-# Preserve hash-verified Power Apps source bytes on every host.
-/assets/power-apps-code-app/** text eol=lf
+# Preserve release-owned asset bytes on every host.
 /assets/governance/** text eol=lf
 /assets/locks/** text eol=lf
 /assets/supported-stack.json text eol=lf

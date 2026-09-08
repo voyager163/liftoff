@@ -1,19 +1,17 @@
 import { access, readdir } from 'node:fs/promises';
 import path from 'node:path';
-import { readBooleanFlag, readStringFlag } from '../args.js';
-import {
-  findProjectRoot,
-  loadManifest,
-  readProjectFile,
-  resolveProjectPath,
-  validateArtifactPathParts
-} from '../file-system.js';
+import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
+import { findProjectRoot } from '../adapters/filesystem/project-discovery.js';
+import { loadManifest } from '../application/project/manifest.js';
+import { readProjectFile } from '../adapters/filesystem/project-files.js';
+import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
 import {
   governanceArtifactPaths,
   validateGovernancePolicy
 } from '../repository-governance.js';
 import type { PresentationSession } from '../terminal.js';
-import type { LiftoffManifest, ParsedArgs } from '../types.js';
+import type { LiftoffManifest, ParsedArgs } from '../domain/project/contracts.js';
 import type { CommandRunner } from '../process-runner.js';
 import { governanceAssessmentCommand } from '../governance-assessment/command.js';
 import {
@@ -21,12 +19,12 @@ import {
   loadActivationState,
   type LoadedActivationState
 } from './activation-state.js';
-import { canonicalSha256 } from './canonical-json.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import {
   canonicalApprovalEnvelopeHash,
   evaluateApprovalForTransitionPlan,
   transitionPlanForPhase
-} from './approvals.js';
+} from '../domain/governance/activation/approvals.js';
 import {
   buildPatEnrollmentGuidance,
   canonicalCredentialRepository,
@@ -37,20 +35,17 @@ import {
   type PatEnrollmentGuidance
 } from './credentials.js';
 import {
-  evidenceContextForPhase,
-  requiredLiveReadbackProviders,
   selectLatestPhaseEvidence,
   type EvidenceFreshnessContext,
   type EvidenceSelectionResult
-} from './evidence.js';
+} from '../domain/governance/activation/evidence.js';
 import {
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
-  currentActivationIdentity,
-  phaseContractDigests
-} from './graph.js';
-import { governanceActivationPolicyVersion } from './identity.js';
-import { calculatePhaseReadiness, type ReadinessResult } from './readiness.js';
+  currentActivationIdentity
+} from '../domain/governance/activation/graph.js';
+import { governanceActivationPolicyVersion } from '../domain/governance/policy/identity.js';
+import { calculatePhaseReadiness, type ReadinessResult } from '../domain/governance/activation/readiness.js';
 import {
   projectOpenSpecTaskCheckboxes,
   type PhaseTaskMapping
@@ -62,6 +57,7 @@ import {
 import {
   discoverGeneratedSeed,
   inspectArchivedSeedIntegrity,
+  seedInfrastructureBaselineBlocker,
   type ArchivedSeedIntegrity
 } from './seed-lifecycle.js';
 import {
@@ -75,7 +71,6 @@ import type {
   ApprovalEnvelope,
   ApprovalEvaluation,
   EvidenceHeader,
-  LiveReadbackProof,
   ManagedPhaseGraph,
   PhaseEvidenceRecord,
   PhaseGraphNode,
@@ -83,15 +78,17 @@ import type {
   PhaseState,
   CredentialPolicy,
   UserActivationState
-} from './types.js';
-import { phaseIds } from './types.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
+import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
+import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
+import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
 import {
   validateApprovalEnvelope,
-  validateEvidenceHeader,
-  validateLiveReadbackProof,
   validateManagedPhaseGraph,
-  validateCredentialPolicy
-} from './validators.js';
+  validateCredentialPolicy,
+  validateManifestActivationForExecution
+} from '../domain/governance/activation/validators.js';
 
 interface GovernanceCommandContext {
   cwd: string;
@@ -186,7 +183,6 @@ const governanceSubcommands = new Set<GovernanceSubcommand>([
 ]);
 const managedPhaseGraphPathParts = ['.liftoff', 'governance', 'phase-graph.json'] as const;
 const approvalDirectoryPathParts = ['governance', 'approvals'] as const;
-const evidenceDirectoryPathParts = ['governance', 'evidence'] as const;
 const terminalEvidenceStates = new Set<PhaseState>([
   'verified',
   'failed',
@@ -270,15 +266,15 @@ function notStartedState(manifest: LiftoffManifest): UserActivationState {
     schemaVersion: currentActivationIdentity.activationStateSchemaVersion,
     identity: currentActivationIdentity,
     repository: {
-      id: `local:${manifest.project.name}`,
+      id: 'unbound',
       name: manifest.project.name,
       defaultBranch: 'develop'
     },
     activeChange: null,
     applicability: {
       statePath: 'none',
-      privateStagingDast: false,
-      credentialRequired: false
+      privateStagingDast: 'unknown',
+      credentialRequired: 'unknown'
     },
     phases: emptyPhaseState(now),
     createdAt: now,
@@ -360,64 +356,8 @@ async function loadApprovals(projectRoot: string, identity: UserActivationState[
   });
 }
 
-function asRecord(value: unknown, pathLabel: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${pathLabel} must be a JSON object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function validateEvidenceRecord(value: unknown, evidenceId: string, pathLabel: string): PhaseEvidenceRecord {
-  const record = asRecord(value, pathLabel);
-  if (Object.hasOwn(record, 'header')) {
-    const allowed = new Set(['evidenceId', 'header', 'liveReadback', 'payload']);
-    for (const key of Object.keys(record)) {
-      if (!allowed.has(key)) {
-        throw new Error(`${pathLabel}.${key} is not allowed.`);
-      }
-    }
-    if (typeof record.evidenceId !== 'string' || record.evidenceId.length === 0) {
-      throw new Error(`${pathLabel}.evidenceId must be a non-empty string.`);
-    }
-    const liveReadback = record.liveReadback === undefined
-      ? undefined
-      : validateLiveReadbackArray(record.liveReadback, `${pathLabel}.liveReadback`);
-    return {
-      evidenceId: record.evidenceId,
-      header: validateEvidenceHeader(record.header),
-      ...(liveReadback ? { liveReadback } : {}),
-      ...(Object.hasOwn(record, 'payload') ? { payload: record.payload } : {})
-    };
-  }
-  return {
-    evidenceId,
-    header: validateEvidenceHeader(value)
-  };
-}
-
-function validateLiveReadbackArray(value: unknown, pathLabel: string): LiveReadbackProof[] {
-  if (!Array.isArray(value)) {
-    throw new Error(`${pathLabel} must be an array.`);
-  }
-  return value.map((entry, index) => {
-    try {
-      return validateLiveReadbackProof(entry);
-    } catch (error) {
-      throw new Error(`${pathLabel}[${index}]: ${errorMessage(error)}`);
-    }
-  });
-}
-
 async function loadEvidence(projectRoot: string): Promise<PhaseEvidenceRecord[]> {
-  const entries = await readJsonFiles(projectRoot, evidenceDirectoryPathParts, 'Evidence');
-  return entries.map((entry) => {
-    try {
-      const evidenceId = entry.name.replace(/\.json$/u, '');
-      return validateEvidenceRecord(entry.value, evidenceId, `${evidenceDirectoryPathParts.join('/')}/${entry.name}`);
-    } catch (error) {
-      throw new Error(`Invalid ${evidenceDirectoryPathParts.join('/')}/${entry.name}: ${errorMessage(error)}`);
-    }
-  });
+  return readActivationEvidence(projectRoot);
 }
 
 function repositoryFromState(state: UserActivationState): ReturnType<typeof canonicalCredentialRepository> {
@@ -436,7 +376,11 @@ function repositoryFromState(state: UserActivationState): ReturnType<typeof cano
 
 async function inspectCredentialPolicy(projectRoot: string, state: UserActivationState): Promise<CredentialInspection> {
   const pathLabel = credentialPolicyPathParts.join('/');
-  if (!state.applicability.credentialRequired) {
+  if (state.applicability.credentialRequired === 'unknown') {
+    return { applicable: true, readOnly: true, path: pathLabel, status: 'not-ready', ready: false,
+      guidance: null, policy: null, issues: ['Credential applicability is unknown; independent discovery and a supported enrollment/readback capability are required.'] };
+  }
+  if (state.applicability.credentialRequired === false) {
     return {
       applicable: false,
       readOnly: true,
@@ -460,7 +404,7 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
       ready: false,
       guidance,
       policy: null,
-      issues: [`${pathLabel} is missing; deterministic PAT enrollment is required if no selected-repository App is available.`]
+      issues: [`${pathLabel} is missing. Public credential enrollment and independent credential readback are unavailable; do not hand-create credential proof or supply a token through setup.`]
     };
   }
   const text = bytes.toString('utf8');
@@ -508,10 +452,10 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
       readOnly: true,
       path: pathLabel,
       status: usage.ready ? 'valid' : 'not-ready',
-      ready: usage.ready,
-      guidance: usage.ready ? null : guidance,
+      ready: false,
+      guidance: null,
       policy,
-      issues: usage.issues
+      issues: [...usage.issues, 'Independent credential readback and public credential enrollment are unavailable; a policy file alone is not proof.']
     };
   } catch (error) {
     return {
@@ -529,27 +473,6 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
 
 function phaseMap(graph: ManagedPhaseGraph): Record<PhaseId, PhaseGraphNode> {
   return Object.fromEntries(graph.phases.map((phase) => [phase.id, phase])) as Record<PhaseId, PhaseGraphNode>;
-}
-
-function buildEvidenceContexts(
-  graph: ManagedPhaseGraph,
-  state: UserActivationState,
-  now: Date
-): Record<PhaseId, EvidenceFreshnessContext> {
-  const digests = phaseContractDigests(graph);
-  return Object.fromEntries(graph.phases.map((phase) => {
-    const context = evidenceContextForPhase(phase.id, {
-      repositoryId: state.repository.id,
-      identity: state.identity,
-      phaseGraphHash: state.identity.phaseGraphHash,
-      now,
-      liveReadbackProviders: requiredLiveReadbackProviders(phase)
-    });
-    return [phase.id, {
-      ...context,
-      phaseContractDigest: digests[phase.id]
-    }];
-  })) as Record<PhaseId, EvidenceFreshnessContext>;
 }
 
 function freshnessEntry(
@@ -581,8 +504,9 @@ function buildEvidenceFreshness(
   })) as Record<PhaseId, EvidenceFreshnessEntry>;
 }
 
-async function inspectGovernance(projectRoot: string): Promise<GovernanceInspection> {
+async function inspectGovernance(projectRoot: string, runner?: CommandRunner): Promise<GovernanceInspection> {
   const manifest = await loadManifest(projectRoot);
+  validateManifestActivationForExecution(manifest);
   const graph = await loadGovernanceGraph(projectRoot);
   await assertPolicyIdentity(projectRoot, manifest);
   const loadedState = await loadActivationState(projectRoot);
@@ -599,19 +523,23 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
   }
   const approvals = await loadApprovals(projectRoot, state.identity);
   const evidence = await loadEvidence(projectRoot);
+  const now = new Date();
+  const snapshot = await readActivationInputSnapshot(projectRoot, manifest, runner);
+  const contexts = activationEvidenceContexts(graph.graph, state, snapshot, now);
+  const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
+  for (const phase of phaseIds) contexts[phase].reviewedPlans = reviewedPlans;
   const sourceOfTruth = await inspectGovernanceSourceOfTruth({
     projectRoot,
     manifest,
     state,
-    evidence
+    evidence,
+    contexts
   });
   const archivedSeedIntegrity = await inspectArchivedSeedIntegrity(projectRoot, manifest);
   const archivedBaselineBlocked =
     state.phases['seed-verified'].state === 'blocked' &&
     archivedSeedIntegrity.status === 'valid';
-  const seedDiscovery = sourceOfTruth.status === 'seed-blocked' || archivedBaselineBlocked
-    ? await discoverGeneratedSeed(projectRoot)
-    : undefined;
+  const seedDiscovery = await discoverGeneratedSeed(projectRoot);
   const retryArchivedSeedBaseline = archivedBaselineBlocked && seedDiscovery?.state === 'archived';
   const archiveAndLaterPhases = phaseIds.slice(phaseIds.indexOf('seed-archived'));
   const expectedActiveSeed =
@@ -623,10 +551,9 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
       state.phases[phaseId].state === 'pending' || state.phases[phaseId].state === 'blocked'
     ) &&
     !evidence.some((record) => archiveAndLaterPhases.includes(record.header.phaseId));
-  const now = new Date();
   const credential = await inspectCredentialPolicy(projectRoot, state);
-  const contexts = buildEvidenceContexts(graph.graph, state, now);
   const evidenceFreshness = buildEvidenceFreshness(graph.graph, evidence, contexts);
+  const infrastructureBlocker = seedInfrastructureBaselineBlocker(manifest);
   const readiness = calculatePhaseReadiness({
     graph: graph.graph,
     state,
@@ -634,9 +561,13 @@ async function inspectGovernance(projectRoot: string): Promise<GovernanceInspect
     evidence,
     transitionContexts: contexts,
     retryArchivedSeedBaseline,
-    phaseBlockers: archivedSeedIntegrity.status === 'invalid'
-      ? { 'seed-archived': archivedSeedIntegrity.issues }
-      : undefined,
+    phaseBlockers: {
+      ...Object.fromEntries(Object.entries(phaseCapabilities).filter(([, capability]) => capability.blocker)
+        .map(([id, capability]) => [id, [capability.blocker!]])),
+      ...(archivedSeedIntegrity.status === 'invalid' ? { 'seed-archived': archivedSeedIntegrity.issues } : {}),
+      ...(seedDiscovery.state === 'blocked' ? { 'seed-valid': seedDiscovery.issues } : {}),
+      ...(infrastructureBlocker ? { 'seed-verified': [infrastructureBlocker] } : {})
+    },
     now
   });
   return {
@@ -687,7 +618,8 @@ function approvalEvaluationForPhase(
     phase,
     inspection.state,
     inspection.contexts[phase.id].transition,
-    inspection.projectRoot
+    inspection.projectRoot,
+    inspection.contexts[phase.id].publicationDestination
   );
   return evaluateApprovalForTransitionPlan(plan, inspection.approvals);
 }
@@ -715,6 +647,8 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
     readOnly: command !== 'apply-next',
     stateSource: inspection.stateSource,
     activationIdentity: inspection.state.identity,
+    executionAnchor: inspection.state.repository.id === 'unbound' ? null : inspection.state.repository.id,
+    remoteBinding: inspection.state.remoteBinding ?? null,
     graphHash: inspection.graph.hash,
     graph: {
       source: inspection.graph.source,
@@ -730,7 +664,9 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
       state: inspection.readiness.phases[phase.id].state,
       storedState: inspection.state.phases[phase.id].state,
       storedBlockers: inspection.state.phases[phase.id].blockers,
-      retryable: phase.id === 'seed-verified' && inspection.retryArchivedSeedBaseline,
+      retryable: phaseCapabilities[phase.id].retry === 'explicit-local' &&
+        ['failed', 'blocked'].includes(inspection.state.phases[phase.id].state),
+      capability: phaseCapabilities[phase.id],
       blockers: inspection.readiness.phases[phase.id].blockers,
       evidence: {
         schema: phase.evidence.schema,
@@ -1029,6 +965,15 @@ function validateReadinessCheck(inspection: GovernanceInspection): VerificationC
 }
 
 async function activeTaskProjectionCheck(inspection: GovernanceInspection): Promise<VerificationCheck> {
+  if (inspection.manifest.project.specWorkflow === 'spec-kit') {
+    const bytes = await readProjectFile(inspection.projectRoot, ['specs', '000-liftoff-bootstrap', 'tasks.md']);
+    if (!bytes) return { id: 'task-projection', status: 'failed', issues: ['Spec Kit seed-adoption-required: real bootstrap tasks are missing.'] };
+    const expected = inspection.readiness.phases['seed-verified'].state === 'verified';
+    const tasks = [...bytes.toString('utf8').matchAll(/^\s*- \[([ xX])\] (B00[1-6]) /gm)];
+    const issues = tasks.filter((match) => (match[1]!.toLowerCase() === 'x') !== expected)
+      .map((match) => `Spec Kit task ${match[2]} differs from the authoritative local baseline projection. Verification did not edit it.`);
+    return { id: 'task-projection', status: issues.length ? 'failed' : 'passed', issues };
+  }
   const activeChange = inspection.state.activeChange;
   if (!activeChange || activeChange.kind !== 'openspec') {
     return { id: 'task-projection', status: 'skipped', issues: [] };
@@ -1106,6 +1051,10 @@ function liveReadbackCheck(inspection: GovernanceInspection): VerificationCheck 
 function credentialPolicyCheck(inspection: GovernanceInspection): VerificationCheck {
   if (!inspection.credential.applicable) {
     return { id: 'credential-policy', status: 'skipped', issues: [] };
+  }
+  if (inspection.state.applicability.credentialRequired === 'unknown' &&
+    !terminalEvidenceStates.has(inspection.state.phases['credential-ready'].state)) {
+    return { id: 'credential-policy', status: 'skipped', issues: inspection.credential.issues };
   }
   return {
     id: 'credential-policy',
@@ -1410,7 +1359,7 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
 
   let inspection: GovernanceInspection;
   try {
-    inspection = attachPresentation(await inspectGovernance(projectRoot), presentation);
+    inspection = attachPresentation(await inspectGovernance(projectRoot, context.runner), presentation);
   } catch (error) {
     if (subcommand === 'verify') {
       return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode);
@@ -1469,7 +1418,7 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
         inspection: transitionInput,
         runner: context.runner,
         reinspect: async () => transitionInspection(
-          attachPresentation(await inspectGovernance(projectRoot), presentation)
+          attachPresentation(await inspectGovernance(projectRoot, context.runner), presentation)
         )
       })
     : await previewApplyNext({

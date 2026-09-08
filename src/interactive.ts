@@ -6,22 +6,25 @@ import type { Readable } from 'node:stream';
 import {
   apiStacks,
   canonicalDefaultEnvironmentIds,
+  canonicalizeCodingAgents,
   codingAgents,
-  getApiStack,
   getCodingAgent,
   getFrameworkDefinition,
-  getPattern,
   getProjectType,
   getProvider,
   getSpecWorkflow,
   patterns,
+  projectInputCatalog,
   projectTypes,
   providers,
   resolveRegion,
   specWorkflows
-} from './catalogs.js';
+} from './application/project/catalog.js';
 import type { DependencyCommandPlan } from './project-dependencies.js';
-import { projectPlanEntries } from './planner.js';
+import {
+  PlanValidationError,
+  projectPlanEntries
+} from './domain/project/planning.js';
 import { formatCommand, type CommandRunner } from './process-runner.js';
 import { PresentationSession } from './terminal.js';
 import type {
@@ -30,7 +33,12 @@ import type {
   ProjectPlan,
   RegionDefinition,
   SpecWorkflowId
-} from './types.js';
+} from './domain/project/contracts.js';
+import {
+  isRetiredPowerAppsWorkload,
+  retiredPowerAppsMessage
+} from './domain/project/retired-workload.js';
+import { normalizeProjectOptions, resolveProjectTypeInput } from './domain/project/inputs.js';
 
 interface AgentCheckboxChoice {
   name: string;
@@ -158,10 +166,26 @@ export class InteractivePrompter {
     this.releaseLineInput();
   }
 
-  async promptForInitOptions(initial: ProjectOptions): Promise<ProjectOptions> {
+  async promptForInitOptions(input: ProjectOptions): Promise<ProjectOptions> {
+    const initial = resolveCatalogInput(input);
+    if (isRetiredPowerAppsWorkload(initial.projectType)) {
+      throw new Error(retiredPowerAppsMessage(initial.projectType));
+    }
+    const typeInput = resolveProjectTypeInput(initial, getProjectType);
+    const issues = [...typeInput.issues];
+    if (initial.specWorkflow && !getSpecWorkflow(initial.specWorkflow)) {
+      issues.push(`Unknown spec-driven workflow: ${initial.specWorkflow}.`);
+    }
+    if (initial.agents !== undefined) {
+      const supplied = canonicalizeCodingAgents(initial.agents);
+      if (!initial.agents.length) issues.push('At least one AI coding agent is required.');
+      if (supplied.unknown.length) {
+        issues.push(`Unknown AI coding agent${supplied.unknown.length === 1 ? '' : 's'}: ${supplied.unknown.join(', ')}.`);
+      }
+    }
+    if (issues.length) throw new PlanValidationError(issues);
     const projectName = initial.projectName ?? await this.askRequired('Project name');
-    const inferredProjectType = initial.projectType ?? (initial.pattern ? 'genai' : initial.apiStack ? 'standard' : undefined);
-    const projectType = inferredProjectType ??
+    const projectType = typeInput.projectType?.id ??
       await this.choose('Select workload', projectTypes.map((workload) => ({
         value: workload.id,
         label: workload.label,
@@ -185,26 +209,15 @@ export class InteractivePrompter {
       : projectType === 'genai'
         ? initial.apiStack ?? 'python-fastapi'
         : initial.apiStack;
-    const cloud = projectType === 'power-apps-code-app'
-      ? initial.cloud
-      : initial.cloud ?? await this.choose('Target cloud', providers.map((provider) => ({
+    const cloud = initial.cloud ?? await this.choose('Target cloud', providers.map((provider) => ({
           value: provider.id,
           label: `${provider.label}${provider.status === 'planned' ? ' - planned' : ''}`,
           disabled: provider.status === 'planned'
         })));
-    const region = projectType === 'power-apps-code-app'
-      ? initial.region
-      : initial.region ?? await this.promptForRegion(cloud!);
-    const includeFrontend = projectType === 'power-apps-code-app'
-      ? initial.includeFrontend
-      : initial.includeFrontend ?? await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
-    const codeAppsPlugin = projectType === 'power-apps-code-app'
-      ? initial.codeAppsPlugin ??
-        await this.confirm('Include Microsoft Code Apps preview plugin guidance?', false)
-      : initial.codeAppsPlugin;
-    const selectedEnvironments = projectType === 'power-apps-code-app'
-      ? initial.environments
-      : initial.environments ?? await this.askEnvironments();
+    const region = initial.region ?? await this.promptForRegion(cloud);
+    const includeFrontend = initial.includeFrontend ??
+      await this.confirm('Include frontend? (Vue 3 + Tailwind)', false);
+    const selectedEnvironments = initial.environments ?? await this.askEnvironments();
     const governanceProfile = initial.governanceProfile ?? (
       await this.confirm(
         'Generate the single-maintainer GitFlow governance handoff?',
@@ -223,9 +236,11 @@ export class InteractivePrompter {
       'openspec'
     );
     const selectedAgents = initial.agents ?? await this.askAgents(specWorkflow as SpecWorkflowId);
-    const normalizedAgents = selectedAgents
-      .map((agent) => getCodingAgent(agent)?.id)
-      .filter((agent): agent is NonNullable<typeof agent> => agent !== undefined);
+    const selected = canonicalizeCodingAgents(selectedAgents);
+    if (selected.unknown.length || !selected.agents.length) {
+      throw new PlanValidationError(['Select at least one supported AI coding agent.']);
+    }
+    const normalizedAgents = selected.agents.map((agent) => agent.id);
     const defaultAgent = specWorkflow === 'spec-kit' && normalizedAgents.length > 1
       ? initial.defaultAgent ?? await this.choose(
           'Select the default Spec Kit agent',
@@ -235,7 +250,7 @@ export class InteractivePrompter {
           normalizedAgents[0]
         )
       : specWorkflow === 'spec-kit'
-        ? normalizedAgents[0]
+        ? initial.defaultAgent ?? normalizedAgents[0]
         : undefined;
     const copilotCloud = specWorkflow === 'openspec' &&
       normalizedAgents.includes('github-copilot')
@@ -258,8 +273,7 @@ export class InteractivePrompter {
       agents: normalizedAgents,
       ...(defaultAgent ? { defaultAgent } : {}),
       ...(copilotCloud !== undefined ? { copilotCloud } : {}),
-      ...(selectedEnvironments ? { environments: selectedEnvironments } : {}),
-      ...(codeAppsPlugin !== undefined ? { codeAppsPlugin } : {})
+      ...(selectedEnvironments ? { environments: selectedEnvironments } : {})
     };
   }
 
@@ -625,14 +639,5 @@ export async function confirmDependencyInstallation(
 }
 
 export function resolveCatalogInput(options: ProjectOptions): ProjectOptions {
-  return {
-    ...options,
-    projectType: options.projectType && getProjectType(options.projectType)?.id,
-    apiStack: options.apiStack && getApiStack(options.apiStack)?.id,
-    pattern: options.pattern && getPattern(options.pattern)?.id,
-    cloud: options.cloud && getProvider(options.cloud)?.id,
-    specWorkflow: options.specWorkflow && getSpecWorkflow(options.specWorkflow)?.id,
-    agents: options.agents?.map((agent) => getCodingAgent(agent)?.id ?? agent),
-    defaultAgent: options.defaultAgent && getCodingAgent(options.defaultAgent)?.id
-  };
+  return normalizeProjectOptions(options, projectInputCatalog);
 }

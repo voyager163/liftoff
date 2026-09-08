@@ -39,10 +39,11 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
-| `liftoff infra` | Prints OpenTofu guidance for API workloads and reports infrastructure as not applicable for Power Apps |
+| `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
 | `liftoff patterns` | Lists GenAI patterns |
 | `liftoff providers` | Lists provider availability |
 | `liftoff regions` | Lists available regions |
+| `liftoff regions --region <slug-or-alias>` | Resolves one region and filters the output; ambiguous or unknown values fail with guidance |
 | `liftoff regions search <query>` | Searches region names and slugs |
 | `liftoff --version` | Prints exactly one version line |
 
@@ -59,7 +60,7 @@ Node.js 24 LTS, Python 3.14, Go 1.27, OpenTofu 1.12, OpenSpec 1.11, and Spec Kit
 Common noninteractive inputs include:
 
 ```text
---type genai|standard|power-apps-code-app
+--type genai|standard
 --pattern <genai-pattern>
 --api python|node|go
 --cloud azure
@@ -70,7 +71,6 @@ Common noninteractive inputs include:
 --agents copilot,claude
 --default-agent copilot|claude
 --governance single-maintainer-gitflow|none
---code-apps-plugin | --no-code-apps-plugin
 --copilot-cloud | --no-copilot-cloud
 --configure-openspec-profile
 ```
@@ -80,8 +80,9 @@ Interactive initialization presents **I'm not sure yet - Generic GenAI
 starter** first and accepts it as the default. `liftoff patterns` lists this
 stable `generic` identifier alongside the eight specialized patterns.
 
-Power Apps rejects API, pattern, cloud, region, frontend, and API environment
-options rather than ignoring them.
+Power Apps and Code Apps plugin inputs are retired and rejected, including
+false/negated plugin flags. Existing retired manifests are not reinterpreted as
+supported workloads or ordinary Git repositories.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
@@ -116,11 +117,13 @@ failure with verified evidence.
 
 Governance JSON uses versioned objects and includes the complete activation
 version vector: creating Liftoff version, manifest artifact version 7, policy
-version 6, activation-contract version 1, graph/state/evidence/approval/
-supersession/credential schema versions, and the phase-graph hash. It never
+version 6, activation-contract version 2, state/evidence-header/approval schema
+versions 2, graph/supersession/credential schema versions 1, and the phase-graph
+hash. Compatibility metadata is version 2. It never
 emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
-names the exact field and required Liftoff upgrade.
+names the exact field and required Liftoff upgrade. Known v1 history is
+diagnostic-only and byte-preserved; no automatic reconciliation command exists.
 
 `/liftoff-setup` calls these commands instead of inferring phase completion from
 prose or task checkboxes.
@@ -144,8 +147,11 @@ liftoff governance assess [project] --live [--json]
 liftoff governance assess --project "path with spaces" --json
 ```
 
-Use an optional positional project or `--project`, never both. Nested working
-directories resolve to the nearest Liftoff project. Help needs no project or
+Use an optional positional project or `--project`, never both. It can identify
+an ordinary Git repository without a manifest. Nested working directories resolve
+to the nearest applicable Git or Liftoff boundary; invalid or retired inner
+manifests cannot be bypassed. No initialization or slash-command installation is
+required. Help needs no project or
 credential discovery. Only `assess` accepts `--live`; assessment rejects
 `--execute` (including `--execute=false`), `--force`, installation, automatic
 upgrade, and output-file flags before project access.
@@ -228,6 +234,12 @@ version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
 canonical bypass around a stale mirror, invokes elevation, installs a
 prerelease, or performs a downgrade.
 
+Machine-level `@msn-control:registry` takes precedence over the default
+`registry`, even when the default is canonical. The lookup runs from a neutral
+directory so project `.npmrc` files cannot change upgrade delivery. Canonical
+verification isolates both registry settings without changing persistent
+configuration; actual delivery still honors the configured mirror.
+
 `--check` performs the same origin, target, and parity checks without invoking
 installation. Apply uses one shell-free exact npm command with lifecycle scripts,
 audit, and funding prompts disabled, then verifies installed metadata, the
@@ -262,7 +274,7 @@ set local state to `handoff-partial`. Forced update may remove exact retired
 generated setup-alias entries from older manifests after review.
 
 Application source, tests, dependencies and locks, database assets, Docker and
-Compose files, environment files, documentation, Power Apps starter files, and
+Compose files, environment files, documentation, and
 OpenTofu topology are `project` artifacts after generation. Update does not
 compare them with newer templates, restore deleted paths, or overwrite them
 under `--force`.
@@ -273,6 +285,10 @@ preflighted together. Absent files are created and byte-identical files are
 adopted as provenance; any differing destination blocks the group even with
 `--force`. Disabling or re-enabling a previously provisioned group never
 recreates or deletes project files.
+New environments also require recorded independent-root infrastructure and safe
+existing shared-module files. Legacy/shared or unknown layout produces a
+component-level migration-required result; other safe managed-core work may
+continue. Force cannot migrate state or rewrite shared infrastructure.
 
 Use `--check` whenever no project bytes may change. Human check mode prints
 managed-core drift, ownership-only manifest v2-v7 migration, activation-identity
@@ -289,8 +305,8 @@ core update, but Liftoff retains no backup after a successful core overwrite.
 Force cannot bypass the ownership, project-boundary, symlink, structural,
 identity, or manifest guards.
 
-New dependency, runtime, container, database, application, Power Apps starter,
-and infrastructure templates apply to newly generated projects. Existing
+New dependency, runtime, container, database, application, and infrastructure
+templates apply to newly generated projects. Existing
 production projects adopt them through a separately reviewed project change.
 The existing `liftoff migrate` command only adopts a non-Liftoff source into a
 fresh target; it is not an in-place template upgrade.
@@ -314,6 +330,26 @@ All current writes use v7. Supported historical reads are normalized through an
 explicit compatibility map; future versions, individually known but unsupported
 tuples, and unknown phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
+Exact known activation-v1 identity is readable for diagnostics. A
+`diagnosticOnly` historical-state result can coexist with managed-core maintenance,
+which preserves the historical identity, state, and receipts and does not make
+them executable.
+
+## Development and infrastructure helpers
+
+`liftoff dev` and `liftoff infra` print commands rather than execute them.
+Infrastructure helpers use recorded layout, not merely new-looking paths.
+For a selected prod environment in the independent layout,
+`liftoff infra init --env prod` targets
+`infrastructure/opentofu/azure/environments/prod`; plan/apply use
+`-var-file=prod.tfvars` in that same root. Operational init uses the configured
+backend, not `-backend=false`. Only the local baseline disables backend
+initialization, separately for every selected root. Recursive formatting remains
+at the Azure parent to include the shared module.
+
+The eight explicitly retired flat-root identities remain old provenance, not
+aliases for new roots. See the [exact inventory](azure-deployment.md#explicit-flat-root-identity-retirement)
+and [native runtime recipes](configuration-and-manifests.md#application-runtime-configuration).
 
 ## JSON and exit codes
 

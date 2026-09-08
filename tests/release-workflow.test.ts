@@ -31,13 +31,25 @@ describe('release workflow', () => {
   it('keeps package and smoke verification on Linux, macOS, and Windows CI', async () => {
     const workflow = await readFile(path.join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8');
 
-    expect(workflow.match(/os: \[ubuntu-latest, macos-latest, windows-latest]/g)).toHaveLength(2);
+    expect(workflow.match(/os: \[ubuntu-latest, macos-latest, windows-latest]/g)).toHaveLength(1);
+    expect(workflow).toMatch(/^  workflow_dispatch:$/m);
+    expect(workflow).not.toContain('npm publish');
     expect(workflow).toContain('run: npm run check');
     expect(workflow).toContain('run: npm run smoke:package');
     expect(workflow).toContain('tests/interactive.test.ts');
     expect(workflow).toContain('tests/project-dependencies.test.ts');
-    expect(workflow).toContain('tests/power-apps-assets.test.ts');
+    expect(workflow).toContain('tests/project-discovery.test.ts');
+    expect(workflow).toContain('tests/project-lock.test.ts');
+    expect(workflow).toContain('tests/filesystem-recovery.test.ts');
+    expect(workflow).toContain('tests/import-boundaries.test.ts');
+    expect(workflow).toContain('tests/contract.test.ts');
+    expect(workflow).toContain('tests/infrastructure-layout.test.ts');
+    expect(workflow).toContain('tests/governance-assessment.test.ts');
+    expect(workflow).toContain('LIFTOFF_FRAMEWORK_SMOKE: "1"');
+    expect(workflow).toContain('@fission-ai/openspec@1.11.0');
+    expect(workflow).toContain('specify-cli==1.0.1');
+    expect(workflow).not.toContain('tests/power-apps-assets.test.ts');
     expect(workflow).toContain('node-version: "24.20.0"');
-    expect(workflow).toContain('run: npm run verify:power-apps-starter');
+    expect(workflow).not.toContain('verify:power-apps-starter');
   });
 });

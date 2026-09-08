@@ -1,23 +1,35 @@
-import { canonicalJson, canonicalSha256, sha256Hex } from '../governance-activation/canonical-json.js';
-import { currentActivationIdentity, canonicalPhaseGraph } from '../governance-activation/graph.js';
-import { evidenceContextForPhase, requiredLiveReadbackProviders, selectLatestPhaseEvidence } from '../governance-activation/evidence.js';
-import { canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../governance-activation/approvals.js';
-import { planDigestFor } from '../governance-activation/transitions.js';
+import { canonicalJson, canonicalSha256, sha256Hex } from '../domain/governance/activation/canonical-json.js';
+import { currentActivationIdentity, canonicalPhaseGraph } from '../domain/governance/activation/graph.js';
+import { canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../domain/governance/activation/approvals.js';
+import { inspectCurrentActivationEvidence } from '../governance-activation/read-only.js';
 import { governanceChangeMetadataFileName, validateGovernanceChangeMetadata } from '../governance-activation/source-of-truth.js';
-import type { ApprovalEnvelope } from '../governance-activation/types.js';
+import {
+  phaseIds,
+  type ApprovalEnvelope
+} from '../domain/governance/activation/types.js';
 import type { CommandRunner } from '../process-runner.js';
 import { loadAssessmentCatalog } from './catalog.js';
-import { inspectAssessmentGit, inspectAssessmentProject, repositoryName, type AssessmentProject, type AssessmentGitFacts } from './project.js';
+import {
+  inspectAssessmentProject,
+  ordinaryGitAssessmentProject,
+  type AssessmentProject
+} from './project.js';
+import {
+  inspectAssessmentGit,
+  repositoryName,
+  type AssessmentGitFacts
+} from '../adapters/git/governance-assessment.js';
 import { AssessmentFiles, AssessmentInputError, parseAssessmentJson } from './readers.js';
 import { parseAssessmentWorkflow, type ParsedWorkflow } from './yaml.js';
 import { collectLiveAssessment } from './live.js';
-import { classifyFinding, assembleAssessmentReport } from './report.js';
+import { classifyFinding, assembleAssessmentReport } from '../domain/governance/assessment/report.js';
 import {
-  actionReferences, failOpenFlags, pinnedActions, protectedRefs, requiredCheckContexts, requiredContextBindings,
-  securityPipeline, singleMaintainer, tagControls, workflowPermissions, observedRequiredContexts,
+  actionReferences, effectiveProtectedRefs, effectiveRequiredContextBindings, failOpenFlags, pinnedActions,
+  protectedRefs, requiredCheckContexts, requiredContextBindings,
+  runnerAlignment, securityPipeline, singleMaintainer, tagControls, workflowPermissions, observedRequiredContexts,
   type PredicateResult
-} from './predicates.js';
-import { isRecord, jsonValue, notObserved, observed, sanitizeAssessmentText, source } from './sanitize.js';
+} from '../domain/governance/assessment/predicates.js';
+import { isRecord, jsonValue, notObserved, observed, sanitizeAssessmentText, source } from '../domain/governance/assessment/sanitize.js';
 import type {
   AssessmentDiagnostic, AssessmentFinding, AssessmentProjectIdentity, AssessmentReport, AssessmentTarget,
   ControlDefinition, FindingScope, JsonValue, Layer, LiveAssessmentResult, LiveAssessmentScope, Observation
@@ -29,6 +41,28 @@ const documentationPaths = [
   ['docs', 'operations', 'service-health.md'], ['docs', 'security', 'audit-evidence.md'],
   ['docs', 'ai-acceptable-use.md']
 ] as const;
+
+type CurrentActivationInspection = Awaited<
+  ReturnType<typeof inspectCurrentActivationEvidence>
+>;
+
+function activationAuthorityFingerprint(
+  inspection: CurrentActivationInspection
+): string {
+  if (inspection.status === 'not-started') {
+    return canonicalSha256({ status: inspection.status });
+  }
+  const firstContext = inspection.contexts[phaseIds[0]];
+  const stable = JSON.parse(JSON.stringify({
+    status: inspection.status,
+    state: inspection.state,
+    snapshot: inspection.snapshot,
+    records: inspection.records,
+    reviewedPlans: firstContext.reviewedPlans ?? [],
+    selections: inspection.selections
+  })) as JsonValue;
+  return canonicalSha256(stable);
+}
 
 interface LocalFacts {
   workflows: ParsedWorkflow[];
@@ -93,6 +127,15 @@ async function localFacts(files: AssessmentFiles, project: AssessmentProject, ca
           throw new Error('Active governance metadata does not match the recorded change and identity.');
         }
         baseline = metadata.baselineSha === '0'.repeat(64) ? null : metadata.baselineSha;
+        if (baseline && project.inputSnapshot && baseline !== project.inputSnapshot.baselineSha) {
+          project.diagnostics.push({
+            code: 'current-input-mismatch',
+            severity: 'warning',
+            source: parts.join('/'),
+            message: 'The recorded governance baseline does not match the independently recomputed current input snapshot; evidence-backed scope is withheld.'
+          });
+          baseline = null;
+        }
       }
       catch (error) {
         project.diagnostics.push({
@@ -115,53 +158,44 @@ async function localFacts(files: AssessmentFiles, project: AssessmentProject, ca
 }
 
 function boundPlan(project: AssessmentProject, phaseId: ControlDefinition['phaseIds'][number], now: Date) {
-  if (!project.state || !project.bindingBaseline || project.identity.availability !== 'known') return null;
-  const candidates = project.plans.filter((plan) =>
-    plan.phaseId === phaseId && plan.baselineDigest === project.bindingBaseline &&
+  const currentContext = project.evidenceContexts?.[phaseId];
+  const selection = project.activationSelections?.[phaseId];
+  const selected = selection?.issues.length === 0 ? selection.selected : null;
+  const payload = selected?.payload;
+  if (!project.state || !currentContext || !selected ||
+      !isRecord(payload) || typeof payload.planDigest !== 'string' ||
+      typeof payload.savedPlanDigest !== 'string' ||
+      project.identity.availability !== 'known') return null;
+  const candidates = (currentContext.reviewedPlans ?? []).filter((plan) =>
+    plan.phaseId === phaseId &&
+    plan.planDigest === payload.planDigest &&
+    canonicalSha256(plan) === payload.savedPlanDigest &&
+    plan.baselineDigest === currentContext.baselineSha &&
     canonicalJson(plan.identity) === canonicalJson(currentActivationIdentity) &&
     Date.parse(plan.createdAt) <= now.getTime() &&
     Date.parse(plan.createdAt) <= Date.parse(project.state!.phases[phaseId].updatedAt)
   ).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
   const plan = candidates[0];
   if (!plan || plan.baselineDigest === '0'.repeat(64) || plan.inputDigest === '1'.repeat(64) ||
+      plan.baselineDigest !== currentContext.baselineSha ||
+      plan.inputDigest !== currentContext.inputDigest ||
+      plan.transitionDigest !== currentContext.transition.transitionDigest ||
       candidates.some((candidate) => candidate.createdAt === plan.createdAt && candidate.planDigest !== plan.planDigest)) return null;
-  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId);
-  if (!phase) return null;
-  const authority = transitionPlanForPhase(phase, project.state, {
-    phaseId, baselineSha: plan.baselineDigest, inputDigest: plan.inputDigest, transitionDigest: plan.transitionDigest
-  });
-  if (plan.planDigest !== planDigestFor({
-    phase, transitionDigest: plan.transitionDigest, operations: plan.operations, approvalPlanDigest: authority.planDigest
-  })) return null;
   return plan;
 }
 
 export function selectBoundAssessmentEvidence(project: AssessmentProject, phaseId: ControlDefinition['phaseIds'][number], now: Date) {
   const plan = boundPlan(project, phaseId, now);
-  if (!plan || !project.state) return null;
-  if (new Set(project.evidence.map((record) => record.evidenceId)).size !== project.evidence.length) return null;
-  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId);
-  const references = project.state.phases[phaseId].evidence;
-  const candidates = project.evidence.filter((record) => record.header.phaseId === phaseId &&
-    references.some((reference) => reference.phaseId === phaseId && reference.evidenceId === record.evidenceId &&
-      reference.headerDigest === canonicalSha256(record.header) && reference.result === record.header.result)
-  );
-  const selected = selectLatestPhaseEvidence(candidates, evidenceContextForPhase(phaseId, {
-    repositoryId: project.state.repository.id, identity: currentActivationIdentity,
-    phaseGraphHash: currentActivationIdentity.phaseGraphHash, now,
-    baselineSha: plan.baselineDigest, inputDigest: plan.inputDigest, transitionDigest: plan.transitionDigest,
-    liveReadbackProviders: phase ? requiredLiveReadbackProviders(phase) : []
-  })).selected;
-  if (!selected || selected.header.result !== project.state.phases[phaseId].state) return null;
-  const record = candidates.find((entry) => entry.evidenceId === selected.evidenceId &&
-    canonicalSha256(entry.header) === selected.headerDigest);
-  return record ? { ...selected, record } : null;
+  const selection = project.activationSelections?.[phaseId];
+  const selected = selection?.issues.length === 0 ? selection.selected : null;
+  if (!plan || !project.state || !selected ||
+      selected.header.result !== project.state.phases[phaseId].state) return null;
+  return selected;
 }
 
 function applicability(control: ControlDefinition, project: AssessmentProject, now: Date): AssessmentFinding['applicability'] {
   if (control.applicability === 'always') return 'applicable';
-  if (project.project.workload.kind === 'power-apps-code-app') return 'inapplicable';
-  if (control.applicability === 'api') return 'applicable';
+  if (control.applicability === 'api') return project.kind === 'liftoff' ? 'applicable' : 'unknown';
   const discovery = selectBoundAssessmentEvidence(project, 'phase-0-complete', now);
   if (!project.state || discovery?.header.result !== 'verified') return 'unknown';
   return (control.applicability === 'private-dast'
@@ -169,62 +203,177 @@ function applicability(control: ControlDefinition, project: AssessmentProject, n
     : project.state.applicability.statePath === 'bootstrap-local') ? 'applicable' : 'inapplicable';
 }
 
+function approvalBindsRepository(
+  project: AssessmentProject,
+  approval: ApprovalEnvelope,
+  repository: string,
+  now: Date
+): boolean {
+  const currentBaseline = project.inputSnapshot?.baselineSha ??
+    project.bindingBaseline;
+  if (!project.state || !currentBaseline) return false;
+  const plan = boundPlan(project, approval.phaseId, now);
+  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === approval.phaseId);
+  const authority = plan && phase ? transitionPlanForPhase(phase, project.state, {
+    phaseId: phase.id,
+    baselineSha: plan.baselineDigest,
+    inputDigest: plan.inputDigest,
+    transitionDigest: plan.transitionDigest
+  }) : null;
+  return approval.baselineSha === currentBaseline &&
+    project.identity.availability === 'known' &&
+    Date.parse(approval.approvedAt) <= now.getTime() &&
+    Date.parse(approval.expiresAt) > now.getTime() &&
+    project.state.phases[approval.phaseId].approvals.includes(approval.id) &&
+    Boolean(plan && authority && phase?.approvalGate.required) &&
+    authority?.planDigest === approval.planDigest &&
+    !evaluateApprovalForTransitionPlan(authority!, [approval], { now }).approvalRequired &&
+    plan!.approval.envelopeId === approval.id &&
+    plan!.approval.envelopeHash === canonicalApprovalEnvelopeHash(approval) &&
+    approval.destinations.some((destination) =>
+      destination.type === 'repository' &&
+      (destination.repository ?? destination.identity).toLowerCase() === repository.toLowerCase()
+    );
+}
+
 export function resolveAssessmentLiveScope(project: AssessmentProject, git: AssessmentGitFacts, now: Date): LiveAssessmentScope {
-  const stateRepo = project.state ? repositoryName(project.state.repository.name, project.state.repository.id) : null;
-  let repository = git.originState === 'unavailable' ? null : git.repository ?? stateRepo;
-  if (git.repository && stateRepo) {
-    if (`${git.repository.owner}/${git.repository.name}`.toLowerCase() !== `${stateRepo.owner}/${stateRepo.name}`.toLowerCase()) {
-      repository = null;
-      project.diagnostics.push({ code: 'repository-binding-conflict', severity: 'warning', source: 'Git/activation state', message: 'Git origin and recorded repository disagree; live collection is withheld.' });
-    } else repository = { ...git.repository, id: stateRepo.id };
+  let repository = git.originState === 'verified' ? git.repository : null;
+  let remoteBindingVerified = false;
+  if (git.repository && project.state?.remoteBinding) {
+    const remote = project.state.remoteBinding;
+    const bound = repositoryName(remote.name, remote.id);
+    const matchingPush = git.pushUrls.length === 1 &&
+      git.pushUrls[0] === remote.pushUrl &&
+      project.inputSnapshot?.git.pushUrls.length === 1 &&
+      project.inputSnapshot.git.pushUrls[0] === remote.pushUrl;
+    if (!bound ||
+        `${git.repository.owner}/${git.repository.name}`.toLowerCase() !==
+          `${bound.owner}/${bound.name}`.toLowerCase() ||
+        !matchingPush) {
+      project.diagnostics.push({
+        code: 'repository-binding-conflict',
+        severity: 'warning',
+        source: 'Git/activation state',
+        message: 'Git fetch/push origin and the verified remote repository binding disagree; evidence-backed provider scope is withheld.'
+      });
+    } else {
+      repository = { ...git.repository, id: bound.id };
+      remoteBindingVerified = true;
+    }
   }
   const scope: LiveAssessmentScope = {
-    repository, refs: ['develop', 'main'],
-    environments: project.project.workload.kind === 'power-apps-code-app' ? [] : [...project.project.workload.environments],
+    repository,
+    refs: repository ? ['develop', 'main'] : [],
+    ...(repository ? { refPrefixes: ['release/', 'hotfix/'] } : {}),
+    environments: project.project ? [...project.project.workload.environments] : [],
     runner: null, azure: []
   };
   if (!repository || !project.state) return scope;
+  if (!remoteBindingVerified) {
+    project.diagnostics.push({
+      code: 'remote-binding-unavailable',
+      severity: 'warning',
+      source: 'activation state',
+      message: 'No matching verified remote repository binding is available; evidence-backed runner and Azure reads are withheld.'
+    });
+    return scope;
+  }
   const fullName = `${repository.owner}/${repository.name}`;
+  const azureBindings = new Map<string, LiveAssessmentScope['azure'][number]>();
+  const conflictingAzureBindings = new Set<string>();
   for (const approval of project.approvals) {
-    const plan = boundPlan(project, approval.phaseId, now);
-    const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === approval.phaseId);
-    const authority = plan && phase ? transitionPlanForPhase(phase, project.state, {
-      phaseId: phase.id, baselineSha: plan.baselineDigest, inputDigest: plan.inputDigest, transitionDigest: plan.transitionDigest
-    }) : null;
-    if (!project.bindingBaseline || approval.baselineSha !== project.bindingBaseline ||
-      project.identity.availability !== 'known' ||
-      Date.parse(approval.approvedAt) > now.getTime() ||
-      Date.parse(approval.expiresAt) <= now.getTime() ||
-      !project.state.phases[approval.phaseId].approvals.includes(approval.id) ||
-      !plan || !authority || !phase?.approvalGate.required || authority.planDigest !== approval.planDigest ||
-      evaluateApprovalForTransitionPlan(authority, [approval], { now }).approvalRequired ||
-      plan.approval.envelopeId !== approval.id ||
-      plan.approval.envelopeHash !== canonicalApprovalEnvelopeHash(approval) ||
-      !approval.destinations.some((destination) =>
-      destination.type === 'repository' && (destination.repository ?? destination.identity).toLowerCase() === fullName.toLowerCase()
-    )) continue;
+    if (!approvalBindsRepository(project, approval, fullName, now)) continue;
     const environments = approval.destinations.filter((destination) => destination.type === 'environment' &&
       ['dev', 'staging', 'prod'].includes(destination.identity)).map((destination) => destination.identity);
     if (new Set(environments).size !== 1) continue;
     const environment = environments[0];
     if (environment !== 'dev' && environment !== 'staging' && environment !== 'prod') continue;
-    for (const resource of approval.resources) {
-      const match = resource.identity.match(/^\/subscriptions\/([a-f0-9-]{36})\/resourceGroups\/[^/]+\/providers\/([A-Za-z0-9.]+)\/([A-Za-z0-9]+)\/[^/]+(?:\/[A-Za-z0-9]+\/[^/]+)*$/iu);
-      if (!match || !approval.destinations.some((destination) =>
-        destination.type === 'subscription' && (destination.subscriptionId ?? destination.identity).toLowerCase() === match[1]!.toLowerCase()
-      )) continue;
-      const role = ['remote-ready', 'remote-import-verified'].includes(approval.phaseId) ? 'state'
-        : ['bootstrap-local', 'runner-ready', 'private-backend-proof'].includes(approval.phaseId) ? 'runner-network' : 'application';
-      const resourceSegments = resource.identity.split('/').slice(6);
-      scope.azure.push({
-        subscriptionId: match[1]!, environment, resourceId: resource.identity,
-        resourceType: [resourceSegments[0], ...resourceSegments.slice(1).filter((_, index) => index % 2 === 0)].join('/'), role
-      });
+    const selected = selectBoundAssessmentEvidence(project, approval.phaseId, now);
+    const payload = selected?.payload;
+    const assessmentScope = isRecord(payload) && isRecord(payload.assessmentScope)
+      ? payload.assessmentScope
+      : null;
+    if (!assessmentScope || !Array.isArray(assessmentScope.azure)) {
+      if (
+        approval.resources.some((resource) => resource.identity.startsWith('/subscriptions/')) &&
+        !project.diagnostics.some((entry) =>
+          entry.code === 'unbound-resource-role' && entry.source === approval.phaseId
+        )
+      ) {
+        project.diagnostics.push({
+          code: 'unbound-resource-role',
+          severity: 'warning',
+          source: approval.phaseId,
+          message: 'Approved ARM resources lacked a current body-committed evidence payload with explicit assessment environment and role; Azure reads were withheld.'
+        });
+      }
+      continue;
+    }
+    for (const value of assessmentScope.azure) {
+      if (!isRecord(value) ||
+          Object.keys(value).some((key) => ![
+            'subscriptionId', 'environment', 'resourceId', 'resourceType', 'role'
+          ].includes(key)) ||
+          typeof value.subscriptionId !== 'string' ||
+          value.environment !== environment ||
+          typeof value.resourceId !== 'string' ||
+          typeof value.resourceType !== 'string' ||
+          !['state', 'application', 'runner-network'].includes(String(value.role))) {
+        continue;
+      }
+      const subscriptionId = value.subscriptionId as string;
+      const resourceId = value.resourceId as string;
+      const resourceType = value.resourceType as string;
+      const match = resourceId.match(/^\/subscriptions\/([a-f0-9-]{36})\/resourceGroups\/[^/]+\/providers\/([A-Za-z0-9.]+)\/([A-Za-z0-9]+)\/[^/]+(?:\/[A-Za-z0-9]+\/[^/]+)*$/iu);
+      if (!match ||
+          match[1]!.toLowerCase() !== subscriptionId.toLowerCase() ||
+          !approval.resources.some((resource) =>
+            resource.identity.toLowerCase() === resourceId.toLowerCase()
+          ) ||
+          !approval.destinations.some((destination) =>
+            destination.type === 'subscription' &&
+            (destination.subscriptionId ?? destination.identity).toLowerCase() === subscriptionId.toLowerCase()
+          )) {
+        continue;
+      }
+      const binding = {
+        subscriptionId,
+        environment: environment as LiveAssessmentScope['azure'][number]['environment'],
+        resourceId,
+        resourceType,
+        role: value.role as LiveAssessmentScope['azure'][number]['role']
+      };
+      const key = binding.resourceId.toLowerCase();
+      const previous = azureBindings.get(key);
+      if (
+        conflictingAzureBindings.has(key) ||
+        previous && (
+          previous.environment !== binding.environment ||
+          previous.role !== binding.role ||
+          previous.resourceType.toLowerCase() !== binding.resourceType.toLowerCase()
+        )
+      ) {
+        azureBindings.delete(key);
+        conflictingAzureBindings.add(key);
+        project.diagnostics.push({
+          code: 'conflicting-resource-binding',
+          severity: 'warning',
+          source: binding.resourceId,
+          message: 'Conflicting body-committed ARM environment, role, or resource-type bindings were excluded before live scope deduplication.'
+        });
+        continue;
+      }
+      if (!previous) azureBindings.set(key, binding);
     }
   }
   const runnerRecord = selectBoundAssessmentEvidence(project, 'runner-ready', now);
-  const rawRunner = runnerRecord?.record.payload;
-  if (runnerRecord?.header.result === 'verified' && isRecord(rawRunner) && rawRunner.kind === 'runner-ready.v1' &&
+  const rawRunner = runnerRecord?.payload;
+  const runnerApproval = project.approvals.some((approval) =>
+    approval.phaseId === 'runner-ready' &&
+    approvalBindsRepository(project, approval, fullName, now)
+  );
+  if (runnerApproval && runnerRecord?.header.result === 'verified' &&
+      isRecord(rawRunner) && rawRunner.kind === 'runner-ready.v1' &&
       rawRunner.organization === repository.owner && Number.isInteger(rawRunner.runnerId) && Number(rawRunner.runnerId) > 0 &&
       (rawRunner.groupId === null || Number.isInteger(rawRunner.groupId)) &&
       (rawRunner.networkConfigurationId === null || typeof rawRunner.networkConfigurationId === 'string')) {
@@ -234,7 +383,7 @@ export function resolveAssessmentLiveScope(project: AssessmentProject, git: Asse
       networkConfigurationId: typeof rawRunner.networkConfigurationId === 'string' ? rawRunner.networkConfigurationId : null
     };
   }
-  scope.azure = [...new Map(scope.azure.map((binding) => [binding.resourceId.toLowerCase(), binding])).values()]
+  scope.azure = [...azureBindings.values()]
     .sort((a, b) => a.resourceId.localeCompare(b.resourceId, 'en'));
   return scope;
 }
@@ -259,6 +408,38 @@ function livePredicate(
   else converted.facts = observation.value;
   return converted;
 }
+function partialLivePredicate(
+  live: LiveAssessmentResult,
+  key: string,
+  evaluate: (value: JsonValue) => PredicateResult
+): { observation: Observation; provenDifference: boolean } {
+  const observation = live.observations[key];
+  if (!observation) {
+    return {
+      observation: notObserved(`Live ${key} was not collected.`),
+      provenDifference: false
+    };
+  }
+  if (observation.availability === 'observed') {
+    return {
+      observation: livePredicate(live, key, evaluate),
+      provenDifference: false
+    };
+  }
+  if (observation.facts !== undefined) {
+    const evaluated = evaluate(observation.facts);
+    if (evaluated.value === false) {
+      return {
+        observation: {
+          ...observation,
+          reason: `${observation.reason ?? 'Live collection was incomplete.'} Independently observed facts prove a difference: ${evaluated.reason}`
+        },
+        provenDifference: true
+      };
+    }
+  }
+  return { observation, provenDifference: false };
+}
 function bool(value: boolean | null, reason: string): PredicateResult { return { value, reason }; }
 function rows(value: unknown): Record<string, unknown>[] | null {
   return Array.isArray(value) && value.every(isRecord) ? value : null;
@@ -282,6 +463,25 @@ export function findAssessmentException(
   return found ? { id: found.id, expiresAt: found.expiresAt, envelopeDigest: canonicalApprovalEnvelopeHash(found) } : null;
 }
 
+export function rejectedAssessmentExceptionDiagnostic(
+  control: ControlDefinition,
+  approvals: readonly ApprovalEnvelope[],
+  exception: AssessmentFinding['exception']
+): AssessmentDiagnostic | null {
+  if (
+    exception !== null ||
+    !approvals.some((approval) => approval.policyExceptions.includes(control.id))
+  ) {
+    return null;
+  }
+  return {
+    code: 'rejected-exception',
+    severity: 'warning',
+    source: control.id,
+    message: 'A recorded exception was rejected because its current identity, baseline, scope, resource, approval time, or expiry did not match this finding.'
+  };
+}
+
 function evidenceObservation(project: AssessmentProject, git: AssessmentGitFacts, capturedAt: string): Observation {
   if (!project.state) return notObserved('No compatible activation state is available.');
   if (project.invalidEvidence) return notObserved('Some evidence is malformed, sensitive, or uses unsupported schemas.');
@@ -297,6 +497,86 @@ function evidenceObservation(project: AssessmentProject, git: AssessmentGitFacts
   return observed(true, source('evidence', 'governance/evidence', capturedAt, project.evidence.map((record) => record.header.phaseId)));
 }
 
+function invalidateUnstableObservations(
+  findings: AssessmentFinding[],
+  kinds: ReadonlySet<NonNullable<Observation['source']>['kind']>,
+  reason: string
+): void {
+  for (const finding of findings) {
+    if (finding.applicability === 'inapplicable') continue;
+    let invalidated = false;
+    for (const layer of finding.requiredProof) {
+      const observation = finding.observations[layer];
+      if (observation?.source && kinds.has(observation.source.kind)) {
+        finding.observations[layer] = notObserved(reason);
+        invalidated = true;
+      }
+    }
+    if (!invalidated) continue;
+    finding.exception = null;
+    finding.missingProof = finding.requiredProof.filter((layer) =>
+      finding.observations[layer]?.availability === 'not-observed'
+    );
+    const remaining = finding.requiredProof
+      .map((layer) => finding.observations[layer])
+      .filter((observation): observation is Observation => observation !== undefined);
+    const absent = remaining.some((observation) => observation.availability === 'missing');
+    const differs = remaining.some((observation) =>
+      observation.availability === 'observed' &&
+      canonicalJson(observation.value) !== canonicalJson(finding.expected)
+    );
+    finding.classification = differs
+      ? 'conflicting'
+      : absent
+        ? 'missing'
+        : 'not-observed';
+    finding.reasons.push(reason);
+  }
+}
+
+function invalidateChangedActivationAuthority(
+  findings: AssessmentFinding[],
+  controls: readonly ControlDefinition[]
+): void {
+  const controlsById = new Map(controls.map((control) => [
+    control.id,
+    control
+  ]));
+  for (const finding of findings) {
+    const control = controlsById.get(finding.controlId);
+    const evidenceDerivedApplicability =
+      control?.applicability === 'private-dast' ||
+      control?.applicability === 'state-path';
+    if (
+      finding.applicability === 'inapplicable' &&
+        !evidenceDerivedApplicability ||
+      !(
+        evidenceDerivedApplicability ||
+        finding.requiredProof.includes('evidence') ||
+        finding.controlId.startsWith('azure.') ||
+        finding.controlId.startsWith('runner.') ||
+        finding.controlId.startsWith('evidence.')
+      )
+    ) {
+      continue;
+    }
+    if (evidenceDerivedApplicability) {
+      finding.applicability = 'unknown';
+    }
+    finding.classification = 'not-observed';
+    finding.exception = null;
+    finding.missingProof = [...finding.requiredProof];
+    finding.reasons.push(
+      'Current activation inputs, evidence references, evidence bodies, or reviewed plans changed during collection; evidence-backed scope and results were withheld.'
+    );
+    for (const layer of finding.requiredProof) {
+      finding.observations[layer] = notObserved(
+        'Activation authority changed during collection.'
+      );
+    }
+  }
+}
+
 async function managedFindings(
   control: ControlDefinition, project: AssessmentProject, files: AssessmentFiles, scope: FindingScope, capturedAt: string
 ): Promise<AssessmentFinding[]> {
@@ -305,8 +585,12 @@ async function managedFindings(
     return [classifyFinding({
       control, scope, applicability: 'applicable',
       observations: {
-        recorded: notObserved('Historical agent selection is not recorded.'),
-        declared: notObserved('The current handoff cannot be rendered without inferring agent configuration.')
+        recorded: notObserved(project.kind === 'git'
+          ? 'Ordinary Git repositories have no recorded Liftoff ownership inventory.'
+          : 'Historical agent selection is not recorded.'),
+        declared: notObserved(project.kind === 'git'
+          ? 'No Liftoff managed handoff is inferred for an ordinary Git repository.'
+          : 'The current handoff cannot be rendered without inferring agent configuration.')
       }
     })];
   }
@@ -363,7 +647,28 @@ function evaluateControl(
       const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
         ? repository.value.defaultBranch : null;
       observations.declared = declaredRules((value) => protectedRefs(value, project.state?.repository.defaultBranch ?? null));
-      observations.live = livePredicate(live, 'github.rulesets', (value) => protectedRefs(value, branch));
+      const rules = live.observations['github.rulesets'];
+      const branches = live.observations['github.branches'];
+      const families = live.observations['github.ref-families'];
+      if (
+        rules?.availability === 'observed' &&
+        branches?.availability === 'observed' &&
+        families?.availability === 'observed'
+      ) {
+        observations.live = predicateObservation(
+          effectiveProtectedRefs(rules.value, branches.value, families.value, branch),
+          rules.source
+        );
+        observations.live.facts = jsonValue({
+          rulesets: rules.value,
+          branches: branches.value,
+          refFamilies: families.value
+        });
+      } else {
+        observations.live = notObserved(
+          'Complete repository/inherited rulesets, classic/effective branch protection, and bounded release/hotfix enumeration are required.'
+        );
+      }
       break;
     }
     case 'single-maintainer':
@@ -394,14 +699,27 @@ function evaluateControl(
         : contexts.length ? predicateObservation(bool(true, `Declared contexts: ${contexts.map((entry) => entry.name).join(', ')}`), facts.ruleSource)
           : absent('No required status check contexts were declared.', facts.ruleSource);
       const rules = live.observations['github.rulesets'];
+      const branches = live.observations['github.branches'];
+      const families = live.observations['github.ref-families'];
       const repository = live.observations['github.repository'];
       const branch = repository?.availability === 'observed' && isRecord(repository.value) && typeof repository.value.defaultBranch === 'string'
         ? repository.value.defaultBranch : null;
-      const declaredBindings = requiredContextBindings(facts.rulesets, liveScope.refs, branch);
-      const enforcedBindings = rules?.availability === 'observed' ? requiredContextBindings(rules.value, liveScope.refs, branch) : null;
+      const familyRefs = families?.availability === 'observed' && isRecord(families.value) &&
+        Array.isArray(families.value.refs)
+        ? families.value.refs.filter((value): value is string => typeof value === 'string')
+        : [];
+      const assessedRefs = [...new Set([...liveScope.refs, ...familyRefs])].sort();
+      const comparisonRefs = assessedRefs.length ? assessedRefs : ['develop', 'main'];
+      const declaredBindings = requiredContextBindings(facts.rulesets, comparisonRefs, branch);
+      const rulesetBindings = rules?.availability === 'observed'
+        ? requiredContextBindings(rules.value, comparisonRefs, branch)
+        : null;
+      const enforcedBindings = rules?.availability === 'observed' && branches?.availability === 'observed'
+        ? effectiveRequiredContextBindings(rules.value, branches.value, comparisonRefs, branch)
+        : rulesetBindings;
       observations.declared.facts = jsonValue(declaredBindings);
-      const bindingsDiffer = Boolean(contexts?.length && declaredBindings && enforcedBindings &&
-        canonicalJson(declaredBindings) !== canonicalJson(enforcedBindings));
+      const bindingsDiffer = Boolean(contexts?.length && declaredBindings && rulesetBindings &&
+        canonicalJson(declaredBindings) !== canonicalJson(rulesetBindings));
       if (bindingsDiffer) {
         difference = 'conflicting';
         const checks = live.observations['github.checks'];
@@ -410,8 +728,15 @@ function evaluateControl(
           ? predicateObservation(bool(false, reason), rules?.source ?? null)
           : notObserved(`${reason} Check-run proof remains unobserved: ${checks?.reason ?? 'not collected'}`, rules?.source ?? null);
       } else {
-        observations.live = rules?.availability === 'observed' && declaredBindings && enforcedBindings
-          ? livePredicate(live, 'github.checks', (value) => observedRequiredContexts(rules.value, value, branch))
+        observations.live = rules?.availability === 'observed' &&
+          families?.availability === 'observed' &&
+          declaredBindings &&
+          enforcedBindings
+          ? livePredicate(
+              live,
+              'github.checks',
+              (value) => observedRequiredContexts(rules.value, value, branch, branches?.value)
+            )
           : notObserved('Live rule and exact commit-bound check observations are required.');
       }
       observations.live.facts = jsonValue({
@@ -466,20 +791,25 @@ function evaluateControl(
       break;
     case 'runner': {
       observations.recorded = liveScope.runner ? observed(true, source('evidence', 'runner-ready repository binding', capturedAt, jsonValue(liveScope.runner))) : notObserved('No current, exact runner/group/network binding is available.');
-      observations.live = livePredicate(live, 'github.runner', (value) => bool(isRecord(value) && value.repositoryAssigned === true
-        && value.groupId === liveScope.runner?.groupId && value.runnerId === liveScope.runner?.runnerId ? true : null,
-      'Exact repository/group/network assignment, labels and runner capacity must be observed.'));
+      observations.live = livePredicate(
+        live,
+        'github.runner',
+        (value) => runnerAlignment(value, scope.repository)
+      );
       break;
     }
-    case 'providers':
-      observations.live = livePredicate(live, 'azure.providers', (value) => {
+    case 'providers': {
+      const evaluation = partialLivePredicate(live, 'azure.providers', (value) => {
         const providers = rows(value);
         return bool(!providers?.length ? null : providers.every((entry) => entry.registrationState === 'Registered'), 'Every explicitly required namespace must have terminal Registered readback.');
       });
+      observations.live = evaluation.observation;
+      if (evaluation.provenDifference) difference = 'conflicting';
       expected = true;
       break;
-    case 'storage':
-      observations.live = livePredicate(live, 'azure.resources', (value) => {
+    }
+    case 'storage': {
+      const evaluation = partialLivePredicate(live, 'azure.resources', (value) => {
         const storage = rows(value)?.filter((entry) => String(entry.resourceType).toLowerCase() === 'microsoft.storage/storageaccounts');
         if (!storage?.length) return bool(null, 'No explicit environment/role-bound storage observation is available.');
         const values = storage.map((entry) => {
@@ -489,18 +819,24 @@ function evaluateControl(
         });
         return bool(values.includes(false) ? false : values.includes(null) ? null : true, 'State storage requires ZRS; application storage uses Dev LRS and Staging/Production ZRS.');
       });
+      observations.live = evaluation.observation;
+      if (evaluation.provenDifference) difference = 'conflicting';
       expected = true;
       break;
-    case 'network':
+    }
+    case 'network': {
       observations.recorded = liveScope.azure.some((entry) => entry.role === 'runner-network') ? observed(true, source('evidence', 'approved Staging network bindings', capturedAt, jsonValue(liveScope.azure))) : notObserved('No approved Staging network bindings were available.');
-      observations.live = livePredicate(live, 'azure.resources', (value) => {
+      const evaluation = partialLivePredicate(live, 'azure.resources', (value) => {
         const network = rows(value)?.filter((entry) => entry.role === 'runner-network');
         if (!network?.length) return bool(null, 'No bound runner-network readback is available.');
         const subnets = network.filter((entry) => String(entry.resourceType).toLowerCase() === 'microsoft.network/virtualnetworks/subnets');
         if (subnets.some((entry) => isRecord(entry.properties) && entry.properties.defaultOutboundAccess === true)) return bool(false, 'A runner subnet still enables implicit default outbound access.');
         return bool(null, 'Full subnet, route, DNS and exclusive NAT/Firewall proof is required; observed metadata alone is insufficient.');
       });
+      observations.live = evaluation.observation;
+      if (evaluation.provenDifference) difference = 'conflicting';
       break;
+    }
     case 'evidence':
       observations.evidence = evidenceObservation(project, git, capturedAt);
       break;
@@ -510,9 +846,30 @@ function evaluateControl(
     default:
       for (const layer of control.proofLayers) observations[layer] = notObserved(`No supported evaluator exists for ${control.id}; the required proof is not inferred.`);
   }
+  const exception = findAssessmentException(
+    control,
+    project.approvals,
+    scope,
+    facts.baseline,
+    exceptionResource,
+    now
+  );
+  const exceptionDiagnostic = rejectedAssessmentExceptionDiagnostic(
+    control,
+    project.approvals,
+    exception
+  );
+  if (
+    exceptionDiagnostic &&
+    !project.diagnostics.some((entry) =>
+      entry.code === 'rejected-exception' && entry.source === control.id
+    )
+  ) {
+    project.diagnostics.push(exceptionDiagnostic);
+  }
   return classifyFinding({
     control, scope, expected, applicability: applicability(control, project, now), observations, difference,
-    exception: findAssessmentException(control, project.approvals, scope, facts.baseline, exceptionResource, now)
+    exception
   });
 }
 
@@ -531,7 +888,87 @@ export async function assessGovernance(
   try {
     const loaded = loadAssessmentCatalog();
     target = loaded.target;
-    const project = await inspectAssessmentProject(files);
+    let project: AssessmentProject;
+    let git: AssessmentGitFacts;
+    let initialActivationInspection: CurrentActivationInspection | null = null;
+    let initialActivationFingerprint: string | null = null;
+    try {
+      project = await inspectAssessmentProject(files);
+      git = await inspectAssessmentGit(projectRoot, options.runner);
+    } catch (error) {
+      if (!(error instanceof AssessmentInputError) || error.code !== 'project-not-found') {
+        throw error;
+      }
+      git = await inspectAssessmentGit(projectRoot, options.runner);
+      if (!git.isRepository) {
+        throw new AssessmentInputError(
+          'project-not-found',
+          'No Liftoff manifest or valid Git worktree was found at the selected boundary.'
+        );
+      }
+      project = ordinaryGitAssessmentProject();
+    }
+    if (project.manifest) {
+      try {
+        const activation = await inspectCurrentActivationEvidence(
+          projectRoot,
+          project.manifest,
+          {
+            ...(options.runner ? { runner: options.runner } : {}),
+            now: captured
+          }
+        );
+        initialActivationInspection = activation;
+        initialActivationFingerprint = activationAuthorityFingerprint(activation);
+        if (activation.status === 'inspected') {
+          project.state = activation.state;
+          project.stateIdentity = jsonValue(activation.state.identity);
+          project.identity.stateSource = 'user';
+          project.inputSnapshot = activation.snapshot;
+          project.evidenceContexts = activation.contexts;
+          project.evidence = activation.records;
+          project.plans = activation.contexts[phaseIds[0]].reviewedPlans
+            ? [...activation.contexts[phaseIds[0]].reviewedPlans!]
+            : [];
+          project.activationSelections = activation.selections;
+          for (const [phaseId, selection] of Object.entries(activation.selections)) {
+            if (selection.selected && selection.historicalIssues?.length) {
+              project.diagnostics.push({
+                code: 'historical-evidence-ignored',
+                severity: 'info',
+                source: phaseId,
+                message: sanitizeAssessmentText(
+                  selection.historicalIssues.map((issue) => issue.message).join('; ')
+                )
+              });
+            }
+            if (selection.issues.length === 0) continue;
+            project.invalidEvidence = true;
+            project.diagnostics.push({
+              code: 'invalid-current-evidence',
+              severity: 'warning',
+              source: phaseId,
+              message: sanitizeAssessmentText(
+                selection.issues.map((issue) => issue.message).join('; ')
+              )
+            });
+          }
+        }
+      } catch (error) {
+        project.identity.availability = 'unsupported';
+        project.identity.stateSource = 'unsupported';
+        project.diagnostics.push({
+          code: 'activation-history-diagnostic-only',
+          severity: 'warning',
+          source: 'activation read-only inspection',
+          message: sanitizeAssessmentText(
+            error instanceof Error
+              ? error.message
+              : 'Activation history could not be interpreted as current executable proof.'
+          )
+        });
+      }
+    }
     projectIdentity = project.identity;
     const disabled = project.identity.profile === 'none';
     if (disabled) return assembleAssessmentReport({
@@ -539,7 +976,6 @@ export async function assessGovernance(
       snapshot: { capturedAt: captured.toISOString(), repository: null, localHead: null, worktreeDigest: files.digest(), inputsStable: await files.stable() },
       findings: [], diagnostics: project.diagnostics, disabled: true
     });
-    const git = await inspectAssessmentGit(projectRoot, options.runner);
     project.diagnostics.push(...git.issues.map((message): AssessmentDiagnostic => ({
       code: 'git-not-observed', severity: 'warning', message, source: 'Git metadata'
     })));
@@ -555,18 +991,53 @@ export async function assessGovernance(
       } else findings.push(evaluateControl(control, project, facts, live, git, scope, captured));
     }
     const worktreeDigest = files.digest();
-    const finalGit = await inspectAssessmentGit(projectRoot, options.runner);
-    const inputsStable = await files.stable() && live.refsStable &&
-      canonicalJson(git) === canonicalJson(finalGit);
-    if (!inputsStable) {
-      for (const finding of findings) {
-        if (finding.applicability === 'inapplicable') continue;
-        finding.classification = 'not-observed';
-        finding.exception = null;
-        finding.missingProof = [...finding.requiredProof];
-        finding.reasons.push('Relevant files or refs changed during collection; rerun assessment for a consistent snapshot.');
-        for (const layer of finding.requiredProof) finding.observations[layer] = notObserved('Inputs changed during collection.');
+    let activationStable = true;
+    if (project.manifest && initialActivationInspection && initialActivationFingerprint) {
+      try {
+        const finalActivation = await inspectCurrentActivationEvidence(
+          projectRoot,
+          project.manifest,
+          {
+            ...(options.runner ? { runner: options.runner } : {}),
+            now: captured
+          }
+        );
+        activationStable =
+          activationAuthorityFingerprint(finalActivation) ===
+          initialActivationFingerprint;
+      } catch {
+        activationStable = false;
       }
+    }
+    const finalGit = await inspectAssessmentGit(projectRoot, options.runner);
+    const filesStable = await files.stable();
+    const gitStable = canonicalJson(git) === canonicalJson(finalGit);
+    const inputsStable = filesStable && gitStable && activationStable;
+    if (!filesStable) {
+      invalidateUnstableObservations(
+        findings,
+        new Set(['file', 'evidence']),
+        'Relevant local files changed during collection; rerun assessment for current local proof.'
+      );
+    }
+    if (!gitStable) {
+      invalidateUnstableObservations(
+        findings,
+        new Set(['git']),
+        'Relevant Git metadata changed during collection; rerun assessment for current Git proof.'
+      );
+    }
+    if (!activationStable) {
+      invalidateChangedActivationAuthority(
+        findings,
+        loaded.catalog.controls
+      );
+      project.diagnostics.push({
+        code: 'activation-authority-changed',
+        severity: 'warning',
+        source: 'activation read-only inspection',
+        message: 'Current activation inputs, evidence, state references, or reviewed plans changed during collection; dependent proof was withheld.'
+      });
     }
     return assembleAssessmentReport({
       projectRoot, mode: options.live ? 'live' : 'local', target, projectIdentity,

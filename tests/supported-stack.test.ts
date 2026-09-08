@@ -129,7 +129,7 @@ describe('supported stack baseline', () => {
       }, /safe portable path part/],
       ['latest image', (value) => { value.containers.redis.tag = 'latest'; }, /non-latest image/],
       ['digest', (value) => { value.containers.redis.digest = 'sha256:short'; }, /sha256 digest/],
-      ['commit', (value) => { value.upstreams['power-apps-code-app'].commit = 'main'; }, /full lowercase Git commit SHA/],
+      ['commit', (value) => { value.githubActions.checkout.commit = 'main'; }, /full lowercase Git commit SHA/],
       ['credential URL', (value) => {
         value.frameworks.openspec.source = 'https://token@example.test/releases';
       }, /credential-free HTTPS URL/],
@@ -243,13 +243,6 @@ describe('supported stack baseline', () => {
         }
       }
     }
-    expect(
-      supportedStack.npmProjects['power-apps-code-app']
-        .selectionExceptions?.['@microsoft/power-apps']
-    ).toMatchObject({
-      selectedVersion: '1.2.7',
-      reviewedCandidateVersion: '1.3.0'
-    });
   });
 
   it('matches Python and Go dependency assets', () => {

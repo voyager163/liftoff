@@ -17,7 +17,9 @@ project/
 |-- liftoff.config.json
 |-- liftoff.manifest.json
 |-- .env.example
+|-- runtime.config.example.json # Go native configuration only
 |-- Dockerfile
+|-- .dockerignore
 |-- docker-compose.yml
 |-- .liftoff/
 |   `-- governance/             # managed-core local handoff when enabled
@@ -45,8 +47,10 @@ project/
 |-- infrastructure/
 |   `-- opentofu/
 |       `-- azure/
-|           `-- .terraform.lock.hcl
+|           |-- modules/application/
+|           `-- environments/<env>/ # independent root, <env>.tfvars and provider lock
 |-- openspec/ or .specify/
+|-- specs/000-liftoff-bootstrap/ # Spec Kit only: one-time spec.md, plan.md, tasks.md
 |-- .github/skills/openspec-*/ and .github/prompts/opsx-*  # OpenSpec + Copilot
 |-- .claude/skills/openspec-*/ and .claude/commands/opsx/  # OpenSpec + Claude
 |-- .github/workflows/copilot-setup-steps.yml              # optional hosted agent
@@ -64,7 +68,9 @@ project/
 
 - `backend` contains the selected API stack and Scalar/OpenAPI wiring. Python
   uses `backend/apis`, Node.js uses `backend/src`, and Go uses
-  `backend/cmd/api` plus `backend/internal`.
+  `backend/cmd/api` plus `backend/internal`. Node includes an explicit
+  `backend/vitest.config.ts`; Go's `backend/cmd/migrate/main.go` passes resolved
+  configuration to the existing pinned Goose migration tool.
 - `backend/orchestration` appears only in GenAI projects and contains
   PydanticAI agents, prompts, model configuration, and integration boundaries.
   The generic pattern creates `generic_agent.py`, `generic.md`, and the neutral
@@ -80,8 +86,12 @@ project/
 - Python Docker builds export the committed `uv.lock` in frozen mode and install
   only hash-verified requirements. `UV_DEFAULT_INDEX` can select a
   credential-free managed mirror without changing the lock.
-- `infrastructure/opentofu/azure` contains modules, environment tfvars, local
-  state configuration, and a remote-state example.
+- `infrastructure/opentofu/azure/modules/application` contains the shared module.
+  Each selected `infrastructure/opentofu/azure/environments/<env>` root owns its
+  named tfvars, provider lock, and independent local/remote state configuration.
+  Existing shared-state projects are not relocated by update or force.
+  The eight [retired flat-root identities](azure-deployment.md#explicit-flat-root-identity-retirement)
+  remain historical provenance; new root-looking files do not establish eligibility.
 - `openspec` is created for OpenSpec. `.specify` and `specs` are created for
   Spec Kit.
 - OpenSpec projects receive all 12 pinned workflows as both skills and commands
@@ -104,47 +114,30 @@ project/
   separate from Azure Functions runtime files.
 - `migration/legacy` contains the filtered source copy created by migration.
 
-## Power Apps code app
+### Runtime configuration and image boundaries
 
-```text
-project/
-|-- README.md
-|-- THIRD_PARTY_NOTICES.md
-|-- liftoff.config.json
-|-- liftoff.manifest.json
-|-- package.json
-|-- package-lock.json
-|-- index.html
-|-- vite.config.ts
-|-- eslint.config.js
-|-- tsconfig.json
-|-- public/
-|-- src/
-|   |-- App.tsx
-|   |-- main.tsx
-|   |-- router.tsx
-|   |-- components/
-|   |-- hooks/
-|   |-- pages/
-|   `-- providers/
-|-- .liftoff/governance/        # managed-core setup files when enabled
-|-- governance/                 # user-owned activation state after setup starts
-`-- openspec/ or .specify/
-```
+Python and Node.js native startup read the project-root `.env`; process
+environment values take precedence over file-backed settings and nonsecret
+defaults. Go native startup from `backend/` reads `../runtime.config.json`;
+copy `runtime.config.example.json` to that path or select explicit JSON with
+`LIFTOFF_ENV_FILE`. It does not shell-source `.env`. Configuration is resolved
+once per process; restart after editing the selected file.
+Explicit missing, unreadable, or malformed selected files fail before fallback.
+See [configuration syntax and native commands](configuration-and-manifests.md#application-runtime-configuration)
+for strict dotenv quoting and Go's string-valued JSON contract.
 
-The exact selected-agent setup and assessment launchers are generated only when the
-repository-governance profile is enabled. They are Liftoff-owned; neighboring
-framework files remain framework-owned. Agent-created governance changes and
-`governance/activation-state.json`, approvals, evidence, credentials, and
-supersession records remain user-owned and are not listed as managed artifacts.
+Compose passes applicable runtime settings explicitly while keeping PostgreSQL,
+Redis, and other generated service addresses container-reachable. Root and
+frontend `.dockerignore` files exclude host virtual environments, `node_modules`,
+build outputs, VCS metadata, state, and local secrets. Installing dependencies
+locally must not copy a host environment over dependencies installed in an image.
 
-This root follows the pinned official Microsoft starter. It includes the
-Power Apps SDK, Vite plugin, and project-local CLI through locked npm
-dependencies.
+## Retired project layouts
 
-Liftoff intentionally does not generate `backend/`, `database/`,
-`docker-compose.yml`, `environments/`, `infrastructure/`, or
-`power.config.json` for this workload.
+Power Apps code app generation and maintenance are retired. An existing
+Power Apps manifest is rejected without converting its root layout or modifying
+application, framework, dependency, or governance files. The remaining generated
+layouts are the API and GenAI layouts above.
 
 ## Managed versus user-owned governance artifacts
 
@@ -169,12 +162,12 @@ success-shaped placeholders:
   invocation fails clearly.
 - Redis Streams uses `REDIS_URL` and `REDIS_STREAM_NAME`.
 - Azure Service Bus uses `SERVICE_BUS_QUEUE_NAME` and either
-  `SERVICE_BUS_CONNECTION_STRING` or
-  `SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE`; `AZURE_CLIENT_ID` selects a
-  user-assigned managed identity.
+  `SERVICE_BUS_AUTH_MODE=connection-string` with `SERVICE_BUS_CONNECTION_STRING`,
+  or `managed-identity` with `SERVICE_BUS_FULLY_QUALIFIED_NAMESPACE` and
+  `AZURE_CLIENT_ID` for the selected user-assigned identity.
 - Langfuse requires both `LANGFUSE_PUBLIC_KEY` and
-  `LANGFUSE_SECRET_KEY`, with optional `LANGFUSE_HOST`. Without both keys,
-  tracing is explicitly disabled.
+  `LANGFUSE_SECRET_KEY`, with optional `LANGFUSE_HOST`. Both blank disables
+  tracing; only one configured key is an error.
 - Frontends read `VITE_API_BASE_URL`, call the route selected by the pattern or
   API stack, and expose loading, response, and failure states.
 - Backends allow the local frontend origin by default.

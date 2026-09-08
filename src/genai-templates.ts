@@ -1,20 +1,8 @@
 import type { AddArtifact } from './template-types.js';
-import type { GenAiProjectPlan } from './types.js';
+import type { GenAiProjectPlan } from './domain/project/contracts.js';
+import { addGenAiExtensionArtifacts as addGenAi } from './generators/genai/index.js';
+import { resolveGeneratorContext } from './templates.js';
 
-interface GenAiArtifactBuilders {
-  backend: (add: AddArtifact, plan: GenAiProjectPlan) => void;
-  database: (add: AddArtifact, plan: GenAiProjectPlan) => void;
-  pattern: (add: AddArtifact, plan: GenAiProjectPlan) => void;
-  functions: (add: AddArtifact, plan: GenAiProjectPlan) => void;
-}
-
-export function addGenAiExtensionArtifacts(
-  add: AddArtifact,
-  plan: GenAiProjectPlan,
-  builders: GenAiArtifactBuilders
-): void {
-  builders.backend(add, plan);
-  builders.database(add, plan);
-  builders.pattern(add, plan);
-  builders.functions(add, plan);
+export function addGenAiExtensionArtifacts(add: AddArtifact, plan: GenAiProjectPlan): void {
+  addGenAi(add, plan, resolveGeneratorContext(plan));
 }

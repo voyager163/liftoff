@@ -17,7 +17,14 @@ import {
   phaseIds,
   planHistoricalActivationStateMigration,
   preservingPhaseContractMappings,
-  validateGovernanceCompatibilityMetadata
+  validateGovernanceCompatibilityMetadata,
+  historicalActivationIdentities,
+  validateActivationIdentity,
+  validateReadableActivationIdentity,
+  validateManifestActivationForExecution,
+  minimumLiftoffForManifestV7,
+  executeApplyNext,
+  type GovernanceTransitionInspection
 } from '../src/governance-activation/index.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -29,7 +36,13 @@ import type {
   UserActivationState
 } from '../src/governance-activation/index.js';
 import { CaptureStream } from './helpers.js';
-import { applyProjectFileTransaction, writeArtifacts } from '../src/file-system.js';
+import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
+import { writeArtifacts } from '../src/adapters/filesystem/project-files.js';
+import { createManifestReader } from '../src/domain/project/manifest/reader.js';
+import { projectCatalog } from '../src/application/project/catalog.js';
+import { governanceArtifactPaths, governancePolicyVersion } from '../src/repository-governance.js';
+import { inspectCurrentActivationEvidence } from '../src/governance-activation/read-only.js';
+import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', 'governance-migration-tests');
 let counter = 0;
@@ -54,13 +67,14 @@ afterAll(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
 });
 
-async function fixtureProject(): Promise<string> {
+async function fixtureProject(workload: 'standard' | 'genai' = 'standard'): Promise<string> {
   counter += 1;
   const root = path.join(scratchRoot, `project-${process.pid}-${counter}`);
   const plan = buildProjectPlan({
     projectName: 'Migration App',
-    projectType: 'standard',
-    apiStack: 'node',
+    projectType: workload,
+    apiStack: workload === 'standard' ? 'node' : 'python',
+    ...(workload === 'genai' ? { pattern: 'chatbot' } : {}),
     cloud: 'azure',
     region: 'eastus',
     environments: ['dev'],
@@ -206,6 +220,7 @@ function evidenceHeader(phaseId: PhaseId): EvidenceHeader {
     transition: context.transition,
     producedAt: '2026-09-04T00:00:00.000Z',
     producer: 'vitest',
+    bodyDigest: canonicalSha256({ payload: null, liveReadback: [] }),
     result: 'verified'
   };
 }
@@ -280,6 +295,100 @@ async function planTestHistoricalMigration(root: string) {
 }
 
 describe('governance managed migration framework', () => {
+  it.each(['historical', 'future', 'mixed'] as const)('describes %s doctor incompatibility without mislabeling it as v1', async (kind) => {
+    const root = await fixtureProject();
+    const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    const state = stateWithIdentity(kind === 'historical' ? historicalActivationIdentities[0] : currentActivationIdentity);
+    if (kind === 'future') state.schemaVersion = currentActivationIdentity.activationStateSchemaVersion + 1;
+    if (kind === 'mixed') state.identity = { ...state.identity, evidenceHeaderSchemaVersion: 1 };
+    await writeJson(path.join(root, ...activationStateFilePathParts), state);
+    const before = await treeFingerprint(root);
+    const check = (await governanceDoctorChecks(root, manifest)).find((entry) => entry.id === 'governance-identity-incompatible');
+    expect(check?.remedy).toMatch(/^Preserve user-owned state and evidence bytes\./);
+    expect(check?.remedy?.includes('Historical activation v1')).toBe(kind === 'historical');
+    expect(await treeFingerprint(root)).toEqual(before);
+  });
+
+  it('separates readable historical metadata from executable identity and rejects mixed or unknown tuples', () => {
+    expect(validateReadableActivationIdentity(currentActivationIdentity)).toEqual(currentActivationIdentity);
+    const historical = historicalActivationIdentities[0];
+    const input = structuredClone(historical);
+    const before = JSON.stringify(input);
+    expect(validateReadableActivationIdentity(input)).toEqual(historical);
+    expect(JSON.stringify(input)).toBe(before);
+    expect(validateReadableActivationIdentity(input)).not.toBe(input);
+    expect(() => validateActivationIdentity(input)).toThrow(/diagnostic-only/);
+    for (const invalid of [
+      { ...historical, evidenceHeaderSchemaVersion: 2 },
+      { ...historical, phaseGraphHash: '9'.repeat(64) },
+      { ...historical, liftoffVersion: '0.99.0' },
+      { ...historical, extra: true },
+      { ...currentActivationIdentity, activationContractVersion: 3 }
+    ]) expect(() => validateReadableActivationIdentity(invalid)).toThrow();
+  });
+
+  it.each(['standard', 'genai'] as const)('reads a known v1 %s manifest through the injected reader without granting execution or scope', async (workload) => {
+    const root = await fixtureProject(workload);
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const raw = JSON.parse(await readFile(manifestPath, 'utf8'));
+    raw.governance.activationIdentity = historicalActivationIdentities[0];
+    await writeJson(manifestPath, raw);
+    const before = await treeFingerprint(root);
+    const reader = createManifestReader({
+      catalog: projectCatalog, policyVersion: governancePolicyVersion, minimumLiftoffVersion: minimumLiftoffForManifestV7,
+      validateActivationIdentity: validateReadableActivationIdentity,
+      governanceArtifactPaths: new Map<string, readonly string[]>([
+        ['repository-governance-policy', governanceArtifactPaths.policy],
+        ['repository-governance-context', governanceArtifactPaths.context],
+        ['repository-governance-guide', governanceArtifactPaths.guide],
+        ['repository-governance-phase-graph', governanceArtifactPaths.phaseGraph],
+        ['repository-governance-compatibility', governanceArtifactPaths.compatibility],
+        ['repository-governance-credential-policy-schema', governanceArtifactPaths.credentialPolicySchema],
+        ['liftoff-setup-copilot', governanceArtifactPaths.setup['github-copilot']],
+        ['liftoff-setup-claude', governanceArtifactPaths.setup.claude],
+        ['liftoff-governance-assess-copilot', governanceArtifactPaths.assessment['github-copilot']],
+        ['liftoff-governance-assess-claude', governanceArtifactPaths.assessment.claude]
+      ])
+    });
+    const parsed = reader.parseManifest(raw);
+    expect(parsed.artifactVersion).toBe(7);
+    expect(parsed.project.workload.kind).toBe(workload);
+    expect(parsed.governance).toMatchObject({ activationIdentity: historicalActivationIdentities[0] });
+    expect(() => validateManifestActivationForExecution(parsed)).toThrow(/diagnostic-only/);
+    await expect(inspectCurrentActivationEvidence(root, parsed)).rejects.toThrow(/diagnostic-only/);
+    let reinspected = false;
+    await expect(executeApplyNext({
+      inspection: { projectRoot: root, manifest: parsed } as GovernanceTransitionInspection,
+      reinspect: async () => { reinspected = true; throw new Error('Historical metadata cannot reach execution inspection.'); }
+    })).rejects.toThrow(/diagnostic-only/);
+    expect(reinspected).toBe(false);
+    expect(await treeFingerprint(root)).toEqual(before);
+  });
+
+  it('preserves known activation v1 as diagnostic-only even when an injected mapping is offered', async () => {
+    const root = await fixtureProject();
+    const historical = stateWithIdentity(historicalActivationIdentities[0]!);
+    const statePath = path.join(root, ...activationStateFilePathParts);
+    await writeJson(statePath, historical);
+    const evidencePath = path.join(root, 'governance', 'evidence', 'preserved-v1.json');
+    await writeJson(evidencePath, { schemaVersion: 1, identity: historical.identity, baselineSha: '0'.repeat(64) });
+    const before = await readFile(statePath);
+    const originalEvidence = await readFile(evidencePath);
+    const offered = testHistoricalStateMigration();
+    offered.fromIdentity = historical.identity;
+    offered.graphMapping = { ...offered.graphMapping, fromIdentity: historical.identity, fromGraphHash: historical.identity.phaseGraphHash };
+    const planned = await planHistoricalActivationStateMigration(root, '2026-09-04T00:00:00.000Z', {
+      historicalStateMigrations: [offered]
+    });
+    expect(planned).toMatchObject({ status: 'blocked', mutations: [], report: { diagnosticOnly: true, evidencePolicy: 'preserve-bytes' } });
+    for (const command of ['status', 'resume', 'apply-next']) {
+      const result = await run(['governance', command, '--json', ...(command === 'apply-next' ? ['--execute'] : [])], root);
+      expect(result.code).toBe(1);
+      expect(result.out + result.err).toContain('diagnostic-only');
+      expect(await readFile(statePath)).toEqual(before);
+      expect(await readFile(evidencePath)).toEqual(originalEvidence);
+    }
+  });
   it('packages strict compatibility metadata with manifest/update inventory and no skill version', async () => {
     const root = await fixtureProject();
     const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
@@ -294,7 +403,8 @@ describe('governance managed migration framework', () => {
     expect(`sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`)
       .toBe(compatibilityArtifact.contentHash);
     const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibilityContent));
-    expect(compatibility.schemaVersion).toBe(1);
+    expect(compatibility.schemaVersion).toBe(2);
+    expect(compatibility.activation.historicalReadability.execution).toBe('diagnostic-only');
     expect(compatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(compatibility.manifest.writeVersion).toBe(7);
     expect(compatibility.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
@@ -354,7 +464,7 @@ describe('governance managed migration framework', () => {
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
-  it('previews injected historical state migration without changing any byte', async () => {
+  it('previews an injected compatible v2 graph reconciliation without changing any byte', async () => {
     const root = await fixtureProject();
     await installHistoricalState(root);
     const before = await treeFingerprint(root);
@@ -371,7 +481,7 @@ describe('governance managed migration framework', () => {
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
-  it('applies injected historical state migration transactionally while preserving evidence bytes', async () => {
+  it('applies an injected v2 graph reconciliation transactionally while preserving evidence bytes', async () => {
     const root = await fixtureProject();
     await installHistoricalState(root);
     const evidencePath = path.join(root, 'governance', 'evidence', 'seed-valid-historical.json');

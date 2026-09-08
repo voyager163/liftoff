@@ -1,6 +1,6 @@
 ## Purpose
 
-Define Liftoff's first-class Power Apps code app workload, including its pinned starter, project-local tooling, environment binding, governance, and optional Code Apps plugin integration.
+Define Liftoff's Power Apps workload lifecycle and compatibility boundaries, including explicit unsupported-workload behavior when that workload is retired.
 
 ## Requirements
 

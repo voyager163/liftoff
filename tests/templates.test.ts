@@ -1,7 +1,7 @@
 import path from 'node:path';
-import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import os from 'node:os';
-import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { apiStacks, patterns } from '../src/catalogs.js';
 import {
   artifactPath,
@@ -12,6 +12,10 @@ import {
 } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
+import { addGenAiExtensionArtifacts } from '../src/genai-templates.js';
+const fixtureRoot = path.resolve('tests', '.template-fixtures', randomUUID());
+beforeAll(async () => { await mkdir(fixtureRoot, { recursive: true }); });
+afterAll(async () => { await rm(fixtureRoot, { recursive: true, force: true }); });
 
 describe('templates and filesystem', () => {
   it('preserves the OpenSpec Copilot cloud decision without persisting Liftoff consent fields', () => {
@@ -35,15 +39,6 @@ describe('templates and filesystem', () => {
           copilotCloud: false
         }, { requireProjectName: true }),
         expected: 'cloudAgent: false'
-      },
-      {
-        plan: buildProjectPlan({
-          projectName: 'Power Cloud',
-          projectType: 'power-apps-code-app',
-          agents: ['copilot'],
-          copilotCloud: true
-        }, { requireProjectName: true }),
-        expected: 'cloudAgent: true'
       }
     ];
 
@@ -100,7 +95,7 @@ describe('templates and filesystem', () => {
     expect(artifacts.some((artifact) => artifact.pathParts.join('/') === 'frontend/src/App.vue')).toBe(true);
     expect(artifacts.some((artifact) => artifact.pathParts.join('/') === 'backend/orchestration/retrieval/vector_store.py')).toBe(true);
     expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content).toContain('profiles:');
-    expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/main.tf')?.content).toContain('azurerm_servicebus_namespace');
+    expect(artifacts.find((artifact) => artifact.logicalName === 'opentofu-application-main')?.content).toContain('azurerm_servicebus_namespace');
   });
 
   it('renders functional and offline-testable GenAI integration boundaries', () => {
@@ -172,10 +167,10 @@ describe('templates and filesystem', () => {
     expect(contentAt('docker-compose.yml')).toContain('langfuse:');
     expect(contentAt('docker-compose.yml')).toContain('langfuse-worker:');
     expect(contentAt('docker-compose.yml')).toContain('postgres:');
-    expect(contentAt('infrastructure/opentofu/azure/main.tf')).not.toContain(
+    expect(contentAt('infrastructure/opentofu/azure/modules/application/main.tf')).not.toContain(
       'azurerm_linux_function_app'
     );
-    expect(contentAt('infrastructure/opentofu/azure/main.tf')).not.toContain(
+    expect(contentAt('infrastructure/opentofu/azure/modules/application/main.tf')).not.toContain(
       'function_worker'
     );
 
@@ -211,6 +206,26 @@ describe('templates and filesystem', () => {
     );
   });
 
+  it('keeps the generic default install graph and direct GenAI adapter free of pgvector requirements', () => {
+    const plan = buildProjectPlan({
+      projectName: 'Generic Dependency Scope', pattern: 'generic', cloud: 'azure'
+    }, { requireProjectName: true });
+    if (plan.workload !== 'genai') throw new Error('Expected a GenAI plan.');
+    expect(plan.pattern.requiresVectorStore).toBe(false);
+    expect(plan.pattern.worker).toBe(false);
+    const artifacts = buildArtifacts(plan);
+    const direct = new Map<string, string>();
+    addGenAiExtensionArtifacts((name, _category, _parts, content) => direct.set(name, content), plan);
+    for (const identity of ['backend-pyproject', 'backend-uv-lock']) {
+      const generated = artifacts.find(({ logicalName }) => logicalName === identity)!.content;
+      expect(generated).not.toMatch(/pgvector/i);
+      expect(direct.get(identity)).not.toMatch(/pgvector/i);
+      expect(direct.get(identity)?.trim()).toBe(generated.trim());
+    }
+    expect(direct.has('rag-vector-store')).toBe(false);
+    expect(direct.has('pattern-worker')).toBe(false);
+  });
+
   it('generates Azure Functions workers only for worker-enabled patterns', () => {
     const workerPlan = buildProjectPlan({ projectName: 'RAG Worker', pattern: 'rag', cloud: 'azure', region: 'eastus' }, { requireProjectName: true });
     const workerArtifacts = buildArtifacts(workerPlan);
@@ -243,6 +258,53 @@ describe('templates and filesystem', () => {
     expect(workerArtifacts.find((artifact) => artifact.pathParts.join('/') === '.specify/memory/constitution.md')?.content).toContain('functions/workflow-worker');
   });
 
+  it('generates actual project-owned Spec Kit bootstrap seeds without inventing completion', () => {
+    for (const apiStack of ['python', 'node', 'go']) {
+      const artifacts = buildArtifacts(buildProjectPlan({
+        projectName: 'Bootstrap Contract',
+        projectType: 'standard',
+        apiStack,
+        cloud: 'azure',
+        specWorkflow: 'spec-kit',
+        environments: ['prod']
+      }, { requireProjectName: true }));
+      const manifest = JSON.parse(artifacts.find(({ logicalName }) => logicalName === 'manifest')!.content);
+      for (const kind of ['spec', 'plan', 'tasks']) {
+        const artifact = artifacts.find(({ logicalName }) => logicalName === `spec-kit-bootstrap-${kind}`)!;
+        expect(artifact).toMatchObject({
+          lifecycle: 'seed', category: 'seed',
+          pathParts: ['specs', '000-liftoff-bootstrap', `${kind}.md`]
+        });
+        expect(artifact.content).toContain('000-liftoff-bootstrap');
+        expect(manifest.managedArtifacts.some(({ logicalName }: { logicalName: string }) => logicalName === artifact.logicalName)).toBe(false);
+        expect(artifact.content).not.toContain('openspec archive');
+        expect(artifact.content).not.toContain('- [x]');
+      }
+      const tasks = artifacts.find(({ logicalName }) => logicalName === 'spec-kit-bootstrap-tasks')!.content;
+      expect(tasks.match(/^- \[ \] B00[1-6] /gm)).toHaveLength(6);
+      expect(tasks).toContain('tofu init -backend=false');
+      expect(tasks).toContain('infrastructure/opentofu/azure/environments/prod');
+      expect(tasks).not.toContain('environments/dev');
+      expect(artifacts.some(({ pathParts }) => pathParts[0] === 'openspec')).toBe(false);
+    }
+  });
+
+  it('explicitly excludes host dependencies and secrets from every generated Docker context', () => {
+    const artifacts = buildArtifacts(buildProjectPlan({
+      projectName: 'Container Contexts', pattern: 'rag', cloud: 'azure', includeFrontend: true
+    }, { requireProjectName: true }));
+    for (const [logicalName, pathParts, provisioningGroup] of [
+      ['root-dockerignore', ['.dockerignore'], 'base'],
+      ['frontend-dockerignore', ['frontend', '.dockerignore'], 'frontend']
+    ] as const) {
+      const artifact = artifacts.find((item) => item.logicalName === logicalName)!;
+      expect(artifact).toMatchObject({ lifecycle: 'project', pathParts, provisioningGroup });
+      for (const exclusion of ['**/.venv', '**/node_modules', '**/dist', '**/.git', '**/.terraform', '**/*.tfstate', '**/.env', '**/local.settings.json']) {
+        expect(artifact.content).toContain(exclusion);
+      }
+    }
+  });
+
   it('tracks generated artifacts with path parts instead of slash-delimited paths', () => {
     const plan = buildProjectPlan({ projectName: 'Manifest App', pattern: 'workflow', cloud: 'azure' }, { requireProjectName: true });
     const artifacts = buildArtifacts(plan);
@@ -271,7 +333,7 @@ describe('templates and filesystem', () => {
         expect(paths).toContain('backend/apis/main.py');
         expect(paths).toContain('database/alembic.ini');
         expect(paths).toContain('docker-compose.yml');
-        expect(paths).toContain('infrastructure/opentofu/azure/main.tf');
+        expect(paths).toContain('infrastructure/opentofu/azure/modules/application/main.tf');
         expect(paths).toContain('liftoff.manifest.json');
         expect(paths.some((artifactPath) => artifactPath.startsWith('frontend/'))).toBe(includeFrontend);
         expect(artifacts.some((artifact) => artifact.pathParts[0] === 'functions')).toBe(pattern.worker);
@@ -300,7 +362,7 @@ describe('templates and filesystem', () => {
       expect(paths).toContain(expectedEntrypoints[stack.id]);
       expect(paths).toContain('database/models/schema.sql');
       expect(paths).toContain('docker-compose.yml');
-      expect(paths).toContain('infrastructure/opentofu/azure/main.tf');
+      expect(paths).toContain('infrastructure/opentofu/azure/modules/application/main.tf');
       expect(paths.some((artifactPath) => artifactPath.startsWith('backend/orchestration/'))).toBe(false);
       expect(paths.some((artifactPath) => artifactPath.startsWith('functions/'))).toBe(false);
       expect(allContent).not.toContain('PydanticAI');
@@ -335,7 +397,7 @@ describe('templates and filesystem', () => {
     const nodeDrizzle = nodeArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/drizzle.config.ts')?.content ?? '';
     expect(nodePackage).toContain('"fastify"');
     expect(nodePackage).toContain('"drizzle-orm"');
-    expect(nodeDrizzle).toContain('postgresql:');
+    expect(nodeDrizzle).toContain('loadConfig().databaseUrl');
     expect(nodeDrizzle).not.toContain('******');
     expect(nodeArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/migrations/0000_initial.sql')).toBe(true);
     expect(nodeArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/migrations/meta/_journal.json')).toBe(true);
@@ -348,10 +410,12 @@ describe('templates and filesystem', () => {
       cloud: 'azure'
     }, { requireProjectName: true }));
     expect(goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/go.mod')?.content).toContain('huma/v2');
-    expect(goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/Makefile')?.content).toContain('pressly/goose');
+    expect(goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/Makefile')?.content).toContain('go run ./cmd/migrate');
+    expect(goArtifacts.find((artifact) => artifact.logicalName === 'go-backend-migration-command')?.content).toContain('pressly/goose');
+    expect(goArtifacts.find((artifact) => artifact.logicalName === 'go-backend-migration-command')?.content).toContain('"GOOSE_DBSTRING="+cfg.DatabaseURL');
     expect(goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/internal/database/database.go')?.content).toContain('pgxpool');
     const goApi = goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/internal/api/api.go')?.content ?? '';
-    expect(goApi).toContain('config.OpenAPIPath = "/openapi"');
+    expect(goApi).toContain('apiConfig.OpenAPIPath = "/openapi"');
     expect(goApi).toContain('data-url="/openapi.json"');
   });
 
@@ -365,7 +429,7 @@ describe('templates and filesystem', () => {
     }, { requireProjectName: true }));
     const frontend = artifacts.find((artifact) => artifact.pathParts.join('/') === 'frontend/src/App.vue')?.content ?? '';
     const governance = artifacts.find((artifact) => artifact.pathParts.join('/') === 'openspec/config.yaml')?.content ?? '';
-    const tofu = artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/main.tf')?.content ?? '';
+    const tofu = artifacts.find((artifact) => artifact.logicalName === 'opentofu-application-main')?.content ?? '';
 
     expect(frontend).toContain('Node.js / Fastify / TypeScript starter');
     expect(frontend).not.toContain('GenAI');
@@ -378,78 +442,11 @@ describe('templates and filesystem', () => {
     expect(tofu).toContain('image  = var.backend_image');
     expect(tofu).toContain('azurerm_postgresql_flexible_server_firewall_rule');
     expect(tofu).not.toContain('azurerm_linux_function_app');
-    const tfvars = artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/environments/dev.tfvars')?.content ?? '';
+    const tfvars = artifacts.find((artifact) => artifact.logicalName === 'opentofu-dev-tfvars')?.content ?? '';
     const tofuReadme = artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/README.md')?.content ?? '';
     expect(tfvars).toContain('backend_image');
     expect(tfvars).toContain('backend_target_port');
     expect(tofuReadme).toContain('Persist the deployed images');
-  });
-
-  it('renders the complete Power Apps starter at the project root without API infrastructure', () => {
-    const artifacts = buildArtifacts(buildProjectPlan({
-      projectName: 'Claims Workspace',
-      projectType: 'power-apps-code-app',
-      specWorkflow: 'openspec',
-      agents: ['copilot', 'claude']
-    }, { requireProjectName: true }));
-    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
-    const contentAt = (artifactPath: string) =>
-      artifacts.find((artifact) => artifact.pathParts.join('/') === artifactPath)?.content ?? '';
-
-    expect(paths).toContain('src/App.tsx');
-    expect(paths).toContain('src/providers/query-provider.tsx');
-    expect(paths).toContain('public/power-apps.svg');
-    expect(paths).toContain('package.json');
-    expect(paths).toContain('package-lock.json');
-    expect(paths).toContain('openspec/config.yaml');
-    expect(paths).toContain('THIRD_PARTY_NOTICES.md');
-    expect(paths).toContain('liftoff.manifest.json');
-    expect(paths).not.toContain('power.config.json');
-    expect(paths).not.toContain('.env');
-    expect(paths).not.toContain('.env.example');
-    expect(paths.some((artifactPath) => artifactPath.startsWith('backend/'))).toBe(false);
-    expect(paths.some((artifactPath) => artifactPath.startsWith('frontend/'))).toBe(false);
-    expect(paths.some((artifactPath) => artifactPath.startsWith('infrastructure/'))).toBe(false);
-    expect(paths.some((artifactPath) => artifactPath.startsWith('environments/'))).toBe(false);
-    expect(paths.some((artifactPath) => artifactPath.startsWith('functions/'))).toBe(false);
-    expect(paths).not.toContain('docker-compose.yml');
-
-    const packageJson = JSON.parse(contentAt('package.json'));
-    const packageLock = JSON.parse(contentAt('package-lock.json'));
-    expect(packageJson.name).toBe('claims-workspace');
-    expect(packageLock.name).toBe('claims-workspace');
-    expect(packageLock.packages[''].name).toBe('claims-workspace');
-    expect(packageJson.scripts.lint).toContain('react-refresh/only-export-components: off');
-    expect(contentAt('src/App.tsx')).not.toContain('Claims Workspace');
-    expect(contentAt('README.md')).toContain('npx --no-install power-apps init');
-    expect(contentAt('README.md')).toContain('GitHub Copilot, Claude Code');
-    expect(contentAt('README.md')).toContain('The setup baseline is local only');
-    expect(contentAt('README.md')).toContain('OpenTofu\nformat/init/validate');
-    expect(contentAt('README.md')).toContain('does not run a live plan or apply');
-    expect(contentAt('README.md')).toContain('liftoff upgrade --check');
-    expect(contentAt('README.md')).toContain('liftoff update --check');
-    expect(contentAt('THIRD_PARTY_NOTICES.md')).toContain(
-      '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
-    );
-  });
-
-  it('renders Spec Kit governance for Power Apps without OpenSpec ownership overlap', () => {
-    const artifacts = buildArtifacts(buildProjectPlan({
-      projectName: 'Canvas Companion',
-      projectType: 'power-apps-code-app',
-      specWorkflow: 'spec-kit',
-      agents: ['copilot']
-    }, { requireProjectName: true }));
-    const paths = artifacts.map((artifact) => artifact.pathParts.join('/'));
-    const constitution = artifacts.find(
-      (artifact) => artifact.pathParts.join('/') === '.specify/memory/constitution.md'
-    )?.content ?? '';
-
-    expect(paths).toContain('.specify/memory/constitution.md');
-    expect(paths).not.toContain('openspec/config.yaml');
-    expect(constitution).toContain('Power Apps code app');
-    expect(constitution).not.toContain('backend/');
-    expect(constitution).not.toContain('infrastructure/');
   });
 
   it('escapes project names embedded in generated frontend scripts', () => {
@@ -495,7 +492,7 @@ describe('templates and filesystem', () => {
     }, { requireProjectName: true }));
     const genAiMain = genAiArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/apis/main.py')?.content ?? '';
     const genAiEnv = genAiArtifacts.find((artifact) => artifact.pathParts.join('/') === 'environments/dev/backend.env')?.content ?? '';
-    const tofu = genAiArtifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/main.tf')?.content ?? '';
+    const tofu = genAiArtifacts.find((artifact) => artifact.logicalName === 'opentofu-application-main')?.content ?? '';
     const tofuReadme = genAiArtifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/README.md')?.content ?? '';
 
     expect(genAiMain).toContain('CORSMiddleware');
@@ -536,7 +533,7 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('VITE_API_BASE_URL');
     expect(readme).toContain('## Deterministic Setup');
     expect(readme).toContain('Run `/liftoff-setup` from a selected agent');
-    expect(readme).toContain('completes, syncs, and archives the generated bootstrap seed');
+    expect(readme).toContain('verifies, syncs, and archives the generated OpenSpec bootstrap seed');
     expect(readme).toContain('tofu init -backend=false');
     expect(readme).toContain('No baseline step runs a live OpenTofu plan or apply');
     expect(readme).toContain('Absent components are recorded as');
@@ -633,7 +630,7 @@ describe('templates and filesystem', () => {
       );
 
       expect(governed).toContain('Run `/liftoff-setup` from a selected agent');
-      expect(governed).toContain('Commit and push are separate approvals');
+      expect(governed).toContain('Commit and push require separate approvals');
       expect(governed).toContain('separately approved `application-foundation`');
       expect(governed).toContain('An unavailable production adapter remains a');
       expect(governedTofu).toContain('## Governance Gate');
@@ -648,8 +645,9 @@ describe('templates and filesystem', () => {
       expect(disabledTofu).not.toContain('## Governance Gate');
 
       for (const readme of [governed, governedTofu, disabled, disabledTofu]) {
-        expect(readme).toContain('environments/prod.tfvars');
-        expect(readme).not.toContain('environments/dev.tfvars');
+        expect(readme).toContain('environments/prod');
+        expect(readme).toContain('-var-file=prod.tfvars');
+        expect(readme).not.toContain('environments/dev');
       }
     }
   });
@@ -675,7 +673,7 @@ describe('templates and filesystem', () => {
   it('generates OpenTofu and Docker Compose validation hooks', () => {
     const plan = buildProjectPlan({ projectName: 'Infra App', pattern: 'rag', cloud: 'azure', includeFrontend: true }, { requireProjectName: true });
     const artifacts = buildArtifacts(plan);
-    const tofuMain = artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/main.tf')?.content ?? '';
+    const tofuMain = artifacts.find((artifact) => artifact.logicalName === 'opentofu-application-main')?.content ?? '';
     const compose = artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content ?? '';
 
     expect(tofuMain).toContain('azurerm_container_app');
@@ -687,9 +685,9 @@ describe('templates and filesystem', () => {
     expect(tofuMain).toContain('azurerm_user_assigned_identity.app.client_id');
     expect(tofuMain).not.toContain('AzureWebJobsStorage__accountName');
     expect(tofuMain).toMatch(/resource "azurerm_servicebus_queue" "events" \{\s+name\s+= var\.function_worker_queue_name/s);
-    expect(artifacts.find((artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/outputs.tf')?.content).toContain('function_app_name');
+    expect(artifacts.find((artifact) => artifact.logicalName === 'opentofu-application-outputs')?.content).toContain('function_app_name');
     const devTfvars = artifacts.find(
-      (artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/environments/dev.tfvars'
+      (artifact) => artifact.logicalName === 'opentofu-dev-tfvars'
     )?.content ?? '';
     expect(devTfvars).toContain('function_worker_queue_name');
     expect(devTfvars).toMatch(/resource_suffix\s+= "[a-f0-9]{12}"/);
@@ -719,14 +717,14 @@ describe('templates and filesystem', () => {
     const artifacts = buildArtifacts(plan);
     const suffixes = ['dev', 'staging', 'prod'].map((environment) => {
       const content = artifacts.find(
-        (artifact) => artifact.pathParts.join('/') === `infrastructure/opentofu/azure/environments/${environment}.tfvars`
+        (artifact) => artifact.logicalName === `opentofu-${environment}-tfvars`
       )?.content ?? '';
       return content.match(/resource_suffix\s+= "([a-f0-9]{12})"/)?.[1];
     });
     expect(suffixes.every(Boolean)).toBe(true);
     expect(new Set(suffixes).size).toBe(3);
     const variables = artifacts.find(
-      (artifact) => artifact.pathParts.join('/') === 'infrastructure/opentofu/azure/variables.tf'
+      (artifact) => artifact.logicalName === 'opentofu-application-variables'
     )?.content ?? '';
     expect(variables).toContain('^[a-z0-9]{12}$');
   });
@@ -741,14 +739,15 @@ describe('templates and filesystem', () => {
     }, { requireProjectName: true }));
     const compose = artifacts.find((artifact) => artifact.pathParts.join('/') === 'docker-compose.yml')?.content ?? '';
 
-    expect(compose).toContain('./environments/prod/backend.env');
     expect(compose).not.toContain('./environments/dev/backend.env');
-    expect(compose).toContain('MESSAGING_TRANSPORT: redis-streams');
+    expect(compose).toContain('MESSAGING_TRANSPORT: ${MESSAGING_TRANSPORT-redis-streams}');
+    expect(artifacts.find((artifact) => artifact.logicalName === 'root-readme')?.content)
+      .toContain('docker compose --env-file environments/prod/backend.env up --build');
     expect(compose).toContain('BLOB_ENDPOINT: http://azurite:10000/devstoreaccount1');
   });
 
   it('writes and validates a generated project manifest', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-test-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-test-'));
     const targetRoot = path.join(tempRoot, 'claims-rag');
     try {
       const plan = buildProjectPlan({ projectName: 'Claims RAG', pattern: 'rag', cloud: 'azure', includeFrontend: true }, { requireProjectName: true });
@@ -770,7 +769,7 @@ describe('templates and filesystem', () => {
   });
 
   it('allows project-owned Function worker artifacts to be removed after generation', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-functions-missing-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-functions-missing-'));
     const targetRoot = path.join(tempRoot, 'claims-rag');
     try {
       const plan = buildProjectPlan({ projectName: 'Claims RAG', pattern: 'rag', cloud: 'azure' }, { requireProjectName: true });
@@ -787,7 +786,7 @@ describe('templates and filesystem', () => {
   });
 
   it('rejects non-empty target directories', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-nonempty-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-nonempty-'));
     try {
       await writeFile(path.join(tempRoot, 'existing.txt'), 'content', 'utf8');
       await expect(assertNewOrEmptyDirectory(tempRoot)).rejects.toThrow(/must be new or empty/);

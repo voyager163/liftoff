@@ -16,3 +16,6 @@ export * from './task-projection.js';
 export * from './transitions.js';
 export * from './types.js';
 export * from './validators.js';
+export * from './inputs.js';
+export * from './spec-kit-seed.js';
+export * from '../domain/governance/activation/capabilities.js';

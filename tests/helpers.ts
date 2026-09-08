@@ -80,6 +80,13 @@ export class ReadyInitRunner implements CommandRunner {
           ? this.result(command, { stdout: `${this.gitRoot}\n` })
           : this.result(command, { status: 128, stderr: 'not a git repository' });
       }
+      if (this.missing.has(command.executable)) {
+        return this.result(command, {
+          status: null,
+          errorCode: 'ENOENT',
+          errorMessage: `${command.executable} not found`
+        });
+      }
       if (command.executable === 'npm' && command.args[0] === 'install') {
         if (command.args.some((argument) => argument.includes('@fission-ai/openspec'))) {
           this.missing.delete('openspec');
@@ -87,14 +94,7 @@ export class ReadyInitRunner implements CommandRunner {
         return this.result(command, { stdout: 'installed\n' });
       }
       if (command.executable === 'npm') {
-        return this.result(command, { stdout: '10.0.0\n' });
-      }
-      if (this.missing.has(command.executable)) {
-        return this.result(command, {
-          status: null,
-          errorCode: 'ENOENT',
-          errorMessage: `${command.executable} not found`
-        });
+        return this.result(command, { stdout: '12.0.2\n' });
       }
 
       if (command.executable === 'openspec' && command.args[0] === 'config') {

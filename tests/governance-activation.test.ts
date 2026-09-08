@@ -5,7 +5,7 @@ import {
   activationContractVersion,
   activationStateSchemaVersion,
   approvalEnvelopeSchemaVersion,
-  calculatePhaseReadiness,
+  calculatePhaseReadiness as calculatePhaseReadinessCore,
   canonicalPhaseContractDigests,
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
@@ -13,7 +13,8 @@ import {
   createActivationIdentity,
   credentialPolicySchemaVersion,
   currentActivationIdentity,
-  evidenceContextForPhase,
+  evidenceContextForPhase as evidenceContextForPhaseCore,
+  evidenceBodyDigest,
   evidenceHeaderSchemaVersion,
   governanceActivationPolicyVersion,
   liftoffActivationPackageVersion,
@@ -44,6 +45,32 @@ import type {
 const digest = 'a'.repeat(64);
 const later = '2030-01-01T00:00:00.000Z';
 const now = new Date('2026-09-04T00:00:00.000Z');
+
+function evidenceContextForPhase(phaseId: PhaseId, overrides: Parameters<typeof evidenceContextForPhaseCore>[1] = {}) {
+  return evidenceContextForPhaseCore(phaseId, {
+    repositoryId: 'R_123', baselineSha: '0'.repeat(64), inputDigest: '1'.repeat(64), ...overrides
+  });
+}
+
+function payload(phaseId: PhaseId) {
+  return {
+    kind: `${phaseId}.v1`,
+    ...(phaseId === 'seed-verified' ? { checks: [{ id: 'backend-tests', status: 'passed' }] } : {}),
+    ...(['committed', 'pushed'].includes(phaseId) ? { head: 'a'.repeat(40), pushUrl: 'https://github.com/owner/repo.git' } : {})
+  };
+}
+
+function calculatePhaseReadiness(input: Parameters<typeof calculatePhaseReadinessCore>[0]) {
+  return calculatePhaseReadinessCore({
+    ...input,
+    transitionContexts: Object.fromEntries(phaseIds.map((id) => [id, evidenceContextForPhase(id, {
+      repositoryId: input.state.repository.id, identity: input.state.identity, now
+    })])),
+    evidence: input.evidence.map((entry, index) => 'header' in entry ? entry : {
+      evidenceId: `fixture-${index}`, header: entry, payload: payload(entry.phaseId)
+    })
+  });
+}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -95,6 +122,7 @@ function evidence(phaseId: PhaseId, result: EvidenceHeader['result'] = 'verified
     transition: context.transition,
     producedAt: '2026-09-04T00:00:00.000Z',
     producer: 'vitest',
+    bodyDigest: evidenceBodyDigest(payload(phaseId)),
     result
   };
 }
@@ -163,14 +191,14 @@ function credentialPolicy(): CredentialPolicy {
 
 describe('activation identity compatibility', () => {
   it('exports the target version vector and resolves only explicit tuples', () => {
-    expect(liftoffActivationPackageVersion).toBe('0.10.0');
+    expect(liftoffActivationPackageVersion).toBe('0.11.0');
     expect(liftoffManifestArtifactVersion).toBe(7);
     expect(governanceActivationPolicyVersion).toBe('6');
-    expect(activationContractVersion).toBe(1);
+    expect(activationContractVersion).toBe(2);
     expect(phaseGraphSchemaVersion).toBe(1);
-    expect(activationStateSchemaVersion).toBe(1);
-    expect(evidenceHeaderSchemaVersion).toBe(1);
-    expect(approvalEnvelopeSchemaVersion).toBe(1);
+    expect(activationStateSchemaVersion).toBe(2);
+    expect(evidenceHeaderSchemaVersion).toBe(2);
+    expect(approvalEnvelopeSchemaVersion).toBe(2);
     expect(supersessionSchemaVersion).toBe(1);
     expect(credentialPolicySchemaVersion).toBe(1);
     expect(activationCompatibility.has(activationCompatibilityKey(currentActivationIdentity))).toBe(true);
@@ -232,7 +260,7 @@ describe('managed graph and artifact schemas', () => {
       .toThrow(/disposedAt is required/);
 
     const futureEvidence = clone(evidence('seed-valid')) as EvidenceHeader;
-    futureEvidence.schemaVersion = 2;
+    futureEvidence.schemaVersion = 3;
     expect(() => validateEvidenceHeader(futureEvidence)).toThrow(/schemaVersion/);
   });
 
@@ -311,7 +339,7 @@ describe('canonical graph hashes and release integrity', () => {
 });
 
 describe('phase readiness calculation', () => {
-  it('limits archived baseline retries to blocked seed verification and preserves evidence gates', () => {
+  it('exposes explicit local retries while preserving failed predecessor gates', () => {
     const state = validState();
     state.phases['seed-verified'] = {
       ...state.phases['seed-verified'],
@@ -319,7 +347,7 @@ describe('phase readiness calculation', () => {
       blockers: ['A prior baseline command failed.']
     };
     const input = { state, approvals: [], evidence: [evidence('seed-valid')], now };
-    expect(calculatePhaseReadiness(input).phases['seed-verified'].state).toBe('blocked');
+    expect(calculatePhaseReadiness(input).phases['seed-verified'].state).toBe('ready');
     expect(calculatePhaseReadiness({
       ...input, retryArchivedSeedBaseline: true
     }).phases['seed-verified'].state).toBe('ready');
@@ -327,8 +355,7 @@ describe('phase readiness calculation', () => {
 
     for (const records of [
       [evidence('seed-valid', 'failed')],
-      [{ ...evidence('seed-valid'), inputDigest: '9'.repeat(64) }],
-      [evidence('seed-valid'), evidence('seed-verified', 'failed')]
+      [{ ...evidence('seed-valid'), inputDigest: '9'.repeat(64) }]
     ]) {
       expect(calculatePhaseReadiness({
         ...input, evidence: records, retryArchivedSeedBaseline: true
@@ -342,7 +369,7 @@ describe('phase readiness calculation', () => {
     const stillBlocked = calculatePhaseReadiness({
       ...input, evidence: [], retryArchivedSeedBaseline: true
     });
-    expect(stillBlocked.phases['seed-valid'].state).toBe('blocked');
+    expect(stillBlocked.phases['seed-valid'].state).toBe('ready');
     expect(stillBlocked.phases['seed-verified'].state).toBe('blocked');
   });
 
@@ -372,7 +399,7 @@ describe('phase readiness calculation', () => {
       evidence: [evidence('seed-valid', 'failed')],
       now
     });
-    expect(failed.phases['seed-valid'].state).toBe('failed');
+    expect(failed.phases['seed-valid'].state).toBe('ready');
     expect(failed.phases['seed-verified'].state).toBe('blocked');
 
     const inapplicable = calculatePhaseReadiness({
@@ -387,8 +414,9 @@ describe('phase readiness calculation', () => {
       evidence: [],
       now
     });
-    expect(inapplicable.phases['credential-ready'].state).toBe('inapplicable');
-    expect(inapplicable.phases['bootstrap-local'].state).toBe('inapplicable');
+    expect(inapplicable.phases['credential-ready'].state).toBe('blocked');
+    expect(inapplicable.phases['bootstrap-local'].state).toBe('blocked');
+    expect(inapplicable.phases['credential-ready'].blockers).toContain('Inapplicability has no current independent applicability proof.');
 
     const incompatible = calculatePhaseReadiness({
       state: validState(),

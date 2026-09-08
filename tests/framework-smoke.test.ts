@@ -23,20 +23,27 @@ describe.skipIf(!smoke)('pinned framework integration smoke', () => {
   ] as const)('initializes %s in an isolated stage', async (workflow, executable, version, defaultAgent) => {
     const runner = new NodeCommandRunner();
     const configRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-openspec-smoke-'));
-    const env = workflow === 'openspec'
-      ? {
-          XDG_CONFIG_HOME: configRoot,
-          XDG_DATA_HOME: path.join(configRoot, 'data'),
-          CODEX_HOME: path.join(configRoot, 'codex'),
-          OPENSPEC_TELEMETRY: '0',
-          OPENSPEC_NO_UPDATE_CHECK: '1'
-        }
-      : undefined;
+    const env = {
+      HOME: configRoot,
+      USERPROFILE: configRoot,
+      APPDATA: path.join(configRoot, 'appdata'),
+      LOCALAPPDATA: path.join(configRoot, 'localappdata'),
+      XDG_CONFIG_HOME: configRoot,
+      XDG_DATA_HOME: path.join(configRoot, 'data'),
+      XDG_CACHE_HOME: path.join(configRoot, 'cache'),
+      CODEX_HOME: path.join(configRoot, 'codex'),
+      OPENSPEC_TELEMETRY: '0',
+      OPENSPEC_NO_UPDATE_CHECK: '1'
+    };
     try {
       const versionResult = await runner.run(
         { executable, args: ['--version'] },
         { timeoutMs: 15_000, env }
       );
+      expect(
+        versionResult.status,
+        `${executable}: ${versionResult.errorMessage ?? versionResult.stderr}`
+      ).toBe(0);
       expect(`${versionResult.stdout}\n${versionResult.stderr}`).toContain(version);
       if (workflow === 'openspec') {
         await expect(inspectOpenSpecProfile(executable, runner, { env })).resolves.toMatchObject({

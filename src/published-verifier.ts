@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import {
   canonicalNpmRegistry,
-  liftoffPackageName
+  liftoffPackageName,
+  npmRegistryOverrideArgs
 } from './package-identity.js';
 
 export const CANONICAL_NPM_REGISTRY = canonicalNpmRegistry;
@@ -59,6 +60,36 @@ const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
 const LEGACY_VERSION_COMMAND_RELEASE = '0.3.3';
 
+interface PublishedVerifierCapabilities {
+  help: boolean;
+  plan: boolean;
+  upgradeHelp: boolean;
+  version: boolean;
+}
+
+function verifierCapabilities(
+  identity: PackageIdentity,
+  legacyCompatibility: boolean
+): PublishedVerifierCapabilities {
+  if (
+    legacyCompatibility &&
+    identity.version === LEGACY_VERSION_COMMAND_RELEASE
+  ) {
+    return {
+      help: true,
+      plan: true,
+      upgradeHelp: false,
+      version: false
+    };
+  }
+  return {
+    help: true,
+    plan: true,
+    upgradeHelp: true,
+    version: true
+  };
+}
+
 function commandOutput(result: CommandResult): string {
   return [result.error, result.stderr, result.stdout].filter(Boolean).join('\n').trim();
 }
@@ -90,7 +121,7 @@ function installedPackagePath(prefix: string, packageName: string, platform: Nod
 async function waitForPublishedVersion(
   identity: PackageIdentity,
   tag: string,
-  packageRoot: string,
+  commandOptions: CommandOptions,
   timeoutMs: number,
   retryIntervalMs: number,
   dependencies: PublishedVerifierDependencies
@@ -100,8 +131,13 @@ async function waitForPublishedVersion(
 
   while (true) {
     const result = dependencies.runNpm(
-      ['view', `${identity.name}@${tag}`, 'version', `--registry=${CANONICAL_NPM_REGISTRY}`],
-      { cwd: packageRoot, env: dependencies.environment }
+      [
+        'view',
+        `${identity.name}@${tag}`,
+        'version',
+        ...npmRegistryOverrideArgs(CANONICAL_NPM_REGISTRY)
+      ],
+      commandOptions
     );
     observed = result.status === 0 && result.stdout.trim() ? result.stdout.trim() : 'unavailable';
     if (observed === identity.version) {
@@ -146,15 +182,10 @@ export async function verifyPublishedPackage(
       `${liftoffPackageName}@${LEGACY_VERSION_COMMAND_RELEASE}.`
     );
   }
-  await waitForPublishedVersion(
+  const capabilities = verifierCapabilities(
     identity,
-    options.tag,
-    options.packageRoot,
-    timeoutMs,
-    retryIntervalMs,
-    dependencies
+    options.allowLegacyVersionCommand === true
   );
-
   const tempRoot = await dependencies.makeTempRoot();
   try {
     const installPrefix = path.join(tempRoot, 'global');
@@ -172,9 +203,19 @@ export async function verifyPublishedPackage(
       HOME: homeDirectory,
       USERPROFILE: homeDirectory,
       npm_config_cache: npmCache,
-      npm_config_registry: CANONICAL_NPM_REGISTRY
+      npm_config_registry: CANONICAL_NPM_REGISTRY,
+      npm_config_userconfig: path.join(tempRoot, 'user.npmrc'),
+      npm_config_globalconfig: path.join(tempRoot, 'global.npmrc')
     };
     const commandOptions = { cwd: outsideDirectory, env: isolatedEnvironment };
+    await waitForPublishedVersion(
+      identity,
+      options.tag,
+      commandOptions,
+      timeoutMs,
+      retryIntervalMs,
+      dependencies
+    );
     const install = dependencies.runNpm([
       'install',
       '--global',
@@ -182,7 +223,7 @@ export async function verifyPublishedPackage(
       '--no-audit',
       '--no-fund',
       '--ignore-scripts',
-      `--registry=${CANONICAL_NPM_REGISTRY}`,
+      ...npmRegistryOverrideArgs(CANONICAL_NPM_REGISTRY),
       `${identity.name}@${identity.version}`
     ], commandOptions);
     assertCommand(install, `Canonical npm install of ${identity.name}@${options.tag}`);
@@ -201,24 +242,28 @@ export async function verifyPublishedPackage(
     }
 
     const entrypoint = path.join(installedRoot, 'dist', 'cli.js');
-    const help = dependencies.runNode([entrypoint, 'help'], commandOptions);
-    assertCommand(help, 'Installed command help');
-    if (!help.stdout.includes('Mission Control Liftoff')) {
-      throw new Error('Installed command help did not contain the Liftoff heading.');
+    if (capabilities.help) {
+      const help = dependencies.runNode([entrypoint, 'help'], commandOptions);
+      assertCommand(help, 'Installed command help');
+      if (!help.stdout.includes('Mission Control Liftoff')) {
+        throw new Error('Installed command help did not contain the Liftoff heading.');
+      }
     }
-    const upgradeHelp = dependencies.runNode(
-      [entrypoint, 'upgrade', '--help'],
-      commandOptions
-    );
-    assertCommand(upgradeHelp, 'Installed upgrade command help');
-    if (
-      !upgradeHelp.stdout.includes('--check') ||
-      !upgradeHelp.stdout.includes('global npm Liftoff CLI')
-    ) {
-      throw new Error('Installed upgrade help did not expose the self-upgrade contract.');
+    if (capabilities.upgradeHelp) {
+      const upgradeHelp = dependencies.runNode(
+        [entrypoint, 'upgrade', '--help'],
+        commandOptions
+      );
+      assertCommand(upgradeHelp, 'Installed upgrade command help');
+      if (
+        !upgradeHelp.stdout.includes('--check') ||
+        !upgradeHelp.stdout.includes('global npm Liftoff CLI')
+      ) {
+        throw new Error('Installed upgrade help did not expose the self-upgrade contract.');
+      }
     }
 
-    if (!options.allowLegacyVersionCommand) {
+    if (capabilities.version) {
       const version = dependencies.runNode([entrypoint, '--version'], commandOptions);
       assertCommand(version, 'Installed command --version');
       if (version.stdout.trim() !== `Liftoff ${identity.version}`) {
@@ -229,20 +274,22 @@ export async function verifyPublishedPackage(
       }
     }
 
-    const plan = dependencies.runNode([
-      entrypoint,
-      'plan',
-      '--no-genai',
-      '--api', 'node',
-      '--cloud', 'azure',
-      '--region', 'eastus',
-      '--no-frontend',
-      '--environments', 'dev',
-      '--spec', 'openspec'
-    ], commandOptions);
-    assertCommand(plan, 'Installed standard-project plan');
-    if (!plan.stdout.includes('Project type: Standard application')) {
-      throw new Error('Installed standard-project plan did not select a standard application.');
+    if (capabilities.plan) {
+      const plan = dependencies.runNode([
+        entrypoint,
+        'plan',
+        '--no-genai',
+        '--api', 'node',
+        '--cloud', 'azure',
+        '--region', 'eastus',
+        '--no-frontend',
+        '--environments', 'dev',
+        '--spec', 'openspec'
+      ], commandOptions);
+      assertCommand(plan, 'Installed standard-project plan');
+      if (!plan.stdout.includes('Project type: Standard application')) {
+        throw new Error('Installed standard-project plan did not select a standard application.');
+      }
     }
 
     return {

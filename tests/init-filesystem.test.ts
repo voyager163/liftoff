@@ -96,25 +96,63 @@ describe('Git-aware init targeting', () => {
     });
   });
 
-  describe('Power Apps init staging', () => {
-    const powerAppsArtifacts = () => buildArtifacts(buildProjectPlan({
-      projectName: 'Power Workspace',
-      projectType: 'power-apps-code-app',
+  it('normalizes the Git probe locale so localized hosts classify nonrepositories safely', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-git-localized-'));
+    cleanups.push(root);
+    const marker = path.join(root, 'preserve.txt');
+    await writeFile(marker, 'unchanged\n');
+    const runner: CommandRunner = {
+      run: async (command, options) => {
+        expect(options?.env).toMatchObject({
+          LANG: 'C',
+          LANGUAGE: 'C',
+          LC_ALL: 'C'
+        });
+        return {
+          command,
+          displayCommand: 'git rev-parse --show-toplevel',
+          status: 128,
+          signal: null,
+          stdout: '',
+          stderr: options?.env?.LC_ALL === 'C'
+            ? 'fatal: not a git repository (or any of the parent directories): .git'
+            : 'fatal: aucun dépôt git',
+          timedOut: false
+        };
+      }
+    };
+
+    await expect(discoverGitRoot(root, runner)).resolves.toMatchObject({
+      canonicalCwd: await realpath(root),
+      exact: false
+    });
+    expect(await readFile(marker, 'utf8')).toBe('unchanged\n');
+  });
+
+  describe('supported project init staging', () => {
+    const standardArtifacts = () => buildArtifacts(buildProjectPlan({
+      projectName: 'Standard Workspace',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['dev'],
+      includeFrontend: false,
       agents: ['copilot']
     }, { requireProjectName: true }));
 
     it('creates a complete named child outside an exact Git root', async () => {
-      const parent = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-child-'));
+      const parent = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-child-'));
       cleanups.push(parent);
-      const target = await resolveInitTarget(parent, 'power-workspace', new GitRunner());
+      const target = await resolveInitTarget(parent, 'standard-workspace', new GitRunner());
 
       expect(target).toMatchObject({
-        root: path.join(await realpath(parent), 'power-workspace'),
+        root: path.join(await realpath(parent), 'standard-workspace'),
         mode: 'named-child'
       });
       await assertSafeInitTarget(target, parent);
       await withStagingArea(async (area) => {
-        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        await writeStagedArtifacts(area, standardArtifacts(), 'liftoff');
         const preflight = await authorizeMergePreflight(
           await buildMergePreflight(area, target.root),
           false
@@ -122,30 +160,30 @@ describe('Git-aware init targeting', () => {
         await applyMergePreflight(preflight!, { requireEmptyTarget: true });
       });
 
-      expect(await readFile(path.join(target.root, 'package.json'), 'utf8')).toContain(
-        '"name": "power-workspace"'
+      expect(await readFile(path.join(target.root, 'backend', 'package.json'), 'utf8')).toContain(
+        '"name": "standard-workspace-backend"'
       );
-      expect(await readFile(path.join(target.root, 'src', 'App.tsx'), 'utf8')).toContain(
-        'RouterProvider'
+      expect(await readFile(path.join(target.root, 'backend', 'src', 'server.ts'), 'utf8')).toContain(
+        'app.listen'
       );
-      await expect(access(path.join(target.root, 'power-workspace'))).rejects.toThrow();
+      await expect(access(path.join(target.root, 'standard-workspace'))).rejects.toThrow();
     });
 
     it('requires one overwrite decision and stages directly into an exact Git root', async () => {
-      const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-root-'));
+      const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-root-'));
       cleanups.push(root);
       await writeFile(path.join(root, 'README.md'), 'existing readme\n');
       await writeFile(path.join(root, 'keep.txt'), 'preserve\n');
-      const target = await resolveInitTarget(root, 'power-workspace', new GitRunner(root));
+      const target = await resolveInitTarget(root, 'standard-workspace', new GitRunner(root));
 
       expect(target).toMatchObject({ root: await realpath(root), mode: 'in-place' });
       await withStagingArea(async (area) => {
-        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        await writeStagedArtifacts(area, standardArtifacts(), 'liftoff');
         const preflight = await buildMergePreflight(area, target.root);
         const decline = vi.fn(async () => false);
         expect(await authorizeMergePreflight(preflight, false, decline)).toBeUndefined();
         expect(decline).toHaveBeenCalledWith(['README.md']);
-        await expect(access(path.join(root, 'package.json'))).rejects.toThrow();
+        await expect(access(path.join(root, 'backend', 'package.json'))).rejects.toThrow();
 
         const confirm = vi.fn(async () => true);
         const authorized = await authorizeMergePreflight(preflight, false, confirm);
@@ -154,44 +192,44 @@ describe('Git-aware init targeting', () => {
       });
 
       expect(await readFile(path.join(root, 'README.md'), 'utf8')).toContain(
-        'Power Apps code app'
+        'Standard Workspace'
       );
       expect(await readFile(path.join(root, 'keep.txt'), 'utf8')).toBe('preserve\n');
-      await expect(access(path.join(root, 'power-workspace'))).rejects.toThrow();
+      await expect(access(path.join(root, 'standard-workspace'))).rejects.toThrow();
     });
 
-    it('blocks structural conflicts and rolls back a failed Power Apps merge', async () => {
-      const blockedRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-blocked-'));
+    it('blocks structural conflicts and rolls back a failed supported-project merge', async () => {
+      const blockedRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-blocked-'));
       cleanups.push(blockedRoot);
-      await mkdir(path.join(blockedRoot, 'package.json'));
+      await mkdir(path.join(blockedRoot, 'backend', 'package.json'), { recursive: true });
       await withStagingArea(async (area) => {
-        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        await writeStagedArtifacts(area, standardArtifacts(), 'liftoff');
         const preflight = await buildMergePreflight(area, blockedRoot);
         await expect(authorizeMergePreflight(preflight, true)).rejects.toThrow(
-          /structural or symlink conflicts/
+          /overwrite confirmation|structural or symlink conflicts/
         );
       });
 
-      const rollbackRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-rollback-'));
+      const rollbackRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-rollback-'));
       cleanups.push(rollbackRoot);
       await writeFile(path.join(rollbackRoot, 'README.md'), 'original\n');
       await withStagingArea(async (area) => {
-        await writeStagedArtifacts(area, powerAppsArtifacts(), 'liftoff');
+        await writeStagedArtifacts(area, standardArtifacts(), 'liftoff');
         const preflight = await authorizeMergePreflight(
           await buildMergePreflight(area, rollbackRoot),
           true
         );
         await expect(applyMergePreflight(preflight!, {
           onBeforeMutation: async (entry) => {
-            if (entry.relativePath === path.join('src', 'App.tsx')) {
-              throw new Error('injected Power Apps failure');
+            if (entry.relativePath === path.join('backend', 'src', 'server.ts')) {
+              throw new Error('injected supported-project failure');
             }
           }
         })).rejects.toBeInstanceOf(MergeApplyError);
       });
 
       expect(await readFile(path.join(rollbackRoot, 'README.md'), 'utf8')).toBe('original\n');
-      await expect(access(path.join(rollbackRoot, 'package.json'))).rejects.toThrow();
+      await expect(access(path.join(rollbackRoot, 'backend', 'package.json'))).rejects.toThrow();
       await expect(access(path.join(rollbackRoot, 'liftoff.manifest.json'))).rejects.toThrow();
     });
   });
@@ -219,7 +257,11 @@ describe('Git-aware init targeting', () => {
       .not.toBe(normalizeComparisonPath('/work/repo', 'linux'));
   });
 
-  it('fails closed when Git discovery fails for a reason other than a non-repository directory', async () => {
+  it.each([
+    'fatal: detected dubious ownership in repository',
+    'fatal: cannot open .git/FETCH_HEAD: Permission denied',
+    'fatal: unknown revision or path not in the working tree'
+  ])('fails closed when Git discovery reports: %s', async (failure) => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-git-failure-'));
     cleanups.push(root);
     const runner: CommandRunner = {
@@ -229,12 +271,31 @@ describe('Git-aware init targeting', () => {
         status: 128,
         signal: null,
         stdout: '',
-        stderr: 'fatal: detected dubious ownership in repository',
+        stderr: failure,
         timedOut: false
       })
     };
 
     await expect(discoverGitRoot(root, runner)).rejects.toThrow(/Unable to determine the Git worktree root/);
+  });
+
+  it('fails closed when Git succeeds without reporting a worktree root', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-git-empty-root-'));
+    cleanups.push(root);
+    const runner: CommandRunner = {
+      run: async (command) => ({
+        command,
+        displayCommand: 'git rev-parse --show-toplevel',
+        status: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        timedOut: false
+      })
+    };
+
+    await expect(discoverGitRoot(root, runner))
+      .rejects.toThrow(/invalid worktree root/);
   });
 });
 
@@ -568,7 +629,9 @@ describe('transactional merge', () => {
       await rename(target, moved);
       await symlink(outside, target, process.platform === 'win32' ? 'junction' : 'dir');
 
-      await expect(applyMergePreflight(preflight!)).rejects.toThrow(/target root changed|target is a symlink/);
+      await expect(applyMergePreflight(preflight!)).rejects.toThrow(
+        /target root changed|target is a symlink|target must be a regular directory/
+      );
     });
     await expect(access(path.join(outside, 'README.md'))).rejects.toThrow();
   });

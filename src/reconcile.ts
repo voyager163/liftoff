@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import { readProjectFile } from './file-system.js';
+import {
+  readProjectFile
+} from './adapters/filesystem/project-files.js';
 import {
   isRetiredManagedCoreArtifactIdentity,
   retiredManagedCoreIdentityFor
-} from './artifact-lifecycle.js';
-import type { GeneratedArtifact, LiftoffManifest } from './types.js';
+} from './domain/project/artifact-lifecycle.js';
+import type { GeneratedArtifact, LiftoffManifest } from './domain/project/contracts.js';
 
 export type ReconcileStatus =
   | 'unchanged'

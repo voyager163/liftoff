@@ -1,13 +1,12 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
-import {
-  applyProjectFileTransaction,
-  readProjectFile,
-  resolveProjectPath,
-  validateArtifactPathParts
-} from '../file-system.js';
+import { applyProjectFileTransaction } from '../adapters/filesystem/project-transaction.js';
+import { readProjectFile } from '../adapters/filesystem/project-files.js';
+import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
+import { withProjectMutationLock } from '../adapters/filesystem/project-lock.js';
 import { generatedSeedChangeName } from './seed-lifecycle.js';
-import { canonicalJson, canonicalSha256 } from './canonical-json.js';
+import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import {
   activationContractVersion,
   activationStateSchemaVersion,
@@ -19,19 +18,19 @@ import {
   liftoffManifestArtifactVersion,
   phaseGraphSchemaVersion,
   supersessionSchemaVersion
-} from './identity.js';
+} from '../domain/governance/policy/identity.js';
 import { calculateGraphReconciliation } from './reconciliation.js';
 import {
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
   currentActivationIdentity,
   phaseContractDigests
-} from './graph.js';
+} from '../domain/governance/activation/graph.js';
 import {
-  evidenceContextForPhase,
-  validateEvidenceFreshness,
-  type ValidatedPhaseEvidenceRecord
-} from './evidence.js';
+  selectLatestPhaseEvidence,
+  type EvidenceFreshnessContext
+} from '../domain/governance/activation/evidence.js';
+import { remoteRepository } from '../domain/governance/activation/inputs.js';
 import type {
   ActivationIdentity,
   GraphReconciliationRecord,
@@ -40,11 +39,11 @@ import type {
   PhaseId,
   SupersessionRecord,
   UserActivationState
-} from './types.js';
-import { phaseIds } from './types.js';
-import { validateSupersessionRecord } from './validators.js';
-import type { LiftoffManifest, SpecWorkflowId } from '../types.js';
-import { toSafeProjectName } from '../planner.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
+import { validateSupersessionRecord } from '../domain/governance/activation/validators.js';
+import type { LiftoffManifest, SpecWorkflowId } from '../domain/project/contracts.js';
+import { toSafeProjectName } from '../domain/project/planning.js';
 
 export const governanceChangeMetadataFileName = 'liftoff-governance.json' as const;
 export const governanceSupersessionPathParts = ['governance', 'supersessions'] as const;
@@ -728,6 +727,10 @@ export function renderGovernanceChangeWritePlan(facts: ApprovedPhase0Facts): Gov
 }
 
 export async function writeGovernanceChangeArtifacts(projectRoot: string, plan: GovernanceChangeWritePlan): Promise<void> {
+  return withProjectMutationLock(projectRoot, () => writeGovernanceChangeArtifactsLocked(projectRoot, plan));
+}
+
+async function writeGovernanceChangeArtifactsLocked(projectRoot: string, plan: GovernanceChangeWritePlan): Promise<void> {
   const validated = validateGovernanceChangeMetadata(plan.metadata);
   if (validated.changeId !== plan.changeId || validated.workflowKind !== plan.workflowKind) {
     throw new Error('Governance change write plan metadata does not match plan identity.');
@@ -746,7 +749,7 @@ export async function writeGovernanceChangeArtifacts(projectRoot: string, plan: 
       type: 'write' as const,
       pathParts: [...file.pathParts],
       content: file.content
-    })));
+    })), { preconditions: plan.files.map((file) => ({ pathParts: [...file.pathParts] })) });
   } catch (error) {
     throw new Error(`Unable to write governance change artifacts transactionally: ${errorMessage(error)}`);
   }
@@ -967,53 +970,27 @@ async function readSupersessionRecords(projectRoot: string, candidates: readonly
 export function buildApprovedPhase0FactsFromState(
   manifest: LiftoffManifest,
   state: UserActivationState,
-  evidence: readonly PhaseEvidenceRecord[]
+  evidence: readonly PhaseEvidenceRecord[],
+  context?: EvidenceFreshnessContext
 ): ApprovedPhase0Facts | undefined {
-  const validPhase0 = evidence
-    .filter((record) => record.header.phaseId === 'phase-0-complete')
-    .flatMap((record): ValidatedPhaseEvidenceRecord[] => {
-      const context = evidenceContextForPhase('phase-0-complete', {
-        repositoryId: state.repository.id,
-        identity: state.identity,
-        phaseGraphHash: state.identity.phaseGraphHash,
-        baselineSha: record.header.baselineSha,
-        inputDigest: record.header.inputDigest
-      });
-      const validation = validateEvidenceFreshness(record, context);
-      return validation.valid ? [validation.record] : [];
-    })
-    .sort((left, right) => {
-      const time = right.producedAtEpochMs - left.producedAtEpochMs;
-      if (time !== 0) {
-        return time;
-      }
-      const evidenceId = right.evidenceId.localeCompare(left.evidenceId, 'en');
-      return evidenceId === 0 ? right.headerDigest.localeCompare(left.headerDigest, 'en') : evidenceId;
-    });
-  const phase0 = validPhase0[0];
-  if (!phase0) {
-    return undefined;
-  }
-  const latestResults = new Set(
-    validPhase0
-      .filter((record) => record.producedAtEpochMs === phase0.producedAtEpochMs)
-      .map((record) => record.header.result)
-  );
-  if (latestResults.size !== 1 || phase0.header.result !== 'verified') {
-    return undefined;
-  }
+  if (!context || !state.remoteBinding) return undefined;
+  const selection = selectLatestPhaseEvidence(evidence.filter((record) => record.header.phaseId === 'phase-0-complete'), context);
+  const phase0 = selection.selected;
+  if (!phase0 || phase0.header.result !== 'verified') return undefined;
+  const repository = remoteRepository(state);
   return {
     projectName: manifest.project.name,
     repositoryId: state.repository.id,
-    repositoryName: state.repository.name,
-    defaultBranch: state.repository.defaultBranch,
+    repositoryName: repository.name,
+    defaultBranch: repository.defaultBranch,
     workflowKind: manifest.project.specWorkflow,
     baselineSha: phase0.header.baselineSha,
     evidenceIds: [phase0.evidenceId],
     approvedFacts: [
       { id: 'repositoryId', value: state.repository.id },
-      { id: 'repositoryName', value: state.repository.name },
-      { id: 'defaultBranch', value: state.repository.defaultBranch },
+      { id: 'repositoryName', value: repository.name },
+      { id: 'remoteRepositoryId', value: repository.id },
+      { id: 'defaultBranch', value: repository.defaultBranch },
       { id: 'specWorkflow', value: manifest.project.specWorkflow }
     ],
     approvedAt: phase0.header.producedAt,
@@ -1021,8 +998,8 @@ export function buildApprovedPhase0FactsFromState(
   };
 }
 
-function createPreview(manifest: LiftoffManifest, state: UserActivationState, evidence: readonly PhaseEvidenceRecord[]): GovernanceCreateChangePlanPreview {
-  const facts = buildApprovedPhase0FactsFromState(manifest, state, evidence);
+function createPreview(manifest: LiftoffManifest, state: UserActivationState, evidence: readonly PhaseEvidenceRecord[], context?: EvidenceFreshnessContext): GovernanceCreateChangePlanPreview {
+  const facts = buildApprovedPhase0FactsFromState(manifest, state, evidence, context);
   if (facts) {
     return {
       status: 'ready',
@@ -1032,15 +1009,10 @@ function createPreview(manifest: LiftoffManifest, state: UserActivationState, ev
       requiredFacts: []
     };
   }
-  const fallback = {
-    projectName: manifest.project.name,
-    baselineSha: '0'.repeat(64),
-    workflowKind: manifest.project.specWorkflow
-  };
   return {
     status: 'blocked',
     reason: 'Verified Phase 0 evidence is required before rendering user-owned governance artifacts.',
-    changeId: deterministicGovernanceChangeId(fallback),
+    changeId: `governance-${toSafeProjectName(manifest.project.name)}-unbound`,
     workflowKind: manifest.project.specWorkflow,
     requiredFacts: ['phase-0-complete verified evidence', 'repository id', 'repository name', 'default branch', 'baseline SHA']
   };
@@ -1162,6 +1134,7 @@ export async function inspectGovernanceSourceOfTruth(input: {
   manifest: LiftoffManifest;
   state: UserActivationState;
   evidence: readonly PhaseEvidenceRecord[];
+  contexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
 }): Promise<GovernanceSourceOfTruthInspection> {
   const seedBlockers = await activeSeedBlockers(input.projectRoot, input.manifest);
   const candidates = await activeGovernanceCandidates(input.projectRoot, input.manifest, input.state);
@@ -1214,7 +1187,7 @@ export async function inspectGovernanceSourceOfTruth(input: {
       status: 'none',
       selected: null,
       candidates,
-      createPlan: createPreview(input.manifest, input.state, input.evidence)
+      createPlan: createPreview(input.manifest, input.state, input.evidence, input.contexts?.['phase-0-complete'])
     };
   }
   const supersession = await readSupersessionRecords(input.projectRoot, compatible);

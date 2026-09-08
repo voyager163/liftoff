@@ -14,9 +14,10 @@ cd my-project
 /liftoff-setup
 ```
 
-`/liftoff-setup` completes the generated bootstrap seed, then enters the
-deterministic Liftoff governance engine, user-owned activation state, and
-read-only Phase 0 discovery.
+`/liftoff-setup` uses the deterministic Liftoff governance engine to complete
+the workflow-specific local bootstrap, then encounters the separately authorized
+publication and read-only Phase 0 boundaries. The user-owned activation state records
+execution, not an agent's claim of completion.
 
 **Current activation limits:** local bootstrap is implemented, but the CLI does
 not yet wire every production phase executor or expose approval persistence
@@ -72,6 +73,18 @@ runs assessment. It needs no commit, push, activation, or cloud credentials:
 liftoff governance assess --json
 ```
 
+The same CLI command works in an ordinary Git repository without initialization,
+a manifest, or generated slash commands. An explicit path is authoritative;
+otherwise the nearest applicable Git or Liftoff boundary is used, including
+linked worktrees and unborn repositories. A malformed, unreadable, symlinked,
+dangling, or retired inner manifest blocks fallback to an outer project or Git
+repository. Assessment never installs agent wrappers into unrelated repositories.
+
+For ordinary Git repositories the installed single-maintainer policy is the
+displayed target, not a policy inferred from existing branches. Recorded Liftoff
+identity stays nullable, and missing baseline, ownership, or evidence stays
+`not-observed`. It is not the same as a valid Liftoff governance opt-out.
+
 The pinned target is the **installed CLI** and its packaged policy, activation
 identity, phase graph, and assessment control catalog, never registry latest.
 The report compares four distinct layers: target, recorded project baseline,
@@ -103,8 +116,10 @@ enrolls credentials, expands permissions, registers providers, reads state blobs
 executes project code, runs scanners or infrastructure tools, or changes local
 or remote configuration.
 Azure scope and evidence-backed applicability require a current active-baseline
-and referenced, validated saved-plan/evidence receipts. Placeholder digests,
-future-dated approvals, and inferred bindings cannot establish proof. Missing
+and referenced, validated saved-plan/evidence receipts. Current receipts bind
+their canonical payload and live readback through `bodyDigest`; a header hash
+alone cannot authorize changed runner IDs or Azure resources. Placeholder digests,
+historical v1 receipts, future-dated approvals, and inferred bindings cannot establish proof. Missing
 bindings remain `not-observed`. Do not fabricate or hand-edit activation state,
 baselines, receipts, or evidence to manufacture alignment; use separately
 approved setup or governance work to obtain trustworthy proof.
@@ -126,6 +141,21 @@ not proof of absence. Single-maintainer expectations follow the canonical
 zero-required-reviewer policy rather than generic peer-review advice.
 Approved exceptions remain differences; free-form or expired claims cannot
 waive controls or hide coverage gaps.
+
+Collection failures do not erase independent facts. For example, denied GitHub
+access cannot invalidate an unchanged local workflow, and a denied Azure resource
+cannot hide a proven violation on another resource. Effective/classic/inherited
+branch protection, release/hotfix check bindings, transitive required-job
+dependencies, and complete runner restrictions are evaluated separately.
+Rejected exception claims retain diagnostics instead of disappearing.
+Required checks bind both their names and application identities. A passing
+aggregator cannot hide a required scanner with `continue-on-error`; unresolved
+reusable-workflow, matrix, or dynamic semantics stay unobserved. Runner checks
+include repository/group restrictions, not only matching IDs or labels.
+
+The catalog retains 30 controls across 17 families, including 10 unsupported
+evaluators. Available evaluators are not completed proof; always-applicable
+unsupported controls keep enabled assessments partial even with live access.
 
 Human and schema-v1 JSON reports share `readOnly: true`, target and project
 identities, findings, diagnostics, provenance, and coverage. Exit **0** means
@@ -194,22 +224,38 @@ remote import can satisfy `remote-ready`.
 
 ## Bootstrap seed and local baseline
 
-Before commit/push or Phase 0, setup completes, syncs, and archives the generated
-`bootstrap-<project>` OpenSpec seed. It runs only local, applicable checks:
+Before commit/push or Phase 0, OpenSpec setup completes, syncs, and archives the
+generated `bootstrap-<project>` seed. Spec Kit setup instead validates the real
+`specs/000-liftoff-bootstrap/{spec.md,plan.md,tasks.md}` bundle and official
+framework markers, then finalizes the local bootstrap handoff. It never creates
+an OpenSpec tree, invents an archive, or creates a Git branch. Older Spec Kit
+projects without the bundle need separately reviewed seed adoption.
+
+The bundle's exact identity is `000-liftoff-bootstrap`, with B001–B006 each
+appearing once. It is not an active governance change. Dependencies may already
+be installed; installing them requires separate consent, which passing tests
+alone cannot prove. Successful explicit execution commits the checked projection
+with body/full-plan-bound baseline evidence; failed checks leave tasks unchanged.
+
+Both adapters run only local, applicable checks in the declared component roots:
 
 - `liftoff validate`
 - backend tests from the generated README
 - frontend build when a frontend exists
 - `docker compose config -q` when Compose exists
-- `tofu fmt -check -recursive`
-- `tofu init -backend=false`
-- `tofu validate`
-- strict OpenSpec validation
+- `tofu fmt -check -recursive` at `infrastructure/opentofu/azure`, covering modules and roots
+- `tofu init -backend=false` in each selected independent environment root
+- `tofu validate` in each selected independent environment root
+- strict OpenSpec validation, or validation of the real Spec Kit bootstrap bundle
 
 Absent components are recorded as inapplicable. The baseline never starts
 containers, runs a live `tofu plan` or `tofu apply`, deploys, mutates GitHub, or
-requires cloud credentials. A failed check keeps the seed active; rerun
-`/liftoff-setup` after remediation and verified phases are not repeated.
+requires cloud credentials. A failed local check remains unfinished; only
+explicit execution retries it after repair. Read-only status, resume, and
+verification do not advance tasks or rerun checks. Unchanged current proof can
+be reused; changed relevant inputs require fresh evidence.
+Recorded legacy-shared or unknown infrastructure layouts block this baseline
+with migration-required and no commands, even if new-looking directories exist.
 
 If the seed was already archived before setup began, it stays archived.
 Setup still runs the entire applicable local baseline, but strict OpenSpec
@@ -236,6 +282,10 @@ types, destinations, permissions, cost ceiling, destructive scope, policy
 exceptions, expiry, and baseline SHA. Retries inside the same envelope do not
 ask again; expanded resources, destinations, permissions, cost, exceptions, or
 destructive effects require a new approval.
+Its time window must satisfy `approvedAt <= now < expiresAt` and have a valid
+start/end interval. A future, reversed, or expired envelope cannot authorize
+execution. The contract does not imply a public approval-persistence workflow
+exists; an unavailable entry capability remains a blocker.
 
 ## Credentials for runner preflight
 
@@ -243,7 +293,8 @@ When `GITHUB_TOKEN` cannot read required hosted-runner metadata, setup first
 prefers an existing verified selected-repository GitHub App installation with the
 required read permissions. Liftoff does not install or broaden an App.
 
-If no approved App is available, setup guides one fine-grained PAT with exactly:
+If no approved App is available, the normative policy describes this
+fine-grained PAT fallback, not an implemented enrollment command:
 
 | Field | Value |
 | --- | --- |
@@ -256,10 +307,12 @@ If no approved App is available, setup guides one fine-grained PAT with exactly:
 | Writes | none |
 | Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
 
-Enter the value only through Liftoff's masked input. Never paste or show the
-value in chat, argv, command arguments, logs, evidence, files, or screenshots. A value
-that appears in any of those places is compromised and must be manually revoked
-and rotated before setup can continue.
+This release has no public masked credential-enrollment channel. Stop at the
+reported capability blocker rather than creating a credential or hand-writing
+state to make the phase pass.
+Never paste or show the value in chat, argv, command arguments,
+logs, evidence, files, or screenshots. A disclosed value is
+compromised and must be revoked and rotated through its owner-controlled system.
 
 The recorded credential policy is payload-free: it stores auth kind, display
 name, secret name, owner, repository, expiry, rotation lead, permissions,
@@ -270,9 +323,19 @@ secret value.
 
 Task checkboxes are a projection of phase state, not authority. Evidence
 documents carry repository identity, activation version vector, graph hash, phase
-contract digest, input digest, baseline SHA, phase ID, timestamp, producer, and
-result. Setup and `liftoff governance verify` reject missing, stale,
-contradictory, future-version, or graph-incompatible evidence.
+contract digest, real input/baseline digests, body commitment, phase ID, timestamp,
+producer, and result. The local execution anchor is separate from a verified
+remote repository binding; Phase 0 does not replace the anchor beneath earlier
+local receipts. Digests prove consistency, not an independent signature or
+permission grant. Current valid proof may coexist with informational stale
+history, but equally authoritative contradictory records block execution.
+The current context includes reviewed immutable plans and state evidence
+references. Payload `planDigest` binds semantic plan inputs; `savedPlanDigest`
+binds the full saved plan, including clocks. `bodyDigest` covers the payload and
+normalized readbacks. Consumers use the validated selected payload, not another
+raw record that happens to reuse an ID. Repository publication binds the actual
+reviewed push destination; Phase 0 cannot invalidate earlier local/publication
+receipts by replacing the local anchor.
 
 There may be only one active governance source of truth. An unfinished bootstrap
 seed blocks Phase 0. Exactly one compatible active governance change is resumed.
@@ -283,12 +346,15 @@ Managed updates install new policy, graph, schema, compatibility metadata, and
 setup and assessment integrations without touching user-owned state. Forced update can remove
 exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
-reports `reconciliation-required`, invalidates only affected descendants, and
-waits for explicit acknowledgement of the current compatible identity and exact
-graph hash.
+reports `reconciliation-required` and identifies affected descendants. Historical
+activation-v1 state and evidence stay byte-preserved and diagnostic-only under
+activation v2. This release has no automatic historical-state reconciliation,
+reset, or conversion workflow; do not acknowledge a new identity by editing JSON.
 
 ## Private staging and bootstrap retention
 
+These are policy requirements for separately implemented production adapters,
+not a claim that this CLI can provision the complete platform.
 Private Staging DAST uses an ephemeral GitHub-hosted larger runner with Azure
 VNet injection only when genuinely applicable. Phase 0 discovers repository,
 subscription, authority, billing, network, DNS, cost, teardown, and capability

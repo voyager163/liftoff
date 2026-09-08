@@ -84,6 +84,42 @@ describe('canonical stable release lookup', () => {
       .rejects.toMatchObject({ code: 'timeout' });
   });
 
+  it('classifies an abort while reading the response body as a timeout', async () => {
+    const fetch: typeof globalThis.fetch = async (_input, init) => ({
+      ok: true,
+      status: 200,
+      json: () => new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener(
+          'abort',
+          () => reject(new DOMException('body aborted', 'AbortError')),
+          { once: true }
+        );
+      })
+    }) as Response;
+
+    await expect(lookupStableRelease({ fetch, timeoutMs: 5 }))
+      .rejects.toMatchObject({
+        code: 'timeout',
+        message: 'Canonical npm stable release lookup timed out.'
+      });
+  });
+
+  it('classifies a response-body transport failure separately from malformed JSON', async () => {
+    const fetch: typeof globalThis.fetch = async () => ({
+      ok: true,
+      status: 200,
+      json: async () => {
+        throw new Error('private body transport detail');
+      }
+    }) as Response;
+
+    await expect(lookupStableRelease({ fetch, timeoutMs: 100 }))
+      .rejects.toMatchObject({
+        code: 'network_failure',
+        message: 'Canonical npm stable release lookup failed.'
+      });
+  });
+
   it('validates timeout configuration without starting transport', async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     await expect(lookupStableRelease({ fetch, timeoutMs: 0 }))

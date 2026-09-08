@@ -22,9 +22,13 @@ Selecting repository governance or passing `--yes` authorizes only deterministic
 local handoff files. It never authorizes agent execution, Git mutation, GitHub
 APIs, Azure or other cloud resources, rulesets, security configuration,
 deployment, monitoring, file replacement, machine tools, or project
-dependencies. `/liftoff-setup` first completes and archives the local bootstrap
-seed, then stops at authority gates. Live activation begins only after explicit
+dependencies. `/liftoff-setup` first verifies and archives the OpenSpec bootstrap
+or finalizes the real Spec Kit bundle locally, then stops at authority gates.
+Live activation requires explicit
 commit/push approval, read-only Phase 0, and activation-plan approval.
+Missing public approval persistence, secure credential enrollment, or production
+executors remain blockers; this sequence does not promise a complete production
+activation workflow.
 
 An approved downstream local-state bootstrap remains encrypted, gitignored, and
 single-writer. It is never transferred through GitHub artifacts or secrets,
@@ -48,6 +52,9 @@ cannot redirect machine-level discovery. Canonical npm selects the target while
 the configured registry must provide that exact release. Liftoff does not expose
 registry credentials, rewrite npm configuration, bypass a stale mirror, invoke
 `sudo` or another elevation mechanism, or touch project files.
+Machine-level `@msn-control:registry` takes precedence over default `registry`;
+canonical verification isolates both settings, but installation still honors
+the effective delivery registry.
 
 npm replacement is not a Liftoff file transaction. If npm or post-install
 verification fails, Liftoff reports an exact-version repair command and does not
@@ -87,16 +94,35 @@ Structural collisions are not overridable:
 
 ## Atomic writes and rollback
 
+Project mutations share an exclusive cooperating-writer lock across initialization,
+migration, dependency setup, managed update, and setup execution. The lock is a
+sibling file named `.liftoff-mutation-<project-path-digest>.lock`, created with
+0600 mode where POSIX permissions apply; the target's
+parent directory must be writable. Reserving a new target does not create that
+target or project state. Nested steps in one operation retain the same lock.
+Reservation identities are NFC-normalized and lowercased on every platform; this
+may serialize case-distinct sibling projects on case-sensitive volumes, but never
+merges their ownership.
+Read-only commands, including assessment and `update --check`, never acquire it.
+An existing or changed lock blocks mutation and is never automatically stolen or
+removed. After an interrupted process, verify its owner has stopped before
+reviewing the exact reported lock. This coordinates Liftoff writers; it does not
+replace path/content preconditions or isolate the project from other programs.
+
 Individual project files use temporary-file replacement. Initialization keeps
 backups for replaced files and records created files and directories. A handled
-merge failure restores or removes those entries in reverse order.
+merge failure restores or removes attributable unchanged entries in reverse
+order; concurrent or uncertain edits are preserved and reported.
+Existing destination modes are preserved where supported, including POSIX 0600
+files. Windows does not provide equivalent POSIX mode-bit guarantees; this is
+not a promise to preserve all Windows ACLs or filesystem metadata.
 
 Plain `liftoff update` preflights every eligible managed-core or authorized
 create-only provisioning path and applies those writes, managed-core moves or
 deletes, and the manifest as one rollback-capable transaction. Schema upgrades
 are committed only after the other mutations succeed.
 
-Managed update may install manifest v7, policy v6, activation-contract v1,
+Managed update may install manifest v7, policy v6, activation-contract v2,
 phase graph, compatibility metadata, credential-policy schema, setup
 integrations, and forced removal of exact retired generated setup-alias entries
 from older manifests. It preserves user-owned activation state, approvals,
@@ -104,6 +130,10 @@ immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
+Exact known historical v1 identity is a separate diagnostic-only case:
+safe managed-core maintenance may continue while preserving the recorded
+historical identity, state, and receipts. That maintenance never makes history
+executable or supplies a missing reconciliation workflow.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
@@ -111,6 +141,13 @@ overwriting unknown bytes.
 
 Update snapshots exist only for rollback after a failed transaction. Liftoff
 does not retain them as backups after success.
+
+Dependency execution has a different recovery boundary: installer scripts can
+write arbitrary project files, and a concurrent developer edit cannot be
+attributed safely from a content difference alone. Changed or deleted protected
+metadata is therefore preserved and reported, not automatically restored.
+Liftoff stops further dependency commands and identifies the recovery shell and
+literal-path recipe. This does not claim the entire scaffold was unchanged.
 
 ## Update ownership
 
@@ -133,6 +170,9 @@ Update mode is selected explicitly rather than from terminal interactivity:
 - A newly selected frontend or environment is provisioned once only at absent
   or byte-identical destinations. A collision blocks the complete group and
   cannot be forced.
+- A new environment additionally requires recorded independent-root provenance
+  and safe existing shared-module files. Legacy or unknown layouts are blocked
+  without moving state or rewriting project-owned infrastructure.
 - Unrecorded governance conflicts remain outside manifest ownership and produce
   `handoff-partial` until a later update safely writes or adopts every artifact.
 - Orphans are reported and left on disk for manual review.
@@ -142,9 +182,15 @@ Update mode is selected explicitly rather than from terminal interactivity:
 `--force` cannot be combined with `--check` and cannot weaken project-boundary,
 symlink, collision, manifest, or transaction guards.
 
-Power Apps starter source and metadata are project-owned after generation.
-Update does not fetch upstream source or transition an existing project to a
-newer packaged starter.
+Power Apps support is retired. Its manifests are rejected without fetching
+starter source, changing application files, or treating force as conversion
+authority.
+
+The eight flat-root OpenTofu identities are retired from new 0.11.0 output only.
+Their historical records, paths, generation hashes, files, and state remain
+unchanged by update, force, helpers, or assessment. They are not aliases to new
+roots or managed-core deletion targets; see the
+[explicit inventory](azure-deployment.md#explicit-flat-root-identity-retirement).
 
 ## Framework and seed ownership
 
@@ -153,7 +199,11 @@ initializers. Liftoff validates the selected contract and agent markers but
 does not claim framework-owned files in durable artifact hashes.
 
 One-time seed content is also omitted from durable hashes so it can follow its
-own lifecycle after generation.
+own lifecycle after generation. Spec Kit's `000-liftoff-bootstrap` bundle is
+project-owned, separate from official markers, and not an active governance
+change. Missing older seeds require reviewed adoption. Failed local checks leave
+B001–B006 unchecked; explicit successful execution commits the projection with
+body/full-plan-bound evidence. Read-only verify, status, and resume never mark it.
 
 OpenSpec workflow profile and delivery are global machine preferences. Liftoff
 changes them only after dedicated consent and verifies the result before
@@ -188,19 +238,22 @@ Liftoff does not:
 - Store cloud or agent credentials.
 - Perform cloud sign-in.
 - Apply OpenTofu.
-- Bind or push a Power Apps code app.
-- Run Microsoft's broad Code Apps marketplace installer.
+- Restore or manage the retired Power Apps workload or Code Apps integration.
 
 Those actions require their own review, authentication, and consent.
 
 Governance runner-preflight credentials have a stricter contract. Setup first
 uses an existing verified selected-repository GitHub App installation when it
-has the required read permissions. Otherwise it guides one fine-grained PAT:
+has the required read permissions. The normative fallback specifies one
+fine-grained PAT:
 display name `<repo>-runner-preflight-read`, repository secret
 `RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
 repository metadata read, organization hosted-runner read and
 network-configuration read, no writes, and only the recorded workflow/job
-allowlist. The value must be entered through masked input only. Never paste or
+allowlist. The CLI currently lacks public secure enrollment, independent
+credential readback, and approval-persistence entry points; stop at the capability
+blocker instead of creating JSON or inventing an input channel. Any future
+supported enrollment must use masked input. Never paste or
 show it in chat, argv, command arguments, logs, evidence, generated files, or
 screenshots. If it appears there, treat it as compromised and manually revoke and
 rotate it before continuing.

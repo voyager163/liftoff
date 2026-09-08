@@ -30,6 +30,7 @@ import {
   canonicalJson,
   createActivationIdentity,
   currentActivationIdentity,
+  historicalActivationIdentities,
   phaseIds,
   renderGovernanceChangeWritePlan,
   type UserActivationState
@@ -74,18 +75,6 @@ async function standardFixtureProject(apiStack = 'go'): Promise<string> {
     environments: ['dev'],
     specWorkflow: 'openspec',
     includeFrontend: false
-  });
-  cleanups.push(path.dirname(projectRoot));
-  return projectRoot;
-}
-
-async function powerAppsFixtureProject(codeAppsPlugin = false): Promise<string> {
-  const projectRoot = await createFixtureProject({
-    projectName: 'Power Apps Update App',
-    projectType: 'power-apps-code-app',
-    specWorkflow: 'openspec',
-    agents: ['copilot'],
-    codeAppsPlugin
   });
   cleanups.push(path.dirname(projectRoot));
   return projectRoot;
@@ -405,6 +394,34 @@ function currentActivationState(activeChangeId: string | null): UserActivationSt
   };
 }
 
+async function installDiagnosticActivationV1(
+  root: string,
+  governanceState?: 'handoff-generated' | 'handoff-partial'
+): Promise<{
+  identity: (typeof historicalActivationIdentities)[number];
+  statePath: string;
+  evidencePath: string;
+}> {
+  const identity = historicalActivationIdentities[0]!;
+  await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    manifest.governance.policyVersion = identity.policyVersion;
+    manifest.governance.activationIdentity = identity;
+    if (governanceState) manifest.governance.state = governanceState;
+  });
+  const statePath = path.join(root, 'governance', 'activation-state.json');
+  const evidencePath = path.join(root, 'governance', 'evidence', 'historical-v1.json');
+  await writeProjectOwnedFile(root, ['governance', 'activation-state.json'], `${JSON.stringify({
+    schemaVersion: 1,
+    identity
+  }, null, 2)}\n`);
+  await writeProjectOwnedFile(root, ['governance', 'evidence', 'historical-v1.json'], `${JSON.stringify({
+    schemaVersion: 1,
+    identity,
+    historical: true
+  }, null, 2)}\n`);
+  return { identity, statePath, evidencePath };
+}
+
 async function writeProjectOwnedFile(root: string, parts: readonly string[], content: string): Promise<void> {
   await mkdir(path.dirname(path.join(root, ...parts)), { recursive: true });
   await writeFile(path.join(root, ...parts), content, 'utf8');
@@ -503,6 +520,8 @@ describe('core-only update command', () => {
       'infrastructure',
       'opentofu',
       'azure',
+      'modules',
+      'application',
       'main.tf'
     );
     const productionApi = 'package api\n\n// production API\n';
@@ -1201,7 +1220,7 @@ describe('core-only update command', () => {
       ['liftoff.config.json'],
       ['liftoff.manifest.json'],
       [...governanceArtifactPaths.context],
-      ['infrastructure', 'opentofu', 'azure', 'environments', 'dev.tfvars']
+      ['infrastructure', 'opentofu', 'azure', 'environments', 'dev', 'dev.tfvars']
     ];
     const before = await pathFingerprints(root, watched);
 
@@ -1247,6 +1266,8 @@ describe('core-only update command', () => {
       'infrastructure',
       'opentofu',
       'azure',
+      'modules',
+      'application',
       'main.tf'
     );
     const production = 'package api\n\n// evolved production API\n';
@@ -1259,7 +1280,11 @@ describe('core-only update command', () => {
     expect(check.code).toBe(2);
     expect(JSON.parse(check.out)).toMatchObject({
       schemaVersion: 2,
-      entries: [],
+      entries: [{
+        logicalName: 'repository-governance-context',
+        status: 'upgrade',
+        path: '.liftoff/governance/context.json'
+      }],
       ownershipMigrationPending: true
     });
 
@@ -1276,6 +1301,16 @@ describe('core-only update command', () => {
       generatedBy: expect.any(String),
       generationHash: expect.stringMatching(/^sha256:/)
     });
+    const governanceContext = JSON.parse(
+      await readFile(path.join(root, ...governanceArtifactPaths.context), 'utf8')
+    );
+    expect(governanceContext.generatedBoundaries.opentofu).toMatchObject({
+      layout: 'unknown',
+      compatibility: 'migration-required'
+    });
+    expect(governanceContext.commands.some(
+      (command: { executable: string }) => command.executable === 'tofu'
+    )).toBe(false);
   });
 
   it.each([2, 3, 4, 5] as const)(
@@ -1450,6 +1485,7 @@ describe('core-only update command', () => {
       'opentofu',
       'azure',
       'environments',
+      'staging',
       'staging.tfvars'
     );
     await expect(access(backendEnv)).resolves.toBeUndefined();
@@ -1470,38 +1506,42 @@ describe('core-only update command', () => {
     await expect(access(tfvars)).resolves.toBeUndefined();
   });
 
-  it('records a Power Apps plugin preference without rewriting project guidance', async () => {
-    const root = await powerAppsFixtureProject(false);
-    const readmePath = path.join(root, 'README.md');
-    const readme = '# production Power Apps guidance\n';
-    await writeFile(readmePath, readme);
-    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
-      config.codeAppsPlugin = true;
-    });
-
-    expect((await run(['update'], root)).code).toBe(0);
-    expect(await readFile(readmePath, 'utf8')).toBe(readme);
-    const manifest = JSON.parse(
-      await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
+  it.each([
+    ['update'],
+    ['update', '--force']
+  ])('rejects a retired manifest before force or ownership classification: %j', async (...args) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-retired-update-'));
+    cleanups.push(root);
+    const fixture = JSON.parse(
+      await readFile(path.resolve('tests/fixtures/manifest-v4-power-apps.json'), 'utf8')
     );
-    expect(manifest.project.workload.codeAppsPlugin).toBe(true);
-  });
+    fixture.project.workload.starter = null;
+    fixture.project.workload.codeAppsPlugin = { malformed: true };
+    fixture.artifacts = [{
+      logicalName: 'unsafe',
+      category: 'governance',
+      pathParts: ['..', 'outside'],
+      contentHash: 'invalid'
+    }];
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const sourcePath = path.join(root, 'production-app.txt');
+    const manifestBytes = `${JSON.stringify(fixture, null, 2)}\n`;
+    await writeFile(manifestPath, manifestBytes);
+    await writeFile(sourcePath, 'production bytes\n');
+    const runner: CommandRunner = {
+      async run(command) {
+        throw new Error(`Unexpected retired-project probe: ${command.executable}`);
+      }
+    };
 
-  it('ignores Power Apps starter and dependency edits during ordinary checks', async () => {
-    const root = await powerAppsFixtureProject(false);
-    const packagePath = path.join(root, 'package.json');
-    const appPath = path.join(root, 'src', 'App.tsx');
-    const packageContent = '{"name":"production-power-app","private":true}\n';
-    const appContent = 'export default function App() { return null; }\n';
-    await writeFile(packagePath, packageContent);
-    await writeFile(appPath, appContent);
+    const result = await run(args, root, runner);
 
-    const check = await run(['update', '--check', '--json'], root);
-    expect(check.code).toBe(0);
-    expect(JSON.parse(check.out).entries).toEqual([]);
-    expect((await run(['update', '--force'], root)).code).toBe(0);
-    expect(await readFile(packagePath, 'utf8')).toBe(packageContent);
-    expect(await readFile(appPath, 'utf8')).toBe(appContent);
+    expect(result.code).toBe(1);
+    expect(`${result.out}\n${result.err}`).toMatch(
+      /Power Apps.*retired|retired.*Power Apps/i
+    );
+    expect(await readFile(manifestPath, 'utf8')).toBe(manifestBytes);
+    expect(await readFile(sourcePath, 'utf8')).toBe('production bytes\n');
   });
 
   it('keeps check mode read-only and versions JSON around managed-core scope', async () => {
@@ -1554,6 +1594,137 @@ describe('core-only update command', () => {
     expect(applied.code).toBe(0);
     expect(JSON.parse(applied.out).written).toContain('.liftoff/governance/policy.md');
     expect(await pathFingerprints(root, userFiles)).toEqual(before);
+  });
+
+  it('maintains managed core around diagnostic-only activation v1 without retagging history', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const statePath = path.join(root, 'governance', 'activation-state.json');
+    const evidencePath = path.join(root, 'governance', 'evidence', 'historical-v1.json');
+    const historicalIdentity = historicalActivationIdentities[0]!;
+    await editJson(manifestPath, (manifest) => {
+      manifest.governance.policyVersion = historicalIdentity.policyVersion;
+      manifest.governance.activationIdentity = historicalIdentity;
+    });
+    await writeProjectOwnedFile(root, ['governance', 'activation-state.json'], `${JSON.stringify({
+      schemaVersion: 1,
+      identity: historicalIdentity
+    }, null, 2)}\n`);
+    await writeProjectOwnedFile(root, ['governance', 'evidence', 'historical-v1.json'], `${JSON.stringify({
+      schemaVersion: 1,
+      identity: historicalIdentity,
+      historical: true
+    }, null, 2)}\n`);
+    await editJson(path.join(root, 'liftoff.config.json'), (config) => {
+      config.includeFrontend = true;
+    });
+    await simulateCoreUpgrade(
+      root,
+      'repository-governance-policy',
+      governanceArtifactPaths.policy,
+      '# previous policy\n'
+    );
+    const stateBefore = await readFile(statePath);
+    const evidenceBefore = await readFile(evidencePath);
+
+    const applied = await run(['update', '--json'], root);
+
+    expect(applied.code).toBe(0);
+    expect(JSON.parse(applied.out)).toMatchObject({
+      activationStateMigration: {
+        status: 'blocked',
+        diagnosticOnly: true,
+        evidencePolicy: 'preserve-bytes'
+      },
+      reconciliation: { status: 'reconciliation-required' },
+      provisioning: [{
+        group: 'frontend',
+        status: 'blocked',
+        reason: expect.stringContaining('managed core')
+      }],
+      stateWritten: []
+    });
+    expect(await readFile(statePath)).toEqual(stateBefore);
+    expect(await readFile(evidencePath)).toEqual(evidenceBefore);
+    await expect(access(path.join(root, 'frontend', 'package.json')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    const updatedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    expect(updatedManifest.governance.activationIdentity).toEqual(historicalIdentity);
+  });
+
+  it('keeps computed partial handoff state when one historical wrapper conflicts', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Historical Partial',
+      pattern: 'prompt',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['dev'],
+      specWorkflow: 'openspec',
+      agents: ['copilot', 'claude'],
+      includeFrontend: false
+    });
+    cleanups.push(path.dirname(root));
+    await removeAssessmentInventory(root);
+    const history = await installDiagnosticActivationV1(root, 'handoff-generated');
+    const custom = '# Independently owned Copilot assessment wrapper\n';
+    const conflict = path.join(root, ...assessmentIdentities[0].pathParts);
+    await writeProjectOwnedFile(root, assessmentIdentities[0].pathParts, custom);
+    const stateBefore = await readFile(history.statePath);
+    const evidenceBefore = await readFile(history.evidencePath);
+
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+
+    const loaded = await loadManifest(root);
+    expect(loaded.governance).toMatchObject({
+      state: 'handoff-partial',
+      activationIdentity: history.identity
+    });
+    expect(loaded.managedArtifacts.some((entry) =>
+      entry.logicalName === assessmentIdentities[1].logicalName
+    )).toBe(true);
+    expect(loaded.managedArtifacts.some((entry) =>
+      entry.logicalName === assessmentIdentities[0].logicalName
+    )).toBe(false);
+    expect(await readFile(conflict, 'utf8')).toBe(custom);
+    expect(await readFile(history.statePath)).toEqual(stateBefore);
+    expect(await readFile(history.evidencePath)).toEqual(evidenceBefore);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+    expect((await run(['update', '--check'], root)).code).toBe(2);
+  });
+
+  it('promotes an old partial handoff after historical wrappers become complete', async () => {
+    const root = await createFixtureProject({
+      projectName: 'Historical Complete',
+      pattern: 'prompt',
+      cloud: 'azure',
+      region: 'eastus',
+      environments: ['dev'],
+      specWorkflow: 'openspec',
+      agents: ['copilot', 'claude'],
+      includeFrontend: false
+    });
+    cleanups.push(path.dirname(root));
+    await removeAssessmentInventory(root);
+    const history = await installDiagnosticActivationV1(root, 'handoff-partial');
+    const stateBefore = await readFile(history.statePath);
+    const evidenceBefore = await readFile(history.evidencePath);
+
+    expect((await run(['update', '--json'], root)).code).toBe(0);
+
+    const loaded = await loadManifest(root);
+    expect(loaded.governance).toMatchObject({
+      state: 'handoff-generated',
+      activationIdentity: history.identity
+    });
+    for (const identity of assessmentIdentities) {
+      expect(loaded.managedArtifacts.some((entry) =>
+        entry.logicalName === identity.logicalName
+      )).toBe(true);
+    }
+    expect(await readFile(history.statePath)).toEqual(stateBefore);
+    expect(await readFile(history.evidencePath)).toEqual(evidenceBefore);
+    expect(await validateGeneratedProject(root)).toEqual([]);
+    expect((await run(['update', '--check'], root)).code).toBe(0);
   });
 
   it('blocks active governance metadata with an undeclared old graph identity', async () => {

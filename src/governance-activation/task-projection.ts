@@ -1,4 +1,4 @@
-import type { PhaseId, PhaseState } from './types.js';
+import type { PhaseId, PhaseState } from '../domain/governance/activation/types.js';
 
 export interface PhaseTaskMapping {
   phaseId: PhaseId;

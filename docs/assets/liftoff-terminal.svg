@@ -13,8 +13,8 @@
 
   <rect x="32" y="146" width="936" height="92" rx="8" fill="#161b22" stroke="#30363d"/>
   <text x="52" y="176" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700">Choose workload</text>
-  <text x="52" y="207" fill="#8c959f" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[ ] GenAI application    [ ] API application</text>
-  <text x="520" y="207" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[x] Power Apps code app</text>
+  <text x="52" y="207" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[x] GenAI application</text>
+  <text x="390" y="207" fill="#8c959f" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="16">[ ] API application</text>
 
   <rect x="32" y="250" width="936" height="92" rx="8" fill="#161b22" stroke="#30363d"/>
   <text x="52" y="280" fill="#f0f6fc" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17" font-weight="700">Choose spec workflow</text>
@@ -29,5 +29,5 @@
 
   <text x="42" y="486" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17">PASS  Workstation and framework ready</text>
   <text x="42" y="516" fill="#3fb950" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="17">DONE  Initialized the current Git root safely</text>
-  <text x="42" y="544" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="15">Next: liftoff validate &amp;&amp; liftoff doctor</text>
+  <text x="42" y="544" fill="#b1bac4" font-family="ui-monospace, SFMono-Regular, Consolas, monospace" font-size="15">Next: /liftoff-setup (local baseline and explicit capability gates)</text>
 </svg>

@@ -47,10 +47,13 @@ async function runScreen(
         .replaceAll(root, '<workspace>');
     }
     return normalized
-      .replaceAll('cd /d ', 'cd ')
       .replaceAll('npm.cmd', 'npm')
       .replaceAll('\\\\', '/')
-      .replaceAll('\\', '/');
+      .replaceAll('\\', '/')
+      .replaceAll('(PowerShell)', '(POSIX shell)')
+      .replaceAll("'; if ($?) { & 'go' 'mod' 'download' }", "' && go mod download")
+      .replaceAll("'; if ($?) { & 'npm' 'ci' }", "' && npm ci")
+      .replaceAll('Set-Location -LiteralPath ', 'cd -- ');
   };
   const code = await runCommand(parseArgs(args), {
     cwd,
@@ -105,6 +108,7 @@ describe('complete onboarding screens', () => {
     it(`snapshots the ${layout.name} plan screen`, async () => {
       const workspace = await root('liftoff-plan-screen-');
       const result = await runScreen(standardPlan, workspace, layout.columns);
+      expect(result.code).toBe(0);
       expect(result).toMatchSnapshot();
     });
 
@@ -115,6 +119,7 @@ describe('complete onboarding screens', () => {
         workspace,
         layout.columns
       );
+      expect(result.code).toBe(0);
       expect(result).toMatchSnapshot();
     });
 
@@ -130,6 +135,7 @@ describe('complete onboarding screens', () => {
         layout.columns,
         { input: 'y\nn\n' }
       );
+      expect(result.code).toBe(0);
       expect(result).toMatchSnapshot();
     });
 
@@ -141,6 +147,7 @@ describe('complete onboarding screens', () => {
         layout.columns,
         { runner: new ReadyInitRunner({ missing: ['openspec'] }) }
       );
+      expect(result.code).toBe(1);
       expect(result).toMatchSnapshot();
     });
 
@@ -160,6 +167,7 @@ describe('complete onboarding screens', () => {
         'eastus',
         '--yes'
       ], workspace, layout.columns);
+      expect(result.code).toBe(0);
       expect(result).toMatchSnapshot();
     });
   }

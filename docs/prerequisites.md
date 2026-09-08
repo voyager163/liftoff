@@ -1,17 +1,25 @@
 # Prerequisites
 
 Liftoff derives workstation and project requirements from the complete resolved
-plan. A Power Apps project is not asked to install API or infrastructure tools,
-and a Go API is not asked to install Python.
+plan. A Go API does not inherit Python backend dependencies, although a selected
+framework such as Spec Kit can require Python for its own tooling.
 
 ## Baseline
 
-- Liftoff CLI and generated Node.js workloads: Node.js 24.20 or newer.
-- Python projects: Python 3.14 and `uv` 0.12.7 or newer.
-- Go projects: Go 1.27 or newer.
-- Generated Azure infrastructure: OpenTofu 1.12.6 or newer.
+- Workstation Node.js: stable Node.js 24 LTS, version 24.20.0 or newer within 24.x.
+- npm-dependent stacks or OpenSpec: stable npm 12.x, version 12.0.2 or newer.
+- Python projects: stable Python 3.14.x and `uv` 0.12.x at version 0.12.7 or newer.
+- Go projects: stable Go 1.27.x.
+- Generated Azure infrastructure: stable OpenTofu 1.12.x at version 1.12.6 or newer.
 - Selected framework: OpenSpec 1.11.0 or Spec Kit 1.0.1 exactly.
 - Selected agents: GitHub Copilot, Claude Code, or both.
+
+Minimum versions do not authorize a different, untested release line. Release
+candidates and other prereleases do not satisfy stable floors or exact framework
+pins. A working Node.js executable does not establish npm readiness: when npm is
+required, it is probed separately before destination writes. A missing npm
+executable requires a separately reviewed machine-level repair; Liftoff does not
+try to run the missing executable or reinstall Node.js on its behalf.
 
 Automatic `liftoff upgrade` additionally requires that the running canonical
 `@msn-control/liftoff` package is a normal global npm installation beneath
@@ -27,6 +35,8 @@ runtime. GenAI uses Python 3.14 and the Python/FastAPI/PydanticAI stack.
 Blocking checks must be ready before initialization can safely complete:
 
 - Required runtime and minimum version.
+- Required package managers, including npm for Node.js dependencies, a frontend,
+  or OpenSpec.
 - Selected spec framework CLI.
 - Every selected coding agent.
 - For OpenSpec, global profile `custom`, delivery `both`, and all 12 workflows.
@@ -36,7 +46,6 @@ Advisory checks describe useful but deferrable capabilities:
 - Docker CLI and daemon health for API workloads.
 - OpenTofu for generated Azure infrastructure.
 - Azure CLI and observable authentication health.
-- Optional Code Apps plugin state for Power Apps.
 
 Authentication checks are read-only. Liftoff never stores credentials or signs
 in to a cloud or agent on your behalf.
@@ -63,7 +72,7 @@ can register each missing namespace explicitly before dependent resources.
 without writing files or running installers:
 
 ```bash
-liftoff plan --type power-apps-code-app --spec openspec --agents copilot,claude
+liftoff plan --type standard --api node --spec openspec --agents copilot,claude
 ```
 
 ## Tool installation consent
@@ -103,19 +112,22 @@ Project-local dependency setup is separate from workstation tools and requires
 `--install-dependencies` or interactive approval after a successful project
 merge.
 
-For Power Apps, Liftoff runs only the root locked install:
-
-```bash
-npm ci
-```
-
-The generated `package.json` and `package-lock.json` are validated before
-installation and protected from installer mutation. If dependency setup is
-skipped or fails, Liftoff prints the exact resume command rather than claiming
-the project is ready.
-
 GenAI and API projects use their generated stack-native locked dependency
-commands.
+commands. If dependency setup is skipped or fails, Liftoff prints the exact
+resume command rather than claiming the project is ready.
+
+Recovery output identifies its shell: POSIX shell on macOS/Linux and PowerShell
+on Windows. Copy the command into that shell; directory names and arguments are
+quoted literally rather than expanded as environment variables.
+
+If protected metadata changes during dependency setup, Liftoff stops and lists
+the changed paths. It preserves those edits instead of assuming the installer
+caused them and restoring older bytes over concurrent work. Review and repair
+the metadata before retrying. Dependency scripts can also change other project
+files; this check is not a script sandbox.
+Dependencies that are already installed and usable do not need a new install
+merely to satisfy a bootstrap checkbox. Local checks prove usability, not that
+an installation or its consent occurred.
 
 Python projects use the generated lock without resolving new versions:
 
@@ -130,24 +142,11 @@ Liftoff's npm locks are generated with npm 12.0.2 and verified in the supported
 compatibility lanes. Do not replace a committed lock with an install from
 open-ended manifest ranges.
 
-## Power Apps local CLI
-
-The Power Apps CLI is supplied by the generated project dependency graph.
-Liftoff checks it without downloading another package:
-
-```bash
-npx --no-install power-apps --version
-```
-
-If `node_modules` is absent, run `npm ci` first. Environment binding and cloud
-authentication remain separate later actions.
-
 ## Agent detection
 
 Copilot can be detected through its CLI or supported VS Code extensions.
 Claude Code is checked with its version and doctor commands. When both are
 selected, both must be ready.
 
-The optional Code Apps plugin uses independent, read-only probes for each
-selected agent. A missing executable, timeout, or unsupported plugin-list
-result is reported as not observable rather than silently treated as missing.
+Power Apps and Code Apps plugin preparation are retired. Their inputs are
+rejected before selecting or installing a former workload-specific tool set.

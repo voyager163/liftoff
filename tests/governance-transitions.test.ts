@@ -2,18 +2,25 @@ import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { devNull } from 'node:os';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import {
   buildSavedTransitionPlan,
+  buildFineGrainedPatCredentialPolicy,
+  canonicalCredentialRepository,
+  credentialPolicyPathParts,
   calculatePhaseReadiness,
   canonicalApprovalEnvelopeHash,
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
   currentActivationIdentity,
   evidenceHeaderDigest,
-  evidenceContextForPhase,
+  evidenceBodyDigest,
+  activationEvidenceContexts,
+  readActivationInputSnapshot,
+  loadActivationState,
   phaseIds,
   previewApplyNext,
   rollbackPlanFromCompletedOperations,
@@ -34,10 +41,22 @@ import { renderCanonicalGovernancePolicy } from '../src/repository-governance.js
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
+import { NodeCommandRunner, formatCommand } from '../src/process-runner.js';
+import { executeRulesetPhase } from '../src/governance-activation/phase-governance.js';
 import type { ExternalCommand, LiftoffManifest } from '../src/types.js';
+import { loadManifest } from '../src/application/project/manifest.js';
+import {
+  fixtureContext as evidenceContextForPhase, fixtureHeader, fixturePayload, fixtureRemoteBinding,
+  bindFixtureEvidence, persistFixtureEvidence, writeBootstrapFixture, writeIndependentInfrastructureFixture
+} from './governance-activation-fixtures.js';
 
-const scratchRoot = path.join(process.cwd(), '.cache', 'governance-transition-tests');
+const scratchRoot = path.join(process.cwd(), '.cache', `governance-transition-tests-${process.pid}`);
+afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 const now = new Date('2026-09-04T00:00:00.000Z');
+const isolatedGitEnvironment = {
+  GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: devNull, GIT_CONFIG_SYSTEM: devNull,
+  GIT_CONFIG_COUNT: '0', GIT_CONFIG_PARAMETERS: ''
+};
 let counter = 0;
 
 function nextRoot(name: string): string {
@@ -89,6 +108,8 @@ async function writeProject(projectName = 'demo'): Promise<string> {
   await mkdir(path.join(root, '.liftoff', 'governance'), { recursive: true });
   await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest(projectName), null, 2)}\n`, 'utf8');
   await writeFile(path.join(root, '.liftoff', 'governance', 'policy.md'), renderCanonicalGovernancePolicy(), 'utf8');
+  await writeIndependentInfrastructureFixture(root);
+  await writeSeed(root, projectName);
   return root;
 }
 
@@ -138,6 +159,7 @@ function validState(overrides: Partial<UserActivationState> = {}): UserActivatio
       defaultBranch: 'develop'
     },
     activeChange: null,
+    remoteBinding: fixtureRemoteBinding,
     applicability: {
       statePath: 'none',
       privateStagingDast: false,
@@ -151,26 +173,7 @@ function validState(overrides: Partial<UserActivationState> = {}): UserActivatio
 }
 
 function header(phaseId: PhaseId, state = validState(), result: EvidenceHeader['result'] = 'verified'): EvidenceHeader {
-  const context = evidenceContextForPhase(phaseId, {
-    repositoryId: state.repository.id,
-    identity: currentActivationIdentity,
-    phaseGraphHash: canonicalPhaseGraphHash,
-    now
-  });
-  return {
-    schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
-    repositoryId: context.repositoryId,
-    identity: context.identity,
-    phaseGraphHash: context.phaseGraphHash,
-    phaseId,
-    phaseContractDigest: context.phaseContractDigest,
-    inputDigest: context.inputDigest,
-    baselineSha: context.baselineSha,
-    transition: context.transition,
-    producedAt: now.toISOString(),
-    producer: 'vitest',
-    result
-  };
+  return fixtureHeader(phaseId, { repositoryId: state.repository.id, result });
 }
 
 function evidenceRecord(
@@ -180,10 +183,11 @@ function evidenceRecord(
   payload?: unknown,
   liveReadback?: readonly LiveReadbackProof[]
 ): PhaseEvidenceRecord {
+  const body = payload ?? fixturePayload(phaseId);
   return {
     evidenceId: `${phaseId}-evidence`,
-    header: header(phaseId, state, result),
-    ...(payload !== undefined ? { payload } : {}),
+    header: { ...header(phaseId, state, result), bodyDigest: evidenceBodyDigest(body, liveReadback) },
+    payload: body,
     ...(liveReadback ? { liveReadback } : {})
   };
 }
@@ -215,19 +219,16 @@ async function writeState(root: string, state: UserActivationState): Promise<voi
 }
 
 async function writeEvidence(root: string, record: PhaseEvidenceRecord): Promise<void> {
-  await mkdir(path.join(root, 'governance', 'evidence'), { recursive: true });
-  await writeFile(path.join(root, 'governance', 'evidence', `${record.evidenceId}.json`), `${JSON.stringify(record, null, 2)}\n`, 'utf8');
+  const state = (await loadActivationState(root))?.state ?? validState();
+  await persistFixtureEvidence(root, state, record);
+  await writeState(root, state);
 }
 
 async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-  const context = evidenceContextForPhase(phaseId, {
-    repositoryId: state.repository.id,
-    identity: currentActivationIdentity,
-    phaseGraphHash: currentActivationIdentity.phaseGraphHash,
-    now
-  });
-  const plan = transitionPlanForPhase(phase, state, context.transition);
+  const manifest = await loadManifest(root);
+  const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest), now)[phaseId];
+  const plan = transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination);
   const approval: ApprovalEnvelope = {
     schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion,
     id: `${phaseId}-approval`,
@@ -272,12 +273,25 @@ async function exists(filePath: string): Promise<boolean> {
 async function run(args: string[], cwd: string, runner?: CommandRunner): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
+  const native = new NodeCommandRunner();
+  const localOnlyRunner: CommandRunner = runner ?? {
+    async run(command, options) {
+      if (['gh', 'az'].includes(command.executable) ||
+        command.executable === 'git' && ['push', 'ls-remote', 'fetch', 'pull', 'clone'].includes(command.args[0]!)) {
+        throw new Error('External provider access requires an explicit local fixture transport.');
+      }
+      return native.run(command, {
+        ...options,
+        ...(command.executable === 'git' ? { env: { ...options?.env, ...isolatedGitEnvironment } } : {})
+      });
+    }
+  };
   const code = await runCommand(parseArgs(args), {
     cwd,
     stdout,
     stderr,
     terminal: { snapshot: true, columns: 100 },
-    ...(runner ? { runner } : {})
+    runner: localOnlyRunner
   });
   return { code, out: stdout.text(), err: stderr.text() };
 }
@@ -294,6 +308,16 @@ class FailingOpenSpecRunner extends ReadyInitRunner {
 
 class Phase0Runner extends ReadyInitRunner {
   override async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
+    if (command.executable === 'git') {
+      this.calls.push(command);
+      const args = command.args.join(' ');
+      const stdout = args === 'rev-parse --show-toplevel' ? options!.cwd! :
+        args === 'rev-parse --verify HEAD' ? 'a'.repeat(40) :
+          args === 'symbolic-ref --quiet --short HEAD' ? 'develop' :
+            args === 'remote -v' ? 'origin https://github.com/owner/phase0.git (fetch)\norigin https://github.com/owner/phase0.git (push)' :
+              args === 'remote get-url --push --all origin' ? 'https://github.com/owner/phase0.git' : '';
+      return this.result(command, { stdout });
+    }
     if (command.executable === 'gh') {
       this.calls.push(command);
       return this.result(command, {
@@ -369,29 +393,38 @@ function sourceSelected(): GovernanceSourceOfTruthInspection {
   };
 }
 
-function inspectionFor(input: {
+async function inspectionFor(input: {
   root: string;
   phaseId: PhaseId;
   state?: UserActivationState;
   evidence?: readonly PhaseEvidenceRecord[];
   approvals?: readonly ApprovalEnvelope[];
   source?: GovernanceSourceOfTruthInspection;
-}): GovernanceTransitionInspection {
+}): Promise<GovernanceTransitionInspection> {
   const state = input.state ?? validState();
-  const contexts = Object.fromEntries(phaseIds.map((phaseId) => [phaseId, evidenceContextForPhase(phaseId, {
-    repositoryId: state.repository.id,
-    identity: currentActivationIdentity,
-    phaseGraphHash: canonicalPhaseGraphHash,
-    now
-  })])) as GovernanceTransitionInspection['contexts'];
+  const manifest = await loadManifest(input.root);
+  const contexts = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(input.root, manifest), now);
+  const evidence: PhaseEvidenceRecord[] = [];
+  const plans = [];
+  for (const original of input.evidence ?? []) {
+    const bound = await bindFixtureEvidence(input.root, state, original);
+    evidence.push(bound.record);
+    plans.push(bound.plan);
+    const reference = { phaseId: original.header.phaseId, evidenceId: original.evidenceId,
+      headerDigest: evidenceHeaderDigest(bound.record.header), result: original.header.result };
+    state.phases[original.header.phaseId].evidence = [reference];
+    contexts[original.header.phaseId].evidenceReferences = [reference];
+    if (state.bootstrapState?.remoteImportEvidenceId === original.evidenceId) state.bootstrapState.remoteImportEvidenceDigest = reference.headerDigest;
+  }
+  for (const phase of phaseIds) contexts[phase].reviewedPlans = plans;
   return {
     projectRoot: input.root,
-    manifest: manifest('direct'),
+    manifest,
     graph: canonicalPhaseGraph,
     graphHash: canonicalPhaseGraphHash,
     state,
     approvals: input.approvals ?? [],
-    evidence: input.evidence ?? [],
+    evidence,
     contexts,
     readiness: {
       nextReadyPhase: input.phaseId,
@@ -472,9 +505,10 @@ describe('controlled governance apply-next transitions', () => {
 
     const second = await run(['governance', 'apply-next', '--json'], root, new ReadyInitRunner());
     const body = JSON.parse(second.out);
-    expect(second.code).toBe(1);
-    expect(body.reason).toBe('blocked');
-    expect(body.blockers).toEqual(['No phase is ready for execution.']);
+    expect(second.code).toBe(0);
+    expect(body.reason).toBe('execute-required');
+    expect(body.noWrites).toBe(true);
+    expect(JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8'))).toEqual(state);
   });
 
   it('blocks adapter results that are not terminal states for the phase', async () => {
@@ -489,7 +523,7 @@ describe('controlled governance apply-next transitions', () => {
         };
       }
     };
-    const base = inspectionFor({ root, phaseId: 'seed-valid', source: sourceNone() });
+    const base = await inspectionFor({ root, phaseId: 'seed-valid', source: sourceNone() });
 
     const result = await import('../src/governance-activation/transitions.js').then((module) =>
       module.executeApplyNext({
@@ -515,40 +549,60 @@ describe('controlled governance apply-next transitions', () => {
     });
   });
 
+  it('rejects credential-shaped outcome data before writing evidence or state', async () => {
+    const root = await writeProject('secret-shaped-outcome');
+    const base = await inspectionFor({ root, phaseId: 'seed-valid', source: sourceNone() });
+    const synthetic = ['github', '_pat_', 'SYNTHETIC_VALUE_FOR_TESTS_ONLY_1234567890'].join('');
+    await expect(import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) => executeApplyNext({
+      inspection: base,
+      reinspect: async () => base,
+      now,
+      adapters: { phases: { 'seed-valid': {
+        phaseId: 'seed-valid',
+        async execute() {
+          return { status: 'completed', resultState: 'verified', evidencePayload: { kind: 'seed-valid.v1', secret: synthetic } };
+        }
+      } } }
+    }))).rejects.toThrow(/Governance evidence contains credential-shaped content/);
+    expect(await exists(path.join(root, 'governance', 'activation-state.json'))).toBe(false);
+    expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
+  });
+
   it('rolls back local file mutations when evidence/state transaction fails', async () => {
     const root = await writeProject('rollback');
     const adapter: GovernancePhaseAdapter = {
-      phaseId: 'seed-valid',
+      phaseId: 'workflow-source-ready',
       async execute() {
         return {
           status: 'completed',
           resultState: 'verified',
+          evidencePayload: { kind: 'workflow-source-ready.v1', rulesetSourceDigest: 'b'.repeat(64) },
           fileMutations: [
-            { type: 'write', pathParts: ['marker.txt'], content: 'created\n' },
-            { type: 'write', pathParts: ['marker.txt', 'child.txt'], content: 'fail\n' }
+            { type: 'write', pathParts: ['.github', 'workflows', 'marker.yml'], content: 'created\n' },
+            { type: 'write', pathParts: ['.github', 'workflows', 'marker.yml', 'child.txt'], content: 'fail\n' }
           ],
           completedOperations: []
         };
       }
     };
-    const base = inspectionFor({ root, phaseId: 'seed-valid', source: sourceNone() });
+    const base = await inspectionFor({ root, phaseId: 'workflow-source-ready' });
     await expect(buildSavedTransitionPlan({ inspection: base, now })).resolves.toBeTruthy();
     await expect(import('../src/governance-activation/transitions.js').then((module) =>
       module.executeApplyNext({
         inspection: base,
         reinspect: async () => base,
-        adapters: { phases: { 'seed-valid': adapter } },
+        adapters: { phases: { 'workflow-source-ready': adapter } },
         now
       })
     )).rejects.toThrow(/rolled back|Project update failed/);
-    expect(await exists(path.join(root, 'marker.txt'))).toBe(false);
+    expect(await exists(path.join(root, '.github', 'workflows', 'marker.yml'))).toBe(false);
     expect(await exists(path.join(root, 'governance', 'activation-state.json'))).toBe(false);
   });
 });
 
 describe('initial Git adapters', () => {
   function git(cwd: string, args: string[]): void {
-    const result = spawnSync('git', args, { cwd, encoding: 'utf8' });
+    const result = spawnSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, ...isolatedGitEnvironment } });
     if (result.status !== 0) {
       throw new Error(`${args.join(' ')} failed: ${result.stderr}`);
     }
@@ -556,6 +610,8 @@ describe('initial Git adapters', () => {
 
   async function prepareCommittedReadyProject(name: string): Promise<{ root: string; state: UserActivationState }> {
     const root = await writeProject(name);
+    await writeBootstrapFixture(root, name, true);
+    await rm(path.join(root, 'openspec', 'changes', `bootstrap-${name}`), { recursive: true });
     git(root, ['init', '-b', 'develop']);
     git(root, ['config', 'user.email', 'test@example.com']);
     git(root, ['config', 'user.name', 'Governance Test']);
@@ -566,7 +622,6 @@ describe('initial Git adapters', () => {
       await writeEvidence(root, evidenceRecord(phaseId, state));
     }
     await writeApproval(root, state, 'committed');
-    await writeApproval(root, state, 'pushed');
     return { root, state };
   }
 
@@ -583,6 +638,17 @@ describe('initial Git adapters', () => {
     const tracked = spawnSync('git', ['ls-files'], { cwd: root, encoding: 'utf8' }).stdout;
     expect(tracked).toContain('README.md');
     expect(tracked).not.toContain('governance/activation-state.json');
+    const status = await run(['governance', 'status', '--json'], root);
+    expect(status.code, status.out + status.err).toBe(0);
+    for (const phaseId of ['seed-valid', 'seed-verified', 'seed-archived', 'committed']) {
+      expect(JSON.parse(status.out).evidenceFreshness.find((entry: { phaseId: string }) => entry.phaseId === phaseId))
+        .toMatchObject({ status: 'fresh', selectedResult: 'verified', issues: [] });
+    }
+    const receipt = JSON.parse(await readFile(path.join(root, ...body.evidence.pathParts), 'utf8'));
+    const actualHead = spawnSync('git', ['rev-parse', 'HEAD'], { cwd: root, encoding: 'utf8' }).stdout.trim();
+    expect(receipt.payload.head).toBe(actualHead);
+    expect(receipt.header.baselineSha).toMatch(/^[a-f0-9]{64}$/);
+    expect(receipt.header.baselineSha).not.toBe(actualHead);
   });
 
   it('pushes only the approved origin branch and blocks dirty deletion or unexpected branches', async () => {
@@ -590,13 +656,41 @@ describe('initial Git adapters', () => {
     expect((await run(['governance', 'apply-next', '--json', '--execute'], root)).code).toBe(0);
     const remote = path.join(scratchRoot, 'remote.git');
     git(scratchRoot, ['init', '--bare', remote]);
-    git(root, ['remote', 'add', 'origin', remote]);
-    const pushed = await run(['governance', 'apply-next', '--json', '--execute'], root);
-    expect(pushed.code).toBe(0);
+    const reviewedUrl = 'https://github.com/owner/repo.git';
+    git(root, ['remote', 'add', 'origin', reviewedUrl]);
+    await writeApproval(root, (await loadActivationState(root))!.state, 'pushed');
+    const transport = new NodeCommandRunner();
+    const localGitTransport: CommandRunner = {
+      async run(command, options) {
+        if (['gh', 'az'].includes(command.executable) ||
+          command.executable === 'git' && ['fetch', 'pull', 'clone'].includes(command.args[0]!)) {
+          throw new Error('Unexpected external read is forbidden by the local Git fixture transport.');
+        }
+        let local = command;
+        if (command.executable === 'git' && ['push', 'ls-remote'].includes(command.args[0]!)) {
+          const destinationIndex = command.args[0] === 'push' ? 1 : 2;
+          if (command.args[destinationIndex] !== reviewedUrl) throw new Error('Unreviewed fixture destination; network transport is forbidden.');
+          local = { ...command, args: command.args.map((argument, index) => index === destinationIndex ? remote : argument) };
+        }
+        const result = await transport.run(local, {
+          ...options,
+          ...(command.executable === 'git' ? { env: { ...options?.env, ...isolatedGitEnvironment } } : {})
+        });
+        return { ...result, command, displayCommand: formatCommand(command) };
+      }
+    };
+    const pushed = await run(['governance', 'apply-next', '--json', '--execute'], root, localGitTransport);
+    expect(pushed.code, pushed.out + pushed.err).toBe(0);
     const pushedBody = JSON.parse(pushed.out);
     expect(pushedBody.executedOperations.map((op: { actionId: string }) => op.actionId)).toContain('git.push-approved-ref');
     const remoteHeads = spawnSync('git', ['--git-dir', remote, 'show-ref', 'refs/heads/develop'], { encoding: 'utf8' });
     expect(remoteHeads.status).toBe(0);
+    const status = await run(['governance', 'status', '--json'], root, localGitTransport);
+    expect(status.code, status.out + status.err).toBe(0);
+    for (const phaseId of ['seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed']) {
+      expect(JSON.parse(status.out).evidenceFreshness.find((entry: { phaseId: string }) => entry.phaseId === phaseId))
+        .toMatchObject({ status: 'fresh', selectedResult: 'verified', issues: [] });
+    }
 
     const dirtyRoot = (await prepareCommittedReadyProject('git-dirty')).root;
     git(dirtyRoot, ['add', 'README.md']);
@@ -615,23 +709,53 @@ describe('initial Git adapters', () => {
 });
 
 describe('phase 0, rulesets, rollback, and retention guards', () => {
+  it('blocks remote readiness when the selected import proof reports failure', async () => {
+    const root = await writeProject('failed-import');
+    const state = validState({
+      applicability: { statePath: 'bootstrap-local', privateStagingDast: true, credentialRequired: false }
+    });
+    const inspection = await inspectionFor({
+      root, phaseId: 'remote-ready', state,
+      evidence: [evidenceRecord('remote-import-verified', state, 'failed', {
+        kind: 'remote-import-verified.v1'
+      }, [liveProof('remote-import-verified', 'azure', state)])]
+    });
+    const before = await fingerprint(root);
+    const preview = await previewApplyNext({ inspection, now, execute: false });
+    expect(preview.authorized).toBe(false);
+    expect(preview.message).toContain('successful proof from the selected backend path');
+    expect(await fingerprint(root)).toBe(before);
+  });
+
+  it('does not label missing selected-bootstrap retention as inapplicable', async () => {
+    const root = await writeProject('missing-retention');
+    const state = validState({
+      applicability: { statePath: 'bootstrap-local', privateStagingDast: true, credentialRequired: false }
+    });
+    const approval = await writeApproval(root, state, 'bootstrap-state-disposed');
+    const inspection = await inspectionFor({
+      root, phaseId: 'bootstrap-state-disposed', state, approvals: [approval]
+    });
+    const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) =>
+      executeApplyNext({ inspection, reinspect: async () => inspection, now }));
+    expect(result.applied).toBe(false);
+    expect(result.evidence).toBeNull();
+    expect(result.message).toContain('recorded retention inventory');
+  });
+
   it('runs Phase 0 through read-only literal commands and writes no active change before approval', async () => {
     const root = await writeProject('phase0');
-    const state = validState();
-    await writeState(root, state);
-    for (const phaseId of ['seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed'] as const) {
-      await writeEvidence(root, evidenceRecord(phaseId, state));
-    }
-    await writeApproval(root, state, 'committed');
-    await writeApproval(root, state, 'pushed');
     const runner = new Phase0Runner();
-    const result = await run(['governance', 'apply-next', '--json', '--execute'], root, runner);
-    expect(result.code).toBe(0);
+    const inspection = await inspectionFor({ root, phaseId: 'phase-0-complete', source: sourceNone() });
+    const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) =>
+      executeApplyNext({ inspection, reinspect: async () => inspection, runner, now }));
+    expect(result.applied, result.message).toBe(true);
     const commands = runner.calls.map((command) => `${command.executable} ${command.args.join(' ')}`);
-    expect(commands).toContain('gh repo view --json id,nameWithOwner,defaultBranchRef,isPrivate');
-    expect(commands).toContain('az account show --output json');
+    expect(commands).toContain('gh repo view owner/phase0 --json id,nameWithOwner,defaultBranchRef,isPrivate');
+    expect(commands).not.toContain('az account show --output json');
     expect(commands.some((command) => /\b(gh repo create|gh api --method (POST|PATCH)|az deployment|tofu apply)\b/u.test(command))).toBe(false);
-    expect(await exists(path.join(root, 'openspec', 'changes'))).toBe(false);
+    expect(JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')).activeChange).toBeNull();
+    expect((await readdir(path.join(root, 'openspec', 'changes'))).some((name) => name.startsWith('governance-'))).toBe(false);
   });
 
   it('requires exact green/red proof and live ruleset readback matching saved source', async () => {
@@ -648,16 +772,49 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
         kind: 'green-red-proof.v1',
         green: { conclusion: 'success', checkName: 'required' },
         deliberateRed: { conclusion: 'failure', deliberate: true, checkName: 'required' }
-      })
+      }, [liveProof('green-red-proof', 'github', state)])
     ];
     const approval = await writeApproval(root, state, 'rulesets-applied');
-    const inspection = inspectionFor({
+    const inspection = await inspectionFor({
       root,
       phaseId: 'rulesets-applied',
       state,
       evidence,
       approvals: [approval]
     });
+    const intactSource = inspection.evidence[0]!;
+    inspection.evidence = [{
+      ...intactSource,
+      payload: { ...(intactSource.payload as Record<string, unknown>), rulesetSourceDigest: 'c'.repeat(64) }
+    }, ...inspection.evidence];
+    const expiringPlan = (await buildSavedTransitionPlan({ inspection, now }))!;
+    let unexpectedProviderAccess = false;
+    const expired = await executeRulesetPhase({
+      inspection, plan: expiringPlan,
+      phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'rulesets-applied')!,
+      runner: new ReadyInitRunner(), now, clock: () => new Date(expiringPlan.expiresAt),
+      adapters: { githubRulesets: {
+        async applyRuleset() { unexpectedProviderAccess = true; throw new Error('Expired plan cannot access a provider.'); },
+        async readRuleset() { unexpectedProviderAccess = true; throw new Error('Expired plan cannot access a provider.'); }
+      } }
+    });
+    expect(expired?.status).toBe('blocked');
+    expect(expired?.blocker).toContain('expired');
+    expect(unexpectedProviderAccess).toBe(false);
+    const expiredApproval = await executeRulesetPhase({
+      inspection: { ...inspection, approvals: inspection.approvals.map((envelope) => ({
+        ...envelope, expiresAt: new Date(now.getTime() + 1000).toISOString()
+      })) },
+      plan: expiringPlan,
+      phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'rulesets-applied')!,
+      runner: new ReadyInitRunner(), now, clock: () => new Date(now.getTime() + 2000),
+      adapters: { githubRulesets: {
+        async applyRuleset() { unexpectedProviderAccess = true; throw new Error('Expired approval cannot access a provider.'); },
+        async readRuleset() { unexpectedProviderAccess = true; throw new Error('Expired approval cannot access a provider.'); }
+      } }
+    });
+    expect(expiredApproval?.blocker).toContain('approval is no longer valid');
+    expect(unexpectedProviderAccess).toBe(false);
     const module = await import('../src/governance-activation/transitions.js');
     const result = await module.executeApplyNext({
       inspection,
@@ -665,11 +822,12 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       now,
       adapters: {
         githubRulesets: {
-          async applyRuleset() {
-            return { resourceId: 'ruleset-1', sourceDigest, readbackDigest: sourceDigest };
+          async applyRuleset(input) {
+            expect(input.sourceDigest).toBe(sourceDigest);
+            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
           },
           async readRuleset() {
-            return { resourceId: 'ruleset-1', sourceDigest, readbackDigest: sourceDigest };
+            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
           }
         }
       }
@@ -677,8 +835,10 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     expect(result.applied).toBe(true);
     expect(result.evidence?.result).toBe('verified');
 
-    const skipped = inspectionFor({
-      root: await writeProject('rulesets-skipped'),
+    const skippedRoot = await writeProject('rulesets-skipped');
+    const skippedApproval = await writeApproval(skippedRoot, state, 'rulesets-applied');
+    const skipped = await inspectionFor({
+      root: skippedRoot,
       phaseId: 'rulesets-applied',
       state,
       evidence: [
@@ -687,9 +847,9 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
           kind: 'green-red-proof.v1',
           green: { conclusion: 'skipped', checkName: 'required' },
           deliberateRed: { conclusion: 'failure', deliberate: true, checkName: 'required' }
-        })
+        }, [liveProof('green-red-proof', 'github', state)])
       ],
-      approvals: [approval]
+      approvals: [skippedApproval]
     });
     const blocked = await module.executeApplyNext({
       inspection: skipped,
@@ -698,10 +858,10 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       adapters: {
         githubRulesets: {
           async applyRuleset() {
-            return { resourceId: 'ruleset-1', sourceDigest, readbackDigest: sourceDigest };
+            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
           },
           async readRuleset() {
-            return { resourceId: 'ruleset-1', sourceDigest, readbackDigest: sourceDigest };
+            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
           }
         }
       }
@@ -710,8 +870,18 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     expect(blocked.message).toContain('Skipped, cancelled, and neutral');
   });
 
-  it('blocks noninteractive credential enrollment until a masked channel or payload-free policy exists', async () => {
-    const root = await writeProject('credential');
+  it.each([false, true])('keeps unavailable credential enrollment/readback blocked even with policy metadata present=%s', async (policyPresent) => {
+    const root = await writeProject(`credential-${policyPresent}`);
+    if (policyPresent) {
+      const policy = buildFineGrainedPatCredentialPolicy({
+        repository: canonicalCredentialRepository({ id: 'R_REMOTE', owner: 'owner', name: 'repo' }),
+        allowedWorkflows: [{ path: '.github/workflows/preflight.yml', jobs: ['runner-preflight'] }],
+        createdAt: now,
+        proof: { verifiedAt: now.toISOString(), readbackDigest: 'a'.repeat(64), readbackProvider: 'adapter-fixture', payloadFree: true }
+      });
+      await mkdir(path.join(root, ...credentialPolicyPathParts.slice(0, -1)), { recursive: true });
+      await writeFile(path.join(root, ...credentialPolicyPathParts), JSON.stringify(policy));
+    }
     const state = validState({
       applicability: {
         statePath: 'none',
@@ -720,7 +890,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       }
     });
     const approval = await writeApproval(root, state, 'credential-ready');
-    const inspection = inspectionFor({
+    const inspection = await inspectionFor({
       root,
       phaseId: 'credential-ready',
       state,
@@ -733,7 +903,9 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       now
     });
     expect(result.applied).toBe(false);
-    expect(result.message).toContain('secure masked input channel');
+    expect(result.message).toMatch(/credential (?:enrollment|readback).*unavailable/i);
+    expect(result.message).not.toContain('secure masked input channel');
+    expect(result.evidence).toBeNull();
     expect(JSON.stringify(result)).not.toMatch(/github_pat_|gh[pousr]_/);
   });
 
@@ -768,7 +940,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       remoteBackendDigest: 'c'.repeat(64),
       noChangePlanDigest: 'd'.repeat(64)
     }, [liveProof('remote-import-verified', 'azure', state)]);
-    const remoteReady = inspectionFor({
+    const remoteReady = await inspectionFor({
       root,
       phaseId: 'remote-ready',
       state,
@@ -788,6 +960,7 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       state: retainedState,
       approvals: [],
       evidence: [],
+      transitionContexts: activationEvidenceContexts(canonicalPhaseGraph, retainedState, await readActivationInputSnapshot(root, await loadManifest(root))),
       now: new Date('2026-10-03T23:59:59.000Z')
     });
     expect(readiness.phases['bootstrap-state-disposed'].state).toBe('blocked');
@@ -821,13 +994,28 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     await writeFile(path.join(disposalRoot, 'infrastructure', 'bootstrap.tfstate.enc'), 'encrypted-state\n', 'utf8');
     await writeFile(path.join(disposalRoot, 'infrastructure', 'bootstrap.key'), 'key-id-only\n', 'utf8');
     const disposalApproval = await writeApproval(disposalRoot, retainedForDisposal, 'bootstrap-state-disposed');
-    const disposalInspection = inspectionFor({
+    const disposalInspection = await inspectionFor({
       root: disposalRoot,
       phaseId: 'bootstrap-state-disposed',
       state: retainedForDisposal,
       evidence: [retainedImport],
       approvals: [disposalApproval]
     });
+    const badPathsRoot = await writeProject('disposal-unbound-path');
+    await writeFile(path.join(badPathsRoot, 'protected.txt'), 'preserve this file\n');
+    const badPathsState = structuredClone(retainedForDisposal);
+    badPathsState.bootstrapState!.encryptedStatePathParts = [['protected.txt']];
+    const badPathsApproval = await writeApproval(badPathsRoot, badPathsState, 'bootstrap-state-disposed');
+    const badPaths = await inspectionFor({
+      root: badPathsRoot, phaseId: 'bootstrap-state-disposed', state: badPathsState,
+      evidence: [retainedImport], approvals: [badPathsApproval]
+    });
+    const refused = await module.executeApplyNext({
+      inspection: badPaths, reinspect: async () => badPaths, now: new Date('2026-10-04T00:00:00.000Z')
+    });
+    expect(refused.applied).toBe(false);
+    expect(refused.message).toContain('Disposal paths differ');
+    expect(await readFile(path.join(badPathsRoot, 'protected.txt'), 'utf8')).toBe('preserve this file\n');
     const disposed = await module.executeApplyNext({
       inspection: disposalInspection,
       reinspect: async () => disposalInspection,

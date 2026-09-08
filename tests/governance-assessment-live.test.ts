@@ -85,6 +85,7 @@ const rulesetsUrl = (page = 1) => inventoryUrl('/rulesets', page, { includes_par
 const checksUrl = (page = 1) => inventoryUrl(`/commits/${commit}/check-runs`, page, { filter: 'latest' });
 const environmentsUrl = (page = 1) => inventoryUrl('/environments', page);
 const workflowsUrl = (page = 1) => inventoryUrl('/actions/workflows', page);
+const branchesUrl = (page = 1) => inventoryUrl('/branches', page);
 const branchUrl = `${base}/branches/develop`;
 
 interface Reply {
@@ -368,6 +369,59 @@ describe('bounded, read-only GitHub assessment', () => {
       protection: { classic, effectiveRules: [effective] }
     }]);
     expect(JSON.stringify(result)).not.toContain(token);
+  });
+
+  it('enumerates bounded release and hotfix families into exact branch reads', async () => {
+    const runner = new FixtureRunner().set(branchesUrl(), {
+      value: [
+        { name: 'develop' },
+        { name: 'release/1.0' },
+        { name: 'hotfix/urgent' },
+        { name: 'feature/not-policy-scoped' }
+      ]
+    });
+
+    const result = await collect(scope({
+      refs: ['develop'],
+      refPrefixes: ['release/', 'hotfix/']
+    }), runner);
+
+    expect(result.observations['github.ref-families']).toMatchObject({
+      availability: 'observed',
+      value: {
+        complete: true,
+        prefixes: ['hotfix/', 'release/'],
+        refs: ['hotfix/urgent', 'release/1.0']
+      }
+    });
+    expect(runner.calls.filter((call) => /\/branches\/(?:develop|release%2F1\.0|hotfix%2Furgent)$/u.test(call.url))
+      .map((call) => call.url)).toEqual(expect.arrayContaining([
+      `${base}/branches/develop`,
+      `${base}/branches/release%2F1.0`,
+      `${base}/branches/hotfix%2Furgent`
+    ]));
+    expect(runner.calls.some((call) => call.url.includes('feature'))).toBe(false);
+  });
+
+  it('keeps incomplete release/hotfix enumeration explicit while retaining permanent-ref reads', async () => {
+    const runner = new FixtureRunner().set(branchesUrl(), {
+      httpStatus: 403
+    });
+
+    const result = await collect(scope({
+      refs: ['develop'],
+      refPrefixes: ['release/', 'hotfix/']
+    }), runner);
+
+    expect(result.refsStable).toBe(false);
+    expect(result.observations['github.ref-families']).toMatchObject({
+      availability: 'not-observed',
+      reason: expect.stringContaining('denied')
+    });
+    expect(result.observations['github.branches']).toMatchObject({
+      availability: 'observed',
+      value: [expect.objectContaining({ name: 'develop' })]
+    });
   });
 
   it('keeps a protection 404 unknown even when effective rules were readable', async () => {
@@ -1254,7 +1308,13 @@ describe('explicit Azure provider and resource metadata', () => {
     const runner = fixture([storage, subnet]).set(resourceUrl(storage), { httpStatus: 404, stderr: `ResourceNotFound ${token}` });
     const result = await collect(scope({ azure: [storage, subnet] }), runner);
     expect(result.observations['azure.providers']!.availability).toBe('observed');
-    expect(result.observations['azure.resources']).toMatchObject({ availability: 'not-observed', value: null });
+    expect(result.observations['azure.resources']).toMatchObject({
+      availability: 'not-observed',
+      value: null,
+      facts: [expect.objectContaining({
+        resourceId: subnet.resourceId
+      })]
+    });
     expect(result.observations[`azure.resource.staging.${subnet.resourceId}`]!.availability).toBe('observed');
     expect(result.observations[`azure.resource.staging.${storage.resourceId}`]!.availability).toBe('not-observed');
     expect(JSON.stringify(result)).not.toContain(token);

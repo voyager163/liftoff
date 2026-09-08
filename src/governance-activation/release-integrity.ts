@@ -1,6 +1,6 @@
-import { canonicalSha256 } from './canonical-json.js';
-import { phaseContractDigests } from './graph.js';
-import type { ActivationIdentity, ManagedPhaseGraph, PhaseId } from './types.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { phaseContractDigests } from '../domain/governance/activation/graph.js';
+import type { ActivationIdentity, ManagedPhaseGraph, PhaseId } from '../domain/governance/activation/types.js';
 
 export interface ReleaseIntegrityInput {
   previousGraph: ManagedPhaseGraph;

@@ -3,7 +3,8 @@ import {
   canonicalApprovalEnvelopeHash,
   canonicalPhaseGraph,
   currentActivationIdentity,
-  approvalEnvelopeV1Schema,
+  approvalEnvelopeV2Schema,
+  canonicalSha256,
   determineHumanAuthorityQuestion,
   evaluateApprovalForTransitionPlan,
   evidenceContextForPhase,
@@ -57,6 +58,8 @@ function planFor(phaseId: PhaseId): RequestedTransitionPlan {
   const activationState = state();
   const context = evidenceContextForPhase(phaseId, {
     repositoryId: activationState.repository.id,
+    baselineSha: canonicalSha256('approval fixture baseline'),
+    inputDigest: canonicalSha256({ phaseId, fixture: 'approval inputs' }),
     identity: currentActivationIdentity,
     phaseGraphHash: currentActivationIdentity.phaseGraphHash
   });
@@ -88,12 +91,12 @@ function expectApprovalRequired(
   expect(result.reasons.join('\n')).toMatch(expected);
 }
 
-describe('approval-envelope v1 validation and hashing', () => {
-  it('exports a strict v1 JSON schema for the envelope shape', () => {
-    expect(approvalEnvelopeV1Schema).toMatchObject({
+describe('approval-envelope v2 validation and hashing', () => {
+  it('exports a strict v2 JSON schema for the envelope shape', () => {
+    expect(approvalEnvelopeV2Schema).toMatchObject({
       additionalProperties: false,
       properties: {
-        schemaVersion: { const: 1 },
+        schemaVersion: { const: 2 },
         costCeiling: {
           properties: {
             fixedMonthlyCents: { type: 'integer', minimum: 0 },
@@ -104,7 +107,7 @@ describe('approval-envelope v1 validation and hashing', () => {
     });
   });
 
-  it('canonicalizes set order without hashing approval metadata', () => {
+  it('canonicalizes set order while binding the authorization interval and approver', () => {
     const base = planFor('provider-ready');
     const first = validateApprovalEnvelope(envelope({
       ...base,
@@ -123,12 +126,13 @@ describe('approval-envelope v1 validation and hashing', () => {
       ],
       permissions: ['azure.subscription/read', 'azure.provider/register'],
       policyExceptions: ['exception-a', 'exception-b']
-    }, {
-      approvedAt: '2026-09-04T01:02:03.000Z',
-      approver: 'another-owner'
     }));
 
     expect(canonicalApprovalEnvelopeHash(first)).toBe(canonicalApprovalEnvelopeHash(reordered));
+    expect(canonicalApprovalEnvelopeHash({ ...reordered, approvedAt: '2026-09-04T01:02:03.000Z' }))
+      .not.toBe(canonicalApprovalEnvelopeHash(first));
+    expect(canonicalApprovalEnvelopeHash({ ...reordered, approver: 'another-owner' }))
+      .not.toBe(canonicalApprovalEnvelopeHash(first));
   });
 
   it('rejects malformed shape, duplicates, invalid costs, currency, timestamps, expiry, and identity mismatch', () => {
@@ -156,7 +160,7 @@ describe('approval-envelope v1 validation and hashing', () => {
     })).toThrow(/currency/);
     expect(() => validateApprovalEnvelope({ ...base, expiresAt: 'soon' })).toThrow(/ISO timestamp/);
     expect(() => validateApprovalEnvelope(
-      { ...base, expiresAt: '2020-01-01T00:00:00.000Z' },
+      { ...base, approvedAt: '2019-01-01T00:00:00.000Z', expiresAt: '2020-01-01T00:00:00.000Z' },
       { requireUnexpired: true, now }
     )).toThrow(/future/);
     expect(() => validateApprovalEnvelope(base, {

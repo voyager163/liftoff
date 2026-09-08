@@ -1,29 +1,29 @@
 import { createHash, randomUUID } from 'node:crypto';
 import {
-  chmod,
   link,
   lstat,
   mkdir,
   mkdtemp,
-  open,
   readFile,
   readdir,
   realpath,
   rename,
   rm,
   rmdir,
-  unlink,
-  writeFile
+  unlink
 } from 'node:fs/promises';
-import type { FileHandle } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import type { CommandRunner } from './process-runner.js';
 import {
-  validateArtifactPathParts,
+  validateArtifactPathParts
+} from './domain/project/paths.js';
+import {
   writeProjectFile
-} from './file-system.js';
-import type { GeneratedArtifact } from './types.js';
+} from './adapters/filesystem/project-files.js';
+import type { GeneratedArtifact } from './domain/project/contracts.js';
+import { withProjectMutationLock } from './adapters/filesystem/project-lock.js';
+import { createFileAtomically } from './adapters/filesystem/atomic-write.js';
 
 export type InitTargetMode = 'in-place' | 'named-child';
 export type StagedOrigin = 'liftoff' | 'framework' | 'seed';
@@ -179,14 +179,27 @@ export async function discoverGitRoot(
   }
   const result = await runner.run(
     { executable: 'git', args: ['rev-parse', '--show-toplevel'] },
-    { cwd: canonicalCwd, timeoutMs: 15_000 }
+    {
+      cwd: canonicalCwd,
+      env: {
+        ...process.env,
+        LANG: 'C',
+        LANGUAGE: 'C',
+        LC_ALL: 'C'
+      },
+      timeoutMs: 15_000
+    }
   );
   if (result.status !== 0) {
     const stderr = result.stderr.trim();
     if (
+      result.status === 128 &&
       !result.timedOut &&
       result.errorCode === undefined &&
-      /not a git repository/i.test(stderr)
+      result.errorMessage === undefined &&
+      result.signal === null &&
+      result.stdout.trim() === '' &&
+      /^(?:fatal:\s*)?not a git repository(?: \(or any of the parent directories\): \.git)?$/i.test(stderr)
     ) {
       return { cwd, canonicalCwd, exact: false };
     }
@@ -195,10 +208,13 @@ export async function discoverGitRoot(
       : (result.errorMessage ?? stderr) || `git exited with status ${result.status}`;
     throw new InitFileSystemError(`Unable to determine the Git worktree root: ${detail}`);
   }
-  const reportedRoot = result.stdout.trim().split(/\r?\n/)[0];
-  if (!reportedRoot) {
-    return { cwd, canonicalCwd, exact: false };
+  const reportedRoots = result.stdout.trim().split(/\r?\n/).filter(Boolean);
+  if (reportedRoots.length !== 1) {
+    throw new InitFileSystemError(
+      'Unable to determine the Git worktree root: git returned an invalid worktree root.'
+    );
   }
+  const [reportedRoot] = reportedRoots;
   let root: string;
   try {
     root = await realpath(path.resolve(canonicalCwd, reportedRoot));
@@ -664,73 +680,14 @@ type RollbackAction =
     }
   | { type: 'created-directory'; pathParts: readonly string[]; relativePath: string };
 
-interface TargetLock {
-  path: string;
-  handle: FileHandle;
-  device: number;
-  inode: number;
-}
-
-async function acquireTargetLock(targetRoot: string): Promise<TargetLock> {
-  const lockPath = path.join(targetRoot, '.liftoff-init.lock');
-  let handle: FileHandle;
-  try {
-    handle = await open(lockPath, 'wx', 0o600);
-  } catch (error) {
-    throw new InitFileSystemError(
-      errorCode(error) === 'EEXIST'
-        ? `Another Liftoff initialization is already modifying ${targetRoot}.`
-        : `Unable to lock initialization target ${targetRoot}: ${errorMessage(error)}`
-    );
-  }
-  try {
-    await handle.writeFile(`${process.pid}\n`, 'utf8');
-    const details = await handle.stat();
-    return { path: lockPath, handle, device: details.dev, inode: details.ino };
-  } catch (error) {
-    await handle.close();
-    await rm(lockPath, { force: true });
-    throw error;
-  }
-}
-
-async function assertTargetLock(lock: TargetLock): Promise<void> {
-  const details = await lstat(lock.path);
-  if (!details.isFile() || details.dev !== lock.device || details.ino !== lock.inode) {
-    throw new InitFileSystemError('Initialization target lock changed while the merge was running.');
-  }
-}
-
-async function releaseTargetLock(lock: TargetLock): Promise<void> {
-  await lock.handle.close();
-  try {
-    const details = await lstat(lock.path);
-    if (details.dev === lock.device && details.ino === lock.inode) {
-      await unlink(lock.path);
-    }
-  } catch (error) {
-    if (errorCode(error) !== 'ENOENT') {
-      throw error;
-    }
-  }
-}
-
 async function writeBufferNoClobber(
   targetRoot: string,
   pathParts: readonly string[],
   content: Buffer,
-  mode: number
+  mode: number,
+  onCreated?: () => void
 ): Promise<void> {
-  const destination = path.join(targetRoot, ...pathParts);
-  const directory = path.dirname(destination);
-  const temporary = path.join(directory, `.${path.basename(destination)}.liftoff-${randomUUID()}.tmp`);
-  try {
-    await writeFile(temporary, content, { flag: 'wx', mode });
-    await chmod(temporary, mode);
-    await link(temporary, destination);
-  } finally {
-    await rm(temporary, { force: true });
-  }
+  return createFileAtomically(path.join(targetRoot, ...pathParts), content, mode, onCreated);
 }
 
 async function moveCurrentFileToBackup(
@@ -840,8 +797,8 @@ async function discardReplacementBackups(actions: RollbackAction[]): Promise<voi
   }
 }
 
-async function assertFreshTarget(targetRoot: string, lock: TargetLock): Promise<void> {
-  const entries = (await readdir(targetRoot)).filter((entry) => path.join(targetRoot, entry) !== lock.path);
+async function assertFreshTarget(targetRoot: string): Promise<void> {
+  const entries = await readdir(targetRoot);
   if (entries.length > 0) {
     throw new InitFileSystemError(
       `Migration target must remain new or empty; found ${entries.sort(comparePortable).join(', ')}.`
@@ -874,122 +831,111 @@ export async function applyMergePreflight(
   if (!authorizedMergePlans.has(preflight)) {
     throw new InitFileSystemError('Merge preflight must be authorized before applying.');
   }
-  const result: MergeResult = { created: [], replaced: [], identical: [], mergedDirectories: [] };
-  const actions: RollbackAction[] = [];
-  const entries = mutationOrder(preflight.entries);
-  let createdTargetRoot = false;
-  let activeTargetRootSnapshot = preflight.targetRootSnapshot;
-  let targetLock: TargetLock | undefined;
-  try {
-    await assertTargetRootSnapshot(preflight.targetRootSnapshot, preflight.targetRoot);
-    if (preflight.targetRootSnapshot.state === 'missing') {
-      await mkdir(preflight.targetRoot);
-      createdTargetRoot = true;
-      activeTargetRootSnapshot = await captureTargetRootSnapshot(preflight.targetRoot);
-      if (
-        activeTargetRootSnapshot.state !== 'directory' ||
-        activeTargetRootSnapshot.canonicalPath !== preflight.targetRootSnapshot.canonicalPath ||
-        activeTargetRootSnapshot.parentCanonicalPath !== preflight.targetRootSnapshot.parentCanonicalPath ||
-        activeTargetRootSnapshot.parentDevice !== preflight.targetRootSnapshot.parentDevice ||
-        activeTargetRootSnapshot.parentInode !== preflight.targetRootSnapshot.parentInode
-      ) {
-        throw new InitFileSystemError(`Initialization target root changed while it was being created: ${preflight.targetRoot}`);
-      }
-    }
-    targetLock = await acquireTargetLock(preflight.targetRoot);
-    await assertTargetRootSnapshot(activeTargetRootSnapshot, preflight.targetRoot);
-    await assertTargetLock(targetLock);
-    if (options.requireEmptyTarget) {
-      await assertFreshTarget(preflight.targetRoot, targetLock);
-    }
-    for (const entry of entries) {
-      await assertPreflightEntryCurrent(preflight.targetRoot, entry);
-    }
-    for (const [index, entry] of entries.entries()) {
-      await options.onBeforeMutation?.(entry, index);
-      await assertTargetRootSnapshot(activeTargetRootSnapshot, preflight.targetRoot);
-      await assertTargetLock(targetLock);
-      await assertPreflightEntryCurrent(preflight.targetRoot, entry);
-      if (entry.action === 'merge-directory') {
-        result.mergedDirectories.push(entry.relativePath);
-        continue;
-      }
-      if (entry.action === 'identical') {
-        result.identical.push(entry.relativePath);
-        continue;
-      }
-      if (entry.action === 'blocked') {
-        throw new InitFileSystemError(`Blocked preflight entry reached merge: ${entry.relativePath}`);
-      }
-      if (entry.stagedType === 'directory') {
-        await mkdir(path.join(preflight.targetRoot, ...entry.pathParts));
-        actions.push({ type: 'created-directory', pathParts: entry.pathParts, relativePath: entry.relativePath });
-        result.created.push(entry.relativePath);
-        continue;
-      }
-
-      const stagedContent = await readFile(path.join(preflight.stagingRoot, ...entry.pathParts));
-      const stagedMode = entry.stagedMode ?? 0o666;
-      if (entry.action === 'replace') {
-        const original = await moveCurrentFileToBackup(preflight.targetRoot, entry);
-        actions.push({
-          type: 'replaced-file',
-          pathParts: entry.pathParts,
-          relativePath: entry.relativePath,
-          backupPath: original.backupPath,
-          originalContent: original.content,
-          originalMode: original.mode,
-          replacementHash: hash(stagedContent),
-          replacementMode: stagedMode
-        });
-        await writeBufferNoClobber(preflight.targetRoot, entry.pathParts, stagedContent, stagedMode);
-        result.replaced.push(entry.relativePath);
-      } else {
-        await writeBufferNoClobber(preflight.targetRoot, entry.pathParts, stagedContent, stagedMode);
-        actions.push({
-          type: 'created-file',
-          pathParts: entry.pathParts,
-          relativePath: entry.relativePath,
-          contentHash: hash(stagedContent),
-          mode: stagedMode
-        });
-        result.created.push(entry.relativePath);
-      }
-    }
-    await discardReplacementBackups(actions);
-    return result;
-  } catch (error) {
-    let rollback: RollbackReport;
+  return withProjectMutationLock(preflight.targetRoot, async (lease) => {
+    const result: MergeResult = { created: [], replaced: [], identical: [], mergedDirectories: [] };
+    const actions: RollbackAction[] = [];
+    const entries = mutationOrder(preflight.entries);
+    let createdTargetRoot = false;
+    let activeTargetRootSnapshot = preflight.targetRootSnapshot;
     try {
+      await assertTargetRootSnapshot(preflight.targetRootSnapshot, preflight.targetRoot);
+      if (preflight.targetRootSnapshot.state === 'missing') {
+        await mkdir(preflight.targetRoot);
+        createdTargetRoot = true;
+        activeTargetRootSnapshot = await captureTargetRootSnapshot(preflight.targetRoot);
+        if (
+          activeTargetRootSnapshot.state !== 'directory' ||
+          activeTargetRootSnapshot.canonicalPath !== preflight.targetRootSnapshot.canonicalPath ||
+          activeTargetRootSnapshot.parentCanonicalPath !== preflight.targetRootSnapshot.parentCanonicalPath ||
+          activeTargetRootSnapshot.parentDevice !== preflight.targetRootSnapshot.parentDevice ||
+          activeTargetRootSnapshot.parentInode !== preflight.targetRootSnapshot.parentInode
+        ) {
+          throw new InitFileSystemError(`Initialization target root changed while it was being created: ${preflight.targetRoot}`);
+        }
+      }
       await assertTargetRootSnapshot(activeTargetRootSnapshot, preflight.targetRoot);
-      rollback = await rollbackMerge(preflight.targetRoot, actions);
-    } catch (rollbackError) {
-      rollback = {
-        restored: [],
-        removed: [],
-        failures: [`.: rollback refused because the target root changed: ${errorMessage(rollbackError)}`]
-      };
-    }
-    if (targetLock) {
-      try {
-        await releaseTargetLock(targetLock);
-        targetLock = undefined;
-      } catch (lockError) {
-        rollback.failures.push(`.liftoff-init.lock: ${errorMessage(lockError)}`);
+      await lease.assertHeld();
+      if (options.requireEmptyTarget) {
+        await assertFreshTarget(preflight.targetRoot);
       }
-    }
-    if (createdTargetRoot) {
+      for (const entry of entries) {
+        await assertPreflightEntryCurrent(preflight.targetRoot, entry);
+      }
+      for (const [index, entry] of entries.entries()) {
+        await options.onBeforeMutation?.(entry, index);
+        await assertTargetRootSnapshot(activeTargetRootSnapshot, preflight.targetRoot);
+        await lease.assertHeld();
+        await assertPreflightEntryCurrent(preflight.targetRoot, entry);
+        if (entry.action === 'merge-directory') {
+          result.mergedDirectories.push(entry.relativePath);
+          continue;
+        }
+        if (entry.action === 'identical') {
+          result.identical.push(entry.relativePath);
+          continue;
+        }
+        if (entry.action === 'blocked') {
+          throw new InitFileSystemError(`Blocked preflight entry reached merge: ${entry.relativePath}`);
+        }
+        if (entry.stagedType === 'directory') {
+          await mkdir(path.join(preflight.targetRoot, ...entry.pathParts));
+          actions.push({ type: 'created-directory', pathParts: entry.pathParts, relativePath: entry.relativePath });
+          result.created.push(entry.relativePath);
+          continue;
+        }
+
+        const stagedContent = await readFile(path.join(preflight.stagingRoot, ...entry.pathParts));
+        const stagedMode = entry.stagedMode ?? 0o666;
+        if (entry.action === 'replace') {
+          const original = await moveCurrentFileToBackup(preflight.targetRoot, entry);
+          actions.push({
+            type: 'replaced-file',
+            pathParts: entry.pathParts,
+            relativePath: entry.relativePath,
+            backupPath: original.backupPath,
+            originalContent: original.content,
+            originalMode: original.mode,
+            replacementHash: hash(stagedContent),
+            replacementMode: stagedMode
+          });
+          await writeBufferNoClobber(preflight.targetRoot, entry.pathParts, stagedContent, stagedMode);
+          result.replaced.push(entry.relativePath);
+        } else {
+          await writeBufferNoClobber(preflight.targetRoot, entry.pathParts, stagedContent, stagedMode, () => {
+            actions.push({
+              type: 'created-file',
+              pathParts: entry.pathParts,
+              relativePath: entry.relativePath,
+              contentHash: hash(stagedContent),
+              mode: stagedMode
+            });
+          });
+          result.created.push(entry.relativePath);
+        }
+      }
+      await discardReplacementBackups(actions);
+      return result;
+    } catch (error) {
+      let rollback: RollbackReport;
       try {
-        await rmdir(preflight.targetRoot);
-        rollback.removed.push('.');
+        await assertTargetRootSnapshot(activeTargetRootSnapshot, preflight.targetRoot);
+        rollback = await rollbackMerge(preflight.targetRoot, actions);
       } catch (rollbackError) {
-        rollback.failures.push(`.: ${errorMessage(rollbackError)}`);
+        rollback = {
+          restored: [],
+          removed: [],
+          failures: [`.: rollback refused because the target root changed: ${errorMessage(rollbackError)}`]
+        };
       }
+      if (createdTargetRoot) {
+        try {
+          await rmdir(preflight.targetRoot);
+          rollback.removed.push('.');
+        } catch (rollbackError) {
+          rollback.failures.push(`.: ${errorMessage(rollbackError)}`);
+        }
+      }
+      throw new MergeApplyError(`Initialization merge failed: ${errorMessage(error)}`, rollback);
     }
-    throw new MergeApplyError(`Initialization merge failed: ${errorMessage(error)}`, rollback);
-  } finally {
-    if (targetLock) {
-      await releaseTargetLock(targetLock);
-    }
-  }
+  });
 }

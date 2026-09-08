@@ -1,25 +1,53 @@
-import { lstat, realpath } from 'node:fs/promises';
-import { devNull } from 'node:os';
-import path from 'node:path';
-import { normalizeManifestFramework, normalizeManifestProject, parseManifest, resolveProjectPath, validateArtifactPathParts } from '../file-system.js';
-import { buildProjectPlan } from '../planner.js';
-import { buildRepositoryGovernanceArtifacts } from '../repository-governance.js';
-import { activationCompatibility, currentActivationIdentity } from '../governance-activation/graph.js';
-import { canonicalJson, canonicalSha256 } from '../governance-activation/canonical-json.js';
 import {
-  validateApprovalEnvelope, validateEvidenceHeader, validateLiveReadbackProof, validateUserActivationState,
-  validateSavedTransitionPlan
-} from '../governance-activation/validators.js';
-import type { ApprovalEnvelope, PhaseEvidenceRecord, SavedTransitionPlan, UserActivationState } from '../governance-activation/types.js';
-import type { GeneratedArtifact, LiftoffManifest } from '../types.js';
-import { NodeCommandRunner, type CommandRunner } from '../process-runner.js';
-import type { AssessmentDiagnostic, AssessmentProjectIdentity, JsonValue, LiveAssessmentScope } from './types.js';
-import { AssessmentFiles, AssessmentInputError, errorCode, parseAssessmentJson } from './readers.js';
-import { containsSensitiveText, isRecord, jsonValue, sanitizeAssessmentText } from './sanitize.js';
+  normalizeManifestFramework,
+  normalizeManifestProject,
+  parseManifest
+} from '../application/project/manifest.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
+import { buildProjectPlan } from '../application/project/planning.js';
+import { buildRepositoryGovernanceArtifacts } from '../repository-governance.js';
+import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
+import { canonicalJson } from '../domain/governance/activation/canonical-json.js';
+import {
+  validateActivationIdentity,
+  validateApprovalEnvelope,
+  validateReadableActivationIdentity
+} from '../domain/governance/activation/validators.js';
+import type {
+  ApprovalEnvelope,
+  PhaseEvidenceRecord,
+  PhaseId,
+  SavedTransitionPlan,
+  UserActivationState
+} from '../domain/governance/activation/types.js';
+import type {
+  EvidenceFreshnessContext,
+  EvidenceSelectionResult
+} from '../domain/governance/activation/evidence.js';
+import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
+import type { GeneratedArtifact, LiftoffManifest } from '../domain/project/contracts.js';
+import type { AssessmentDiagnostic, AssessmentProjectIdentity, JsonValue } from './types.js';
+import { AssessmentFiles, AssessmentInputError, parseAssessmentJson } from './readers.js';
+import { containsSensitiveText, isRecord, jsonValue, sanitizeAssessmentText } from '../domain/governance/assessment/sanitize.js';
+import {
+  isRetiredPowerAppsWorkload,
+  retiredPowerAppsMessage
+} from '../domain/project/retired-workload.js';
+export {
+  inspectAssessmentGit,
+  repositoryName,
+  resolveAssessmentBoundary
+} from '../adapters/git/governance-assessment.js';
+export type {
+  AssessmentBoundary,
+  AssessmentBoundaryKind,
+  AssessmentGitFacts
+} from '../adapters/git/governance-assessment.js';
 
 export interface AssessmentProject {
+  kind: 'liftoff' | 'git';
   manifest: LiftoffManifest | null;
-  project: LiftoffManifest['project'];
+  project: LiftoffManifest['project'] | null;
   identity: AssessmentProjectIdentity;
   managedEntries: Array<{ logicalName: string; pathParts: string[]; contentHash: string }>;
   renderedCore: GeneratedArtifact[];
@@ -29,6 +57,9 @@ export interface AssessmentProject {
   approvals: ApprovalEnvelope[];
   plans: SavedTransitionPlan[];
   bindingBaseline: string | null;
+  inputSnapshot?: ActivationInputSnapshot;
+  evidenceContexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
+  activationSelections?: Partial<Record<PhaseId, EvidenceSelectionResult>>;
   invalidEvidence: boolean;
   diagnostics: AssessmentDiagnostic[];
 }
@@ -40,24 +71,28 @@ function exactKeys(value: Record<string, unknown>, allowed: readonly string[], l
   if (Object.keys(value).some((key) => !allowed.includes(key))) throw new AssessmentInputError('malformed-manifest', `${label} contains unsupported fields.`, 'liftoff.manifest.json');
 }
 function identityHeader(value: unknown, label: string): JsonValue {
-  if (!isRecord(value)) throw new AssessmentInputError('malformed-identity', `${label} must be an object.`, label);
-  const fields = Object.keys(currentActivationIdentity);
-  if (fields.some((key) => !Object.hasOwn(value, key)) || Object.keys(value).some((key) => !fields.includes(key))) {
-    throw new AssessmentInputError('malformed-identity', `${label} has incomplete or unknown identity fields.`, label);
+  try {
+    const identity = validateReadableActivationIdentity(value);
+    return containsSensitiveText(JSON.stringify(identity))
+      ? '[withheld: sensitive identity]'
+      : jsonValue(identity);
+  } catch (error) {
+    throw new AssessmentInputError(
+      'malformed-identity',
+      `${label} is not a recognized current or historical activation identity: ${
+        error instanceof Error ? error.message : String(error)
+      }`,
+      label
+    );
   }
-  for (const [key, sample] of Object.entries(currentActivationIdentity)) {
-    const member = value[key];
-    if (typeof sample === 'number' ? !Number.isInteger(member) || Number(member) < 1 : typeof member !== 'string' || !member) {
-      throw new AssessmentInputError('malformed-identity', `${label}.${key} has an invalid value type.`, label);
-    }
-  }
-  if (typeof value.phaseGraphHash !== 'string' || !/^[a-f0-9]{64}$/u.test(value.phaseGraphHash)) {
-    throw new AssessmentInputError('malformed-identity', `${label}.phaseGraphHash is not a SHA-256 digest.`, label);
-  }
-  return containsSensitiveText(JSON.stringify(value)) ? '[withheld: sensitive identity]' : jsonValue(value);
 }
 function compatibleIdentity(value: JsonValue): boolean {
-  return [...activationCompatibility.values()].some((identity) => canonicalJson(value) === canonicalJson(identity));
+  try {
+    validateActivationIdentity(value);
+    return canonicalJson(value) === canonicalJson(currentActivationIdentity);
+  } catch {
+    return false;
+  }
 }
 
 function rawArtifactPaths(raw: Record<string, unknown>): void {
@@ -83,6 +118,18 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
   const text = await files.read(['liftoff.manifest.json']);
   if (text === null) throw new AssessmentInputError('project-not-found', 'No liftoff.manifest.json was found in the selected project.');
   const raw = parseAssessmentJson(text, 'liftoff.manifest.json');
+  if (isRecord(raw) && isRecord(raw.project)) {
+    const retiredIdentity = isRecord(raw.project.workload)
+      ? raw.project.workload.kind
+      : raw.project.projectType;
+    if (isRetiredPowerAppsWorkload(retiredIdentity)) {
+      throw new AssessmentInputError(
+        'retired-workload',
+        retiredPowerAppsMessage(String(retiredIdentity)),
+        'liftoff.manifest.json'
+      );
+    }
+  }
   if (!isRecord(raw) || typeof raw.artifactVersion !== 'number' || ![2, 3, 4, 5, 6, 7].includes(raw.artifactVersion)) {
     throw new AssessmentInputError('unsupported-manifest', 'Manifest schema is unknown; no artifact paths were accessed.', 'liftoff.manifest.json');
   }
@@ -127,11 +174,9 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
   const workload = project.workload;
   const plan = project.agents.length === 0 ? null : buildProjectPlan({
     projectName: project.name, projectType: workload.kind,
-    ...(workload.kind === 'power-apps-code-app' ? { codeAppsPlugin: workload.codeAppsPlugin } : {
-      apiStack: workload.apiStack, cloud: workload.cloud, region: workload.region,
-      includeFrontend: workload.frontend, environments: workload.environments,
-      ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {})
-    }),
+    apiStack: workload.apiStack, cloud: workload.cloud, region: workload.region,
+    includeFrontend: workload.frontend, environments: workload.environments,
+    ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {}),
     agents: project.agents, defaultAgent: project.defaultAgent, specWorkflow: project.specWorkflow,
     governanceProfile: profile === 'none' ? 'none' : 'single-maintainer-gitflow'
   }, { requireProjectName: true });
@@ -145,63 +190,10 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     logicalName: entry.logicalName, pathParts: entry.pathParts, contentHash: entry.contentHash
   })) ?? [];
   const input: AssessmentProject = {
-    manifest, project, identity, managedEntries, renderedCore, state: null,
+    kind: 'liftoff', manifest, project, identity, managedEntries, renderedCore, state: null,
     stateIdentity: null, evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false, diagnostics
   };
   if (profile === 'none') return input;
-  const stateText = await files.read(['governance', 'activation-state.json']);
-  if (stateText !== null) {
-    const rawState = parseAssessmentJson(stateText, 'governance/activation-state.json');
-    if (!isRecord(rawState)) throw new AssessmentInputError('malformed-state', 'Activation state must be an object.', 'governance/activation-state.json');
-    if (rawState.schemaVersion === 1) {
-      input.stateIdentity = identityHeader(rawState.identity, 'activation state identity');
-      if (compatibleIdentity(input.stateIdentity)) {
-        input.state = validateUserActivationState(rawState);
-        input.identity.stateSource = 'user';
-      } else {
-        input.identity.stateSource = 'unsupported';
-      }
-    } else {
-      input.identity.stateSource = 'unsupported';
-    }
-    if (input.identity.stateSource === 'unsupported') {
-      input.identity.availability = 'unsupported';
-      diagnostics.push(diagnostic('unsupported-state', 'State schema or identity is unsupported; its execution state remains opaque and unchanged.', 'governance/activation-state.json'));
-    }
-  }
-  const evidenceIds = new Set<string>();
-  for (const parts of await files.list(['governance', 'evidence'], ['.json'])) {
-    const label = parts.join('/');
-    const text = await files.read(parts);
-    if (text === null) throw new AssessmentInputError('inputs-changed', 'Evidence disappeared during collection.', label);
-    const value = parseAssessmentJson(text, label);
-    if (containsSensitiveText(text)) {
-      input.invalidEvidence = true;
-      diagnostics.push(diagnostic('sensitive-evidence', 'Evidence with sensitive content was withheld.', label));
-      continue;
-    }
-    try {
-      if (!isRecord(value)) throw new Error('Evidence must be an object.');
-      const header = validateEvidenceHeader(Object.hasOwn(value, 'header') ? value.header : value);
-      const evidenceId = typeof value.evidenceId === 'string' ? value.evidenceId : parts.at(-1)!.slice(0, -5);
-      if (evidenceIds.has(evidenceId)) {
-        input.invalidEvidence = true;
-        input.evidence = input.evidence.filter((record) => record.evidenceId !== evidenceId);
-        diagnostics.push(diagnostic('ambiguous-evidence', `Duplicate evidence identity ${evidenceId} was excluded from assessment bindings.`, label));
-        continue;
-      }
-      evidenceIds.add(evidenceId);
-      if (value.liveReadback !== undefined && !Array.isArray(value.liveReadback)) throw new Error('Live proof must be an array.');
-      input.evidence.push({
-        evidenceId, header,
-        ...(Array.isArray(value.liveReadback) ? { liveReadback: value.liveReadback.map(validateLiveReadbackProof) } : {}),
-        ...(Object.hasOwn(value, 'payload') ? { payload: value.payload } : {})
-      });
-    } catch (error) {
-      input.invalidEvidence = true;
-      diagnostics.push(diagnostic('unsupported-evidence', error instanceof Error ? error.message : 'Evidence could not be interpreted.', label));
-    }
-  }
   for (const parts of await files.list(['governance', 'approvals'], ['.json'])) {
     const label = parts.join('/');
     const text = await files.read(parts);
@@ -214,64 +206,32 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
       diagnostics.push(diagnostic('unsupported-approval', error instanceof Error ? error.message : 'Approval could not be interpreted.', label));
     }
   }
-  for (const parts of await files.list(['governance', 'plans'], ['.json'])) {
-    const label = parts.join('/');
-    const text = await files.read(parts);
-    if (text === null) throw new AssessmentInputError('inputs-changed', 'Plan disappeared during collection.', label);
-    const value = parseAssessmentJson(text, label);
-    try {
-      if (containsSensitiveText(text)) throw new Error('Plan with sensitive content was withheld.');
-      input.plans.push(validateSavedTransitionPlan(value));
-    } catch (error) {
-      diagnostics.push(diagnostic('unsupported-plan', error instanceof Error ? error.message : 'Plan could not be interpreted.', label));
-    }
-  }
   return input;
 }
 
-export interface AssessmentGitFacts {
-  repository: { owner: string; name: string; id: string | null } | null;
-  head: string | null;
-  issues: string[];
-  originState: 'none' | 'verified' | 'unavailable';
-}
-export function repositoryName(value: string, id: string | null = null): LiveAssessmentScope['repository'] {
-  const match = value.match(/^([A-Za-z0-9][A-Za-z0-9-]{0,38})\/([A-Za-z0-9_.-]+)$/u);
-  if (!match || match[2] === '.' || match[2] === '..' || containsSensitiveText(value)) return null;
-  return { owner: match[1]!, name: match[2]!, id };
-}
-
-export async function inspectAssessmentGit(root: string, runner: CommandRunner = new NodeCommandRunner()): Promise<AssessmentGitFacts> {
-  try { await lstat(path.join(root, '.git')); }
-  catch (error) {
-    if (errorCode(error) === 'ENOENT') return { repository: null, head: null, issues: [], originState: 'none' };
-    throw error;
-  }
-  await resolveProjectPath(root, ['.git']);
-  const issues: string[] = [];
-  const prefix = ['--no-pager', '--no-optional-locks', '-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${devNull}`, '-c', 'diff.external=', '-c', 'core.pager=cat'];
-  async function git(args: string[]): Promise<string | null> {
-    const result = await runner.run({ executable: 'git', args: [...prefix, ...args] }, { cwd: root, timeoutMs: 10_000 });
-    if (result.status === 0 && !result.timedOut && !result.errorCode) return result.stdout.trim();
-    issues.push(`Local Git ${args[0]} metadata was not observed (${result.timedOut ? 'timeout' : result.errorCode ?? `exit ${result.status}`}).`);
-    return null;
-  }
-  const toplevel = await git(['rev-parse', '--show-toplevel']);
-  if (!toplevel || await realpath(toplevel) !== await realpath(root)) {
-    return { repository: null, head: null, issues: [...issues, 'Git root does not match the assessed project.'], originState: 'unavailable' };
-  }
-  const headText = await git(['rev-parse', '--verify', 'HEAD']);
-  const remote = await git(['config', '--local', '--get', 'remote.origin.url']);
-  let repository: AssessmentGitFacts['repository'] = null;
-  if (remote) {
-    const ssh = remote.match(/^git@github\.com:([^/\s]+\/[^/\s]+?)(?:\.git)?$/u);
-    const https = remote.match(/^https:\/\/github\.com\/([^/\s]+\/[^/\s]+?)(?:\.git)?\/?$/u);
-    repository = repositoryName(ssh?.[1] ?? https?.[1] ?? '');
-    if (!repository) issues.push('Git origin is not a supported credential-free GitHub repository binding.');
-  }
+export function ordinaryGitAssessmentProject(): AssessmentProject {
   return {
-    repository, head: headText && /^[a-f0-9]{40,64}$/u.test(headText) ? headText : null,
-    issues,
-    originState: repository ? 'verified' : 'unavailable'
+    kind: 'git',
+    manifest: null,
+    project: null,
+    identity: {
+      availability: 'unavailable',
+      manifestVersion: null,
+      cliVersion: null,
+      profile: null,
+      policyVersion: null,
+      recordedActivationIdentity: null,
+      stateSource: 'unavailable'
+    },
+    managedEntries: [],
+    renderedCore: [],
+    state: null,
+    stateIdentity: null,
+    evidence: [],
+    approvals: [],
+    plans: [],
+    bindingBaseline: null,
+    invalidEvidence: false,
+    diagnostics: []
   };
 }

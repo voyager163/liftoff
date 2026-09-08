@@ -1,12 +1,24 @@
-import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { loadAssessmentCatalog, validateAssessmentCatalog } from '../src/governance-assessment/catalog.js';
+import {
+  assessmentInventoryContract,
+  loadAssessmentCatalog,
+  validateAssessmentCatalog
+} from '../src/governance-assessment/catalog.js';
 import { classifyFinding, assembleAssessmentReport, validateAssessmentReport } from '../src/governance-assessment/report.js';
 import { notObserved, observed, source, sanitizeAssessmentText } from '../src/governance-assessment/sanitize.js';
 import { AssessmentFiles } from '../src/governance-assessment/readers.js';
 import { parseAssessmentWorkflow } from '../src/governance-assessment/yaml.js';
-import { protectedRefs, singleMaintainer, pinnedActions, failOpenFlags, observedRequiredContexts } from '../src/governance-assessment/predicates.js';
+import {
+  effectiveProtectedRefs,
+  failOpenFlags,
+  observedRequiredContexts,
+  pinnedActions,
+  protectedRefs,
+  runnerAlignment,
+  singleMaintainer
+} from '../src/governance-assessment/predicates.js';
 import type { AssessmentFinding, ControlDefinition, Observation } from '../src/governance-assessment/types.js';
 
 const now = '2026-09-05T00:00:00.000Z';
@@ -45,11 +57,63 @@ function report(findings: AssessmentFinding[], options: { disabled?: boolean; fa
 const provenance = source('file', 'governance/rulesets/default.json', now, false);
 
 describe('governance assessment report and catalog', () => {
+  it('keeps pure assessment rules in the domain without mutation or I/O dependencies', async () => {
+    const domainRoot = path.resolve('src/domain/governance/assessment');
+    const files = (await readdir(domainRoot)).filter((file) => file.endsWith('.ts'));
+    expect(files).toEqual(expect.arrayContaining([
+      'index.ts',
+      'types.ts',
+      'sanitize.ts',
+      'yaml.ts',
+      'predicates.ts',
+      'report.ts',
+      'catalog.ts',
+      'live-normalize.ts'
+    ]));
+    for (const file of files) {
+      const source = await readFile(path.join(domainRoot, file), 'utf8');
+      expect(source, file).not.toMatch(
+        /(?:node:fs|node:child_process|process-runner|file-system|project-lock|governance-activation\/(?:commands|transitions|approvals))/
+      );
+    }
+    for (const facade of [
+      'types',
+      'sanitize',
+      'yaml',
+      'predicates',
+      'report',
+      'live-normalize'
+    ]) {
+      expect(await readFile(
+        path.resolve('src/governance-assessment', `${facade}.ts`),
+        'utf8'
+      )).toMatch(new RegExp(`^export \\* from '../domain/governance/assessment/${facade}\\.js';`));
+    }
+    const engine = await readFile(
+      path.resolve('src/governance-assessment/engine.ts'),
+      'utf8'
+    );
+    expect(engine).toContain(
+      "from '../governance-activation/read-only.js'"
+    );
+    expect(engine).not.toMatch(
+      /governance-activation\/(?:index|inputs|commands|transitions)\.js/
+    );
+  });
+
   it('binds non-empty coverage to the installed policy and rejects invalid inventories', () => {
     const { catalog, target } = loadAssessmentCatalog();
     expect(target.policyDigest).toBe(catalog.policyDigest);
     expect(target.catalogDigest).toMatch(/^[a-f0-9]{64}$/);
-    expect(catalog.controls.length).toBeGreaterThan(20);
+    expect(catalog.families).toHaveLength(assessmentInventoryContract.families);
+    expect(catalog.controls).toHaveLength(assessmentInventoryContract.controls);
+    expect(catalog.controls.filter((control) => control.supported))
+      .toHaveLength(assessmentInventoryContract.supported);
+    expect(catalog.controls.filter((control) => !control.supported))
+      .toHaveLength(assessmentInventoryContract.unsupported);
+    expect(catalog.controls.filter((control) =>
+      !control.supported && control.applicability === 'always'
+    )).toHaveLength(assessmentInventoryContract.alwaysApplicableUnsupported);
     expect(() => validateAssessmentCatalog({ ...catalog, controls: [] })).toThrow(/coverage/);
     expect(() => validateAssessmentCatalog({ ...catalog, policyDigest: 'f'.repeat(64) })).toThrow(/digest/);
     expect(() => validateAssessmentCatalog({ ...catalog, controls: [...catalog.controls, catalog.controls[0]] })).toThrow(/duplicate/);
@@ -190,6 +254,35 @@ jobs:
     expect(observedRequiredContexts(rules, refs).value).toBe(false);
   });
 
+  it('detects release-only check and application-binding drift', () => {
+    const rules = [
+      {
+        target: 'branch', enforcement: 'active', source_type: 'Organization',
+        conditions: { ref_name: { include: ['~ALL'], exclude: [] } },
+        rules: [{ type: 'required_status_checks', parameters: {
+          required_status_checks: [{ context: 'Security', integration_id: 7 }]
+        } }]
+      },
+      {
+        target: 'branch', enforcement: 'active', source_type: 'Repository',
+        conditions: { ref_name: { include: ['refs/heads/release/**'], exclude: [] } },
+        rules: [{ type: 'required_status_checks', parameters: {
+          required_status_checks: [{ context: 'Release', integration_id: 8 }]
+        } }]
+      }
+    ];
+    const refs = [{
+      ref: 'release/1.0',
+      sha: 'a'.repeat(40),
+      checks: [
+        { name: 'Security', appId: 7, status: 'completed', conclusion: 'success' },
+        { name: 'Release', appId: 7, status: 'completed', conclusion: 'success' }
+      ]
+    }];
+
+    expect(observedRequiredContexts(rules, refs).value).toBe(false);
+  });
+
   it('does not treat a wildcard family as a concrete branch when exclusions exist', () => {
     const rules = [{
       target: 'branch', enforcement: 'active', bypass_actors: [],
@@ -214,6 +307,151 @@ jobs:
       } }]
     }];
     expect(failOpenFlags([workflow], rules).value).toBeNull();
+  });
+
+  it('traverses required jobs transitively so an aggregator cannot hide a fail-open scanner', () => {
+    const workflow = parseAssessmentWorkflow(`jobs:
+  scan:
+    continue-on-error: true
+    steps: []
+  aggregate:
+    name: Security
+    needs: scan
+    steps: []
+`, 'security.yml');
+    const rules = [{
+      target: 'branch', enforcement: 'active',
+      rules: [{ type: 'required_status_checks', parameters: {
+        required_status_checks: [{ context: 'Security' }]
+      } }]
+    }];
+
+    expect(failOpenFlags([workflow], rules)).toMatchObject({
+      value: true,
+      reason: expect.stringContaining('transitive dependency')
+    });
+  });
+
+  it.each([
+    'uses: owner/repository/.github/workflows/scan.yml@main',
+    'strategy: {matrix: {node: [20, 22]}}',
+    'if: ${{ always() }}',
+    'name: Security ${{ matrix.node }}'
+  ])('keeps required-job semantics unobserved for %s', (fragment) => {
+    const workflow = parseAssessmentWorkflow(`jobs:
+  security:
+    ${fragment}
+    steps: []
+`, 'dynamic.yml');
+    const rules = [{
+      target: 'branch', enforcement: 'active',
+      rules: [{ type: 'required_status_checks', parameters: {
+        required_status_checks: [{ context: 'security' }]
+      } }]
+    }];
+    expect(failOpenFlags([workflow], rules).value).toBeNull();
+  });
+
+  it('requires complete runner assignment, labels, capacity, status, and restrictions', () => {
+    const aligned = {
+      repositoryAssigned: true,
+      repository: 'owner/repo',
+      runnerId: 7,
+      groupId: 9,
+      networkConfigurationId: 'NC_bound',
+      runner: {
+        status: 'Ready',
+        labels: ['private-staging'],
+        maximumRunners: 1,
+        publicIpEnabled: false,
+        machineSize: { cpuCores: 4, memoryGb: 16 }
+      },
+      group: {
+        visibility: 'selected',
+        allowsPublicRepositories: false,
+        restrictedToWorkflows: true,
+        selectedWorkflows: ['owner/repo/.github/workflows/dast.yml@refs/heads/main'],
+        inherited: false
+      },
+      network: {
+        computeService: 'actions',
+        networkSettingsIds: ['NS_bound']
+      }
+    };
+    expect(runnerAlignment(aligned, 'owner/repo').value).toBe(true);
+    expect(runnerAlignment({ ...aligned, repositoryAssigned: false }, 'owner/repo'))
+      .toMatchObject({ value: false, absent: true });
+    expect(runnerAlignment({
+      ...aligned,
+      group: { ...aligned.group, visibility: 'all' }
+    }, 'owner/repo').value).toBe(false);
+    expect(runnerAlignment({
+      ...aligned,
+      runner: { ...aligned.runner, labels: [] }
+    }, 'owner/repo').value).toBe(false);
+  });
+
+  it('combines repository, inherited/effective, and classic ref protection without hiding contradictions', () => {
+    const rules = [{
+      target: 'branch', enforcement: 'active', source_type: 'Organization',
+      bypass_actors: [],
+      conditions: { ref_name: { include: ['~ALL'], exclude: [] } },
+      rules: [
+        { type: 'deletion' },
+        { type: 'non_fast_forward' },
+        { type: 'pull_request' },
+        { type: 'required_status_checks', parameters: {
+          strict_required_status_checks_policy: true,
+          do_not_enforce_on_create: true,
+          required_status_checks: [{ context: 'Security', integration_id: 7 }]
+        } }
+      ]
+    }];
+    const classic = {
+      required_status_checks: {
+        strict: true,
+        contexts: [],
+        checks: [{ context: 'Security', app_id: 7 }]
+      },
+      required_pull_request_reviews: {
+        dismiss_stale_reviews: true,
+        require_code_owner_reviews: false,
+        require_last_push_approval: false,
+        required_approving_review_count: 0
+      },
+      allow_force_pushes: { enabled: false },
+      allow_deletions: { enabled: false }
+    };
+    const branches = ['develop', 'main', 'release/1.0', 'hotfix/urgent'].map((name) => ({
+      name,
+      protected: true,
+      protectionObserved: true,
+      protection: { classic, effectiveRules: [] }
+    }));
+    const families = {
+      prefixes: ['release/', 'hotfix/'],
+      refs: ['release/1.0', 'hotfix/urgent'],
+      complete: true
+    };
+
+    expect(effectiveProtectedRefs(rules, branches, families)).toMatchObject({
+      value: true
+    });
+    expect(effectiveProtectedRefs(rules, branches.map((branch) =>
+      branch.name === 'release/1.0'
+        ? {
+            ...branch,
+            protection: {
+              ...branch.protection,
+              classic: { ...classic, allow_force_pushes: { enabled: true } }
+            }
+          }
+        : branch
+    ), families)).toMatchObject({
+      value: false,
+      reason: expect.stringContaining('Classic branch protection contradicts')
+    });
+    expect(effectiveProtectedRefs(rules, branches, null).value).toBeNull();
   });
 
   it('withholds secrets before truncation and removes terminal control sequences', () => {

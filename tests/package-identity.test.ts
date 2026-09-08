@@ -6,6 +6,9 @@ import {
   exactGlobalInstallCommand,
   liftoffBinaryName,
   liftoffPackageName,
+  liftoffPackageScope,
+  liftoffScopedRegistryKey,
+  npmRegistryOverrideArgs,
   stableNpmTag,
   supportedNpmVersion
 } from '../src/package-identity.js';
@@ -18,6 +21,8 @@ describe('canonical Liftoff package identity', () => {
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')
     );
     expect(liftoffPackageName).toBe(packageJson.name);
+    expect(liftoffPackageScope).toBe('@msn-control');
+    expect(liftoffScopedRegistryKey).toBe('@msn-control:registry');
     expect(liftoffBinaryName).toBe('liftoff');
     expect(packageJson.bin[liftoffBinaryName]).toBe('dist/cli.js');
     expect(canonicalNpmRegistry).toBe('https://registry.npmjs.org');
@@ -33,7 +38,16 @@ describe('canonical Liftoff package identity', () => {
       'npm install --global --ignore-scripts --no-audit --no-fund @msn-control/liftoff@1.2.3'
     );
     expect(canonicalManualInstallCommand()).toBe(
-      'npm install --global --ignore-scripts --no-audit --no-fund @msn-control/liftoff@latest --registry=https://registry.npmjs.org'
+      'npm install --global --ignore-scripts --no-audit --no-fund ' +
+      '@msn-control/liftoff@latest --registry=https://registry.npmjs.org ' +
+      '--@msn-control:registry=https://registry.npmjs.org'
     );
+  });
+
+  it('overrides both default and package-scoped npm registries for canonical verification', () => {
+    expect(npmRegistryOverrideArgs(canonicalNpmRegistry)).toEqual([
+      '--registry=https://registry.npmjs.org',
+      '--@msn-control:registry=https://registry.npmjs.org'
+    ]);
   });
 });

@@ -13,6 +13,10 @@ import { currentActivationIdentity } from '../src/governance-activation/index.js
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { reconcileProject } from '../src/reconcile.js';
 import type { ProjectOptions } from '../src/types.js';
+import {
+  currentInfrastructureIdentities,
+  retiredFlatRootInfrastructureIdentities
+} from '../src/domain/project/infrastructure-layout.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 
@@ -27,8 +31,7 @@ const matrix: Array<{ key: string; options: ProjectOptions }> = [
   { key: 'standard-go', options: { projectName: 'Standard Go', projectType: 'standard', apiStack: 'go', cloud: 'azure' } },
   { key: 'standard-node+frontend', options: { projectName: 'Standard Node UI', projectType: 'standard', apiStack: 'node', cloud: 'azure', includeFrontend: true } },
   { key: 'rag+frontend', options: { projectName: 'rag Frontend App', pattern: 'rag', cloud: 'azure', includeFrontend: true } },
-  { key: 'workflow+spec-kit', options: { projectName: 'workflow Kit App', pattern: 'workflow', cloud: 'azure', specWorkflow: 'spec-kit' } },
-  { key: 'power-apps-code-app', options: { projectName: 'Power Apps Code App', projectType: 'power-apps-code-app' } }
+  { key: 'workflow+spec-kit', options: { projectName: 'workflow Kit App', pattern: 'workflow', cloud: 'azure', specWorkflow: 'spec-kit' } }
 ];
 
 const renderMatrixEntry = (options: ProjectOptions) =>
@@ -44,10 +47,40 @@ describe('manifest contract', () => {
         .sort();
       expect(
         names,
-        `logicalName set changed for plan "${entry.key}". Non-environment logical names are append-only; ` +
-          'environment-derived names may change only with an explicit environment retirement in the main spec. ' +
+        `logicalName set changed for plan "${entry.key}". Logical names are append-only except explicit retirements; ` +
+          'the reviewed contract permits the eight flat-root OpenTofu retirements introduced in 0.11.0 and explicit environment retirements only. ' +
           'Update tests/fixtures/logical-names.json only after reviewing that contract.'
       ).toEqual(snapshot[entry.key]);
+    }
+  });
+
+  it('limits infrastructure retirement to the eight reviewed identities and emits exact replacements', () => {
+    expect(retiredFlatRootInfrastructureIdentities.map(identity => identity.logicalName).sort()).toEqual([
+      'opentofu-local-state',
+      'opentofu-main',
+      'opentofu-outputs',
+      'opentofu-provider-lock',
+      'opentofu-providers',
+      'opentofu-remote-state-example',
+      'opentofu-variables',
+      'opentofu-versions'
+    ]);
+    const retired = new Set(retiredFlatRootInfrastructureIdentities.map(identity => identity.logicalName));
+    for (const entry of matrix) {
+      const plan = buildProjectPlan(entry.options, { requireProjectName: true });
+      const artifacts = buildArtifacts(plan);
+      expect(artifacts.some(artifact => retired.has(artifact.logicalName))).toBe(false);
+      expect(artifacts.filter(artifact => artifact.category === 'infrastructure').map(artifact => ({
+        logicalName: artifact.logicalName,
+        category: artifact.category,
+        pathParts: artifact.pathParts,
+        lifecycle: artifact.lifecycle,
+        provisioningGroup: artifact.provisioningGroup
+      })).sort((left, right) => left.logicalName.localeCompare(right.logicalName))).toEqual(
+        currentInfrastructureIdentities(plan.environments.map(environment => environment.id))
+          .map(identity => ({ ...identity, lifecycle: 'project' }))
+          .sort((left, right) => left.logicalName.localeCompare(right.logicalName))
+      );
     }
   });
 
@@ -137,7 +170,7 @@ describe('manifest contract', () => {
         }
         if (artifact.lifecycle === 'project') {
           expect(artifact.provisioningGroup).toMatch(
-            /^(base|frontend|power-apps-starter|environment:(dev|staging|prod))$/
+            /^(base|frontend|environment:(dev|staging|prod))$/
           );
         } else {
           expect(artifact.provisioningGroup).toBeUndefined();
@@ -312,34 +345,6 @@ describe('manifest contract', () => {
       expect(manifest.projectArtifacts.every((artifact) =>
         artifact.generationHash.startsWith('sha256:')
       )).toBe(true);
-    } finally {
-      await rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('records Power Apps starter identity without API fields', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-contract-'));
-    const projectRoot = path.join(tempRoot, 'power-apps-code-app');
-    try {
-      await writeArtifacts(projectRoot, renderMatrixEntry({
-        projectName: 'Power Apps Code App',
-        projectType: 'power-apps-code-app',
-        codeAppsPlugin: true
-      }));
-
-      const manifest = await loadManifest(projectRoot);
-      expect(manifest.project.workload).toEqual({
-        kind: 'power-apps-code-app',
-        starter: {
-          repository: 'https://github.com/microsoft/PowerAppsCodeApps',
-          path: 'templates/starter',
-          commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
-        },
-        codeAppsPlugin: true
-      });
-      expect('apiStack' in manifest.project.workload).toBe(false);
-      expect('cloud' in manifest.project.workload).toBe(false);
-      expect('environments' in manifest.project.workload).toBe(false);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }

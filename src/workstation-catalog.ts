@@ -1,8 +1,9 @@
-import type { ExternalCommand } from './types.js';
-import { supportedStack } from './supported-stack.js';
+import type { ExternalCommand } from './domain/project/contracts.js';
+import { packagedSupportedStack as supportedStack } from './adapters/packaged-assets/supported-stack.js';
 
 export type WorkstationRequirementId =
   | 'node'
+  | 'npm'
   | 'python'
   | 'go'
   | 'uv'
@@ -30,6 +31,9 @@ export interface WorkstationRequirementDefinition {
   probes: ExternalCommand[];
   minimumVersion?: string;
   exactVersion?: string;
+  releaseLine?: string;
+  allowPrerelease?: boolean;
+  missingRemedy?: string;
   install: Partial<Record<SupportedPlatform, InstallRecipe>>;
   linuxRemedies: Record<LinuxFamily, string>;
 }
@@ -51,6 +55,9 @@ const brew = (name: string, cask = false): InstallRecipe => ({
   command: { executable: 'brew', args: ['install', ...(cask ? ['--cask'] : []), name] }
 });
 
+const allowsPrerelease = (channel: string): boolean =>
+  channel !== 'stable' && channel !== 'lts';
+
 export const workstationRequirementCatalog: Record<WorkstationRequirementId, WorkstationRequirementDefinition> = {
   node: {
     id: 'node',
@@ -58,8 +65,27 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'blocking',
     probes: [{ executable: 'node', args: ['--version'] }],
     minimumVersion: supportedStack.runtimes.node.minimumVersion,
-    install: { darwin: brew('node'), win32: winget('OpenJS.NodeJS.LTS') },
+    releaseLine: supportedStack.runtimes.node.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.runtimes.node.channel),
+    install: {
+      darwin: brew(`node@${supportedStack.runtimes.node.releaseLine}`),
+      win32: winget('OpenJS.NodeJS.LTS')
+    },
     linuxRemedies: linuxRemedies('https://nodejs.org/en/download/package-manager')
+  },
+  npm: {
+    id: 'npm',
+    label: 'npm',
+    severity: 'blocking',
+    probes: [{ executable: 'npm', args: ['--version'] }],
+    minimumVersion: supportedStack.packageManagers.npm.minimumVersion,
+    releaseLine: supportedStack.packageManagers.npm.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.packageManagers.npm.channel),
+    missingRemedy:
+      `Install npm ${supportedStack.packageManagers.npm.releaseLine}.x through an approved ` +
+      'machine-level npm distribution, then retry. Liftoff does not invoke npm or reinstall Node.js to repair a missing npm executable.',
+    install: {},
+    linuxRemedies: linuxRemedies('https://docs.npmjs.com/downloading-and-installing-node-js-and-npm')
   },
   python: {
     id: 'python',
@@ -71,6 +97,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
       { executable: 'py', args: ['-3', '--version'] }
     ],
     minimumVersion: supportedStack.runtimes.python.minimumVersion,
+    releaseLine: supportedStack.runtimes.python.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.runtimes.python.channel),
     install: { darwin: brew('python@3.14'), win32: winget('Python.Python.3.14') },
     linuxRemedies: linuxRemedies('https://www.python.org/downloads/')
   },
@@ -80,6 +108,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'blocking',
     probes: [{ executable: 'go', args: ['version'] }],
     minimumVersion: supportedStack.runtimes.go.minimumVersion,
+    releaseLine: supportedStack.runtimes.go.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.runtimes.go.channel),
     install: { darwin: brew('go'), win32: winget('GoLang.Go') },
     linuxRemedies: linuxRemedies('https://go.dev/doc/install')
   },
@@ -89,6 +119,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'blocking',
     probes: [{ executable: 'uv', args: ['--version'] }],
     minimumVersion: supportedStack.packageManagers.uv.minimumVersion,
+    releaseLine: supportedStack.packageManagers.uv.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.packageManagers.uv.channel),
     install: { darwin: brew('uv'), win32: winget('astral-sh.uv') },
     linuxRemedies: linuxRemedies('https://docs.astral.sh/uv/getting-started/installation/')
   },
@@ -106,6 +138,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'advisory',
     probes: [{ executable: 'tofu', args: ['--version'] }],
     minimumVersion: supportedStack.runtimes.opentofu.minimumVersion,
+    releaseLine: supportedStack.runtimes.opentofu.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.runtimes.opentofu.channel),
     install: { darwin: brew('opentofu'), win32: winget('OpenTofu.OpenTofu') },
     linuxRemedies: linuxRemedies('https://opentofu.org/docs/intro/install/')
   },
@@ -123,6 +157,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'blocking',
     probes: [{ executable: 'openspec', args: ['--version'] }],
     exactVersion: supportedStack.frameworks.openspec.version,
+    releaseLine: supportedStack.frameworks.openspec.releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.frameworks.openspec.channel),
     install: {
       darwin: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`] } },
       win32: { manager: 'npm', command: { executable: 'npm', args: ['install', '-g', `@fission-ai/openspec@${supportedStack.frameworks.openspec.version}`] } },
@@ -136,6 +172,8 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     severity: 'blocking',
     probes: [{ executable: 'specify', args: ['--version'] }],
     exactVersion: supportedStack.frameworks['spec-kit'].version,
+    releaseLine: supportedStack.frameworks['spec-kit'].releaseLine,
+    allowPrerelease: allowsPrerelease(supportedStack.frameworks['spec-kit'].channel),
     install: {
       darwin: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`] } },
       win32: { manager: 'uv', command: { executable: 'uv', args: ['tool', 'install', `specify-cli==${supportedStack.frameworks['spec-kit'].version}`] } },

@@ -1,4 +1,4 @@
-import type { ActivationIdentity, PhaseId, PhaseState } from './types.js';
+import type { ActivationIdentity, PhaseId, PhaseState } from '../domain/governance/activation/types.js';
 
 function compileTimeTypeContract(): void {
   function acceptIdentity(_identity: ActivationIdentity): void {}

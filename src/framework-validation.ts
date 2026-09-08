@@ -1,11 +1,11 @@
 import { lstat, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { getFrameworkDefinition } from './catalogs.js';
+import { getFrameworkDefinition } from './application/project/catalog.js';
 import {
   OPEN_SPEC_COPILOT_CLOUD_PATHS,
   openSpecIntegrationPaths
 } from './openspec-profile.js';
-import type { CodingAgentId, ProjectPlan, SpecWorkflowId } from './types.js';
+import type { CodingAgentId, ProjectPlan, SpecWorkflowId } from './domain/project/contracts.js';
 
 export interface FrameworkSelection {
   workflow: SpecWorkflowId;

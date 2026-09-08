@@ -2,8 +2,9 @@ import { readFileSync } from 'node:fs';
 import type {
   GeneratedArtifact,
   ProjectPlan
-} from './types.js';
-import { supportedStack } from './supported-stack.js';
+} from './domain/project/contracts.js';
+import { packagedSupportedStack as supportedStack } from './adapters/packaged-assets/supported-stack.js';
+import { resolvePackageFileUrl } from './adapters/packaged-assets/package-root.js';
 import {
   canonicalJson
 } from './governance-activation/canonical-json.js';
@@ -71,10 +72,7 @@ export const governanceArtifactPaths = {
 } as const;
 
 const suppliedPolicy = readFileSync(
-  new URL(
-    '../assets/governance/single-maintainer-gitflow/policy.md',
-    import.meta.url
-  ),
+  resolvePackageFileUrl('assets', 'governance', 'single-maintainer-gitflow', 'policy.md'),
   'utf8'
 ).replace(/\r\n/g, '\n').trimEnd();
 
@@ -462,7 +460,49 @@ interface GovernanceCommand {
   args: string[];
 }
 
-function apiCommands(plan: Exclude<ProjectPlan, { workload: 'power-apps-code-app' }>): GovernanceCommand[] {
+export interface GovernanceContextOptions {
+  infrastructureLayout?: 'independent' | 'legacy-shared' | 'unknown';
+}
+
+const azureInfrastructureRoot = ['infrastructure', 'opentofu', 'azure'];
+
+function infrastructureCommands(
+  plan: ProjectPlan,
+  layout: NonNullable<GovernanceContextOptions['infrastructureLayout']>
+): GovernanceCommand[] {
+  if (layout !== 'independent') return [];
+  const roots = plan.environments.map(environment => ({
+    suffix: `-${environment.id}`,
+    pathParts: [...azureInfrastructureRoot, 'environments', environment.id]
+  }));
+  return [
+    {
+      id: 'opentofu-format',
+      cwdPathParts: azureInfrastructureRoot,
+      executable: 'tofu',
+      args: ['fmt', '-check', '-recursive']
+    },
+    ...roots.flatMap(root => [
+      {
+        id: `opentofu-initialize${root.suffix}`,
+        cwdPathParts: root.pathParts,
+        executable: 'tofu',
+        args: ['init', '-backend=false']
+      },
+      {
+        id: `opentofu-validate${root.suffix}`,
+        cwdPathParts: root.pathParts,
+        executable: 'tofu',
+        args: ['validate']
+      }
+    ])
+  ];
+}
+
+function apiCommands(
+  plan: ProjectPlan,
+  infrastructureLayout: NonNullable<GovernanceContextOptions['infrastructureLayout']>
+): GovernanceCommand[] {
   const backend = plan.apiStack.id === 'python-fastapi'
     ? [
         {
@@ -563,28 +603,15 @@ function apiCommands(plan: Exclude<ProjectPlan, { workload: 'power-apps-code-app
       executable: 'docker',
       args: ['compose', 'config', '-q']
     },
-    {
-      id: 'opentofu-format',
-      cwdPathParts: ['infrastructure', 'opentofu', 'azure'],
-      executable: 'tofu',
-      args: ['fmt', '-check', '-recursive']
-    },
-    {
-      id: 'opentofu-initialize',
-      cwdPathParts: ['infrastructure', 'opentofu', 'azure'],
-      executable: 'tofu',
-      args: ['init', '-backend=false']
-    },
-    {
-      id: 'opentofu-validate',
-      cwdPathParts: ['infrastructure', 'opentofu', 'azure'],
-      executable: 'tofu',
-      args: ['validate']
-    }
+    ...infrastructureCommands(plan, infrastructureLayout)
   ];
 }
 
-function governanceContext(plan: ProjectPlan): Record<string, unknown> {
+function governanceContext(plan: ProjectPlan, options: GovernanceContextOptions): Record<string, unknown> {
+  const infrastructureLayout = options.infrastructureLayout ?? 'independent';
+  if (!['independent', 'legacy-shared', 'unknown'].includes(infrastructureLayout)) {
+    throw new Error(`Unsupported governance infrastructure layout: ${JSON.stringify(infrastructureLayout)}.`);
+  }
   const common = {
     schemaVersion: governanceContextSchemaVersion,
     policy: {
@@ -597,11 +624,9 @@ function governanceContext(plan: ProjectPlan): Record<string, unknown> {
       name: plan.projectName,
       safeName: plan.safeProjectName,
       workload: plan.workload,
-      artifactForm: plan.workload === 'power-apps-code-app'
-        ? 'browser-hosted-power-apps-code-app'
-        : plan.includeFrontend
-          ? 'containerized-api-with-web-frontend'
-          : 'containerized-api'
+      artifactForm: plan.includeFrontend
+        ? 'containerized-api-with-web-frontend'
+        : 'containerized-api'
     },
     supportedStack: {
       id: supportedStack.id,
@@ -639,48 +664,6 @@ function governanceContext(plan: ProjectPlan): Record<string, unknown> {
     }
   };
 
-  if (plan.workload === 'power-apps-code-app') {
-    return {
-      ...common,
-      supportedStack: {
-        ...common.supportedStack,
-        application: {
-          react: supportedStack.npmProjects['power-apps-code-app']
-            .resolved.dependencies.react,
-          vite: supportedStack.npmProjects['power-apps-code-app']
-            .resolved.devDependencies.vite,
-          typescript: supportedStack.npmProjects['power-apps-code-app']
-            .resolved.devDependencies.typescript,
-          powerAppsSdk: supportedStack.npmProjects['power-apps-code-app']
-            .resolved.dependencies['@microsoft/power-apps']
-        }
-      },
-      source: {
-        repository: plan.starter.repository,
-        path: plan.starter.path,
-        commit: plan.starter.commit
-      },
-      commands: [
-        { id: 'root-install', cwdPathParts: [], executable: 'npm', args: ['ci'] },
-        { id: 'root-lint', cwdPathParts: [], executable: 'npm', args: ['run', 'lint'] },
-        { id: 'root-build', cwdPathParts: [], executable: 'npm', args: ['run', 'build'] }
-      ],
-      generatedBoundaries: {
-        rootApplication: 'generated',
-        backend: 'inapplicable',
-        database: 'inapplicable',
-        docker: 'inapplicable',
-        opentofu: 'inapplicable',
-        apiEnvironments: 'inapplicable',
-        customContainerPromotion: 'inapplicable',
-        apiDast: 'inapplicable',
-        backendHealth: 'inapplicable',
-        powerPlatformDeployment: 'live-discovery-required'
-      },
-      environments: []
-    };
-  }
-
   const worker = plan.workload === 'genai' && plan.pattern.worker;
   return {
     ...common,
@@ -699,7 +682,7 @@ function governanceContext(plan: ProjectPlan): Record<string, unknown> {
         ? { pattern: plan.pattern.id }
         : {})
     },
-    commands: apiCommands(plan),
+    commands: apiCommands(plan, infrastructureLayout),
     generatedBoundaries: {
       backend: {
         state: 'generated',
@@ -718,10 +701,34 @@ function governanceContext(plan: ProjectPlan): Record<string, unknown> {
         state: 'generated',
         pathParts: ['docker-compose.yml']
       },
-      opentofu: {
-        state: 'generated-not-deployed',
-        pathParts: ['infrastructure', 'opentofu', 'azure']
-      }
+      opentofu: infrastructureLayout === 'unknown'
+        ? {
+            state: 'not-observed',
+            layout: infrastructureLayout,
+            compatibility: 'migration-required',
+            reason: 'No supported recorded infrastructure layout; no infrastructure commands are proposed.'
+          }
+        : {
+            state: 'generated-not-deployed',
+            pathParts: azureInfrastructureRoot,
+            layout: infrastructureLayout,
+            provenance: options.infrastructureLayout === undefined ? 'current-generation' : 'recorded-generation',
+            filesystemObservation: 'not-performed',
+            ...(infrastructureLayout === 'independent'
+              ? {
+                  sharedApplicationModulePathParts: [...azureInfrastructureRoot, 'modules', 'application'],
+                  environmentRoots: plan.environments.map(environment => ({
+                    environment: environment.id,
+                    pathParts: [...azureInfrastructureRoot, 'environments', environment.id],
+                    tfvarsPathParts: [...azureInfrastructureRoot, 'environments', environment.id, `${environment.id}.tfvars`]
+                  }))
+                }
+              : {
+                  compatibility: 'migration-required',
+                  reason: 'Recorded infrastructure shares one state root. Environment isolation requires a separate reviewed migration.',
+                  environmentRoots: []
+                })
+          }
     },
     environments: plan.environments.map((environment) => environment.id),
     deployment: {
@@ -780,8 +787,8 @@ export function validateGovernanceContext(value: unknown): void {
   }
 }
 
-export function renderGovernanceContext(plan: ProjectPlan): string {
-  const value = governanceContext(plan);
+export function renderGovernanceContext(plan: ProjectPlan, options: GovernanceContextOptions = {}): string {
+  const value = governanceContext(plan, options);
   validateGovernanceContext(value);
   const rendered = `${JSON.stringify(value, null, 2)}\n`;
   assertGovernanceContentSafe(rendered);
@@ -827,12 +834,20 @@ Before any live governance work, setup completes the deterministic baseline seed
 \`docker compose config -q\`, \`tofu fmt -check -recursive\`,
 \`tofu init -backend=false\`, \`tofu validate\`, and strict ${plan.specWorkflow.label}
 checks. Missing project boundaries are recorded as inapplicable, not successful.
-The seed's completion means generated files were locally verified and archived;
-it does not mean product behavior, infrastructure, or enforcement exists.
+The seed's completion means the applicable local checks passed and the
+${plan.specWorkflow.id === 'openspec'
+    ? 'OpenSpec bootstrap seed was synchronized and archived.'
+    : 'real Spec Kit bundle at `specs/000-liftoff-bootstrap/` was finalized locally, without an OpenSpec archive or new Git branch.'}
+It does not mean product behavior, infrastructure, or enforcement exists.
+An older Spec Kit project without that bundle needs separately reviewed seed
+adoption; update, force, and assessment never create it or infer completion.
 
 Questions are limited to repository publication, credentials, billed resources
 or policy exceptions, final enforcement, destructive cleanup, and external
-blockers. Rerun \`/liftoff-setup\` to resume; verified phases are not repeated.
+blockers. Only explicit execution retries repaired local failures; status,
+resume, and verify remain read-only. Current unchanged proof may be reused.
+Unavailable production executors and public approval/credential entry points
+remain capability blockers; the phase graph does not claim they are implemented.
 
 Runner-preflight credentials are deterministic. Setup first prefers an existing
 verified selected-repository GitHub App with the required read permissions. If a
@@ -840,10 +855,11 @@ fine-grained PAT is required, use display name
 \`${runnerPreflightDisplayNameTemplate}\`, secret
 \`${runnerPreflightSecretName}\`, 30-day lifetime, current repository only,
 repository metadata read, organization hosted-runner and network-configuration
-read, no writes, and the recorded workflow/job allowlist. Enter the value only
-through the masked input; never paste or show it in chat, argv, command
-arguments, logs, evidence, files, or screenshots. A leaked value is compromised and must be
-manually revoked and rotated.
+read, no writes, and the recorded workflow/job allowlist. This is a policy
+contract, not a public enrollment command. No masked credential-input channel
+is exposed by this release. Never paste or show a credential in chat, argv,
+command arguments, logs, evidence, files, or screenshots. A leaked value must be
+revoked and rotated through its owner-controlled system, not fabricated state.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.
@@ -872,8 +888,12 @@ retain optional normalized \`facts\` alongside evaluator predicate values;
 these are sanitized details, not raw provider payloads.
 
 The default is local-only with no network access or cloud/GitHub credentials.
-It works before commit, push, or activation; it does not run the bootstrap
-baseline. All assessment invocations, including live mode and help, skip
+It works in any Git repository without initialization, a Liftoff manifest, or
+generated agent wrappers, including before the first commit. The installed
+single-maintainer policy is the explicit target; absent Liftoff identity and
+baseline are missing proof, not an opt-out. An invalid or retired inner manifest
+blocks fallback to an outer repository. It does not run the bootstrap baseline
+or install wrappers. All assessment invocations, including live mode and help, skip
 telemetry and disclosure entirely. Local Git reads inspect only repository
 root, HEAD, and origin metadata, never \`git status\`, which can execute clean
 filters. Only after an explicit request for live reads, use:
@@ -889,8 +909,9 @@ access, or resource mutation is authorized. Missing access, unknown applicabilit
 stale evidence, and unsupported evaluators remain visible coverage gaps, not
 proof of absence or alignment.
 Azure scope and evidence-backed applicability require a current active-baseline
-and referenced, validated saved-plan/evidence receipts. Placeholder digests,
-future-dated approvals, and inferred bindings cannot establish proof. Missing
+and referenced, validated saved-plan/evidence receipts that bind their canonical
+payload and readback body to current inputs. Placeholder digests, historical v1
+receipts, future-dated approvals, and inferred bindings cannot establish proof. Missing
 bindings stay \`not-observed\`; do not fabricate or hand-edit activation state,
 baselines, receipts, or evidence to make assessment pass. Collect missing proof
 through separately approved setup or governance work.
@@ -906,7 +927,10 @@ through separately approved setup or governance work.
 | \`not-observed\` | Applicability or required proof is unknown, stale, denied, or unsupported |
 
 Coverage distinguishes local matches from unobserved live proof; a matching
-workflow file is not proof of enforcement. Local-only reports will normally be
+workflow file is not proof of enforcement. Provider access failures do not erase
+independently observed local or other-resource findings. Unsupported controls
+stay visible rather than being removed to produce a green result.
+Local-only reports will normally be
 \`partial\`. Exit 0 means fully observed \`aligned\` or explicitly disabled
 \`not-applicable\` governance (not an alignment claim); exit 2 means \`partial\`
 coverage or \`differences\`, including approved exceptions; exit 1 means \`error\`.
@@ -929,32 +953,26 @@ fresh observations, its own reviewed plan, and separate approval.
 function renderSetupIntegration(): string {
   return `# /liftoff-setup
 
-Continue deterministic Liftoff setup for this repository through the Liftoff
-governance engine.
+Use the Liftoff governance engine, not a parallel implementation.
 
-Contract:
-
-1. Work from the current directory; the Liftoff CLI resolves the nearest project root.
-2. Invoke only these commands: \`liftoff governance status --json\`,
+1. Work from the current directory; the CLI resolves the project root.
+2. Invoke only: \`liftoff governance status --json\`,
    \`liftoff governance plan --json\`, \`liftoff governance apply-next --json\`,
    \`liftoff governance apply-next --json --execute\`,
    \`liftoff governance resume --json\`, and \`liftoff governance verify --json\`.
-3. Explain blockers, approval requirements, and permitted next actions exactly
-   from command output.
-4. If a blocker may have changed, run \`liftoff governance resume --json\`.
-5. Use \`liftoff governance apply-next --json\` only to preview exact operations.
-   If the transition is ready and its approval status is \`not-required\` or
-   \`reused\`, run
-   \`liftoff governance apply-next --json --execute\`, then
-   \`liftoff governance verify --json\`.
-   In apply-next output, \`selectedPhase\` identifies the attempted phase and
-   \`executedPhase\` identifies a successful execution. Its legacy
-   \`nextReadyPhase\` is not post-transition readiness; use the subsequent
-   verify or status output for the next phase.
-   If execution is blocked, report the failure and stop until it is repaired
-   or an explicit retry is requested; do not repeatedly retry an unchanged failure.
-6. Never infer phase completion from prose, tasks, or local files. Never use a
-   separate activation state or duplicate the Liftoff engine.
+3. Explain blockers and approvals exactly from output. Recheck changed blockers
+   with the listed resume command; inspection does not execute work.
+4. Use \`liftoff governance apply-next --json\` only to preview operations.
+   If ready and its approval status is \`not-required\` or \`reused\`, run
+   \`liftoff governance apply-next --json --execute\`, then verify.
+   \`selectedPhase\` is attempted; \`executedPhase\` is successful. Legacy
+   \`nextReadyPhase\` is not post-transition readiness; read subsequent status or verify.
+5. Stop on failure. Retry only on explicit request after repairing its blocker;
+   do not repeatedly retry an unchanged failure.
+6. Tasks and prose are not evidence. Missing executors, approval persistence,
+   credential enrollment, or historical reconciliation remain blockers.
+   Never invent commands, hand-write evidence, edit state, or collect credentials
+   in chat to bypass them.
 `;
 }
 
@@ -962,13 +980,16 @@ function renderAssessmentIntegration(): string {
   return `# /liftoff-governance-assess
 
 Explain a read-only governance assessment, not setup or an upgrade.
-Canonical context: \`.liftoff/governance/policy.md\`,
+The installed CLI is the target authority. In a Liftoff project, recorded context
+also includes \`.liftoff/governance/policy.md\`,
 \`.liftoff/governance/context.json\`, and \`.liftoff/governance/README.md\`.
 
 Contract:
 
-1. Work from the current directory; the CLI resolves the nearest Liftoff project.
-   No commit, push, activation, or credential enrollment is a prerequisite.
+1. Work from the current directory; the CLI resolves the nearest Git or Liftoff
+   boundary. No commit, push, activation, or credential enrollment is required.
+   Initialization and a manifest are not prerequisites. Invalid or retired manifests block
+   fallback. Never install this wrapper into an unrelated repository.
 2. Invoke only \`liftoff governance assess --json\`. This defaults to local-only,
    no-network comparison against the installed CLI's packaged target.
 3. Only when the developer explicitly requests live reads, invoke

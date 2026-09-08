@@ -1,21 +1,21 @@
 import path from 'node:path';
-import { stat } from 'node:fs/promises';
-import { readBooleanFlag, readStringFlag } from '../args.js';
-import { findProjectRoot } from '../file-system.js';
-import type { ParsedArgs } from '../types.js';
+import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
+import type { ParsedArgs } from '../domain/project/contracts.js';
 import type { CommandRunner } from '../process-runner.js';
 import type { PresentationSession } from '../terminal.js';
 import type { AssessmentReport, AssessmentTarget } from './types.js';
-import { canonicalSha256 } from '../governance-activation/canonical-json.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { assessGovernance } from './engine.js';
-import { assembleAssessmentReport } from './report.js';
+import { assembleAssessmentReport } from '../domain/governance/assessment/report.js';
 import { loadAssessmentCatalog } from './catalog.js';
-import { sanitizeAssessmentText } from './sanitize.js';
+import { sanitizeAssessmentText } from '../domain/governance/assessment/sanitize.js';
+import { resolveAssessmentBoundary } from '../adapters/git/governance-assessment.js';
 
 export function renderAssessmentReport(report: AssessmentReport, presentation: PresentationSession): void {
   presentation.commandIdentity('governance assess', 'Read-only governance comparison');
   presentation.definitions('Assessment target', [
     { label: 'CLI', value: report.target?.cliVersion ?? 'unavailable' },
+    { label: 'Profile', value: report.target?.profile ?? 'unavailable' },
     { label: 'Policy', value: report.target?.policyVersion ?? 'unavailable' },
     { label: 'Project policy', value: report.projectIdentity.policyVersion ?? 'unrecorded' },
     { label: 'Scope', value: report.mode === 'live' ? 'Local and explicitly requested live metadata' : 'Local only; no network requests' },
@@ -67,10 +67,8 @@ export async function governanceAssessmentCommand(
   let target: AssessmentTarget | null = null;
   try {
     target = loadAssessmentCatalog().target;
-    if (!(await stat(start)).isDirectory()) throw new Error('Assessment project path must be a directory.');
-    const root = await findProjectRoot(start);
-    if (!root) throw new Error('No liftoff.manifest.json found. Run assessment inside a Liftoff project or provide its path.');
-    report = await assessGovernance(root, { live: mode, runner: context.runner });
+    const boundary = await resolveAssessmentBoundary(start);
+    report = await assessGovernance(boundary.root, { live: mode, runner: context.runner });
   } catch (error) {
     report = assembleAssessmentReport({
       projectRoot: start, mode: mode ? 'live' : 'local',

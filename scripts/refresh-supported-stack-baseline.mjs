@@ -102,25 +102,7 @@ const baseline = {
     liftoff: await npmProject(['package.json'], ['package-lock.json']),
     'telemetry-ingest': await npmProject(['services', 'telemetry-ingest', 'package.json']),
     'node-backend': await npmProject(['assets', 'locks', 'node-backend', 'package.json']),
-    frontend: await npmProject(['assets', 'locks', 'frontend', 'package.json']),
-    'power-apps-code-app': await npmProject(
-      [
-        'assets',
-        'power-apps-code-app',
-        '3438c352483e40982f6c5c0fc36fd71f8e7adbbb',
-        'starter',
-        'package.json'
-      ],
-      undefined,
-      {
-        '@microsoft/power-apps': {
-          selectedVersion: '1.2.7',
-          reviewedCandidateVersion: '1.3.0',
-          reason: 'Power Apps SDK 1.2.12 and newer remove the project-local power-apps CLI required by the current Liftoff workload contract; adopting the new global pa CLI requires a separate reviewed workload migration.'
-        }
-      },
-      'declared-range'
-    )
+    frontend: await npmProject(['assets', 'locks', 'frontend', 'package.json'])
   },
   pythonProjects: {
     'genai-backend': {
@@ -258,18 +240,7 @@ const baseline = {
     'container-apps-bootstrap': image('nginx', '1.30-alpine', 'sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46', 'https://hub.docker.com/_/nginx', 'The previous Azure sample image publishes only a mutable latest tag; nginx stable serves an unauthenticated port-80 bootstrap endpoint with an immutable multi-architecture digest.'),
     'telemetry-node': image('node', '24-bookworm-slim', 'sha256:ba849c60be29959425b8734d57b8b4b7d56f98edd9504c9af091d5281095a71e', 'https://hub.docker.com/_/node')
   },
-  upstreams: {
-    'power-apps-code-app': {
-      repository: 'https://github.com/microsoft/PowerAppsCodeApps',
-      path: 'templates/starter',
-      commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb',
-      compatibleSourceCommits: [
-        '3438c352483e40982f6c5c0fc36fd71f8e7adbbb',
-        '22e5c0bc0ef7ba516d9ad6281d6b0c4eb114df55'
-      ],
-      source: 'https://github.com/microsoft/PowerAppsCodeApps/commit/3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
-    }
-  }
+  upstreams: {}
 };
 
 const output = `${JSON.stringify(baseline, null, 2)}\n`;

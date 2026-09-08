@@ -1,23 +1,22 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   buildDependencySetupPlan,
   dependencyResumeCommand,
+  dependencyResumeShell,
   runDependencySetup,
-  verifyPowerAppsPackageMetadata,
   verifyDependencyLockPair,
   type DependencySetupPlan
 } from '../src/project-dependencies.js';
-import { writeArtifacts } from '../src/file-system.js';
 import type {
   CommandResult,
   CommandRunner,
   RunCommandOptions
 } from '../src/process-runner.js';
 import { buildProjectPlan } from '../src/planner.js';
-import { buildArtifacts } from '../src/templates.js';
 import type { ExternalCommand } from '../src/types.js';
 import {
   selectWorkstationRequirements,
@@ -132,27 +131,6 @@ describe('project dependency setup', () => {
       cwd: path.join(root, 'backend')
     }]);
 
-    const powerApps = buildProjectPlan({
-      projectName: 'code-app',
-      projectType: 'power-apps-code-app'
-    }, { requireProjectName: true });
-    const powerAppsSetup = buildDependencySetupPlan(
-      powerApps,
-      root,
-      readyProbes(powerApps),
-      'win32'
-    );
-    expect(powerAppsSetup).toEqual({
-      commands: [{
-        id: 'power-apps-root',
-        label: 'Install Power Apps code app dependencies',
-        command: { executable: 'npm.cmd', args: ['ci'] },
-        cwd: root
-      }],
-      protectedPaths: [['package.json'], ['package-lock.json']]
-    });
-    expect(dependencyResumeCommand(powerAppsSetup.commands[0]!, 'win32'))
-      .toBe(`cd /d ${JSON.stringify(root)} && npm.cmd ci`);
   });
 
   it('runs commands in order with streaming and the planned working directories', async () => {
@@ -224,9 +202,8 @@ describe('project dependency setup', () => {
         detail: 'registry unavailable',
         restoredMutations: []
       });
-      expect(setupResult.resumeCommand).toBe(
-        `cd${process.platform === 'win32' ? ' /d' : ''} ${JSON.stringify(path.join(tempRoot, 'backend'))} && npm ci`
-      );
+      expect(setupResult.resumeCommand).toBe(dependencyResumeCommand(command));
+      expect(setupResult.resumeShell).toBe(dependencyResumeShell());
       expect(await readFile(path.join(tempRoot, 'README.md'), 'utf8')).toBe('scaffold\n');
       expect(await readFile(path.join(tempRoot, 'backend', 'package.json'), 'utf8')).toBe('{"name":"app"}\n');
     } finally {
@@ -234,7 +211,7 @@ describe('project dependency setup', () => {
     }
   });
 
-  it('restores and rejects protected-file mutations even when the command exits successfully', async () => {
+  it('preserves and reports metadata changes even when the command exits successfully', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-dependencies-mutation-'));
     const packageFile = path.join(tempRoot, 'backend', 'package.json');
     try {
@@ -260,10 +237,11 @@ describe('project dependency setup', () => {
 
       expect(setupResult).toMatchObject({
         success: false,
-        detail: 'dependency command modified protected files: backend/package.json',
-        restoredMutations: ['backend/package.json']
+        detail: 'Dependency metadata changed during setup and was preserved for review: backend/package.json',
+        restoredMutations: [],
+        preservedMutations: ['backend/package.json']
       });
-      expect(await readFile(packageFile, 'utf8')).toBe('{"name":"original"}\n');
+      expect(await readFile(packageFile, 'utf8')).toBe('{"name":"mutated"}\n');
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
@@ -275,7 +253,7 @@ describe('project dependency setup', () => {
       label: 'Install frontend',
       command: { executable: 'npm.cmd', args: ['ci'] },
       cwd: 'C:\\workspace\\app\\frontend'
-    }, 'win32')).toBe('cd /d "C:\\\\workspace\\\\app\\\\frontend" && npm.cmd ci');
+    }, 'win32')).toBe("Set-Location -LiteralPath 'C:\\workspace\\app\\frontend'; if ($?) { & 'npm.cmd' 'ci' }");
 
     for (const directory of ['node-backend', 'frontend']) {
       expect(await verifyDependencyLockPair(
@@ -285,44 +263,91 @@ describe('project dependency setup', () => {
     }
   });
 
-  it('validates the Power Apps SDK, Vite plugin, CLI, and lock identity', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-metadata-'));
+  it('preserves a frontend edit made while backend installation runs', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-dependencies-concurrent-'));
     try {
-      const plan = buildProjectPlan({
-        projectName: 'Metadata App',
-        projectType: 'power-apps-code-app'
-      }, { requireProjectName: true });
-      await writeArtifacts(tempRoot, buildArtifacts(plan));
-      expect(await verifyPowerAppsPackageMetadata(tempRoot)).toEqual([]);
-
-      const packagePath = path.join(tempRoot, 'package.json');
-      const packageJson = JSON.parse(await readFile(packagePath, 'utf8')) as {
-        dependencies: Record<string, string>;
-      };
-      delete packageJson.dependencies['@microsoft/power-apps'];
-      await writeFile(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
-      expect(await verifyPowerAppsPackageMetadata(tempRoot)).toContain(
-        'package.json must declare @microsoft/power-apps.'
-      );
-
-      const lockPath = path.join(tempRoot, 'package-lock.json');
-      const lockJson = JSON.parse(await readFile(lockPath, 'utf8')) as {
-        name: string;
-        packages: Record<string, {
-          name?: string;
-          bin?: Record<string, string>;
-        }>;
-      };
-      lockJson.name = 'different-project';
-      delete lockJson.packages['node_modules/@microsoft/power-apps-cli']?.bin?.['power-apps'];
-      await writeFile(lockPath, `${JSON.stringify(lockJson, null, 2)}\n`);
-      const issues = await verifyPowerAppsPackageMetadata(tempRoot);
-      expect(issues).toContain('package.json and package-lock.json must record the same project name.');
-      expect(issues).toContain(
-        'package-lock.json must include the project-local power-apps CLI declaration.'
-      );
+      for (const component of ['backend', 'frontend']) {
+        await mkdir(path.join(root, component));
+        await writeFile(path.join(root, component, 'package.json'), `${component}\n`);
+      }
+      const runner = new DependencyRunner(async () => {
+        await writeFile(path.join(root, 'frontend', 'package.json'), 'developer edit\n');
+        return {};
+      });
+      const setupResult = await runDependencySetup({
+        commands: ['backend', 'frontend'].map((component) => ({
+          id: component,
+          label: `Install ${component}`,
+          command: { executable: 'npm', args: ['ci'] },
+          cwd: path.join(root, component)
+        })),
+        protectedPaths: [['backend', 'package.json'], ['frontend', 'package.json']]
+      }, root, runner, { stdout: new CaptureStream(), stderr: new CaptureStream() });
+      expect(setupResult).toMatchObject({
+        success: false,
+        restoredMutations: [],
+        preservedMutations: ['frontend/package.json']
+      });
+      expect(runner.calls).toHaveLength(1);
+      expect(await readFile(path.join(root, 'frontend', 'package.json'), 'utf8')).toBe('developer edit\n');
+      expect(await readFile(path.join(root, 'backend', 'package.json'), 'utf8')).toBe('backend\n');
     } finally {
-      await rm(tempRoot, { recursive: true, force: true });
+      await rm(root, { recursive: true, force: true });
     }
   });
+
+  it('preserves a metadata deletion instead of recreating a file after failure', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-dependencies-deletion-'));
+    try {
+      const file = path.join(root, 'package.json');
+      await writeFile(file, 'original');
+      const runner = new DependencyRunner(async () => {
+        await rm(file);
+        return { status: 1, stderr: 'installation failed' };
+      });
+      const setupResult = await runDependencySetup({
+        commands: [{ id: 'install', label: 'Install', command: { executable: 'npm', args: ['ci'] }, cwd: root }],
+        protectedPaths: [['package.json']]
+      }, root, runner, { stdout: new CaptureStream(), stderr: new CaptureStream() });
+      expect(setupResult.preservedMutations).toEqual(['package.json']);
+      expect(setupResult.restoredMutations).toEqual([]);
+      await expect(access(file)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.runIf(process.platform !== 'win32')('executes a POSIX recovery recipe with a literal quoted directory', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-recovery-shell-'));
+    try {
+      const cwd = path.join(root, "O'Brien $client [literal]");
+      await mkdir(cwd);
+      const command = dependencyResumeCommand({
+        id: 'probe',
+        label: 'Read working directory',
+        command: { executable: process.execPath, args: ['-e', 'process.stdout.write(process.cwd())'] },
+        cwd
+      }, 'linux');
+      const output = execFileSync('sh', ['-c', command], {
+        encoding: 'utf8',
+        env: { ...process.env, client: 'must-not-expand' }
+      });
+      expect(output).toBe(await realpath(cwd));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('quotes PowerShell paths and native arguments literally', () => {
+    const command = dependencyResumeCommand({
+      id: 'probe',
+      label: 'Probe',
+      command: { executable: 'npm.cmd', args: ['ci', '@scope/package', '$literal'] },
+      cwd: String.raw`C:\work\O'Brien\$client[0]`
+    }, 'win32');
+    expect(dependencyResumeShell('win32')).toBe('PowerShell');
+    expect(command).toContain(String.raw`-LiteralPath 'C:\work\O''Brien\$client[0]'`);
+    expect(command).toContain("& 'npm.cmd' 'ci' '@scope/package' '$literal'");
+  });
+
 });

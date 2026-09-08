@@ -1,13 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { packagedTemplateAssets } from './adapters/packaged-assets/template-assets.js';
 
-const moduleTemplate = readFileSync(
-  new URL('../assets/locks/go-backend/go.mod', import.meta.url),
-  'utf8'
-);
-const checksumTemplate = readFileSync(
-  new URL('../assets/locks/go-backend/go.sum', import.meta.url),
-  'utf8'
-);
+const moduleTemplate = packagedTemplateAssets.go.module;
+const checksumTemplate = packagedTemplateAssets.go.checksum;
 const modulePlaceholder = 'example.com/liftoff-template-go';
 
 export function renderGoModuleAsset(moduleName: string): string {

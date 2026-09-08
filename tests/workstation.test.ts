@@ -73,6 +73,7 @@ describe('workstation requirement graph', () => {
 
     expect(requirements.map((item) => item.id)).toEqual([
       'node',
+      'npm',
       'python',
       'uv',
       'docker',
@@ -83,6 +84,12 @@ describe('workstation requirement graph', () => {
       'claude'
     ]);
     expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.14.0');
+    expect(requirements.find((item) => item.id === 'npm')).toMatchObject({
+      minimumVersion: '12.0.2',
+      releaseLine: '12',
+      allowPrerelease: false,
+      severity: 'blocking'
+    });
     expect(requirements.find((item) => item.id === 'openspec')?.exactVersion).toBe('1.11.0');
     expect(requirements.find((item) => item.id === 'docker')?.severity).toBe('advisory');
     expect(requirements.find((item) => item.id === 'claude')?.severity).toBe('blocking');
@@ -101,14 +108,17 @@ describe('workstation requirement graph', () => {
 
     expect(requirements.map((item) => item.id)).toContain('python');
     expect(requirements.map((item) => item.id)).toContain('uv');
+    expect(requirements.map((item) => item.id)).not.toContain('npm');
     expect(requirements.find((item) => item.id === 'python')?.minimumVersion).toBe('3.14.0');
     expect(requirements.find((item) => item.id === 'spec-kit')?.exactVersion).toBe('1.0.1');
   });
 
-  it('selects only the Power Apps Node, framework, and chosen agent requirements', async () => {
+  it('selects supported Node API requirements and preserves runtime probe classification', async () => {
     const plan = buildProjectPlan({
-      projectName: 'Code App',
-      projectType: 'power-apps-code-app',
+      projectName: 'Node API',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
       specWorkflow: 'openspec',
       agents: ['claude', 'copilot']
     }, { requireProjectName: true });
@@ -116,6 +126,10 @@ describe('workstation requirement graph', () => {
 
     expect(requirements.map((item) => item.id)).toEqual([
       'node',
+      'npm',
+      'docker',
+      'opentofu',
+      'azure-cli',
       'openspec',
       'github-copilot',
       'claude'
@@ -145,6 +159,128 @@ describe('workstation requirement graph', () => {
     const runner = new FakeRunner(() => ({ stdout: version }));
 
     expect((await probeRequirement(requirement, runner)).state).toBe(state);
+  });
+
+  it.each([
+    ['npm', '12.0.2', 'ready'],
+    ['npm', '12.0.1', 'outdated'],
+    ['npm', '12.1.0', 'ready'],
+    ['npm', '13.0.0', 'outdated'],
+    ['uv', 'uv 0.12.7', 'ready'],
+    ['uv', 'uv 0.12.6', 'outdated'],
+    ['uv', 'uv 0.12.8', 'ready'],
+    ['uv', 'uv 0.13.0', 'outdated']
+  ] as const)('classifies stable %s minimum/release-line version %s as %s', async (
+    id,
+    output,
+    state
+  ) => {
+    const plan = buildProjectPlan({
+      projectName: 'Package manager baseline',
+      pattern: 'rag',
+      cloud: 'azure'
+    }, { requireProjectName: true });
+    const requirement = selectWorkstationRequirements(plan)
+      .find((item) => item.id === id)!;
+
+    expect((await probeRequirement(
+      requirement,
+      new FakeRunner(() => ({ stdout: output }))
+    )).state).toBe(state);
+  });
+
+  it.each([
+    ['openspec', '1.11.0-rc.1', '1.11.0-rc.1'],
+    ['openspec', '1.11.0-1', '1.11.0-1'],
+    ['npm', '12.0.2-beta.1', '12.0.2-beta.1'],
+    ['npm', '12.0.2-0.3.7', '12.0.2-0.3.7'],
+    ['uv', 'uv 0.12.7-rc.1', '0.12.7-rc.1'],
+    ['python', 'Python 3.14.0rc1', '3.14.0rc1']
+  ] as const)('rejects stable-baseline prerelease output for %s', async (
+    id,
+    output,
+    detectedVersion
+  ) => {
+    const plan = buildProjectPlan({
+      projectName: 'Prerelease',
+      pattern: 'rag',
+      cloud: 'azure'
+    }, { requireProjectName: true });
+    const requirement = selectWorkstationRequirements(plan)
+      .find((item) => item.id === id)!;
+
+    expect(await probeRequirement(
+      requirement,
+      new FakeRunner(() => ({ stdout: output }))
+    )).toMatchObject({
+      state: 'outdated',
+      detectedVersion,
+      detail: expect.stringContaining('stable release')
+    });
+  });
+
+  it('rejects a newer version outside the baseline release line', async () => {
+    const plan = buildProjectPlan({
+      projectName: 'Future Python',
+      projectType: 'standard',
+      apiStack: 'python',
+      cloud: 'azure'
+    }, { requireProjectName: true });
+    const python = selectWorkstationRequirements(plan)
+      .find((item) => item.id === 'python')!;
+
+    expect(await probeRequirement(
+      python,
+      new FakeRunner(() => ({ stdout: 'Python 4.0.0' }))
+    )).toMatchObject({
+      state: 'outdated',
+      detectedVersion: '4.0.0',
+      detail: expect.stringContaining('supported release line is 3.14')
+    });
+  });
+
+  it('blocks missing npm independently and never invokes npm as its own repair tool', async () => {
+    const plan = buildProjectPlan({
+      projectName: 'Missing npm',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure'
+    }, { requireProjectName: true });
+    const npm = selectWorkstationRequirements(plan)
+      .find((item) => item.id === 'npm')!;
+    const node = selectWorkstationRequirements(plan)
+      .find((item) => item.id === 'node')!;
+    const nodeProbe = await probeRequirement(
+      node,
+      new FakeRunner(() => ({ stdout: 'v24.20.0' }))
+    );
+    const probeRunner = new FakeRunner(() => ({
+      status: null,
+      errorCode: 'ENOENT',
+      errorMessage: 'npm not found'
+    }));
+    const probe = await probeRequirement(npm, probeRunner);
+
+    expect(probe).toMatchObject({
+      state: 'missing',
+      remedy: expect.stringContaining('does not invoke npm or reinstall Node.js')
+    });
+    expect(nodeProbe.state).toBe('ready');
+    expect(blockingReadinessFailures([nodeProbe, probe])).toEqual([probe]);
+
+    const installRunner = new FakeRunner(() => {
+      throw new Error('npm must not be invoked to repair npm');
+    });
+    const installation = await installRequirement(npm, probe, {
+      authorized: true,
+      host: { platform: 'darwin', linuxFamily: 'unknown' },
+      runner: installRunner
+    });
+    expect(installation).toMatchObject({
+      state: 'manual',
+      remedy: expect.stringContaining('Install npm manually')
+    });
+    expect(installRunner.calls).toEqual([]);
   });
 
   it('accepts a later compatible launcher when an earlier Python candidate is outdated', async () => {

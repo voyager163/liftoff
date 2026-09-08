@@ -77,6 +77,7 @@ async function snapshotTree(root: string): Promise<Record<string, string>> {
 
 interface RunnerOptions {
   registry?: string;
+  scopedRegistry?: string;
   targetVersion?: string;
   viewResult?: Partial<CommandResult>;
   installResult?: Partial<CommandResult>;
@@ -104,6 +105,11 @@ class UpgradeRunner implements CommandRunner {
     if (command.args.join(' ') === 'root --global') {
       this.rootCalls += 1;
       return commandResult(command, { stdout: `${this.globalRoot}\n` });
+    }
+    if (command.args.join(' ') === 'config get @msn-control:registry') {
+      return commandResult(command, {
+        stdout: `${this.options.scopedRegistry ?? 'undefined'}\n`
+      });
     }
     if (command.args.join(' ') === 'config get registry') {
       return commandResult(command, {
@@ -171,10 +177,14 @@ async function harness(values: {
   const globalRoot = path.join(root, 'global', 'node_modules');
   const packageRoot = expectedGlobalPackageRoot(globalRoot, process.platform);
   const neutralDirectory = path.join(root, 'neutral');
+  const homeDirectory = path.join(root, 'home');
+  const userCache = path.join(root, 'user-cache');
   const currentVersion = values.currentVersion ?? '0.7.0';
   const targetVersion = values.targetVersion ?? '0.8.0';
   await mkdir(globalRoot, { recursive: true });
   await mkdir(neutralDirectory, { recursive: true });
+  await mkdir(homeDirectory, { recursive: true });
+  await mkdir(userCache, { recursive: true });
   await writePackage(packageRoot, currentVersion, values.packageValues);
   await writeFile(path.join(root, '.npmrc'), 'registry=https://malicious.example.test/\n');
 
@@ -207,7 +217,12 @@ async function harness(values: {
     realpath,
     platform: process.platform,
     execPath: process.execPath,
-    environment: { npm_config_registry: 'https://registry.npmjs.org/' }
+    environment: {
+      HOME: homeDirectory,
+      USERPROFILE: homeDirectory,
+      npm_config_cache: userCache,
+      npm_config_registry: 'https://registry.npmjs.org/'
+    }
   };
   return {
     root,
@@ -246,7 +261,6 @@ describe('self-upgrade state machine', () => {
   it('reports a read-only installable update with byte-pure fields', async () => {
     const fixture = await harness({ mode: 'check' });
     const userCache = path.join(fixture.root, 'user-cache');
-    await mkdir(userCache);
     await writeFile(path.join(userCache, 'marker'), 'unchanged\n');
     fixture.dependencies.environment = {
       ...fixture.dependencies.environment,
@@ -307,7 +321,12 @@ describe('self-upgrade state machine', () => {
     );
     expect(install.options).toMatchObject({
       cwd: fixture.neutralDirectory,
-      stream: true
+      stream: true,
+      env: {
+        HOME: path.join(fixture.root, 'home'),
+        USERPROFILE: path.join(fixture.root, 'home'),
+        npm_config_cache: path.join(fixture.neutralDirectory, 'npm-cache')
+      }
     });
     const verification = fixture.runner.calls.find(({ command }) =>
       command.executable === process.execPath
@@ -318,6 +337,37 @@ describe('self-upgrade state machine', () => {
       LIFTOFF_TELEMETRY: '0'
     });
     expect(fixture.runner.rootCalls).toBe(2);
+  });
+
+  it('prefers the effective scoped registry and never consults a mismatched default', async () => {
+    const fixture = await harness({
+      runnerOptions: {
+        registry: 'https://mirror-a.example/npm/',
+        scopedRegistry: 'https://mirror-b.example/npm/'
+      }
+    });
+
+    const result = await runSelfUpgrade(fixture.request, fixture.dependencies);
+
+    expect(result).toMatchObject({
+      status: 'update-available',
+      registryKind: 'configured',
+      targetVersion: '0.8.0'
+    });
+    const configCalls = fixture.runner.calls.filter(({ command }) =>
+      command.args[0] === 'config'
+    );
+    expect(configCalls.map(({ command }) => command.args)).toEqual([
+      ['config', 'get', '@msn-control:registry']
+    ]);
+    expect(configCalls[0]?.options).toMatchObject({
+      cwd: fixture.neutralDirectory,
+      env: {
+        npm_config_cache: path.join(fixture.neutralDirectory, 'npm-cache')
+      }
+    });
+    expect(await readFile(path.join(fixture.root, '.npmrc'), 'utf8'))
+      .toBe('registry=https://malicious.example.test/\n');
   });
 
   it('accepts the one-element metadata array emitted by npm 12', async () => {

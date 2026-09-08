@@ -14,6 +14,7 @@ import {
   currentActivationIdentity,
   evidenceContextForPhase,
   evidenceHeaderDigest,
+  evidenceBodyDigest,
   phaseContractDigests,
   phaseIds,
   projectOpenSpecTaskCheckboxes,
@@ -21,9 +22,13 @@ import {
   validateEvidenceFreshness,
   validateGraphReconciliationRecord,
   writeActivationState,
-  loadActivationState
+  loadActivationState,
+  planDigestFor as compatibilityPlanDigest
 } from '../src/governance-activation/index.js';
-import { applyProjectFileTransaction, validateArtifactPathParts } from '../src/file-system.js';
+import { planDigestFor as purePlanDigest } from '../src/domain/governance/activation/operations.js';
+import { planDigestFor as readOnlyPlanDigest } from '../src/governance-activation/read-only.js';
+import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
+import { validateArtifactPathParts } from '../src/domain/project/paths.js';
 import type {
   EvidenceFreshnessContext,
   EvidenceHeader,
@@ -85,6 +90,7 @@ function validState(overrides: Partial<UserActivationState> = {}): UserActivatio
 
 function context(phaseId: PhaseId): EvidenceFreshnessContext {
   return evidenceContextForPhase(phaseId, {
+    repositoryId: 'R_123',
     baselineSha: digestA,
     inputDigest: digestB,
     transitionDigest: digestC,
@@ -109,6 +115,7 @@ function headerFor(
     transition: freshness.transition,
     producedAt,
     producer: 'vitest',
+    bodyDigest: evidenceBodyDigest({ kind: `${freshness.phaseId}.v1` }),
     result
   };
 }
@@ -120,9 +127,11 @@ function recordFor(
   producedAt = '2026-09-04T00:00:00.000Z',
   liveReadback?: readonly LiveReadbackProof[]
 ): PhaseEvidenceRecord {
+  const payload = { kind: `${freshness.phaseId}.v1` };
   return {
     evidenceId,
-    header: headerFor(freshness, result, producedAt),
+    header: { ...headerFor(freshness, result, producedAt), bodyDigest: evidenceBodyDigest(payload, liveReadback) },
+    payload,
     ...(liveReadback ? { liveReadback } : {})
   };
 }
@@ -267,6 +276,10 @@ describe('evidence validation and latest selection', () => {
     ], freshness);
     expect(contradictoryTie.selected).toBeNull();
     expect(contradictoryTie.issues[0]?.message).toContain('contradictory deterministic tie');
+    const intact = recordFor('same-id', freshness);
+    const tampered = { ...intact, payload: { kind: 'seed-valid.v1', forged: true } };
+    const bodySelected = selectLatestPhaseEvidence([tampered, intact], freshness);
+    expect(bodySelected.selected?.payload).toEqual(intact.payload);
   });
 
   it('blocks readiness when the latest evidence for the current transition failed', () => {
@@ -278,7 +291,8 @@ describe('evidence validation and latest selection', () => {
       transitionContexts: { 'seed-valid': freshness },
       now
     });
-    expect(readiness.phases['seed-valid'].state).toBe('failed');
+    expect(readiness.phases['seed-valid'].state).toBe('ready');
+    expect(readiness.nextReadyPhase).toBe('seed-valid');
     expect(readiness.phases['seed-verified'].state).toBe('blocked');
   });
 });
@@ -377,7 +391,7 @@ describe('OpenSpec checkbox projection', () => {
 
 describe('live readback proof requirements', () => {
   it('rejects source-only evidence for remote mutations and accepts typed live readback', () => {
-    const freshness = canonicalEvidenceContextForPhase('rulesets-applied');
+    const freshness = context('rulesets-applied');
     const sourceOnly = validateEvidenceFreshness(recordFor('source-only', freshness), freshness);
     expect(sourceOnly.valid).toBe(false);
     expect(sourceOnly.valid ? '' : sourceOnly.issues.map((issue) => issue.message).join('\n')).toContain('github live readback proof');
@@ -389,9 +403,10 @@ describe('live readback proof requirements', () => {
     expect(withReadback.valid).toBe(true);
   });
 
-  it('does not require live readback for read-only phases', () => {
-    const freshness = canonicalEvidenceContextForPhase('phase-0-complete');
-    expect(validateEvidenceFreshness(recordFor('phase-zero', freshness), freshness).valid).toBe(true);
+  it('requires independent readback for discovery even though it does not mutate providers', () => {
+    const freshness = context('phase-0-complete');
+    expect(validateEvidenceFreshness(recordFor('phase-zero', freshness), freshness).valid).toBe(false);
+    expect(validateEvidenceFreshness(recordFor('local-validation', context('seed-valid')), context('seed-valid')).valid).toBe(true);
   });
 });
 
@@ -491,6 +506,20 @@ describe('activation-state transactions', () => {
 });
 
 describe('evidence references are immutable', () => {
+  it('exposes one unchanged pure plan digest through domain, read-only, and compatibility exports', () => {
+    const input = {
+      phase: canonicalPhaseGraph.phases[0],
+      transitionDigest: canonicalSha256('reviewed transition'),
+      approvalPlanDigest: canonicalSha256('reviewed authority'),
+      operations: []
+    };
+    expect(readOnlyPlanDigest).toBe(purePlanDigest);
+    expect(compatibilityPlanDigest).toBe(purePlanDigest);
+    expect(purePlanDigest(input)).toBe(canonicalSha256({
+      phaseId: input.phase.id, transitionDigest: input.transitionDigest,
+      approvalPlanDigest: input.approvalPlanDigest, operations: input.operations
+    }));
+  });
   it('hashes evidence headers without rewriting old evidence', () => {
     const freshness = context('seed-valid');
     const record = recordFor('immutable', freshness);

@@ -300,6 +300,39 @@ describe('migrate command', () => {
     expect(tasks).not.toContain('backend/orchestration/retrieval');
   });
 
+  it('honors no-genai without requiring an unrelated API-stack override', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const result = await run(['migrate', source, '--no-genai', '--region', 'eastus', '--yes'], parent);
+    expect(result.code).toBe(0);
+    const manifest = JSON.parse(await readFile(
+      path.join(parent, 'legacy-app-liftoff', 'liftoff.manifest.json'), 'utf8'
+    ));
+    expect(manifest.project.workload).toMatchObject({ kind: 'standard', apiStack: 'python-fastapi' });
+    expect(manifest.project.workload.pattern).toBeUndefined();
+  });
+
+  it('ports Go source into an explicitly selected Node target without a frontend', async () => {
+    const { parent, source } = await buildStandardFixture('legacy-go-frontend', {
+      'go.mod': 'module example.com/legacy\nrequire github.com/go-chi/chi/v5 v5.2.1',
+      'cmd/api/main.go': 'package main\nimport _ "github.com/go-chi/chi/v5"',
+      'frontend/package.json': JSON.stringify({ dependencies: { react: '^19' } })
+    });
+    const before = await hashTree(source);
+    const result = await run([
+      'migrate', source, '--type', 'Standard application', '--api', 'node',
+      '--no-frontend', '--region', 'eastus', '--yes'
+    ], parent);
+    expect(result.code).toBe(0);
+    const target = path.join(parent, 'legacy-go-frontend-liftoff');
+    const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
+    expect(tasks).toContain('Port Go application behavior');
+    expect(tasks).not.toContain('into backend/cmd/api/');
+    expect(tasks).toContain('no generated frontend was selected');
+    expect(tasks.indexOf('Run the backend tests')).toBeLessThan(tasks.indexOf('Delete migration/legacy/'));
+    await expect(access(path.join(target, 'frontend'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await hashTree(source)).toEqual(before);
+  });
+
   it('emits an OpenSpec change seeded from the scan with nothing silently dropped', async () => {
     const { parent, source } = await buildLegacyFixture();
     const sourceBefore = await hashTree(source);

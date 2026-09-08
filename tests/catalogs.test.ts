@@ -53,8 +53,7 @@ describe('catalogs', () => {
   it('defines explicit project types and approved API stack aliases', () => {
     expect(projectTypes.map((projectType) => projectType.id)).toEqual([
       'genai',
-      'standard',
-      'power-apps-code-app'
+      'standard'
     ]);
     expect(apiStacks.map((stack) => stack.id)).toEqual(['python-fastapi', 'node-fastify', 'go-huma']);
     expect(getApiStack('nodejs')?.id).toBe('node-fastify');

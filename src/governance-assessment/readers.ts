@@ -1,16 +1,12 @@
 import { lstat, open, readdir } from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { resolveProjectPath, validateArtifactPathParts } from '../file-system.js';
-import { canonicalSha256, sha256Hex } from '../governance-activation/canonical-json.js';
+import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
+import { canonicalSha256, sha256Hex } from '../domain/governance/activation/canonical-json.js';
 import { assessmentLimits } from './types.js';
-import { sanitizeAssessmentText } from './sanitize.js';
+import { AssessmentInputError } from '../domain/governance/assessment/errors.js';
 
-export class AssessmentInputError extends Error {
-  constructor(readonly code: string, message: string, readonly source: string | null = null) {
-    super(sanitizeAssessmentText(message));
-    this.name = 'AssessmentInputError';
-  }
-}
+export { AssessmentInputError } from '../domain/governance/assessment/errors.js';
 
 export function errorCode(error: unknown): string | undefined {
   return typeof error === 'object' && error !== null && 'code' in error && typeof error.code === 'string'

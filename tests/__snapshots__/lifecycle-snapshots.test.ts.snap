@@ -85,6 +85,7 @@ Workstation readiness
 Requirement     Level     State    Detail
 ──────────────  ────────  ───────  ─────────────────
 Node.js         blocking  ready    Version 24.20.0
+npm             blocking  ready    Version 12.0.2
 Go              blocking  ready    Version 1.27.0
 Docker          advisory  ready    Version 27.0.0
 OpenTofu        advisory  ready    Version 1.12.6
@@ -137,6 +138,7 @@ Workstation readiness
 Requirement     Level     State  Detail
 ──────────────  ────────  ─────  ───────────────
 Node.js         blocking  ready  Version 24.20.0
+npm             blocking  ready  Version 12.0.2
 Go              blocking  ready  Version 1.27.0
 Docker          advisory  ready  Version 27.0.0
 OpenTofu        advisory  ready  Version 1.12.6
@@ -169,8 +171,8 @@ credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
 ─────────────────────────────
-- Download backend Go modules: cd "<workspace>/snapshot-app/backend" && go mod
-download
+- Download backend Go modules (POSIX shell): cd --
+'<workspace>/snapshot-app/backend' && go mod download
 
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 Completion
@@ -238,6 +240,7 @@ Workstation readiness
 Requirement     Level     State  Detail
 ──────────────  ────────  ─────  ───────────────
 Node.js         blocking  ready  Version 24.20.0
+npm             blocking  ready  Version 12.0.2
 Docker          advisory  ready  Version 27.0.0
 OpenTofu        advisory  ready  Version 1.12.6
 Azure CLI       advisory  ready  Version 2.70.0
@@ -272,8 +275,8 @@ credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
 ─────────────────────────────
-- Install backend Node.js dependencies: cd
-"<workspace>/legacy-node-liftoff/backend" && npm ci
+- Install backend Node.js dependencies (POSIX shell): cd --
+'<workspace>/legacy-node-liftoff/backend' && npm ci
 
 Next steps
 ──────────
@@ -331,12 +334,13 @@ Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure            OpenTofu for Azure
 
-Artifacts (43)
+Artifacts (50)
 ──────────────
 Artifact                   Lifecycle                  Path
 ─────────────────────────  ─────────────────────────  ──────────────────────────
 root-readme                project (base)             README.md
 root-gitignore             project (base)             .gitignore
+root-dockerignore          project (base)             .dockerignore
 liftoff-config             desired-state              liftoff.config.json
 env-example                project (base)             .env.example
 backend-dockerfile         project (base)             Dockerfile
@@ -344,10 +348,14 @@ go-backend-module          project (base)             backend/go.mod
 go-backend-checksums       project (base)             backend/go.sum
 go-backend-makefile        project (base)             backend/Makefile
 go-backend-main            project (base)             backend/cmd/api/main.go
+go-backend-migration-comm  project (base)             backend/cmd/migrate/main.g
+and                                                   o
 go-backend-api             project (base)             backend/internal/api/api.g
                                                       o
 go-backend-config          project (base)             backend/internal/config/co
                                                       nfig.go
+go-runtime-config-example  project (base)             runtime.config.example.jso
+                                                      n
 go-backend-database        project (base)             backend/internal/database/
                                                       database.go
 go-backend-test-health     project (base)             backend/internal/api/api_t
@@ -358,28 +366,47 @@ database-schema            project (base)             database/models/schema.sql
 environment-dev-backend    project (environment:dev)  environments/dev/backend.e
                                                       nv
 docker-compose             project (base)             docker-compose.yml
-opentofu-versions          project (base)             infrastructure/opentofu/az
-                                                      ure/versions.tf
-opentofu-provider-lock     project (base)             infrastructure/opentofu/az
-                                                      ure/.terraform.lock.hcl
-opentofu-providers         project (base)             infrastructure/opentofu/az
-                                                      ure/providers.tf
-opentofu-variables         project (base)             infrastructure/opentofu/az
-                                                      ure/variables.tf
-opentofu-main              project (base)             infrastructure/opentofu/az
-                                                      ure/main.tf
-opentofu-outputs           project (base)             infrastructure/opentofu/az
-                                                      ure/outputs.tf
-opentofu-local-state       project (base)             infrastructure/opentofu/az
-                                                      ure/backend.local.tf
-opentofu-remote-state-exa  project (base)             infrastructure/opentofu/az
-mple                                                  ure/backend.remote.example
-                                                      .tf
+opentofu-application-vers  project (base)             infrastructure/opentofu/az
+ions                                                  ure/modules/application/ve
+                                                      rsions.tf
+opentofu-application-vari  project (base)             infrastructure/opentofu/az
+ables                                                 ure/modules/application/va
+                                                      riables.tf
+opentofu-application-main  project (base)             infrastructure/opentofu/az
+                                                      ure/modules/application/ma
+                                                      in.tf
+opentofu-application-outp  project (base)             infrastructure/opentofu/az
+uts                                                   ure/modules/application/ou
+                                                      tputs.tf
 opentofu-readme            project (base)             infrastructure/opentofu/az
                                                       ure/README.md
+opentofu-dev-versions      project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/versi
+                                                      ons.tf
+opentofu-dev-provider-loc  project (environment:dev)  infrastructure/opentofu/az
+k                                                     ure/environments/dev/.terr
+                                                      aform.lock.hcl
+opentofu-dev-providers     project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/provi
+                                                      ders.tf
+opentofu-dev-variables     project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/varia
+                                                      bles.tf
+opentofu-dev-main          project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/main.
+                                                      tf
+opentofu-dev-outputs       project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/outpu
+                                                      ts.tf
+opentofu-dev-local-state   project (environment:dev)  infrastructure/opentofu/az
+                                                      ure/environments/dev/backe
+                                                      nd.local.tf
+opentofu-dev-remote-state  project (environment:dev)  infrastructure/opentofu/az
+-example                                              ure/environments/dev/backe
+                                                      nd.remote.example.tf
 opentofu-dev-tfvars        project (environment:dev)  infrastructure/opentofu/az
-                                                      ure/environments/dev.tfvar
-                                                      s
+                                                      ure/environments/dev/dev.t
+                                                      fvars
 openspec-config            seed                       openspec/config.yaml
 openspec-seed-change-meta  seed                       openspec/changes/bootstrap
 data                                                  -liftoff-preview/.openspec
@@ -416,15 +443,16 @@ manifest                   manifest                   liftoff.manifest.json
 
 Workstation requirements
 ────────────────────────
-Requirement     Version         Level
-──────────────  ──────────────  ────────
-Node.js         24.20.0+        blocking
-Go              1.27.0+         blocking
-Docker          available       advisory
-OpenTofu        1.12.6+         advisory
-Azure CLI       available       advisory
-OpenSpec        exactly 1.11.0  blocking
-GitHub Copilot  available       blocking
+Requirement     Version           Level
+──────────────  ────────────────  ────────
+Node.js         24.20.0+ (24.x)   blocking
+npm             12.0.2+ (12.x)    blocking
+Go              1.27.0+ (1.27.x)  blocking
+Docker          available         advisory
+OpenTofu        1.12.6+ (1.12.x)  advisory
+Azure CLI       available         advisory
+OpenSpec        exactly 1.11.0    blocking
+GitHub Copilot  available         blocking
 
 ",
 }
@@ -500,6 +528,7 @@ Stage: Resolve destination
 Stage: Check workstation readiness
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
+Requirement: npm | Level: blocking | State: ready | Detail: Version 12.0.2
 Requirement: Go | Level: blocking | State: ready | Detail: Version 1.27.0
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
 Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
@@ -543,6 +572,7 @@ Stage: Resolve destination
 Stage: Check workstation readiness
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
+Requirement: npm | Level: blocking | State: ready | Detail: Version 12.0.2
 Requirement: Go | Level: blocking | State: ready | Detail: Version 1.27.0
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
 Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
@@ -570,7 +600,7 @@ Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
-- Download backend Go modules: cd "<workspace>/snapshot-app/backend" && go mod download
+- Download backend Go modules (POSIX shell): cd -- '<workspace>/snapshot-app/backend' && go mod download
 
 [ok] Initialized snapshot-app: <workspace>/snapshot-app
 Completion
@@ -624,6 +654,7 @@ Stage: Resolve fresh migration target
 Stage: Check workstation readiness
 Workstation readiness
 Requirement: Node.js | Level: blocking | State: ready | Detail: Version 24.20.0
+Requirement: npm | Level: blocking | State: ready | Detail: Version 12.0.2
 Requirement: Docker | Level: advisory | State: ready | Detail: Version 27.0.0
 Requirement: OpenTofu | Level: advisory | State: ready | Detail: Version 1.12.6
 Requirement: Azure CLI | Level: advisory | State: ready | Detail: Version 2.70.0
@@ -654,7 +685,7 @@ Deferred advisory checks
 - GitHub Copilot authentication: Liftoff does not automate or persist Copilot credentials. Remedy: Run \`copilot\` and sign in if prompted.
 
 Deferred project dependencies
-- Install backend Node.js dependencies: cd "<workspace>/legacy-node-liftoff/backend" && npm ci
+- Install backend Node.js dependencies (POSIX shell): cd -- '<workspace>/legacy-node-liftoff/backend' && npm ci
 
 Next steps
 - Optional - preserve history: copy the .git directory from <workspace>/legacy-node into <workspace>/legacy-node-liftoff, then commit the migration on top (git rename detection preserves file history).
@@ -700,9 +731,10 @@ Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Az
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-Artifacts (43)
+Artifacts (50)
 Artifact: root-readme | Lifecycle: project (base) | Path: README.md
 Artifact: root-gitignore | Lifecycle: project (base) | Path: .gitignore
+Artifact: root-dockerignore | Lifecycle: project (base) | Path: .dockerignore
 Artifact: liftoff-config | Lifecycle: desired-state | Path: liftoff.config.json
 Artifact: env-example | Lifecycle: project (base) | Path: .env.example
 Artifact: backend-dockerfile | Lifecycle: project (base) | Path: Dockerfile
@@ -710,24 +742,30 @@ Artifact: go-backend-module | Lifecycle: project (base) | Path: backend/go.mod
 Artifact: go-backend-checksums | Lifecycle: project (base) | Path: backend/go.sum
 Artifact: go-backend-makefile | Lifecycle: project (base) | Path: backend/Makefile
 Artifact: go-backend-main | Lifecycle: project (base) | Path: backend/cmd/api/main.go
+Artifact: go-backend-migration-command | Lifecycle: project (base) | Path: backend/cmd/migrate/main.go
 Artifact: go-backend-api | Lifecycle: project (base) | Path: backend/internal/api/api.go
 Artifact: go-backend-config | Lifecycle: project (base) | Path: backend/internal/config/config.go
+Artifact: go-runtime-config-example | Lifecycle: project (base) | Path: runtime.config.example.json
 Artifact: go-backend-database | Lifecycle: project (base) | Path: backend/internal/database/database.go
 Artifact: go-backend-test-health | Lifecycle: project (base) | Path: backend/internal/api/api_test.go
 Artifact: database-go-migration | Lifecycle: project (base) | Path: database/migrations/0001_initial.sql
 Artifact: database-schema | Lifecycle: project (base) | Path: database/models/schema.sql
 Artifact: environment-dev-backend | Lifecycle: project (environment:dev) | Path: environments/dev/backend.env
 Artifact: docker-compose | Lifecycle: project (base) | Path: docker-compose.yml
-Artifact: opentofu-versions | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/versions.tf
-Artifact: opentofu-provider-lock | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/.terraform.lock.hcl
-Artifact: opentofu-providers | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/providers.tf
-Artifact: opentofu-variables | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/variables.tf
-Artifact: opentofu-main | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/main.tf
-Artifact: opentofu-outputs | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/outputs.tf
-Artifact: opentofu-local-state | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/backend.local.tf
-Artifact: opentofu-remote-state-example | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/backend.remote.example.tf
+Artifact: opentofu-application-versions | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/modules/application/versions.tf
+Artifact: opentofu-application-variables | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/modules/application/variables.tf
+Artifact: opentofu-application-main | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/modules/application/main.tf
+Artifact: opentofu-application-outputs | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/modules/application/outputs.tf
 Artifact: opentofu-readme | Lifecycle: project (base) | Path: infrastructure/opentofu/azure/README.md
-Artifact: opentofu-dev-tfvars | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev.tfvars
+Artifact: opentofu-dev-versions | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/versions.tf
+Artifact: opentofu-dev-provider-lock | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/.terraform.lock.hcl
+Artifact: opentofu-dev-providers | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/providers.tf
+Artifact: opentofu-dev-variables | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/variables.tf
+Artifact: opentofu-dev-main | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/main.tf
+Artifact: opentofu-dev-outputs | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/outputs.tf
+Artifact: opentofu-dev-local-state | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/backend.local.tf
+Artifact: opentofu-dev-remote-state-example | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/backend.remote.example.tf
+Artifact: opentofu-dev-tfvars | Lifecycle: project (environment:dev) | Path: infrastructure/opentofu/azure/environments/dev/dev.tfvars
 Artifact: openspec-config | Lifecycle: seed | Path: openspec/config.yaml
 Artifact: openspec-seed-change-metadata | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/.openspec.yaml
 Artifact: openspec-seed-proposal | Lifecycle: seed | Path: openspec/changes/bootstrap-liftoff-preview/proposal.md
@@ -746,10 +784,11 @@ Artifact: liftoff-governance-assess-copilot | Lifecycle: managed-core | Path: .g
 Artifact: manifest | Lifecycle: manifest | Path: liftoff.manifest.json
 
 Workstation requirements
-Node.js: 24.20.0+ [blocking]
-Go: 1.27.0+ [blocking]
+Node.js: 24.20.0+ (24.x) [blocking]
+npm: 12.0.2+ (12.x) [blocking]
+Go: 1.27.0+ (1.27.x) [blocking]
 Docker: available [advisory]
-OpenTofu: 1.12.6+ [advisory]
+OpenTofu: 1.12.6+ (1.12.x) [advisory]
 Azure CLI: available [advisory]
 OpenSpec: exactly 1.11.0 [blocking]
 GitHub Copilot: available [blocking]
@@ -855,6 +894,7 @@ exports[`complete onboarding screens > snapshots the rich handled readiness fail
 │ Requirement     Level     State    Detail                                                    │
 │ ──────────────  ────────  ───────  ─────────────────                                         │
 │ Node.js         blocking  ready    Version 24.20.0                                           │
+│ npm             blocking  ready    Version 12.0.2                                            │
 │ Go              blocking  ready    Version 1.27.0                                            │
 │ Docker          advisory  ready    Version 27.0.0                                            │
 │ OpenTofu        advisory  ready    Version 1.12.6                                            │
@@ -910,6 +950,7 @@ exports[`complete onboarding screens > snapshots the rich init readiness and com
 │ Requirement     Level     State  Detail                                                      │
 │ ──────────────  ────────  ─────  ───────────────                                             │
 │ Node.js         blocking  ready  Version 24.20.0                                             │
+│ npm             blocking  ready  Version 12.0.2                                              │
 │ Go              blocking  ready  Version 1.27.0                                              │
 │ Docker          advisory  ready  Version 27.0.0                                              │
 │ OpenTofu        advisory  ready  Version 1.12.6                                              │
@@ -939,7 +980,8 @@ $ openspec init --tools github-copilot --profile custom --no-copilot-cloud
 │ Remedy: Run \`copilot\` and sign in if prompted.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred project dependencies ──────────────────────────────────────────────────────────────┐
-│ • Download backend Go modules: cd "<workspace>/snapshot-app/backend" && go mod download      │
+│ • Download backend Go modules (POSIX shell): cd -- '<workspace>/snapshot-app/backend' && go  │
+│ mod download                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ✓ Initialized snapshot-app: <workspace>/snapshot-app
 ┌─ Completion ─────────────────────────────────────────────────────────────────────────────────┐
@@ -1008,6 +1050,7 @@ exports[`complete onboarding screens > snapshots the rich migration provenance a
 │ Requirement     Level     State  Detail                                                      │
 │ ──────────────  ────────  ─────  ───────────────                                             │
 │ Node.js         blocking  ready  Version 24.20.0                                             │
+│ npm             blocking  ready  Version 12.0.2                                              │
 │ Docker          advisory  ready  Version 27.0.0                                              │
 │ OpenTofu        advisory  ready  Version 1.12.6                                              │
 │ Azure CLI       advisory  ready  Version 2.70.0                                              │
@@ -1039,8 +1082,8 @@ $ openspec validate migrate-to-liftoff --strict
 │ Remedy: Run \`copilot\` and sign in if prompted.                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Deferred project dependencies ──────────────────────────────────────────────────────────────┐
-│ • Install backend Node.js dependencies: cd "<workspace>/legacy-node-liftoff/backend" && npm  │
-│ ci                                                                                           │
+│ • Install backend Node.js dependencies (POSIX shell): cd --                                  │
+│ '<workspace>/legacy-node-liftoff/backend' && npm ci                                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Next steps ─────────────────────────────────────────────────────────────────────────────────┐
 │ • Optional - preserve history: copy the .git directory from <workspace>/legacy-node into     │
@@ -1100,11 +1143,12 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
 │ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Artifacts (43) ─────────────────────────────────────────────────────────────────────────────┐
+┌─ Artifacts (50) ─────────────────────────────────────────────────────────────────────────────┐
 │ Artifact                         Lifecycle                  Path                             │
 │ ───────────────────────────────  ─────────────────────────  ──────────────────────────────── │
 │ root-readme                      project (base)             README.md                        │
 │ root-gitignore                   project (base)             .gitignore                       │
+│ root-dockerignore                project (base)             .dockerignore                    │
 │ liftoff-config                   desired-state              liftoff.config.json              │
 │ env-example                      project (base)             .env.example                     │
 │ backend-dockerfile               project (base)             Dockerfile                       │
@@ -1112,9 +1156,11 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ go-backend-checksums             project (base)             backend/go.sum                   │
 │ go-backend-makefile              project (base)             backend/Makefile                 │
 │ go-backend-main                  project (base)             backend/cmd/api/main.go          │
+│ go-backend-migration-command     project (base)             backend/cmd/migrate/main.go      │
 │ go-backend-api                   project (base)             backend/internal/api/api.go      │
 │ go-backend-config                project (base)             backend/internal/config/config.g │
 │                                                             o                                │
+│ go-runtime-config-example        project (base)             runtime.config.example.json      │
 │ go-backend-database              project (base)             backend/internal/database/databa │
 │                                                             se.go                            │
 │ go-backend-test-health           project (base)             backend/internal/api/api_test.go │
@@ -1123,26 +1169,36 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ database-schema                  project (base)             database/models/schema.sql       │
 │ environment-dev-backend          project (environment:dev)  environments/dev/backend.env     │
 │ docker-compose                   project (base)             docker-compose.yml               │
-│ opentofu-versions                project (base)             infrastructure/opentofu/azure/ve │
-│                                                             rsions.tf                        │
-│ opentofu-provider-lock           project (base)             infrastructure/opentofu/azure/.t │
-│                                                             erraform.lock.hcl                │
-│ opentofu-providers               project (base)             infrastructure/opentofu/azure/pr │
-│                                                             oviders.tf                       │
-│ opentofu-variables               project (base)             infrastructure/opentofu/azure/va │
-│                                                             riables.tf                       │
-│ opentofu-main                    project (base)             infrastructure/opentofu/azure/ma │
-│                                                             in.tf                            │
-│ opentofu-outputs                 project (base)             infrastructure/opentofu/azure/ou │
-│                                                             tputs.tf                         │
-│ opentofu-local-state             project (base)             infrastructure/opentofu/azure/ba │
-│                                                             ckend.local.tf                   │
-│ opentofu-remote-state-example    project (base)             infrastructure/opentofu/azure/ba │
-│                                                             ckend.remote.example.tf          │
+│ opentofu-application-versions    project (base)             infrastructure/opentofu/azure/mo │
+│                                                             dules/application/versions.tf    │
+│ opentofu-application-variables   project (base)             infrastructure/opentofu/azure/mo │
+│                                                             dules/application/variables.tf   │
+│ opentofu-application-main        project (base)             infrastructure/opentofu/azure/mo │
+│                                                             dules/application/main.tf        │
+│ opentofu-application-outputs     project (base)             infrastructure/opentofu/azure/mo │
+│                                                             dules/application/outputs.tf     │
 │ opentofu-readme                  project (base)             infrastructure/opentofu/azure/RE │
 │                                                             ADME.md                          │
+│ opentofu-dev-versions            project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/versions.tf       │
+│ opentofu-dev-provider-lock       project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/.terraform.lock.h │
+│                                                             cl                               │
+│ opentofu-dev-providers           project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/providers.tf      │
+│ opentofu-dev-variables           project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/variables.tf      │
+│ opentofu-dev-main                project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/main.tf           │
+│ opentofu-dev-outputs             project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/outputs.tf        │
+│ opentofu-dev-local-state         project (environment:dev)  infrastructure/opentofu/azure/en │
+│                                                             vironments/dev/backend.local.tf  │
+│ opentofu-dev-remote-state-examp  project (environment:dev)  infrastructure/opentofu/azure/en │
+│ le                                                          vironments/dev/backend.remote.ex │
+│                                                             ample.tf                         │
 │ opentofu-dev-tfvars              project (environment:dev)  infrastructure/opentofu/azure/en │
-│                                                             vironments/dev.tfvars            │
+│                                                             vironments/dev/dev.tfvars        │
 │ openspec-config                  seed                       openspec/config.yaml             │
 │ openspec-seed-change-metadata    seed                       openspec/changes/bootstrap-lifto │
 │                                                             ff-preview/.openspec.yaml        │
@@ -1172,15 +1228,16 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ manifest                         manifest                   liftoff.manifest.json            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Workstation requirements ───────────────────────────────────────────────────────────────────┐
-│ Requirement     Version         Level                                                        │
-│ ──────────────  ──────────────  ────────                                                     │
-│ Node.js         24.20.0+        blocking                                                     │
-│ Go              1.27.0+         blocking                                                     │
-│ Docker          available       advisory                                                     │
-│ OpenTofu        1.12.6+         advisory                                                     │
-│ Azure CLI       available       advisory                                                     │
-│ OpenSpec        exactly 1.11.0  blocking                                                     │
-│ GitHub Copilot  available       blocking                                                     │
+│ Requirement     Version           Level                                                      │
+│ ──────────────  ────────────────  ────────                                                   │
+│ Node.js         24.20.0+ (24.x)   blocking                                                   │
+│ npm             12.0.2+ (12.x)    blocking                                                   │
+│ Go              1.27.0+ (1.27.x)  blocking                                                   │
+│ Docker          available         advisory                                                   │
+│ OpenTofu        1.12.6+ (1.12.x)  advisory                                                   │
+│ Azure CLI       available         advisory                                                   │
+│ OpenSpec        exactly 1.11.0    blocking                                                   │
+│ GitHub Copilot  available         blocking                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ",
 }

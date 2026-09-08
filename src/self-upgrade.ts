@@ -2,13 +2,14 @@ import type { Stats } from 'node:fs';
 import { lstat, mkdtemp, readFile, realpath, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { installedPackageRoot } from './adapters/packaged-assets/package-root.js';
 import {
   canonicalManualInstallCommand,
   canonicalNpmRegistry,
   exactGlobalInstallCommand,
   liftoffBinaryName,
   liftoffPackageName,
+  liftoffScopedRegistryKey,
   npmExecutableForPlatform
 } from './package-identity.js';
 import {
@@ -24,7 +25,7 @@ import {
   type CommandRunner
 } from './process-runner.js';
 import { compareSemver } from './semver.js';
-import type { ExternalCommand } from './types.js';
+import type { ExternalCommand } from './domain/project/contracts.js';
 
 export const selfUpgradeSchemaVersion = 1 as const;
 export const selfUpgradeInstallTimeoutMs = 10 * 60_000;
@@ -165,10 +166,7 @@ class SelfUpgradeFailure extends Error {
   }
 }
 
-const sourcePackageRoot = path.resolve(
-  path.dirname(fileURLToPath(import.meta.url)),
-  '..'
-);
+const sourcePackageRoot = installedPackageRoot;
 
 function pathApiForPlatform(platform: NodeJS.Platform): PathApi {
   return platform === 'win32' ? path.win32 : path.posix;
@@ -432,15 +430,33 @@ async function inspectRegistryParity(
     env: readOnlyEnvironment(dependencies, neutralDirectory),
     timeoutMs
   };
-  const registryResult = await dependencies.runner.run(
-    { executable: npmExecutable, args: ['config', 'get', 'registry'] },
+  const scopedRegistryResult = await dependencies.runner.run(
+    {
+      executable: npmExecutable,
+      args: ['config', 'get', liftoffScopedRegistryKey]
+    },
     options
   );
-  if (commandFailed(registryResult)) {
+  if (commandFailed(scopedRegistryResult)) {
     throw new SelfUpgradeFailure('failed', 'registry_unavailable');
   }
 
-  const configuredRegistry = registryResult.stdout.trim();
+  const scopedRegistry = scopedRegistryResult.stdout.trim();
+  let configuredRegistry = scopedRegistry;
+  if (
+    configuredRegistry === '' ||
+    configuredRegistry === 'undefined' ||
+    configuredRegistry === 'null'
+  ) {
+    const defaultRegistryResult = await dependencies.runner.run(
+      { executable: npmExecutable, args: ['config', 'get', 'registry'] },
+      options
+    );
+    if (commandFailed(defaultRegistryResult)) {
+      throw new SelfUpgradeFailure('failed', 'registry_unavailable');
+    }
+    configuredRegistry = defaultRegistryResult.stdout.trim();
+  }
   const kind = registryKind(configuredRegistry);
   const targetResult = await dependencies.runner.run(
     {
@@ -712,7 +728,7 @@ export async function runSelfUpgrade(
     request.onInstallCommand?.(installCommand);
     const installResult = await dependencies.runner.run(installCommand, {
       cwd: neutralDirectory,
-      env: dependencies.environment,
+      env: readOnlyEnvironment(dependencies, neutralDirectory),
       timeoutMs: selfUpgradeInstallTimeoutMs,
       stream: true,
       stdout: request.json ? request.stderr : request.stdout,
