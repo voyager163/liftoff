@@ -114,12 +114,16 @@
 ## 15. Demonstrate bounded end-to-end delivery
 
 - [x] 15.1 Run focused corrected-case suites together with the broader existing integration checks once the components are wired; confirm init/local setup, update ownership, migration, self-upgrade isolation, and ordinary/initialized-repository assessment work through the public CLI rather than only injected helper calls.
-- [ ] 15.2 Add explicit Windows CI coverage for discovery, path quoting, symlink/junction refusal, locks/recovery, asset loading, and environment roots, alongside macOS/Linux lanes; confirm those existing CI lanes pass when execution is authorized, otherwise report the external blocker without claiming completion.
+- [x] 15.2 Add explicit Windows CI coverage for discovery, path quoting, symlink/junction refusal, locks/recovery, asset loading, and environment roots, alongside macOS/Linux lanes; confirm those existing CI lanes pass when execution is authorized, otherwise report the external blocker without claiming completion.
 - [x] 15.3 Run existing package, release-identity, standard-template, and generated-container checks in their supported environments, extending container checks to cover locally prepared source and actual startup; confirm no release is published and no live cloud resource or production state is accessed.
 - [x] 15.4 Audit the final source/documentation diff and operation logs against the proposal's non-goals; confirm no new production phase adapters, public credential/approval workflow, GenAI specialization, global Power Platform cleanup, user-project conversion, Git push, or provider mutation was introduced by this work.
 
-### Authorized cross-platform execution
+### Completed cross-platform execution
 
-Task 15.2 has its explicit Windows/macOS/Linux CI configuration and focused coverage in place. The final local run on macOS passed 1,389 tests, including both real pinned framework initializers; only the Windows command-shim case was skipped. Generated Linux containers were built from locally prepared source and exercised successfully. The user has now authorized committing and pushing this change to `develop` and running the manually dispatched CI workflow there. Task 15.2 remains unchecked until the hosted lanes succeed. This authorization does not include merging to `main`, publishing a release, or automatically archiving the change.
+The user authorized committing and pushing this change to `develop` and manually dispatching CI. [CI run 34292545133](https://github.com/voyager163/liftoff/actions/runs/34292545133) passed on commit `338929332cef54f5b5639ff4b50247ce3930874d`: Windows, macOS, Linux, telemetry OpenTofu, and both npm 10.9.4/12.0.2 standard-template jobs all succeeded. The Windows job completed its focused project/path/lock coverage, full package check, and installed-package smoke test. Linux also completed the pinned framework initializers and prepared-source container startup checks.
+
+Hosted execution exposed and resolved test portability defects: assessment fixtures now create their parent directory explicitly, frozen manifest fixtures preserve original bytes including CRLF, helper assertions use native paths and shell formatting, Git fixtures use an actual empty configuration file on Windows, and each stack migration has its own bounded test case. No safety assertion was removed to obtain a passing run.
+
+Task 15.2 is complete. These commits and CI runs do not merge to `main`, publish an npm release, or archive the change automatically.
 
 The operation-log review also records one earlier test-transport bug that attempted a failing GitHub read. It performed no remote mutation; the fixture was corrected to reject unexpected destinations and use only its local bare repository. Later local-only assessment and corrected fixture runs do not erase that historical caveat.
