@@ -62,10 +62,14 @@ afterEach(async () => {
   vi.restoreAllMocks();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
-async function fixture(options: Partial<ProjectOptions> = {}) {
+async function temporaryRoot(prefix: string): Promise<string> {
   await mkdir(path.join(process.cwd(), '.cache'), { recursive: true });
-  const root = await mkdtemp(path.join(process.cwd(), '.cache', 'assessment-engine '));
+  const root = await mkdtemp(path.join(process.cwd(), '.cache', prefix));
   roots.push(root);
+  return root;
+}
+async function fixture(options: Partial<ProjectOptions> = {}) {
+  const root = await temporaryRoot('assessment-engine ');
   const plan = buildProjectPlan({
     projectName: 'Assessment Project', specWorkflow: 'openspec', agents: ['copilot'],
     projectType: 'standard', apiStack: options.projectType === 'genai' ? 'python' : 'go',
@@ -207,8 +211,7 @@ function state() {
 
 describe('read-only assessment command', () => {
   it('assesses the nearest ordinary unborn Git boundary without initialization or invented identity', async () => {
-    const root = await mkdtemp(path.join(process.cwd(), '.cache', 'ordinary-git-assessment '));
-    roots.push(root);
+    const root = await temporaryRoot('ordinary-git-assessment ');
     await mkdir(path.join(root, '.git'));
     const nested = path.join(root, 'packages', 'api');
     await mkdir(nested, { recursive: true });
@@ -290,8 +293,7 @@ describe('read-only assessment command', () => {
   });
 
   it('treats a linked-worktree marker as an ordinary Git boundary', async () => {
-    const root = await mkdtemp(path.join(process.cwd(), '.cache', 'linked-git-assessment '));
-    roots.push(root);
+    const root = await temporaryRoot('linked-git-assessment ');
     await writeFile(path.join(root, '.git'), 'gitdir: ../worktrees/linked\n');
     const nested = path.join(root, 'src');
     await mkdir(nested);
@@ -311,8 +313,7 @@ describe('read-only assessment command', () => {
   });
 
   it('binds ordinary-Git live reads only to a credential-free GitHub origin', async () => {
-    const root = await mkdtemp(path.join(process.cwd(), '.cache', 'bound-git-assessment '));
-    roots.push(root);
+    const root = await temporaryRoot('bound-git-assessment ');
     await mkdir(path.join(root, '.git'));
     const runner = ordinaryGitRunner(root, 'https://github.com/octo-org/policy.git');
     const collector = vi.spyOn(liveModule, 'collectLiveAssessment').mockResolvedValue({
@@ -339,8 +340,7 @@ describe('read-only assessment command', () => {
   });
 
   it('withholds provider scope for an unsupported ordinary-Git remote', async () => {
-    const root = await mkdtemp(path.join(process.cwd(), '.cache', 'unbound-git-assessment '));
-    roots.push(root);
+    const root = await temporaryRoot('unbound-git-assessment ');
     await mkdir(path.join(root, '.git'));
     const runner = ordinaryGitRunner(root, 'ssh://internal.example/owner/repo.git');
     const collector = vi.spyOn(liveModule, 'collectLiveAssessment').mockResolvedValue({
@@ -362,8 +362,7 @@ describe('read-only assessment command', () => {
   });
 
   it('stops at a malformed inner manifest instead of falling back to an outer Git repository', async () => {
-    const outer = await mkdtemp(path.join(process.cwd(), '.cache', 'outer-git-assessment '));
-    roots.push(outer);
+    const outer = await temporaryRoot('outer-git-assessment ');
     await mkdir(path.join(outer, '.git'));
     const inner = path.join(outer, 'packages', 'damaged');
     const nested = path.join(inner, 'src');
@@ -405,8 +404,7 @@ describe('read-only assessment command', () => {
       skip();
       return;
     }
-    const outer = await mkdtemp(path.join(process.cwd(), '.cache', 'symlink-manifest-assessment '));
-    roots.push(outer);
+    const outer = await temporaryRoot('symlink-manifest-assessment ');
     await mkdir(path.join(outer, '.git'));
     const inner = path.join(outer, 'packages', 'linked');
     await mkdir(inner, { recursive: true });
@@ -458,8 +456,7 @@ describe('read-only assessment command', () => {
   });
 
   it('rejects a retired manifest before ordinary Git fallback, deeper fields, or live collection', async () => {
-    const root = await mkdtemp(path.join(process.cwd(), '.cache', 'retired-assessment '));
-    roots.push(root);
+    const root = await temporaryRoot('retired-assessment ');
     await mkdir(path.join(root, '.git'));
     const raw = JSON.parse(
       await readFile(path.resolve('tests/fixtures/manifest-v4-power-apps.json'), 'utf8')

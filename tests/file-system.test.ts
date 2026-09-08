@@ -71,14 +71,18 @@ async function namedManifestRoot(
 ): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-named-'));
   cleanups.push(root);
-  const parsed = JSON.parse(await readFile(path.join(fixturesDir, fixtureName), 'utf8')) as unknown;
+  const fixtureBytes = await readFile(path.join(fixturesDir, fixtureName));
+  const parsed = JSON.parse(fixtureBytes.toString('utf8')) as unknown;
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`Fixture ${fixtureName} must contain an object.`);
   }
 
   const manifest = parsed as Record<string, unknown>;
   mutate?.(manifest);
-  await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await writeFile(
+    path.join(root, 'liftoff.manifest.json'),
+    mutate ? `${JSON.stringify(manifest, null, 2)}\n` : fixtureBytes
+  );
   return root;
 }
 
@@ -339,14 +343,25 @@ describe('manifest validation', () => {
 
   it('keeps the frozen Power Apps fixture as byte-identical negative input', async () => {
     const fixturePath = path.join(fixturesDir, 'manifest-v4-power-apps.json');
-    const fixtureBytes = await readFile(fixturePath, 'utf8');
+    const fixtureBytes = await readFile(fixturePath);
     const root = await namedManifestRoot('manifest-v4-power-apps.json');
     const manifestPath = path.join(root, 'liftoff.manifest.json');
 
     await expect(loadManifest(root))
       .rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
-    expect(await readFile(manifestPath, 'utf8')).toBe(fixtureBytes);
-    expect(await readFile(fixturePath, 'utf8')).toBe(fixtureBytes);
+    expect(await readFile(manifestPath)).toEqual(fixtureBytes);
+    expect(await readFile(fixturePath)).toEqual(fixtureBytes);
+  });
+
+  it('preserves CRLF bytes when rejecting a retired manifest', async () => {
+    const root = await namedManifestRoot('manifest-v4-power-apps.json');
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const original = await readFile(manifestPath, 'utf8');
+    const windowsBytes = Buffer.from(original.replace(/\r?\n/g, '\r\n'));
+    await writeFile(manifestPath, windowsBytes);
+
+    await expect(loadManifest(root)).rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+    expect(await readFile(manifestPath)).toEqual(windowsBytes);
   });
 
   it('rejects a retired discriminator before malformed deeper metadata and unsafe paths', async () => {

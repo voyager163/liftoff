@@ -385,7 +385,7 @@ describe('infrastructure helper recipes', () => {
         '-var-file=prod.tfvars'
       ]
     }, shell));
-    expect(result).not.toContain('environments/dev');
+    expect(result).not.toContain(path.join('environments', 'dev'));
   });
 
   it('keeps operational init backend-aware and quotes literal profiles', () => {
@@ -395,7 +395,13 @@ describe('infrastructure helper recipes', () => {
       positional: [],
       flags: { env: 'staging' }
     });
-    expect(init).toContain('environments/staging');
+    expect(init).toBe(formatShellCommand({
+      executable: 'tofu',
+      args: [
+        `-chdir=${path.join('infrastructure', 'opentofu', 'azure', 'environments', 'staging')}`,
+        'init'
+      ]
+    }, shell));
     expect(init).not.toContain('-backend=false');
 
     const dev = buildDevCommand({
