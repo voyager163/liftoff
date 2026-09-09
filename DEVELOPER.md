@@ -51,7 +51,7 @@ and successful generated-file checks must not be described as those capabilities
 
 ## Activation version vector
 
-Current Liftoff 0.11.0 deterministic setup contract:
+Current deterministic setup contract, retained by the 0.11.1 CLI patch:
 
 ```json
 {
@@ -133,6 +133,10 @@ changes in another.
   exception to append-only naming in 0.11.0. Preserve historical records and
   files; use the exact [retirement inventory](docs/azure-deployment.md#explicit-flat-root-identity-retirement),
   never aliases, prefix ownership, or force conversion.
+- A CLI-only patch does not retag activation history. When unchanged renderer
+  semantics support a new CLI generation, add that exact version to the
+  infrastructure generation compatibility inventory and cover mixed old/new
+  component provenance; do not infer compatibility from a SemVer range.
 - Never fabricate history: prose, filenames, timestamps, or checked tasks are
   not evidence.
 
@@ -260,10 +264,12 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.11.0 release checklist
+## 0.11.1 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.11.0`. Preparing these files is not publication or permission to create a tag.
+  `0.11.1`. Preparing these files is not publication or permission to create a tag.
+- Activation package identity remains `0.11.0`; no phase semantics or graph
+  identity change is introduced by patch-release preparation.
 - Manifest writes use artifactVersion 7; readers accept v2-v7.
 - Policy version is `"6"`; activation contract/state/evidence-header/approval
   and compatibility metadata are v2. Graph, supersession, credential-policy,

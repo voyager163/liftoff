@@ -12,6 +12,7 @@ import { phaseCapabilities } from '../src/domain/governance/activation/capabilit
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
 import { patterns } from '../src/application/project/catalog.js';
 import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
+import { liftoffVersion } from '../src/version.js';
 
 const repositoryRoot = process.cwd();
 const requiredDocs = [
@@ -444,7 +445,9 @@ describe('public documentation', () => {
     expect(example, 'developer guide must show the current complete activation vector').not.toBeNull();
     expect(JSON.parse(example![1])).toEqual(currentActivationIdentity);
     expect(createHash('sha256').update(canonicalPhaseGraphJson).digest('hex')).toBe(canonicalPhaseGraphHash);
-    expect(developer).toContain(`## ${currentActivationIdentity.liftoffVersion} release checklist`);
+    expect(developer).toContain(`## ${liftoffVersion} release checklist`);
+    expect(manifests).toContain(`| CLI package version | ${liftoffVersion} |`);
+    expect(manifests).toContain(`| Activation package identity | ${currentActivationIdentity.liftoffVersion} |`);
     expect(identitySection).toContain(`schema version ${compatibilityMetadataSchemaVersion} in its own document`);
     expect(developer).toContain('There is no separate `/liftoff-setup` skill version');
     expect(developer).toContain('CLI SemVer');

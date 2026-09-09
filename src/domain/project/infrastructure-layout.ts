@@ -30,6 +30,10 @@ export interface InfrastructureProvisioningGate {
 
 const azureRoot = ['infrastructure', 'opentofu', 'azure'] as const;
 export const independentInfrastructureGenerationVersion = '0.11.0' as const;
+export const compatibleIndependentInfrastructureGenerationVersions = [
+  independentInfrastructureGenerationVersion,
+  '0.11.1'
+] as const;
 
 export const sharedApplicationModuleIdentities = [
   ['opentofu-application-versions', 'versions.tf'],
@@ -113,7 +117,7 @@ export function currentInfrastructureIdentities(
 function isRecordedIdentity(
   artifacts: readonly ManifestProjectArtifact[],
   identity: InfrastructureArtifactIdentity,
-  requiredGeneratedBy?: string
+  supportedGenerations?: readonly string[]
 ): boolean {
   return artifacts.some((artifact) =>
     artifact.logicalName === identity.logicalName &&
@@ -121,9 +125,9 @@ function isRecordedIdentity(
     artifact.provisioningGroup === identity.provisioningGroup &&
     artifact.pathParts.join('\0') === identity.pathParts.join('\0') &&
     (
-      requiredGeneratedBy === undefined
+      supportedGenerations === undefined
         ? artifact.generatedBy.length > 0
-        : artifact.generatedBy === requiredGeneratedBy
+        : supportedGenerations.includes(artifact.generatedBy)
     ) &&
     /^sha256:[0-9a-f]{64}$/.test(artifact.generationHash)
   );
@@ -155,7 +159,7 @@ export function assessInfrastructureLayout(
     isRecordedIdentity(
       artifacts,
       identity,
-      independentInfrastructureGenerationVersion
+      compatibleIndependentInfrastructureGenerationVersions
     )
   )) {
     return {
