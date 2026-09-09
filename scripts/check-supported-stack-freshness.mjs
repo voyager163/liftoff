@@ -247,23 +247,6 @@ for (const [name, action] of Object.entries(baseline.githubActions)) {
   });
 }
 
-add(
-  'upstream.power-apps-code-app',
-  baseline.upstreams['power-apps-code-app'].commit,
-  async () => {
-    const output = command(
-      'git',
-      ['ls-remote', `${baseline.upstreams['power-apps-code-app'].repository}.git`, 'refs/heads/main'],
-      'Power Apps starter repository'
-    );
-    const sha = output.split(/\s+/)[0];
-    if (!/^[0-9a-f]{40}$/.test(sha)) {
-      throw new Error('Power Apps starter repository returned no main commit.');
-    }
-    return sha;
-  }
-);
-
 const results = await Promise.all(checks.map(async (check) => {
   try {
     const candidate = await check.load();

@@ -3,6 +3,8 @@ import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { visibleLength } from '../src/terminal.js';
 import { CaptureStream } from './helpers.js';
+import path from 'node:path';
+import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 
 const layouts = [
   { name: 'rich', columns: 100 },
@@ -64,8 +66,17 @@ describe('reference and helper presentation hierarchy', () => {
     [['patterns'], 'multi-agent'],
     [['providers'], 'azure'],
     [['regions', 'search', 'korea'], 'koreacentral'],
-    [['dev', 'logs'], 'docker compose logs -f'],
-    [['infra', 'plan', '--env', 'staging'], 'tofu plan -var-file=environments/staging.tfvars']
+    [['dev', 'logs'], formatShellCommand(
+      { executable: 'docker', args: ['compose', 'logs', '-f'] },
+      commandShellForPlatform(process.platform)
+    )],
+    [['infra', 'plan', '--env', 'staging'], formatShellCommand({
+      executable: 'tofu',
+      args: [
+        `-chdir=${path.join('infrastructure', 'opentofu', 'azure', 'environments', 'staging')}`,
+        'plan', '-var-file=staging.tfvars'
+      ]
+    }, commandShellForPlatform(process.platform))]
   ] as const) {
     it(`renders ${args.join(' ')} consistently in rich and plain modes`, async () => {
       const rich = await screen([...args], 100);

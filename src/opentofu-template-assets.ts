@@ -1,13 +1,7 @@
-import { readFileSync } from 'node:fs';
+import { packagedTemplateAssets } from './adapters/packaged-assets/template-assets.js';
 
-const versions = readFileSync(
-  new URL('../assets/locks/opentofu-azure/versions.tf', import.meta.url),
-  'utf8'
-);
-const providerLock = readFileSync(
-  new URL('../assets/locks/opentofu-azure/.terraform.lock.hcl', import.meta.url),
-  'utf8'
-);
+const versions = packagedTemplateAssets.opentofu.versions;
+const providerLock = packagedTemplateAssets.opentofu.providerLock;
 
 export function renderOpenTofuVersions(): string {
   return versions;

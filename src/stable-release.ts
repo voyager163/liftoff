@@ -72,7 +72,19 @@ export async function lookupStableRelease(
     let value: unknown;
     try {
       value = await response.json();
-    } catch {
+    } catch (error) {
+      if (controller.signal.aborted) {
+        throw new StableReleaseLookupError(
+          'timeout',
+          'Canonical npm stable release lookup timed out.'
+        );
+      }
+      if (!(error instanceof SyntaxError)) {
+        throw new StableReleaseLookupError(
+          'network_failure',
+          'Canonical npm stable release lookup failed.'
+        );
+      }
       throw new StableReleaseLookupError(
         'invalid_metadata',
         'Canonical npm stable release metadata was not valid JSON.'

@@ -3,7 +3,7 @@ import {
   activationStateFilePathParts,
   loadActivationState
 } from './activation-state.js';
-import { canonicalJson } from './canonical-json.js';
+import { canonicalJson } from '../domain/governance/activation/canonical-json.js';
 import {
   graphReconciliationRecordFromMapping,
   type HistoricalActivationStateMigration
@@ -11,29 +11,30 @@ import {
 import {
   activationCompatibility,
   currentActivationIdentity
-} from './graph.js';
+} from '../domain/governance/activation/graph.js';
 import {
   activationStateSchemaVersion,
   type ActivationCompatibilityMap,
-  resolveActivationCompatibility
-} from './identity.js';
+  resolveActivationCompatibility,
+  isHistoricalActivationIdentity
+} from '../domain/governance/policy/identity.js';
 import type {
   ActivationIdentity,
   GraphReconciliationRecord,
   PhaseId,
   UserActivationState
-} from './types.js';
-import { phaseIds } from './types.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
 import {
   validateGraphReconciliationRecord,
   validateUserActivationState
-} from './validators.js';
+} from '../domain/governance/activation/validators.js';
 import {
   captureProjectFileSnapshot,
-  readProjectFile,
   type ProjectFileMutation,
   type ProjectFileSnapshot
-} from '../file-system.js';
+} from '../adapters/filesystem/project-transaction.js';
+import { readProjectFile } from '../adapters/filesystem/project-files.js';
 
 export const updateFailureInjectionEnv = 'LIFTOFF_UPDATE_INJECT_FAILURE' as const;
 
@@ -73,6 +74,7 @@ export interface ActivationStateMigrationReport {
   evidencePolicy: 'preserve-bytes';
   unversionedImport: 'requires-explicit-import-mapping';
   issues: readonly string[];
+  diagnosticOnly?: boolean;
 }
 
 export interface ActivationStateMigrationMappingInput {
@@ -240,6 +242,13 @@ export async function planHistoricalActivationStateMigration(
     ]);
   }
   if (parsed.schemaVersion !== activationStateSchemaVersion) {
+    if (parsed.schemaVersion === 1 && isHistoricalActivationIdentity(parsed.identity)) {
+      const result = blocked('unsupported-activation-identity', [
+        'Known historical activation v1 is diagnostic-only; migration to v2 is unsupported. Preserve all original state and evidence bytes; supported managed-core maintenance does not authorize activation execution.'
+      ]);
+      result.report.diagnosticOnly = true;
+      return result;
+    }
     if (
       typeof parsed.schemaVersion === 'number' &&
       parsed.schemaVersion > activationStateSchemaVersion

@@ -1,5 +1,5 @@
 import { compareSemver } from './semver.js';
-import { supportedStack } from './supported-stack.js';
+import { packagedSupportedStack as supportedStack } from './adapters/packaged-assets/supported-stack.js';
 
 export const minimumNodeVersion = supportedStack.runtimes.node.minimumVersion ??
   supportedStack.runtimes.node.version;

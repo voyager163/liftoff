@@ -14,12 +14,13 @@ prerequisites, generated artifacts, and maintenance checks that apply to it.
 
 | Workload | Primary choices | Required runtime | Liftoff-generated platform areas |
 | --- | --- | --- | --- |
-| GenAI application | Pattern, Azure region, environments, optional frontend | Python 3.14, `uv` 0.12.7+, and Node.js 24.20+ | API, orchestration, data, messaging, Docker, Azure OpenTofu |
-| API application | Python 3.14, Node.js 24, or Go 1.27 API stack; Azure region; environments; optional frontend | Selected API runtime and Node.js 24.20+ | API, data, Docker, Azure OpenTofu |
-| Power Apps code app | Spec workflow, agents, optional Code Apps plugin | Node.js 24.20+ | Official React/Vite starter and project-local Power Apps tooling |
+| GenAI application | Pattern, Azure region, environments, optional frontend | Python 3.14.x, `uv` 0.12.x, and Node.js 24.20+ within 24 LTS | API, orchestration, data, messaging, Docker, Azure OpenTofu |
+| API application | Python 3.14, Node.js 24, or Go 1.27 API stack; Azure region; environments; optional frontend | Selected supported API release line and Node.js 24.20+ within 24 LTS | API, data, Docker, Azure OpenTofu |
 
-All three workloads continue into the common OpenSpec or Spec Kit and coding
+Both workloads continue into the common OpenSpec or Spec Kit and coding
 agent flow and the default local repository-governance handoff.
+Required package managers are separate prerequisites: npm 12.x at 12.0.2 or
+newer is required for Node.js dependencies, the optional frontend, or OpenSpec.
 
 ## GenAI application
 
@@ -62,6 +63,33 @@ tools, streaming adapters, fine-tuning datasets, or workflow structures.
 Specializing it later is reviewed project migration work; `liftoff update` and
 `--force` cannot convert project-owned application files.
 
+### Pattern capability limits
+
+All nine identifiers remain available and have `foundation` maturity.
+That label describes starter boundaries, not a completed specialized application.
+
+| Pattern ID | Existing boundary | Deliberately not implemented |
+| --- | --- | --- |
+| `generic` | Neutral model invocation | Retrieval, pgvector, workers, or other specialization |
+| `rag` | Model-only answers, configured ingestion publication, pgvector/worker extension points | Retrieval, citations, embeddings, indexing, and grounded RAG answers |
+| `chatbot` | Single-turn model invocation | Persisted conversation history and memory |
+| `agent` | Model invocation and worker extension points | Tool execution and task automation |
+| `prompt` | Invocation and prompt artifacts | Loading named prompt files into the model call |
+| `multi-agent` | Single-model invocation and worker extension points | Multi-agent coordination |
+| `fine-tuned` | Configured-model invocation and sample evaluation dataset | Fine-tuning and evaluation execution |
+| `streaming` | One completed model response wrapped as buffered SSE | Incremental token streaming |
+| `workflow` | Invocation and worker extension points | Workflow stages and durable pipeline execution |
+
+Generic's default Python `pyproject.toml` and `uv.lock` have no `pgvector`
+dependency. Only RAG requests the pgvector database extension/image; generic
+has no application worker. The optional Langfuse observability-profile worker
+is not application-worker specialization. Generated Function triggers log
+message keys rather than implementing indexing or orchestration.
+
+See [runtime configuration](configuration-and-manifests.md#application-runtime-configuration)
+for Python/Node dotenv, Go JSON, explicit-file validation, and native/Compose
+recipes. No API stack inherits GenAI-only model or tracing credentials.
+
 ## API application
 
 ### Questions
@@ -88,71 +116,27 @@ Specializing it later is reviewed project migration work; `liftoff update` and
 Service secrets, cloud authentication, external integrations, and deployment
 remain explicit developer or delivery-pipeline actions.
 
-## Power Apps code app
+## Retired Power Apps workload
 
-Power Apps uses an immutable, packaged snapshot of Microsoft's official
-[`PowerAppsCodeApps/templates/starter`](https://github.com/microsoft/PowerAppsCodeApps/tree/main/templates/starter).
-Initialization and update do not fetch the mutable upstream branch.
+Power Apps code apps and the Code Apps preview-plugin integration are no longer
+supported. The retired `power-apps-code-app` type and plugin options are rejected
+before preparation or generation.
 
-### Questions
-
-- Project name.
-- OpenSpec or Spec Kit.
-- GitHub Copilot, Claude Code, or both.
-- Spec Kit default agent when both are selected.
-- Whether to request the optional Microsoft Code Apps agent plugin
-  (Preview).
-
-Power Apps does not ask for an API stack, GenAI pattern, cloud, region, API
-environment, API frontend, Docker, or OpenTofu selection.
-
-### Generated output
-
-- React, Vite, TypeScript, Tailwind, and the Power Apps SDK and Vite plugin.
-- Locked root `package.json` and `package-lock.json`.
-- Project-local `power-apps` CLI supplied by the generated dependency graph.
-- `liftoff.config.json`, manifest-v7 `liftoff.manifest.json`, starter provenance,
-  and third-party attribution.
-- Official OpenSpec or Spec Kit output and every selected agent marker.
-- The common local governance policy and selected-agent `/liftoff-setup` integration, with backend,
-  container, OpenTofu, custom deployment, and API DAST controls marked
-  inapplicable.
-
-Liftoff does not create an API backend, `docker-compose.yml`,
-`infrastructure/`, API environments, or an environment-bound
-`power.config.json` for this workload.
-
-### Deferred actions
-
-After initialization:
-
-```bash
-npm ci
-npm run dev
-npx --no-install power-apps --version
-```
-
-Environment binding, connector creation, authentication, and deployment remain
-outside initialization. Follow Microsoft's current Code Apps documentation
-before running `power-apps init` or `power-apps push`.
-
-If the optional Code Apps plugin was requested, install only the targeted
-plugin from an agent session:
-
-```text
-/plugin marketplace add microsoft/power-platform-skills
-/plugin install code-apps-preview@power-platform-skills
-```
-
-Do not run `/create-code-app` inside the generated project; Liftoff already
-created the application.
+Existing Power Apps manifests are also rejected, including by update, force,
+doctor, and governance assessment. Liftoff does not convert the project, delete
+application files, update its dependencies, or fall back to a different workload.
+Existing Power Platform applications and machine-wide tooling remain under
+their owners' control outside Liftoff.
 
 ## Change workload later
 
 `liftoff update` maintains explicit Liftoff core files and can provision a
 previously absent frontend or environment once after a corresponding desired
-state edit. It does not convert workloads, change API stacks or GenAI patterns,
-transition a Power Apps starter, or modernize production project templates.
+state edit. New environments additionally require recorded independent-root
+infrastructure; legacy or unknown shared-state layouts need reviewed migration.
+It does not convert workloads, change API stacks or GenAI patterns,
+or modernize production project templates. Retired workloads have no update or
+automatic migration path.
 
 Plain update applies safe core changes immediately. Use `liftoff update
 --check` for read-only inspection. `--force` applies only to listed

@@ -1,5 +1,5 @@
 import type { LegacyInventory, ScanFinding } from './scan.js';
-import type { ApiProjectPlan } from './types.js';
+import type { ApiProjectPlan } from './domain/project/contracts.js';
 
 export interface SeededGroup {
   title: string;
@@ -39,19 +39,20 @@ export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProject
   ]);
 
   push('Configuration', byKind('env-file').map((f) =>
-    `Map variables from ${staged(f.sourcePath)} into environments/*/backend.env and ${configFile}`
+    `Map variables from ${staged(f.sourcePath)} into ${plan.environments.map((environment) => `environments/${environment.id}/backend.env`).join(', ')} and ${configFile}`
   ));
 
   const codeTasks: string[] = [];
   for (const finding of byKind('framework')) {
-    if (finding.evidence.startsWith('fastapi')) {
+    if (finding.evidence.startsWith('fastapi') && plan.apiStack.id === 'python-fastapi') {
       codeTasks.push(`Move FastAPI route modules into ${apiDirectory} and register them in the generated API entrypoint (detected: ${finding.evidence})`);
     } else {
       codeTasks.push(`Port application entrypoints into ${apiDirectory} using ${plan.apiStack.framework} - large task: port handlers, middleware, and auth (detected: ${finding.evidence})`);
     }
   }
-  codeTasks.push(...byKind('go-source').map((f) =>
-    `Move Go application code from ${staged(f.sourcePath)} into backend/cmd/api/ or backend/internal/api/ as appropriate and register it with the generated entrypoint (detected: ${f.evidence})`
+  codeTasks.push(...byKind('go-source').map((f) => plan.apiStack.id === 'go-huma'
+    ? `Move Go application code from ${staged(f.sourcePath)} into backend/cmd/api/ or backend/internal/api/ as appropriate and register it with the generated entrypoint (detected: ${f.evidence})`
+    : `Port Go application behavior from ${staged(f.sourcePath)} into ${apiDirectory} using ${plan.apiStack.framework}; do not copy Go source as executable target code (detected: ${f.evidence})`
   ));
   if (plan.projectType.id === 'genai') {
     codeTasks.push(...byKind('retrieval').map((f) =>
@@ -62,8 +63,9 @@ export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProject
       `Decide how legacy retrieval code should be handled in this standard project (detected: ${f.evidence})`
     ));
   }
-  codeTasks.push(...byKind('frontend').map((f) =>
-    `Move the frontend application into frontend/ and merge its dependencies with the scaffold's (detected: ${f.evidence})`
+  codeTasks.push(...byKind('frontend').map((f) => plan.includeFrontend
+    ? `Move the frontend application from ${staged(f.sourcePath)} into frontend/ and merge its dependencies with the scaffold's (detected: ${f.evidence})`
+    : `Decide placement for ${staged(f.sourcePath)}; no generated frontend was selected (detected: ${f.evidence})`
   ));
   push('Application code', codeTasks);
 
@@ -74,7 +76,8 @@ export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProject
       : 'replace the generated Goose baseline or renumber legacy migrations and the baseline into one unique ordered sequence';
   push('Data and tests', [
     ...byKind('db-migrations').map((f) => `Rebase migration history from ${staged(f.sourcePath)}: ${migrationInstruction}`),
-    ...byKind('tests').map((f) => `Relocate tests from ${staged(f.sourcePath)} under ${testDirectory}`)
+    ...byKind('tests').map((f) => `Relocate tests from ${staged(f.sourcePath)} under ${testDirectory}`),
+    ...byKind('test-config').map((f) => `Reconcile test configuration from ${staged(f.sourcePath)} with the target ${plan.apiStack.testFramework} test contract`)
   ]);
 
   push('CI and Docker', [
@@ -85,12 +88,13 @@ export function seedMigrationGroups(inventory: LegacyInventory, plan: ApiProject
 
   push('Placement decisions', [
     ...byKind('spec-workflow').map((f) => `Carry existing specs from ${staged(f.sourcePath)} into the scaffold's spec workspace`),
+    ...byKind('github-config').map((f) => `Decide placement for ${staged(f.sourcePath)} after reviewing the selected repository policy`),
     ...inventory.unrecognized.map((entry) => `Decide placement for ${staged(entry)} (unrecognized top-level entry)`)
   ]);
 
   push('Verification and cleanup', [
-    'Delete migration/legacy/ once every task above is complete',
-    'Run the backend tests, `liftoff validate`, and `liftoff doctor`; archive this change when everything is green'
+    'Run the backend tests, `liftoff validate`, and `liftoff doctor`; review behavior before cleanup',
+    'Delete migration/legacy/ once every task above is complete'
   ]);
 
   return groups;
@@ -136,7 +140,7 @@ Adopt the existing project \`${inventory.rootName}\` into Liftoff governance by 
 
 ## Completion Gate
 
-This migration is complete when all tasks are checked, \`liftoff validate\` and \`liftoff doctor\` pass, the backend tests pass, and this change is archived.
+This migration is complete when all tasks are checked, \`liftoff validate\` and \`liftoff doctor\` pass, the backend tests pass, staging cleanup is complete, and ${plan.specWorkflow.id === 'openspec' ? 'this change is archived' : 'the checklist is finalized locally'}.
 
 ## Project
 

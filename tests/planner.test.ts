@@ -80,49 +80,29 @@ describe('planner', () => {
     expect(buildProjectPlan({ projectName: 'Standard', apiStack: 'node', cloud: 'azure' }, { requireProjectName: true }).projectType.id).toBe('standard');
   });
 
-  it('builds a Power Apps code app plan without API or cloud identity', () => {
-    const plan = buildProjectPlan({
-      projectName: 'Field Service',
-      projectType: 'power-apps-code-app',
-      codeAppsPlugin: true
-    }, { requireProjectName: true });
-
-    expect(plan.workload).toBe('power-apps-code-app');
-    if (plan.workload !== 'power-apps-code-app') {
-      throw new Error('Expected a Power Apps code app plan.');
-    }
-    expect(plan.starter).toEqual({
-      repository: 'https://github.com/microsoft/PowerAppsCodeApps',
-      path: 'templates/starter',
-      commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
-    });
-    expect(plan.codeAppsPlugin).toBe(true);
-    expect('apiStack' in plan).toBe(false);
-    expect('provider' in plan).toBe(false);
-    expect(plan.approvedStack).toContain('Power Apps SDK');
-  });
-
   it.each([
-    [{ apiStack: 'node' }, '--api'],
-    [{ pattern: 'rag' }, '--pattern'],
-    [{ cloud: 'azure' }, '--cloud'],
-    [{ region: 'eastus' }, '--region'],
-    [{ includeFrontend: false }, '--frontend'],
-    [{ environments: ['dev'] }, '--environments']
-  ])('rejects inapplicable Power Apps options %j', (extra, expected) => {
+    {},
+    { apiStack: 'node' },
+    { pattern: 'rag' },
+    { cloud: 'azure' },
+    { region: 'eastus' },
+    { includeFrontend: false },
+    { environments: ['dev'] },
+    { codeAppsPlugin: false }
+  ])('rejects retired Power Apps planning before interpreting deeper options %j', (extra) => {
     expect(() => buildProjectPlan({
-      projectName: 'Invalid Power App',
+      projectName: 'Retired Power App',
       projectType: 'power-apps-code-app',
       ...extra
-    }, { requireProjectName: true })).toThrow(expected);
+    }, { requireProjectName: true })).toThrow(/Power Apps.*retired|retired.*Power Apps/i);
   });
 
-  it('rejects conflicting explicit and legacy workload selectors', () => {
+  it('rejects a retired workload before conflicting legacy selectors', () => {
     expect(() => buildProjectPlan({
       projectName: 'Conflict',
       projectType: 'power-apps-code-app',
       genai: false
-    }, { requireProjectName: true })).toThrow(/conflicts with legacy/);
+    }, { requireProjectName: true })).toThrow(/Power Apps.*retired|retired.*Power Apps/i);
   });
 
   it('rejects contradictory project identity inputs', () => {
@@ -312,32 +292,18 @@ describe('planner', () => {
     }
   });
 
-  it('loads only applicable Power Apps configuration fields', async () => {
+  it('rejects retired Power Apps configuration before deeper fields', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-config-power-apps-'));
     try {
-      await writeFile(path.join(root, 'valid.json'), JSON.stringify({
+      await writeFile(path.join(root, 'retired.json'), JSON.stringify({
         projectName: 'Power App',
         projectType: 'power-apps-code-app',
-        codeAppsPlugin: false,
-        specWorkflow: 'openspec',
-        agents: ['copilot']
+        codeAppsPlugin: { malformed: true },
+        cloud: { unsafe: true },
+        environments: '../outside'
       }));
-      expect(await loadConfigOptions('valid.json', root)).toMatchObject({
-        projectType: 'power-apps-code-app',
-        codeAppsPlugin: false
-      });
-
-      await writeFile(path.join(root, 'api-field.json'), JSON.stringify({
-        projectType: 'power-apps-code-app',
-        cloud: 'azure'
-      }));
-      await expect(loadConfigOptions('api-field.json', root)).rejects.toThrow(/cannot include: cloud/);
-
-      await writeFile(path.join(root, 'bad-plugin.json'), JSON.stringify({
-        projectType: 'power-apps-code-app',
-        codeAppsPlugin: 'yes'
-      }));
-      await expect(loadConfigOptions('bad-plugin.json', root)).rejects.toThrow(/must be a boolean/);
+      await expect(loadConfigOptions('retired.json', root))
+        .rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

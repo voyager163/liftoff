@@ -70,8 +70,7 @@ describe('template dependency security', () => {
   it('tracks exactly the packaged npm template lockfiles', async () => {
     const packagedPaths = [
       'assets/locks/node-backend/package-lock.json',
-      'assets/locks/frontend/package-lock.json',
-      'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/package-lock.json'
+      'assets/locks/frontend/package-lock.json'
     ];
 
     const resolved = await validateTemplateDependencyInventory(
@@ -84,8 +83,7 @@ describe('template dependency security', () => {
       'liftoff-cli',
       'telemetry-ingest',
       'node-backend',
-      'standard-frontend',
-      'power-apps-code-app'
+      'standard-frontend'
     ]);
     await expect(validateTemplateDependencyInventory(
       repositoryRoot,
@@ -111,7 +109,7 @@ describe('template dependency security', () => {
     const policy = parseTemplateDependencyPolicy(source, templateDependencyInventory);
 
     expect(policy.schemaVersion).toBe(1);
-    expect(policy.exceptions).toHaveLength(2);
+    expect(policy.exceptions).toHaveLength(1);
     expect(policy.exceptions.map((entry) => ({
       advisoryId: entry.advisoryId,
       package: entry.package,
@@ -120,11 +118,6 @@ describe('template dependency security', () => {
       {
         advisoryId: 'GHSA-67MH-4WV8-2F99',
         package: 'esbuild',
-        disposition: 'vulnerable-code-not-used'
-      },
-      {
-        advisoryId: 'GHSA-W5HQ-G745-H8PQ',
-        package: 'uuid',
         disposition: 'vulnerable-code-not-used'
       }
     ]);

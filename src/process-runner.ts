@@ -2,7 +2,7 @@ import spawn from 'cross-spawn';
 import { spawn as spawnProcess, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import type { ExternalCommand } from './types.js';
+import type { ExternalCommand } from './domain/project/contracts.js';
 
 export interface RunCommandOptions {
   cwd?: string;

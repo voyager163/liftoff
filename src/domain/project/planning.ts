@@ -1,0 +1,425 @@
+import type {
+  EnvironmentDefinition,
+  ProjectOptions,
+  ProjectPlan,
+  WorkloadPlan
+} from './contracts.js';
+import type { ProjectCatalog } from './catalog.js';
+import {
+  isRetiredPowerAppsWorkload,
+  retiredPowerAppsMessage
+} from './retired-workload.js';
+import { normalizeProjectOptions, resolveProjectTypeInput } from './inputs.js';
+
+export type ProjectPlanningCatalog = Pick<
+  ProjectCatalog,
+  | 'apiStacks'
+  | 'canonicalDefaultEnvironments'
+  | 'canonicalizeCodingAgents'
+  | 'getApiStack'
+  | 'getCodingAgent'
+  | 'getEnvironment'
+  | 'getFrameworkDefinition'
+  | 'getGovernanceProfile'
+  | 'getPattern'
+  | 'getProvider'
+  | 'getProjectType'
+  | 'getSpecWorkflow'
+  | 'governanceProfiles'
+  | 'projectInputCatalog'
+  | 'resolveRegion'
+  | 'specWorkflows'
+>;
+
+export class PlanValidationError extends Error {
+  constructor(public readonly issues: string[]) {
+    super(issues.join('\n'));
+    this.name = 'PlanValidationError';
+  }
+}
+
+export interface BuildPlanOptions {
+  requireProjectName: boolean;
+}
+
+export function mergeOptions(base: ProjectOptions, override: ProjectOptions): ProjectOptions {
+  const definedOverride = Object.fromEntries(
+    Object.entries(override).filter(([, value]) => value !== undefined)
+  ) as ProjectOptions;
+
+  return {
+    ...base,
+    ...definedOverride,
+    includeFrontend: definedOverride.includeFrontend ?? base.includeFrontend,
+    environments: definedOverride.environments ?? base.environments
+  };
+}
+
+export function buildProjectPlanWithCatalog(
+  rawInput: ProjectOptions,
+  options: BuildPlanOptions,
+  catalog: ProjectPlanningCatalog
+): ProjectPlan {
+  const {
+    apiStacks,
+    canonicalDefaultEnvironments,
+    canonicalizeCodingAgents,
+    getApiStack,
+    getCodingAgent,
+    getEnvironment,
+    getFrameworkDefinition,
+    getGovernanceProfile,
+    getPattern,
+    getProvider,
+    getProjectType,
+    getSpecWorkflow,
+    governanceProfiles,
+    projectInputCatalog,
+    resolveRegion,
+    specWorkflows
+  } = catalog;
+  const input = normalizeProjectOptions(rawInput, projectInputCatalog);
+  const issues: string[] = [];
+  if (isRetiredPowerAppsWorkload(input.projectType)) {
+    throw new PlanValidationError([retiredPowerAppsMessage(input.projectType)]);
+  }
+  const projectName = input.projectName?.trim();
+  if (options.requireProjectName && !projectName) {
+    issues.push('Project name is required.');
+  }
+
+  const typeInput = resolveProjectTypeInput(input, getProjectType);
+  issues.push(...typeInput.issues);
+  const projectType = typeInput.projectType;
+  if (!projectType) {
+    if (!input.projectType) {
+      issues.push('Project type is required.');
+    }
+  }
+
+  const pattern = input.pattern ? getPattern(input.pattern) : undefined;
+  let apiStack = input.apiStack ? getApiStack(input.apiStack) : undefined;
+  if (input.apiStack && !apiStack) {
+    issues.push(`Unknown API stack: ${input.apiStack}. Use one of: ${apiStacks.map((stack) => stack.id).join(', ')}.`);
+  }
+
+  if (projectType?.id === 'genai') {
+    if (!pattern) {
+      issues.push(input.pattern ? `Unknown GenAI pattern: ${input.pattern}.` : 'GenAI pattern is required.');
+    }
+    if (apiStack && apiStack.id !== 'python-fastapi') {
+      issues.push('GenAI projects use the python-fastapi API stack.');
+    }
+    apiStack = getApiStack('python-fastapi');
+  } else if (projectType?.id === 'standard') {
+    if (input.pattern) {
+      issues.push('Standard projects cannot select a GenAI pattern. Remove --pattern or choose a GenAI project.');
+    }
+    if (!apiStack) {
+      issues.push('API stack is required for standard projects.');
+    }
+  }
+
+  const provider = getProvider(input.cloud ?? 'azure');
+  if (!provider) {
+    issues.push(`Unknown cloud provider: ${input.cloud}.`);
+  } else if (provider.status !== 'available') {
+    issues.push(`${provider.label} is a planned provider adapter and is not available in V1.`);
+  }
+
+  const specWorkflow = getSpecWorkflow(input.specWorkflow ?? specWorkflows.find((workflow) => workflow.default)?.id ?? 'openspec');
+  if (!specWorkflow) {
+    issues.push(`Unknown spec-driven workflow: ${input.specWorkflow}.`);
+  }
+  const governanceProfile = getGovernanceProfile(
+    input.governanceProfile ??
+      governanceProfiles.find((profile) => profile.default)?.id ??
+      'single-maintainer-gitflow'
+  );
+  if (!governanceProfile) {
+    issues.push(
+      `Unknown repository governance profile: ${input.governanceProfile}. ` +
+      `Use one of: ${governanceProfiles.map((profile) => profile.id).join(', ')}.`
+    );
+  }
+
+  const selectedAgents = canonicalizeCodingAgents(input.agents);
+  if (input.agents?.length === 0) {
+    issues.push('At least one AI coding agent is required.');
+  }
+  if (selectedAgents.unknown.length > 0) {
+    issues.push(`Unknown AI coding agent${selectedAgents.unknown.length === 1 ? '' : 's'}: ${selectedAgents.unknown.join(', ')}.`);
+  }
+  if (selectedAgents.agents.length === 0) {
+    issues.push('At least one supported AI coding agent is required.');
+  }
+  const includesGitHubCopilot = selectedAgents.agents.some((agent) => agent.id === 'github-copilot');
+  if (
+    input.copilotCloud !== undefined &&
+    (specWorkflow?.id !== 'openspec' || !includesGitHubCopilot)
+  ) {
+    issues.push(
+      '--copilot-cloud/--no-copilot-cloud requires OpenSpec with GitHub Copilot selected.'
+    );
+  }
+
+  const requestedDefaultAgent = input.defaultAgent ? getCodingAgent(input.defaultAgent) : undefined;
+  if (input.defaultAgent && !requestedDefaultAgent) {
+    issues.push(`Unknown default AI coding agent: ${input.defaultAgent}.`);
+  }
+  let defaultAgent = requestedDefaultAgent;
+  if (specWorkflow?.id === 'spec-kit') {
+    if (selectedAgents.agents.length === 1 && !defaultAgent) {
+      defaultAgent = selectedAgents.agents[0];
+    } else if (!defaultAgent) {
+      issues.push('Spec Kit requires --default-agent when multiple AI coding agents are selected.');
+    }
+    if (defaultAgent && !selectedAgents.agents.some((agent) => agent.id === defaultAgent?.id)) {
+      issues.push('The Spec Kit default agent must also be present in the selected agents.');
+    }
+  } else if (input.defaultAgent) {
+    issues.push('--default-agent is only valid with Spec Kit.');
+  }
+
+  const selectedEnvironments = resolveEnvironments(input.environments, { canonicalDefaultEnvironments, getEnvironment });
+  if (selectedEnvironments?.issues.length) {
+    issues.push(...selectedEnvironments.issues);
+  }
+
+  const regionResolution = provider?.status === 'available'
+    ? resolveRegion(provider.id, input.region)
+    : undefined;
+  if (regionResolution?.status === 'ambiguous') {
+    issues.push(`Region "${input.region}" is ambiguous for ${provider?.label}. Use one of: ${regionResolution.matches.map((region) => region.slug).join(', ')}.`);
+  } else if (regionResolution?.status === 'unknown') {
+    issues.push(`Unknown region "${regionResolution.input}" for ${provider?.label}.`);
+  }
+
+  if (
+    issues.length > 0 ||
+    !projectName && options.requireProjectName ||
+    !projectType ||
+    !specWorkflow ||
+    !governanceProfile ||
+    selectedAgents.agents.length === 0 ||
+    (
+      !apiStack ||
+      projectType.id === 'genai' && !pattern ||
+      !provider ||
+      provider.status !== 'available' ||
+      !selectedEnvironments ||
+      !regionResolution ||
+      regionResolution.status !== 'resolved'
+    )
+  ) {
+    throw new PlanValidationError(issues);
+  }
+
+  const effectiveProjectName = projectName || 'liftoff-preview';
+  const safeProjectName = toSafeProjectName(effectiveProjectName);
+
+  if (
+    !apiStack ||
+    !provider ||
+    !selectedEnvironments ||
+    !regionResolution ||
+    regionResolution.status !== 'resolved'
+  ) {
+    throw new PlanValidationError(['API workload planning did not resolve all required fields.']);
+  }
+  let workload: WorkloadPlan;
+  if (projectType.id === 'genai') {
+    if (!pattern) {
+      throw new PlanValidationError(['GenAI pattern is required.']);
+    }
+    workload = {
+      workload: 'genai',
+      apiStack,
+      pattern,
+      provider,
+      region: regionResolution.region,
+      includeFrontend: input.includeFrontend ?? false,
+      frontendStarter: pattern.frontendStarter,
+      environments: selectedEnvironments.values
+    };
+  } else {
+    workload = {
+      workload: 'standard',
+      apiStack,
+      provider,
+      region: regionResolution.region,
+      includeFrontend: input.includeFrontend ?? false,
+      frontendStarter: 'API starter',
+      environments: selectedEnvironments.values
+    };
+  }
+
+  return {
+    projectName: effectiveProjectName,
+    safeProjectName,
+    packageName: safeProjectName.replace(/_/g, '-'),
+    projectType,
+    ...workload,
+    specWorkflow,
+    agents: selectedAgents.agents,
+    ...(defaultAgent ? { defaultAgent } : {}),
+    copilotCloud: specWorkflow.id === 'openspec' && includesGitHubCopilot
+      ? input.copilotCloud ?? false
+      : false,
+    framework: getFrameworkDefinition(specWorkflow.id),
+    governanceProfile,
+    approvedStack: approvedStackFor(workload)
+  };
+}
+
+function approvedStackFor(workload: WorkloadPlan): string[] {
+  if (workload.workload === 'genai') {
+    return [
+      'FastAPI',
+      'PydanticAI',
+      'Pydantic settings',
+      'Scalar',
+      'PostgreSQL',
+      'Alembic',
+      'Redis',
+      'Azure Service Bus',
+      'Azure Blob Storage',
+      'Azure Communication Services',
+      'Langfuse',
+      'Docker Compose',
+      'OpenTofu'
+    ];
+  }
+
+  const stackSpecific: Record<typeof workload.apiStack.id, string[]> = {
+    'python-fastapi': ['FastAPI', 'Pydantic settings', 'SQLAlchemy', 'Alembic', 'pytest'],
+    'node-fastify': ['Fastify', 'TypeScript', 'Drizzle', 'Vitest'],
+    'go-huma': ['Huma v2', 'Chi', 'pgx', 'Goose', 'go test']
+  };
+  return [
+    ...stackSpecific[workload.apiStack.id],
+    'Scalar',
+    'PostgreSQL',
+    'Redis',
+    'Azure Service Bus',
+    'Azure Blob Storage',
+    'Azure Communication Services',
+    'Docker Compose',
+    'OpenTofu'
+  ];
+}
+
+function resolveEnvironments(
+  values: string[] | undefined,
+  catalog: Pick<ProjectCatalog, 'canonicalDefaultEnvironments' | 'getEnvironment'>
+): { values: EnvironmentDefinition[]; issues: string[] } {
+  const { canonicalDefaultEnvironments, getEnvironment } = catalog;
+  if (!values || values.length === 0) {
+    return { values: canonicalDefaultEnvironments, issues: [] };
+  }
+
+  const issues: string[] = [];
+  const resolved: EnvironmentDefinition[] = [];
+  for (const value of values) {
+    const environment = getEnvironment(value);
+    if (!environment) {
+      issues.push(`Unknown environment: ${value}.`);
+    } else if (!resolved.some((existing) => existing.id === environment.id)) {
+      resolved.push(environment);
+    }
+  }
+
+  return { values: resolved, issues };
+}
+
+export function toSafeProjectName(projectName: string): string {
+  const safe = projectName
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return safe || 'liftoff-project';
+}
+
+export interface ProjectPlanEntry {
+  label: string;
+  value: string;
+}
+
+export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
+  const common = [
+    { label: 'Project', value: plan.projectName },
+    { label: 'Project type', value: plan.projectType.label }
+  ];
+  const integrations = [
+    { label: 'Spec workflow', value: plan.specWorkflow.label },
+    { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
+    ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
+    ...(plan.specWorkflow.id === 'openspec'
+      ? [{ label: 'OpenSpec workflows', value: '12 workflows; skills and commands' }]
+      : []),
+    ...(plan.specWorkflow.id === 'openspec' &&
+      plan.agents.some((agent) => agent.id === 'github-copilot')
+      ? [{
+          label: 'Copilot cloud agent',
+          value: plan.copilotCloud ? 'Enabled' : 'Disabled (default)'
+        }]
+      : [])
+  ];
+  const governance = plan.governanceProfile.id === 'none'
+    ? [{
+        label: 'Repository governance',
+        value: 'Disabled; no local handoff or remote action'
+      }]
+    : [
+        {
+          label: 'Repository governance',
+          value: `${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}`
+        },
+        {
+          label: 'Governance handoff',
+          value: 'Local handoff generated; live enforcement is not active'
+        },
+        {
+          label: 'Governance setup integrations',
+          value: plan.agents.map((agent) =>
+            agent.id === 'github-copilot'
+              ? '.github/prompts/liftoff-setup.prompt.md'
+              : '.claude/commands/liftoff-setup.md'
+          ).join(', ')
+        },
+        {
+          label: 'Governance activation',
+          value: 'Deferred until commit, push, read-only Phase 0, and explicit plan approval'
+        }
+      ];
+  const frontendLine = plan.includeFrontend
+    ? `Vue 3 + Tailwind (${plan.frontendStarter})`
+    : 'Not generated';
+  return [
+    ...common,
+    plan.workload === 'genai'
+      ? { label: 'Pattern', value: `${plan.pattern.label} (${plan.pattern.scaffoldStatus})` }
+      : { label: 'API stack', value: plan.apiStack.label },
+    { label: 'Cloud', value: plan.provider.label },
+    { label: 'Region', value: `${plan.region.displayName} / ${plan.region.slug}` },
+    { label: 'Frontend', value: frontendLine },
+    ...integrations,
+    ...governance,
+    { label: 'Environments', value: plan.environments.map((environment) => environment.id).join(', ') },
+    { label: 'Approved stack', value: plan.approvedStack.join(', ') },
+    {
+      label: 'Local development',
+      value: plan.workload === 'genai'
+        ? 'Docker Compose with PostgreSQL/pgvector as required, Redis, Azurite, Mailpit, and optional Langfuse profile'
+        : 'Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit'
+    },
+    { label: 'Infrastructure', value: 'OpenTofu for Azure' }
+  ];
+}
+
+export function formatProjectPlan(plan: ProjectPlan): string {
+  return projectPlanEntries(plan)
+    .map((entry) => `${entry.label}: ${entry.value}`)
+    .join('\n');
+}

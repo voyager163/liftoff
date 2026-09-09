@@ -1,6 +1,8 @@
 import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ApiStackId, ProjectOptions } from './types.js';
+import type { ApiStackId, ProjectOptions } from './domain/project/contracts.js';
+import { goDependencyNames, nodeDependencyNames, pythonDependencyNames } from './domain/migration/dependencies.js';
+import { excludesMigrationDirectory, needsMigrationPlacement } from './domain/migration/inventory.js';
 
 export interface ScanFinding {
   kind:
@@ -18,6 +20,8 @@ export interface ScanFinding {
     | 'compose'
     | 'ci'
     | 'tests'
+    | 'test-config'
+    | 'github-config'
     | 'db-migrations'
     | 'spec-workflow'
     | 'cloud';
@@ -30,6 +34,7 @@ export interface LegacyInventory {
   rootName: string;
   findings: ScanFinding[];
   unrecognized: string[];
+  diagnostics?: Array<{ sourcePath: string; message: string }>;
 }
 
 export interface ScanDefault {
@@ -38,20 +43,27 @@ export interface ScanDefault {
   evidence: string;
 }
 
-// top-level entries that are derived/VCS state or self-explanatory project furniture -
-// excluded from staging and never worth a placement decision
-const IGNORED_ENTRIES = /^(\.git|node_modules|vendor|\.venv|venv|__pycache__|dist|build|\.next|\.DS_Store|\.gitignore|README.*|LICENSE.*)$/i;
-
 const COMPOSE_FILES = new Set(['docker-compose.yml', 'docker-compose.yaml', 'compose.yml', 'compose.yaml']);
 const PYTHON_FRAMEWORKS = ['fastapi', 'flask', 'django'];
-const RETRIEVAL_DEPS = ['pgvector', 'chromadb', 'faiss', 'pinecone', 'qdrant'];
+const RETRIEVAL_DEPS = new Set([
+  'pgvector', 'chromadb', 'faiss', 'faiss-cpu', 'faiss-gpu',
+  'pinecone', 'pinecone-client', 'qdrant', 'qdrant-client'
+]);
 const FRONTEND_DEPS = ['react', 'vue', 'next', 'svelte'];
+const PYTHON_DEPENDENCY_FILES = new Set(['requirements.txt', 'pyproject.toml', 'setup.py', 'setup.cfg']);
+const GO_API_MODULES = ['github.com/danielgtaylor/huma/v2', 'github.com/go-chi/chi'];
+
+function hasGoApi(names: string[]): boolean {
+  return names.some((name) => GO_API_MODULES.some((module) => name === module || name.startsWith(`${module}/`)));
+}
 
 async function readIfFile(root: string, name: string): Promise<string | undefined> {
   try {
     return await readFile(path.join(root, name), 'utf8');
-  } catch {
-    return undefined;
+  } catch (error) {
+    if (typeof error === 'object' && error !== null && 'code' in error &&
+        (error.code === 'ENOENT' || error.code === 'ENOTDIR')) return undefined;
+    throw error;
   }
 }
 
@@ -62,7 +74,7 @@ async function findGoSources(root: string, parts: string[] = []): Promise<Array<
   const sources: Array<{ sourcePath: string; content: string }> = [];
 
   for (const entry of entries) {
-    if (IGNORED_ENTRIES.test(entry.name)) {
+    if (excludesMigrationDirectory(entry.name)) {
       continue;
     }
     const entryParts = [...parts, entry.name];
@@ -71,17 +83,31 @@ async function findGoSources(root: string, parts: string[] = []): Promise<Array<
     } else if (entry.isFile() && entry.name.endsWith('.go')) {
       sources.push({
         sourcePath: entryParts.join('/'),
-        content: (await readFile(path.join(root, ...entryParts), 'utf8')).toLowerCase()
+        content: await readFile(path.join(root, ...entryParts), 'utf8')
       });
     }
   }
   return sources;
 }
 
+async function githubConfigurationPaths(root: string, parts: string[]): Promise<string[]> {
+  const entries = (await readdir(path.join(root, ...parts), { withFileTypes: true }))
+    .sort((left, right) => left.name.localeCompare(right.name, 'en'));
+  if (!entries.length) return [parts.join('/')];
+  const paths: string[] = [];
+  for (const entry of entries) {
+    if (excludesMigrationDirectory(entry.name)) continue;
+    const child = [...parts, entry.name];
+    paths.push(...(entry.isDirectory() ? await githubConfigurationPaths(root, child) : [child.join('/')]));
+  }
+  return paths;
+}
+
 export async function scanLegacyProject(sourceRoot: string): Promise<LegacyInventory> {
   const entries = (await readdir(sourceRoot, { withFileTypes: true }))
     .sort((left, right) => left.name === right.name ? 0 : left.name < right.name ? -1 : 1);
   const findings: ScanFinding[] = [];
+  const diagnostics: NonNullable<LegacyInventory['diagnostics']> = [];
   const recognized = new Set<string>();
   const found = (name: string, finding: ScanFinding) => {
     recognized.add(name);
@@ -92,58 +118,62 @@ export async function scanLegacyProject(sourceRoot: string): Promise<LegacyInven
     const name = entry.name;
 
     if (entry.isFile()) {
-      if (name === 'requirements.txt' || name === 'pyproject.toml') {
+      if (PYTHON_DEPENDENCY_FILES.has(name)) {
         found(name, { kind: 'python-deps', evidence: `Python dependency file ${name}`, sourcePath: name });
-        const content = ((await readIfFile(sourceRoot, name)) ?? '').toLowerCase();
+        const parsed = pythonDependencyNames(name, (await readIfFile(sourceRoot, name)) ?? '');
+        if (parsed.diagnostic) diagnostics.push({ sourcePath: name, message: parsed.diagnostic });
+        const dependencies = new Set(parsed.names);
         for (const framework of PYTHON_FRAMEWORKS) {
-          if (content.includes(framework)) {
+          if (dependencies.has(framework)) {
             findings.push({ kind: 'framework', evidence: `${framework} in ${name}`, sourcePath: name });
             if (framework === 'fastapi') {
               findings.push({ kind: 'api-stack', value: 'python-fastapi', evidence: `fastapi in ${name}`, sourcePath: name });
             }
           }
         }
-        if (content.includes('pydantic-ai') || content.includes('pydantic_ai')) {
+        if (dependencies.has('pydantic-ai') || dependencies.has('pydantic-ai-slim')) {
           findings.push({ kind: 'genai', value: 'genai', evidence: `PydanticAI dependency in ${name}`, sourcePath: name });
         }
-        if (RETRIEVAL_DEPS.some((dep) => content.includes(dep))) {
+        if (parsed.names.some((dependency) => RETRIEVAL_DEPS.has(dependency))) {
           findings.push({ kind: 'retrieval', evidence: `retrieval dependency in ${name}`, sourcePath: name });
         }
-        if (content.includes('azure-')) {
+        if (parsed.names.some((dependency) => dependency.startsWith('azure-'))) {
           findings.push({ kind: 'cloud', evidence: `azure-* dependency in ${name}`, sourcePath: name });
         }
         continue;
       }
       if (name === 'package.json') {
         found(name, { kind: 'node-deps', evidence: 'package.json', sourcePath: name });
-        const content = ((await readIfFile(sourceRoot, name)) ?? '').toLowerCase();
-        if (content.includes('"express"')) {
+        const parsed = nodeDependencyNames((await readIfFile(sourceRoot, name)) ?? '');
+        if (parsed.diagnostic) diagnostics.push({ sourcePath: name, message: parsed.diagnostic });
+        const dependencies = new Set(parsed.names);
+        if (dependencies.has('express')) {
           findings.push({ kind: 'framework', evidence: 'express in package.json', sourcePath: name });
         }
-        if (content.includes('"fastify"')) {
+        if (dependencies.has('fastify')) {
           findings.push({ kind: 'framework', evidence: 'fastify in package.json', sourcePath: name });
           findings.push({ kind: 'api-stack', value: 'node-fastify', evidence: 'fastify in package.json', sourcePath: name });
         }
-        if (FRONTEND_DEPS.some((dep) => content.includes(`"${dep}"`))) {
+        if (FRONTEND_DEPS.some((dep) => dependencies.has(dep))) {
           findings.push({ kind: 'frontend', evidence: 'frontend framework in package.json', sourcePath: name });
         }
         continue;
       }
       if (name === 'go.mod') {
         found(name, { kind: 'go-deps', evidence: 'go.mod', sourcePath: name });
-        const content = ((await readIfFile(sourceRoot, name)) ?? '').toLowerCase();
-        if (content.includes('huma/v2') || content.includes('go-chi/chi')) {
+        const dependencies = goDependencyNames((await readIfFile(sourceRoot, name)) ?? '');
+        if (hasGoApi(dependencies)) {
           findings.push({ kind: 'api-stack', value: 'go-huma', evidence: 'Huma or Chi dependency in go.mod', sourcePath: name });
         }
-        if (content.includes('azure-sdk-for-go')) {
+        if (dependencies.some((dependency) => dependency.toLowerCase().startsWith('github.com/azure/azure-sdk-for-go/'))) {
           findings.push({ kind: 'cloud', evidence: 'Azure SDK dependency in go.mod', sourcePath: name });
         }
         continue;
       }
       if (name.endsWith('.go')) {
         found(name, { kind: 'go-source', evidence: `Go source file ${name}`, sourcePath: name });
-        const content = ((await readIfFile(sourceRoot, name)) ?? '').toLowerCase();
-        if (content.includes('huma/v2') || content.includes('go-chi/chi')) {
+        const dependencies = goDependencyNames((await readIfFile(sourceRoot, name)) ?? '', true);
+        if (hasGoApi(dependencies)) {
           findings.push({ kind: 'api-stack', value: 'go-huma', evidence: `Huma or Chi import in ${name}`, sourcePath: name });
         }
         continue;
@@ -164,15 +194,28 @@ export async function scanLegacyProject(sourceRoot: string): Promise<LegacyInven
         found(name, { kind: 'cloud', evidence: `infrastructure file ${name}`, sourcePath: name });
         continue;
       }
-      if (name === 'pytest.ini' || name === 'setup.cfg' || name === 'setup.py') {
-        recognized.add(name);
+      if (name === 'pytest.ini') {
+        found(name, { kind: 'test-config', evidence: 'Python test configuration pytest.ini', sourcePath: name });
         continue;
       }
     }
 
     if (entry.isDirectory()) {
       if (name === '.github') {
-        found(name, { kind: 'ci', evidence: '.github/workflows', sourcePath: path.posix.join('.github', 'workflows') });
+        recognized.add(name);
+        const children = (await readdir(path.join(sourceRoot, name), { withFileTypes: true }))
+          .sort((left, right) => left.name.localeCompare(right.name, 'en'));
+        if (!children.length) found(name, { kind: 'github-config', evidence: 'empty .github directory', sourcePath: name });
+        for (const child of children) {
+          if (excludesMigrationDirectory(child.name)) continue;
+          const parts = [name, child.name];
+          if (child.name === 'workflows' && child.isDirectory()) {
+            found(name, { kind: 'ci', evidence: '.github/workflows', sourcePath: parts.join('/') });
+          } else {
+            const paths = child.isDirectory() ? await githubConfigurationPaths(sourceRoot, parts) : [parts.join('/')];
+            for (const sourcePath of paths) found(name, { kind: 'github-config', evidence: `GitHub configuration ${sourcePath}`, sourcePath });
+          }
+        }
         continue;
       }
       if (name === 'tests' || name === 'test') {
@@ -207,9 +250,8 @@ export async function scanLegacyProject(sourceRoot: string): Promise<LegacyInven
       if (existingGoSources.has(source.sourcePath)) {
         continue;
       }
-      recognized.add(source.sourcePath.split('/')[0]);
       findings.push({ kind: 'go-source', evidence: `Go source file ${source.sourcePath}`, sourcePath: source.sourcePath });
-      if (source.content.includes('huma/v2') || source.content.includes('go-chi/chi')) {
+      if (hasGoApi(goDependencyNames(source.content, true))) {
         findings.push({
           kind: 'api-stack',
           value: 'go-huma',
@@ -222,13 +264,14 @@ export async function scanLegacyProject(sourceRoot: string): Promise<LegacyInven
 
   const unrecognized = entries
     .map((entry) => entry.name)
-    .filter((name) => !recognized.has(name) && !IGNORED_ENTRIES.test(name))
+    .filter((name) => !recognized.has(name) && needsMigrationPlacement(name))
     .sort();
 
   return {
     rootName: path.basename(sourceRoot),
     findings,
-    unrecognized
+    unrecognized,
+    diagnostics
   };
 }
 

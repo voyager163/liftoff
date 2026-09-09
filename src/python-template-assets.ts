@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { packagedTemplateAssets } from './adapters/packaged-assets/template-assets.js';
 
 export type PythonTemplateId = 'genai' | 'standard';
 
@@ -7,23 +7,16 @@ const templateNames: Record<PythonTemplateId, string> = {
   standard: 'liftoff-template-python-standard'
 };
 
-function readAsset(template: PythonTemplateId, file: string): string {
-  return readFileSync(
-    new URL(`../assets/locks/python-${template}/${file}`, import.meta.url),
-    'utf8'
-  );
-}
-
 const pyprojectTemplates: Record<PythonTemplateId, string> = {
-  genai: readAsset('genai', 'pyproject.toml'),
-  standard: readAsset('standard', 'pyproject.toml')
+  genai: packagedTemplateAssets.python.genai.pyproject,
+  standard: packagedTemplateAssets.python.standard.pyproject
 };
 
 const lockTemplates: Record<PythonTemplateId, string> = {
-  genai: readAsset('genai', 'uv.lock'),
-  standard: readAsset('standard', 'uv.lock')
+  genai: packagedTemplateAssets.python.genai.lock,
+  standard: packagedTemplateAssets.python.standard.lock
 };
-const functionRequirements = readAsset('genai', 'function-requirements.txt');
+const functionRequirements = packagedTemplateAssets.functionRequirements;
 
 function render(template: PythonTemplateId, content: string, name: string): string {
   const placeholder = templateNames[template];

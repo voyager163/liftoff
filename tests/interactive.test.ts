@@ -140,31 +140,23 @@ describe('interactive presentation', () => {
     }
   });
 
-  it('routes Power Apps directly into the shared workflow and agent tail', async () => {
-    const { prompter, output } = scriptedPrompter('3\ny\n\n\n1,2\n\n');
+  it('rejects a preselected retired Power Apps workload before prompting or probing', async () => {
+    const output = new CaptureStream();
+    const runner = new ReadyInitRunner();
+    const checkboxPrompt = vi.fn<AgentCheckboxPrompt>();
+    const prompter = new InteractivePrompter({
+      input: Readable.from([]),
+      output,
+      runner,
+      checkboxPrompt
+    });
     try {
-      const options = await prompter.promptForInitOptions({
-        projectName: 'power-workspace'
-      });
-
-      expect(options).toMatchObject({
-        projectType: 'power-apps-code-app',
-        specWorkflow: 'openspec',
-        agents: ['github-copilot', 'claude'],
-        copilotCloud: false,
-        codeAppsPlugin: true,
-        governanceProfile: 'single-maintainer-gitflow'
-      });
-
-      expect(options.apiStack).toBeUndefined();
-      expect(options.pattern).toBeUndefined();
-      expect(options.cloud).toBeUndefined();
-      expect(options.region).toBeUndefined();
-      expect(options.includeFrontend).toBeUndefined();
-      expect(options.environments).toBeUndefined();
-      expect(output.text()).toContain('Power Apps code app');
-      expect(output.text()).toContain('Microsoft Code Apps preview plugin guidance');
-      expect(output.text()).not.toContain('Target cloud');
+      await expect(prompter.promptForInitOptions({
+        projectName: 'retired-app',
+        projectType: 'power-apps-code-app'
+      })).rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+      expect(runner.calls).toEqual([]);
+      expect(checkboxPrompt).not.toHaveBeenCalled();
     } finally {
       prompter.close();
     }
@@ -244,14 +236,17 @@ describe('interactive presentation', () => {
     try {
       setTimeout(() => input.write('configured-app\n'), 0);
       const options = await prompter.promptForInitOptions({
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
         specWorkflow: 'openspec',
-        governanceProfile: 'single-maintainer-gitflow',
-        codeAppsPlugin: false
+        governanceProfile: 'single-maintainer-gitflow'
       });
 
       expect(options.agents).toEqual(['github-copilot', 'claude']);
-      expect(options.codeAppsPlugin).toBe(false);
       expect(checkboxPrompt).toHaveBeenCalledOnce();
       expect(runner.calls).toHaveLength(2);
       expect(runner.calls).toEqual(expect.arrayContaining([
@@ -306,10 +301,14 @@ describe('interactive presentation', () => {
     try {
       setTimeout(() => input.write('unconfigured-app\n'), 0);
       const options = await prompter.promptForInitOptions({
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
         specWorkflow: 'openspec',
-        governanceProfile: 'single-maintainer-gitflow',
-        codeAppsPlugin: false
+        governanceProfile: 'single-maintainer-gitflow'
       });
 
       expect(options.agents).toEqual(['github-copilot']);
@@ -332,10 +331,14 @@ describe('interactive presentation', () => {
     try {
       const options = await prompter.promptForInitOptions({
         projectName: 'configured-options',
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
         specWorkflow: 'openspec',
         agents: ['claude'],
-        codeAppsPlugin: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
 
@@ -368,10 +371,14 @@ describe('interactive presentation', () => {
     });
     await expect(ttyPrompter.promptForInitOptions({
       projectName: 'cancelled-app',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      region: 'eastus',
+      includeFrontend: false,
+      environments: ['dev'],
       specWorkflow: 'openspec',
-      governanceProfile: 'single-maintainer-gitflow',
-      codeAppsPlugin: false
+      governanceProfile: 'single-maintainer-gitflow'
     })).rejects.toBeInstanceOf(InteractiveCancelledError);
     ttyPrompter.close();
 
@@ -401,9 +408,13 @@ describe('interactive presentation', () => {
     try {
       const pending = prompter.promptForInitOptions({
         projectName: 'keyboard-app',
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
         specWorkflow: 'openspec',
-        codeAppsPlugin: false,
         copilotCloud: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
@@ -438,9 +449,13 @@ describe('interactive presentation', () => {
     try {
       const pending = prompter.promptForInitOptions({
         projectName: 'cancel-keyboard-app',
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        region: 'eastus',
+        includeFrontend: false,
+        environments: ['dev'],
         specWorkflow: 'openspec',
-        codeAppsPlugin: false,
         copilotCloud: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
@@ -474,9 +489,13 @@ describe('interactive presentation', () => {
       try {
         await prompter.promptForInitOptions({
           projectName: 'layout-app',
-          projectType: 'power-apps-code-app',
+          projectType: 'standard',
+          apiStack: 'node',
+          cloud: 'azure',
+          region: 'eastus',
+          includeFrontend: false,
+          environments: ['dev'],
           specWorkflow: 'openspec',
-          codeAppsPlugin: false,
           copilotCloud: false,
           governanceProfile: 'single-maintainer-gitflow'
         });

@@ -1,9 +1,5 @@
-import { readdir } from 'node:fs/promises';
-import {
-  readProjectFile,
-  resolveProjectPath
-} from '../file-system.js';
-import type { LiftoffManifest } from '../types.js';
+import { readProjectFile } from '../adapters/filesystem/project-files.js';
+import type { LiftoffManifest } from '../domain/project/contracts.js';
 import {
   activationStateFilePathParts,
   loadActivationState
@@ -11,33 +7,26 @@ import {
 import {
   credentialPolicyPathParts
 } from './credentials.js';
-import {
-  evidenceContextForPhase,
-  requiredLiveReadbackProviders,
-  validateEvidenceFreshness
-} from './evidence.js';
+import { selectLatestPhaseEvidence, type EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
+import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
+import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
 import {
   canonicalPhaseGraph,
-  currentActivationIdentity,
-  phaseContractDigests
-} from './graph.js';
+  currentActivationIdentity
+} from '../domain/governance/activation/graph.js';
 import { planHistoricalActivationStateMigration } from './migration.js';
-import { calculatePhaseReadiness } from './readiness.js';
+import { calculatePhaseReadiness } from '../domain/governance/activation/readiness.js';
 import {
   inspectGovernanceSourceOfTruth
 } from './source-of-truth.js';
 import type {
-  EvidenceHeader,
   PhaseEvidenceRecord,
   PhaseId,
   PhaseState,
   UserActivationState
-} from './types.js';
-import { phaseIds } from './types.js';
-import {
-  validateCredentialPolicy,
-  validateEvidenceHeader
-} from './validators.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
+import { validateCredentialPolicy } from '../domain/governance/activation/validators.js';
 
 export interface GovernanceDoctorCheck {
   id: string;
@@ -48,7 +37,6 @@ export interface GovernanceDoctorCheck {
   remedy?: string;
 }
 
-const evidencePathParts = ['governance', 'evidence'] as const;
 const terminalEvidenceStates = new Set<PhaseState>([
   'verified',
   'failed',
@@ -57,102 +45,18 @@ const terminalEvidenceStates = new Set<PhaseState>([
   'disposed'
 ]);
 
-function errorCode(error: unknown): string | undefined {
-  if (typeof error !== 'object' || error === null || !('code' in error)) {
-    return undefined;
-  }
-  const code = (error as { code?: unknown }).code;
-  return typeof code === 'string' ? code : undefined;
-}
-
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-function asRecord(value: unknown, pathLabel: string): Record<string, unknown> {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
-    throw new Error(`${pathLabel} must be a JSON object.`);
-  }
-  return value as Record<string, unknown>;
-}
-
-async function readJsonDirectory(
-  projectRoot: string,
-  pathParts: readonly string[]
-): Promise<Array<{ name: string; value: unknown }>> {
-  const directory = await resolveProjectPath(projectRoot, [...pathParts]);
-  let entries;
-  try {
-    entries = await readdir(directory, { withFileTypes: true });
-  } catch (error) {
-    if (errorCode(error) === 'ENOENT') {
-      return [];
-    }
-    throw error;
-  }
-  const values: Array<{ name: string; value: unknown }> = [];
-  for (const entry of entries.sort((left, right) => left.name.localeCompare(right.name, 'en'))) {
-    if (!entry.isFile() || !entry.name.endsWith('.json')) {
-      continue;
-    }
-    const filePathParts = [...pathParts, entry.name];
-    const bytes = await readProjectFile(projectRoot, filePathParts);
-    if (bytes === undefined) {
-      throw new Error(`${filePathParts.join('/')} disappeared during doctor inspection.`);
-    }
-    values.push({
-      name: entry.name,
-      value: JSON.parse(bytes.toString('utf8')) as unknown
-    });
-  }
-  return values;
-}
-
-function evidenceRecord(value: unknown, evidenceId: string): PhaseEvidenceRecord {
-  const record = asRecord(value, `governance/evidence/${evidenceId}.json`);
-  if (Object.hasOwn(record, 'header')) {
-    return {
-      evidenceId: typeof record.evidenceId === 'string' && record.evidenceId.length > 0
-        ? record.evidenceId
-        : evidenceId,
-      header: validateEvidenceHeader(record.header),
-      ...(Array.isArray(record.liveReadback) ? { liveReadback: record.liveReadback as never } : {}),
-      ...(Object.hasOwn(record, 'payload') ? { payload: record.payload } : {})
-    };
-  }
-  return {
-    evidenceId,
-    header: validateEvidenceHeader(value)
-  };
-}
-
 async function loadEvidenceForDoctor(projectRoot: string): Promise<PhaseEvidenceRecord[]> {
-  const entries = await readJsonDirectory(projectRoot, evidencePathParts);
-  return entries.map((entry) => evidenceRecord(entry.value, entry.name.replace(/\.json$/u, '')));
-}
-
-function contextForPhase(
-  phaseId: PhaseId,
-  state: UserActivationState,
-  now: Date
-): Parameters<typeof validateEvidenceFreshness>[1] {
-  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-  return {
-    ...evidenceContextForPhase(phaseId, {
-      repositoryId: state.repository.id,
-      identity: state.identity,
-      phaseGraphHash: state.identity.phaseGraphHash,
-      now,
-      liveReadbackProviders: requiredLiveReadbackProviders(phase)
-    }),
-    phaseContractDigest: phaseContractDigests(canonicalPhaseGraph)[phaseId]
-  };
+  return readActivationEvidence(projectRoot);
 }
 
 function evidenceStaleCheck(
   state: UserActivationState,
   evidence: readonly PhaseEvidenceRecord[],
-  now: Date
+  contexts: Record<PhaseId, EvidenceFreshnessContext>
 ): GovernanceDoctorCheck | undefined {
   const stale: string[] = [];
   for (const phaseId of phaseIds) {
@@ -160,12 +64,10 @@ function evidenceStaleCheck(
     if (!terminalEvidenceStates.has(stored.state)) {
       continue;
     }
-    const context = contextForPhase(phaseId, state, now);
+    const context = contexts[phaseId];
     const records = evidence.filter((entry) => entry.header.phaseId === phaseId);
-    const valid = records.some((entry) => {
-      const result = validateEvidenceFreshness(entry, context);
-      return result.valid && result.record.header.result === stored.state;
-    });
+    const selected = selectLatestPhaseEvidence(records, context);
+    const valid = selected.selected?.header.result === stored.state;
     if (!valid) {
       stale.push(phaseId);
     }
@@ -264,7 +166,7 @@ async function credentialExpiringCheck(
     severity: expired || policy.status === 'expired' ? 'fail' : 'warn',
     state: 'credential-expiring',
     detail: `credential policy status ${policy.status}; rotation due ${policy.rotationDueAt}; expires ${policy.expiresAt}`,
-    remedy: 'Revoke/rotate the runner preflight credential through the deterministic masked enrollment flow before using credential-ready evidence.'
+    remedy: 'Use an independently supported, reviewed provider rotation process. This CLI has no public credential enrollment/readback workflow; never enter credentials into task, state, or evidence files.'
   };
 }
 
@@ -285,7 +187,9 @@ export async function governanceDoctorChecks(
       severity: 'fail',
       state: 'identity-incompatible',
       detail: migration.report.issues[0] ?? 'activation state is not compatible with this Liftoff version',
-      remedy: 'Upgrade Liftoff or provide an explicit versioned import mapping. Preserve user-owned state and evidence bytes; never import checkboxes, filenames, or prose as evidence.'
+      remedy: 'Preserve user-owned state and evidence bytes. ' + (migration.report.diagnosticOnly === true
+        ? 'Historical activation v1 has no automatic migration or public import workflow; it cannot authorize current setup.'
+        : 'The recorded activation format or identity is unsupported or invalid. Use a compatible Liftoff version or restore original state from a trusted backup; do not rewrite identity fields to bypass validation.')
     });
     return checks;
   }
@@ -311,7 +215,7 @@ export async function governanceDoctorChecks(
       severity: 'fail',
       state: 'identity-incompatible',
       detail: errorMessage(error),
-      remedy: 'Restore a supported activation identity tuple and recognized graph hash, or upgrade Liftoff before running setup.'
+      remedy: 'Restore original state from a trusted backup or use a compatible CLI; never hand-edit the recorded activation identity or graph hash.'
     });
     return checks;
   }
@@ -325,7 +229,7 @@ export async function governanceDoctorChecks(
       severity: 'fail',
       state: 'evidence-stale',
       detail: errorMessage(error),
-      remedy: 'Repair malformed evidence or provide an explicit approved reconciliation mapping; do not infer evidence from filenames or prose.'
+      remedy: 'Preserve immutable evidence. Repair source inputs and explicitly retry supported local phases; unsupported remote proof remains blocked.'
     });
     return checks;
   }
@@ -345,8 +249,8 @@ export async function governanceDoctorChecks(
         activeChange: null,
         applicability: {
           statePath: 'none',
-          privateStagingDast: false,
-          credentialRequired: false
+          privateStagingDast: 'unknown',
+          credentialRequired: 'unknown'
         },
         phases: Object.fromEntries(phaseIds.map((phaseId) => [phaseId, {
           state: 'pending',
@@ -382,7 +286,10 @@ export async function governanceDoctorChecks(
     return checks;
   }
 
-  const source = await inspectGovernanceSourceOfTruth({ projectRoot, manifest, state, evidence });
+  const contexts = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(projectRoot, manifest), now);
+  const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
+  for (const phase of phaseIds) contexts[phase].reviewedPlans = reviewedPlans;
+  const source = await inspectGovernanceSourceOfTruth({ projectRoot, manifest, state, evidence, contexts });
   if (source.status === 'seed-blocked') {
     checks.push({
       id: 'governance-seed-incomplete',
@@ -417,6 +324,7 @@ export async function governanceDoctorChecks(
     state,
     approvals: [],
     evidence,
+    transitionContexts: contexts,
     now
   });
   if (!readiness.identityCompatible) {
@@ -431,7 +339,7 @@ export async function governanceDoctorChecks(
   }
 
   for (const check of [
-    evidenceStaleCheck(state, evidence, now),
+    evidenceStaleCheck(state, evidence, contexts),
     phaseBlockedCheck(state),
     await credentialExpiringCheck(projectRoot, now),
     enforcementIncompleteCheck(state),

@@ -1,4 +1,4 @@
-import type { ParsedArgs } from '../types.js';
+import type { ParsedArgs } from '../domain/project/contracts.js';
 import {
   canonicalTelemetryCommand,
   createTelemetryEvent,

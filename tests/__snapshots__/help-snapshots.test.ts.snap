@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare
+Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -248,20 +248,17 @@ Option                      Description
 
 Framework options
 ─────────────────
-Option                                   Description
-───────────────────────────────────────  ───────────────────────────────────────
---spec <framework>                       Spec-driven framework (default:
-                                         openspec)
---agents <list>                          Comma-separated AI coding agents
-                                         (default: copilot)
---default-agent <agent>                  Primary agent for Spec Kit when
-                                         multiple agents are selected
---governance <profile>                   Repository-governance profile (default:
-                                         single-maintainer-gitflow)
---code-apps-plugin /                     Request the Microsoft Code Apps agent
---no-code-apps-plugin                    plugin (Preview) (default: false)
---copilot-cloud / --no-copilot-cloud     Set up the GitHub-hosted Copilot coding
-                                         agent for OpenSpec (default: false)
+Option                                Description
+────────────────────────────────────  ──────────────────────────────────────────
+--spec <framework>                    Spec-driven framework (default: openspec)
+--agents <list>                       Comma-separated AI coding agents (default:
+                                      copilot)
+--default-agent <agent>               Primary agent for Spec Kit when multiple
+                                      agents are selected
+--governance <profile>                Repository-governance profile (default:
+                                      single-maintainer-gitflow)
+--copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding
+                                      agent for OpenSpec (default: false)
 
 Consent options
 ───────────────
@@ -436,7 +433,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -554,7 +551,6 @@ Option: --spec <framework> | Description: Spec-driven framework (default: opensp
 Option: --agents <list> | Description: Comma-separated AI coding agents (default: copilot)
 Option: --default-agent <agent> | Description: Primary agent for Spec Kit when multiple agents are selected
 Option: --governance <profile> | Description: Repository-governance profile (default: single-maintainer-gitflow)
-Option: --code-apps-plugin / --no-code-apps-plugin | Description: Request the Microsoft Code Apps agent plugin (Preview) (default: false)
 Option: --copilot-cloud / --no-copilot-cloud | Description: Set up the GitHub-hosted Copilot coding agent for OpenSpec (default: false)
 
 Consent options
@@ -697,7 +693,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.10.4 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -857,19 +853,16 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 │ --config <file>             Load deterministic project options from JSON                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
-│ Option                                      Description                                      │
-│ ──────────────────────────────────────────  ──────────────────────────────────────────────── │
-│ --spec <framework>                          Spec-driven framework (default: openspec)        │
-│ --agents <list>                             Comma-separated AI coding agents (default:       │
-│                                             copilot)                                         │
-│ --default-agent <agent>                     Primary agent for Spec Kit when multiple agents  │
-│                                             are selected                                     │
-│ --governance <profile>                      Repository-governance profile (default:          │
-│                                             single-maintainer-gitflow)                       │
-│ --code-apps-plugin / --no-code-apps-plugin  Request the Microsoft Code Apps agent plugin     │
-│                                             (Preview) (default: false)                       │
-│ --copilot-cloud / --no-copilot-cloud        Set up the GitHub-hosted Copilot coding agent    │
-│                                             for OpenSpec (default: false)                    │
+│ Option                                Description                                            │
+│ ────────────────────────────────────  ────────────────────────────────────────────────────── │
+│ --spec <framework>                    Spec-driven framework (default: openspec)              │
+│ --agents <list>                       Comma-separated AI coding agents (default: copilot)    │
+│ --default-agent <agent>               Primary agent for Spec Kit when multiple agents are    │
+│                                       selected                                               │
+│ --governance <profile>                Repository-governance profile (default:                │
+│                                       single-maintainer-gitflow)                             │
+│ --copilot-cloud / --no-copilot-cloud  Set up the GitHub-hosted Copilot coding agent for      │
+│                                       OpenSpec (default: false)                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                        Description                                                    │

@@ -1,6 +1,18 @@
 import { access, readFile, readdir } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import {
+  canonicalPhaseGraphHash,
+  canonicalPhaseGraphJson,
+  currentActivationIdentity
+} from '../src/domain/governance/activation/graph.js';
+import { compatibilityMetadataSchemaVersion } from '../src/domain/governance/policy/identity.js';
+import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
+import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
+import { patterns } from '../src/application/project/catalog.js';
+import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
+import { liftoffVersion } from '../src/version.js';
 
 const repositoryRoot = process.cwd();
 const requiredDocs = [
@@ -68,20 +80,21 @@ describe('public documentation', () => {
     const install = 'npm install -g @msn-control/liftoff@latest';
     const init = 'liftoff init my-project';
     const setup = '/liftoff-setup';
-    const workloadSection = readme.indexOf('## One flow, three workloads');
+    const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(130);
+    expect(readme.split('\n').length).toBeLessThan(135);
     expect(readme).not.toContain('Status: implemented');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
     expect(readme.indexOf(init)).toBeLessThan(workloadSection);
     expect(readme.indexOf('cd my-project')).toBeGreaterThan(readme.indexOf(init));
     expect(readme.indexOf(setup)).toBeGreaterThan(readme.indexOf('cd my-project'));
-    expect(readme).toMatch(/completes,\s+syncs, and archives the generated bootstrap seed/);
+    expect(readme.replace(/\s+/g, ' ')).toMatch(/For OpenSpec, .*completes, syncs, and archives the generated bootstrap seed/);
+    expect(readme.replace(/\s+/g, ' ')).toMatch(/Spec Kit finalizes .*locally, without an OpenSpec archive or new Git branch/);
     expect(readme).toContain('No model selection is required for setup');
     expect(readme).toContain('GenAI application');
     expect(readme).toContain('API application');
-    expect(readme).toContain('Power Apps code app');
+    expect(readme).toMatch(/Power Apps[\s\S]{0,200}retired/i);
     expect(readme).toContain('OpenSpec');
     expect(readme).toContain('Spec Kit');
     expect(readme).toContain('GitHub Copilot');
@@ -115,6 +128,8 @@ describe('public documentation', () => {
     expect(readme).toMatch(/!\[[^\]]{20,}]\(docs\/assets\/liftoff-terminal\.svg\)/);
     expect(visual).toContain('<title id="title">');
     expect(visual).toContain('<desc id="description">');
+    expect(visual).not.toMatch(/Power Apps|Code Apps/);
+    expect(visual).toContain('/liftoff-setup');
     expect(visual).toContain('<rect width="1000" height="560" rx="18" fill="#0d1117"/>');
     expect(contrast('#f0f6fc', '#0d1117')).toBeGreaterThan(7);
     expect(contrast('#b1bac4', '#0d1117')).toBeGreaterThan(4.5);
@@ -137,7 +152,7 @@ describe('public documentation', () => {
     for (const heading of [
       '## GenAI application',
       '## API application',
-      '## Power Apps code app'
+      '## Retired Power Apps workload'
     ]) {
       expect(workloads).toContain(heading);
     }
@@ -145,8 +160,8 @@ describe('public documentation', () => {
     expect(workloads).toContain('### Generated output');
     expect(workloads).toContain('### Deferred actions');
     expect(workloads).toContain('Node.js 24.20');
-    expect(workloads).toContain('does not create an API backend');
-    expect(workloads).toContain('Do not run `/create-code-app`');
+    expect(workloads).toMatch(/Power Apps[\s\S]{0,200}no longer\s+supported/i);
+    expect(workloads).toContain('power-apps-code-app');
   });
 
   it('documents the uncertainty-safe generic GenAI pattern and migration boundary', async () => {
@@ -415,7 +430,7 @@ describe('public documentation', () => {
     expect(readme).toContain('/liftoff-setup');
     expect(gettingStarted).toContain('tofu init -backend=false');
     expect(gettingStarted).toContain('The baseline does not run `tofu plan`, `tofu apply`');
-    expect(gettingStarted).toContain('Absent components are inapplicable');
+    expect(gettingStarted).toMatch(/Absent (?:optional )?components are inapplicable/);
     expect(governance).toContain('capability chapters, not');
     expect(governance).toContain('seed-valid');
     expect(governance).toContain('bootstrap-state-disposed');
@@ -425,11 +440,15 @@ describe('public documentation', () => {
     expect(manifests).toContain('Readers support artifact versions v2, v3, v4, v5, v6, and v7');
     expect(safety).toContain('liftoff governance apply-next --execute');
     expect(troubleshooting).toContain('`identity-incompatible`');
-    expect(developer).toContain('"liftoffVersion": "0.10.0"');
-    expect(developer).toContain('"policyVersion": "6"');
-    expect(developer).toContain('"activationContractVersion": 1');
-    expect(developer).toContain('"manifestArtifactVersion": 7');
-    expect(developer).toContain('b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7');
+    const identitySection = developer.split('## Activation version vector')[1].split('## Bump rules')[0];
+    const example = identitySection.match(/```json\n([\s\S]*?)\n```/);
+    expect(example, 'developer guide must show the current complete activation vector').not.toBeNull();
+    expect(JSON.parse(example![1])).toEqual(currentActivationIdentity);
+    expect(createHash('sha256').update(canonicalPhaseGraphJson).digest('hex')).toBe(canonicalPhaseGraphHash);
+    expect(developer).toContain(`## ${liftoffVersion} release checklist`);
+    expect(manifests).toContain(`| CLI package version | ${liftoffVersion} |`);
+    expect(manifests).toContain(`| Activation package identity | ${currentActivationIdentity.liftoffVersion} |`);
+    expect(identitySection).toContain(`schema version ${compatibilityMetadataSchemaVersion} in its own document`);
     expect(developer).toContain('There is no separate `/liftoff-setup` skill version');
     expect(developer).toContain('CLI SemVer');
     expect(developer).toContain('Compatibility maintenance');
@@ -450,10 +469,9 @@ describe('public documentation', () => {
     expect(contributing).toContain('npm run check');
     expect(contributing).toContain('npm run smoke:package');
     expect(contributing).toContain('npm run smoke:container --prefix services/telemetry-ingest');
-    expect(contributing).toContain('npm run verify:power-apps-starter');
+    expect(contributing).not.toContain('npm run verify:power-apps-starter');
     expect(contributing).toContain('npm run verify:generated-containers');
-    expect(contributing).toContain('npm run refresh:power-apps-starter');
-    expect(contributing).toContain('Node.js 24 on Linux x64');
+    expect(contributing).not.toContain('npm run refresh:power-apps-starter');
     expect(contributing).toContain('rich, compact, plain,');
     expect(contributing).toContain('tests/__snapshots__');
     expect(contributing).toContain('Correct the dist-tag');
@@ -500,6 +518,9 @@ describe('public documentation', () => {
     expect(cli).toContain('| `differences` | 2 |');
     expect(cli).toContain('| `error` | 1 |');
     expect(governance).toMatch(/Neither installing the integration nor running it activates,\s+updates, upgrades, or migrates/);
+    const catalog = JSON.parse(await repositoryFile('assets/governance/single-maintainer-gitflow/assessment-controls.json'));
+    expect(governance).toContain(`${catalog.controls.length} controls across ${catalog.families.length} families`);
+    expect(governance).toContain(`${catalog.controls.filter((control: { supported: boolean }) => !control.supported).length} unsupported`);
     expect(governance).toMatch(/Unowned conflicting destinations remain unowned even with\s+`--force`/);
     expect(governance).toContain('Initialization never\nruns assessment');
     expect(developer).toContain('no independent\nassessment-skill version');
@@ -542,6 +563,155 @@ describe('public documentation', () => {
     expect(telemetry).toContain('`liftoff governance assess` skips telemetry and disclosure entirely');
     expect(telemetry).toContain('`--live` and `--help`');
     expect(telemetry).toContain('writes no disclosure state');
+  });
+
+  it('describes the implemented eight responsibility groups and current canonical ports', async () => {
+    const developer = await repositoryFile('DEVELOPER.md');
+    const architecture = developer.split('## Functional engines and implementation boundaries')[1]
+      .split('## Activation completeness')[0];
+    const systems = architecture.split('| Subsystem | Current implementation |')[1]
+      .split('Telemetry, terminal presentation')[0];
+    expect([...systems.matchAll(/^\| (?!-)([^|]+)\|/gm)]).toHaveLength(8);
+    for (const file of [
+      'src/cli/args/parser.ts',
+      'src/cli/commands/dispatch.ts',
+      'src/application/context.ts',
+      'src/application/initialize/use-case.ts',
+      'src/application/update/use-case.ts',
+      'src/application/migrate/use-case.ts',
+      'src/application/upgrade/use-case.ts',
+      'src/domain/project/contracts.ts',
+      'src/domain/project/catalog.ts',
+      'src/domain/project/planning.ts',
+      'src/domain/project/manifest/reader.ts',
+      'src/application/project/manifest.ts',
+      'src/generators/context.ts',
+      'src/adapters/packaged-assets/package-root.ts',
+      'src/adapters/packaged-assets/template-assets.ts',
+      'src/adapters/filesystem/project-lock.ts',
+      'src/domain/project/infrastructure-layout.ts',
+      'src/governance-activation/read-only.ts',
+      'src/governance-activation/transition-planning.ts',
+      'src/governance-activation/transition-ports.ts',
+      'src/governance-activation/phase-publication.ts',
+      'src/governance-activation/phase-discovery.ts',
+      'src/governance-activation/phase-governance.ts',
+      'src/governance-activation/phase-bootstrap-state.ts',
+      'src/governance-activation/transition-records.ts'
+    ]) {
+      expect(architecture).toContain(file);
+      await access(path.join(repositoryRoot, file));
+    }
+    for (const phrase of [
+      'typed', 'MigrationRequest', 'UpdateRequest', 'UpgradeRequest',
+      'ExecutionContext', 'narrow', 'do not import adapters',
+      'rather than routing back through facades', 'assertHeld()'
+    ]) expect(architecture).toContain(phrase);
+    for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
+      expect(developer).toContain(`\`${phase}\``);
+    }
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(14);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(2);
+    expect(developer).not.toContain('activation inspection still uses');
+    expect(developer).not.toContain('finish RAG publisher configuration');
+    expect(developer).not.toContain('strengthen shared mutation locking');
+    expect(developer).toContain('savedPlanDigest');
+    expect(developer).toContain('validated selected payloads');
+  });
+
+  it('keeps all nine foundations honest and documents the actual configuration contract', async () => {
+    const [workloads, configuration, structure, troubleshooting, baseline] = await Promise.all([
+      repositoryFile('docs/workloads.md'),
+      repositoryFile('docs/configuration-and-manifests.md'),
+      repositoryFile('docs/project-structure.md'),
+      repositoryFile('docs/troubleshooting.md'),
+      repositoryFile('docs/supported-stack.md')
+    ]);
+    expect(patterns).toHaveLength(9);
+    expect(patterns.every(({ scaffoldStatus }) => scaffoldStatus === 'foundation')).toBe(true);
+    expect(patterns.filter(({ requiresVectorStore }) => requiresVectorStore).map(({ id }) => id)).toEqual(['rag']);
+    for (const pattern of patterns) expect(workloads).toContain(`| \`${pattern.id}\` |`);
+    expect(workloads).toContain('have `foundation` maturity');
+    expect(workloads).not.toContain('integration-shell label');
+    expect(workloads).toContain('One completed model response wrapped as buffered SSE');
+    expect(workloads).toMatch(/Python `pyproject\.toml` and `uv\.lock` have no `pgvector`\s+dependency/);
+    for (const deferred of ['Retrieval', 'citations', 'history', 'Tool execution', 'prompt files', 'coordination', 'Fine-tuning', 'Workflow stages']) {
+      expect(workloads).toContain(deferred);
+    }
+    expect(configuration).toContain('process environment > selected local configuration file > nonsecret defaults');
+    expect(configuration).toContain('LIFTOFF_ENV_FILE');
+    expect(configuration).toContain('../runtime.config.json');
+    expect(configuration).toContain('uv run uvicorn --app-dir .. backend.apis.main:app --port 8000');
+    expect(configuration).toMatch(/explicitly selected missing, unreadable, or malformed file fails/);
+    expect(configuration).toContain('escaped quote delimiters');
+    expect(configuration).toContain('null or');
+    expect(configuration).toContain('no model/provider request');
+    for (const field of ['OPENAI_API_KEY', 'SERVICE_BUS_AUTH_MODE', 'SERVICE_BUS_QUEUE_NAME', 'AZURE_CLIENT_ID', 'REDIS_STREAM_NAME']) {
+      expect(configuration).toContain(field);
+    }
+    expect(configuration).toMatch(/Both Langfuse keys blank means tracing is disabled/);
+    expect(configuration).toContain('exactly one');
+    expect(structure).toContain('Root and\nfrontend `.dockerignore`');
+    expect(troubleshooting.toLowerCase()).toContain('malformed');
+    for (const entry of [
+      ...Object.values(packagedSupportedStack.runtimes),
+      ...Object.values(packagedSupportedStack.packageManagers)
+    ]) expect(baseline).toContain(entry.version);
+  });
+
+  it('documents exact new-output-only infrastructure retirement without granting migration authority', async () => {
+    const [azure, configuration, safety, existing] = await Promise.all([
+      repositoryFile('docs/azure-deployment.md'),
+      repositoryFile('docs/configuration-and-manifests.md'),
+      repositoryFile('docs/safety-and-consent.md'),
+      repositoryFile('docs/existing-repositories.md')
+    ]);
+    const retirement = azure.split('## Explicit flat-root identity retirement')[1].split('\n## ')[0];
+    expect(retiredFlatRootInfrastructureIdentities).toHaveLength(8);
+    for (const identity of retiredFlatRootInfrastructureIdentities) {
+      expect(retirement).toContain(`\`${identity.logicalName}\``);
+      expect(retirement).toContain(`\`${identity.pathParts.at(-1)}\``);
+    }
+    expect(retirement).toContain('New 0.11.0 scaffolds retire exactly these eight');
+    expect(retirement).toContain('opentofu-application-{versions,variables,main,outputs}');
+    expect(retirement).toContain('environment:<env>');
+    expect(retirement).toContain('not wildcard ownership');
+    expect(retirement).toContain('environments/<env>/<env>.tfvars');
+    expect(retirement).toMatch(/Existing manifests retain their old records,\s+paths, and generation hashes/);
+    expect(retirement).toMatch(/do not\s+delete or retarget that provenance, move state, or convert old files/);
+    expect(configuration).toContain('new scaffold output only');
+    expect(safety).toContain('not aliases to new\nroots or managed-core deletion targets');
+    expect(existing).toContain('Core context\nupdates cannot claim that this migration happened');
+    expect(azure).toContain('state/<env>.tfstate');
+    expect(azure).toContain('backend.remote.example.tf');
+    expect(azure).toContain('SERVICE_BUS_AUTH_MODE=managed-identity');
+    expect(azure).toMatch(/Azure Service Bus Data Sender on the generated queue/);
+    expect(azure).toMatch(/receiver\s+identity remains separate/);
+  });
+
+  it('distinguishes one-time Spec Kit seeds, evidence projection, and historical execution blockers', async () => {
+    const [workflow, governance, developer, configuration] = await Promise.all([
+      repositoryFile('docs/spec-workflows-and-agents.md'),
+      repositoryFile('docs/repository-governance.md'),
+      repositoryFile('DEVELOPER.md'),
+      repositoryFile('docs/configuration-and-manifests.md')
+    ]);
+    expect(workflow).toContain('B001–B006');
+    expect(workflow).toMatch(/already-installed locked dependencies or install with explicit consent/);
+    expect(workflow).toContain('body/full-plan-bound baseline evidence');
+    expect(workflow).toMatch(/Failed checks\s+leave tasks untouched/);
+    expect(workflow).toMatch(/status, verify, and resume do not edit checkboxes/);
+    expect(workflow).toContain('not an active governance change');
+    expect(workflow).toContain('no\n`liftoff-governance.json`');
+    expect(governance).toMatch(/`tofu fmt -check -recursive` at `infrastructure\/opentofu\/azure`/);
+    expect(governance).toContain('migration-required and no commands');
+    for (const source of [developer, configuration]) {
+      expect(source).toContain('diagnostic-only');
+      expect(source).toMatch(/historical (?:identity, )?state|historical identity\/state\/evidence/);
+    }
+    expect(developer).toContain('validateReadableActivationIdentity');
+    expect(developer).toContain('scope use strict current validation');
+    expect(configuration).toMatch(/readable historical manifest cannot\s+bootstrap current activation or authorize provider scope/);
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

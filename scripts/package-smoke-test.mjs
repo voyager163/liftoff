@@ -154,8 +154,10 @@ try {
   assertPackageContains(packResult, 'dist/self-upgrade.js');
   assertPackageContains(packResult, 'dist/stable-release.js');
   assertPackageContains(packResult, 'dist/genai-templates.js');
-  assertPackageContains(packResult, 'dist/power-apps-assets.js');
-  assertPackageContains(packResult, 'dist/power-apps-templates.js');
+  assertPackageExcludes(packResult, 'dist/power-apps-assets.js');
+  assertPackageExcludes(packResult, 'dist/power-apps-templates.js');
+  assertPackageExcludes(packResult, 'dist/power-apps-validation.js');
+  assertPackageExcludes(packResult, 'dist/code-apps-plugin.js');
   assertPackageContains(packResult, 'dist/standard-templates.js');
   assertPackageContains(packResult, 'dist/templates.js');
   assertPackageContains(packResult, 'dist/governance-assessment/engine.js');
@@ -181,16 +183,7 @@ try {
   assertPackageContains(packResult, 'assets/locks/python-genai/function-requirements.txt');
   assertPackageContains(packResult, 'assets/locks/opentofu-azure/versions.tf');
   assertPackageContains(packResult, 'assets/locks/opentofu-azure/.terraform.lock.hcl');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/catalog.json');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/UPSTREAM_LICENSE.txt');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/packaged/gitignore');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/package.json');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/package-lock.json');
-  assertPackageContains(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/src/App.tsx');
-  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/node_modules');
-  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/dist');
-  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/power.config.json');
-  assertPackageExcludes(packResult, 'assets/power-apps-code-app/3438c352483e40982f6c5c0fc36fd71f8e7adbbb/starter/.gitignore');
+  assertPackageExcludes(packResult, 'assets/power-apps-code-app');
   assertPackageExcludes(packResult, 'src');
   assertPackageExcludes(packResult, 'tests');
   assertPackageExcludes(packResult, 'scripts');
@@ -392,19 +385,18 @@ try {
     throw new Error(`Installed liftoff plan changed the working directory: ${afterPlan.join(', ')}`);
   }
 
-  const powerAppsPlan = run(process.execPath, [
+  const retiredPlan = runFailure(process.execPath, [
     liftoffEntrypoint, 'plan', '--type', 'power-apps-code-app',
     '--spec', 'openspec', '--agents', 'copilot'
   ], {
     cwd: outsideDirectory,
     env: npmEnv
   });
-  if (
-    !powerAppsPlan.stdout.includes('Power Apps code app') ||
-    !powerAppsPlan.stdout.includes('power-apps-package') ||
-    powerAppsPlan.stdout.includes('docker-compose')
-  ) {
-    throw new Error('Installed Liftoff did not render the packaged Power Apps workload correctly');
+  if (!/retired/i.test(retiredPlan.stderr)) {
+    throw new Error('Installed Liftoff did not explain the retired Power Apps workload');
+  }
+  if (JSON.stringify(await readdir(outsideDirectory)) !== JSON.stringify(beforePlan)) {
+    throw new Error('Retired workload rejection changed the working directory');
   }
 
   const obsoleteCreate = runFailure(process.execPath, [liftoffEntrypoint, 'create', 'obsolete-app'], {
@@ -448,6 +440,39 @@ try {
   });
   if (!assessHelp.stdout.includes('assess') || !assessHelp.stdout.includes('--live')) {
     throw new Error('Installed governance assessment help does not expose local/live scope.');
+  }
+  const ordinaryRepository = path.join(tempRoot, 'ordinary git repository');
+  run('git', ['init', '--quiet', '--template=', '--initial-branch=develop', ordinaryRepository], {
+    cwd: tempRoot,
+    env: {
+      ...npmEnv,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null'
+    }
+  });
+  const nestedDirectory = path.join(ordinaryRepository, 'nested directory');
+  await mkdir(nestedDirectory);
+  const ordinaryBefore = await treeDigest(ordinaryRepository);
+  for (const args of [
+    ['governance', 'assess', '--json'],
+    ['governance', 'assess', '--project', ordinaryRepository, '--json']
+  ]) {
+    const result = runFailure(process.execPath, [liftoffEntrypoint, ...args], {
+      cwd: nestedDirectory, env: npmEnv
+    });
+    const report = JSON.parse(result.stdout);
+    if (
+      result.status !== 2 || report.readOnly !== true || report.mode !== 'local' ||
+      report.outcome !== 'partial' || report.schemaVersion !== 1 ||
+      report.target?.profile !== 'single-maintainer-gitflow' ||
+      report.projectIdentity?.manifestVersion !== null ||
+      report.projectIdentity?.availability !== 'unavailable'
+    ) {
+      throw new Error('Installed ordinary-Git assessment invented project identity or lost its read-only target.');
+    }
+  }
+  if (await treeDigest(ordinaryRepository) !== ordinaryBefore) {
+    throw new Error('Installed ordinary-Git assessment initialized or modified its repository.');
   }
   const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
   const { buildArtifacts: installedArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);

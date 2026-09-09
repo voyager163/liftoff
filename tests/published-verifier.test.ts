@@ -21,6 +21,7 @@ function verifierHarness(options: HarnessOptions = {}): {
   dependencies: PublishedVerifierDependencies;
   state: {
     npmCalls: string[][];
+    npmOptions: Array<{ cwd: string; env: NodeJS.ProcessEnv }>;
     nodeCalls: string[][];
     time: number;
     tempRoot?: string;
@@ -29,14 +30,16 @@ function verifierHarness(options: HarnessOptions = {}): {
 } {
   const state = {
     npmCalls: [] as string[][],
+    npmOptions: [] as Array<{ cwd: string; env: NodeJS.ProcessEnv }>,
     nodeCalls: [] as string[][],
     time: 0,
     tempRoot: undefined as string | undefined,
     removed: false
   };
   const dependencies: PublishedVerifierDependencies = {
-    runNpm(args) {
+    runNpm(args, commandOptions) {
       state.npmCalls.push(args);
+      state.npmOptions.push(commandOptions);
       if (args[0] === 'view') {
         return options.registryUnavailable
           ? { status: 1, stdout: '', stderr: 'registry unavailable' }
@@ -89,7 +92,14 @@ function verifierHarness(options: HarnessOptions = {}): {
       state.removed = true;
     },
     platform: 'linux',
-    environment: {}
+    environment: {
+      HOME: '/private/original-home',
+      USERPROFILE: 'C:\\private\\original-home',
+      npm_config_cache: '/private/original-cache',
+      npm_config_registry: 'https://mirror.example.test/npm/',
+      npm_config_userconfig: '/private/original-user.npmrc',
+      npm_config_globalconfig: '/private/original-global.npmrc'
+    }
   };
   return { dependencies, state };
 }
@@ -108,6 +118,9 @@ describe('published package verifier', () => {
     });
     expect(state.npmCalls).toHaveLength(2);
     expect(state.npmCalls.every((args) => args.includes(`--registry=${CANONICAL_NPM_REGISTRY}`))).toBe(true);
+    expect(state.npmCalls.every((args) =>
+      args.includes(`--@msn-control:registry=${CANONICAL_NPM_REGISTRY}`)
+    )).toBe(true);
     expect(state.npmCalls.find((args) => args[0] === 'install')).toContain('@msn-control/liftoff@0.3.3');
     expect(state.nodeCalls.map((args) => args[1])).toEqual([
       'help',
@@ -115,6 +128,14 @@ describe('published package verifier', () => {
       '--version',
       'plan'
     ]);
+    for (const options of state.npmOptions) {
+      expect(options.cwd).toContain('outside');
+      expect(options.env).toMatchObject({
+        npm_config_registry: CANONICAL_NPM_REGISTRY
+      });
+      expect(options.env.npm_config_userconfig).not.toContain('/private/');
+      expect(options.env.npm_config_globalconfig).not.toContain('/private/');
+    }
     expect(state.removed).toBe(true);
     expect(state.tempRoot && existsSync(state.tempRoot)).toBe(false);
   });
@@ -130,7 +151,6 @@ describe('published package verifier', () => {
     expect(result.legacyVersionCommandAllowed).toBe(true);
     expect(state.nodeCalls.map((args) => args[1])).toEqual([
       'help',
-      'upgrade',
       'plan'
     ]);
   });
@@ -149,6 +169,27 @@ describe('published package verifier', () => {
     );
     expect(state.npmCalls).toEqual([]);
     expect(state.tempRoot).toBeUndefined();
+  });
+
+  it('requires the current version command for a modern release', async () => {
+    const { dependencies, state } = verifierHarness({
+      packageVersion: '0.10.4',
+      observedVersion: '0.10.4',
+      failedCommand: 'version'
+    });
+
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag: 'latest'
+    }, dependencies)).rejects.toThrow(
+      'Installed command --version failed: version failed'
+    );
+    expect(state.nodeCalls.map((args) => args[1])).toEqual([
+      'help',
+      'upgrade',
+      '--version'
+    ]);
+    expect(state.removed).toBe(true);
   });
 
   it('uses the Windows global node_modules layout when resolving the installed entrypoint', async () => {

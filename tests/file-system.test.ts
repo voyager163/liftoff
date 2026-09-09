@@ -71,14 +71,18 @@ async function namedManifestRoot(
 ): Promise<string> {
   const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-manifest-named-'));
   cleanups.push(root);
-  const parsed = JSON.parse(await readFile(path.join(fixturesDir, fixtureName), 'utf8')) as unknown;
+  const fixtureBytes = await readFile(path.join(fixturesDir, fixtureName));
+  const parsed = JSON.parse(fixtureBytes.toString('utf8')) as unknown;
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error(`Fixture ${fixtureName} must contain an object.`);
   }
 
   const manifest = parsed as Record<string, unknown>;
   mutate?.(manifest);
-  await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
+  await writeFile(
+    path.join(root, 'liftoff.manifest.json'),
+    mutate ? `${JSON.stringify(manifest, null, 2)}\n` : fixtureBytes
+  );
   return root;
 }
 
@@ -256,8 +260,7 @@ describe('manifest validation', () => {
     ['manifest-v2.json', 'genai'],
     ['manifest-v3.json', 'standard'],
     ['manifest-v4-genai.json', 'genai'],
-    ['manifest-v4-standard.json', 'standard'],
-    ['manifest-v4-power-apps.json', 'power-apps-code-app']
+    ['manifest-v4-standard.json', 'standard']
   ])('normalizes %s into workload %s', async (fixtureName, expectedKind) => {
     const root = await namedManifestRoot(fixtureName);
     const manifest = await loadManifest(root);
@@ -338,18 +341,50 @@ describe('manifest validation', () => {
     }
   });
 
-  it('loads immutable Power Apps starter identity and plugin preference from v4', async () => {
+  it('keeps the frozen Power Apps fixture as byte-identical negative input', async () => {
+    const fixturePath = path.join(fixturesDir, 'manifest-v4-power-apps.json');
+    const fixtureBytes = await readFile(fixturePath);
     const root = await namedManifestRoot('manifest-v4-power-apps.json');
-    const manifest = await loadManifest(root);
-    expect(manifest.project.workload).toEqual({
-      kind: 'power-apps-code-app',
-      starter: {
-        repository: 'https://github.com/microsoft/PowerAppsCodeApps',
-        path: 'templates/starter',
-        commit: '3438c352483e40982f6c5c0fc36fd71f8e7adbbb'
-      },
-      codeAppsPlugin: false
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+
+    await expect(loadManifest(root))
+      .rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+    expect(await readFile(manifestPath)).toEqual(fixtureBytes);
+    expect(await readFile(fixturePath)).toEqual(fixtureBytes);
+  });
+
+  it('preserves CRLF bytes when rejecting a retired manifest', async () => {
+    const root = await namedManifestRoot('manifest-v4-power-apps.json');
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const original = await readFile(manifestPath, 'utf8');
+    const windowsBytes = Buffer.from(original.replace(/\r?\n/g, '\r\n'));
+    await writeFile(manifestPath, windowsBytes);
+
+    await expect(loadManifest(root)).rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+    expect(await readFile(manifestPath)).toEqual(windowsBytes);
+  });
+
+  it('rejects a retired discriminator before malformed deeper metadata and unsafe paths', async () => {
+    const root = await namedManifestRoot('manifest-v4-power-apps.json', (manifest) => {
+      const workload = (manifest.project as { workload: Record<string, unknown> }).workload;
+      workload.starter = null;
+      workload.codeAppsPlugin = { malformed: true };
+      manifest.artifacts = [{
+        logicalName: 'unsafe-retired-artifact',
+        category: 'governance',
+        pathParts: ['..', 'outside'],
+        contentHash: 'not-a-hash'
+      }];
     });
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const before = await readFile(manifestPath, 'utf8');
+    const raw = JSON.parse(before);
+
+    expect(() => parseManifest(raw))
+      .toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+    await expect(loadManifest(root))
+      .rejects.toThrow(/Power Apps.*retired|retired.*Power Apps/i);
+    expect(await readFile(manifestPath, 'utf8')).toBe(before);
   });
 
   it('strictly loads enabled and disabled schema-v5 governance state', async () => {
@@ -499,30 +534,6 @@ describe('manifest validation', () => {
       /Unsupported manifest artifactVersion 8.*2, 3, 4, 5, 6, 7/
     ],
     [
-      'mutable Power Apps starter ref',
-      (manifest: Record<string, unknown>) => {
-        const project = manifest.project as { workload: { starter: { commit: string } } };
-        project.workload.starter.commit = 'main';
-      },
-      /40-character lowercase Git commit/
-    ],
-    [
-      'missing Power Apps starter path',
-      (manifest: Record<string, unknown>) => {
-        const project = manifest.project as { workload: { starter: Record<string, unknown> } };
-        delete project.workload.starter.path;
-      },
-      /starter\.path must be a non-empty string/
-    ],
-    [
-      'Power Apps API field',
-      (manifest: Record<string, unknown>) => {
-        const project = manifest.project as { workload: Record<string, unknown> };
-        project.workload.apiStack = 'node-fastify';
-      },
-      /inapplicable or unknown field: apiStack/
-    ],
-    [
       'standard GenAI field',
       (manifest: Record<string, unknown>) => {
         const project = manifest.project as { workload: Record<string, unknown> };
@@ -531,10 +542,7 @@ describe('manifest validation', () => {
       /inapplicable or unknown field: pattern/
     ]
   ])('rejects malformed v4 state: %s', async (_label, mutate, expected) => {
-    const fixture = _label === 'standard GenAI field'
-      ? 'manifest-v4-standard.json'
-      : 'manifest-v4-power-apps.json';
-    const root = await namedManifestRoot(fixture, mutate);
+    const root = await namedManifestRoot('manifest-v4-standard.json', mutate);
     await expect(loadManifest(root)).rejects.toThrow(expected);
   });
 

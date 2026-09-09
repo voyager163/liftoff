@@ -10,8 +10,16 @@ and credential contract without relying on model interpretation.
 The engine SHALL distinguish the creating Liftoff semantic version, normative
 policy version, activation-contract version, phase-graph schema version and
 exact content hash, activation-state schema version, and applicable evidence,
-approval-envelope, and credential-policy schema versions. The generated setup
-skill SHALL have no independent manually maintained version.
+approval-envelope, compatibility-metadata, supersession, and credential-policy
+schema versions. For this release line, the managed activation identity SHALL
+advance to Liftoff 0.11.0 with manifest artifact 7, supported API and GenAI
+readers 2 through 7, policy 6, activation contract 2, phase-graph schema 1
+plus a computed content hash, activation-state schema 2, evidence-header
+schema 2, approval-envelope schema 2, compatibility-metadata schema 2, and
+supersession and credential-policy schemas 1. The generated setup skill SHALL
+have no independent manually maintained version, and the graph hash SHALL be
+computed from the implemented canonical bytes rather than fabricated in
+planning artifacts.
 
 #### Scenario: A CLI patch changes no governance contract
 - **WHEN** Liftoff fixes implementation behavior without changing policy semantics, phase behavior, JSON shapes, or managed graph bytes
@@ -42,6 +50,11 @@ skill SHALL have no independent manually maintained version.
 - **THEN** setup blocks without rewriting state
 - **AND** reports the unsupported identity and upgrade remedy
 
+#### Scenario: Historical activation v1 is encountered
+- **WHEN** the engine reads a preserved activation v1 state or evidence record
+- **THEN** it may report the historical identity for diagnosis
+- **AND** it does not auto-migrate, delete, or accept that history as current executable proof
+
 ### Requirement: Governance activation uses one canonical phase graph
 The system SHALL package a versioned, machine-readable governance phase graph
 whose phase identifiers, dependencies, applicability rules, allowed mutations,
@@ -66,15 +79,20 @@ not override the graph.
 ### Requirement: Activation state is typed, evidence-backed, and resumable
 The system SHALL maintain user-owned activation state using explicit
 `pending`, `blocked`, `ready`, `approved`, `running`, `verified`, `failed`,
-`inapplicable`, `retained`, and `disposed` states. Every non-pending transition
-MUST reference current evidence whose repository identity, activation version
-vector, phase-graph hash, activation baseline, and input digest match the
-transition.
+`inapplicable`, `retained`, and `disposed` states. Every successful completed
+phase MUST have the evidence, approval, or validated applicability proof
+required by its graph contract. Execution evidence SHALL bind repository identity, stable
+local anchor, verified remote binding when required, activation version vector,
+phase-graph hash, activation baseline, input digest, and body digest to the
+transition. Pending, ready, running, blocked, or failed states SHALL NOT be
+interpreted as successful proof. Establishing a stable local anchor SHALL require an explicitly
+executed local transition; inspection of an uninitialized project SHALL remain
+unbound. Only matching verified remote bindings permit remote evidence reuse.
 
 #### Scenario: Setup is invoked repeatedly
 - **WHEN** `/liftoff-setup` or governance `resume` runs after verified phases exist
 - **THEN** completed phases remain no-ops
-- **AND** execution resumes at the next ready phase
+- **AND** the next ready phase is reported, with execution occurring only through a separate explicit executable transition
 
 #### Scenario: Evidence is missing or stale
 - **WHEN** a completed task lacks evidence or its activation identity, baseline SHA, graph hash, or input digest differs
@@ -83,20 +101,41 @@ transition.
 
 #### Scenario: Evidence contradicts a task checkbox
 - **WHEN** a task is checked but its authoritative evidence reports `pending`, `failed`, or a missing prerequisite
-- **THEN** verification fails and the checkbox is corrected as a projection of phase state
+- **THEN** verification reports the mismatch and expected projection without modifying the task file
+- **AND** correction is allowed only within an explicitly planned local execution whose graph contract permits that write
+
+#### Scenario: Remote binding changes after local anchoring
+- **WHEN** a later run finds that the repository's verified remote binding differs from the binding used by reusable remote evidence
+- **THEN** the local anchor remains intact for local history
+- **AND** remote evidence tied to the previous binding is not reused as current proof
 
 ### Requirement: Setup completes the generated baseline before governance
-The engine SHALL require the generated `bootstrap-<project>` OpenSpec change to
-be planning-complete, strict-valid, locally verified, spec-synced, and archived
-before initial commit/push and governance Phase 0. It SHALL never create a
-second governance change while an unresolved seed or governance change makes
-ownership ambiguous.
+The engine SHALL require the generated local baseline handoff to be complete
+before initial commit, push, and governance Phase 0. For OpenSpec, the
+generated `bootstrap-<project>` change MUST be planning-complete, strict-valid,
+locally verified, spec-synced, and archived. For Spec Kit, the explicit
+project-owned bootstrap spec, plan, and tasks and the official framework
+initialization markers MUST be validated; local task finalization and a
+baseline receipt MUST follow successful applicable checks without inventing
+an OpenSpec directory or archive operation. It SHALL
+never create a second governance change while an unresolved seed or governance
+change makes ownership ambiguous.
 
 #### Scenario: Generated seed is ready
-- **WHEN** every baseline check passes
+- **WHEN** every applicable baseline check passes for an OpenSpec project
 - **THEN** setup marks the deterministic seed tasks complete, syncs its delta spec, and archives the change
 - **AND** validates the complete synchronized OpenSpec set with `openspec validate --all --strict`
 - **AND** records that no product behavior or live infrastructure was implemented
+
+#### Scenario: Spec Kit baseline is ready
+- **WHEN** every applicable local baseline check passes for a Spec Kit project
+- **THEN** setup finalizes only the explicit project-owned bootstrap task projection and records the local baseline receipt
+- **AND** it does not call OpenSpec archive or fabricate archived-change evidence
+
+#### Scenario: Spec Kit has templates but no bootstrap bundle
+- **WHEN** official Spec Kit initialization markers exist but the explicit bootstrap spec, plan, or tasks are absent
+- **THEN** setup reports a specific seed-adoption blocker without counting templates as completed project work
+- **AND** it does not create missing seed files through read-only inspection, ordinary update, or force
 
 #### Scenario: Post-archive strict validation fails
 - **WHEN** archive succeeds but the synchronized main specs fail strict validation
@@ -124,13 +163,17 @@ ownership ambiguous.
 ### Requirement: Baseline verification is local and deterministic
 The engine SHALL run the project-applicable `liftoff validate`, backend tests,
 frontend build, `docker compose config -q`, `tofu fmt -check -recursive`,
-`tofu init -backend=false`, `tofu validate`, and strict OpenSpec checks before
-baseline verification is recorded, including when the generated seed was
-archived before activation began. It SHALL validate an active change by name
-and an archived seed through its synchronized spec set with expected-capability
-integrity checks. It SHALL not require a live cloud plan, start containers,
-deploy, or mutate GitHub. Project paths SHALL resolve consistently on Windows,
-macOS, and Linux.
+`tofu init -backend=false`, `tofu validate`, and strict workflow checks before
+baseline verification is recorded. For OpenSpec it SHALL validate an active
+change by name and an archived seed through the synchronized spec set with
+expected-capability integrity checks. For Spec Kit it SHALL validate the
+explicit project-owned bootstrap bundle and official initialization markers,
+run its applicable local checks, and
+record a local baseline receipt only after success. Existing receipts SHALL
+be validated on reuse, not required before the first baseline run. It SHALL
+not ask OpenSpec to validate or archive a Spec Kit change. It SHALL not
+require a live cloud plan, start containers, deploy, or mutate GitHub. Project
+paths SHALL resolve consistently on Windows, macOS, and Linux.
 
 #### Scenario: API project has a frontend and OpenTofu
 - **WHEN** baseline setup runs
@@ -143,7 +186,7 @@ macOS, and Linux.
 
 #### Scenario: Baseline validation fails
 - **WHEN** any applicable command fails
-- **THEN** the current seed lifecycle is preserved and initial commit/push remains blocked
+- **THEN** the current seed lifecycle is preserved and initial commit and push remain blocked
 - **AND** no verified baseline evidence is created
 
 #### Scenario: Seed was archived before activation began
@@ -151,6 +194,11 @@ macOS, and Linux.
 - **THEN** setup executes seed validation, all applicable baseline checks, and archived-spec validation through the normal phase sequence
 - **AND** it does not ask OpenSpec to validate an inactive change name
 - **AND** it stops at the initial publication approval gate without rewriting the archive or mutating remotes
+
+#### Scenario: Spec Kit baseline is finalized locally
+- **WHEN** baseline setup runs for a Spec Kit project with no live governance state
+- **THEN** it evaluates the applicable local checks, project-owned bootstrap bundle, and official initialization markers
+- **AND** it does not create a fake OpenSpec change, archive, or inactive-change validation request
 
 #### Scenario: Retry an archived baseline after repair
 - **WHEN** an archived seed has a persisted blocked baseline phase and its expected main capability is intact
@@ -223,6 +271,11 @@ command-specific arguments. The slash skill SHALL call these operations rather
 than infer phase completion itself. It SHALL use `apply-next --json` as a
 read-only preview and SHALL use `apply-next --json --execute` only after the
 reported transition is ready and approval status is `not-required` or `reused`.
+`status`, `plan`, and `resume` SHALL remain read-only. Planning SHALL validate
+each proposed operation against the selected phase graph and mutation contract,
+and execution SHALL validate the completed outcome and required live proof
+before persisting success. Only `apply-next --json --execute` MAY rerun a
+blocked local seed, baseline, or archive transition.
 
 #### Scenario: Developer runs the slash skill
 - **WHEN** `/liftoff-setup` is invoked from a project subdirectory
@@ -247,6 +300,16 @@ reported transition is ready and approval status is `not-required` or `reused`.
 - **THEN** the engine executes at most that one phase
 - **AND** writes authoritative evidence and activation state for the result
 
+#### Scenario: Resume is used after a local baseline failure
+- **WHEN** governance `resume --json` is run for a blocked local seed, baseline, or archive phase
+- **THEN** it reports the retryable blocker and the exact next executable transition
+- **AND** it does not rerun checks or write new evidence until `apply-next --json --execute` is invoked
+
+#### Scenario: Planned operation is not allowed by the phase graph
+- **WHEN** a requested transition would mutate resources outside the ready phase's declared contract
+- **THEN** preview and execution both block the transition
+- **AND** no success state or evidence is persisted
+
 #### Scenario: Verify is requested
 - **WHEN** governance `verify` runs
 - **THEN** it validates the phase graph, state, evidence, task projection, policy version, active-change identity, and live readback requirements without inventing completion
@@ -267,3 +330,53 @@ reported transition is ready and approval status is `not-required` or `reused`.
 - **WHEN** governance `verify --json` encounters a malformed graph, state, evidence, or policy artifact
 - **THEN** it reports `verificationStatus` as `inconsistent` and `setupStatus` as `indeterminate`
 - **AND** `complete` is false
+
+### Requirement: Readiness uses authoritative proof and the selected applicable path
+Readiness SHALL distinguish current authoritative evidence from informational historical records and contradictions. Unknown applicability SHALL remain unresolved rather than becoming false or inapplicable. An alternative dependency SHALL require successful proof from the selected applicable path; skipping the unselected path SHALL NOT satisfy that prerequisite.
+
+#### Scenario: Fresh evidence coexists with stale history
+- **WHEN** one valid current evidence selection exists alongside older stale records
+- **THEN** the current selection determines readiness and old records remain informational
+- **AND** status, readiness, doctor, and verification do not disagree solely because old records were preserved
+
+#### Scenario: Current evidence is contradictory
+- **WHEN** equally authoritative current records contradict one another under the same selection precedence
+- **THEN** the phase and dependent execution remain blocked with the conflict identified
+
+#### Scenario: Private applicability has not been established
+- **WHEN** private-DAST or credential applicability lacks current validated facts
+- **THEN** it remains unknown and cannot skip required proof as if explicitly inapplicable
+
+#### Scenario: Unselected backend path is inapplicable
+- **WHEN** the selected existing-private path is blocked and the unselected import path is inapplicable
+- **THEN** remote readiness remains blocked until the selected path supplies successful required proof
+
+#### Scenario: Outcome cannot satisfy its own evidence contract
+- **WHEN** an executor returns success without required body binding or independent live readback
+- **THEN** the outcome is blocked before successful state/evidence persistence rather than failing only on a later inspection
+
+### Requirement: Authority-gated execution binds exact approval timing and Git destinations
+Any approval reused for publication, remote mutation, or another
+authority-gated transition SHALL match the current reviewed identity and
+baseline and contain the planned operation within its destinations,
+permissions, resource types, destructive scope, cost ceiling, and valid time
+window without expansion. Narrower operations within that envelope SHALL
+remain reusable. Git publication
+planning MUST bind the actual push destinations, reject differing or multiple
+unresolved push URLs, honor ignored paths during initial staging, and re-read
+the reviewed destination before mutation.
+
+#### Scenario: Future-dated approval cannot be reused
+- **WHEN** an approval's `approvedAt` is in the future, its expiry is missing or invalid, or `now` is outside the approved interval
+- **THEN** the transition requires new explicit approval
+- **AND** setup does not treat the prior envelope as reusable authorization
+
+#### Scenario: Push destination changes after review
+- **WHEN** the reviewed Git push destination differs from the current destination or multiple unresolved push URLs exist when publication is about to run
+- **THEN** publication blocks and reports the exact destination mismatch
+- **AND** it does not push to an unreviewed remote or rewrite the stored approval
+
+#### Scenario: Ignored paths affect initial staging
+- **WHEN** initial publication excludes ignored paths from the reviewed change set
+- **THEN** the plan binds only the actual staged payload and reviewed destination
+- **AND** a later destination or payload change requires a fresh plan and approval

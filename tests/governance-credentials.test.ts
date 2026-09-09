@@ -1,6 +1,6 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   buildFineGrainedPatCredentialPolicy,
   buildPatEnrollmentGuidance,
@@ -31,7 +31,8 @@ import { CaptureStream } from './helpers.js';
 import type { CommandRunner, CommandResult, RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
 
-const scratchRoot = path.join(process.cwd(), '.cache', 'governance-credential-tests');
+const scratchRoot = path.join(process.cwd(), '.cache', `governance-credential-tests-${process.pid}`);
+afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 const now = new Date('2026-09-04T00:00:00.000Z');
 const digest = 'b'.repeat(64);
 const syntheticToken = ['github', '_pat_', 'SYNTHETIC_VALUE_FOR_TESTS_ONLY_1234567890'].join('');
@@ -422,7 +423,8 @@ describe('credential leak detection and fixtures', () => {
     const status = await run(['governance', 'status', '--json'], root);
     expect(status.code).toBe(0);
     const body = JSON.parse(status.out);
-    expect(body.credential).toMatchObject({ applicable: true, readOnly: true, status: 'valid', ready: true });
+    expect(body.credential).toMatchObject({ applicable: true, readOnly: true, ready: false });
+    expect(body.credential.issues.join(' ')).toContain('Independent credential readback');
     expect(status.out).not.toContain(syntheticToken);
 
     const plan = await run(['governance', 'plan', '--json'], root);
@@ -431,7 +433,7 @@ describe('credential leak detection and fixtures', () => {
 
     const verify = await run(['governance', 'verify', '--json'], root);
     expect(JSON.parse(verify.out).checks.some((check: { id: string; status: string }) =>
-      check.id === 'credential-policy' && check.status === 'passed'
+      check.id === 'credential-policy' && check.status === 'failed'
     )).toBe(true);
   });
 });

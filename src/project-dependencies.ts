@@ -1,12 +1,17 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { formatCommand, type CommandRunner } from './process-runner.js';
-import { readProjectFile, writeProjectFile } from './file-system.js';
-import type { ExternalCommand, ProjectPlan } from './types.js';
+import type { CommandRunner } from './process-runner.js';
+import {
+  captureProjectFileSnapshot
+} from './adapters/filesystem/project-transaction.js';
+import { withProjectMutationLock } from './adapters/filesystem/project-lock.js';
+import type { ExternalCommand, ProjectPlan } from './domain/project/contracts.js';
 import type { RequirementProbeResult } from './workstation.js';
-
-export { verifyPowerAppsPackageMetadata } from './power-apps-validation.js';
+import {
+  commandShellForPlatform,
+  formatShellDirectoryCommand
+} from './adapters/process/shell-command.js';
 
 export interface DependencyCommandPlan {
   id: string;
@@ -26,7 +31,9 @@ export interface DependencySetupResult {
   failed?: DependencyCommandPlan;
   detail?: string;
   restoredMutations: string[];
+  preservedMutations: string[];
   resumeCommand?: string;
+  resumeShell?: string;
 }
 
 export interface DependencySetupExecutionOptions {
@@ -47,16 +54,6 @@ export function buildDependencySetupPlan(
 ): DependencySetupPlan {
   const commands: DependencyCommandPlan[] = [];
   const protectedPaths: string[][] = [];
-  if (plan.workload === 'power-apps-code-app') {
-    commands.push({
-      id: 'power-apps-root',
-      label: 'Install Power Apps code app dependencies',
-      command: { executable: npmExecutable(platform), args: ['ci'] },
-      cwd: projectRoot
-    });
-    protectedPaths.push(['package.json'], ['package-lock.json']);
-    return { commands, protectedPaths };
-  }
   if (plan.apiStack.id === 'python-fastapi') {
     commands.push({
       id: 'python-backend',
@@ -113,8 +110,8 @@ export function buildDependencySetupPlan(
 
 interface ProtectedSnapshot {
   pathParts: string[];
-  content: Buffer;
   hash: string;
+  mode?: number;
 }
 
 function contentHash(content: Buffer): string {
@@ -127,38 +124,42 @@ async function captureProtectedFiles(
 ): Promise<ProtectedSnapshot[]> {
   const snapshots: ProtectedSnapshot[] = [];
   for (const pathParts of protectedPaths) {
-    const content = await readProjectFile(projectRoot, pathParts);
+    const { content, mode } = await captureProjectFileSnapshot(projectRoot, pathParts);
     if (!content) {
       throw new Error(`Dependency setup cannot protect missing file ${pathParts.join('/')}.`);
     }
-    snapshots.push({ pathParts, content, hash: contentHash(content) });
+    snapshots.push({ pathParts, hash: contentHash(content), mode });
   }
   return snapshots;
 }
 
-async function restoreMutations(
+async function changedProtectedPaths(
   projectRoot: string,
   snapshots: ProtectedSnapshot[]
 ): Promise<string[]> {
-  const restored: string[] = [];
+  const changed: string[] = [];
   for (const snapshot of snapshots) {
-    const current = await readProjectFile(projectRoot, snapshot.pathParts);
-    if (!current || contentHash(current) !== snapshot.hash) {
-      await writeProjectFile(projectRoot, snapshot.pathParts, snapshot.content.toString('utf8'));
-      restored.push(snapshot.pathParts.join('/'));
+    const current = await captureProjectFileSnapshot(projectRoot, snapshot.pathParts);
+    if (
+      current.content === undefined ||
+      contentHash(current.content) !== snapshot.hash ||
+      current.mode !== snapshot.mode
+    ) {
+      changed.push(snapshot.pathParts.join('/'));
     }
   }
-  return restored;
+  return changed;
+}
+
+export function dependencyResumeShell(platform: NodeJS.Platform = process.platform): string {
+  return commandShellForPlatform(platform) === 'powershell' ? 'PowerShell' : 'POSIX shell';
 }
 
 export function dependencyResumeCommand(
   command: DependencyCommandPlan,
   platform: NodeJS.Platform = process.platform
 ): string {
-  const changeDirectory = platform === 'win32'
-    ? `cd /d ${JSON.stringify(command.cwd)}`
-    : `cd ${JSON.stringify(command.cwd)}`;
-  return `${changeDirectory} && ${formatCommand(command.command)}`;
+  return formatShellDirectoryCommand(command.command, command.cwd, commandShellForPlatform(platform));
 }
 
 export async function runDependencySetup(
@@ -167,44 +168,64 @@ export async function runDependencySetup(
   runner: CommandRunner,
   options: DependencySetupExecutionOptions
 ): Promise<DependencySetupResult> {
-  const snapshots = await captureProtectedFiles(projectRoot, setup.protectedPaths);
-  const completed: DependencyCommandPlan[] = [];
-  for (const command of setup.commands) {
-    options.onCommand?.(command);
-    const result = await runner.run(command.command, {
-      cwd: command.cwd,
-      timeoutMs: 15 * 60_000,
-      stream: true,
-      stdout: options.stdout,
-      stderr: options.stderr
-    });
-    if (result.status !== 0 || result.timedOut) {
-      const restoredMutations = await restoreMutations(projectRoot, snapshots);
-      return {
-        success: false,
-        completed,
-        failed: command,
-        detail: result.timedOut
-          ? 'dependency command timed out'
-          : result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`,
-        restoredMutations,
-        resumeCommand: dependencyResumeCommand(command)
-      };
+  return withProjectMutationLock(projectRoot, async (lease) => {
+    const snapshots = await captureProtectedFiles(projectRoot, setup.protectedPaths);
+    const completed: DependencyCommandPlan[] = [];
+    for (const command of setup.commands) {
+      await lease.assertHeld();
+      const before = await changedProtectedPaths(projectRoot, snapshots);
+      if (before.length) {
+        return {
+          success: false,
+          completed,
+          failed: command,
+          detail: `Dependency metadata changed before execution and was preserved for review: ${before.join(', ')}`,
+          restoredMutations: [],
+          preservedMutations: before,
+          resumeCommand: dependencyResumeCommand(command),
+          resumeShell: dependencyResumeShell()
+        };
+      }
+      options.onCommand?.(command);
+      const result = await runner.run(command.command, {
+        cwd: command.cwd,
+        timeoutMs: 15 * 60_000,
+        stream: true,
+        stdout: options.stdout,
+        stderr: options.stderr
+      });
+      await lease.assertHeld();
+      const preservedMutations = await changedProtectedPaths(projectRoot, snapshots);
+      if (result.status !== 0 || result.timedOut || result.errorCode) {
+        return {
+          success: false,
+          completed,
+          failed: command,
+          detail: result.timedOut
+            ? 'dependency command timed out'
+            : result.errorMessage || result.stderr.trim().split(/\r?\n/)[0] || `exit status ${result.status}`,
+          restoredMutations: [],
+          preservedMutations,
+          resumeCommand: dependencyResumeCommand(command),
+          resumeShell: dependencyResumeShell()
+        };
+      }
+      if (preservedMutations.length > 0) {
+        return {
+          success: false,
+          completed,
+          failed: command,
+          detail: `Dependency metadata changed during setup and was preserved for review: ${preservedMutations.join(', ')}`,
+          restoredMutations: [],
+          preservedMutations,
+          resumeCommand: dependencyResumeCommand(command),
+          resumeShell: dependencyResumeShell()
+        };
+      }
+      completed.push(command);
     }
-    completed.push(command);
-    const restoredMutations = await restoreMutations(projectRoot, snapshots);
-    if (restoredMutations.length > 0) {
-      return {
-        success: false,
-        completed,
-        failed: command,
-        detail: `dependency command modified protected files: ${restoredMutations.join(', ')}`,
-        restoredMutations,
-        resumeCommand: dependencyResumeCommand(command)
-      };
-    }
-  }
-  return { success: true, completed, restoredMutations: [] };
+    return { success: true, completed, restoredMutations: [], preservedMutations: [] };
+  });
 }
 
 export async function verifyDependencyLockPair(

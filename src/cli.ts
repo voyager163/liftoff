@@ -3,8 +3,9 @@ import { realpathSync } from 'node:fs';
 import path from 'node:path';
 import type { Readable } from 'node:stream';
 import { fileURLToPath } from 'node:url';
-import { parseArgs } from './args.js';
-import { runCommand, type CommandContext } from './commands.js';
+import { parseArgs } from './cli/args/parser.js';
+import { runCommand } from './cli/commands/dispatch.js';
+import type { CommandContext } from './application/context.js';
 import { nodeRuntimeError } from './runtime.js';
 import {
   maybeShowTelemetryNotice,
@@ -12,7 +13,7 @@ import {
   trackCommand
 } from './telemetry/index.js';
 import { PresentationSession } from './terminal.js';
-import type { ParsedArgs } from './types.js';
+import type { ParsedArgs } from './domain/project/contracts.js';
 import { liftoffVersion } from './version.js';
 import { isTelemetryExcludedCommand } from './telemetry/contract.js';
 

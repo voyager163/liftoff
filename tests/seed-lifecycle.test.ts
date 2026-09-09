@@ -240,10 +240,6 @@ describe('seed artifact lifecycle', () => {
       {
         args: ['init', 'prompt-workerless-seed', '--pattern', 'prompt', '--cloud', 'azure', '--region', 'eastus', '--spec', 'openspec', '--no-frontend', '--yes'],
         safeProjectName: 'prompt-workerless-seed'
-      },
-      {
-        args: ['init', 'power-apps-seed', '--type', 'power-apps-code-app', '--spec', 'openspec', '--yes'],
-        safeProjectName: 'power-apps-seed'
       }
     ];
     const canRunOpenSpec = await openspecAvailable();
@@ -300,11 +296,6 @@ describe('seed artifact lifecycle', () => {
         args: ['init', 'spec-kit-worker', '--pattern', 'workflow', '--cloud', 'azure', '--region', 'eastus', '--spec', 'spec-kit', '--agents', 'claude', '--no-frontend', '--yes'],
         safeProjectName: 'spec-kit-worker',
         selected: ['claude']
-      },
-      {
-        args: ['init', 'spec-kit-power-apps', '--type', 'power-apps-code-app', '--spec', 'spec-kit', '--agents', 'copilot', '--yes'],
-        safeProjectName: 'spec-kit-power-apps',
-        selected: ['copilot']
       }
     ];
 
@@ -419,29 +410,28 @@ describe('seed artifact lifecycle', () => {
     expect(apiChecks.find((check) => check.id === 'tofu-init')?.applicability)
       .toMatchObject({ applicable: true, command: { executable: 'tofu', args: ['init', '-backend=false'] } });
 
-    const { root: powerRoot } = await fixtureProject({
-      projectName: 'Power Only',
-      projectType: 'power-apps-code-app',
+    const { root: nodeRoot } = await fixtureProject({
+      projectName: 'Node Only',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
-    const powerManifest = JSON.parse(await readFile(path.join(powerRoot, 'liftoff.manifest.json'), 'utf8'));
-    const powerChecks = selectSeedBaselineChecks(powerManifest);
-    const inapplicable = powerChecks.filter((check) => !check.applicability.applicable);
+    const nodeManifest = JSON.parse(await readFile(path.join(nodeRoot, 'liftoff.manifest.json'), 'utf8'));
+    const nodeChecks = selectSeedBaselineChecks(nodeManifest);
+    const inapplicable = nodeChecks.filter((check) => !check.applicability.applicable);
     expect(inapplicable.map((check) => check.id)).toEqual([
-      'backend-tests',
       'worker-tests',
-      'docker-compose-config',
-      'tofu-fmt',
-      'tofu-init',
-      'tofu-validate'
+      'frontend-build'
     ]);
-    for (const check of powerChecks) {
+    for (const check of nodeChecks) {
       if (check.applicability.applicable) {
         expect(['bash', 'sh', 'cmd', 'powershell', 'true', 'echo']).not.toContain(check.applicability.command.executable);
         expect(check.applicability.command.args.join(' ')).not.toMatch(/&&|\|\||placeholder|success/i);
       }
     }
-    for (const manifest of [apiManifest, powerManifest]) {
+    for (const manifest of [apiManifest, nodeManifest]) {
       const changeName = generatedSeedChangeName(manifest);
       const active = selectSeedBaselineChecks(manifest, changeName, 'active');
       const archived = selectSeedBaselineChecks(manifest, changeName, 'archived');
@@ -479,7 +469,10 @@ describe('seed artifact lifecycle', () => {
   it('checks deterministic seed tasks, uses archive for spec sync, and archives after success', async () => {
     const { root } = await fixtureProject({
       projectName: 'Archive Seed',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
     const runner = new SeedLifecycleRunner();
@@ -725,7 +718,10 @@ describe('seed artifact lifecycle', () => {
     async (fault) => {
       const { root } = await fixtureProject({
         projectName: 'Active Seed Integrity',
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        includeFrontend: false,
         specWorkflow: 'openspec'
       });
       expect((await runCli(['governance', 'apply-next', '--json', '--execute'], root)).code).toBe(0);
@@ -895,11 +891,14 @@ describe('seed artifact lifecycle', () => {
     async (fault) => {
       const { root } = await fixtureProject({
         projectName: 'Archived Integrity Guard',
-        projectType: 'power-apps-code-app',
+        projectType: 'standard',
+        apiStack: 'node',
+        cloud: 'azure',
+        includeFrontend: false,
         specWorkflow: 'openspec'
       });
       expect((await archiveGeneratedSeedForPhase(root, new SeedLifecycleRunner())).status).toBe('archived');
-      const specPath = path.join(root, 'openspec', 'specs', 'power-apps-code-app-baseline', 'spec.md');
+      const specPath = path.join(root, 'openspec', 'specs', 'node-fastify-application-baseline', 'spec.md');
       if (fault === 'missing') {
         await rm(specPath);
       } else {
@@ -922,7 +921,10 @@ describe('seed artifact lifecycle', () => {
   ])('bounds and sanitizes OpenSpec failure diagnostics ($name)', async ({ failure, expected }) => {
     const { root } = await fixtureProject({
       projectName: 'Safe Diagnostics',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
     const failed = await runCli(['governance', 'apply-next', '--json', '--execute'], root, {
@@ -946,7 +948,10 @@ describe('seed artifact lifecycle', () => {
   it('blocks an archived seed until the synchronized main specs pass strict validation', async () => {
     const { root } = await fixtureProject({
       projectName: 'Post Archive Failure',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
     const failingRunner = new SeedLifecycleRunner({
@@ -971,7 +976,10 @@ describe('seed artifact lifecycle', () => {
   it('retries post-archive strict validation through the public governance command path', async () => {
     const { root } = await fixtureProject({
       projectName: 'Retry Archived Seed',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
     const readyRunner = new SeedLifecycleRunner();
@@ -1040,7 +1048,10 @@ describe('seed artifact lifecycle', () => {
   it('blocks previously verified archives whose synchronized capability is missing or has a fallback Purpose', async () => {
     const { root } = await fixtureProject({
       projectName: 'Legacy Invalid Archive',
-      projectType: 'power-apps-code-app',
+      projectType: 'standard',
+      apiStack: 'node',
+      cloud: 'azure',
+      includeFrontend: false,
       specWorkflow: 'openspec'
     });
     const runner = new SeedLifecycleRunner();

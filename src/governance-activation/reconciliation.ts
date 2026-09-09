@@ -1,11 +1,11 @@
-import { canonicalPhaseGraph, canonicalPhaseGraphHash, phaseContractDigests } from './graph.js';
+import { canonicalPhaseGraph, canonicalPhaseGraphHash, phaseContractDigests } from '../domain/governance/activation/graph.js';
 import type {
   GraphReconciliationRecord,
   ManagedPhaseGraph,
   PhaseId
-} from './types.js';
-import { phaseIds } from './types.js';
-import { validateGraphReconciliationRecord } from './validators.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
+import { validateGraphReconciliationRecord } from '../domain/governance/activation/validators.js';
 
 export interface GraphReconciliationResult {
   record: GraphReconciliationRecord;

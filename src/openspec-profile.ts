@@ -1,5 +1,5 @@
 import type { RunCommandOptions, CommandRunner } from './process-runner.js';
-import type { CodingAgentId, ExternalCommand } from './types.js';
+import type { CodingAgentId, ExternalCommand } from './domain/project/contracts.js';
 
 export const OPEN_SPEC_PROFILE = 'custom';
 export const OPEN_SPEC_DELIVERY = 'both';

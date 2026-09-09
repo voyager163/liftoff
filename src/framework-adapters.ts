@@ -13,7 +13,7 @@ import {
 } from './framework-validation.js';
 import { OPEN_SPEC_PROFILE } from './openspec-profile.js';
 import { formatCommand, type CommandRunner, type RunCommandOptions } from './process-runner.js';
-import type { ExternalCommand, ProjectPlan } from './types.js';
+import type { ExternalCommand, ProjectPlan } from './domain/project/contracts.js';
 
 export interface FrameworkInitializationResult {
   commands: string[];

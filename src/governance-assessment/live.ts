@@ -2,9 +2,9 @@ import { NodeCommandRunner } from '../process-runner.js';
 import {
   azureBinding, boolean, id, list, normalizeProtection, normalizeResource,
   normalizeRule, normalizeRuleset, record, sorted, text, type ValidatedAzureBinding
-} from './live-normalize.js';
+} from '../domain/governance/assessment/live-normalize.js';
 import { LiveFailure, LiveTransport } from './live-transport.js';
-import { isRecord, jsonValue, notObserved, observed, source } from './sanitize.js';
+import { isRecord, jsonValue, notObserved, observed, source } from '../domain/governance/assessment/sanitize.js';
 import {
   assessmentLimits, type AssessmentDiagnostic, type JsonValue, type LiveAssessmentOptions,
   type LiveAssessmentResult, type LiveAssessmentScope, type Observation, type ObservationSource
@@ -25,6 +25,14 @@ function branchName(value: unknown): string {
     throw new LiveFailure('unsafe-ref', 'A requested ref was not a safe, exact branch name.');
   }
   return name;
+}
+
+function branchPrefix(value: unknown): string {
+  const prefix = text(value);
+  if (prefix !== 'release/' && prefix !== 'hotfix/') {
+    throw new LiveFailure('unsafe-ref', 'Only release/ and hotfix/ branch families may be enumerated.');
+  }
+  return prefix;
 }
 
 function sha(value: unknown): string {
@@ -244,6 +252,7 @@ export async function collectLiveAssessment(
   }
 
   let refs: string[] = [];
+  let refPrefixes: string[] = [];
   let environments: string[] = [];
   let runner: LiveAssessmentScope['runner'] = null;
   let refsValid = true;
@@ -253,6 +262,12 @@ export async function collectLiveAssessment(
     refsValid = false;
     results.fail('github.branches', error);
     results.fail('github.checks', error);
+  }
+  try {
+    refPrefixes = [...new Set(list(scope.refPrefixes ?? []).map(branchPrefix))].sort();
+  } catch (error) {
+    refsValid = false;
+    results.fail('github.ref-families', error);
   }
   try {
     environments = [...new Map(list(scope.environments).map(environmentName).sort()
@@ -300,7 +315,14 @@ export async function collectLiveAssessment(
       }
     ] as const);
   })).values()];
-  const validatedScope: LiveAssessmentScope = { repository, refs, environments, runner, azure };
+  const validatedScope: LiveAssessmentScope = {
+    repository,
+    refs,
+    ...(refPrefixes.length ? { refPrefixes } : {}),
+    environments,
+    runner,
+    azure
+  };
   const transport = new LiveTransport(
     options.runner ?? new NodeCommandRunner(), now, validatedScope,
     new Set([...azure.map((binding) => binding.url), ...providerScopes.map((binding) => binding.providerUrl)]),
@@ -336,6 +358,32 @@ export async function collectLiveAssessment(
   const heads = new Map<string, { sha: string; protected: boolean }>();
   let refsStable = refsValid;
   const base = `https://api.github.com/repos/${repository.owner}/${repository.name}`;
+
+  if (refPrefixes.length) {
+    try {
+      const branchInventory = await transport.pages(
+        'branches-list',
+        null,
+        (value) => {
+          const name = branchName(record(value).name);
+          return { key: name, value: name };
+        }
+      );
+      const familyRefs = branchInventory.filter((name) =>
+        refPrefixes.some((prefix) => name.startsWith(prefix))
+      ).sort();
+      refs.push(...familyRefs.filter((name) => !refs.includes(name)));
+      refs.sort();
+      results.put('github.ref-families', {
+        prefixes: refPrefixes,
+        refs: familyRefs,
+        complete: true
+      }, `${base}/branches`);
+    } catch (error) {
+      refsStable = false;
+      results.fail('github.ref-families', error, `${base}/branches`);
+    }
+  }
 
   const collectActionsApp = async () => results.capture(
     'github.actions-app', transport.githubUrl('actions-app').href, async () => {
@@ -602,11 +650,29 @@ export async function collectLiveAssessment(
     if (azureScopeValid && providers.length === providerScopes.length) {
       try { results.put('azure.providers', sorted(providers), 'https://management.azure.com (explicit subscription/provider bindings)'); }
       catch (error) { results.fail('azure.providers', error); }
-    } else results.fail('azure.providers', new LiveFailure('incomplete-providers', 'Not every explicitly scoped provider could be observed.'));
+    } else {
+      results.fail('azure.providers', new LiveFailure('incomplete-providers', 'Not every explicitly scoped provider could be observed.'));
+      if (providers.length) {
+        results.retainFacts(
+          'azure.providers',
+          sorted(providers),
+          'https://management.azure.com (partial explicit subscription/provider bindings)'
+        );
+      }
+    }
     if (azureScopeValid && resources.length === azure.length) {
       try { results.put('azure.resources', sorted(resources), 'https://management.azure.com (explicit environment/resource bindings)'); }
       catch (error) { results.fail('azure.resources', error); }
-    } else results.fail('azure.resources', new LiveFailure('incomplete-resources', 'Not every explicitly scoped resource could be observed.'));
+    } else {
+      results.fail('azure.resources', new LiveFailure('incomplete-resources', 'Not every explicitly scoped resource could be observed.'));
+      if (resources.length) {
+        results.retainFacts(
+          'azure.resources',
+          sorted(resources),
+          'https://management.azure.com (partial explicit environment/resource bindings)'
+        );
+      }
+    }
   };
 
   await Promise.all([

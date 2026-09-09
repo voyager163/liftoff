@@ -417,6 +417,8 @@ describe('repository governance artifacts', () => {
       expect(artifact.content).toContain('Preserve classifications exactly');
       expect(artifact.content).toContain('installed CLI');
       expect(artifact.content).toContain('No commit, push, activation, or credential enrollment');
+      expect(artifact.content).toContain('Initialization and a manifest are not prerequisites');
+      expect(artifact.content).toContain('Never install this wrapper into an unrelated repository');
       for (const parts of [
         governanceArtifactPaths.policy,
         governanceArtifactPaths.context,
@@ -513,6 +515,18 @@ describe('repository governance artifacts', () => {
     }
   });
 
+  it('describes Spec Kit bootstrap and missing entry capabilities without inventing workflows', () => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan({
+      specWorkflow: 'spec-kit', defaultAgent: 'copilot'
+    }));
+    const guide = artifacts.find(artifact => artifact.logicalName === 'repository-governance-guide')!.content;
+    expect(guide).toContain('specs/000-liftoff-bootstrap/');
+    expect(guide).toContain('without an OpenSpec archive or new Git branch');
+    expect(guide).toContain('No masked credential-input channel');
+    expect(guide).toContain('adoption; update, force, and assessment never create it');
+    expect(guide).not.toContain('Enter the value only through the masked input');
+  });
+
   it('omits every handoff artifact for the none profile', () => {
     const disabled = plan({ governanceProfile: 'none' });
     expect(buildRepositoryGovernanceArtifacts(disabled)).toEqual([]);
@@ -530,12 +544,10 @@ describe('repository governance artifacts', () => {
 
   it.each([
     ['genai', { pattern: 'rag' }],
-    ['standard', { projectType: 'standard', apiStack: 'node', pattern: undefined }],
-    ['power-apps', { projectType: 'power-apps-code-app', pattern: undefined, cloud: undefined }]
+    ['standard', { projectType: 'standard', apiStack: 'node', pattern: undefined }]
   ] as const)('documents assessment without replacing setup in generated %s guides', (_name, values) => {
     const artifacts = buildArtifacts(plan(values));
-    const readme = _name === 'power-apps' ? 'power-apps-readme' : 'root-readme';
-    for (const logicalName of [readme, 'repository-governance-guide']) {
+    for (const logicalName of ['root-readme', 'repository-governance-guide']) {
       const content = artifacts.find((artifact) => artifact.logicalName === logicalName)!.content;
       expect(content.indexOf('/liftoff-setup')).toBeLessThan(content.indexOf('/liftoff-governance-assess'));
       for (const phrase of [
@@ -606,7 +618,8 @@ describe('repository governance artifacts', () => {
       artifact.category === 'governance'
     )).toHaveLength(10);
     expect(manifest.liftoffVersion).toBe(liftoffVersion);
-    expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.10.0');
+    expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.11.0');
+    expect(manifest.governance.activationIdentity.activationContractVersion).toBe(2);
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
       artifact.pathParts.join('/') === 'governance/activation-baseline.json'
     )).toBe(false);
@@ -631,7 +644,14 @@ describe('repository governance artifacts', () => {
     expect(createHash('sha256').update(graph.content).digest('hex')).toBe(canonicalPhaseGraphHash);
     expect(() => validateManagedPhaseGraph(JSON.parse(graph.content))).not.toThrow();
     const parsedCompatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibility.content));
-    expect(parsedCompatibility.schemaVersion).toBe(1);
+    expect(parsedCompatibility.schemaVersion).toBe(2);
+    expect(parsedCompatibility.activation.historicalReadability).toMatchObject({
+      activationContractVersion: 1,
+      activationStateSchemaVersion: 1,
+      evidenceHeaderSchemaVersion: 1,
+      execution: 'diagnostic-only',
+      migration: 'unsupported-preserve-bytes'
+    });
     expect(parsedCompatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(parsedCompatibility.manifest.writeVersion).toBe(7);
     expect(parsedCompatibility.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
@@ -678,6 +698,50 @@ describe('repository governance artifacts', () => {
 });
 
 describe('workload-aware governance context', () => {
+  it('selects the same independent roots and tfvars for prod-only context and baseline recipes', () => {
+    const context = JSON.parse(renderGovernanceContext(plan({ environments: ['prod'] })));
+    const root = ['infrastructure', 'opentofu', 'azure', 'environments', 'prod'];
+    expect(context.generatedBoundaries.opentofu).toMatchObject({
+      layout: 'independent',
+      sharedApplicationModulePathParts: ['infrastructure', 'opentofu', 'azure', 'modules', 'application'],
+      environmentRoots: [{
+        environment: 'prod', pathParts: root, tfvarsPathParts: [...root, 'prod.tfvars']
+      }]
+    });
+    expect(context.commands.filter((command: { executable: string }) => command.executable === 'tofu'))
+      .toEqual([
+        {
+          id: 'opentofu-format', cwdPathParts: ['infrastructure', 'opentofu', 'azure'],
+          executable: 'tofu', args: ['fmt', '-check', '-recursive']
+        },
+        {
+          id: 'opentofu-initialize-prod', cwdPathParts: root,
+          executable: 'tofu', args: ['init', '-backend=false']
+        },
+        {
+          id: 'opentofu-validate-prod', cwdPathParts: root, executable: 'tofu', args: ['validate']
+        }
+      ]);
+  });
+
+  it('projects recorded shared-state layout as migration debt instead of a new deployment layout', () => {
+    const context = JSON.parse(renderGovernanceContext(plan(), { infrastructureLayout: 'legacy-shared' }));
+    expect(context.generatedBoundaries.opentofu).toMatchObject({
+      layout: 'legacy-shared', compatibility: 'migration-required',
+      provenance: 'recorded-generation', filesystemObservation: 'not-performed', environmentRoots: []
+    });
+    expect(context.generatedBoundaries.opentofu).not.toHaveProperty('sharedApplicationModulePathParts');
+    expect(context.commands.filter((entry: { executable: string }) => entry.executable === 'tofu')).toEqual([]);
+  });
+
+  it('withholds infrastructure recipes for an unknown layout without claiming inapplicability', () => {
+    const context = JSON.parse(renderGovernanceContext(plan(), { infrastructureLayout: 'unknown' }));
+    expect(context.generatedBoundaries.opentofu).toMatchObject({
+      state: 'not-observed', layout: 'unknown', compatibility: 'migration-required'
+    });
+    expect(context.commands.some((command: { executable: string }) => command.executable === 'tofu')).toBe(false);
+  });
+
   it.each([
     ['genai-rag', { pattern: 'rag' }],
     ['genai-chatbot', { pattern: 'chatbot' }],
@@ -749,31 +813,4 @@ describe('workload-aware governance context', () => {
     );
   });
 
-  it('models Power Apps without invented API or deployment boundaries', () => {
-    const context = JSON.parse(renderGovernanceContext(plan({
-      projectType: 'power-apps-code-app',
-      pattern: undefined,
-      cloud: undefined,
-      agents: ['copilot']
-    })));
-    expect(context.project.artifactForm).toBe(
-      'browser-hosted-power-apps-code-app'
-    );
-    expect(context.commands.map((command: { id: string }) => command.id))
-      .toEqual(['root-install', 'root-lint', 'root-build']);
-    expect(context.source.commit).toMatch(/^[0-9a-f]{40}$/);
-    expect(context.generatedBoundaries).toMatchObject({
-      rootApplication: 'generated',
-      backend: 'inapplicable',
-      database: 'inapplicable',
-      docker: 'inapplicable',
-      opentofu: 'inapplicable',
-      apiEnvironments: 'inapplicable',
-      customContainerPromotion: 'inapplicable',
-      apiDast: 'inapplicable',
-      backendHealth: 'inapplicable',
-      powerPlatformDeployment: 'live-discovery-required'
-    });
-    expect(JSON.stringify(context)).not.toContain('DATABASE_URL');
-  });
 });

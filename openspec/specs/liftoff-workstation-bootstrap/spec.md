@@ -5,7 +5,7 @@ Define plan-derived workstation readiness, safe tool installation, and optional 
 ## Requirements
 
 ### Requirement: Workstation requirements are derived from the resolved project plan
-The system SHALL build a deterministic requirement set from the selected workload and its applicable API stack, cloud provider, infrastructure output, spec workflow, frontend choice, coding agents, and optional integrations. It SHALL include only tools relevant to that plan and SHALL identify every requirement as blocking or advisory.
+The system SHALL build a deterministic requirement set from the selected workload and its applicable API stack, cloud provider, infrastructure output, spec workflow, frontend choice, coding agents, and optional integrations. It SHALL include only tools relevant to that plan, SHALL model required package managers separately from runtimes when a selected framework or dependency phase depends on them, and SHALL identify every requirement as blocking or advisory.
 
 #### Scenario: Python OpenSpec project requirements
 - **WHEN** a developer selects a Python/FastAPI project with OpenSpec and GitHub Copilot
@@ -18,9 +18,13 @@ The system SHALL build a deterministic requirement set from the selected workloa
 - **AND** it does not require a Python backend dependency installation
 
 #### Scenario: Power Apps OpenSpec project requirements
-- **WHEN** a developer selects a Power Apps code app with OpenSpec, Copilot, and Claude Code
-- **THEN** the requirement set includes the tested Node.js LTS baseline, pinned OpenSpec CLI, Copilot, and Claude Code
-- **AND** it omits Python, Go, Docker, OpenTofu, Azure CLI, and backend runtime requirements
+- **WHEN** a request identifies Power Apps with OpenSpec
+- **THEN** it is rejected before a former Power Apps requirement set is selected or probed
+
+#### Scenario: Required package manager is included explicitly
+- **WHEN** a selected stack, framework contract, or dependency phase requires `npm`
+- **THEN** the requirement set includes a compatible npm prerequisite distinct from the Node.js runtime
+- **AND** initialization does not treat `node` alone as sufficient readiness
 
 #### Scenario: Infrastructure tools are advisory
 - **WHEN** an API workload includes Azure OpenTofu infrastructure and Docker-based local development
@@ -28,7 +32,7 @@ The system SHALL build a deterministic requirement set from the selected workloa
 - **AND** declining them does not falsely report them as ready
 
 ### Requirement: Liftoff automatically detects tool presence, version, and health
-The system SHALL run allowlisted read-only probes for every selected requirement before destination writes, SHALL classify each result as ready, missing, outdated, unhealthy, or not observable, and SHALL compare versioned tools with the requirement registry's tested constraint.
+The system SHALL run allowlisted read-only probes for every selected requirement before destination writes, SHALL classify each result as ready, missing, outdated, unhealthy, or not observable, and SHALL compare versioned runtimes, package managers, and framework tools with the requirement registry's tested constraint. Stable-release requirements, including exact pins and minimum floors, SHALL reject prerelease identifiers unless the requirement explicitly allows them.
 
 #### Scenario: Supported runtime is ready
 - **WHEN** the selected Python runtime probe returns a version satisfying the registered minimum
@@ -47,8 +51,17 @@ The system SHALL run allowlisted read-only probes for every selected requirement
 - **WHEN** a standard Node.js project is selected
 - **THEN** Python and Go backend runtime probes are not required for that project
 
+#### Scenario: Stable exact pin rejects a prerelease build
+- **WHEN** a selected framework CLI or package manager is required at an exact stable version and the probe returns the matching numeric version with a prerelease suffix
+- **THEN** Liftoff reports the observed prerelease as incompatible
+- **AND** it does not classify that tool as satisfying the stable exact pin
+
+#### Scenario: Stable runtime floor rejects a prerelease
+- **WHEN** a stable Python floor is required and the observed interpreter is a release candidate
+- **THEN** its prerelease identity is retained and the runtime is not silently accepted as a stable release
+
 ### Requirement: Blocking workstation gaps stop initialization before project writes
-The system SHALL require supported Node.js, every selected workload runtime, the selected spec-framework CLI and its installer prerequisites, and each selected AI-agent installation before committing the project. Authentication health MAY remain an explicit warning because Liftoff does not control credentials. Missing advisory infrastructure or optional agent-plugin tools SHALL be deferrable with remedies.
+The system SHALL require supported Node.js, every selected workload runtime, every required package manager, the selected spec-framework CLI and its installer prerequisites, and each selected AI-agent installation before committing the project. Authentication health MAY remain an explicit warning because Liftoff does not control credentials. Missing advisory infrastructure tools SHALL be deferrable with remedies.
 
 #### Scenario: Missing backend runtime blocks
 - **WHEN** a selected API backend runtime is missing and the developer does not authorize or complete its installation
@@ -56,9 +69,13 @@ The system SHALL require supported Node.js, every selected workload runtime, the
 - **AND** the output identifies the exact runtime remedy
 
 #### Scenario: Missing Power Apps Node baseline blocks
-- **WHEN** a Power Apps plan observes Node.js below the workload's tested LTS minimum and no successful upgrade is authorized
+- **WHEN** a retired Power Apps request is made regardless of the installed Node.js version
+- **THEN** workload retirement blocks preparation without probing or offering its former Node baseline
+
+#### Scenario: Missing required package manager blocks
+- **WHEN** a selected framework or dependency phase requires npm and no compatible `npm` executable is available
 - **THEN** initialization exits unsuccessfully before writing the destination
-- **AND** it identifies both the observed and required versions
+- **AND** it identifies npm as the missing prerequisite even when `node` is installed
 
 #### Scenario: Missing selected agent blocks installation readiness
 - **WHEN** Claude Code is selected and no `claude` executable is available
@@ -70,7 +87,7 @@ The system SHALL require supported Node.js, every selected workload runtime, the
 - **AND** Liftoff does not request, store, or modify credentials
 
 #### Scenario: Advisory tool is deferred honestly
-- **WHEN** an applicable advisory tool or optional Code Apps plugin is missing and the developer declines or cannot perform its setup
+- **WHEN** an applicable advisory tool is missing and the developer declines or cannot perform its setup
 - **THEN** initialization may continue
 - **AND** completion states what remains unavailable and shows the remedy
 
@@ -201,7 +218,7 @@ The system SHALL represent probes and installation recipes as an executable plus
 - **AND** no destination file has been written
 
 ### Requirement: Project dependency installation is a separate final phase
-The system SHALL offer workload-specific project dependency installation only after the staged scaffold has been committed successfully. Interactive execution SHALL require a separate confirmation, non-interactive execution SHALL require `--install-dependencies`, and `--install-tools` SHALL NOT imply project dependency installation. Every command SHALL consume committed dependency metadata without rewriting it.
+The system SHALL offer workload-specific project dependency installation only after the staged scaffold has been committed successfully. Interactive execution SHALL require a separate confirmation, non-interactive execution SHALL require `--install-dependencies`, and `--install-tools` SHALL NOT imply project dependency installation. Every command SHALL consume committed dependency metadata without rewriting it, SHALL preserve detected edits of uncertain or concurrent origin rather than blindly restoring every protected-file difference, and SHALL report exact recovery paths with shell-literal quoting for the selected shell. Liftoff SHALL NOT claim that arbitrary project install scripts are confined to lockfiles or another narrower write set than it can actually prove.
 
 #### Scenario: Install Python project dependencies
 - **WHEN** a Python API project was initialized and dependency installation is authorized
@@ -216,13 +233,13 @@ The system SHALL offer workload-specific project dependency installation only af
 - **WHEN** an API workload includes a generated frontend and dependency installation is authorized
 - **THEN** Liftoff runs the registered lockfile-preserving `npm ci` command in the frontend directory
 
-#### Scenario: Install Power Apps project dependencies
-- **WHEN** a Power Apps code app was initialized and dependency installation is authorized
-- **THEN** Liftoff runs the platform-correct lockfile-preserving `npm ci` command once at the project root
-
 #### Scenario: Prepare Go project dependencies
 - **WHEN** a Go project was initialized and dependency installation is authorized
 - **THEN** Liftoff downloads modules using the generated `go.mod` and `go.sum` without requiring an unrecorded metadata rewrite
+
+#### Scenario: Install Power Apps project dependencies
+- **WHEN** dependency preparation is requested for a retired Power Apps project
+- **THEN** it reports unsupported workload without executing npm or another installer in that project
 
 #### Scenario: Dependency installation is declined
 - **WHEN** a developer declines the final dependency-install prompt
@@ -231,45 +248,25 @@ The system SHALL offer workload-specific project dependency installation only af
 #### Scenario: Dependency installation fails
 - **WHEN** an authorized project dependency command fails or changes protected dependency metadata
 - **THEN** Liftoff exits unsuccessfully without deleting the committed scaffold
-- **AND** it identifies the failed command and exact resume command
+- **AND** it identifies the failed command, the exact preserved or restored paths, and the exact resume command
+
+#### Scenario: Uncertain file edits are preserved
+- **WHEN** a dependency command or install script fails after changing a protected file and Liftoff cannot prove that another changed path belongs to its attributable write set
+- **THEN** Liftoff preserves the uncertain path on disk
+- **AND** it reports that path as requiring developer review instead of restoring it automatically
+
+#### Scenario: Recovery recipes quote literal paths for the selected shell
+- **WHEN** failure output references a changed path containing spaces or `$` characters on Windows, macOS, or Linux
+- **THEN** Liftoff prints a recovery recipe using literal path quoting appropriate for the selected shell
+- **AND** it does not present JSON string escaping as shell-safe recovery guidance
 
 #### Scenario: Install on Windows
 - **WHEN** an authorized Python dependency setup runs on Windows
 - **THEN** Liftoff invokes `uv` with argument arrays and platform-native working-directory resolution
 - **AND** it does not construct a shell activation command or hardcode a Unix virtual-environment path
 
-### Requirement: Power Apps project tooling is verified without global installation
-The system SHALL treat the Power Apps SDK, Vite plugin, and npm-based Code Apps CLI as project dependencies pinned by the generated package and lockfile rather than global workstation tools. Before dependencies exist, Liftoff SHALL verify their declared package metadata; after installation, doctor MAY run the packaged binary only with `npx --no-install`.
-
-#### Scenario: Plan does not require a global Power Apps CLI
-- **WHEN** Liftoff evaluates a new Power Apps plan before project dependency installation
-- **THEN** it does not fail because `power-apps` or `pac` is absent from the global PATH
-- **AND** it identifies root `npm ci` as the project-local setup action
-
-#### Scenario: Installed project CLI is probed safely
-- **WHEN** doctor runs in a Power Apps project whose dependencies are installed
-- **THEN** it may invoke `npx --no-install power-apps --version` as a read-only probe
-- **AND** it does not permit npx to download a missing package
-
-### Requirement: Code Apps plugin readiness is optional and host-specific
-The system SHALL derive a Code Apps plugin advisory only when the Power Apps plan enables that preference. It SHALL evaluate each selected coding-agent host independently through an allowlisted read-only probe when available, distinguish ready, missing, and not observable states, and SHALL NOT classify the plugin as a blocking framework or agent requirement.
-
-#### Scenario: Plugin preference is disabled
-- **WHEN** a Power Apps plan does not request the preview plugin
-- **THEN** initialization and doctor omit plugin readiness results
-
-#### Scenario: Plugin is observable for one selected agent
-- **WHEN** Copilot reports the canonical plugin installed but Claude Code plugin state cannot be observed
-- **THEN** Liftoff reports Copilot ready and Claude Code not observable
-- **AND** the unobservable advisory does not block initialization
-
-#### Scenario: No safe targeted installer exists
-- **WHEN** the requested plugin is missing and the requirement registry has no target-specific noninteractive recipe
-- **THEN** Liftoff prints pinned manual marketplace guidance
-- **AND** `--install-tools` does not run Microsoft's broad installer or an agent-session slash command
-
 ### Requirement: Workstation probes use the release baseline
-The shared workstation requirement registry SHALL derive runtime and framework minimums from the named supported-stack baseline. Initialization SHALL reject a selected runtime below its recorded floor and SHALL accept compatible newer patches within the supported release policy without substituting the observed version into generated bytes.
+The shared workstation requirement registry SHALL derive runtime, package-manager, and framework minimums from the named supported-stack baseline. Initialization SHALL reject a selected requirement below its recorded floor, SHALL accept compatible newer patches within the supported release policy, and SHALL reject prerelease versions when the baseline requires an exact stable release without substituting the observed version into generated bytes.
 
 #### Scenario: Probe current supported runtimes
 - **WHEN** a plan requires Node.js 24 LTS, Python 3.14, Go 1.27, OpenSpec 1.11, or Spec Kit 1.0
@@ -279,3 +276,8 @@ The shared workstation requirement registry SHALL derive runtime and framework m
 #### Scenario: Host has a newer unsupported major
 - **WHEN** a host tool is numerically newer but outside the baseline's supported constraint
 - **THEN** initialization reports it as incompatible rather than automatically treating it as ready
+
+#### Scenario: Stable exact baseline rejects a prerelease string
+- **WHEN** a selected requirement is pinned to an exact stable release and the observed tool reports the same numeric version with a prerelease identifier
+- **THEN** initialization reports the tool as incompatible with the stable baseline
+- **AND** it does not silently trim the prerelease suffix

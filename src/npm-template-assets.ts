@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs';
-import { fileURLToPath } from 'node:url';
+import { packagedTemplateAssets } from './adapters/packaged-assets/template-assets.js';
 
 export type NpmTemplateId = 'node-backend' | 'frontend';
 
@@ -13,8 +12,10 @@ interface NpmLockTemplate extends Record<string, unknown> {
 }
 
 function readAsset<T>(template: NpmTemplateId, file: string): T {
-  const assetPath = fileURLToPath(new URL(`../assets/locks/${template}/${file}`, import.meta.url));
-  return JSON.parse(readFileSync(assetPath, 'utf8')) as T;
+  const content = file === 'package.json'
+    ? packagedTemplateAssets.npm[template].packageJson
+    : packagedTemplateAssets.npm[template].packageLock;
+  return JSON.parse(content) as T;
 }
 
 const packageTemplates: Record<NpmTemplateId, NpmPackageTemplate> = {

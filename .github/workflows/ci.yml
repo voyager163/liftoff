@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -35,7 +36,7 @@ jobs:
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.27.0"
-          cache-dependency-path: src/standard-templates.ts
+          cache-dependency-path: assets/supported-stack.json
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
         with:
@@ -53,9 +54,36 @@ jobs:
       - name: Install telemetry gateway dependencies
         run: npm ci --prefix services/telemetry-ingest
 
-      - name: Run Windows initialization safety coverage
+      - name: Install isolated pinned framework smoke tools
+        if: runner.os == 'Linux'
+        env:
+          UV_TOOL_DIR: ${{ runner.temp }}/liftoff-framework-tools
+          UV_TOOL_BIN_DIR: ${{ runner.temp }}/liftoff-framework-bin
+        run: |
+          npm install --prefix "$RUNNER_TEMP/liftoff-framework-npm" --no-package-lock --ignore-scripts --no-audit --no-fund @fission-ai/openspec@1.11.0
+          uv tool install --python python3 specify-cli==1.0.1
+          echo "$RUNNER_TEMP/liftoff-framework-npm/node_modules/.bin" >> "$GITHUB_PATH"
+          echo "$UV_TOOL_BIN_DIR" >> "$GITHUB_PATH"
+
+      - name: Run pinned framework integration smoke
+        if: runner.os == 'Linux'
+        env:
+          LIFTOFF_FRAMEWORK_SMOKE: "1"
+        run: npx vitest run tests/framework-smoke.test.ts
+
+      - name: Run Windows project and packaging boundary coverage
         if: runner.os == 'Windows'
-        run: npx vitest run tests/init-filesystem.test.ts tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts tests/openspec-profile.test.ts tests/framework-adapters.test.ts tests/dependabot-config.test.ts tests/project-dependencies.test.ts tests/power-apps-assets.test.ts tests/commands.test.ts tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+        run: >-
+          npx vitest run
+          tests/init-filesystem.test.ts tests/project-discovery.test.ts
+          tests/file-system.test.ts tests/project-lock.test.ts tests/filesystem-recovery.test.ts
+          tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
+          tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts
+          tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts
+          tests/openspec-profile.test.ts tests/framework-adapters.test.ts tests/dependabot-config.test.ts
+          tests/project-dependencies.test.ts tests/commands.test.ts
+          tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
+          tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
 
       - name: Run package check
         run: npm run check
@@ -114,31 +142,6 @@ jobs:
 
       - name: Check telemetry infrastructure privacy contract
         run: npx vitest run tests/telemetry-infrastructure.test.ts
-
-  power-apps-starter:
-    name: Power Apps starter (${{ matrix.os }}, Node 24)
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
-        with:
-          node-version: "24.20.0"
-          cache: npm
-
-      - name: Select supported npm
-        run: npm install --global "npm@12.0.2"
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify starter install, lint, and build
-        run: npm run verify:power-apps-starter
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})

@@ -5,7 +5,7 @@ Define the layered, read-only `liftoff doctor` diagnostics covering environment,
 ## Requirements
 
 ### Requirement: Doctor runs layered diagnostics selected by context
-The system SHALL run `liftoff doctor` as layered read-only diagnostics with CLI and environment layers in every context; project, runtime, and cloud-from-manifest layers SHALL run only when a generated project is located via project-root discovery, and cloud checks SHALL also run outside a project when `--cloud` is passed.
+The system SHALL run `liftoff doctor` as layered read-only diagnostics with CLI and environment layers in every context; project, runtime, and cloud-from-manifest layers SHALL run only when a supported generated project is located via project-root discovery, and cloud checks SHALL also run outside a project when `--cloud` is passed. A malformed, unreadable, dangling, symlinked, or retired manifest boundary SHALL stop project discovery with an error rather than falling back to an outer project or ordinary environment-only execution for that same path.
 
 #### Scenario: Full preflight inside a project
 - **WHEN** a developer runs `liftoff doctor` inside a generated project
@@ -20,20 +20,25 @@ The system SHALL run `liftoff doctor` as layered read-only diagnostics with CLI 
 - **THEN** no file in the project or environment has been created or modified
 - **AND** npm registry configuration remains unchanged
 
+#### Scenario: Broken inner manifest blocks outer-project fallback
+- **WHEN** a nested directory contains a malformed, unreadable, dangling, or retired `liftoff.manifest.json` and an ancestor contains a different valid project
+- **THEN** doctor stops at the nested boundary with an error
+- **AND** it does not walk outward to diagnose the ancestor project instead
+
 ### Requirement: The manifest configures project-aware checks
-The system SHALL read the normalized manifest to configure diagnostics. Cloud checks SHALL target a declared API workload cloud with `--cloud` acting as an override; a workload without declared cloud infrastructure SHALL not inherit a default cloud. Environment and runtime checks SHALL target the selected workload, API stack when applicable, spec workflow, configured coding agents, optional requested integrations, and declared framework contract. The project layer SHALL verify that the manifest loads, every listed Liftoff artifact exists, and every declared framework integration marker is present.
+The system SHALL read the normalized manifest to configure diagnostics. Cloud checks SHALL target a declared API workload cloud with `--cloud` acting as an override; a workload without declared cloud infrastructure SHALL not inherit a default cloud. Environment and runtime checks SHALL target the selected supported workload, API stack when applicable, spec workflow, configured coding agents, optional requested integrations, and declared framework contract. The project layer SHALL verify that the manifest loads, required managed-core artifacts exist, and declared framework integration markers are present; project provenance SHALL NOT become an additional managed-file existence or restoration contract. A retired workload discriminator SHALL be rejected before deeper workload-specific diagnostic selection.
 
 #### Scenario: Cloud checks come from an API manifest
 - **WHEN** doctor runs inside an API project whose manifest records Azure
 - **THEN** Azure authentication checks run without any `--cloud` flag
 
-#### Scenario: Power Apps does not inherit Azure checks
-- **WHEN** doctor runs inside a Power Apps project without a `--cloud` override
-- **THEN** no Azure, OpenTofu, Docker, backend, database, or API environment check is selected
-
 #### Scenario: Structure failures surface
-- **WHEN** a manifest artifact is missing from disk
+- **WHEN** a required managed-core manifest artifact is missing from disk
 - **THEN** the project layer reports a failure naming the missing artifact
+
+#### Scenario: Power Apps does not inherit Azure checks
+- **WHEN** doctor encounters a retired Power Apps manifest
+- **THEN** it reports unsupported workload before Azure or former Power Apps diagnostic selection
 
 #### Scenario: Worker tooling check
 - **WHEN** doctor runs inside a worker-enabled Azure project without Azure Functions Core Tools installed
@@ -51,6 +56,10 @@ The system SHALL read the normalized manifest to configure diagnostics. Cloud ch
 - **WHEN** doctor reads a supported v2 project with no agent or official initializer metadata
 - **THEN** it reports a legacy framework-state warning
 - **AND** it does not claim that Copilot, Claude Code, OpenSpec, or Spec Kit integration was officially initialized
+
+#### Scenario: Retired workload manifest is rejected before deeper checks
+- **WHEN** doctor reads a manifest whose workload discriminator is `power-apps-code-app`
+- **THEN** it exits with an unsupported retired-workload error before selecting workload-specific runtime, dependency, or cloud checks
 
 ### Requirement: Doctor reports version freshness and managed-core drift
 The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface managed-core drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's scoped check classification. Doctor SHALL NOT compare project-owned files with current templates or imply that a CLI upgrade can replace production files. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
@@ -145,17 +154,21 @@ The system SHALL run read-only validation commands only when the selected stack'
 - **AND** it does not report a successful check
 
 ### Requirement: Doctor evaluates the shared workstation requirement registry in probe-only mode
-The system SHALL derive doctor checks from the same workload-aware requirement registry used by initialization, based on the discovered manifest when present. Doctor SHALL execute only allowlisted read-only probes and SHALL never invoke installers, allow npx downloads, alter PATH or shell configuration, initialize a framework, install project dependencies, authenticate, or persist observed tool versions.
+The system SHALL derive doctor checks from the same workload-aware requirement registry used by initialization, based on the discovered manifest when present. Doctor SHALL execute only allowlisted read-only probes and SHALL never invoke installers, allow npx downloads, alter PATH or shell configuration, initialize a framework, install project dependencies, authenticate, or persist observed tool versions. It SHALL check required package managers separately when the selected supported workload depends on them.
 
 #### Scenario: Doctor checks only selected API tools
 - **WHEN** doctor runs inside a Go project configured for OpenSpec, Copilot, and Claude Code
 - **THEN** it checks supported Node.js, Go, the pinned OpenSpec contract, both agents, and applicable advisory infrastructure tools
 - **AND** it does not require the Python backend runtime or Spec Kit
 
+#### Scenario: Doctor checks required npm availability
+- **WHEN** doctor runs inside a supported Node.js project or another supported project whose recorded dependency commands require npm
+- **THEN** it reports npm readiness as its own workstation result
+- **AND** it does not treat a detected `node` executable as sufficient evidence that npm is ready
+
 #### Scenario: Doctor checks only selected Power Apps tools
-- **WHEN** doctor runs inside a Power Apps project configured for OpenSpec and Claude Code
-- **THEN** it checks the Power Apps Node.js baseline, the pinned OpenSpec contract, Claude Code, starter artifacts, and applicable project-local tooling
-- **AND** it does not check Python, Go, Docker, OpenTofu, Azure CLI, or an unselected agent
+- **WHEN** doctor encounters a retired Power Apps workload
+- **THEN** it rejects the workload rather than probing a former Power Apps-specific tool set
 
 #### Scenario: Doctor remains read-only with missing tools
 - **WHEN** a required runtime or framework CLI is missing
@@ -167,7 +180,7 @@ The system SHALL derive doctor checks from the same workload-aware requirement r
 - **THEN** each workstation result includes the stable registry identifier, severity, observed state, and remedy
 
 ### Requirement: Doctor reports selected AI coding-agent readiness honestly
-The system SHALL check every agent recorded by manifest v3. Copilot SHALL be present when its CLI probe succeeds or an observable VS Code extension list contains the supported Copilot identifiers. Claude Code SHALL be present when its CLI probe succeeds, and its doctor result SHALL be reported without Liftoff automating authentication.
+The system SHALL check every agent recorded by the current supported manifest. Copilot SHALL be present when its CLI probe succeeds or an observable VS Code extension list contains the supported Copilot identifiers. Claude Code SHALL be present when its CLI probe succeeds, and its doctor result SHALL be reported without Liftoff automating authentication.
 
 #### Scenario: Copilot CLI is detected
 - **WHEN** the manifest selects Copilot and `copilot --version` succeeds
@@ -199,45 +212,8 @@ The system SHALL preserve each selected requirement's blocking or advisory class
 - **THEN** doctor records a warning with the exact remedy
 - **AND** the warning alone does not make doctor exit 1
 
-### Requirement: Doctor validates Power Apps project readiness
-The system SHALL validate schema-v4 Power Apps projects through read-only checks for the pinned starter identity, required package and lockfile pair, Power Apps SDK and Vite plugin declarations, selected framework markers, selected coding agents, and tested Node.js LTS baseline. When dependencies are installed it MAY probe the project-local Code Apps CLI with `npx --no-install power-apps --version`; when they are absent it SHALL report the probe as skipped with the root `npm ci` remedy.
-
-#### Scenario: Fresh Power Apps project is structurally ready
-- **WHEN** doctor runs after Power Apps initialization with all manifest artifacts and framework markers present
-- **THEN** the project layer reports the pinned starter and selected integrations as valid
-
-#### Scenario: Package and lockfile identity differ
-- **WHEN** the Power Apps root package name does not match the lockfile root package identity
-- **THEN** doctor reports a project failure with a restore or update remedy
-
-#### Scenario: Dependencies are not installed
-- **WHEN** the Power Apps project has no installed project-local Code Apps CLI
-- **THEN** doctor reports the CLI probe as skipped rather than successful
-- **AND** it shows the exact root `npm ci` command
-
-#### Scenario: Project-local CLI probe cannot download
-- **WHEN** doctor probes an installed Power Apps project CLI
-- **THEN** it uses `npx --no-install`
-- **AND** a missing package is reported without any network installation attempt
-
-### Requirement: Doctor reports requested Code Apps plugin readiness as advisory
-The system SHALL check the preview Code Apps plugin only when the Power Apps manifest records the preference enabled. It SHALL report each selected agent host independently as ready, missing, or not observable, use warn severity for every non-ready plugin result, and provide pinned manual marketplace guidance without changing agent configuration.
-
-#### Scenario: Requested plugin is installed for both agents
-- **WHEN** both selected agent hosts report the canonical plugin installed
-- **THEN** doctor reports both plugin checks as ready
-
-#### Scenario: Requested plugin cannot be observed
-- **WHEN** an agent exposes no allowlisted plugin-list probe
-- **THEN** doctor reports that host as not observable with manual verification guidance
-- **AND** the warning alone does not make doctor exit 1
-
-#### Scenario: Plugin preference is disabled
-- **WHEN** the Power Apps manifest records the plugin preference disabled
-- **THEN** doctor omits Code Apps plugin checks
-
 ### Requirement: Doctor validates locked dependency readiness
-The system SHALL use the supported-stack baseline and explicit workload identity to check that every expected dependency manifest and lock pair exists, agrees on project identity, and can be consumed without mutation. Doctor SHALL remain read-only and SHALL report missing, stale, malformed, or mismatched metadata with the exact frozen install or repair command.
+The system SHALL use the supported-stack baseline and explicit supported workload identity to check that every expected dependency manifest and lock pair exists, agrees on project identity, and can be consumed without mutation. Doctor SHALL remain read-only and SHALL report missing, stale, malformed, or mismatched metadata with the exact frozen install or repair command.
 
 #### Scenario: Check a locked Python project
 - **WHEN** doctor runs inside a Python project with `pyproject.toml` and `uv.lock`
@@ -245,7 +221,7 @@ The system SHALL use the supported-stack baseline and explicit workload identity
 - **AND** it does not run `uv lock` or change either file
 
 #### Scenario: Check npm and Go metadata
-- **WHEN** doctor runs inside a Node.js, frontend, Power Apps, or Go project
+- **WHEN** doctor runs inside a Node.js, frontend-enabled API, or Go project
 - **THEN** it validates the explicit package-lock or module-checksum pair applicable to that workload
 - **AND** it omits unrelated ecosystem checks
 

@@ -1,14 +1,9 @@
-import { readFileSync } from 'node:fs';
 import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const canonicalNpmRegistry = 'https://registry.npmjs.org';
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
-const supportedStack = JSON.parse(
-  readFileSync(path.join(repositoryRoot, 'assets', 'supported-stack.json'), 'utf8')
-);
-const powerAppsCommit = supportedStack.upstreams['power-apps-code-app'].commit;
 
 export const templateDependencyInventory = Object.freeze([
   Object.freeze({
@@ -30,17 +25,6 @@ export const templateDependencyInventory = Object.freeze([
     id: 'standard-frontend',
     label: 'Standard frontend',
     pathParts: Object.freeze(['assets', 'locks', 'frontend', 'package-lock.json'])
-  }),
-  Object.freeze({
-    id: 'power-apps-code-app',
-    label: 'Power Apps code app starter',
-    pathParts: Object.freeze([
-      'assets',
-      'power-apps-code-app',
-      powerAppsCommit,
-      'starter',
-      'package-lock.json'
-    ])
   })
 ]);
 

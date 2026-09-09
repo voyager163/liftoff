@@ -1,4 +1,4 @@
-import type { GeneratedArtifact } from './types.js';
+import type { GeneratedArtifact } from './domain/project/contracts.js';
 
 const containerArtifactNames = new Set([
   'backend-dockerfile',

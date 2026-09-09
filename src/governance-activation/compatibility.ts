@@ -3,28 +3,30 @@ import {
   canonicalPhaseContractDigests,
   canonicalPhaseGraphHash,
   currentActivationIdentity
-} from './graph.js';
+} from '../domain/governance/activation/graph.js';
 import {
   activationContractVersion,
   activationStateSchemaVersion,
   approvalEnvelopeSchemaVersion,
   credentialPolicySchemaVersion,
+  compatibilityMetadataSchemaVersion,
+  historicalActivationIdentities,
   evidenceHeaderSchemaVersion,
   governanceActivationPolicyVersion,
   liftoffActivationPackageVersion,
   liftoffManifestArtifactVersion,
   phaseGraphSchemaVersion,
   supersessionSchemaVersion
-} from './identity.js';
+} from '../domain/governance/policy/identity.js';
 import type {
   ActivationIdentity,
   GraphReconciliationPhaseMapping,
   GraphReconciliationRecord,
   PhaseId
-} from './types.js';
-import { phaseIds } from './types.js';
+} from '../domain/governance/activation/types.js';
+import { phaseIds } from '../domain/governance/activation/types.js';
 
-export const governanceCompatibilitySchemaVersion = 1 as const;
+export const governanceCompatibilitySchemaVersion = compatibilityMetadataSchemaVersion;
 export const minimumLiftoffForManifestV7 = '0.10.0' as const;
 export const supportedManifestReadVersions = [2, 3, 4, 5, 6, 7] as const;
 
@@ -69,6 +71,14 @@ export interface GovernanceCompatibilityMetadata {
   };
   activation: {
     currentCompatibleTuples: readonly ActivationIdentity[];
+    historicalReadability: {
+      tuples: readonly ActivationIdentity[];
+      activationContractVersion: 1;
+      activationStateSchemaVersion: 1;
+      evidenceHeaderSchemaVersion: 1;
+      execution: 'diagnostic-only';
+      migration: 'unsupported-preserve-bytes';
+    };
     recognizedGraphHashes: readonly string[];
     graphMappings: readonly CompatibilityGraphMapping[];
     historicalStateMigrations: readonly HistoricalActivationStateMigration[];
@@ -165,6 +175,14 @@ export function buildGovernanceCompatibilityMetadata(
     },
     activation: {
       currentCompatibleTuples: [stableIdentity(currentActivationIdentity)],
+      historicalReadability: {
+        tuples: historicalActivationIdentities.map(stableIdentity),
+        activationContractVersion: 1,
+        activationStateSchemaVersion: 1,
+        evidenceHeaderSchemaVersion: 1,
+        execution: 'diagnostic-only',
+        migration: 'unsupported-preserve-bytes'
+      },
       recognizedGraphHashes: [canonicalPhaseGraphHash],
       graphMappings: [],
       historicalStateMigrations: [],
@@ -429,11 +447,25 @@ export function validateGovernanceCompatibilityMetadata(
   }
   const activation = exact(item.activation, [
     'currentCompatibleTuples',
+    'historicalReadability',
     'recognizedGraphHashes',
     'graphMappings',
     'historicalStateMigrations',
     'unsupportedRemedy'
   ], 'compatibility.activation');
+  const historical = exact(activation.historicalReadability, [
+    'tuples', 'activationContractVersion', 'activationStateSchemaVersion', 'evidenceHeaderSchemaVersion', 'execution', 'migration'
+  ], 'compatibility.activation.historicalReadability');
+  if (!Array.isArray(historical.tuples) || historical.tuples.length !== historicalActivationIdentities.length) throw new Error('Historical diagnostic identity inventory differs from the packaged known history.');
+  for (const [index, identity] of historicalActivationIdentities.entries()) {
+    assertIdentity(activationIdentity(historical.tuples[index], `compatibility.activation.historicalReadability.tuples[${index}]`),
+      identity, `compatibility.activation.historicalReadability.tuples[${index}]`);
+  }
+  if (historical.activationContractVersion !== 1 || historical.activationStateSchemaVersion !== 1 ||
+    historical.evidenceHeaderSchemaVersion !== 1 || historical.execution !== 'diagnostic-only' ||
+    historical.migration !== 'unsupported-preserve-bytes') {
+    throw new Error('Historical activation v1 is diagnostic-only and must preserve bytes without migration.');
+  }
   if (!Array.isArray(activation.currentCompatibleTuples)) {
     throw new Error('compatibility.activation.currentCompatibleTuples must be an array.');
   }
@@ -554,6 +586,11 @@ export function validateGovernanceCompatibilityMetadata(
     },
     activation: {
       currentCompatibleTuples: currentTuples,
+      historicalReadability: {
+        tuples: historicalActivationIdentities.map(stableIdentity),
+        activationContractVersion: 1, activationStateSchemaVersion: 1, evidenceHeaderSchemaVersion: 1,
+        execution: 'diagnostic-only', migration: 'unsupported-preserve-bytes'
+      },
       recognizedGraphHashes,
       graphMappings,
       historicalStateMigrations,

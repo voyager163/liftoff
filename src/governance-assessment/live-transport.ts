@@ -1,8 +1,13 @@
 import { performance } from 'node:perf_hooks';
 import type { CommandResult, CommandRunner } from '../process-runner.js';
-import type { ExternalCommand } from '../types.js';
-import { isRecord } from './sanitize.js';
+import type { ExternalCommand } from '../domain/project/contracts.js';
+import { githubAssessmentGetCommand } from '../adapters/github/governance-assessment.js';
+import { azureAssessmentGetCommand } from '../adapters/azure/governance-assessment.js';
+import { isRecord } from '../domain/governance/assessment/sanitize.js';
 import { assessmentLimits, type AssessmentDiagnostic, type LiveAssessmentScope } from './types.js';
+import { LiveFailure } from '../domain/governance/assessment/errors.js';
+
+export { LiveFailure } from '../domain/governance/assessment/errors.js';
 
 const githubCliHost = 'github.com';
 const githubApiOrigin = 'https://api.github.com';
@@ -10,14 +15,8 @@ const armHost = 'https://management.azure.com';
 const pageSize = 100;
 export const githubApiVersion = '2022-11-28';
 
-export class LiveFailure extends Error {
-  constructor(readonly code: string, message: string, readonly transient = false) {
-    super(message);
-  }
-}
-
 export type GitHubAction =
-  | 'repository' | 'actions-app' | 'rulesets' | 'ruleset' | 'branch' | 'protection' | 'branch-rules'
+  | 'repository' | 'actions-app' | 'rulesets' | 'ruleset' | 'branches-list' | 'branch' | 'protection' | 'branch-rules'
   | 'checks' | 'environments' | 'environment-policies' | 'workflows'
   | 'runner' | 'runner-group' | 'runner-assignment' | 'runner-network';
 
@@ -148,6 +147,7 @@ export class LiveTransport {
         }
         pathname = `${root}/rulesets/${selector}`;
         break;
+      case 'branches-list': pathname = `${root}/branches`; break;
       case 'branch':
       case 'protection':
       case 'branch-rules':
@@ -344,24 +344,17 @@ export class LiveTransport {
   }
 
   private async getGitHub(url: URL): Promise<GitHubResponse> {
-    return this.request({
-      executable: 'gh',
-      args: [
-        'api', '--method', 'GET', '--hostname', githubCliHost,
-        '--header', 'Accept: application/vnd.github+json',
-        '--header', `X-GitHub-Api-Version: ${githubApiVersion}`, '--include', url.href
-      ]
-    }, parseGitHub);
+    return this.request(
+      githubAssessmentGetCommand(url, githubApiVersion),
+      parseGitHub
+    );
   }
 
   async azure(url: string): Promise<unknown> {
     if (!this.verified || !this.azureUrls.has(url) || !url.startsWith(`${armHost}/subscriptions/`)) {
       throw new LiveFailure('unsafe-scope', 'The ARM URL was not an explicitly bound metadata read.');
     }
-    return this.request({
-      executable: 'az',
-      args: ['rest', '--method', 'GET', '--url', url, '--output', 'json', '--only-show-errors']
-    }, (stdout) => {
+    return this.request(azureAssessmentGetCommand(url), (stdout) => {
       const value = parseJson(stdout);
       if (isRecord(value) && (value.nextLink !== undefined || value['@odata.nextLink'] !== undefined)) {
         throw new LiveFailure('incomplete-pagination', 'A bound ARM object unexpectedly returned a continuation; it was not followed.');

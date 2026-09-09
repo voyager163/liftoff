@@ -6,8 +6,8 @@ Thank you for helping improve Mission Control Liftoff.
 
 Install the toolchains exercised by the complete suite:
 
-- Node.js 24.20 or newer for Liftoff and Power Apps starter verification.
-- Python 3.14 and `uv` 0.12.7 or newer.
+- Node.js 24 LTS at 24.20.0 or newer within that line, and npm 12.x at 12.0.2 or newer.
+- Python 3.14.x (tested at 3.14.7) and `uv` 0.12.x at 0.12.7 or newer.
 - Go 1.27.
 - OpenTofu 1.12.6.
 
@@ -74,21 +74,14 @@ backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
 
-Changes to the Power Apps renderer, dependencies, lockfile, or assets also
-require Node.js 24:
-
-```bash
-npm run verify:power-apps-starter
-```
-
-That verifier generates a fresh project, validates package metadata, runs the
-root locked install, lint, and production build, and deletes the temporary
-project.
-
 Filesystem and manifest changes must remain portable across Windows, macOS,
 and Linux. Use Node.js path utilities rather than hardcoded separators, and
 preserve append-only manifest logical names and catalog identifiers unless a
-main-spec change explicitly retires an environment and its derived names.
+reviewed specification change explicitly retires an identifier and its derived
+artifacts. The approved 0.11.0 exception retires exactly eight flat-root OpenTofu
+IDs from new output; [the explicit inventory](docs/azure-deployment.md#explicit-flat-root-identity-retirement)
+retains old project provenance and never authorizes state moves or force conversion.
+Keep other identifiers stable.
 
 Terminal presentation changes must preserve the rich, compact, plain,
 `NO_COLOR`, JSON, version, and stdout/stderr contracts. Update focused renderer
@@ -116,40 +109,15 @@ npm pack --dry-run --json
 Keep root README links relative and package every linked local document and
 asset. Move contributor-only build, packaging, release, and recovery detail
 here rather than duplicating it in end-user onboarding.
-
-## Refresh the Power Apps starter
-
-Refresh only from a reviewed immutable commit in Microsoft's
-`PowerAppsCodeApps` repository. Use Node.js 24 on Linux x64 so npm emits the
-canonical optional-dependency metadata used by every supported host:
-
-```bash
-npm run refresh:power-apps-starter -- <40-character-commit-sha>
-```
-
-The maintainer script downloads the immutable archive, rejects symlinks and
-excluded runtime output, preserves existing logical names by path, verifies
-the MIT license, regenerates `package-lock.json` with the pinned npm version,
-records hashes and provenance, displays the source diff, and updates the
-catalog commit.
-
-After the script completes:
-
-1. Review every upstream source and dependency change.
-2. Confirm new logical names are stable and removed names are handled as
-   update orphans.
-3. Review license and attribution changes.
-4. Update commit-specific package smoke assertions.
-5. Run `npm run verify:power-apps-starter`.
-6. Run `npm run check` and `npm run smoke:package`.
-
-Do not edit vendored starter bytes or catalog hashes by hand to bypass a failed
-integrity check.
+The README must stay below 135 lines. Keep the acceptance headings and links in
+the developer guide; update actual canonical implementation paths after an
+extraction, not only compatibility-facade names. Documentation tests derive
+activation identity and graph-hash expectations from current source.
 
 ## Audit packaged template dependencies
 
-Liftoff ships npm lockfiles for the standard Node.js backend, standard frontend,
-and pinned Power Apps starter. Run their live canonical-registry audit
+Liftoff ships npm lockfiles for the standard Node.js backend and standard frontend.
+Run their live canonical-registry audit
 separately from the root package audit:
 
 ```bash
@@ -197,7 +165,9 @@ npm ci --ignore-scripts --no-audit --no-fund
 ```
 
 The standard-template CI matrix repeats the locked install with npm 10.9.4 on
-Node.js 22 and npm 12.0.2 on Node.js 24. Prefer the smallest compatible patched
+Node.js 22 and npm 12.0.2 on Node.js 24. The older lane checks template/lock
+compatibility; it does not lower Liftoff's Node.js 24.20/npm 12 workstation
+readiness floors. Prefer the smallest compatible patched
 line between reviewed baseline refreshes. Do not use `npm audit fix`, downgrade a
 dependency to hide an advisory, or add an unverified transitive override.
 Afterward run the focused security tests, the standard template verifier,
@@ -207,7 +177,7 @@ package smoke, and the live audit.
 
 `assets/supported-stack.json` is the release-owned source of truth for tested
 runtimes, framework CLIs, direct dependency sets, provider locks, immutable
-container images, and upstream starter identity.
+container images, and packaged asset identity.
 
 ```bash
 npm run check:supported-stack-freshness
@@ -227,13 +197,8 @@ the same GenAI lock. Do not hand-edit generated lockfiles.
 
 When the newest stable candidate is incompatible, record the selected version,
 the exact reviewed candidate, and the technical reason in the baseline rather
-than silently pinning an older release. The current Power Apps SDK selection
-stays on 1.2.7 because later releases remove the project-local `power-apps`
-binary; adopting the global `pa` CLI requires a separate workload migration.
-
-For the Power Apps starter, use the immutable refresh procedure above rather
-than editing package metadata or lockfile bytes. A new starter commit changes
-the audit inventory path and requires every exception to be reviewed again.
+than silently pinning an older release. Retired Power Apps fixtures are
+non-generative and do not participate in dependency or starter refresh.
 
 ### Reconcile Dependabot updates
 
@@ -248,9 +213,8 @@ Remove or revise that rule as part of the reviewed Node runtime-major migration,
 not in an isolated dependency pull request. Patch and minor type updates,
 security alerts, and majors for other dependencies remain enabled.
 
-Do not add the commit-addressed Power Apps starter directory to
-`.github/dependabot.yml`. Refresh it by selecting a newer immutable Microsoft
-commit and running the complete starter provenance procedure.
+Do not add retired Power Apps fixtures to `.github/dependabot.yml` or restore
+an operational source-commit compatibility lane for that retired workload.
 
 Dependabot changes to a baseline-managed manifest or lock must be incorporated
 into one coherent supported-stack refresh. Regenerate locks from their manifests
@@ -262,7 +226,10 @@ validate every affected graph before closing the superseded bot pull requests.
 The complete supplied standard is stored at
 `assets/governance/single-maintainer-gitflow/policy.md`. Generated policy
 metadata and the activation protocol are rendered by
-`src/repository-governance.ts`. Keep policy schema/version, required invariant
+`src/repository-governance.ts`; canonical identity and pure activation rules live
+under `src/domain/governance/`. Current activation uses contract/state/header/
+approval v2 and compatibility metadata v2, while policy remains 6 and manifest
+remains 7. Keep policy schema/version, required invariant
 fragments, workload context adapters, exact artifact paths, logical names,
 manifest v7 activation identity, compatibility metadata, and Copilot/Claude
 `/liftoff-setup` integrations synchronized. Retired generated setup aliases are
@@ -294,8 +261,8 @@ openspec validate <change-name> --strict
 - Keep changes focused and include tests for changed behavior.
 - Update user and contributor documentation when commands, generated output,
   or workflows change.
-- Confirm generated projects contain no credentials or environment-specific
-  values.
+- Confirm generated projects contain no real credentials or unreviewed live
+  resource bindings; nonsecret environment defaults must be explicit.
 - Do not change persisted manifest identity, activation version vectors, graph
   hashes, schema versions, compatibility maps, or stable identifiers without an
   explicit main-spec decision and migration or rejection-remedy tests.
@@ -314,7 +281,7 @@ Before tagging, update package and lockfile metadata together and run:
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.6.1
+npm run verify:release-identity -- v0.11.1
 ```
 
 Replace the example tag with the intended release. The Git tag, root package
@@ -323,9 +290,11 @@ metadata, root lockfile metadata, packed package version, and installed
 
 When a release raises runtime floors or adopts generated-stack majors, label it
 as breaking and direct existing projects to `liftoff update --check` before
-apply. The release rollback boundary is a source revert before publication.
-After publication, projects recover applied template changes through version
-control; Liftoff must not silently downgrade their dependencies.
+managed-core maintenance, not automatic adoption of the new application stack.
+Project-owned template/infrastructure changes need separate reviewed migration;
+core update never applies them. The release rollback boundary is a source revert
+before publication. Project owners recover separately applied template changes
+through version control; Liftoff must not silently downgrade their dependencies.
 
 The first release containing `liftoff upgrade` must retain the one-time bootstrap
 command for users on older versions:
@@ -333,6 +302,12 @@ command for users on older versions:
 ```bash
 npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
 ```
+
+That explicit canonical default is reference material for approved canonical
+delivery. Managed installations retain their configured
+`@msn-control:registry` before the default registry; do not override a scoped
+mirror to bypass policy. Canonical verification isolates the scope only for its
+read-only comparison.
 
 All upgrade apply tests use temporary prefixes, homes, caches, and injected
 registry responses. Never run self-upgrade apply against a developer or release

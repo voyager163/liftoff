@@ -1,13 +1,13 @@
 import { password } from '@inquirer/prompts';
 import { redactSensitiveText, type CommandResult, type CommandRunner } from '../process-runner.js';
-import type { ExternalCommand } from '../types.js';
-import { canonicalSha256 } from './canonical-json.js';
+import type { ExternalCommand } from '../domain/project/contracts.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import {
   currentActivationIdentity
-} from './graph.js';
+} from '../domain/governance/activation/graph.js';
 import {
   credentialPolicySchemaVersion
-} from './identity.js';
+} from '../domain/governance/policy/identity.js';
 import type {
   ActivationIdentity,
   CredentialPermissionSet,
@@ -16,7 +16,7 @@ import type {
   CredentialRepositoryIdentity,
   CredentialWorkflowAllowlistEntry,
   GitHubAppCredentialMetadata
-} from './types.js';
+} from '../domain/governance/activation/types.js';
 import {
   runnerPreflightDisplayNameTemplate,
   runnerPreflightOrganizationPermissions,
@@ -24,8 +24,8 @@ import {
   runnerPreflightRepositoryPermissions,
   runnerPreflightRotationLeadDays,
   runnerPreflightSecretName
-} from './types.js';
-import { validateCredentialPolicy } from './validators.js';
+} from '../domain/governance/activation/types.js';
+import { validateCredentialPolicy } from '../domain/governance/activation/validators.js';
 
 export const credentialPolicyPathParts = ['governance', 'credentials', 'preflight-policy.json'] as const;
 

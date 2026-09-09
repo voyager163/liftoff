@@ -1,7 +1,7 @@
 import { spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   canonicalPhaseGraph,
   canonicalPhaseGraphHash,
@@ -9,7 +9,10 @@ import {
   currentActivationIdentity,
   deterministicGovernanceChangeId,
   governanceChangeMetadataFileName,
-  inspectGovernanceSourceOfTruth,
+  inspectGovernanceSourceOfTruth as inspectSource,
+  evidenceBodyDigest,
+  evidenceContextForPhase,
+  remoteBindingDigest,
   phaseContractDigests,
   phaseIds,
   reconcileActiveGovernanceChange,
@@ -26,8 +29,12 @@ import {
 import { renderCanonicalGovernancePolicy } from '../src/repository-governance.js';
 import type { LiftoffManifest, SpecWorkflowId } from '../src/types.js';
 import { liftoffVersion } from '../src/version.js';
+import { executeActivationApproval } from '../src/governance-activation/phase-governance.js';
+import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
+import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
 
-const scratchRoot = path.join(process.cwd(), '.cache', 'governance-source-of-truth-tests');
+const scratchRoot = path.join(process.cwd(), '.cache', `governance-source-of-truth-tests-${process.pid}`);
+afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 const baselineSha = 'a'.repeat(64);
 let counter = 0;
 
@@ -87,6 +94,7 @@ function state(overrides: Partial<UserActivationState> = {}): UserActivationStat
       defaultBranch: 'main'
     },
     activeChange: null,
+    remoteBinding: { id: 'R_remote', name: 'owner/demo', defaultBranch: 'main', pushUrl: 'https://github.com/owner/demo.git', verifiedAt: '2026-09-04T00:00:00.000Z' },
     applicability: {
       statePath: 'none',
       privateStagingDast: false,
@@ -141,9 +149,31 @@ function phase0Evidence(): PhaseEvidenceRecord {
     },
     producedAt: '2026-09-04T00:00:00.000Z',
     producer: 'phase0-review',
-    result: 'verified'
+    result: 'verified',
+    bodyDigest: ''
   };
-  return { evidenceId: 'phase0', header };
+  const payload = { kind: 'phase-0-discovery.v1', facts: [
+    { id: 'repository.id', value: 'R_remote' }, { id: 'repository.nameWithOwner', value: 'owner/demo' },
+    { id: 'repository.defaultBranch', value: 'main' }
+  ] };
+  const liveReadback = [{
+    schemaVersion: 2, repositoryId: header.repositoryId, identity: header.identity, phaseGraphHash: header.phaseGraphHash,
+    phaseId: header.phaseId, baselineSha: header.baselineSha, inputDigest: header.inputDigest, transition: header.transition,
+    observedAt: header.producedAt, provider: 'github' as const, resourceType: 'repository', resourceId: 'owner/demo',
+    sourceDigest: canonicalSha256(payload.facts), readbackDigest: canonicalSha256(payload.facts), matches: true
+  }];
+  header.bodyDigest = evidenceBodyDigest(payload, liveReadback);
+  header.remoteBindingDigest = remoteBindingDigest(state().remoteBinding);
+  return { evidenceId: 'phase0', header, payload, liveReadback };
+}
+
+function inspectGovernanceSourceOfTruth(input: Parameters<typeof inspectSource>[0]) {
+  return inspectSource({ ...input, contexts: {
+    'phase-0-complete': evidenceContextForPhase('phase-0-complete', {
+      repositoryId: 'R_123', baselineSha, inputDigest: '1'.repeat(64),
+      remoteBindingDigest: remoteBindingDigest(input.state.remoteBinding)
+    })
+  } });
 }
 
 async function writeProject(projectName: string, workflowKind: SpecWorkflowId = 'openspec'): Promise<string> {
@@ -328,6 +358,36 @@ describe('governance active source-of-truth inspection', () => {
 });
 
 describe('canonical governance change rendering and reconciliation', () => {
+  it('preserves a concurrent file created after the approval handler planned new artifacts', async () => {
+    const root = await writeProject('demo');
+    const activationState = state();
+    const evidence = [phase0Evidence()];
+    const source = await inspectGovernanceSourceOfTruth({ projectRoot: root, manifest: manifest('demo'), state: activationState, evidence });
+    expect(source.status === 'none' ? source.createPlan.status : '').toBe('ready');
+    const outcome = await executeActivationApproval({
+      phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved'),
+      inspection: {
+        projectRoot: root, manifest: manifest('demo'), state: activationState, evidence, sourceOfTruth: source,
+        contexts: {
+          'phase-0-complete': evidenceContextForPhase('phase-0-complete', {
+            repositoryId: 'R_123', baselineSha, inputDigest: '1'.repeat(64),
+            remoteBindingDigest: remoteBindingDigest(activationState.remoteBinding)
+          })
+        }
+      },
+      plan: { operations: [{ actionId: 'openspec.governance.create-change' }] }
+    } as PhaseAdapterExecutionInput);
+    expect(outcome?.status).toBe('completed');
+    const first = outcome!.fileMutations![0]!;
+    const target = path.join(root, ...first.pathParts);
+    await mkdir(path.dirname(target), { recursive: true });
+    await writeFile(target, 'concurrent user content\n');
+    await expect(applyProjectFileTransaction(root, outcome!.fileMutations!, {
+      preconditions: outcome!.filePreconditions
+    })).rejects.toThrow(/changed after review/);
+    expect(await readFile(target, 'utf8')).toBe('concurrent user content\n');
+  });
+
   it('renders strict OpenSpec metadata, proposal, design, spec, and task markers', async () => {
     const plan = renderGovernanceChangeWritePlan(facts());
     expect(plan.changeId).toBe('governance-demo-aaaaaaaaaaaa');

@@ -102,12 +102,15 @@ while unrecorded conflicts remain user-owned. No update mode runs an agent or
 activates GitHub settings.
 
 Projects carrying governance policy versions 2 through 5 preview policy version
-6, manifest v7, and activation-contract v1 as managed-core drift. Review the
+6, manifest v7, and activation-contract v2 as managed-core drift. Review the
 canonical phase graph, private-runner credential contract, bootstrap-state
 retention/disposal contract, and active-change reconciliation before
 replacement. Updating the handoff never provisions Azure or GitHub resources;
-any active downstream governance change must acknowledge the supported
-activation identity and exact graph hash before applying infrastructure.
+active downstream work must have supported identity and current evidence before
+it can execute. The CLI provides no public identity-acknowledgment or historical
+reconciliation workflow.
+Historical activation-v1 state and receipts are diagnostic-only, not
+automatically migrated or made executable by updating core files.
 
 The manifest-v7 transition releases every legacy non-core artifact into project
 provenance without writing, restoring, moving, or deleting its path.
@@ -118,7 +121,16 @@ Supported readers normalize manifest v2-v6 and write only v7 after all
 preflights pass. Future versions, unsupported policy/contract/schema tuples,
 unknown graph hashes, unversioned activation state, or prose-only task history
 block with explicit upgrade, import-mapping, or reconciliation remedies. Liftoff
-never fabricates evidence from old checkboxes.
+never fabricates evidence from old checkboxes. A diagnostic is not a command to
+hand-write mappings, retag receipts, or manufacture missing history.
+
+The new infrastructure layout uses shared application modules and independent
+environment roots. Its eight [retired flat-root identities](azure-deployment.md#explicit-flat-root-identity-retirement)
+remain readable as historical provenance, not aliases for new paths. Existing
+files, state, and generation hashes remain untouched. Adding an environment
+requires recorded independent-root provenance and safe existing module files;
+legacy or unknown layouts need separately reviewed migration. Core context
+updates cannot claim that this migration happened.
 
 Major supported-stack releases apply to new scaffolds. Existing projects adopt
 runtime, lock, Docker, provider, framework, and application changes through a
@@ -146,5 +158,20 @@ framework pipeline, including separate global OpenSpec profile authorization,
 and leaves the source byte-for-byte unchanged. `--force` does not permit a
 non-empty migration target.
 
-Arbitrary existing Power Apps application migration is not currently
-supported.
+The scan reads dependency declarations rather than comments or example text.
+Python setup/test configuration and non-workflow `.github` files remain
+explicit inventory items; dynamic or malformed declarations produce review
+diagnostics rather than invented stack defaults. Source configuration code is
+never executed to discover dependencies.
+
+Explicit workload, API-stack, and frontend choices control the target mapping.
+For example, Go source selected for a Node target receives porting instructions,
+not Go-only destination paths; a declined frontend remains a placement decision.
+
+Complete the mapped work and run the backend tests, `liftoff validate`, and
+`liftoff doctor` before deleting `migration/legacy/`. OpenSpec archival follows
+the completed change; a Spec Kit migration checklist is finalized locally
+without an invented archive command.
+
+Power Apps creation, maintenance, and migration are retired. Existing Power Apps
+manifests are rejected without modifying or converting their application files.

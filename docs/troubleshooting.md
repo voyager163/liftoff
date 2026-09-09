@@ -5,7 +5,7 @@
 Check the canonical release:
 
 ```bash
-npm view @msn-control/liftoff@latest version --registry=https://registry.npmjs.org
+npm view @msn-control/liftoff@latest version --registry=https://registry.npmjs.org --@msn-control:registry=https://registry.npmjs.org
 liftoff --version
 liftoff upgrade --check
 liftoff upgrade
@@ -21,7 +21,7 @@ that version supported.
 Versions that predate `liftoff upgrade` require one manual global installation:
 
 ```bash
-npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+npm install -g @msn-control/liftoff@latest
 ```
 
 ## CLI upgrade is blocked by installation origin
@@ -38,6 +38,14 @@ Canonical npm defines the exact stable target, but Liftoff installs through the
 configured registry. Ask the mirror owner to synchronize or approve that exact
 version, then rerun `liftoff upgrade --check`. Liftoff does not edit `.npmrc` or
 bypass the managed registry.
+The package's machine-level `@msn-control:registry` takes precedence over npm's
+default `registry`. A canonical default does not cancel a scoped mirror.
+Liftoff reads this configuration from a neutral directory, not a project's
+`.npmrc`, and never prints credential-bearing registry values.
+
+A response-body timeout is a transport failure, not invalid release metadata.
+Retry after connectivity is restored; do not change registry policy or regenerate
+project locks to work around it.
 
 ## npm cannot write the global prefix
 
@@ -168,7 +176,7 @@ unrecorded conflicting file remains user-owned and is not reported as an
 orphan.
 
 If a newer Liftoff release contains different source, dependencies, schemas,
-containers, environment files, Power Apps starter files, or infrastructure,
+containers, environment files, or infrastructure,
 ordinary update intentionally reports nothing for those project-owned
 differences. Review and migrate them as production changes. The existing
 `liftoff migrate` command does not perform an in-place Liftoff project upgrade.
@@ -189,8 +197,9 @@ the existing project files and infrastructure are project-owned.
 
 That is the expected initial state. The manifest records `handoff-generated`,
 not active enforcement. Run `/liftoff-setup` from a selected agent. It first
-completes, syncs, and archives the generated bootstrap seed with local baseline
-checks, then stops at explicit authority gates for commit/push, credentials,
+completes, syncs, and archives the OpenSpec bootstrap, or finalizes Spec Kit's
+real `000-liftoff-bootstrap` bundle locally after baseline checks. It then stops
+at explicit authority gates for commit/push, credentials,
 billed infrastructure or exceptions, final enforcement, destructive cleanup, or
 external blockers. Rerun `/liftoff-setup` to resume; verified phases are not
 repeated. Older generated setup aliases are retired; after review,
@@ -205,14 +214,20 @@ policy's repository-dedicated provisioning exception, but it must stop for
 explicit approval before creating any Azure or GitHub resource. Do not replace
 missing capability with duplicate scanners, partial provisioning, or
 placeholder success.
+These are target-policy requirements; 14 production phases lack executors and
+two ruleset phases require an injected adapter absent from the public CLI.
+Public approval persistence and credential enrollment also remain unavailable.
+An unavailable executor or authority entry point is a blocker, not an instruction
+to run its provider commands directly.
 
 If a private ZRS state backend cannot be reached because public network access
 is disabled and no approved private management path exists, do not enable
-public access or upload local state to GitHub. Use the policy's explicitly
-approved minimum `bootstrap-local` phase, adopt resources through declarative
+public access or upload local state to GitHub. The target policy requires an
+explicitly approved minimum `bootstrap-local` phase, adoption through declarative
 imports from the private runner, verify identity parity, locking, versioning,
 and a clean no-change plan, then retain the frozen local state read-only for 30
-days before secure deletion.
+days before secure deletion. That production adapter is not implemented by this
+release; stop at the capability blocker and plan separately reviewed platform work.
 
 If an Azure bootstrap fails with a namespace-not-registered error while
 `resource_provider_registrations = "none"` is configured, do not retry the same
@@ -239,23 +254,23 @@ or allow TCP and UDP 53 to exact custom resolver addresses.
 
 | State | Remedy |
 | --- | --- |
-| `seed-incomplete` | Run `/liftoff-setup`; fix failing local baseline checks and rerun until the seed is archived. |
-| `phase-blocked` | Read the blocking phase, evidence requirement, and approval gate; satisfy the named prerequisite rather than skipping it. |
-| `evidence-stale` | Regenerate evidence from the current baseline, activation identity, graph hash, and phase input digest. |
+| `seed-incomplete` | Repair local checks, then explicitly retry the supported seed phase. OpenSpec archives; Spec Kit finalizes its real bundle locally. |
+| `phase-blocked` | Read the phase, proof, and authority blocker; unavailable production or enrollment capabilities remain blocked. |
+| `evidence-stale` | Obtain fresh proof through supported, authorized execution from current inputs; never edit receipts or reuse stale headers as current inputs. |
 | `credential-expiring` | Rotate before the recorded lead time using the same App or PAT policy. |
-| `reconciliation-required` | Review the policy/contract/schema/graph change and acknowledge the current compatible identity before applying another phase. |
-| `identity-incompatible` | Upgrade to the reported minimum Liftoff version or provide an explicit supported migration/import mapping. |
+| `reconciliation-required` | Review the precise identity/input diagnostic. Historical v1 has no public reconciliation workflow; preserve its bytes rather than acknowledging a new identity by editing JSON. |
+| `identity-incompatible` | Upgrade when the supported tuple requires a newer CLI. Unknown or historical tuples cannot be made executable with force or invented mappings. |
 | `enforcement-incomplete` | Prove exact required contexts green and deliberately red, then approve final enforcement before ruleset mutation. |
-| `disposal-pending` | After day 30, approve destructive disposal of retained bootstrap state and rerun setup. |
+| `disposal-pending` | Review retention, exact imported paths, destructive scope, and proof. Execution requires valid authority; there is no public approval-entry shortcut. |
 
 Do not hand-edit task checkboxes to clear these states. Tasks are projections of
 validated phase evidence.
 
 ## Runner-preflight credential setup is blocked
 
-Setup first prefers an existing verified selected-repository GitHub App with the
-required read permissions. If none is available, create one fine-grained PAT with
-exactly these fields: display name `<repo>-runner-preflight-read`, secret
+The policy prefers an existing verified selected-repository GitHub App with the
+required read permissions. Its fallback contract describes a fine-grained PAT
+with these fields: display name `<repo>-runner-preflight-read`, secret
 `RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
 repository metadata read, organization hosted-runner read and
 network-configuration read, no writes, and the recorded workflow/job allowlist
@@ -264,24 +279,81 @@ network-configuration read, no writes, and the recorded workflow/job allowlist
 `private-dast-preflight` unless the generated policy records a narrower
 applicable set).
 
-Enter the value only through the masked input. Never paste or show the value in
-chat, argv, command arguments, logs, evidence, files, or screenshots. A leaked value is
-compromised; manually revoke it, create a replacement, update the repository
-secret through setup, and rerun `liftoff governance verify --json`.
+This release does not expose public credential enrollment or masked input.
+Do not create or submit a credential through an invented setup channel, and do
+not hand-write state or receipts to bypass the capability blocker. Never paste
+or show the value in chat, argv, command arguments, logs, evidence, files, or
+screenshots. Revoke and rotate leaked credentials through their owner-controlled
+system. A payload-free policy file alone is not independent readback evidence.
 
 ## Governance identity or manifest migration is blocked
 
 Current Liftoff reads manifest v2-v7 and writes v7. It resumes only explicit
-compatible tuples: policy version 6, activation contract 1, schema-v1 activation
-artifacts, and a recognized phase-graph hash. Future versions, individually
+compatible tuples: policy version 6, activation contract 2, state/evidence-header/
+approval/compatibility metadata versions 2, and a recognized phase-graph hash.
+Phase graph, supersession, and credential-policy schemas stay at 1.
+Future versions, individually
 known but unsupported combinations, unknown graph hashes, or unversioned ad hoc
 state block without rewriting files. Use the exact upgrade, import-mapping, or
-reconciliation remedy printed by status or update; do not downgrade the
-manifest or copy evidence between identities.
+reconciliation diagnostic printed by status or update; do not downgrade the
+manifest or copy evidence between identities. Historical v1 state and evidence
+remain diagnostic-only and byte-preserved. This release has no automatic or
+public historical-state reconciliation workflow; managed-core update does not
+make that history executable.
 
 Do not run an older Liftoff release to reverse a completed baseline migration.
-Restore the affected generated files and `liftoff.manifest.json` through version
-control, then reinstall from the restored locks.
+Restore separately reviewed project changes through version control and reinstall
+from the restored locks; do not alter immutable activation evidence to claim
+compatibility.
+
+## Spec Kit setup reports seed adoption required
+
+The real bundle must contain `specs/000-liftoff-bootstrap/spec.md`, `plan.md`,
+and `tasks.md`, its identity markers, and B001–B006 exactly once. Framework
+templates are not a substitute for project artifacts. Existing projects missing
+the bundle need separate reviewed adoption; update, force, assessment, or
+read-only resume will not create it. Never invent an OpenSpec archive or Git
+branch to make Spec Kit setup pass.
+
+## Infrastructure helpers or baseline report migration required
+
+Independent roots require exact recorded shared-module/root provenance and safe
+existing module files. Creating folders alone, changing tfvars paths, or updating
+managed governance context does not establish eligibility. Existing flat-root
+provenance remains unchanged after the explicit new-output-only retirement.
+Do not move state or force new roots into place to clear the result; plan a
+separate reviewed migration.
+
+## Native startup rejects configuration or appears to ignore the file
+
+Python and Node read root `.env`; Python backend-CWD startup still resolves that
+same file. Go's backend-CWD recipe reads `../runtime.config.json`. Use
+`LIFTOFF_ENV_FILE` for an explicit selection, relative to the startup directory
+unless absolute. Process values override the file, and settings are resolved
+once, so restart after edits.
+
+An explicit missing, unreadable, malformed, invalid-UTF-8, or NUL-containing
+dotenv file fails rather than falling back. Fix `KEY=value` syntax and balanced
+quotes; Node rejects escaped quote delimiters, so use the other quote style.
+Go requires valid JSON with string values, not null or numeric values.
+Do not source configuration as shell code. An absent default file is allowed
+only when the required settings come from process configuration.
+
+For offline `/health`, `/ready`, and `/openapi.json` probes, provide
+`DATABASE_URL` and `REDIS_URL` but leave `PYDANTIC_AI_MODEL`,
+`LANGFUSE_PUBLIC_KEY`, and `LANGFUSE_SECRET_KEY` blank. These probes do not
+contact a model or prove external-service health. `PYDANTIC_AI_MODEL=test` is
+not a supported model provider; no special test-model flag is needed.
+
+See [runtime recipes](configuration-and-manifests.md#application-runtime-configuration).
+
+## A locally prepared container build includes host files
+
+Keep the generated root and frontend `.dockerignore` files in their respective
+build contexts. They exclude host `.venv`, `node_modules`, caches, build output,
+VCS metadata, state, and local secrets. Function publication uses its own
+`.funcignore`. If those project-owned files were changed or removed, repair them
+through reviewed project work; update or force cannot restore them.
 
 ## A frozen Python install cannot reach the package index
 
@@ -299,30 +371,16 @@ docker build --build-arg UV_DEFAULT_INDEX=https://packages.example.test/simple/ 
 Do not place credentials in build arguments. Configure authenticated registries
 through an approved secret-aware build mechanism.
 
-## Power Apps dependencies or CLI are missing
+## Power Apps workload or Code Apps options are rejected
 
-From the project root:
+Power Apps creation and existing-project support are retired. The workload and
+plugin options now fail explicitly; this is not a missing dependency or an
+installation problem.
 
-```bash
-npm ci
-npx --no-install power-apps --version
-npm run dev
-```
-
-The CLI is project-local. Do not replace the locked install with an unrelated
-global package.
-
-## The Code Apps plugin is missing or not observable
-
-Plugin state is advisory. In each selected agent session, use:
-
-```text
-/plugin marketplace add microsoft/power-platform-skills
-/plugin install code-apps-preview@power-platform-skills
-```
-
-Then rerun `liftoff doctor`. Do not run `/create-code-app` in a Liftoff project.
-Liftoff does not run Microsoft's broad plugin installer.
+The rejection leaves application files, dependencies, framework files, and
+historical state unchanged. Do not change the manifest's workload identity, hide
+it to trigger another discovery path, or use force to bypass retirement. This
+CLI provides no automatic conversion or continued Power Apps maintenance lane.
 
 ## Terminal output is hard to read or being captured
 

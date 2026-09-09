@@ -1,15 +1,19 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
-import os from 'node:os';
+import { spawn, spawnSync } from 'node:child_process';
+import { createServer } from 'node:net';
+import { copyFile, mkdir, mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { writeArtifacts } from '../src/file-system.js';
 
 const npmCommand = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 const typescriptCli = fileURLToPath(new URL('../node_modules/typescript/bin/tsc', import.meta.url));
+const fixtureRoot = path.resolve('tests', '.stack-fixtures', randomUUID());
+beforeAll(async () => { await mkdir(fixtureRoot, { recursive: true }); });
+afterAll(async () => { await rm(fixtureRoot, { recursive: true, force: true }); });
 
 function availableCommand(commands: string[]): string | undefined {
   return commands.find((command) => spawnSync(command, ['--version'], { encoding: 'utf8' }).status === 0);
@@ -51,13 +55,63 @@ async function filesUnder(root: string, extension: string): Promise<string[]> {
   return files;
 }
 
+async function verifyNativeServer(command: string, args: string[], cwd: string): Promise<void> {
+  const probe = createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once('error', reject);
+    probe.listen(0, '127.0.0.1', resolve);
+  });
+  const address = probe.address();
+  if (!address || typeof address === 'string') throw new Error('Missing local test port.');
+  const port = address.port;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  const env = { ...process.env, PORT: String(port) };
+  delete env.DATABASE_URL;
+  delete env.REDIS_URL;
+  delete env.LIFTOFF_ENV_FILE;
+  const child = spawn(command, args, { cwd, env, stdio: ['ignore', 'pipe', 'pipe'] });
+  let output = '';
+  child.stdout.on('data', (chunk) => { output += chunk; });
+  child.stderr.on('data', (chunk) => { output += chunk; });
+  let spawnError: Error | undefined;
+  child.on('error', (error) => { spawnError = error; });
+  try {
+    let ready = false;
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (spawnError || child.exitCode !== null) throw new Error(`Native startup failed: ${spawnError?.message ?? output}`);
+      try {
+        const response = await fetch(`http://127.0.0.1:${port}/ready`, { signal: AbortSignal.timeout(1000) });
+        if (response.ok) {
+          expect(await response.json()).toMatchObject({ status: 'ready' });
+          ready = true;
+          break;
+        }
+      } catch (error) {
+        if (!(error instanceof TypeError) && !(error instanceof DOMException)) throw error;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    expect(ready, output).toBe(true);
+    for (const route of ['/health', '/api', '/scalar', '/openapi.json']) {
+      const response = await fetch(`http://127.0.0.1:${port}${route}`, { signal: AbortSignal.timeout(1000) });
+      expect(response.status, route).toBe(200);
+    }
+  } finally {
+    if (child.exitCode === null && !spawnError) {
+      const exited = new Promise<void>((resolve) => child.once('exit', () => resolve()));
+      child.kill();
+      await exited;
+    }
+  }
+}
+
 describe('generated standard stack smoke checks', () => {
-  it('parses generated Python source when Python is available', async () => {
+  it('parses generated Python source when Python is available', async ({ skip }) => {
     if (spawnSync('python3', ['--version'], { encoding: 'utf8' }).status !== 0) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-python-smoke-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-python-smoke-'));
     const projectRoot = path.join(tempRoot, 'python-api');
     try {
       const plan = buildProjectPlan({
@@ -79,7 +133,7 @@ describe('generated standard stack smoke checks', () => {
   });
 
   it('parses generated Node.js TypeScript and JSON configuration', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-node-smoke-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-node-smoke-'));
     const projectRoot = path.join(tempRoot, 'node-api');
     try {
       const plan = buildProjectPlan({
@@ -94,6 +148,7 @@ describe('generated standard stack smoke checks', () => {
       JSON.parse(await readFile(path.join(projectRoot, 'backend', 'tsconfig.json'), 'utf8'));
       checkedSpawn(process.execPath, [
         typescriptCli,
+        '--ignoreConfig',
         '--noCheck',
         '--noEmit',
         '--module', 'NodeNext',
@@ -106,12 +161,12 @@ describe('generated standard stack smoke checks', () => {
     }
   });
 
-  it('formats and tests a fresh generated Go project without rewriting module metadata', async () => {
+  it('formats and tests a fresh generated Go project without rewriting module metadata', async ({ skip }) => {
     if (spawnSync('go', ['version'], { encoding: 'utf8' }).status !== 0) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-go-smoke-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-go-smoke-'));
     const projectRoot = path.join(tempRoot, 'go-api');
     try {
       const plan = buildProjectPlan({
@@ -134,6 +189,10 @@ describe('generated standard stack smoke checks', () => {
         readFile(checksumPath, 'utf8')
       ]);
       checkedSpawn('go', ['test', './...'], path.join(projectRoot, 'backend'));
+      await copyFile(path.join(projectRoot, 'runtime.config.example.json'), path.join(projectRoot, 'runtime.config.json'));
+      const binary = path.join(projectRoot, process.platform === 'win32' ? 'native-api.exe' : 'native-api');
+      checkedSpawn('go', ['build', '-o', binary, './cmd/api'], path.join(projectRoot, 'backend'));
+      await verifyNativeServer(binary, [], path.join(projectRoot, 'backend'));
       expect(await Promise.all([
         readFile(modulePath, 'utf8'),
         readFile(checksumPath, 'utf8')
@@ -143,13 +202,13 @@ describe('generated standard stack smoke checks', () => {
     }
   }, 600_000);
 
-  it('installs and tests frozen Python, GenAI, and Function worker projects', async () => {
+  it('installs and tests frozen Python, GenAI, and Function worker projects', async ({ skip }) => {
     const uvCommand = availableCommand(['uv']);
     if (!uvCommand) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-python-test-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-python-test-'));
     const standardRoot = path.join(tempRoot, 'python-api');
     const ragRoot = path.join(tempRoot, 'rag-api');
     const genericRoot = path.join(tempRoot, 'generic-api');
@@ -276,12 +335,12 @@ describe('generated standard stack smoke checks', () => {
     }
   }, 1_800_000);
 
-  it('installs, builds, and tests a fresh generated Node.js project', async () => {
+  it('installs, builds, and tests a fresh generated Node.js project', async ({ skip }) => {
     if (spawnSync(npmCommand, ['--version'], { encoding: 'utf8' }).status !== 0) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-node-test-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-node-test-'));
     const projectRoot = path.join(tempRoot, 'node-api');
     try {
       await writeArtifacts(projectRoot, buildArtifacts(buildProjectPlan({
@@ -291,6 +350,7 @@ describe('generated standard stack smoke checks', () => {
         cloud: 'azure'
       }, { requireProjectName: true })));
       const backendRoot = path.join(projectRoot, 'backend');
+      await copyFile(path.join(projectRoot, '.env.example'), path.join(projectRoot, '.env'));
       checkedSpawn(
         npmCommand,
         ['ci', '--ignore-scripts', '--no-audit', '--no-fund'],
@@ -300,17 +360,18 @@ describe('generated standard stack smoke checks', () => {
       );
       checkedSpawn(npmCommand, ['run', 'build', '--silent'], backendRoot);
       checkedSpawn(npmCommand, ['test', '--silent'], backendRoot);
+      await verifyNativeServer(process.execPath, ['dist/server.js'], backendRoot);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
     }
   }, 900_000);
 
-  it('installs and production-builds specialized and generic generated frontends', async () => {
+  it('installs and production-builds specialized and generic generated frontends', async ({ skip }) => {
     if (spawnSync(npmCommand, ['--version'], { encoding: 'utf8' }).status !== 0) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-frontend-test-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-frontend-test-'));
     try {
       for (const [directory, projectName, pattern] of [
         ['rag-ui', 'RAG Frontend Smoke', 'rag'],
@@ -371,12 +432,12 @@ describe('generated standard stack smoke checks', () => {
     expect(path.win32.join('project', 'backend', 'src', 'server.ts')).toBe('project\\backend\\src\\server.ts');
   });
 
-  it('formats and validates representative OpenTofu output when OpenTofu is available', async () => {
+  it('formats and validates representative OpenTofu output when OpenTofu is available', async ({ skip }) => {
     if (spawnSync('tofu', ['version'], { encoding: 'utf8' }).status !== 0) {
-      return;
+      return skip();
     }
 
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-tofu-smoke-'));
+    const tempRoot = await mkdtemp(path.join(fixtureRoot, 'liftoff-tofu-smoke-'));
     try {
       const plans = [
         buildProjectPlan({
@@ -404,7 +465,7 @@ describe('generated standard stack smoke checks', () => {
       for (const [index, plan] of plans.entries()) {
         const projectRoot = path.join(tempRoot, `project-${index}`);
         await writeArtifacts(projectRoot, buildArtifacts(plan));
-        const tofuRoot = path.join(projectRoot, 'infrastructure', 'opentofu', 'azure');
+        const tofuRoot = path.join(projectRoot, 'infrastructure', 'opentofu', 'azure', 'environments', 'dev');
         const providerLock = path.join(tofuRoot, '.terraform.lock.hcl');
         const providerLockBefore = await readFile(providerLock);
         checkedSpawn('tofu', ['fmt', '-check', '-recursive', '-no-color'], tofuRoot);

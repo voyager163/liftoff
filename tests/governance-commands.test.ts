@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import {
@@ -28,8 +28,12 @@ import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type { CommandRunner, CommandResult, RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
+import { loadManifest } from '../src/application/project/manifest.js';
+import { activationEvidenceContexts, readActivationInputSnapshot } from '../src/governance-activation/inputs.js';
+import { fixtureHeader, fixtureRemoteBinding, persistFixtureEvidence, writeBootstrapFixture, writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
 
-const scratchRoot = path.join(process.cwd(), '.cache', 'governance-command-tests');
+const scratchRoot = path.join(process.cwd(), '.cache', `governance-command-tests-${process.pid}`);
+afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
 let counter = 0;
 
 function nextRoot(name: string): string {
@@ -81,6 +85,8 @@ async function writeProject(name = 'demo-app'): Promise<string> {
   await mkdir(path.join(root, '.liftoff', 'governance'), { recursive: true });
   await writeFile(path.join(root, 'liftoff.manifest.json'), manifest(name), 'utf8');
   await writeFile(path.join(root, '.liftoff', 'governance', 'policy.md'), renderCanonicalGovernancePolicy(), 'utf8');
+  await writeIndependentInfrastructureFixture(root);
+  await writeBootstrapFixture(root, name, true);
   return root;
 }
 
@@ -104,6 +110,7 @@ function validState(overrides: Partial<UserActivationState> = {}): UserActivatio
       defaultBranch: 'develop'
     },
     activeChange: null,
+    remoteBinding: fixtureRemoteBinding,
     applicability: {
       statePath: 'none',
       privateStagingDast: false,
@@ -117,26 +124,7 @@ function validState(overrides: Partial<UserActivationState> = {}): UserActivatio
 }
 
 function header(phaseId: PhaseId, overrides: Partial<EvidenceHeader> = {}): EvidenceHeader {
-  const context = evidenceContextForPhase(phaseId, {
-    repositoryId: 'R_123',
-    identity: currentActivationIdentity,
-    phaseGraphHash: canonicalPhaseGraphHash
-  });
-  return {
-    schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
-    repositoryId: context.repositoryId,
-    identity: context.identity,
-    phaseGraphHash: context.phaseGraphHash,
-    phaseId,
-    phaseContractDigest: context.phaseContractDigest,
-    inputDigest: context.inputDigest,
-    baselineSha: context.baselineSha,
-    transition: context.transition,
-    producedAt: '2026-09-04T00:00:00.000Z',
-    producer: 'vitest',
-    result: 'verified',
-    ...overrides
-  };
+  return fixtureHeader(phaseId, overrides);
 }
 
 function phase0Facts(projectName: string, baselineSha = 'a'.repeat(64)): ApprovedPhase0Facts {
@@ -191,6 +179,20 @@ async function writeState(root: string, state: UserActivationState): Promise<voi
 }
 
 async function writeEvidence(root: string, name: string, value: unknown): Promise<void> {
+  const item = value as { header?: EvidenceHeader; phaseId?: PhaseId; payload?: unknown; liveReadback?: LiveReadbackProof[] };
+  const candidate = item.header ?? item as EvidenceHeader;
+  if (phaseIds.includes(candidate.phaseId)) {
+    const stateFile = path.join(root, 'governance', 'activation-state.json');
+    let state: UserActivationState;
+    let exists = true;
+    try { state = JSON.parse(await readFile(stateFile, 'utf8')); }
+    catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error; exists = false; state = validState(); }
+    await persistFixtureEvidence(root, state, {
+      evidenceId: name, header: candidate, payload: item.payload, liveReadback: item.liveReadback
+    });
+    if (exists) await writeState(root, state);
+    return;
+  }
   await mkdir(path.join(root, 'governance', 'evidence'), { recursive: true });
   await writeFile(path.join(root, 'governance', 'evidence', `${name}.json`), `${JSON.stringify(value, null, 2)}\n`, 'utf8');
 }
@@ -201,12 +203,9 @@ async function writeApproval(
   state: UserActivationState = validState()
 ): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-  const context = evidenceContextForPhase(phaseId, {
-    repositoryId: state.repository.id,
-    identity: currentActivationIdentity,
-    phaseGraphHash: currentActivationIdentity.phaseGraphHash
-  });
-  const plan = transitionPlanForPhase(phase, state, context.transition);
+  const manifest = await loadManifest(root);
+  const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest))[phaseId];
+  const plan = transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination);
   const approval: ApprovalEnvelope = {
     schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion,
     id: `${phaseId}-approval`,
@@ -398,79 +397,32 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     });
   });
 
-  it('reports setup complete only when every phase is successfully terminal', async () => {
+  it('does not report completion from terminal flags without current authoritative proof', async () => {
     const root = await writeProject('verify-complete');
     const state = validState();
     for (const phase of canonicalPhaseGraph.phases) {
-      const phaseId = phase.id;
-      if (phase.applicability.kind !== 'always') {
-        continue;
-      }
       const resultState = phase.terminalStates.find((candidate) => candidate !== 'failed')!;
-      if (resultState === 'approved') {
-        state.phases[phaseId] = {
-          state: resultState,
-          updatedAt: '2026-09-04T00:00:00.000Z',
-          evidence: [],
-          approvals: [],
-          blockers: []
-        };
-        continue;
-      }
-      const evidence = header(phaseId, { result: resultState });
-      const evidenceId = `${phaseId}-complete`;
-      const providers = phase.evidence.liveReadbackProviders;
-      state.phases[phaseId] = {
+      state.phases[phase.id] = {
         state: resultState,
         updatedAt: '2026-09-04T00:00:00.000Z',
-        evidence: [{
-          phaseId,
-          evidenceId,
-          headerDigest: canonicalSha256(evidence),
-          result: resultState
-        }],
+        evidence: [],
         approvals: [],
         blockers: []
-      };
-      await writeEvidence(
-        root,
-        evidenceId,
-        providers.length === 0
-          ? evidence
-          : {
-              evidenceId,
-              header: evidence,
-              liveReadback: providers.map((provider) => liveProof(phaseId, provider))
-            }
-      );
-    }
-    for (const phaseId of [
-      'committed',
-      'pushed',
-      'activation-approved',
-      'application-foundation',
-      'enforcement-approved',
-      'rulesets-applied'
-    ] as const) {
-      const approval = await writeApproval(root, phaseId, state);
-      state.phases[phaseId] = {
-        ...state.phases[phaseId],
-        approvals: [approval.id]
       };
     }
     await writeState(root, state);
 
     const result = await run(['governance', 'verify', '--json'], root);
 
-    expect(result.code, result.out).toBe(0);
+    expect(result.code, result.out).toBe(1);
     expect(JSON.parse(result.out), result.out).toMatchObject({
-      ok: true,
-      verificationStatus: 'consistent',
-      complete: true,
-      setupStatus: 'complete',
-      stateSource: 'user',
-      nextReadyPhase: null
+      ok: false,
+      verificationStatus: 'inconsistent',
+      complete: false,
+      setupStatus: 'in-progress',
+      stateSource: 'user'
     });
+    expect(JSON.parse(result.out).checks.find((check: { id: string }) => check.id === 'state-evidence').issues.length).toBeGreaterThan(0);
   });
 
   it('rejects terminal states that the phase graph does not allow', async () => {
@@ -521,7 +473,9 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     const root = await writeProject('verify-inapplicable-illegal-evidence');
     await writeState(root, validState());
     const evidence = header('state-path-selected', { result: 'disposed' });
-    await writeEvidence(root, 'state-path-selected-illegal', evidence);
+    await writeEvidence(root, 'state-path-selected-illegal', {
+      header: evidence, liveReadback: [liveProof('state-path-selected', 'azure')]
+    });
 
     const status = await run(['governance', 'status', '--json'], root);
 
@@ -615,7 +569,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
       status: 'none',
       createPlan: {
         status: 'blocked',
-        changeId: 'governance-seeded-000000000000'
+        changeId: 'governance-seeded-unbound'
       }
     });
     expect(await fingerprint(root)).toBe(beforePlan);
@@ -712,6 +666,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
       envelopeHash: canonicalApprovalEnvelopeHash(approval)
     });
 
+    approval.approvedAt = '2019-01-01T00:00:00.000Z';
     approval.expiresAt = '2020-01-01T00:00:00.000Z';
     await writeFile(
       path.join(root, 'governance', 'approvals', `${approval.id}.json`),

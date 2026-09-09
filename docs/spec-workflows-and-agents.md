@@ -36,6 +36,29 @@ integration, and records the default separately from the full agent set.
 Generated projects contain `.specify/`, `specs/`, and the selected agent
 integration markers.
 
+New projects also receive `specs/000-liftoff-bootstrap/spec.md`, `plan.md`, and
+`tasks.md`. These are explicit one-time, project-owned `seed` artifacts, separate
+from official framework templates. Local setup validates the real bundle and
+official markers, performs the applicable baseline, and then finalizes its task
+projection and receipt. It creates neither a Git branch nor an OpenSpec archive.
+
+All three files identify `000-liftoff-bootstrap`. The tasks contain exactly one
+initial unchecked entry each for **B001–B006**: review the real bundle and markers;
+use already-installed locked dependencies or install with explicit consent;
+run Liftoff/backend/applicable-worker checks; build the frontend or record
+inapplicability; validate Compose and all infrastructure roots; then finalize.
+The non-checkbox command reference list is not execution evidence.
+Only after every applicable check passes does explicit setup execution commit
+the checked projection with body/full-plan-bound baseline evidence. Failed checks
+leave tasks untouched; status, verify, and resume do not edit checkboxes.
+`seed-archived` means a local handoff for Spec Kit, not an archive operation.
+This exact bootstrap is not an active governance change and has no
+`liftoff-governance.json`.
+
+An existing Spec Kit project without this bundle receives a seed-adoption
+blocker. Adopting it requires separate reviewed project work; ordinary update,
+force, and assessment do not create seeds or infer earlier completion.
+
 Liftoff does not hand-write framework-owned core or integration output. It
 executes the tested official initializer, confines its writes to allowed roots,
 and validates the declared markers before merging.
@@ -92,9 +115,9 @@ files.
 Repository-governance launchers are separate managed-core Liftoff files at the exact
 Copilot prompt and Claude command paths documented in
 [repository governance](repository-governance.md). They reference one canonical
-policy and context rather than duplicating framework-owned content. After
-read-only Phase 0 and explicit approval, the agent creates a new change using
-the selected framework; Liftoff never pre-creates or restores that change.
+policy and context rather than duplicating framework-owned content. Later
+governance changes are distinct from the exact bootstrap seed. The setup kernel
+does not invent an active change, approval, or missing production executor.
 
 Install the exact selected framework release with its supported package manager:
 
@@ -118,29 +141,9 @@ Use `--copilot-cloud` or `--no-copilot-cloud` in automation. The choice is
 recorded as `githubCopilot.cloudAgent` in `openspec/config.yaml`; it is not stored
 as Liftoff overwrite or machine-configuration consent.
 
-## Optional Code Apps plugin
+## Retired Code Apps integration
 
-Power Apps projects can request Microsoft's
-`code-apps-preview@power-platform-skills` plugin. The integration is optional,
-Preview, and independent for each selected agent.
-
-Liftoff runs only allowlisted read-only plugin-list probes. A missing or
-unobservable plugin produces advisory guidance and never makes initialization
-or doctor fail by itself.
-
-Install the targeted plugin manually inside the selected agent:
-
-```text
-/plugin marketplace add microsoft/power-platform-skills
-/plugin install code-apps-preview@power-platform-skills
-```
-
-Liftoff does not run Microsoft's broad marketplace installer and does not
-invoke `/create-code-app`. The plugin's connector and deployment skills remain
-available for post-creation work.
-
-Changing the valid plugin preference in `liftoff.config.json` is reconciled by
-plain `liftoff update`; it updates manifest intent and applicable managed-core
-governance context without rewriting the project-owned Power Apps README or
-starter. Use `liftoff update --check` to inspect that maintenance without
-writing.
+The Power Apps workload and Code Apps plugin options are retired. Liftoff no
+longer installs, probes, or manages that integration. This does not uninstall
+machine-wide tools or plugins; existing installations remain outside Liftoff's
+maintenance authority.

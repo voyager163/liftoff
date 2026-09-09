@@ -203,55 +203,51 @@ describe('migrate command', () => {
     expect(gitignore).toContain('migration/legacy/');
   });
 
-  it('detects and migrates standard Python, Node.js, and Go API stacks', async () => {
-    const fixtures = [
-      {
-        name: 'legacy-python',
-        files: { 'requirements.txt': 'fastapi==0.111.0\nsqlalchemy==2.0.30\n' },
-        stack: 'python-fastapi',
-        expectedPath: ['backend', 'pyproject.toml']
+  it.each([
+    {
+      name: 'legacy-python',
+      files: { 'requirements.txt': 'fastapi==0.111.0\nsqlalchemy==2.0.30\n' },
+      stack: 'python-fastapi',
+      expectedPath: ['backend', 'pyproject.toml']
+    },
+    {
+      name: 'legacy-node',
+      files: { 'package.json': JSON.stringify({ dependencies: { fastify: '^5.0.0' }, devDependencies: { typescript: '^5.5.0' } }) },
+      stack: 'node-fastify',
+      expectedPath: ['backend', 'package.json']
+    },
+    {
+      name: 'legacy-go',
+      files: {
+        'go.mod': 'module example.com/legacy\n\ngo 1.23\n\nrequire github.com/danielgtaylor/huma/v2 v2.27.0\n',
+        'cmd/api/main.go': 'package main\n\nimport _ "github.com/go-chi/chi/v5"\n'
       },
-      {
-        name: 'legacy-node',
-        files: { 'package.json': JSON.stringify({ dependencies: { fastify: '^5.0.0' }, devDependencies: { typescript: '^5.5.0' } }) },
-        stack: 'node-fastify',
-        expectedPath: ['backend', 'package.json']
-      },
-      {
-        name: 'legacy-go',
-        files: {
-          'go.mod': 'module example.com/legacy\n\ngo 1.23\n\nrequire github.com/danielgtaylor/huma/v2 v2.27.0\n',
-          'cmd/api/main.go': 'package main\n\nimport _ "github.com/go-chi/chi/v5"\n'
-        },
-        stack: 'go-huma',
-        expectedPath: ['backend', 'go.mod']
-      }
-    ];
-
-    for (const fixture of fixtures) {
-      const { parent, source } = await buildStandardFixture(fixture.name, fixture.files);
-      const before = await hashTree(source);
-      const result = await run(['migrate', source, '--region', 'eastus', '--yes'], parent);
-      expect(result.code).toBe(0);
-      expect(result.out).toContain(`apiStack: ${fixture.stack}`);
-
-      const target = path.join(parent, `${fixture.name}-liftoff`);
-      const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-      expect(manifest.project.workload).toMatchObject({
-        kind: 'standard',
-        apiStack: fixture.stack
-      });
-      await access(path.join(target, ...fixture.expectedPath));
-
-      const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
-      expect(tasks).toContain(fixture.expectedPath.join('/'));
-      expect(tasks).not.toContain('backend/orchestration/retrieval');
-      if (fixture.stack === 'go-huma') {
-        expect(tasks).toContain('migration/legacy/cmd/api/main.go');
-        expect(tasks).toContain('backend/cmd/api/');
-      }
-      expect(await hashTree(source)).toEqual(before);
+      stack: 'go-huma',
+      expectedPath: ['backend', 'go.mod']
     }
+  ])('detects and migrates the standard $stack API stack', async (fixture) => {
+    const { parent, source } = await buildStandardFixture(fixture.name, fixture.files);
+    const before = await hashTree(source);
+    const result = await run(['migrate', source, '--region', 'eastus', '--yes'], parent);
+    expect(result.code).toBe(0);
+    expect(result.out).toContain(`apiStack: ${fixture.stack}`);
+
+    const target = path.join(parent, `${fixture.name}-liftoff`);
+    const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
+    expect(manifest.project.workload).toMatchObject({
+      kind: 'standard',
+      apiStack: fixture.stack
+    });
+    await access(path.join(target, ...fixture.expectedPath));
+
+    const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
+    expect(tasks).toContain(fixture.expectedPath.join('/'));
+    expect(tasks).not.toContain('backend/orchestration/retrieval');
+    if (fixture.stack === 'go-huma') {
+      expect(tasks).toContain('migration/legacy/cmd/api/main.go');
+      expect(tasks).toContain('backend/cmd/api/');
+    }
+    expect(await hashTree(source)).toEqual(before);
   });
 
   it('leaves weak and conflicting API evidence unresolved', async () => {
@@ -298,6 +294,39 @@ describe('migrate command', () => {
 
     const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
     expect(tasks).not.toContain('backend/orchestration/retrieval');
+  });
+
+  it('honors no-genai without requiring an unrelated API-stack override', async () => {
+    const { parent, source } = await buildLegacyFixture();
+    const result = await run(['migrate', source, '--no-genai', '--region', 'eastus', '--yes'], parent);
+    expect(result.code).toBe(0);
+    const manifest = JSON.parse(await readFile(
+      path.join(parent, 'legacy-app-liftoff', 'liftoff.manifest.json'), 'utf8'
+    ));
+    expect(manifest.project.workload).toMatchObject({ kind: 'standard', apiStack: 'python-fastapi' });
+    expect(manifest.project.workload.pattern).toBeUndefined();
+  });
+
+  it('ports Go source into an explicitly selected Node target without a frontend', async () => {
+    const { parent, source } = await buildStandardFixture('legacy-go-frontend', {
+      'go.mod': 'module example.com/legacy\nrequire github.com/go-chi/chi/v5 v5.2.1',
+      'cmd/api/main.go': 'package main\nimport _ "github.com/go-chi/chi/v5"',
+      'frontend/package.json': JSON.stringify({ dependencies: { react: '^19' } })
+    });
+    const before = await hashTree(source);
+    const result = await run([
+      'migrate', source, '--type', 'Standard application', '--api', 'node',
+      '--no-frontend', '--region', 'eastus', '--yes'
+    ], parent);
+    expect(result.code).toBe(0);
+    const target = path.join(parent, 'legacy-go-frontend-liftoff');
+    const tasks = await readFile(path.join(target, 'openspec', 'changes', 'migrate-to-liftoff', 'tasks.md'), 'utf8');
+    expect(tasks).toContain('Port Go application behavior');
+    expect(tasks).not.toContain('into backend/cmd/api/');
+    expect(tasks).toContain('no generated frontend was selected');
+    expect(tasks.indexOf('Run the backend tests')).toBeLessThan(tasks.indexOf('Delete migration/legacy/'));
+    await expect(access(path.join(target, 'frontend'))).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await hashTree(source)).toEqual(before);
   });
 
   it('emits an OpenSpec change seeded from the scan with nothing silently dropped', async () => {

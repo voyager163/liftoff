@@ -1,6 +1,6 @@
 import { access, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { supportedStack } from './supported-stack.js';
+import { packagedSupportedStack as supportedStack } from './adapters/packaged-assets/supported-stack.js';
 import {
   workstationRequirementCatalog,
   type InstallRecipe,
@@ -18,7 +18,7 @@ import type {
   ProviderId,
   ProjectPlan,
   SpecWorkflowId
-} from './types.js';
+} from './domain/project/contracts.js';
 
 export type RequirementState = 'ready' | 'missing' | 'outdated' | 'unhealthy' | 'not-observable';
 
@@ -29,6 +29,8 @@ export interface SelectedRequirement {
   reasons: string[];
   minimumVersion?: string;
   exactVersion?: string;
+  releaseLine?: string;
+  allowPrerelease?: boolean;
 }
 
 export interface ReadinessNotice {
@@ -49,13 +51,12 @@ export interface RequirementProbeResult {
 }
 
 export interface WorkstationRequirementSelection {
-  workload:
-    | {
-        kind: 'genai' | 'standard';
-        apiStack: { id: ApiStackId };
-        provider: { id: ProviderId };
-      }
-    | { kind: 'power-apps-code-app' };
+  workload: {
+    kind: 'genai' | 'standard';
+    apiStack: { id: ApiStackId };
+    provider: { id: ProviderId };
+    frontend?: boolean;
+  };
   specWorkflow: { id: SpecWorkflowId };
   framework: { version: string };
   agents: Array<{ id: CodingAgentId; label: string }>;
@@ -88,6 +89,7 @@ export interface InstallResult {
 
 const REQUIREMENT_ORDER: WorkstationRequirementId[] = [
   'node',
+  'npm',
   'python',
   'go',
   'uv',
@@ -103,8 +105,8 @@ const REQUIREMENT_ORDER: WorkstationRequirementId[] = [
 const MISSING_ERROR_CODES = new Set(['ENOENT', 'UNKNOWN']);
 
 function compareVersions(left: string, right: string): number {
-  const leftParts = left.split('.').map(Number);
-  const rightParts = right.split('.').map(Number);
+  const leftParts = versionCore(left).split('.').map(Number);
+  const rightParts = versionCore(right).split('.').map(Number);
   for (let index = 0; index < Math.max(leftParts.length, rightParts.length); index += 1) {
     const difference = (leftParts[index] ?? 0) - (rightParts[index] ?? 0);
     if (difference !== 0) {
@@ -115,7 +117,26 @@ function compareVersions(left: string, right: string): number {
 }
 
 export function extractVersion(output: string): string | undefined {
-  return output.match(/(?:^|[^0-9])v?([0-9]+\.[0-9]+(?:\.[0-9]+)?)(?:[^0-9]|$)/)?.[1];
+  return output.match(
+    /(?:^|[^0-9A-Za-z])(?:v|go)?([0-9]+\.[0-9]+(?:\.[0-9]+)?(?:(?:-[0-9A-Za-z]|[A-Za-z])[0-9A-Za-z.-]*)?(?:\+[0-9A-Za-z.-]+)?)(?=$|[^0-9A-Za-z.+-])/i
+  )?.[1];
+}
+
+function versionCore(value: string): string {
+  return value
+    .split('+', 1)[0]!
+    .match(/^\d+\.\d+(?:\.\d+)?/)?.[0] ?? value;
+}
+
+function isPrereleaseVersion(value: string): boolean {
+  const withoutBuild = value.split('+', 1)[0]!;
+  return withoutBuild.slice(versionCore(withoutBuild).length).length > 0;
+}
+
+function matchesReleaseLine(value: string, releaseLine: string): boolean {
+  const versionParts = versionCore(value).split('.');
+  const releaseParts = releaseLine.split('.');
+  return releaseParts.every((part, index) => versionParts[index] === part);
 }
 
 export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
@@ -125,7 +146,9 @@ export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
     definition,
     severity: definition.severity,
     reasons: ['Liftoff runtime'],
-    minimumVersion: supportedStack.runtimes.node.minimumVersion
+    minimumVersion: definition.minimumVersion,
+    releaseLine: definition.releaseLine,
+    allowPrerelease: definition.allowPrerelease ?? false
   }];
 }
 
@@ -156,36 +179,44 @@ export function selectWorkstationRequirements(
       severity: overrides.severity ?? definition.severity,
       reasons: [reason],
       ...(minimumVersion ? { minimumVersion } : {}),
-      ...(exactVersion ? { exactVersion } : {})
+      ...(exactVersion ? { exactVersion } : {}),
+      ...(definition.releaseLine ? { releaseLine: definition.releaseLine } : {}),
+      allowPrerelease: definition.allowPrerelease ?? false
     });
   };
 
   const workload = typeof plan.workload === 'string'
-    ? plan.workload === 'power-apps-code-app'
-      ? { kind: plan.workload } as const
-      : {
-          kind: plan.workload,
-          apiStack: { id: plan.apiStack.id },
-          provider: { id: plan.provider.id }
-        }
+    ? {
+        kind: plan.workload,
+        apiStack: { id: plan.apiStack.id },
+        provider: { id: plan.provider.id }
+      }
     : plan.workload;
+  const includeFrontend = typeof plan.workload === 'string'
+    ? plan.includeFrontend
+    : plan.workload.frontend ?? false;
   add('node', 'Liftoff runtime', {
     minimumVersion: supportedStack.runtimes.node.minimumVersion
   });
-  if (workload.kind !== 'power-apps-code-app') {
-    if (workload.apiStack.id === 'python-fastapi') {
-      add('python', 'selected Python API stack', {
-        minimumVersion: supportedStack.runtimes.python.minimumVersion
-      });
-      add('uv', 'locked Python dependency manager');
-    } else if (workload.apiStack.id === 'go-huma') {
-      add('go', 'selected Go API stack', {
-        minimumVersion: supportedStack.runtimes.go.minimumVersion
-      });
-    }
+  if (workload.apiStack.id === 'node-fastify') {
+    add('npm', 'selected Node.js API dependency manager');
+  }
+  if (includeFrontend) {
+    add('npm', 'selected frontend dependency manager');
+  }
+  if (workload.apiStack.id === 'python-fastapi') {
+    add('python', 'selected Python API stack', {
+      minimumVersion: supportedStack.runtimes.python.minimumVersion
+    });
+    add('uv', 'locked Python dependency manager');
+  } else if (workload.apiStack.id === 'go-huma') {
+    add('go', 'selected Go API stack', {
+      minimumVersion: supportedStack.runtimes.go.minimumVersion
+    });
   }
 
   if (plan.specWorkflow.id === 'openspec') {
+    add('npm', 'OpenSpec installer and launcher');
     add('node', 'OpenSpec runtime', {
       minimumVersion: supportedStack.runtimes.node.minimumVersion
     });
@@ -202,12 +233,10 @@ export function selectWorkstationRequirements(
     }
   }
 
-  if (workload.kind !== 'power-apps-code-app') {
-    add('docker', 'generated local development stack');
-    add('opentofu', 'generated infrastructure');
-    if (workload.provider.id === 'azure') {
-      add('azure-cli', 'selected Azure cloud');
-    }
+  add('docker', 'generated local development stack');
+  add('opentofu', 'generated infrastructure');
+  if (workload.provider.id === 'azure') {
+    add('azure-cli', 'selected Azure cloud');
   }
   for (const agent of plan.agents) {
     add(agent.id, `selected ${agent.label} coding agent`);
@@ -224,7 +253,8 @@ function missingResult(requirement: SelectedRequirement, detail = 'command not f
     requirement,
     state: 'missing',
     detail,
-    remedy: `Install ${requirement.definition.label}.`,
+    remedy: requirement.definition.missingRemedy ??
+      `Install ${requirement.definition.label}.`,
     notices: []
   };
 }
@@ -324,6 +354,40 @@ function classifyVersion(
       state: 'unhealthy',
       detail: `Unable to parse a version from: ${output || '(empty output)'}`,
       remedy: `Verify ${requirement.definition.label} manually and reinstall it if necessary.`,
+      notices: []
+    };
+  }
+  if (
+    version &&
+    !requirement.allowPrerelease &&
+    isPrereleaseVersion(version)
+  ) {
+    return {
+      requirement,
+      state: 'outdated',
+      detail: `Found prerelease ${version}; a stable release is required.`,
+      detectedVersion: version,
+      detectedBy: command.executable,
+      remedy: requirement.exactVersion
+        ? `Install ${requirement.definition.label} ${requirement.exactVersion}.`
+        : `Install a stable ${requirement.definition.label} release${requirement.releaseLine ? ` in the supported ${requirement.releaseLine} line` : ''}.`,
+      notices: []
+    };
+  }
+  if (
+    version &&
+    requirement.releaseLine &&
+    !matchesReleaseLine(version, requirement.releaseLine)
+  ) {
+    return {
+      requirement,
+      state: 'outdated',
+      detail: `Found ${version}; the supported release line is ${requirement.releaseLine}.`,
+      detectedVersion: version,
+      detectedBy: command.executable,
+      remedy: requirement.exactVersion
+        ? `Install ${requirement.definition.label} ${requirement.exactVersion}.`
+        : `Install ${requirement.definition.label} ${requirement.releaseLine}.x at or above ${requirement.minimumVersion}.`,
       notices: []
     };
   }

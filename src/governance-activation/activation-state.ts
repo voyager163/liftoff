@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import {
   chmod,
   mkdir,
+  open,
   readFile,
   rename,
   stat,
@@ -9,14 +10,14 @@ import {
   writeFile
 } from 'node:fs/promises';
 import path from 'node:path';
-import { canonicalJson, sha256Hex } from './canonical-json.js';
-import {
-  readProjectFile,
-  resolveProjectPath,
-  validateArtifactPathParts
-} from '../file-system.js';
-import type { UserActivationState } from './types.js';
-import { validateUserActivationState } from './validators.js';
+import { canonicalJson, sha256Hex } from '../domain/governance/activation/canonical-json.js';
+import { readProjectFile } from '../adapters/filesystem/project-files.js';
+import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
+import type { UserActivationState } from '../domain/governance/activation/types.js';
+import { validateUserActivationState } from '../domain/governance/activation/validators.js';
+import { withProjectMutationLock, type ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
+import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
 
 export class ActivationStateFileError extends Error {
   constructor(message: string) {
@@ -94,6 +95,10 @@ export async function loadActivationState(projectRoot: string): Promise<LoadedAc
     throw new ActivationStateFileError(`Unable to parse governance/activation-state.json: ${errorMessage(error)}`);
   }
   let state: UserActivationState;
+  if (typeof parsed === 'object' && parsed !== null && 'schemaVersion' in parsed && parsed.schemaVersion === 1 &&
+    'identity' in parsed && isHistoricalActivationIdentity(parsed.identity)) {
+    throw new ActivationStateFileError('Historical activation v1 state is diagnostic-only; migration to v2 is unsupported. Original state and evidence bytes were preserved. Do not reset, delete, or hand-edit activation history.');
+  }
   try {
     state = validateUserActivationState(parsed);
   } catch (error) {
@@ -155,6 +160,16 @@ export async function writeActivationState(
   expectation: ActivationStateWriteExpectation,
   options: ActivationStateWriteOptions = {}
 ): Promise<ActivationStateWriteResult> {
+  return withProjectMutationLock(projectRoot, (lease) => writeActivationStateLocked(projectRoot, state, expectation, options, lease));
+}
+
+async function writeActivationStateLocked(
+  projectRoot: string,
+  state: UserActivationState,
+  expectation: ActivationStateWriteExpectation,
+  options: ActivationStateWriteOptions,
+  lease: ProjectMutationLease
+): Promise<ActivationStateWriteResult> {
   const validatedState = validateUserActivationState(state);
   const prior = await loadActivationState(projectRoot);
   assertExpectedPrior(prior, expectation);
@@ -172,15 +187,20 @@ export async function writeActivationState(
   const rollbackFailures: string[] = [];
 
   try {
+    await lease.assertHeld();
     await mkdir(directory, { recursive: true });
     if (prior) {
-      await writeFile(backupPath, prior.content, { encoding: 'utf8', flag: 'wx', mode });
-      await chmod(backupPath, mode);
+      const backup = await open(backupPath, 'wx', mode);
       backupWritten = true;
+      try { await backup.writeFile(prior.content, 'utf8'); await backup.chmod(mode); }
+      finally { await backup.close(); }
     }
-    await writeFile(temporaryPath, content, { encoding: 'utf8', flag: 'wx', mode });
-    await chmod(temporaryPath, mode);
+    const temporary = await open(temporaryPath, 'wx', mode);
     temporaryWritten = true;
+    try { await temporary.writeFile(content, 'utf8'); await temporary.chmod(mode); }
+    finally { await temporary.close(); }
+    assertExpectedPrior(await loadActivationState(projectRoot), expectation);
+    await lease.assertHeld();
     await rename(temporaryPath, targetPath);
     replacementInstalled = true;
     temporaryWritten = false;
@@ -198,11 +218,23 @@ export async function writeActivationState(
       schemaVersion: validatedState.schemaVersion
     };
   } catch (error) {
+    try {
+      await lease.assertHeld();
+    } catch (lockError) {
+      throw new ActivationStateTransactionError(
+        `Activation write lost its mutation lease; state and recovery files were preserved: ${errorMessage(lockError)}`,
+        [errorMessage(error)]
+      );
+    }
     if (temporaryWritten) {
       await removeIfExists(temporaryPath, rollbackFailures);
     }
     if (replacementInstalled) {
-      if (prior) {
+      const current = await readProjectFile(projectRoot, activationStatePathParts());
+      if (current?.toString('utf8') !== content) {
+        rollbackFailures.push('Activation state changed after replacement; the concurrent version and recovery backup were preserved.');
+        backupWritten = false;
+      } else if (prior) {
         try {
           await writeFile(targetPath, prior.content, { encoding: 'utf8', mode });
           await chmod(targetPath, mode);

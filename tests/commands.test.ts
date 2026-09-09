@@ -1,11 +1,15 @@
 import path from 'node:path';
 import { Readable } from 'node:stream';
-import { access, mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
-import { formatCommandHelp, getCommandHelp, parseArgs } from '../src/args.js';
+import {
+  commandDefinitions,
+  formatCommandHelp,
+  getCommandHelp,
+  parseArgs
+} from '../src/args.js';
 import { createFixtureProject, runCommand } from '../src/commands.js';
-import { dependencyResumeCommand } from '../src/project-dependencies.js';
 import {
   OPEN_SPEC_PROFILE,
   OPEN_SPEC_WORKFLOW_IDS
@@ -16,8 +20,11 @@ import type {
   CommandResult,
   RunCommandOptions
 } from '../src/process-runner.js';
-import { formatCommand } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
+import {
+  commandShellForPlatform,
+  formatShellCommand
+} from '../src/adapters/process/shell-command.js';
 
 class FrameworkFailureRunner extends ReadyInitRunner {
   stagedRoot?: string;
@@ -94,17 +101,97 @@ describe('commands', () => {
     expect(parsed.flags.api).toBe('node');
   });
 
-  it('parses the explicit Power Apps workload and preview plugin preference', () => {
-    const parsed = parseArgs([
-      'init',
-      'field-service',
-      '--type',
-      'power-apps-code-app',
-      '--code-apps-plugin'
-    ]);
+  it.each(
+    Object.keys(commandDefinitions).map((command) => [command]).flatMap((command) => [
+      [command, '--code-apps-plugin', 'code-apps-plugin'],
+      [command, '--code-apps-plugin=false', 'code-apps-plugin'],
+      [command, '--no-code-apps-plugin', 'no-code-apps-plugin']
+    ])
+  )('rejects retired plugin syntax during %j parsing: %s', (command, flag, rawName) => {
+    expect(() => parseArgs([...command, flag])).toThrow(
+      `Flag --${rawName} was removed because Power Apps code apps are retired and unsupported.`
+    );
+  });
 
-    expect(parsed.flags.type).toBe('power-apps-code-app');
-    expect(parsed.flags['code-apps-plugin']).toBe(true);
+  it('rejects a raw retired manifest through every public inspection path without writes or probes', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-retired-boundary-'));
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const sentinelPath = path.join(root, 'production-app.txt');
+    const raw = `${JSON.stringify({
+      artifactVersion: 7,
+      generatedBy: 'Mission Control Liftoff',
+      liftoffVersion: '0.10.4',
+      project: {
+        name: 'Retired Boundary',
+        workload: {
+          kind: 'power-apps-code-app',
+          starter: null,
+          codeAppsPlugin: { malformed: true },
+          apiStack: ['must-not-be-read']
+        },
+        specWorkflow: 'openspec',
+        agents: []
+      },
+      framework: {
+        state: 'initialized',
+        adapter: 'openspec',
+        contractVersion: '1.11.0'
+      },
+      governance: {
+        profile: 'none',
+        state: 'disabled',
+        activationIdentity: { malformed: true },
+        live: { endpoint: 'https://must-not-be-requested.invalid' }
+      },
+      managedArtifacts: [{
+        logicalName: 'unsafe-retired-artifact',
+        category: 'governance',
+        pathParts: ['..', 'must-not-be-read'],
+        contentHash: 'not-a-hash'
+      }],
+      projectArtifacts: 'malformed'
+    }, null, 2)}\n`;
+    await writeFile(manifestPath, raw);
+    await writeFile(sentinelPath, 'production bytes\n');
+    try {
+      const invocations = [
+        ['validate'],
+        ['doctor'],
+        ['update'],
+        ['update', '--force'],
+        ['dev'],
+        ['infra'],
+        ['governance', 'assess', '--live', '--json']
+      ];
+      for (const args of invocations) {
+        const stdout = new CaptureStream();
+        const stderr = new CaptureStream();
+        const runner = new ReadyInitRunner();
+        const code = await runCommand(parseArgs(args), {
+          cwd: root,
+          stdout,
+          stderr,
+          runner,
+          stableReleaseLookup: async () => {
+            throw new Error('retired projects must not query release metadata');
+          }
+        });
+
+        expect(code, args.join(' ')).toBe(1);
+        expect(`${stdout.text()}\n${stderr.text()}`, args.join(' ')).toMatch(
+          /Power Apps.*retired|retired.*Power Apps/i
+        );
+        expect(runner.calls, args.join(' ')).toEqual([]);
+        expect(await readFile(manifestPath, 'utf8')).toBe(raw);
+        expect(await readFile(sentinelPath, 'utf8')).toBe('production bytes\n');
+        expect((await readdir(root)).sort()).toEqual([
+          'liftoff.manifest.json',
+          'production-app.txt'
+        ]);
+      }
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
   });
 
   it('parses multi-agent and independent consent flags strictly', () => {
@@ -420,63 +507,28 @@ describe('commands', () => {
     }
   });
 
-  it('previews a Power Apps code app without API or infrastructure artifacts', async () => {
+  it.each([
+    ['plan', '--type', 'power-apps-code-app'],
+    ['init', 'field-service', '--type', 'power-apps-code-app', '--yes']
+  ])('rejects retired Power Apps input before preparation or generation: %j', async (...args) => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plan-'));
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
+    const runner = new ReadyInitRunner();
     try {
       const code = await runCommand(
-        parseArgs(['plan', '--type', 'power-apps-code-app']),
-        { cwd: tempRoot, stdout, stderr }
+        parseArgs(args),
+        { cwd: tempRoot, stdout, stderr, runner }
       );
 
-      expect(code).toBe(0);
-      expect(stdout.text()).toContain('Power Apps code app');
-      expect(stdout.text()).toContain('power-apps-package');
-      expect(stdout.text()).toContain('Project dependencies: npm ci');
-      expect(stdout.text()).toContain('npx --no-install power-apps init');
-      expect(stdout.text()).toContain('Node.js: 24.20.0+ [blocking]');
-      expect(stdout.text()).toContain('Code Apps plugin: Not requested');
-      expect(stdout.text()).toContain('repository-governance-context');
-      expect(stdout.text()).not.toContain('docker-compose');
-      expect(stdout.text()).not.toContain('opentofu');
-      expect(stderr.text()).toBe('');
+      expect(code).toBe(1);
+      expect(`${stdout.text()}\n${stderr.text()}`).toMatch(
+        /Power Apps.*retired|retired.*Power Apps/i
+      );
       expect(await readdir(tempRoot)).toEqual([]);
+      expect(runner.calls).toEqual([]);
     } finally {
       await rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
-  it('shows workload-aware Power Apps development and infrastructure helpers', async () => {
-    const root = await createFixtureProject({
-      projectName: 'Helper App',
-      projectType: 'power-apps-code-app',
-      specWorkflow: 'openspec',
-      agents: ['copilot']
-    });
-    try {
-      const devOut = new CaptureStream();
-      expect(await runCommand(parseArgs(['dev']), {
-        cwd: root,
-        stdout: devOut,
-        stderr: new CaptureStream()
-      })).toBe(0);
-      expect(devOut.text()).toContain('Dependency prerequisite');
-      expect(devOut.text()).toContain('$ npm ci');
-      expect(devOut.text()).toContain('$ npm run dev');
-      expect(devOut.text()).not.toContain('docker compose');
-
-      const infraOut = new CaptureStream();
-      expect(await runCommand(parseArgs(['infra']), {
-        cwd: root,
-        stdout: infraOut,
-        stderr: new CaptureStream()
-      })).toBe(0);
-      expect(infraOut.text()).toContain('Not applicable');
-      expect(infraOut.text()).toContain('hosted by Power Platform');
-      expect(infraOut.text()).not.toContain('tofu');
-    } finally {
-      await rm(path.dirname(root), { recursive: true, force: true });
     }
   });
 
@@ -493,19 +545,32 @@ describe('commands', () => {
       includeFrontend: false
     });
     try {
-      const infrastructureRoot = path.join(root, 'infrastructure', 'opentofu', 'azure');
-      const expectedPrefix = formatCommand({
+      const infrastructureRoot = (environment: 'staging' | 'prod') => path.join(
+        root,
+        'infrastructure',
+        'opentofu',
+        'azure',
+        'environments',
+        environment
+      );
+      const expected = (
+        environment: 'staging' | 'prod',
+        operation: 'plan' | 'apply'
+      ) => formatShellCommand({
         executable: 'tofu',
-        args: [`-chdir=${infrastructureRoot.split(path.sep).join('/')}`]
-      });
+        args: [
+          `-chdir=${infrastructureRoot(environment)}`,
+          operation,
+          `-var-file=${environment}.tfvars`
+        ]
+      }, commandShellForPlatform(process.platform));
       const defaultOutput = new CaptureStream();
       expect(await runCommand(parseArgs(['infra', 'plan']), {
         cwd: path.join(root, 'backend'),
         stdout: defaultOutput,
         stderr: new CaptureStream()
       })).toBe(0);
-      expect(defaultOutput.text()).toContain(expectedPrefix);
-      expect(defaultOutput.text()).toContain('-var-file=environments/staging.tfvars');
+      expect(defaultOutput.text()).toContain(expected('staging', 'plan'));
 
       const selectedOutput = new CaptureStream();
       expect(await runCommand(parseArgs(['infra', 'apply', '--env', 'prod']), {
@@ -513,8 +578,7 @@ describe('commands', () => {
         stdout: selectedOutput,
         stderr: new CaptureStream()
       })).toBe(0);
-      expect(selectedOutput.text()).toContain(expectedPrefix);
-      expect(selectedOutput.text()).toContain('apply -var-file=environments/prod.tfvars');
+      expect(selectedOutput.text()).toContain(expected('prod', 'apply'));
 
       const rejectedError = new CaptureStream();
       expect(await runCommand(parseArgs(['infra', 'plan', '--env', 'dev']), {
@@ -542,122 +606,6 @@ describe('commands', () => {
     expect(stderr.text()).toContain('Unsupported environment: test. Supported environments: dev, staging, prod.');
   });
 
-  it('validates Power Apps provenance and framework markers without policing project bytes', async () => {
-    const root = await createFixtureProject({
-      projectName: 'Validate App',
-      projectType: 'power-apps-code-app',
-      specWorkflow: 'openspec',
-      agents: ['copilot']
-    });
-    const manifestPath = path.join(root, 'liftoff.manifest.json');
-    const lockPath = path.join(root, 'package-lock.json');
-    const markerPath = path.join(root, '.github', 'skills', 'openspec-apply-change', 'SKILL.md');
-    try {
-      const ready = new CaptureStream();
-      expect(await runCommand(parseArgs(['validate', '--json']), {
-        cwd: root,
-        stdout: ready,
-        stderr: new CaptureStream()
-      })).toBe(0);
-      expect(JSON.parse(ready.text())).toMatchObject({
-        schemaVersion: 1,
-        projectRoot: root,
-        valid: true,
-        issues: []
-      });
-
-      const manifestText = await readFile(manifestPath, 'utf8');
-      const manifest = JSON.parse(manifestText);
-      manifest.projectArtifacts = manifest.projectArtifacts.filter(
-        (artifact: { logicalName: string }) => artifact.logicalName !== 'power-apps-package'
-      );
-      await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-      const missingArtifact = new CaptureStream();
-      expect(await runCommand(parseArgs(['validate', '--json']), {
-        cwd: root,
-        stdout: missingArtifact,
-        stderr: new CaptureStream()
-      })).toBe(1);
-      expect(JSON.parse(missingArtifact.text()).issues).toContain(
-        'Missing required Power Apps manifest artifact power-apps-package at package.json'
-      );
-      await writeFile(manifestPath, manifestText);
-
-      const lockText = await readFile(lockPath, 'utf8');
-      const lock = JSON.parse(lockText);
-      lock.name = 'wrong-project';
-      await writeFile(lockPath, `${JSON.stringify(lock, null, 2)}\n`);
-      const projectOwnedEdit = new CaptureStream();
-      expect(await runCommand(parseArgs(['validate', '--json']), {
-        cwd: root,
-        stdout: projectOwnedEdit,
-        stderr: new CaptureStream()
-      })).toBe(0);
-      expect(JSON.parse(projectOwnedEdit.text()).issues).toEqual([]);
-      await writeFile(lockPath, lockText);
-
-      await rm(markerPath);
-      const missingMarker = new CaptureStream();
-      expect(await runCommand(parseArgs(['validate', '--json']), {
-        cwd: root,
-        stdout: missingMarker,
-        stderr: new CaptureStream()
-      })).toBe(1);
-      expect(JSON.parse(missingMarker.text()).issues[0]).toContain('Missing framework marker');
-    } finally {
-      await rm(path.dirname(root), { recursive: true, force: true });
-    }
-  });
-
-  it('keeps requested Code Apps plugin setup advisory even with --install-tools', async () => {
-    const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-plugin-'));
-    const stdout = new CaptureStream();
-    const runner = new ReadyInitRunner();
-    try {
-      const code = await runCommand(parseArgs([
-        'init', 'field-service', '--type', 'power-apps-code-app',
-        '--spec', 'openspec', '--agents', 'copilot,claude',
-        '--code-apps-plugin', '--yes', '--install-tools'
-      ]), {
-        cwd: tempRoot,
-        stdout,
-        stderr: new CaptureStream(),
-        runner
-      });
-
-      expect(code).toBe(0);
-      expect(stdout.text()).toContain('Optional Code Apps plugin');
-      expect(stdout.text()).toContain('code-apps-preview@power-platform-skills');
-      expect(stdout.text()).toContain('Do not run `/create-code-app`');
-      expect(stdout.text()).toContain(
-        dependencyResumeCommand({
-          id: 'power-apps-root',
-          label: 'Install Power Apps code app dependencies',
-          command: {
-            executable: process.platform === 'win32' ? 'npm.cmd' : 'npm',
-            args: ['ci']
-          },
-          cwd: await realpath(path.join(tempRoot, 'field-service'))
-        })
-      );
-      expect(runner.calls).toContainEqual({
-        executable: 'copilot',
-        args: ['plugin', 'list']
-      });
-      expect(runner.calls).toContainEqual({
-        executable: 'claude',
-        args: ['plugin', 'list', '--json']
-      });
-      expect(runner.calls.some((command) =>
-        command.args[0] === 'plugin' && command.args[1] === 'install'
-      )).toBe(false);
-      expect(runner.calls.some((command) => command.executable === 'curl')).toBe(false);
-      expect(runner.calls.some((command) => command.args[0] === 'ci')).toBe(false);
-    } finally {
-      await rm(tempRoot, { recursive: true, force: true });
-    }
-  });
-
   it.each([
     ['failure', 'initializer failed'],
     ['missing-marker', 'did not produce the tested contract']
@@ -665,7 +613,7 @@ describe('commands', () => {
     behavior,
     expected
   ) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-power-apps-framework-'));
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-standard-framework-'));
     const sentinelPath = path.join(root, 'developer.txt');
     await mkdir(path.join(root, '.git'));
     await writeFile(sentinelPath, 'preserve\n');
@@ -673,7 +621,8 @@ describe('commands', () => {
     const stderr = new CaptureStream();
     try {
       const code = await runCommand(parseArgs([
-        'init', '--type', 'power-apps-code-app', '--spec', 'openspec',
+        'init', '--no-genai', '--api', 'node', '--cloud', 'azure',
+        '--region', 'eastus', '--no-frontend', '--spec', 'openspec',
         '--agents', 'copilot', '--yes'
       ]), {
         cwd: root,
@@ -693,7 +642,7 @@ describe('commands', () => {
     }
   });
 
-  it('rejects unsupported Power Apps migration before inspecting the source', async () => {
+  it('rejects retired Power Apps migration before inspecting the source', async () => {
     const stderr = new CaptureStream();
     const code = await runCommand(
       parseArgs(['migrate', 'missing-source', '--type', 'power-apps-code-app', '--yes']),
@@ -701,7 +650,7 @@ describe('commands', () => {
     );
 
     expect(code).toBe(1);
-    expect(stderr.text()).toContain('Power Apps code app migration is not supported');
+    expect(stderr.text()).toMatch(/Power Apps.*retired|retired.*Power Apps/i);
     expect(stderr.text()).not.toContain('Source project not found');
   });
 
@@ -1076,7 +1025,9 @@ describe('commands', () => {
       );
       const output = `${stdout.text()}\n${stderr.text()}`;
       expect(code).toBe(1);
-      expect(output).toContain('Protected dependency metadata preserved');
+      expect(output).toContain('Dependency metadata inspected');
+      expect(output).toContain('no uncertain edits were restored');
+      expect(output).toContain('Recovery shell');
       expect(output).toContain(
         'Dependency scripts may have changed other project files; review the working tree before retrying.'
       );

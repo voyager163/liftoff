@@ -17,17 +17,20 @@ file; they never resolve mutable `latest` versions.
 | OpenSpec | 1.11.0 |
 | Spec Kit | 1.0.1 |
 | AzureRM provider | 5.3.0 |
-| Power Apps SDK | 1.2.7 |
 
-Power Apps SDK 1.2.7 is an explicit compatibility selection. Versions 1.2.12
-and newer remove the project-local `power-apps` CLI required by Liftoff's
-current workload contract. Moving to Microsoft's global `pa` CLI is a separate
-reviewed workload migration; the freshness check recognizes only the recorded
-1.3.0 exclusion and will reopen the decision when a newer candidate appears.
+Python's tested patch is 3.14.7; its supported runtime floor is 3.14.0 within
+3.14.x. Floors, tested versions, and allowed release lines are separate values
+in the baseline; a newer untested major is not automatically compatible.
+
+Power Apps is retired and has no active SDK, starter snapshot, or source-commit
+compatibility lane in the supported baseline.
 
 Generated npm projects include `package-lock.json`. Python projects include
 `uv.lock` and use `uv sync --frozen`. Go projects include `go.mod` and
 `go.sum`. Generated OpenTofu includes a multi-platform `.terraform.lock.hcl`.
+Each selected independent environment root receives its own provider lock and
+backend configuration; the application module is shared. Generic GenAI's default
+Python project and lock do not require a `pgvector` package.
 
 Container references include a readable stable tag and an immutable
 multi-architecture digest. The optional Langfuse profile uses the v4 web and
@@ -52,11 +55,10 @@ digests and upstream provenance, then run:
 npm run refresh:supported-stack
 npm run check
 npm run verify:standard-node-templates
-npm run verify:power-apps-starter
 ```
 
-Power Apps source is refreshed only through its reviewed immutable upstream
-commit workflow. Do not edit Microsoft-owned starter files independently.
+Retired Power Apps fixtures are negative inputs only and do not participate in
+generation, freshness, or dependency promotion.
 
 ## Existing generated projects
 
