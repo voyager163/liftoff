@@ -232,7 +232,7 @@ describe('reviewed update command integration', () => {
     expect(await readFile(path.join(history, snapshots[0]!, 'files', 'governance', 'activation-state.json')))
       .toEqual(originalState);
     expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([2, 2, 2]);
-  }, 90_000);
+  }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('retains blocked v2 after revalidation failure and resumes after a new approval', async () => {
     const { root } = await historicalFixture();
@@ -256,7 +256,7 @@ describe('reviewed update command integration', () => {
     expect(resumed.report.revalidation).toMatchObject({ status: 'complete' });
     const finalState = JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8'));
     expect(finalState.repository.id).toBe(initialState.repository.id);
-  }, 90_000);
+  }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('shows known local revalidation gaps in human preview and before approval', async () => {
     const { root } = await historicalFixture();

@@ -117,7 +117,6 @@ export async function verifyHistoryBeforeReplacement(
 export async function runUpdateRevalidation(
   inspection: UpdateInspection,
   review: ReviewedUpdatePlan,
-  mutations: readonly ProjectFileMutation[],
   context: ExecutionContext,
   validateReview?: () => Promise<void>
 ): Promise<UpdateRevalidationSummary> {
@@ -135,7 +134,7 @@ export async function runUpdateRevalidation(
     const snapshotId = journal.snapshotId;
     let progressWrites = 0;
     const maximumProgressWrites = 2 * (prepared.preview.phases.length + prepared.preview.reusedPhases.length) + 2;
-    const protectedInputs = postUpdateProtectedInputs(inspection, review.writePlan, prepared, mutations, context.runner);
+    const protectedInputs = postUpdateProtectedInputs(inspection, review.writePlan, prepared, context.runner);
     async function recordProgress(progress: LocalRevalidationProgress): Promise<void> {
       if (++progressWrites > maximumProgressWrites) {
         throw new UpdatePlanError('Local revalidation exceeded its approved progress-write bound.',

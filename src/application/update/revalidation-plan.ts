@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto';
-import { captureProjectFileSnapshot, type ProjectFileMutation } from '../../adapters/filesystem/project-transaction.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import {
   activationBaselineDigest,
@@ -26,12 +25,6 @@ export interface PreparedUpdateRevalidation {
   preview: LocalRevalidationPreview;
   expectedInputSnapshot: ActivationInputSnapshot;
   expectedRetainedSource: RetainedProjectInput[];
-}
-
-interface ExpectedProtectedFile {
-  pathParts: string[];
-  digest: string | null;
-  mode?: number;
 }
 
 function rawDigest(content: string | Buffer): string {
@@ -114,59 +107,20 @@ export async function prepareUpdateRevalidation(
   return { preview, expectedInputSnapshot: expected, expectedRetainedSource };
 }
 
-function isMutablePhaseRecord(parts: readonly string[]): boolean {
-  return parts[0] === 'governance' && (
-    parts.length === 2 && (parts[1] === 'activation-state.json' || parts[1] === 'migration-state.json') ||
-    parts[1] === 'plans' || parts[1] === 'evidence'
-  );
-}
-
 export function postUpdateProtectedInputs(
   inspection: UpdateInspection,
   writePlan: UpdateWritePlan,
   prepared: PreparedUpdateRevalidation,
-  mutations: readonly ProjectFileMutation[],
   runner?: CommandRunner
 ): {
   binding: string;
-  assertUnchanged: () => Promise<void>;
-  afterCommand: (command: ExternalCommand, options?: RunCommandOptions) => Promise<void>;
+  assertUnchanged: () => Promise<readonly RetainedProjectInput[]>;
+  afterCommand: (command: ExternalCommand, options?: RunCommandOptions) => Promise<readonly RetainedProjectInput[]>;
 } {
   let retained = prepared.expectedRetainedSource;
-  const expected = new Map<string, ExpectedProtectedFile>();
-  for (const snapshot of inspection.snapshots) {
-    if (isMutablePhaseRecord(snapshot.pathParts)) continue;
-    expected.set(snapshot.pathParts.join('\0'), {
-      pathParts: [...snapshot.pathParts],
-      digest: snapshot.content === undefined ? null : rawDigest(snapshot.content),
-      ...(snapshot.mode === undefined ? {} : { mode: snapshot.mode })
-    });
-  }
-  for (const mutation of mutations) {
-    if (isMutablePhaseRecord(mutation.pathParts)) continue;
-    const previous = expected.get(mutation.pathParts.join('\0'));
-    expected.set(mutation.pathParts.join('\0'), {
-      pathParts: [...mutation.pathParts],
-      digest: mutation.type === 'delete' ? null : rawDigest(mutation.content),
-      ...(mutation.type === 'write'
-        ? { mode: reviewedUpdateTargetMode(mutation.mode, previous?.mode) }
-        : {})
-    });
-  }
   return {
     binding: prepared.preview.protectedInputBinding,
     assertUnchanged: async () => {
-      for (const file of expected.values()) {
-        const current = await captureProjectFileSnapshot(inspection.projectRoot, file.pathParts);
-        const currentDigest = current.content === undefined ? null : rawDigest(current.content);
-        if (file.digest !== currentDigest ||
-          file.digest !== null && file.mode !== undefined && current.mode !== file.mode) {
-          throw new UpdatePlanError(
-            `Protected update input changed before or during revalidation: ${file.pathParts.join('/')}`,
-            'revalidation-inputs-changed', 'Preserve the edit and run liftoff update --check again.'
-          );
-        }
-      }
       const actual = await readActivationInputSnapshot(inspection.projectRoot, writePlan.nextManifest, runner);
       if (canonicalSha256(actual) !== canonicalSha256(prepared.expectedInputSnapshot)) {
         throw new UpdatePlanError(
@@ -174,19 +128,22 @@ export function postUpdateProtectedInputs(
           'revalidation-inputs-changed', 'Preserve the edits and run liftoff update --check again.'
         );
       }
-      const changed = changedRetainedProjectInputs(retained, await captureRetainedProjectInputs(inspection.projectRoot));
+      const observed = await captureRetainedProjectInputs(inspection.projectRoot);
+      const changed = changedRetainedProjectInputs(retained, observed);
       if (changed.length) {
         throw new UpdatePlanError(
           `Protected project scripts or sources changed after review: ${changed.join(', ')}`,
           'revalidation-inputs-changed', 'Preserve the edits and run liftoff update --check again.'
         );
       }
+      return observed;
     },
     afterCommand: async (command, options) => {
       retained = acceptDeclaredCommandOutputs(
         retained, await captureRetainedProjectInputs(inspection.projectRoot),
         outputsForLocalCommand(inspection.projectRoot, command, options)
       );
+      return retained;
     }
   };
 }

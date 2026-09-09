@@ -176,8 +176,9 @@ export async function executeLocalRevalidation(input: {
   approvedPreview: LocalRevalidationPreview;
   protectedInputs: {
     binding: string;
-    assertUnchanged: () => void | Promise<void>;
-    afterCommand?: (command: LocalSeedCommand['command'], options?: RunCommandOptions) => void | Promise<void>;
+    assertUnchanged: () => void | readonly RetainedProjectInput[] | Promise<void | readonly RetainedProjectInput[]>;
+    afterCommand?: (command: LocalSeedCommand['command'], options?: RunCommandOptions) =>
+      void | readonly RetainedProjectInput[] | Promise<void | readonly RetainedProjectInput[]>;
   };
   runner?: CommandRunner;
   clock?: () => Date;
@@ -194,9 +195,11 @@ export async function executeLocalRevalidation(input: {
   let commandIndex = 0;
 
   async function assertProtectedInputs(): Promise<void> {
-    await input.protectedInputs.assertUnchanged();
+    // Reuse only the inventory freshly checked by the coordinator, never one cached across boundaries.
+    const observed = await input.protectedInputs.assertUnchanged();
     if (protectedSnapshot) {
-      const changed = changedRetainedProjectInputs(protectedSnapshot, await captureRetainedProjectInputs(approved.projectRoot));
+      const changed = changedRetainedProjectInputs(protectedSnapshot,
+        observed ?? await captureRetainedProjectInputs(approved.projectRoot));
       if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized. Run liftoff update --check again.`);
     }
   }
@@ -218,13 +221,13 @@ export async function executeLocalRevalidation(input: {
       try {
         result = await runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
       } finally {
+        const observed = await input.protectedInputs.afterCommand?.(command, options);
         if (protectedSnapshot) {
           protectedSnapshot = acceptDeclaredCommandOutputs(
-            protectedSnapshot, await captureRetainedProjectInputs(approved.projectRoot),
+            protectedSnapshot, observed ?? await captureRetainedProjectInputs(approved.projectRoot),
             outputsForLocalCommand(approved.projectRoot, command, options)
           );
         }
-        await input.protectedInputs.afterCommand?.(command, options);
         await assertProtectedInputs();
       }
       if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');

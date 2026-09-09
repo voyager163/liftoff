@@ -268,7 +268,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       if (migration.status === 'available') migration = { ...migration, status: 'committed' };
     }
     if (selected.needsRevalidation && !cleanupFailures.length) {
-      revalidation = await runUpdateRevalidation(inspection, selected, materialized.mutations, context,
+      revalidation = await runUpdateRevalidation(inspection, selected, context,
         materialized.mutations.length ? undefined : validateReview);
     }
     await consumeUpdatePreviewReceipt(projectRoot, stored.receipt, options);
