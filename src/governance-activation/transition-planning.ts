@@ -6,7 +6,7 @@ import { remoteRepository, githubRepositoryFromPushUrl } from '../domain/governa
 import {
   operation, transitionDestination, phaseById, planDigestFor, rollbackPlanForPhase, assertPlanOperationsAllowed
 } from '../domain/governance/activation/operations.js';
-import { generatedSeedChangeName, selectSeedBaselineChecks } from './seed-lifecycle.js';
+import { generatedSeedChangeName, previewLocalSeedPhase, selectSeedBaselineChecks } from './seed-lifecycle.js';
 import { gitCommitOperations, gitPushOperations, reviewedPushUrl, inspectGitRepository } from './phase-publication.js';
 import { credentialPolicyPathParts } from './credentials.js';
 import { latestRecordWithPayload, rulesetSourceDigestFromEvidence } from '../domain/governance/activation/evidence.js';
@@ -22,7 +22,8 @@ async function phaseOperations(
   inspection: GovernanceTransitionInspection,
   phase: PhaseGraphNode,
   runner: CommandRunner,
-  createdAt: string
+  createdAt: string,
+  localRevalidation = false
 ): Promise<TransitionOperation[]> {
   const repositoryName = remoteRepository(inspection.state).name;
   const baseEvidencePath = evidencePathParts(`${phase.id}-${safeTimestamp(createdAt)}`);
@@ -51,6 +52,15 @@ async function phaseOperations(
     adapter: TransitionOperation['adapter'] = 'selected-spec-workflow',
     destructive = false
   ) => operation({ adapter, actionId, mutationClass, phaseId: phase.id, inputs, destination, remote: false, destructive });
+
+  if (localRevalidation) {
+    if (phase.id !== 'seed-valid' && phase.id !== 'seed-verified' && phase.id !== 'seed-archived') {
+      throw new Error(`Local revalidation stops before ${phase.id}; review its separate governance transition.`);
+    }
+    const preview = await previewLocalSeedPhase(inspection.projectRoot, inspection.manifest, phase.id);
+    if (preview.blockers.length) throw new Error(preview.blockers.join(' '));
+    return [preview.operation, ...writeOps()];
+  }
 
   switch (phase.id) {
     case 'seed-valid':
@@ -180,6 +190,7 @@ export async function buildSavedTransitionPlan(input: {
   inspection: GovernanceTransitionInspection;
   runner?: CommandRunner;
   now?: Date;
+  localRevalidation?: boolean;
 }): Promise<SavedTransitionPlan | null> {
   validateManifestActivationForExecution(input.inspection.manifest);
   const phaseId = input.inspection.readiness.nextReadyPhase;
@@ -189,7 +200,7 @@ export async function buildSavedTransitionPlan(input: {
   const createdAt = (input.now ?? new Date()).toISOString();
   const expiresAt = new Date(Date.parse(createdAt) + planLifetimeMs).toISOString();
   const context = input.inspection.contexts[phaseId];
-  const operations = await phaseOperations(input.inspection, phase, runner, createdAt);
+  const operations = await phaseOperations(input.inspection, phase, runner, createdAt, input.localRevalidation);
   const approvalPlan = transitionPlanForPhase(
     phase, input.inspection.state, context.transition, input.inspection.projectRoot,
     phase.id === 'pushed' ? operations.find((operation) => operation.adapter === 'git')?.destination.identity : undefined
@@ -221,6 +232,7 @@ export async function previewApplyNext(input: {
   runner?: CommandRunner;
   now?: Date;
   execute: boolean;
+  localRevalidation?: boolean;
 }): Promise<ApplyNextPreview> {
   let plan: SavedTransitionPlan | null = null;
   const blockers: string[] = [];

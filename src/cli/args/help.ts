@@ -24,7 +24,20 @@ export function getCommandHelp(command: string, subcommand?: string): CommandHel
         arguments: commandDefinitions.governance.arguments,
         defaultMaxPositionals: 1
       }
-    : commandDefinitions[command];
+    : command === 'update'
+      ? {
+          ...commandDefinitions.update,
+          description:
+            'Start with `liftoff update --check`, then run `liftoff update` to approve the matching ' +
+            'effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound ' +
+            'receipt in user-local liftoff/update-previews storage outside the repository; the receipt ' +
+            'is not approval. Apply needs the same checkout and receipt store. Noninteractive apply ' +
+            'requires --approve-plan; force and JSON are not consent. Production files, history, and ' +
+            'provisioning collisions remain protected; force cannot bypass compatibility. ' +
+            'Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete ' +
+            'revalidation; 1: rejected or failed operation.'
+        }
+      : commandDefinitions[command];
   if (!definition) {
     throw new UsageError(`Unknown command for help: ${command}.`);
   }

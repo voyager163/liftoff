@@ -22,16 +22,9 @@ import {
   validateGeneratedProject
 } from './generated-project.js';
 import {
-  buildProjectPlan,
-  loadConfigOptions
-} from '../project/planning.js';
-import {
   NodeCommandRunner,
   type CommandRunner
 } from '../../process-runner.js';
-import {
-  reconcileProject
-} from '../../reconcile.js';
 import {
   compareSemver
 } from '../../semver.js';
@@ -50,9 +43,6 @@ import {
 import {
   packagedSupportedStack as supportedStack
 } from '../../adapters/packaged-assets/supported-stack.js';
-import {
-  buildArtifacts
-} from '../../templates.js';
 import {
   PresentationSession
 } from '../../terminal.js';
@@ -79,10 +69,7 @@ import {
   type RequirementProbeResult,
   type WorkstationRequirementSelection
 } from '../../workstation.js';
-import {
-  inspectProvisioningGroups,
-  requestedProvisioningGroups
-} from '../update/planning.js';
+import { inspectProjectUpdate, UpdatePlanError } from '../update/inspection.js';
 
 interface DoctorCheck {
   id?: string;
@@ -582,15 +569,8 @@ async function projectLayer(
   ));
 
   try {
-    const config = await loadConfigOptions('liftoff.config.json', projectRoot);
-    const plan = buildProjectPlan(config, { requireProjectName: true });
-    const render = buildArtifacts(plan);
-    const entries = await reconcileProject(manifest, render, projectRoot);
-    const provisioningPlans = await inspectProvisioningGroups(
-      projectRoot,
-      render,
-      requestedProvisioningGroups(manifest, plan)
-    );
+    const inspection = await inspectProjectUpdate(projectRoot, { runner });
+    const { entries, provisioningPlans } = inspection;
     for (const group of provisioningPlans.filter((candidate) =>
       candidate.blocked && candidate.reason
     )) {
@@ -600,19 +580,19 @@ async function projectLayer(
         severity: 'fail',
         state: 'migration-required',
         detail: group.reason!,
-        remedy: 'Plan an explicit reviewed infrastructure migration; update and --force cannot relocate state or rewrite project-owned infrastructure.'
+        remedy: 'Run liftoff update --check and follow its migration guidance; --force cannot relocate state or overwrite project-owned files.'
       });
     }
     const driftCount =
       entries.filter((entry) => entry.status !== 'unchanged' || entry.refreshHash).length +
       provisioningPlans.length +
-      (manifest.artifactVersion === 7 ? 0 : 1);
+      (inspection.ownershipMigrationPending ? 1 : 0);
     if (driftCount > 0) {
       checks.push({
         label: 'managed core',
         severity: 'warn',
         detail: `${driftCount} core maintenance action(s) available`,
-        remedy: 'run liftoff update'
+        remedy: 'run liftoff update --check'
       });
     } else {
       checks.push({
@@ -624,9 +604,9 @@ async function projectLayer(
   } catch (error) {
     checks.push({
       label: 'managed core',
-      severity: 'fail',
-      detail: `liftoff.config.json could not be evaluated: ${(error as Error).message.split('\n')[0]}`,
-      remedy: 'repair liftoff.config.json'
+      severity: error instanceof UpdatePlanError && error.reasonCode === 'newer-project' ? 'warn' : 'fail',
+      detail: `Update inspection failed: ${(error instanceof Error ? error.message : String(error)).split('\n')[0]}`,
+      remedy: error instanceof UpdatePlanError ? error.remedy : 'Repair the named input, then run liftoff update --check.'
     });
   }
 

@@ -537,7 +537,9 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('tofu init -backend=false');
     expect(readme).toContain('No baseline step runs a live OpenTofu plan or apply');
     expect(readme).toContain('Absent components are recorded as');
-    expect(readme).toContain('maintains only explicit Liftoff core files');
+    expect(readme).toContain('maintains explicit Liftoff core files');
+    expect(readme).toContain('requires the matching preview and explicit approval');
+    expect(readme).toContain('linked v2 successor');
     expect(readme).toContain('liftoff update --check --json');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(/does not inspect or modify this project/);

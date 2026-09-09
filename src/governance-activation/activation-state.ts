@@ -18,6 +18,7 @@ import type { UserActivationState } from '../domain/governance/activation/types.
 import { validateUserActivationState } from '../domain/governance/activation/validators.js';
 import { withProjectMutationLock, type ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
 import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+import { inspectActivationMigrationHistory } from './migration-history.js';
 
 export class ActivationStateFileError extends Error {
   constructor(message: string) {
@@ -85,6 +86,7 @@ export function activationStateContentHash(content: string | Buffer): string {
 export async function loadActivationState(projectRoot: string): Promise<LoadedActivationState | undefined> {
   const bytes = await readProjectFile(projectRoot, activationStatePathParts());
   if (bytes === undefined) {
+    await inspectActivationMigrationHistory(projectRoot);
     return undefined;
   }
   const content = bytes.toString('utf8');
@@ -97,13 +99,14 @@ export async function loadActivationState(projectRoot: string): Promise<LoadedAc
   let state: UserActivationState;
   if (typeof parsed === 'object' && parsed !== null && 'schemaVersion' in parsed && parsed.schemaVersion === 1 &&
     'identity' in parsed && isHistoricalActivationIdentity(parsed.identity)) {
-    throw new ActivationStateFileError('Historical activation v1 state is diagnostic-only; migration to v2 is unsupported. Original state and evidence bytes were preserved. Do not reset, delete, or hand-edit activation history.');
+    throw new ActivationStateFileError('Historical activation v1 state is diagnostic-only. Run liftoff update --check to inspect a supported history-preserving v2 successor; original state and evidence remain untouched until explicit approval. Do not reset, delete, or hand-edit activation history.');
   }
   try {
     state = validateUserActivationState(parsed);
   } catch (error) {
     throw new ActivationStateFileError(`Invalid governance/activation-state.json: ${errorMessage(error)}`);
   }
+  await inspectActivationMigrationHistory(projectRoot);
   return {
     state,
     content,

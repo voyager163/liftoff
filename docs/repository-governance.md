@@ -342,14 +342,18 @@ seed blocks Phase 0. Exactly one compatible active governance change is resumed.
 Multiple overlapping changes require a schema-valid supersession or archive
 record before any phase advances.
 
-Managed updates install new policy, graph, schema, compatibility metadata, and
-setup and assessment integrations without touching user-owned state. Forced update can remove
+Reviewed managed updates install new policy, graph, schema, compatibility metadata,
+and setup/assessment integrations without acquiring general state ownership.
+Forced update can remove
 exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
 reports `reconciliation-required` and identifies affected descendants. Historical
-activation-v1 state and evidence stay byte-preserved and diagnostic-only under
-activation v2. This release has no automatic historical-state reconciliation,
-reset, or conversion workflow; do not acknowledge a new identity by editing JSON.
+activation-v1 state and evidence remain byte-preserved and non-executable.
+`liftoff update --check` can preview an exact supported successor migration;
+explicitly approved apply preserves original history and creates linked v2 state.
+Fresh local revalidation stops at unsupported or independently authorized work.
+Failure after commit leaves v2 blocked/resumable, not reset to v1. Never
+acknowledge an identity by editing JSON or treat old approvals as current consent.
 
 ## Private staging and bootstrap retention
 

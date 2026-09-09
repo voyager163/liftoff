@@ -244,7 +244,7 @@ export async function planHistoricalActivationStateMigration(
   if (parsed.schemaVersion !== activationStateSchemaVersion) {
     if (parsed.schemaVersion === 1 && isHistoricalActivationIdentity(parsed.identity)) {
       const result = blocked('unsupported-activation-identity', [
-        'Known historical activation v1 is diagnostic-only; migration to v2 is unsupported. Preserve all original state and evidence bytes; supported managed-core maintenance does not authorize activation execution.'
+        'Known historical activation v1 is diagnostic-only. Run liftoff update --check to inspect an explicitly supported history-preserving v2 successor. Original history cannot authorize current execution and remains byte-preserved.'
       ]);
       result.report.diagnosticOnly = true;
       return result;

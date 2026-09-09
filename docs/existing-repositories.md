@@ -90,8 +90,9 @@ hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
 and run `openspec update`.
 
 Projects created before manifest artifact version 7 automatically preview the
-default deterministic setup handoff as new named drift. Plain update safely
-adopts collision-free policy, context, guide, phase graph, compatibility
+default deterministic setup handoff as new named drift. After a matching check
+and explicit approval, update safely adopts collision-free policy, context,
+guide, phase graph, compatibility
 metadata, credential-policy schema, and selected-agent setup integrations
 without rewriting a configuration that omitted `governanceProfile`.
 Existing different files remain unowned conflicts and the v7 manifest records
@@ -107,10 +108,13 @@ canonical phase graph, private-runner credential contract, bootstrap-state
 retention/disposal contract, and active-change reconciliation before
 replacement. Updating the handoff never provisions Azure or GitHub resources;
 active downstream work must have supported identity and current evidence before
-it can execute. The CLI provides no public identity-acknowledgment or historical
-reconciliation workflow.
-Historical activation-v1 state and receipts are diagnostic-only, not
-automatically migrated or made executable by updating core files.
+it can execute. Exact supported activation-v1 migration is previewed through
+`liftoff update --check` and requires approval of that plan. Original state,
+receipts, plans, approvals, and source metadata are retained in in-project
+history before a linked v2 successor is created. Historical records stay
+non-executable; updating a core file does not make them current proof.
+Post-commit revalidation failure leaves v2 blocked and resumable. Unsupported
+source formats and independent infrastructure migrations remain separate blockers.
 
 The manifest-v7 transition releases every legacy non-core artifact into project
 provenance without writing, restoring, moving, or deleting its path.

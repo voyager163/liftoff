@@ -204,6 +204,9 @@ try {
   const npmEnv = {
     ...process.env,
     HOME: homeDirectory,
+    USERPROFILE: homeDirectory,
+    XDG_STATE_HOME: path.join(homeDirectory, '.local', 'state'),
+    LOCALAPPDATA: path.join(homeDirectory, 'AppData', 'Local'),
     LIFTOFF_TELEMETRY: '0',
     npm_config_cache: npmCache
   };
@@ -253,9 +256,10 @@ try {
   if (
     !updateHelp.stdout.includes('--check') ||
     !updateHelp.stdout.includes('--force') ||
+    !updateHelp.stdout.includes('--approve-plan') ||
     updateHelp.stdout.includes('--apply')
   ) {
-    throw new Error('Installed liftoff update help did not expose the imperative mode matrix');
+    throw new Error('Installed liftoff update help did not expose reviewed preview and exact-plan approval');
   }
 
   const upgradeHelp = run(process.execPath, [liftoffEntrypoint, 'upgrade', '--help'], {

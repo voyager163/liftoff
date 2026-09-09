@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand, type CommandContext } from '../src/commands.js';
@@ -22,15 +23,18 @@ import { buildArtifacts } from '../src/templates.js';
 import type { ExternalCommand, ProjectOptions, ProjectPlan } from '../src/types.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { reviewedUpdateArguments } from './reviewed-update-helpers.js';
 
 const cleanups: string[] = [];
 let workspaceCounter = 0;
+const receiptHome = path.join(os.tmpdir(), `liftoff-seed-preview-${process.pid}`);
 
 afterEach(async () => {
   delete process.env.LIFTOFF_STAGING_ROOT;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
+  await rm(receiptHome, { recursive: true, force: true });
 });
 
 async function testWorkspace(prefix: string): Promise<string> {
@@ -90,11 +94,13 @@ async function runCli(
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), {
+  const reviewedArgs = await reviewedUpdateArguments(args, (rawArgs) => runCli(rawArgs, cwd, context));
+  const code = await runCommand(parseArgs(reviewedArgs), {
     cwd,
     stdout,
     stderr,
     runner: new ReadyInitRunner(),
+    updatePreview: { homedir: receiptHome, env: {} },
     ...context
   });
   return { code, out: stdout.text(), err: stderr.text() };

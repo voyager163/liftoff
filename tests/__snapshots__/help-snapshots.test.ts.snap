@@ -89,7 +89,7 @@ Maintenance
 Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
 validate  Validate a generated project manifest
-update    Reconcile Liftoff-managed core files in a project
+update    Preview and explicitly approve scoped project updates
 upgrade   Replace the supported global npm Liftoff CLI; project templates use
           update separately
 doctor    Check local and project readiness
@@ -318,7 +318,15 @@ Option  Description
 
 exports[`complete help screens > snapshots compact update command help 1`] = `
 "LIFTOFF / UPDATE
-Reconcile Liftoff-managed core files in a project
+Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the
+matching effective plan (default: no). Check leaves project bytes unchanged and
+saves a project-bound receipt in user-local liftoff/update-previews storage
+outside the repository; the receipt is not approval. Apply needs the same
+checkout and receipt store. Noninteractive apply requires --approve-plan; force
+and JSON are not consent. Production files, history, and provisioning collisions
+remain protected; force cannot bypass compatibility. Exit 0: clean or approved
+scope completed; 2: drift or committed migration with incomplete revalidation;
+1: rejected or failed operation.
 
 Usage
 ─────
@@ -339,20 +347,26 @@ Option            Description
 Command options
 ───────────────
 Option   Description
-───────  ───────────────────────────────────────────
---check  Report drift without changing project files
+───────  ───────────────────────────────────────────────────────────────────────
+--check  Preview normal and eligible forced plans without project writes; save
+         an external preview receipt
 
 Consent options
 ───────────────
-Option   Description
-───────  ──────────────────────────────
---force  Replace modified managed files
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--force                       Select the separately previewed forced plan for
+                              exact owned-core conflicts and retired aliases;
+                              still requires approval
+--approve-plan <fingerprint>  Approve the exact effective plan from check using
+                              its full lowercase 64-hex SHA-256 fingerprint
 
 Output options
 ──────────────
 Option  Description
-──────  ──────────────────────────
---json  Emit machine-readable JSON
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit one schema-3 result on stdout; interactive approval uses stderr and
+        still defaults to no
 
 General options
 ───────────────
@@ -449,7 +463,7 @@ Command: migrate | Description: Adopt an existing project
 
 Maintenance
 Command: validate | Description: Validate a generated project manifest
-Command: update | Description: Reconcile Liftoff-managed core files in a project
+Command: update | Description: Preview and explicitly approve scoped project updates
 Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
 Command: doctor | Description: Check local and project readiness
 
@@ -589,7 +603,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain update command help 1`] = `
-"LIFTOFF / UPDATE - Reconcile Liftoff-managed core files in a project
+"LIFTOFF / UPDATE - Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound receipt in user-local liftoff/update-previews storage outside the repository; the receipt is not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires --approve-plan; force and JSON are not consent. Production files, history, and provisioning collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected or failed operation.
 
 Usage
 Usage: liftoff update [project-path]
@@ -601,13 +615,14 @@ Project options
 Option: --project <path> | Description: Project path
 
 Command options
-Option: --check | Description: Report drift without changing project files
+Option: --check | Description: Preview normal and eligible forced plans without project writes; save an external preview receipt
 
 Consent options
-Option: --force | Description: Replace modified managed files
+Option: --force | Description: Select the separately previewed forced plan for exact owned-core conflicts and retired aliases; still requires approval
+Option: --approve-plan <fingerprint> | Description: Approve the exact effective plan from check using its full lowercase 64-hex SHA-256 fingerprint
 
 Output options
-Option: --json | Description: Emit machine-readable JSON
+Option: --json | Description: Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no
 
 General options
 Option: --help | Description: Show command-specific help
@@ -716,7 +731,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ Command   Description                                                                        │
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ validate  Validate a generated project manifest                                              │
-│ update    Reconcile Liftoff-managed core files in a project                                  │
+│ update    Preview and explicitly approve scoped project updates                              │
 │ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
 │           separately                                                                         │
 │ doctor    Check local and project readiness                                                  │
@@ -912,7 +927,14 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 
 exports[`complete help screens > snapshots rich update command help 1`] = `
 "┌─ LIFTOFF / UPDATE ───────────────────────────────────────────────────────────────────────────┐
-│ Reconcile Liftoff-managed core files in a project                                            │
+│ Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching       │
+│ effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound │
+│ receipt in user-local liftoff/update-previews storage outside the repository; the receipt is │
+│ not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires │
+│ --approve-plan; force and JSON are not consent. Production files, history, and provisioning  │
+│ collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved    │
+│ scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected   │
+│ or failed operation.                                                                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff update [project-path]                                                                │
@@ -929,18 +951,24 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option   Description                                                                         │
-│ ───────  ───────────────────────────────────────────                                         │
-│ --check  Report drift without changing project files                                         │
+│ ───────  ─────────────────────────────────────────────────────────────────────────────────── │
+│ --check  Preview normal and eligible forced plans without project writes; save an external   │
+│          preview receipt                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option   Description                                                                         │
-│ ───────  ──────────────────────────────                                                      │
-│ --force  Replace modified managed files                                                      │
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --force                       Select the separately previewed forced plan for exact          │
+│                               owned-core conflicts and retired aliases; still requires       │
+│                               approval                                                       │
+│ --approve-plan <fingerprint>  Approve the exact effective plan from check using its full     │
+│                               lowercase 64-hex SHA-256 fingerprint                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
-│ ──────  ──────────────────────────                                                           │
-│ --json  Emit machine-readable JSON                                                           │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --json  Emit one schema-3 result on stdout; interactive approval uses stderr and still       │
+│         defaults to no                                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

@@ -644,13 +644,13 @@ describe('repository governance artifacts', () => {
     expect(createHash('sha256').update(graph.content).digest('hex')).toBe(canonicalPhaseGraphHash);
     expect(() => validateManagedPhaseGraph(JSON.parse(graph.content))).not.toThrow();
     const parsedCompatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibility.content));
-    expect(parsedCompatibility.schemaVersion).toBe(2);
+    expect(parsedCompatibility.schemaVersion).toBe(3);
     expect(parsedCompatibility.activation.historicalReadability).toMatchObject({
       activationContractVersion: 1,
       activationStateSchemaVersion: 1,
       evidenceHeaderSchemaVersion: 1,
       execution: 'diagnostic-only',
-      migration: 'unsupported-preserve-bytes'
+      migration: 'explicit-successor-preserve-bytes'
     });
     expect(parsedCompatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(parsedCompatibility.manifest.writeVersion).toBe(7);

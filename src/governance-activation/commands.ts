@@ -83,6 +83,8 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
+import { readMigrationJournal } from './migration-history.js';
+import type { MigrationJournal } from './history-contracts.js';
 import {
   validateApprovalEnvelope,
   validateManagedPhaseGraph,
@@ -133,6 +135,7 @@ interface GovernanceInspection {
   archivedSeedIntegrity: ArchivedSeedIntegrity;
   retryArchivedSeedBaseline: boolean;
   expectedActiveSeed: boolean;
+  migration: MigrationJournal | null;
 }
 
 interface CredentialInspection {
@@ -504,12 +507,13 @@ function buildEvidenceFreshness(
   })) as Record<PhaseId, EvidenceFreshnessEntry>;
 }
 
-async function inspectGovernance(projectRoot: string, runner?: CommandRunner): Promise<GovernanceInspection> {
+async function inspectGovernance(projectRoot: string, runner?: CommandRunner, now = new Date()): Promise<GovernanceInspection> {
   const manifest = await loadManifest(projectRoot);
   validateManifestActivationForExecution(manifest);
   const graph = await loadGovernanceGraph(projectRoot);
   await assertPolicyIdentity(projectRoot, manifest);
   const loadedState = await loadActivationState(projectRoot);
+  const migration = await readMigrationJournal(projectRoot);
   const state = loadedState?.state ?? notStartedState(manifest);
   if (state.identity.phaseGraphHash !== graph.hash) {
     throw new Error(
@@ -523,7 +527,6 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner): P
   }
   const approvals = await loadApprovals(projectRoot, state.identity);
   const evidence = await loadEvidence(projectRoot);
-  const now = new Date();
   const snapshot = await readActivationInputSnapshot(projectRoot, manifest, runner);
   const contexts = activationEvidenceContexts(graph.graph, state, snapshot, now);
   const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
@@ -586,7 +589,8 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner): P
     credential,
     archivedSeedIntegrity,
     retryArchivedSeedBaseline,
-    expectedActiveSeed
+    expectedActiveSeed,
+    migration: migration ?? null
   };
 }
 
@@ -647,6 +651,7 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
     readOnly: command !== 'apply-next',
     stateSource: inspection.stateSource,
     activationIdentity: inspection.state.identity,
+    migration: inspection.migration,
     executionAnchor: inspection.state.repository.id === 'unbound' ? null : inspection.state.repository.id,
     remoteBinding: inspection.state.remoteBinding ?? null,
     graphHash: inspection.graph.hash,
@@ -1280,6 +1285,13 @@ function transitionInspection(inspection: GovernanceInspection): GovernanceTrans
     readiness: inspection.readiness,
     sourceOfTruth: inspection.sourceOfTruth
   };
+}
+
+export async function inspectGovernanceTransition(
+  projectRoot: string,
+  options: { runner?: CommandRunner; now?: Date } = {}
+): Promise<GovernanceTransitionInspection> {
+  return transitionInspection(await inspectGovernance(projectRoot, options.runner, options.now));
 }
 
 function renderApplyNextHuman(

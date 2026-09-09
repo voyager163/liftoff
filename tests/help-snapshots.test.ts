@@ -61,6 +61,48 @@ describe('complete help screens', () => {
   }
 });
 
+describe('update help review sequence', () => {
+  it('explains previews, receipts, exact approval, protected scope, and exit behavior', async () => {
+    const { out, err } = await screen(['update', '--help'], 50);
+    expect(err).toBe('');
+    for (const phrase of [
+      'Start with `liftoff update --check`',
+      'then run `liftoff update`',
+      'default: no',
+      'project bytes unchanged',
+      'user-local liftoff/update-previews',
+      'outside the repository',
+      'receipt is not approval',
+      'same checkout and receipt store',
+      '--approve-plan <fingerprint>',
+      'full lowercase 64-hex SHA-256 fingerprint',
+      'separately previewed forced plan',
+      'owned-core conflicts and retired aliases',
+      'provisioning collisions remain protected',
+      'force cannot bypass compatibility',
+      'force and JSON are not consent',
+      'schema-3 result on stdout',
+      'interactive approval uses stderr',
+      'Exit 0:',
+      '2: drift or committed migration with incomplete revalidation',
+      '1: rejected or failed operation'
+    ]) {
+      expect(out).toContain(phrase);
+    }
+    expect(out).not.toContain('--apply');
+    expect(out).not.toContain('Option: --yes');
+  });
+
+  it('keeps help available before discovery regardless of JSON or the approval flag', async () => {
+    const plain = await screen(['update', '--help'], 50);
+    const withApproval = await screen([
+      'update', '--project', path.join(process.cwd(), 'package.json', 'not-a-project'),
+      '--json', '--approve-plan', 'a'.repeat(64), '--help'
+    ], 50);
+    expect(withApproval).toEqual(plain);
+  });
+});
+
 describe('reference and helper presentation hierarchy', () => {
   for (const [args, expected] of [
     [['patterns'], 'multi-agent'],

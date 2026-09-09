@@ -84,6 +84,110 @@ class DependencyFailureRunner extends ReadyInitRunner {
   }
 }
 
+describe('strict update approval arguments', () => {
+  const fingerprint = 'a1'.repeat(32);
+
+  it.each([
+    ['update', '--approve-plan', fingerprint],
+    ['update', `--approve-plan=${fingerprint}`],
+    ['update', '--force', '--approve-plan', fingerprint, '--json'],
+    ['update', '--check=false', '--approve-plan', fingerprint],
+    ['update', 'project with spaces', '--approve-plan', fingerprint],
+    ['update', '--project', 'C:\\Projects\\Claim App', '--approve-plan', fingerprint]
+  ])('accepts an exact fingerprint in %j', (...argv) => {
+    const parsed = parseArgs(argv);
+    expect(parsed.command).toBe('update');
+    expect(parsed.flags['approve-plan']).toBe(fingerprint);
+  });
+
+  it.each([
+    ['update', '--approve-plan'],
+    ['update', '--approve-plan='],
+    ['update', '--approve-plan', '--json'],
+    ['update', '--approve-plan', '--']
+  ])('rejects a missing fingerprint in %j', (...argv) => {
+    expect(() => parseArgs(argv)).toThrow(/Missing value for --approve-plan/);
+  });
+
+  it.each([
+    'a'.repeat(8),
+    'a'.repeat(63),
+    'a'.repeat(65),
+    'A'.repeat(64),
+    'g'.repeat(64),
+    `sha256:${fingerprint}`,
+    ` ${fingerprint}`,
+    `${fingerprint} `,
+    `${fingerprint}\n`,
+    `${fingerprint}\r\n`,
+    `${fingerprint}\0`,
+    'ａ'.repeat(64),
+    'true',
+    'false'
+  ])('rejects a malformed or abbreviated fingerprint %j without normalizing it', (value) => {
+    for (const argv of [
+      ['update', '--approve-plan', value],
+      ['update', `--approve-plan=${value}`, '--json', '--help']
+    ]) {
+      expect(() => parseArgs(argv)).toThrow(/exactly 64 lowercase hexadecimal characters/);
+    }
+  });
+
+  it.each([
+    ['--approve-plan', fingerprint, '--approve-plan', fingerprint],
+    ['--approve-plan', fingerprint, '--approve-plan', 'b'.repeat(64)],
+    [`--approve-plan=${fingerprint}`, `--approve-plan=${'b'.repeat(64)}`],
+    [`--approve-plan=${fingerprint}`, '--approve-plan', fingerprint]
+  ])('rejects duplicate approval flags in %j', (...flags) => {
+    expect(() => parseArgs(['update', ...flags])).toThrow(/--approve-plan may be provided only once/);
+  });
+
+  it.each([
+    ['--check', '--approve-plan', fingerprint],
+    ['--approve-plan', fingerprint, '--check'],
+    ['--check=true', `--approve-plan=${fingerprint}`, '--json'],
+    ['--check', '--force', '--approve-plan', fingerprint],
+    ['--check', '--approve-plan', fingerprint, '--help']
+  ])('rejects check combined with approval in %j', (...flags) => {
+    expect(() => parseArgs(['update', ...flags])).toThrow(/--check and --approve-plan cannot be combined/);
+  });
+
+  it.each(Object.keys(commandDefinitions).filter((command) => command !== 'update'))(
+    'does not accept update approval on %s',
+    (command) => {
+      expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);
+    }
+  );
+
+  it.each(['--approve', '--approve-p', '--no-approve-plan', '--yes', '--yes=true'])(
+    'rejects abbreviated, negated, or generic approval %s',
+    (flag) => {
+      expect(() => parseArgs(['update', flag])).toThrow(/Unknown flag|does not support/);
+    }
+  );
+
+  it('keeps check and force incompatible and explains preview before forced approval', () => {
+    for (const flags of [['--check', '--force'], ['--force=true', '--check=true']]) {
+      expect(() => parseArgs(['update', ...flags])).toThrow(/--check and --force cannot be combined/);
+      expect(() => parseArgs(['update', ...flags])).toThrow(
+        /liftoff update --check.*then explicitly approve.*liftoff update --force/
+      );
+    }
+  });
+
+  it.each([
+    ['--apply'],
+    ['--apply', '--force'],
+    ['--force', '--apply'],
+    ['--apply=false'],
+    ['--no-apply']
+  ])('keeps removed apply syntax rejected with check-first guidance in %j', (...flags) => {
+    expect(() => parseArgs(['update', ...flags])).toThrow(
+      /--apply was removed.*liftoff update --check.*then.*explicitly approve/
+    );
+  });
+});
+
 describe('commands', () => {
   it('parses init positional arguments without treating them as subcommands', () => {
     const parsed = parseArgs(['init', 'my-app', '--pattern', 'rag', '--cloud', 'azure']);

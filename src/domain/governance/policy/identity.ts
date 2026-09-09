@@ -8,7 +8,7 @@ export const phaseGraphSchemaVersion = 1 as const;
 export const activationStateSchemaVersion = 2 as const;
 export const evidenceHeaderSchemaVersion = 2 as const;
 export const approvalEnvelopeSchemaVersion = 2 as const;
-export const compatibilityMetadataSchemaVersion = 2 as const;
+export const compatibilityMetadataSchemaVersion = 3 as const;
 export const supersessionSchemaVersion = 1 as const;
 export const credentialPolicySchemaVersion = 1 as const;
 
@@ -118,7 +118,7 @@ export function resolveActivationCompatibility(
   compatibility: ActivationCompatibilityMap
 ): ActivationCompatibilityResult {
   if (isHistoricalActivationIdentity(identity)) {
-    return { compatible: false, reason: 'Historical activation v1 is diagnostic-only. Migration to v2 is unsupported; preserve original state and evidence bytes without reset or automatic conversion.' };
+    return { compatible: false, reason: 'Historical activation v1 is diagnostic-only. Run liftoff update --check to inspect an explicitly supported history-preserving v2 successor; preserve original bytes without reset, retagging, or automatic conversion.' };
   }
   for (const field of Object.keys(knownActivationVersions) as (keyof typeof knownActivationVersions)[]) {
     if (!knownVersion(field, identity[field])) {

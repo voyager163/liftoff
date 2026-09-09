@@ -28,6 +28,20 @@ const publicFiles = ['.gitignore', '.dockerignore', '.env.example', 'runtime.con
 const excludedDirectories = new Set(['node_modules', '.venv', 'venv', '.terraform', '.git', 'dist', 'build', 'out', '.next', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.cache']);
 const excludedFile = /(?:^\.env(?:\.|$)(?!example$|sample$)|\.tfstate(?:\.|$)|\.tfplan$|\.pem$|\.key$|\.pfx$|\.p12$|\.pyc$|\.log$|^\.liftoff.*(?:tmp|bak)$|^\.npmrc$|^terraform\.rc$|^credentials(?:\.|$)|^local\.settings\.json$)/i;
 
+export function activationInputPathIsObserved(parts: readonly string[]): boolean {
+  const relative = parts.join('/');
+  if ((publicFiles as readonly string[]).includes(relative)) return true;
+  const root = sourceRoots.find((candidate) => relative.startsWith(`${candidate}/`));
+  if (!root) return false;
+  return parts.slice(root.split('/').length).every((part) =>
+    !isProjectMutationReservationName(part) && !excludedDirectories.has(part) && !excludedFile.test(part)
+  );
+}
+
+export function activationInputTextDigest(text: string): string {
+  return canonicalSha256(text.replace(/\r\n/g, '\n'));
+}
+
 function code(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
 }
@@ -42,7 +56,7 @@ export async function readActivationInputSnapshot(
     const bytes = await readProjectFile(projectRoot, [...parts]);
     if (bytes === undefined) return;
     const text = bytes.toString('utf8');
-    const digest = canonicalSha256(seed ? normalizedSeedInput(text) : text.replace(/\r\n/g, '\n'));
+    const digest = seed ? canonicalSha256(normalizedSeedInput(text)) : activationInputTextDigest(text);
     const prior = files.get(logicalPath);
     if (prior !== undefined && prior !== digest) throw new Error(`Conflicting activation input copies for ${logicalPath}.`);
     files.set(logicalPath, digest);

@@ -3,6 +3,8 @@ import type { CommandRunner } from '../process-runner.js';
 import type { ConfiguredRegistryTargetLookup, SelfUpgradeExecutor } from '../self-upgrade.js';
 import type { StableRelease } from '../stable-release.js';
 import type { PresentationSession, PresentationSessionOptions } from '../terminal.js';
+import type { UpdateApprovalPrompt } from './update/approval.js';
+import type { resolveUpdatePreviewLocation } from '../adapters/filesystem/update-previews.js';
 
 export interface CommandContext {
   cwd: string;
@@ -14,6 +16,9 @@ export interface CommandContext {
   selfUpgrade?: SelfUpgradeExecutor;
   stableReleaseLookup?: () => Promise<StableRelease>;
   configuredRegistryTargetLookup?: ConfiguredRegistryTargetLookup;
+  updatePreview?: Parameters<typeof resolveUpdatePreviewLocation>[1];
+  approveUpdatePlan?: UpdateApprovalPrompt;
+  updateNow?: () => Date;
   terminal?: Pick<
     PresentationSessionOptions,
     'columns' | 'color' | 'snapshot' | 'env' | 'layout' | 'normalize'

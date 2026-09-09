@@ -101,10 +101,11 @@ describe('public documentation', () => {
     expect(readme).toContain('Claude Code');
     expect(readme).toContain('exact current Git root');
     expect(readme).toContain('docs/safety-and-consent.md');
-    expect(readme).toContain('liftoff update --check --json');
+    expect(readme).toContain('liftoff update --check');
+    expect(readme).toContain('--approve-plan <fingerprint>');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(
-      /replaces the CLI only; generated projects use `liftoff update` separately\s+for Liftoff-managed core files/
+      /replaces the CLI only; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
     );
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
@@ -237,10 +238,12 @@ describe('public documentation', () => {
     expect(cli).toContain('deterministic plain text');
     expect(cli).toMatch(/child stdout and stderr are forwarded\s+unchanged/);
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
-    expect(cli).toContain('Plain `liftoff update` is imperative and prompt-free');
+    expect(cli).toContain('`liftoff update --check` is the human-first compatibility and migration preview');
+    expect(cli).toContain('A receipt is not approval');
+    expect(cli).toContain('`--approve-plan`');
     expect(cli).toContain('liftoff update --check --json');
     expect(cli).toContain('Migration from 0.6.x');
-    expect(cli).toMatch(/Liftoff retains no backup after a successful core overwrite/);
+    expect(cli).toMatch(/activation migration additionally retains durable original history/);
     expect(cli).toContain('Next recommended command');
     expect(cli).toContain('Liftoff has not executed it automatically');
     expect(safety).toContain('Default update skips core conflicts');
@@ -267,7 +270,7 @@ describe('public documentation', () => {
     expect(existing).toMatch(
       /For CI\s+core-maintenance gates, use `liftoff update --check --json`/
     );
-    expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
+    expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed ordinary update/);
     expect(troubleshooting).toContain('Do not regenerate the lock as a connectivity workaround');
     expect(troubleshooting).toContain('UV_DEFAULT_INDEX');
     expect(manifests).toContain('`liftoff update --check`');
@@ -711,7 +714,7 @@ describe('public documentation', () => {
     }
     expect(developer).toContain('validateReadableActivationIdentity');
     expect(developer).toContain('scope use strict current validation');
-    expect(configuration).toMatch(/readable historical manifest cannot\s+bootstrap current activation or authorize provider scope/);
+    expect(configuration).toMatch(/readable historical record never authorizes current provider scope/);
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

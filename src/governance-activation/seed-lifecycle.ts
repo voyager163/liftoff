@@ -1,4 +1,4 @@
-import { readdir, readFile } from 'node:fs/promises';
+import { lstat, readdir, readFile } from 'node:fs/promises';
 import { stripVTControlCharacters } from 'node:util';
 import { loadManifest } from '../application/project/manifest.js';
 import { readProjectFile, writeProjectFile } from '../adapters/filesystem/project-files.js';
@@ -14,6 +14,7 @@ import { assessInfrastructureLayout } from '../domain/project/infrastructure-lay
 import type { CommandResult, CommandRunner } from '../process-runner.js';
 import { formatCommand } from '../process-runner.js';
 import { detectCredentialLeaks } from './credentials.js';
+import type { TransitionOperation } from '../domain/governance/activation/types.js';
 import type {
   ExternalCommand,
   LiftoffManifest,
@@ -32,7 +33,7 @@ export type SeedBaselineCheckId =
   | 'openspec-strict';
 
 export type SeedBaselineCheckApplicability =
-  | { applicable: true; command: ExternalCommand; cwdPathParts: readonly string[] }
+  | { applicable: true; command: ExternalCommand; cwdPathParts: readonly string[]; env?: Readonly<Record<string, string>> }
   | { applicable: false; reason: string };
 
 export interface SeedBaselineCheck {
@@ -50,6 +51,7 @@ export type SeedBaselineCheckOutcome =
       status: 'passed';
       command: ExternalCommand;
       cwdPathParts: readonly string[];
+      env?: Readonly<Record<string, string>>;
       result: CommandResult;
     }
   | {
@@ -59,6 +61,7 @@ export type SeedBaselineCheckOutcome =
       status: 'failed';
       command: ExternalCommand;
       cwdPathParts: readonly string[];
+      env?: Readonly<Record<string, string>>;
       result: CommandResult;
       detail: string;
     }
@@ -123,6 +126,7 @@ export type SeedPhaseArchiveResult =
       archiveSyncBehavior?: string;
       detail: string;
       synchronizedSpecDigest?: string;
+      validation?: CommandResult;
     }
   | {
       status: 'blocked';
@@ -131,6 +135,25 @@ export type SeedPhaseArchiveResult =
       retryableAfterRepair?: boolean;
       archiveCompleted?: boolean;
     };
+
+export type LocalSeedPhaseId = 'seed-valid' | 'seed-verified' | 'seed-archived';
+
+export interface LocalSeedCommand {
+  command: ExternalCommand;
+  cwdPathParts: readonly string[];
+  env: Readonly<Record<string, string>>;
+}
+
+export interface LocalSeedPhasePreview {
+  phaseId: LocalSeedPhaseId;
+  operation: TransitionOperation;
+  commands: readonly LocalSeedCommand[];
+  blockers: readonly string[];
+}
+
+interface SeedExecutionOptions {
+  localRevalidation?: boolean;
+}
 
 const seedChangePathParts = (changeName: string) => ['openspec', 'changes', changeName] as const;
 
@@ -172,7 +195,8 @@ export function seedInfrastructureBaselineBlocker(manifest: LiftoffManifest): st
 export function selectSeedBaselineChecks(
   manifest: LiftoffManifest,
   changeName = generatedSeedChangeName(manifest),
-  seedState: 'active' | 'archived' = 'active'
+  seedState: 'active' | 'archived' = 'active',
+  options: SeedExecutionOptions = {}
 ): SeedBaselineCheck[] {
   const layoutBlocker = seedInfrastructureBaselineBlocker(manifest);
   if (layoutBlocker) throw new Error(layoutBlocker);
@@ -347,7 +371,156 @@ export function selectSeedBaselineChecks(
     ];
   });
   const firstInit = checks.findIndex((check) => check.id === 'tofu-init');
-  return [...checks.slice(0, firstInit), ...environmentChecks, ...checks.slice(firstInit + 2)];
+  const selected = [...checks.slice(0, firstInit), ...environmentChecks, ...checks.slice(firstInit + 2)];
+  if (!options.localRevalidation) return selected;
+  return selected.filter((check) => check.id !== 'tofu-init').map((check) => {
+    if (!check.applicability.applicable) return check;
+    const applicability = check.applicability;
+    const command = applicability.command;
+    if (command.executable === 'uv') return {
+      ...check,
+      applicability: {
+        ...applicability,
+        command: { executable: 'uv', args: ['run', '--no-sync', '--offline', ...command.args.slice(1)] },
+        env: { UV_PYTHON_DOWNLOADS: 'never' }
+      }
+    };
+    if (command.executable === 'go') return {
+      ...check,
+      applicability: {
+        ...applicability,
+        command: { executable: 'go', args: ['test', '-mod=readonly', './...'] },
+        env: { GOPROXY: 'off', GOSUMDB: 'off', GOTOOLCHAIN: 'local', GONOPROXY: 'none', GOVCS: '*:off', GOFLAGS: '', GOWORK: 'off' }
+      }
+    };
+    if (command.executable === 'npm') return {
+      ...check,
+      applicability: {
+        ...applicability,
+        command: { executable: 'npm', args: ['--offline', '--ignore-scripts', '--no-audit', '--no-fund', ...command.args] },
+        env: { npm_config_offline: 'true', npm_config_ignore_scripts: 'true', npm_config_update_notifier: 'false' }
+      }
+    };
+    if (command.executable === 'tofu') return {
+      ...check,
+      label: check.id === 'tofu-validate'
+        ? `Observe already initialized OpenTofu at ${applicability.cwdPathParts.join('/')} with validate (no init)`
+        : check.label,
+      applicability: {
+        ...applicability,
+        env: { TF_CLI_ARGS: '', TF_CLI_ARGS_validate: '', TF_CLI_ARGS_fmt: '', TF_DATA_DIR: '.terraform', TF_INPUT: '0', CHECKPOINT_DISABLE: '1' }
+      }
+    };
+    return check;
+  });
+}
+
+export async function previewLocalSeedPhase(
+  projectRoot: string,
+  manifest: LiftoffManifest,
+  phaseId: LocalSeedPhaseId
+): Promise<LocalSeedPhasePreview> {
+  const discovery = await discoverGeneratedSeed(projectRoot, manifest);
+  const blockers: string[] = discovery.state === 'blocked' ? [...discovery.issues] : [];
+  const changeName = generatedSeedChangeName(manifest);
+  const commands: LocalSeedCommand[] = [];
+  const observations: (readonly string[])[] = [];
+  let checks: SeedBaselineCheck[] = [];
+  if (discovery.state === 'archived') {
+    const integrity = await inspectArchivedSeedIntegrity(projectRoot, manifest);
+    if (integrity.status !== 'valid') blockers.push(...(integrity.status === 'invalid'
+      ? integrity.issues : ['The archived seed is no longer independently observable.']));
+    const archiveRoot = ['openspec', 'changes', 'archive'];
+    const archives = (await readdir(await resolveProjectPath(projectRoot, archiveRoot), { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory() && (entry.name === changeName || entry.name.endsWith(`-${changeName}`)));
+    if (archives.length !== 1) blockers.push('The exact archived seed location changed during inspection.');
+    else {
+      const archived = [...archiveRoot, archives[0]!.name];
+      const capability = generatedSeedCapabilityId(manifest.project.workload);
+      const artifacts = [
+        ['.openspec.yaml'], ['proposal.md'], ['design.md'], ['tasks.md'], ['specs', capability, 'spec.md']
+      ].map((parts) => [...archived, ...parts]);
+      observations.push(...artifacts, ['openspec', 'specs', capability, 'spec.md']);
+      for (const parts of artifacts) {
+        if (!(await readRequiredProjectText(projectRoot, parts)).trim()) blockers.push(`Archived seed artifact ${parts.join('/')} is empty.`);
+      }
+      const declared = extractDeclaredCapabilities(await readRequiredProjectText(projectRoot, [...archived, 'proposal.md']));
+      if (declared.length !== 1 || declared[0] !== capability) blockers.push(`Archived seed proposal must declare exactly the generated capability ${capability}.`);
+    }
+  } else if (discovery.state === 'active') {
+    observations.push(discovery.changePathParts);
+  }
+  if (phaseId === 'seed-verified') {
+    const infrastructureBlocker = seedInfrastructureBaselineBlocker(manifest);
+    if (infrastructureBlocker) blockers.push(infrastructureBlocker);
+    else checks = selectSeedBaselineChecks(manifest, changeName, discovery.state === 'archived' ? 'archived' : 'active', { localRevalidation: true });
+    for (const check of checks) {
+      if (!check.applicability.applicable) continue;
+      const { command, cwdPathParts, env } = check.applicability;
+      commands.push({ command, cwdPathParts, env: env ?? {} });
+    }
+    for (const environment of manifest.project.workload.environments) {
+      const root = ['infrastructure', 'opentofu', 'azure', 'environments', environment];
+      if (await readProjectFile(projectRoot, [...root, 'main.tf']) === undefined) {
+        blockers.push(`Missing selected OpenTofu environment root ${[...root, 'main.tf'].join('/')}.`);
+      }
+      await requireInstalledDirectory([...root, '.terraform'], 'OpenTofu initialization');
+    }
+    if (manifest.project.workload.kind === 'genai' || manifest.project.workload.apiStack === 'python-fastapi') {
+      await requireInstalledDirectory(['backend', '.venv'], 'Python environment');
+    } else if (manifest.project.workload.apiStack === 'node-fastify') {
+      await requireInstalledDirectory(['backend', 'node_modules'], 'Backend dependencies');
+    }
+    if (manifest.project.workload.frontend) await requireInstalledDirectory(['frontend', 'node_modules'], 'Frontend dependencies');
+  } else if (manifest.project.specWorkflow === 'openspec') {
+    if (phaseId === 'seed-archived' && discovery.state !== 'archived') {
+      blockers.push('The seed is not already archived. Review liftoff governance plan and complete its separate setup/archive transition; update revalidation never archives or edits seed files.');
+    } else {
+      commands.push({
+        command: { executable: 'openspec', args: discovery.state === 'archived'
+          ? ['validate', '--all', '--strict'] : ['validate', changeName, '--strict'] },
+        cwdPathParts: [], env: {}
+      });
+    }
+  }
+  if (manifest.project.specWorkflow === 'spec-kit' && phaseId !== 'seed-valid') {
+    const bundle = await inspectSpecKitBootstrap(projectRoot, manifest);
+    if (bundle.tasks !== undefined && completedSpecKitTasks(bundle.tasks) !== bundle.tasks) {
+      blockers.push('Spec Kit bootstrap tasks are not already the completed matching projection. Review the separate governance setup transition; update revalidation does not write tasks.');
+    }
+  }
+  const actionId = phaseId === 'seed-valid' ? 'openspec.seed.validate'
+    : phaseId === 'seed-verified' ? 'openspec.seed.baseline-verify' : 'openspec.seed.archive';
+  const operation: TransitionOperation = {
+    adapter: 'selected-spec-workflow', actionId, mutationClass: 'read-worktree', phaseId,
+    inputs: {
+      changeName, localRevalidation: true, workflow: manifest.project.specWorkflow,
+      seedState: discovery.state, observations, commands,
+      ...(phaseId === 'seed-verified' ? {
+        checks: checks.map((check) => ({
+          id: check.id, taskId: check.taskId, label: check.label,
+          applicable: check.applicability.applicable,
+          ...(check.applicability.applicable ? {
+            command: check.applicability.command, cwdPathParts: check.applicability.cwdPathParts,
+            env: check.applicability.env ?? {}
+          } : { reason: check.applicability.reason })
+        }))
+      } : {})
+    },
+    destination: { type: 'local', identity: projectRoot },
+    remote: false, destructive: false
+  };
+  return { phaseId, operation, commands, blockers };
+
+  async function requireInstalledDirectory(parts: string[], label: string): Promise<void> {
+    const target = await resolveProjectPath(projectRoot, parts);
+    try {
+      if (!(await lstat(target)).isDirectory()) throw new Error(`${parts.join('/')} must be an existing regular directory.`);
+    } catch (error) {
+      if (errorCode(error) !== 'ENOENT') throw error;
+      blockers.push(`${label} is unavailable at ${parts.join('/')}. Install or initialize it separately, then run liftoff update --check; revalidation never installs dependencies or runs tofu init.`);
+    }
+  }
 }
 
 function extractDeclaredCapabilities(proposal: string): string[] {
@@ -462,8 +635,8 @@ export async function inspectArchivedSeedIntegrity(
   return { status: 'valid', changeName, capabilityId, contentDigest: canonicalSha256(spec.replace(/\r\n/g, '\n')), issues: [] };
 }
 
-export async function discoverGeneratedSeed(projectRoot: string): Promise<GeneratedSeedDiscovery> {
-  const manifest = await loadManifest(projectRoot);
+export async function discoverGeneratedSeed(projectRoot: string, suppliedManifest?: LiftoffManifest): Promise<GeneratedSeedDiscovery> {
+  const manifest = suppliedManifest ?? await loadManifest(projectRoot);
   const changeName = generatedSeedChangeName(manifest);
   if (manifest.project.specWorkflow !== 'openspec') {
     const bundle = await inspectSpecKitBootstrap(projectRoot, manifest);
@@ -564,13 +737,30 @@ function checkFailureDetail(result: CommandResult): string {
     const diagnostic = sanitizeOpenSpecDiagnostic(output);
     return diagnostic ? `${condition}; ${diagnostic}` : condition;
   }
+
   if (result.timedOut) {
     return 'command timed out';
   }
+  if (result.aborted) return 'command was interrupted or cancelled';
+  if (result.outputLimitExceeded) return 'command output exceeded the supported limit';
+  if (result.signal) return `command terminated by ${result.signal}`;
   if (result.errorCode || result.errorMessage) {
     return [result.errorCode, result.errorMessage].filter(Boolean).join(': ');
   }
   return `exit status ${result.status ?? 'unknown'}`;
+}
+
+function commandSucceeded(result: CommandResult): boolean {
+  return result.status === 0 && !result.signal && !result.timedOut && !result.errorCode &&
+    !result.errorMessage && !result.aborted && !result.outputLimitExceeded;
+}
+
+function localValidationObservation(result: CommandResult) {
+  return {
+    command: result.command,
+    exitStatus: result.status,
+    outputDigest: canonicalSha256({ stdout: result.stdout, stderr: result.stderr })
+  };
 }
 
 function sanitizeOpenSpecDiagnostic(output: string): string {
@@ -603,7 +793,7 @@ async function validateAllOpenSpecAfterArchive(
     args: ['validate', '--all', '--strict']
   };
   const result = await runner.run(command, { cwd: projectRoot });
-  if (result.status !== 0 || result.timedOut || result.errorCode) {
+  if (!commandSucceeded(result)) {
     return {
       status: 'blocked',
       issues: [
@@ -633,8 +823,10 @@ async function runSeedBaselineCheck(
   const cwd = check.applicability.cwdPathParts.length === 0
     ? projectRoot
     : await resolveProjectPath(projectRoot, [...check.applicability.cwdPathParts]);
-  const result = await runner.run(check.applicability.command, { cwd });
-  if (result.status === 0 && !result.timedOut && !result.errorCode) {
+  const result = await runner.run(check.applicability.command, {
+    cwd, ...(check.applicability.env ? { env: check.applicability.env } : {})
+  });
+  if (commandSucceeded(result)) {
     return {
       id: check.id,
       taskId: check.taskId,
@@ -642,6 +834,7 @@ async function runSeedBaselineCheck(
       status: 'passed',
       command: check.applicability.command,
       cwdPathParts: check.applicability.cwdPathParts,
+      ...(check.applicability.env ? { env: check.applicability.env } : {}),
       result
     };
   }
@@ -652,6 +845,7 @@ async function runSeedBaselineCheck(
     status: 'failed',
     command: check.applicability.command,
     cwdPathParts: check.applicability.cwdPathParts,
+    ...(check.applicability.env ? { env: check.applicability.env } : {}),
     result,
     detail: checkFailureDetail(result)
   };
@@ -739,10 +933,22 @@ export function markAllSeedTasksForArchive(markdown: string): string {
 
 export async function validateGeneratedSeedForPhase(
   projectRoot: string,
-  runner: CommandRunner
+  runner: CommandRunner,
+  options: SeedExecutionOptions = {}
 ): Promise<SeedPhaseValidationResult> {
   const discovery = await discoverGeneratedSeed(projectRoot);
   if (discovery.state === 'archived') {
+    if (options.localRevalidation) {
+      const integrity = await inspectArchivedSeedIntegrity(projectRoot);
+      if (integrity.status !== 'valid') return {
+        status: 'blocked', changeName: discovery.changeName,
+        issues: integrity.status === 'invalid' ? integrity.issues : ['The archived seed is no longer independently observable.']
+      };
+      const validation = await validateAllOpenSpecAfterArchive(projectRoot, runner, discovery.changeName);
+      if (validation.status === 'blocked') return { status: 'blocked', changeName: discovery.changeName, issues: validation.issues };
+      return { status: 'passed', changeName: discovery.changeName, command: validation.command,
+        detail: 'Existing archived seed artifacts are present and synchronized main specifications are strict-valid; no archive was replayed.' };
+    }
     return {
       status: 'passed',
       changeName: discovery.changeName,
@@ -762,7 +968,7 @@ export async function validateGeneratedSeedForPhase(
   }
   const command = { executable: 'openspec', args: ['validate', discovery.changeName, '--strict'] };
   const result = await runner.run(command, { cwd: projectRoot });
-  if (result.status !== 0 || result.timedOut || result.errorCode) {
+  if (!commandSucceeded(result)) {
     return {
       status: 'blocked',
       changeName: discovery.changeName,
@@ -782,7 +988,8 @@ export async function validateGeneratedSeedForPhase(
 
 export async function verifyGeneratedSeedBaselineForPhase(
   projectRoot: string,
-  runner: CommandRunner
+  runner: CommandRunner,
+  options: SeedExecutionOptions = {}
 ): Promise<SeedPhaseVerificationResult> {
   const manifest = await loadManifest(projectRoot);
   const discovery = await discoverGeneratedSeed(projectRoot);
@@ -809,7 +1016,11 @@ export async function verifyGeneratedSeedBaselineForPhase(
   }
   const layoutBlocker = seedInfrastructureBaselineBlocker(manifest);
   if (layoutBlocker) return { status: 'blocked', changeName: discovery.changeName, checks: [], issues: [layoutBlocker] };
-  const checks = selectSeedBaselineChecks(manifest, discovery.changeName, discovery.state);
+  if (options.localRevalidation) {
+    const preview = await previewLocalSeedPhase(projectRoot, manifest, 'seed-verified');
+    if (preview.blockers.length) return { status: 'blocked', changeName: discovery.changeName, checks: [], issues: preview.blockers };
+  }
+  const checks = selectSeedBaselineChecks(manifest, discovery.changeName, discovery.state, options);
   for (const environment of manifest.project.workload.environments) {
     const parts = ['infrastructure', 'opentofu', 'azure', 'environments', environment, 'main.tf'];
     if (await readProjectFile(projectRoot, parts) === undefined) {
@@ -846,12 +1057,15 @@ export async function verifyGeneratedSeedBaselineForPhase(
 
 export async function archiveGeneratedSeedForPhase(
   projectRoot: string,
-  runner: CommandRunner
+  runner: CommandRunner,
+  options: SeedExecutionOptions = {}
 ): Promise<SeedPhaseArchiveResult> {
-  return withProjectMutationLock(projectRoot, (lease) => archiveGeneratedSeedForPhaseLocked(projectRoot, runner, lease));
+  return withProjectMutationLock(projectRoot, (lease) => archiveGeneratedSeedForPhaseLocked(projectRoot, runner, lease, options));
 }
 
-async function archiveGeneratedSeedForPhaseLocked(projectRoot: string, runner: CommandRunner, lease: ProjectMutationLease): Promise<SeedPhaseArchiveResult> {
+async function archiveGeneratedSeedForPhaseLocked(
+  projectRoot: string, runner: CommandRunner, lease: ProjectMutationLease, options: SeedExecutionOptions
+): Promise<SeedPhaseArchiveResult> {
   const manifest = await loadManifest(projectRoot);
   if (manifest.project.specWorkflow === 'spec-kit') {
     const bundle = await inspectSpecKitBootstrap(projectRoot, manifest);
@@ -866,11 +1080,11 @@ async function archiveGeneratedSeedForPhaseLocked(projectRoot: string, runner: C
   const discovery = await discoverGeneratedSeed(projectRoot);
   if (discovery.state === 'archived') {
     const integrity = await inspectArchivedSeedIntegrity(projectRoot);
-    if (integrity.status === 'invalid') {
+    if (integrity.status === 'invalid' || options.localRevalidation && integrity.status !== 'valid') {
       return {
         status: 'blocked',
         changeName: discovery.changeName,
-        issues: integrity.issues,
+        issues: integrity.status === 'invalid' ? integrity.issues : ['The archived seed is no longer independently observable.'],
         retryableAfterRepair: true
       };
     }
@@ -891,6 +1105,7 @@ async function archiveGeneratedSeedForPhaseLocked(projectRoot: string, runner: C
       status: 'already-archived',
       changeName: discovery.changeName,
       ...(integrity.status === 'valid' ? { synchronizedSpecDigest: integrity.contentDigest } : {}),
+      ...(options.localRevalidation ? { validation: validation.command } : {}),
       detail: `${discovery.detail} The synchronized main specs remain strict-valid.`
     };
   }
@@ -901,6 +1116,10 @@ async function archiveGeneratedSeedForPhaseLocked(projectRoot: string, runner: C
       issues: discovery.issues
     };
   }
+  if (options.localRevalidation) return {
+    status: 'blocked', changeName: discovery.changeName,
+    issues: ['The seed is not already archived. Review the separate governance setup/archive transition; update revalidation never archives or edits seed files.']
+  };
 
   const taskPathParts = [...discovery.changePathParts, 'tasks.md'];
   const originalTasks = await readRequiredProjectText(projectRoot, taskPathParts);
@@ -963,38 +1182,59 @@ async function archiveGeneratedSeedForPhaseLocked(projectRoot: string, runner: C
   };
 }
 
-export async function executeSeedOperations(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
+export async function executeSeedOperations(
+  input: PhaseAdapterExecutionInput, options: SeedExecutionOptions = {}
+): Promise<PhaseAdapterOutcome | null> {
   if (!input.phase.id.startsWith('seed-')) return null;
   if (input.phase.id === 'seed-valid') {
-    const result = await validateGeneratedSeedForPhase(input.inspection.projectRoot, input.runner);
+    const result = await validateGeneratedSeedForPhase(input.inspection.projectRoot, input.runner, options);
     if (result.status === 'blocked') {
       return { status: 'blocked', blocker: result.issues[0] ?? 'Seed validation failed.', completedOperations: [] };
     }
     return {
       status: 'completed',
       resultState: 'verified',
-      evidencePayload: { kind: 'seed-valid.v1', changeName: result.changeName, detail: result.detail },
+      evidencePayload: {
+        kind: 'seed-valid.v1', changeName: result.changeName, detail: result.detail,
+        ...(options.localRevalidation && result.command ? { validation: localValidationObservation(result.command) } : {})
+      },
       completedOperations: input.plan.operations.filter((op) => op.actionId === 'openspec.seed.validate')
     };
   }
   if (input.phase.id === 'seed-verified') {
-    const result = await verifyGeneratedSeedBaselineForPhase(input.inspection.projectRoot, input.runner);
+    const result = await verifyGeneratedSeedBaselineForPhase(input.inspection.projectRoot, input.runner, options);
     if (result.status === 'blocked') {
       return { status: 'blocked', blocker: result.issues[0] ?? 'Seed baseline verification failed.', completedOperations: [] };
+    }
+    if (options.localRevalidation) {
+      for (const mutation of result.fileMutations ?? []) {
+        const current = await readProjectFile(input.inspection.projectRoot, mutation.pathParts);
+        if (mutation.type !== 'write' || current?.toString('utf8') !== mutation.content) return {
+          status: 'blocked',
+          blocker: 'The baseline requires a differing Spec Kit task projection. Review the separate setup transition; revalidation preserved the existing tasks.',
+          completedOperations: []
+        };
+      }
     }
     return {
       status: 'completed',
       resultState: 'verified',
       evidencePayload: {
         kind: 'seed-verified.v1',
-        checks: result.checks.map((check) => ({ id: check.id, taskId: check.taskId, status: check.status }))
+        checks: result.checks.map((check) => ({
+          id: check.id, taskId: check.taskId, status: check.status,
+          ...(options.localRevalidation && check.status === 'passed' ? {
+            label: check.label, cwdPathParts: check.cwdPathParts, env: check.env ?? {},
+            ...localValidationObservation(check.result)
+          } : {})
+        }))
       },
       completedOperations: input.plan.operations.filter((op) => op.actionId === 'openspec.seed.baseline-verify' || op.actionId === 'seed.tasks.project'),
-      fileMutations: result.fileMutations,
+      fileMutations: options.localRevalidation ? undefined : result.fileMutations,
       filePreconditions: result.filePreconditions
     };
   }
-  const result = await archiveGeneratedSeedForPhase(input.inspection.projectRoot, input.runner);
+  const result = await archiveGeneratedSeedForPhase(input.inspection.projectRoot, input.runner, options);
   if (result.status === 'blocked') {
     return {
       status: 'blocked',
@@ -1009,7 +1249,11 @@ export async function executeSeedOperations(input: PhaseAdapterExecutionInput): 
     evidencePayload: {
       kind: 'seed-archived.v1',
       ...(result.synchronizedSpecDigest ? { synchronizedSpecDigest: result.synchronizedSpecDigest } : {}),
-      archiveSyncBehavior: result.archiveSyncBehavior ?? null
+      archiveSyncBehavior: result.archiveSyncBehavior ?? null,
+      ...(options.localRevalidation ? {
+        observation: result.detail,
+        ...(result.validation ? { validation: localValidationObservation(result.validation) } : {})
+      } : {})
     },
     completedOperations: input.plan.operations.filter((op) => op.actionId === 'openspec.seed.archive')
   };

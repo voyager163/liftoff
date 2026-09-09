@@ -138,7 +138,8 @@ It does not convert workloads, change API stacks or GenAI patterns,
 or modernize production project templates. Retired workloads have no update or
 automatic migration path.
 
-Plain update applies safe core changes immediately. Use `liftoff update
---check` for read-only inspection. `--force` applies only to listed
-managed-core conflicts; project-owned source, dependencies, schemas,
-containers, environments, documentation, and infrastructure remain untouched.
+Start with `liftoff update --check`, which changes no project bytes and discloses
+an external preview receipt. Plain update requires that matching preview and
+explicit approval. `--force` applies only to its separately reviewed core
+conflicts; project-owned source, dependencies, schemas, containers, environments,
+documentation, and infrastructure remain outside replacement authority.

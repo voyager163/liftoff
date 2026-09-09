@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -45,6 +46,7 @@ import { inspectCurrentActivationEvidence } from '../src/governance-activation/r
 import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', 'governance-migration-tests');
+const receiptHome = path.join(os.tmpdir(), `liftoff-governance-preview-${process.pid}`);
 let counter = 0;
 
 const testHistoricalPhaseGraph = {
@@ -65,6 +67,7 @@ beforeEach(async () => {
 
 afterAll(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
+  await rm(receiptHome, { recursive: true, force: true });
 });
 
 async function fixtureProject(workload: 'standard' | 'genai' = 'standard'): Promise<string> {
@@ -96,7 +99,8 @@ async function run(
     cwd,
     stdout,
     stderr,
-    env
+    env,
+    updatePreview: { homedir: receiptHome, env: {} }
   });
   return { code, out: stdout.text(), err: stderr.text() };
 }
@@ -403,7 +407,7 @@ describe('governance managed migration framework', () => {
     expect(`sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`)
       .toBe(compatibilityArtifact.contentHash);
     const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibilityContent));
-    expect(compatibility.schemaVersion).toBe(2);
+    expect(compatibility.schemaVersion).toBe(3);
     expect(compatibility.activation.historicalReadability.execution).toBe('diagnostic-only');
     expect(compatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(compatibility.manifest.writeVersion).toBe(7);
@@ -428,7 +432,11 @@ describe('governance managed migration framework', () => {
       expect([0, 2]).toContain(check.code);
       expect(await treeFingerprint(root)).toEqual(before);
 
-      const applied = await run(['update', '--json'], root);
+      const preview = JSON.parse(check.out);
+      const fingerprint: string | undefined = preview.plans.find((plan: { mode: string }) => plan.mode === 'normal')?.fingerprint;
+      const applied = await run([
+        'update', '--json', ...(fingerprint ? ['--approve-plan', fingerprint] : [])
+      ], root);
       expect(applied.code, `${applied.out}${applied.err}`).toBe(0);
       const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
       expect(manifest.artifactVersion).toBe(7);
@@ -453,14 +461,8 @@ describe('governance managed migration framework', () => {
     expect(result.code).toBe(1);
     const report = JSON.parse(result.out);
     expect(report.status).toBe('blocked');
-    expect(report.activationStateMigration).toMatchObject({
-      status: 'blocked',
-      reasonCode: 'unsupported-activation-identity',
-      path: 'governance/activation-state.json',
-      checkModeWritesBytes: 0,
-      evidencePolicy: 'preserve-bytes'
-    });
-    expect(report.activationStateMigration.issues.join(' ')).toMatch(/explicit compatibility\/migration mapping|declares no historical activation-state mappings/i);
+    expect(report.activationMigration).toMatchObject({ status: 'blocked' });
+    expect(report.activationMigration.issues.join(' ')).toMatch(/identity|graph|successor/i);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
@@ -559,8 +561,8 @@ describe('governance managed migration framework', () => {
     expect(result.code).toBe(1);
     const report = JSON.parse(result.out);
     expect(report.status).toBe('blocked');
-    expect(report.activationStateMigration.reasonCode).toBe('ad-hoc-state');
-    expect(report.activationStateMigration.issues.join(' ')).toMatch(/checkboxes, filenames, and prose are not evidence/i);
+    expect(report.activationMigration.reasonCode).toBe('unsupported-historical-identity');
+    expect(report.activationMigration.issues.join(' ')).toMatch(/exact versioned historical v1 representation/i);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
@@ -577,8 +579,8 @@ describe('governance managed migration framework', () => {
     expect(result.code).toBe(1);
     const report = JSON.parse(result.out);
     expect(report.status).toBe('blocked');
-    expect(report.activationStateMigration.reasonCode).toBe('future-state-schema');
-    expect(report.activationStateMigration.checkModeWritesBytes).toBe(0);
+    expect(report.activationMigration.reasonCode).toBe('unsupported-historical-identity');
+    expect(report.committed).toBe(false);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 });

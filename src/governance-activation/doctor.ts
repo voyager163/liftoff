@@ -15,6 +15,7 @@ import {
   currentActivationIdentity
 } from '../domain/governance/activation/graph.js';
 import { planHistoricalActivationStateMigration } from './migration.js';
+import { planActivationHistoryMigration, readMigrationJournal } from './migration-history.js';
 import { calculatePhaseReadiness } from '../domain/governance/activation/readiness.js';
 import {
   inspectGovernanceSourceOfTruth
@@ -181,14 +182,26 @@ export async function governanceDoctorChecks(
   const checks: GovernanceDoctorCheck[] = [];
   const migration = await planHistoricalActivationStateMigration(projectRoot, now.toISOString());
   if (migration.status === 'blocked') {
+    let history = migration.report.diagnosticOnly === true
+      ? await planActivationHistoryMigration(projectRoot) : undefined;
+    if (history?.status === 'blocked' && history.reasonCode === 'unreviewed-historical-records' &&
+      history.unreviewedPathParts) {
+      history = await planActivationHistoryMigration(projectRoot, {
+        reviewedUnreferencedPathParts: history.unreviewedPathParts
+      });
+    }
+    const supported = history?.status === 'eligible';
     checks.push({
       id: 'governance-identity-incompatible',
-      label: 'governance activation identity',
+      label: supported ? 'governance migration available' : 'governance activation identity',
       severity: 'fail',
-      state: 'identity-incompatible',
-      detail: migration.report.issues[0] ?? 'activation state is not compatible with this Liftoff version',
+      state: supported ? 'migration-available' : 'identity-incompatible',
+      detail: supported
+        ? 'Historical activation v1 has a supported history-preserving v2 successor; existing history is not current execution proof.'
+        : history?.status === 'blocked' ? history.issues.join('; ')
+          : migration.report.issues[0] ?? 'activation state is not compatible with this Liftoff version',
       remedy: 'Preserve user-owned state and evidence bytes. ' + (migration.report.diagnosticOnly === true
-        ? 'Historical activation v1 has no automatic migration or public import workflow; it cannot authorize current setup.'
+        ? 'Historical activation v1 requires liftoff update --check followed by explicit approval of a supported plan; do not reset or retag history.'
         : 'The recorded activation format or identity is unsupported or invalid. Use a compatible Liftoff version or restore original state from a trusted backup; do not rewrite identity fields to bypass validation.')
     });
     return checks;
@@ -200,7 +213,7 @@ export async function governanceDoctorChecks(
       severity: 'warn',
       state: 'reconciliation-required',
       detail: `historical activation state has an explicit migration mapping to graph ${currentActivationIdentity.phaseGraphHash}`,
-      remedy: 'Run liftoff update after review; the migration is staged with managed definitions and preserves evidence bytes.'
+      remedy: 'Run liftoff update --check, then explicitly approve the matching plan; original evidence bytes remain preserved.'
     });
     return checks;
   }
@@ -218,6 +231,20 @@ export async function governanceDoctorChecks(
       remedy: 'Restore original state from a trusted backup or use a compatible CLI; never hand-edit the recorded activation identity or graph hash.'
     });
     return checks;
+  }
+  const journal = await readMigrationJournal(projectRoot);
+  if (journal) {
+    const blocked = journal.revalidation.status !== 'complete';
+    checks.push({
+      id: 'governance-migration-progress',
+      label: 'governance migration',
+      severity: blocked ? 'fail' : 'ok',
+      state: blocked ? 'revalidation-blocked' : 'migration-committed',
+      detail: blocked
+        ? `Local v2 migration committed; revalidation is ${journal.revalidation.status}: ${journal.revalidation.nextAction}`
+        : 'Local v2 migration and its approved local revalidation are complete; preserved v1 history is informational, not live governance proof.',
+      ...(blocked ? { remedy: 'Repair the named blocker, run liftoff update --check, and approve the remaining local work. Keep v2 and its preserved history.' } : {})
+    });
   }
   let evidence: PhaseEvidenceRecord[];
   try {

@@ -849,6 +849,16 @@ resume, and verify remain read-only. Current unchanged proof may be reused.
 Unavailable production executors and public approval/credential entry points
 remain capability blockers; the phase graph does not claim they are implemented.
 
+For an older supported activation, use \`liftoff update --check\` to review the
+exact history-preserving migration. The check changes no project bytes but
+discloses an external preview receipt. Explicitly approved update creates a
+linked v2 successor; old state, plans, evidence, and approvals remain historical,
+not current authorization. Failed local revalidation retains blocked, resumable
+v2. Repair the named cause and approve a fresh preview rather than reset history.
+Only the named local revalidation is automatic; no provider, commit, or push is
+authorized by the migration plan. \`--json\` is optional formatting, and CI
+approval uses \`--approve-plan <fingerprint>\`. Force cannot bypass these gates.
+
 Runner-preflight credentials are deterministic. Setup first prefers an existing
 verified selected-repository GitHub App with the required read permissions. If a
 fine-grained PAT is required, use display name
@@ -940,7 +950,8 @@ Assessment writes reports to stdout only. It never updates or upgrades anything,
 changes project files, Git, activation state, approvals, or evidence, or runs
 recommendations. Reports cannot complete Phase 0 or any other phase.
 For compatible older inventories, install the new selected-agent integration
-through the normal \`liftoff update --check\` and guarded \`liftoff update\` flow.
+through \`liftoff update --check\`, then \`liftoff update\` with explicit approval
+of the matching plan. Check discloses its external preview receipt; it is not approval.
 Unowned collisions stay unowned even with \`--force\`; modified managed entries
 retain the existing reviewed force rules. Neither installation nor assessment
 activates governance. Unsupported mappings remain diagnostic: no migration is
@@ -953,26 +964,28 @@ fresh observations, its own reviewed plan, and separate approval.
 function renderSetupIntegration(): string {
   return `# /liftoff-setup
 
-Use the Liftoff governance engine, not a parallel implementation.
+Use the Liftoff governance engine.
 
-1. Work from the current directory; the CLI resolves the project root.
+1. Work from the current directory; the CLI resolves the root.
 2. Invoke only: \`liftoff governance status --json\`,
    \`liftoff governance plan --json\`, \`liftoff governance apply-next --json\`,
    \`liftoff governance apply-next --json --execute\`,
    \`liftoff governance resume --json\`, and \`liftoff governance verify --json\`.
-3. Explain blockers and approvals exactly from output. Recheck changed blockers
-   with the listed resume command; inspection does not execute work.
+3. Explain reported blockers and approvals. Inspection never executes work.
 4. Use \`liftoff governance apply-next --json\` only to preview operations.
    If ready and its approval status is \`not-required\` or \`reused\`, run
    \`liftoff governance apply-next --json --execute\`, then verify.
-   \`selectedPhase\` is attempted; \`executedPhase\` is successful. Legacy
-   \`nextReadyPhase\` is not post-transition readiness; read subsequent status or verify.
-5. Stop on failure. Retry only on explicit request after repairing its blocker;
+   \`selectedPhase\` is attempted; \`executedPhase\` succeeded.
+   Reinspect: \`nextReadyPhase\` is not post-transition readiness.
+5. Stop on failure. Retry only on request after repair;
    do not repeatedly retry an unchanged failure.
-6. Tasks and prose are not evidence. Missing executors, approval persistence,
-   credential enrollment, or historical reconciliation remain blockers.
-   Never invent commands, hand-write evidence, edit state, or collect credentials
-   in chat to bypass them.
+6. For supported historical migration, propose \`liftoff update --check\`.
+   It preserves project bytes and saves an external receipt, not approval.
+   \`liftoff update\` needs explicit matching-plan approval; never run it
+   implicitly from setup.
+7. Tasks and prose are not proof. Missing executors or authorization stay blocked.
+   Never invent commands, write evidence/state manually, or collect credentials
+   in chat to bypass a gate.
 `;
 }
 

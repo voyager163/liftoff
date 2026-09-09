@@ -1,4 +1,5 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
+import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
 import { commandDefinitions } from './definitions.js';
 
 export class UsageError extends Error {
@@ -103,10 +104,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
           );
         throw new UsageError(
           legacyForceRequested
-            ? 'Flag --apply was removed. Replace this command with `liftoff update --force`, ' +
-              'or use `liftoff update --check` for a read-only managed-core check.'
-            : 'Flag --apply was removed. Run `liftoff update` to apply safe managed-core changes or ' +
-              '`liftoff update --check` for a read-only managed-core check.'
+            ? 'Flag --apply was removed. Run `liftoff update --check` first to review the separate ' +
+              'forced plan and save its external receipt, then explicitly approve it with ' +
+              '`liftoff update --force`. Force does not bypass preview or approval.'
+            : 'Flag --apply was removed. Run `liftoff update --check` first to preview changes and ' +
+              'save an external receipt, then run `liftoff update` to explicitly approve the matching plan.'
         );
       }
       throw new UsageError(`Unknown flag for ${command}: --${rawName}.`);
@@ -141,11 +143,28 @@ export function parseArgs(argv: string[]): ParsedArgs {
     index += 1;
   }
 
-  if (command === 'update' && flags.check === true && flags.force === true) {
-    throw new UsageError(
-      'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
-        'to inspect managed-core drift or `liftoff update --force` to overwrite core conflicts.'
-    );
+  if (command === 'update') {
+    if (Object.hasOwn(flags, 'approve-plan')) {
+      if (!isUpdatePlanFingerprint(flags['approve-plan'])) {
+        throw new UsageError(
+          'Flag --approve-plan expects the complete fingerprint from `liftoff update --check`: ' +
+            'exactly 64 lowercase hexadecimal characters.'
+        );
+      }
+      if (flags.check === true) {
+        throw new UsageError(
+          'Flags --check and --approve-plan cannot be combined. Run `liftoff update --check` first, ' +
+            'then approve its exact effective plan with `liftoff update --approve-plan <fingerprint>`.'
+        );
+      }
+    }
+    if (flags.check === true && flags.force === true) {
+      throw new UsageError(
+        'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
+          'to review the normal and eligible forced plans, then explicitly approve the matching ' +
+          'forced plan with `liftoff update --force`.'
+      );
+    }
   }
 
   if (command === 'governance') {

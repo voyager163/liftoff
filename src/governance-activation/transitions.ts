@@ -47,7 +47,12 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'live-readback': executeRulesetPhase
 };
 
-async function executeBuiltInPhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome> {
+async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localRevalidation = false): Promise<PhaseAdapterOutcome> {
+  if (localRevalidation) {
+    const outcome = await executeSeedOperations(input, { localRevalidation: true });
+    if (!outcome) throw new Error(`Local revalidation cannot execute ${input.phase.id}.`);
+    return outcome;
+  }
   const custom = input.adapters.phases?.[input.phase.id];
   if (custom) return await custom.execute(input);
   return await builtInExecutors[input.phase.id]?.(input) ?? {
@@ -67,38 +72,45 @@ function sourceOfTruthAllowsPhase(inspection: GovernanceTransitionInspection, ph
   return 'Active governance source of truth is not ready.';
 }
 
-export async function executeApplyNext(input: {
+export interface ApplyNextExecutionInput {
   inspection: GovernanceTransitionInspection;
   reinspect: () => Promise<GovernanceTransitionInspection>;
   runner?: CommandRunner;
   adapters?: GovernanceTransitionAdapters;
   now?: Date;
-}): Promise<ApplyNextExecutionResult> {
+  clock?: () => Date;
+  localRevalidation?: boolean;
+  assertReviewedPlan?: (plan: SavedTransitionPlan) => void | Promise<void>;
+  assertProtectedInputs?: () => void | Promise<void>;
+}
+
+export async function executeApplyNext(input: ApplyNextExecutionInput): Promise<ApplyNextExecutionResult> {
   validateManifestActivationForExecution(input.inspection.manifest);
+  if (input.localRevalidation && (!input.inspection.loadedState || input.inspection.state.repository.id === 'unbound' ||
+    !input.assertReviewedPlan || !input.assertProtectedInputs)) {
+    throw new Error('Local revalidation requires a committed anchored v2 state and exact reviewed-plan/protected-input guards.');
+  }
   return withProjectMutationLock(input.inspection.projectRoot, async (lease) => {
     await lease.assertHeld();
+    await input.assertProtectedInputs?.();
     if (!input.inspection.loadedState && input.inspection.state.repository.id === 'unbound' &&
       input.inspection.readiness.nextReadyPhase?.startsWith('seed-')) {
-      await initializeExecutionAnchor(input.inspection, input.now ?? new Date());
+      await initializeExecutionAnchor(input.inspection, input.now ?? input.clock?.() ?? new Date());
       input = { ...input, inspection: await input.reinspect() };
     }
     return executeApplyNextLocked(input, lease);
   });
 }
 
-async function executeApplyNextLocked(input: {
-  inspection: GovernanceTransitionInspection;
-  reinspect: () => Promise<GovernanceTransitionInspection>;
-  runner?: CommandRunner;
-  adapters?: GovernanceTransitionAdapters;
-  now?: Date;
-}, lease: ProjectMutationLease): Promise<ApplyNextExecutionResult> {
+async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: ProjectMutationLease): Promise<ApplyNextExecutionResult> {
   const runner = input.runner ?? new NodeCommandRunner();
   const adapters = input.adapters ?? {};
-  const now = input.now ?? new Date();
-  const initialPlan = await buildSavedTransitionPlan({ inspection: input.inspection, runner, now });
+  const clock = () => input.now ?? input.clock?.() ?? new Date();
+  const now = clock();
+  const localRevalidation = input.localRevalidation ?? false;
+  const initialPlan = await buildSavedTransitionPlan({ inspection: input.inspection, runner, now, localRevalidation });
   if (!initialPlan) {
-    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true });
+    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation });
     return {
       ...preview,
       applied: false,
@@ -114,15 +126,17 @@ async function executeApplyNextLocked(input: {
   const phase = phaseById(input.inspection.graph, initialPlan.phaseId);
   assertPlanOperationsAllowed(initialPlan, phase);
   if (initialPlan.approval.evaluation.approvalRequired) {
-    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true });
+    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation });
     return {
       ...preview, applied: false, executedPhase: null, noWrites: false,
       executedOperations: [], evidence: null, stateHash: null, rollbackPlan: initialPlan.rollbackPlan, cleanupWarnings: []
     };
   }
+  await input.assertReviewedPlan?.(initialPlan);
+  await input.assertProtectedInputs?.();
   const saved = await saveTransitionPlan(input.inspection.projectRoot, initialPlan);
   const freshInspection = await input.reinspect();
-  const freshPlan = await buildSavedTransitionPlan({ inspection: freshInspection, runner, now });
+  const freshPlan = await buildSavedTransitionPlan({ inspection: freshInspection, runner, now, localRevalidation });
   const freshnessIssues = comparePlanFreshness(initialPlan, freshPlan);
   if (freshnessIssues.length > 0) {
     return {
@@ -135,6 +149,8 @@ async function executeApplyNextLocked(input: {
       evidence: null, stateHash: null, rollbackPlan: initialPlan.rollbackPlan, cleanupWarnings: []
     };
   }
+  if (freshPlan) await input.assertReviewedPlan?.(freshPlan);
+  await input.assertProtectedInputs?.();
   const sourceBlocker = sourceOfTruthAllowsPhase(freshInspection, initialPlan.phaseId);
   if (sourceBlocker) {
     const nextState = blockedState({ inspection: freshInspection, phase, plan: initialPlan, blocker: sourceBlocker, now });
@@ -144,8 +160,9 @@ async function executeApplyNextLocked(input: {
   await lease.assertHeld();
   const outcome = await executeBuiltInPhase({
     inspection: freshInspection, plan: initialPlan, phase, runner, adapters, now,
-    clock: () => input.now ?? new Date(), lease
-  });
+    clock, lease
+  }, localRevalidation);
+  await input.assertProtectedInputs?.();
   const completedOperations = outcome.completedOperations ?? [];
   for (const completed of completedOperations) {
     assertOperationAllowed(phase, completed);
@@ -154,6 +171,7 @@ async function executeApplyNextLocked(input: {
     }
   }
   for (const mutation of outcome.fileMutations ?? []) {
+    if (localRevalidation) throw new Error('Local revalidation cannot persist source, spec, or seed file mutations.');
     const allowed = initialPlan.operations.some((operation) => {
       const prefix = operation.destination.pathParts;
       return !operation.remote && prefix && prefix.every((part, index) => mutation.pathParts[index] === part) &&
@@ -199,7 +217,8 @@ async function executeApplyNextLocked(input: {
   }
   if (phase.approvalGate.required) {
     const finalInspection = await input.reinspect();
-    const finalPlan = await buildSavedTransitionPlan({ inspection: finalInspection, runner, now: input.now ?? new Date() });
+    const finalPlan = await buildSavedTransitionPlan({ inspection: finalInspection, runner, now: clock(), localRevalidation });
+    if (finalPlan) await input.assertReviewedPlan?.(finalPlan);
     if (!finalPlan || finalPlan.phaseId !== phase.id || finalPlan.approval.evaluation.approvalRequired ||
       finalPlan.approval.envelopeHash !== initialPlan.approval.envelopeHash) {
       return executionBlockedResult(freshInspection, initialPlan, saved,
@@ -211,7 +230,7 @@ async function executeApplyNextLocked(input: {
   const boundPayload = isRecord(outcome.evidencePayload)
     ? { ...outcome.evidencePayload, planDigest: initialPlan.planDigest, savedPlanDigest: canonicalSha256(initialPlan) }
     : outcome.evidencePayload;
-  const outcomeNow = input.now ?? new Date();
+  const outcomeNow = clock();
   let evidenceRecord: PhaseEvidenceRecord | undefined;
   let evidenceParts: readonly string[] | undefined;
   let evidenceReference: UserActivationState['phases'][PhaseId]['evidence'][number] | undefined;
@@ -245,10 +264,12 @@ async function executeApplyNextLocked(input: {
     inspection: freshInspection, phase, plan: initialPlan, resultState,
     evidenceReference, override: outcome.stateOverride, now
   });
+  await input.assertProtectedInputs?.();
   const write = await writeOutcomeTransaction({
     projectRoot: freshInspection.projectRoot, plan: initialPlan, nextState, evidenceRecord,
     evidencePathParts: evidenceParts, fileMutations: outcome.fileMutations, filePreconditions: outcome.filePreconditions
   });
+  await input.assertProtectedInputs?.();
   const rollbackPlan = rollbackPlanForPhase(phase, completedOperations);
   return {
     schemaVersion: 1, command: 'governance apply-next', projectRoot: freshInspection.projectRoot,

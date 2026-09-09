@@ -33,11 +33,12 @@ import {
 import type {
   LiftoffManifest
 } from '../../domain/project/contracts.js';
+import type { UserActivationState } from '../../domain/governance/activation/types.js';
 import {
   liftoffVersion
 } from '../../version.js';
 
-interface UpdateSummary {
+export interface UpdateSummary {
   new: number;
   missing: number;
   upgrade: number;
@@ -135,7 +136,7 @@ export function isDirtyGitWorktree(projectRoot: string): boolean {
 }
 
 
-interface ManifestChange {
+export interface ManifestChange {
   field: string;
   from: unknown;
   to: unknown;
@@ -264,20 +265,22 @@ function activeChangePathParts(stateKind: 'openspec' | 'spec-kit', changeId: str
 }
 
 export async function activeChangeReconciliationReport(
-  projectRoot: string
+  projectRoot: string,
+  suppliedActiveChange?: UserActivationState['activeChange']
 ): Promise<ManagedUpdateReconciliationReport> {
-  let loaded;
-  try {
-    loaded = await loadCurrentActivationState(projectRoot);
-  } catch {
-    return {
-      status: 'not-required',
-      changedIdentityFields: [],
-      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
-      issues: []
-    };
+  let activeChange = suppliedActiveChange;
+  if (activeChange === undefined) {
+    try {
+      activeChange = (await loadCurrentActivationState(projectRoot))?.state.activeChange;
+    } catch {
+      return {
+        status: 'not-required',
+        changedIdentityFields: [],
+        phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+        issues: []
+      };
+    }
   }
-  const activeChange = loaded?.state.activeChange;
   if (!activeChange) {
     return {
       status: 'not-required',

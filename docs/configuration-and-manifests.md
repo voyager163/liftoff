@@ -197,7 +197,8 @@ policy, contract, schema, or graph identities remain invalid or blocked without
 rewrite.
 
 `liftoff update --check`, including `--check --json`, leaves an old manifest
-byte-for-byte unchanged. A successful plain update writes v7 only after the
+byte-for-byte unchanged while disclosing an external preview receipt. An
+explicitly approved update writes v7 only after the
 transaction succeeds. V2-v6 backend, frontend, database, dependency, container,
 environment, documentation, and infrastructure entries become
 project provenance without reading or changing current production bytes.
@@ -213,7 +214,10 @@ comparisons to infer execution safety.
 | Activation package identity | 0.11.0 |
 | Manifest write / supported reads | 7 / 2-7 for API and GenAI |
 | Normative policy | 6 |
-| Activation contract, state, evidence header, approval envelope, compatibility metadata | 2 |
+| Activation contract, state, evidence header, approval envelope | 2 |
+| Compatibility metadata / supported historical input | 3 / 2 |
+| Update report | 3 |
+| Preview receipt, transaction approval, history index, migration journal | 1 |
 | Phase graph, supersession, credential policy | 1 |
 | Assessment report and control catalog | 1 |
 
@@ -222,14 +226,20 @@ semantics and graph are unchanged. Independent infrastructure provenance
 explicitly recognizes both generation versions; unknown releases are not
 automatically trusted or treated as compatible.
 
-Known activation-v1 history remains readable but **diagnostic-only**, not
-executable proof. Managed-core maintenance can continue without rewriting user-owned
-historical identity, state, or receipts. A readable historical manifest cannot
-bootstrap current activation or authorize provider scope, even when no state
-file exists or a separate current state is supplied. No automatic conversion, reset, or public
-historical reconciliation workflow is provided. Future/mixed tuples, ad hoc
-state, and unknown graph hashes remain blocked. No reader converts prose,
-filenames, checked tasks, or old placeholder digests into current evidence.
+Known activation-v1 history remains **diagnostic-only**, not executable proof.
+Compatibility metadata v3 separately declares the exact history-preserving
+successor lane available through `liftoff update --check` and explicitly
+approved update. Schema-2 metadata remains readable input, not authority to
+invent a migration. Future/mixed tuples, ad hoc state, and unknown graphs remain
+blocked.
+
+Migration preserves the original manifest, historical state and evidence, creates
+strict v2 state, and links it through `governance/migration-state.json` to its
+immutable `governance/history` snapshot. No required field is added to manifest
+v7 or the v2 proof schemas. Original generation provenance remains intact.
+A readable historical record never authorizes current provider scope; old
+approvals and checked tasks do not become fresh evidence. Revalidation failure
+after local commit leaves the linked v2 activation blocked and resumable.
 
 ## Artifact ownership
 

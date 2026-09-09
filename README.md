@@ -38,7 +38,7 @@ automation.
 After the first self-upgrade-capable release is installed globally through npm,
 later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
 This replaces the CLI only; generated projects use `liftoff update` separately
-for Liftoff-managed core files. Useful read-only checks:
+for reviewed project maintenance. Useful project-read-only checks:
 
 ```bash
 liftoff validate
@@ -47,11 +47,16 @@ liftoff upgrade --check
 liftoff update --check
 ```
 
-Plain `liftoff update` applies safe managed-core changes immediately and skips
-core conflicts. Application source, dependencies, schemas, containers,
-environments, documentation, and infrastructure are project-owned after
-generation and remain outside every update mode, including `--force`. Use
-`liftoff update --check --json` for a read-only core-maintenance gate.
+Start with `liftoff update --check`, then run `liftoff update` and approve the
+matching plan. Check leaves project bytes unchanged and discloses a preview
+receipt saved outside the repository. Missing or stale previews block apply.
+Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
+
+Supported activation-v1 migration preserves original records inside the project
+and creates a linked v2 activation. Failed revalidation leaves v2 blocked and
+resumable, not reset to v1. Application source, dependencies, schemas, containers,
+environments, documentation, and infrastructure remain project-owned and outside
+template replacement, including `--force`.
 
 Older projects may display the retired `/liftoff-repository-governance` alias.
 After upgrading the CLI, review `liftoff update --check`; `liftoff update --force`

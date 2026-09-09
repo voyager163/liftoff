@@ -2,7 +2,12 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { createFixtureProject, runCommand } from '../src/commands.js';
+import { runCommand } from '../src/commands.js';
+import { getUpdatePreviewDirectory } from '../src/adapters/filesystem/update-previews.js';
+import {
+  cleanupUpdateTestRoots, createReviewedUpdateFixture, reviewedUpdateArguments,
+  updateTestPreviewOptions
+} from './reviewed-update-helpers.js';
 import {
   CaptureStream,
   ReadyInitRunner,
@@ -29,10 +34,11 @@ afterEach(async () => {
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
+  await cleanupUpdateTestRoots();
 });
 
 async function fixture(): Promise<string> {
-  const projectRoot = await createFixtureProject({
+  const projectRoot = await createReviewedUpdateFixture({
     projectName: 'Presentation App',
     pattern: 'prompt',
     cloud: 'azure',
@@ -41,7 +47,6 @@ async function fixture(): Promise<string> {
     specWorkflow: 'openspec',
     includeFrontend: false
   });
-  cleanups.push(path.dirname(projectRoot));
   return projectRoot;
 }
 
@@ -54,20 +59,31 @@ async function run(
     color?: boolean;
     snapshot?: boolean;
     runner?: ReadyInitRunner;
+    reviewed?: boolean;
   } = {}
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = options.answers === undefined
     ? new CaptureStream()
     : ttyCaptureStream();
   const stderr = new CaptureStream();
-  const normalize = (value: string) => value.replaceAll(cwd, '<project>');
-  const code = await runCommand(parseArgs(args), {
+  const updatePreview = updateTestPreviewOptions(cwd);
+  const normalize = (value: string) => value.replaceAll(cwd, '<project>')
+    .replaceAll(getUpdatePreviewDirectory(updatePreview), '<preview-store>')
+    .replace(/[a-f0-9]{64}/g, 'a'.repeat(64));
+  const reviewedArgs = options.reviewed ? await reviewedUpdateArguments(args, async (rawArgs) => {
+    const out = new CaptureStream();
+    const err = new CaptureStream();
+    const code = await runCommand(parseArgs(rawArgs), { cwd, stdout: out, stderr: err, updatePreview });
+    return { code, out: out.text(), err: err.text() };
+  }) : args;
+  const code = await runCommand(parseArgs(reviewedArgs), {
     cwd,
     ...(options.answers === undefined
       ? {}
       : { stdin: scriptedTtyInput(options.answers) }),
     stdout,
     stderr,
+    updatePreview,
     runner: options.runner ?? new ReadyInitRunner(),
     stableReleaseLookup: async () => {
       throw new Error('offline');
@@ -125,7 +141,7 @@ describe('maintenance presentation', () => {
         ['update'],
         projectRoot,
         columns,
-        { runner }
+        { runner, reviewed: true }
       );
 
       expect(result.code).toBe(0);
@@ -187,7 +203,7 @@ describe('maintenance presentation', () => {
     for (const command of [['update', '--check', '--json'], ['doctor', '--json']]) {
       const result = await run(command, projectRoot, 100);
       const parsed = JSON.parse(result.out);
-      expect(parsed.schemaVersion).toBe(command[0] === 'update' ? 2 : 1);
+      expect(parsed.schemaVersion).toBe(command[0] === 'update' ? 3 : 1);
       expect(result.out.startsWith('{')).toBe(true);
       expect(result.out.endsWith('}\n')).toBe(true);
       expect(result.out).not.toContain('LIFTOFF');
@@ -196,7 +212,7 @@ describe('maintenance presentation', () => {
     }
   });
 
-  it('reports JSON-mode failures on plain stderr without contaminating stdout', async () => {
+  it('reports JSON-mode failures as one versioned result', async () => {
     const projectRoot = await fixture();
     const manifestPath = path.join(projectRoot, 'liftoff.manifest.json');
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
@@ -205,8 +221,12 @@ describe('maintenance presentation', () => {
     const result = await run(['update', '--json'], projectRoot, 100);
 
     expect(result.code).toBe(1);
-    expect(result.out).toBe('');
-    expect(result.err).toContain('newer than this CLI');
+    const report = JSON.parse(result.out);
+    expect(report.schemaVersion).toBe(3);
+    expect(report.reasonCode).toBe('newer-project');
+    expect(report.message).toContain('newer than this CLI');
+    expect(report.committed).toBe(false);
+    expect(result.err).toBe('');
     expect(result.err).not.toMatch(/\u001B\[/);
     expect(result.err).not.toMatch(/[┌┐└┘│]/);
   });

@@ -29,6 +29,27 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 export const governanceCompatibilitySchemaVersion = compatibilityMetadataSchemaVersion;
 export const minimumLiftoffForManifestV7 = '0.10.0' as const;
 export const supportedManifestReadVersions = [2, 3, 4, 5, 6, 7] as const;
+export const activationSuccessorMigrationId = 'activation-v1-to-v2' as const;
+
+export interface ActivationSuccessorMigration {
+  id: typeof activationSuccessorMigrationId;
+  fromIdentity: ActivationIdentity;
+  toIdentity: ActivationIdentity;
+  strategy: 'preserve-history-revalidate';
+  historySchemaVersion: 1;
+  journalSchemaVersion: 1;
+}
+
+export function packagedActivationSuccessorMigrations(): ActivationSuccessorMigration[] {
+  return historicalActivationIdentities.map((identity) => ({
+    id: activationSuccessorMigrationId,
+    fromIdentity: stableIdentity(identity),
+    toIdentity: stableIdentity(currentActivationIdentity),
+    strategy: 'preserve-history-revalidate',
+    historySchemaVersion: 1,
+    journalSchemaVersion: 1
+  }));
+}
 
 export interface ManagedCompatibilityInventoryEntry {
   logicalName: string;
@@ -57,7 +78,7 @@ export interface HistoricalActivationStateMigration {
 }
 
 export interface GovernanceCompatibilityMetadata {
-  schemaVersion: typeof governanceCompatibilitySchemaVersion;
+  schemaVersion: 2 | typeof governanceCompatibilitySchemaVersion;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: typeof liftoffActivationPackageVersion;
   minimumLiftoffVersions: {
@@ -77,11 +98,12 @@ export interface GovernanceCompatibilityMetadata {
       activationStateSchemaVersion: 1;
       evidenceHeaderSchemaVersion: 1;
       execution: 'diagnostic-only';
-      migration: 'unsupported-preserve-bytes';
+      migration: 'unsupported-preserve-bytes' | 'explicit-successor-preserve-bytes';
     };
     recognizedGraphHashes: readonly string[];
     graphMappings: readonly CompatibilityGraphMapping[];
     historicalStateMigrations: readonly HistoricalActivationStateMigration[];
+    successorMigrations?: readonly ActivationSuccessorMigration[];
     unsupportedRemedy: string;
   };
   managedCore: {
@@ -96,6 +118,13 @@ export interface GovernanceCompatibilityMetadata {
     };
   };
 }
+
+export type CurrentGovernanceCompatibilityMetadata = Omit<GovernanceCompatibilityMetadata, 'schemaVersion' | 'activation'> & {
+  schemaVersion: typeof governanceCompatibilitySchemaVersion;
+  activation: GovernanceCompatibilityMetadata['activation'] & {
+    successorMigrations: readonly ActivationSuccessorMigration[];
+  };
+};
 
 const identityFields = [
   'liftoffVersion',
@@ -159,7 +188,7 @@ export function buildGovernanceCompatibilityMetadata(
   inventory: readonly ManagedCompatibilityInventoryEntry[],
   logicalNameAllowlist: readonly string[],
   pathAllowlist: readonly (readonly string[])[]
-): GovernanceCompatibilityMetadata {
+): CurrentGovernanceCompatibilityMetadata {
   return {
     schemaVersion: governanceCompatibilitySchemaVersion,
     generatedBy: 'Mission Control Liftoff',
@@ -181,12 +210,13 @@ export function buildGovernanceCompatibilityMetadata(
         activationStateSchemaVersion: 1,
         evidenceHeaderSchemaVersion: 1,
         execution: 'diagnostic-only',
-        migration: 'unsupported-preserve-bytes'
+        migration: 'explicit-successor-preserve-bytes'
       },
       recognizedGraphHashes: [canonicalPhaseGraphHash],
       graphMappings: [],
       historicalStateMigrations: [],
-      unsupportedRemedy: 'Do not downgrade or rewrite governance state. Upgrade Liftoff to a version whose compatibility metadata recognizes the manifest, policy, contract, schema tuple, and phase graph hash.'
+      successorMigrations: packagedActivationSuccessorMigrations(),
+      unsupportedRemedy: 'Run liftoff update --check to inspect an explicitly supported history-preserving migration. Do not downgrade, retag, or reset historical governance state; unknown identities require a compatible Liftoff release.'
     },
     managedCore: {
       logicalNameAllowlist: [...logicalNameAllowlist],
@@ -421,8 +451,9 @@ export function validateGovernanceCompatibilityMetadata(
     'activation',
     'managedCore'
   ], 'compatibility');
-  if (item.schemaVersion !== governanceCompatibilitySchemaVersion) {
-    throw new Error(`compatibility.schemaVersion must be ${governanceCompatibilitySchemaVersion}.`);
+  const schemaVersion = item.schemaVersion;
+  if (schemaVersion !== 2 && schemaVersion !== governanceCompatibilitySchemaVersion) {
+    throw new Error(`compatibility.schemaVersion must be 2 or ${governanceCompatibilitySchemaVersion}.`);
   }
   if (item.generatedBy !== 'Mission Control Liftoff') {
     throw new Error('compatibility.generatedBy must be Mission Control Liftoff.');
@@ -451,6 +482,7 @@ export function validateGovernanceCompatibilityMetadata(
     'recognizedGraphHashes',
     'graphMappings',
     'historicalStateMigrations',
+    ...(schemaVersion === 3 ? ['successorMigrations'] : []),
     'unsupportedRemedy'
   ], 'compatibility.activation');
   const historical = exact(activation.historicalReadability, [
@@ -461,10 +493,13 @@ export function validateGovernanceCompatibilityMetadata(
     assertIdentity(activationIdentity(historical.tuples[index], `compatibility.activation.historicalReadability.tuples[${index}]`),
       identity, `compatibility.activation.historicalReadability.tuples[${index}]`);
   }
+  const historicalMigration = schemaVersion === 2
+    ? 'unsupported-preserve-bytes'
+    : 'explicit-successor-preserve-bytes';
   if (historical.activationContractVersion !== 1 || historical.activationStateSchemaVersion !== 1 ||
     historical.evidenceHeaderSchemaVersion !== 1 || historical.execution !== 'diagnostic-only' ||
-    historical.migration !== 'unsupported-preserve-bytes') {
-    throw new Error('Historical activation v1 is diagnostic-only and must preserve bytes without migration.');
+    historical.migration !== historicalMigration) {
+    throw new Error('Historical activation v1 must remain diagnostic-only with its declared history-preserving migration boundary.');
   }
   if (!Array.isArray(activation.currentCompatibleTuples)) {
     throw new Error('compatibility.activation.currentCompatibleTuples must be an array.');
@@ -526,6 +561,29 @@ export function validateGovernanceCompatibilityMetadata(
       unversionedImport: 'requires-explicit-import-mapping'
     };
   });
+  const successorMigrations: ActivationSuccessorMigration[] = [];
+  if (schemaVersion === 3) {
+    const expectedMigrations = packagedActivationSuccessorMigrations();
+    if (!Array.isArray(activation.successorMigrations) ||
+      activation.successorMigrations.length !== expectedMigrations.length) {
+      throw new Error('compatibility.activation.successorMigrations must match the packaged migration inventory.');
+    }
+    for (const [index, expectedMigration] of expectedMigrations.entries()) {
+      const label = `compatibility.activation.successorMigrations[${index}]`;
+      const migration = exact(activation.successorMigrations[index], [
+        'id', 'fromIdentity', 'toIdentity', 'strategy', 'historySchemaVersion', 'journalSchemaVersion'
+      ], label);
+      if (migration.id !== expectedMigration.id || migration.strategy !== expectedMigration.strategy ||
+        migration.historySchemaVersion !== 1 || migration.journalSchemaVersion !== 1) {
+        throw new Error(`${label} does not match the packaged history-preserving successor contract.`);
+      }
+      assertIdentity(activationIdentity(migration.fromIdentity, `${label}.fromIdentity`),
+        expectedMigration.fromIdentity, `${label}.fromIdentity`);
+      assertIdentity(activationIdentity(migration.toIdentity, `${label}.toIdentity`),
+        expectedMigration.toIdentity, `${label}.toIdentity`);
+      successorMigrations.push(expectedMigration);
+    }
+  }
   const managedCore = exact(item.managedCore, [
     'logicalNameAllowlist',
     'pathAllowlist',
@@ -572,7 +630,7 @@ export function validateGovernanceCompatibilityMetadata(
     throw new Error('compatibility.managedCore.validation must require strict JSON, path parts, no setup-skill version, and zero-byte check mode.');
   }
   return {
-    schemaVersion: governanceCompatibilitySchemaVersion,
+    schemaVersion,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion: liftoffActivationPackageVersion,
     minimumLiftoffVersions: {
@@ -589,11 +647,12 @@ export function validateGovernanceCompatibilityMetadata(
       historicalReadability: {
         tuples: historicalActivationIdentities.map(stableIdentity),
         activationContractVersion: 1, activationStateSchemaVersion: 1, evidenceHeaderSchemaVersion: 1,
-        execution: 'diagnostic-only', migration: 'unsupported-preserve-bytes'
+        execution: 'diagnostic-only', migration: historicalMigration
       },
       recognizedGraphHashes,
       graphMappings,
       historicalStateMigrations,
+      ...(schemaVersion === 3 ? { successorMigrations } : {}),
       unsupportedRemedy: stringField(activation, 'unsupportedRemedy', 'compatibility.activation')
     },
     managedCore: {

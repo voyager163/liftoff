@@ -148,11 +148,12 @@ hand-edited unsafe path.
 
 ## Update reports managed-core conflicts or orphans
 
-`liftoff update` applies safe managed-core changes immediately and skips core
-conflicts.
+Run `liftoff update --check` before apply. `liftoff update` requires the matching
+preview and explicit approval, then applies its safe scope and skips core
+conflicts. A missing or stale receipt requires a fresh check, not force.
 
-- Use `liftoff update --check` for a read-only human report or
-  `liftoff update --check --json` for an automation drift gate.
+- Use `liftoff update --check` for a project-read-only human report or add
+  `--json` for automation. Both disclose an external preview receipt.
 - Project-owned application files never enter the report or mutation set.
 - Managed-core conflicts remain untouched by default.
 - Use `liftoff update --force` only after reviewing every listed path and
@@ -162,7 +163,8 @@ conflicts.
 - Update neither changes nor installs project dependencies.
 
 Commit or copy local work before overwriting. Transaction rollback protects a
-failed update, but Liftoff keeps no backup after success.
+failed ordinary update. Activation migration additionally retains original
+history after success; failed revalidation retains blocked/resumable v2.
 
 For a new governance policy or launcher conflict, review that exact local file
 before considering `liftoff update --force`; do not delete it or activate remote
@@ -258,8 +260,8 @@ or allow TCP and UDP 53 to exact custom resolver addresses.
 | `phase-blocked` | Read the phase, proof, and authority blocker; unavailable production or enrollment capabilities remain blocked. |
 | `evidence-stale` | Obtain fresh proof through supported, authorized execution from current inputs; never edit receipts or reuse stale headers as current inputs. |
 | `credential-expiring` | Rotate before the recorded lead time using the same App or PAT policy. |
-| `reconciliation-required` | Review the precise identity/input diagnostic. Historical v1 has no public reconciliation workflow; preserve its bytes rather than acknowledging a new identity by editing JSON. |
-| `identity-incompatible` | Upgrade when the supported tuple requires a newer CLI. Unknown or historical tuples cannot be made executable with force or invented mappings. |
+| `reconciliation-required` | Review `liftoff update --check`. An exact supported v1 source can use the approved history-preserving successor lane; unknown formats remain blocked. Never edit JSON to acknowledge identity. |
+| `identity-incompatible` | Upgrade when the supported tuple requires a newer CLI. A historical receipt never becomes executable through force, retagging, or an invented mapping. |
 | `enforcement-incomplete` | Prove exact required contexts green and deliberately red, then approve final enforcement before ruleset mutation. |
 | `disposal-pending` | Review retention, exact imported paths, destructive scope, and proof. Execution requires valid authority; there is no public approval-entry shortcut. |
 

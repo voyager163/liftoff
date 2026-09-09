@@ -76,7 +76,7 @@ do not fabricate a historical value.
 
 The generated `liftoff.manifest.json` records this as manifest `artifactVersion`
 7 plus the activation identity fields shown above. Compatibility metadata uses
-schema version 2 in its own document, not a new required manifest field.
+schema version 3 in its own document, not a new required manifest field.
 Assessment report/catalog, graph, supersession, and credential-policy schemas
 remain at version 1; normative policy remains 6.
 
@@ -126,9 +126,18 @@ changes in another.
 - Manifest composition injects `validateReadableActivationIdentity` only at the
   manifest boundary. Exact known v1 identities remain readable without retagging;
   state, evidence, approval, readiness, and scope use strict current validation.
-- Known v1 activation is diagnostic-only. `diagnosticOnly` maintenance may update
-  safe managed core while retaining historical identity/state/evidence. No public
-  history reconciliation or automatic old-to-new state migration is implemented.
+- Known v1 activation remains non-executable. The exact packaged successor lane
+  requires update preview and approval, preserves original history, and creates
+  new v2 proof only through current validation. Never add v1 to the executable map.
+- Compatibility metadata v3 distinguishes successor eligibility from execution;
+  retain strict schema-2 input reading without treating it as migration authority.
+  Update report v3 distinguishes local commit from incomplete revalidation.
+- Preview receipts are external user-local metadata, never approval. Persist
+  transaction approval separately after explicit consent; recovery must validate
+  that external binding rather than trust project-local JSON claiming approval.
+- Durable history stays inside the project and outside managed-core ownership.
+  It preserves historical state and evidence byte-for-byte. After migration
+  commits, repair/resume blocked v2 rather than restore v1.
 - The eight flat-root OpenTofu identities are an explicit new-output-only
   exception to append-only naming in 0.11.0. Preserve historical records and
   files; use the exact [retirement inventory](docs/azure-deployment.md#explicit-flat-root-identity-retirement),

@@ -256,16 +256,28 @@ object.
 ## Update modes
 
 ```bash
+liftoff update --check
 liftoff update
 liftoff update --force
-liftoff update --json
-liftoff update --check
 liftoff update --check --json
+liftoff update --approve-plan <fingerprint> --json
 ```
 
-Plain `liftoff update` is imperative and prompt-free. It applies safe new,
-missing, untouched-upgrade, clean-move, and recorded-state changes only for
-explicit `managed-core` artifacts. For manifest v7 this includes governance
+`liftoff update --check` is the human-first compatibility and migration preview.
+It changes no project bytes, but saves and discloses a project-bound preview
+receipt in user-local storage outside the repository. A receipt is not approval.
+`liftoff update` requires a matching preview, recomputes its effective plan, and
+asks for explicit approval with a negative default. Missing or stale previews
+stop with instructions to rerun check. No-op inspection requires no approval.
+
+Noninteractive apply additionally requires the exact full plan fingerprint
+through `--approve-plan`. Check and apply must share the same materialized
+checkout and user-local storage; another runner, worktree, or moved project
+needs a fresh check and approval. `--force`, `--json`, and a generic yes do not
+waive these gates. The force variant has its own preview and fingerprint.
+
+Approved apply retains safe new, missing, untouched-upgrade, clean-move, and
+recorded-state changes only for explicit `managed-core` artifacts. For manifest v7 this includes governance
 policy, context, guide, phase graph, compatibility metadata, credential-policy
 schema, and selected-agent `/liftoff-setup` integrations. Core conflicts are
 skipped and core orphans are reported without deletion. During legacy governance
@@ -288,22 +300,48 @@ recreates or deletes project files.
 New environments also require recorded independent-root infrastructure and safe
 existing shared-module files. Legacy/shared or unknown layout produces a
 component-level migration-required result; other safe managed-core work may
-continue. Force cannot migrate state or rewrite shared infrastructure.
+continue. Force cannot migrate infrastructure state or rewrite shared infrastructure.
+New component provisioning is deferred during activation-v1 migration and needs
+a fresh post-migration preview.
 
 Use `--check` whenever no project bytes may change. Human check mode prints
 managed-core drift, ownership-only manifest v2-v7 migration, activation-identity
-compatibility, reconciliation-required state, and authorized provisioning. It
-recommends `--force` only for core conflicts. `--check --force` is invalid
-because check mode never authorizes writes.
+compatibility, history preservation, revalidation gaps, and authorized
+provisioning. It recommends `--force` only for eligible owned core conflicts
+and displays the additional exact changes and fingerprint separately.
+`--check --force` remains invalid because check mode never authorizes overwrites.
 
-`--json` selects output format, not safety. `liftoff update --json` applies safe
-changes and emits the versioned apply result. `liftoff update --check --json`
-is the read-only automation gate.
+`--json` selects output format, not safety or consent. Update JSON uses schema 3
+with project-update scope and separate core, provisioning, activation-migration,
+and revalidation outcomes. Prompts and progress use stderr; stdout remains one
+JSON result. Check exits 0 for no actionable work, 2 for differences, and 1 for
+errors. Apply exits 0 for completed scope, 2 when migration committed but
+revalidation is incomplete, and 1 for rejected approval or an error.
 
-Update never installs dependencies. Transaction snapshots restore a failed
-core update, but Liftoff retains no backup after a successful core overwrite.
-Force cannot bypass the ownership, project-boundary, symlink, structural,
-identity, or manifest guards.
+Update never installs dependencies. Ordinary transaction backups are for failure
+recovery; activation migration additionally retains durable original history.
+Force cannot bypass preview, approval, ownership, project-boundary, symlink,
+structural, identity, or manifest guards.
+
+### Reviewed activation-v1 migration
+
+An exact supported v1 source can be previewed with `liftoff update --check`.
+Approved update verifies an immutable in-project history snapshot before
+replacing active records, then creates a linked strict v2 activation. Historical
+state, evidence, plans, approvals, and source metadata retain their original
+bytes under the dedicated governance history directory. History is not managed
+core and is never automatically committed, pushed, or cleaned with receipts.
+
+Fresh local revalidation does not translate old success flags or approvals.
+It uses only the finite reviewed local operations and stops before provider
+access, dependency installation, publication, or other independently approved
+work. Validation commands execute project-controlled code, not a sandbox;
+unexpected protected-input edits are preserved and reported.
+
+A failed local transaction uses bounded recovery. A failure after commit keeps
+v2 blocked and resumable: repair the named cause, rerun check, then approve the
+remaining work. Do not reset state to v1, change identity fields manually, or
+recreate live resources to silence readiness diagnostics.
 
 New dependency, runtime, container, database, application, and infrastructure
 templates apply to newly generated projects. Existing
@@ -330,10 +368,10 @@ All current writes use v7. Supported historical reads are normalized through an
 explicit compatibility map; future versions, individually known but unsupported
 tuples, and unknown phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
-Exact known activation-v1 identity is readable for diagnostics. A
-`diagnosticOnly` historical-state result can coexist with managed-core maintenance,
-which preserves the historical identity, state, and receipts and does not make
-them executable.
+Exact known activation-v1 identity remains non-executable. The explicitly
+supported reviewed successor lane preserves that original history while
+establishing new v2 state and fresh proof; merely reading a historical identity
+or updating a core file does not perform or authorize the migration.
 
 ## Development and infrastructure helpers
 

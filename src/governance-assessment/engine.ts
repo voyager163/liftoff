@@ -57,6 +57,7 @@ function activationAuthorityFingerprint(
     status: inspection.status,
     state: inspection.state,
     snapshot: inspection.snapshot,
+    migration: inspection.migration,
     records: inspection.records,
     reviewedPlans: firstContext.reviewedPlans ?? [],
     selections: inspection.selections
@@ -931,6 +932,17 @@ export async function assessGovernance(
             ? [...activation.contexts[phaseIds[0]].reviewedPlans!]
             : [];
           project.activationSelections = activation.selections;
+          if (activation.migration) {
+            const complete = activation.migration.revalidation.status === 'complete';
+            project.diagnostics.push({
+              code: complete ? 'activation-migration-committed' : 'activation-revalidation-blocked',
+              severity: complete ? 'info' : 'warning',
+              source: 'governance/migration-state.json',
+              message: sanitizeAssessmentText(complete
+                ? 'Local v2 migration and approved local revalidation are complete. Preserved v1 history is informational, not live enforcement proof.'
+                : `Local v2 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run liftoff update --check after repairing the named blocker.`)
+            });
+          }
           for (const [phaseId, selection] of Object.entries(activation.selections)) {
             if (selection.selected && selection.historicalIssues?.length) {
               project.diagnostics.push({

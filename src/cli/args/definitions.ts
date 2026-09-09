@@ -119,14 +119,28 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 1
   },
   update: {
-    description: 'Reconcile Liftoff-managed core files in a project',
+    description: 'Preview and explicitly approve scoped project updates',
     usage: '[project-path]',
     group: 'Maintenance',
     flags: {
       project: valueFlag('Project path', 'Project', 'path'),
-      check: booleanFlag('Report drift without changing project files', 'Command'),
-      force: booleanFlag('Replace modified managed files', 'Consent'),
-      json: booleanFlag('Emit machine-readable JSON', 'Output'),
+      check: booleanFlag(
+        'Preview normal and eligible forced plans without project writes; save an external preview receipt',
+        'Command'
+      ),
+      force: booleanFlag(
+        'Select the separately previewed forced plan for exact owned-core conflicts and retired aliases; still requires approval',
+        'Consent'
+      ),
+      'approve-plan': valueFlag(
+        'Approve the exact effective plan from check using its full lowercase 64-hex SHA-256 fingerprint',
+        'Consent',
+        'fingerprint'
+      ),
+      json: booleanFlag(
+        'Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no',
+        'Output'
+      ),
       ...helpFlag
     },
     arguments: [{ syntax: 'project-path', description: 'Generated project to reconcile' }],

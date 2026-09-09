@@ -77,6 +77,9 @@ jobs:
           npx vitest run
           tests/init-filesystem.test.ts tests/project-discovery.test.ts
           tests/file-system.test.ts tests/project-lock.test.ts tests/filesystem-recovery.test.ts
+          tests/update-preview.test.ts tests/update-approval.test.ts tests/update-inspection.test.ts
+          tests/update-compatibility.test.ts tests/reviewed-update-transaction.test.ts
+          tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts
           tests/process-runner.test.ts tests/terminal.test.ts tests/interactive.test.ts
