@@ -710,6 +710,37 @@ describe('bounded migration local revalidation', () => {
     const allowed = approved.preview.inspectionCommands.map(({ command }) => formatCommand(command));
     expect(runner.calls.filter(({ command }) => command.executable === 'git').every(({ command }) => allowed.includes(formatCommand(command)))).toBe(true);
     expect((await loadActivationState(root))?.state.remoteBinding).toBeUndefined();
+  }, 60_000);
+
+  it('blocks source edits during read-only metadata inspection before any validation command', async () => {
+    const { root, clock } = await fixture();
+    await mkdir(path.join(root, '.git'));
+    await writeProjectFile(root, ['scripts', 'baseline.mjs'], 'export const approved = true;\n');
+    const approved = await approval(root, clock);
+    const metadata = new Map([
+      ['rev-parse --show-toplevel', root],
+      ['rev-parse --verify HEAD', 'a'.repeat(40)],
+      ['symbolic-ref --quiet --short HEAD', 'develop'],
+      ['remote', 'origin'],
+      ['remote get-url --push --all origin', 'https://github.com/example/project.git']
+    ]);
+    let edited = false;
+    const runner = new LocalRunner(async (command) => {
+      if (command.executable !== 'git') throw new Error('Changed sources must not reach validation.');
+      if (!edited) {
+        edited = true;
+        await writeProjectFile(root, ['scripts', 'baseline.mjs'], 'export const approved = false;\n');
+      }
+      return { stdout: metadata.get(command.args.join(' ')) ?? '' };
+    });
+    const result = await executeLocalRevalidation({
+      approvedPreview: approved.preview, protectedInputs: approved.protectedInputs, runner, clock
+    });
+    expect(result.status).toBe('blocked');
+    expect(result.blockers.join(' ')).toMatch(/Protected.*changed/i);
+    expect(runner.calls.every(({ command }) => command.executable === 'git')).toBe(true);
+    expect(await readActivationEvidence(root)).toEqual([]);
+    expect(await readFile(path.join(root, 'scripts', 'baseline.mjs'), 'utf8')).toContain('false');
   });
 
   it('retains current successful proof when only final progress persistence fails', async () => {

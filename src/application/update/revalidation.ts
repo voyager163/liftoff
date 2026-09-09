@@ -208,6 +208,11 @@ export async function executeLocalRevalidation(input: {
       if (!metadata && (!expected || !commandMatches(expected, approved.projectRoot, command, options))) {
         throw new Error(`Operation is outside the approved local revalidation command sequence: ${formatCommand(command)}. Obtain a fresh preview.`);
       }
+      if (metadata) {
+        const result = await runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
+        if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');
+        return result;
+      }
       await assertProtectedInputs();
       let result: CommandResult;
       try {
@@ -223,7 +228,7 @@ export async function executeLocalRevalidation(input: {
         await assertProtectedInputs();
       }
       if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');
-      if (!metadata) commandIndex += 1;
+      commandIndex += 1;
       return result;
     }
   };
@@ -236,7 +241,12 @@ export async function executeLocalRevalidation(input: {
       return runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
     }
   };
-  const reinspect = async () => resumableLocalInspection(await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock() }));
+  const reinspect = async () => {
+    await assertProtectedInputs();
+    const inspection = await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock() });
+    await assertProtectedInputs();
+    return resumableLocalInspection(inspection);
+  };
 
   function result(status: LocalRevalidationResult['status'], blockers: readonly string[] = []): LocalRevalidationResult {
     const next = current ? nextIncompletePhase(current) : null;

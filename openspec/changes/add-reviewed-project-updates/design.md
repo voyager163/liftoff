@@ -85,9 +85,14 @@ directories. Capture a separate retained-source inventory during preview,
 including those files and existing generated outputs, and bind it to the
 fingerprint and locked recheck. Project source is not inferred from a folder
 being named `build` or `dist`. During execution, compare that same projected
-post-update inventory before each command; accept changes in an explicitly
+post-update inventory before each validation command and around the bounded
+read-only Git-metadata inspection; accept changes in an explicitly
 declared command-specific output path only after that approved command ran.
 All other source changes remain blockers and are preserved.
+
+Project permission postconditions use the same requested-to-native mode mapping
+as the transaction writer. Windows writable attributes must not be compared
+directly with requested POSIX `0600` bits.
 
 Do not include incidental display ordering, receipt issuance time, or future execution timestamps in the semantic fingerprint. Runtime timestamps remain freshly validated event data, not permission to change operations. Derive snapshot identifiers from the canonical historical inventory and its raw-byte hashes, avoiding a circular dependency between the plan fingerprint and its history paths.
 

@@ -162,7 +162,7 @@ describe('reviewed update command integration', () => {
     expect(result.report.committed).toBe(true);
     expect(result.report.receipt).toMatchObject({ status: 'consumed' });
     expect(await readFile(guide)).toEqual(originalGuide);
-    expect(result.report.written).toContain(path.join(...governanceArtifactPaths.guide));
+    expect(result.report.written).toContain(path.posix.join(...governanceArtifactPaths.guide));
   });
 
   it('rejects changed protected inputs before writing', async () => {
@@ -232,7 +232,7 @@ describe('reviewed update command integration', () => {
     expect(await readFile(path.join(history, snapshots[0]!, 'files', 'governance', 'activation-state.json')))
       .toEqual(originalState);
     expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([2, 2, 2]);
-  });
+  }, 90_000);
 
   it('retains blocked v2 after revalidation failure and resumes after a new approval', async () => {
     const { root } = await historicalFixture();

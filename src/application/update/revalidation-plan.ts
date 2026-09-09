@@ -148,8 +148,9 @@ export function postUpdateProtectedInputs(
     expected.set(mutation.pathParts.join('\0'), {
       pathParts: [...mutation.pathParts],
       digest: mutation.type === 'delete' ? null : rawDigest(mutation.content),
-      ...(mutation.type === 'write' && mutation.mode !== undefined ? { mode: mutation.mode } :
-        mutation.type === 'write' && previous?.mode !== undefined ? { mode: previous.mode } : {})
+      ...(mutation.type === 'write'
+        ? { mode: reviewedUpdateTargetMode(mutation.mode, previous?.mode) }
+        : {})
     });
   }
   return {
