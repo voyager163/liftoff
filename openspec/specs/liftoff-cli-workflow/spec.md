@@ -5,25 +5,23 @@ Define the user-facing Liftoff CLI workflow for creating, previewing, validating
 ## Requirements
 
 ### Requirement: Liftoff exposes a Node-based CLI
-The system SHALL provide a Node.js command-line interface named `liftoff` that requires Node.js 20.19 or newer and is installable from the published `@msn-control/liftoff` npm package without requiring Python to start the generator. The project-initialization command SHALL be `liftoff init`, and `liftoff create` SHALL NOT remain an alias.
+The system SHALL provide a Node.js command-line interface named `liftoff` using the release-owned supported Node.js baseline, which requires Node.js 24.20 or newer for this release. It SHALL be installable from `@msn-control/liftoff` without requiring Python to start the generator. The initialization command SHALL be `liftoff init`, and `liftoff create` SHALL NOT remain an alias.
 
 #### Scenario: Run init command
 - **WHEN** a developer runs `liftoff init`
-- **THEN** the system starts the project initialization flow without requiring Python merely to start Liftoff
+- **THEN** the initialization flow starts without requiring Python merely to start Liftoff
 
 #### Scenario: Run non-interactive init command
 - **WHEN** a developer runs `liftoff init my-app --pattern rag --cloud azure --region eastus --spec openspec --agents copilot --no-frontend --yes`
-- **THEN** the system resolves the provided options into a project plan without prompting for framework, API framework, infrastructure tool, database, cache, observability, or developer portal choices
+- **THEN** the system resolves the provided options without prompting for framework, API framework, infrastructure tool, database, cache, observability, or developer portal choices
 
 #### Scenario: Obsolete create command is rejected
 - **WHEN** a developer runs `liftoff create`
-- **THEN** Liftoff exits 1 without project or machine side effects
-- **AND** it states that the command was replaced by `liftoff init`
+- **THEN** Liftoff exits 1 without project or machine side effects and identifies `liftoff init` as its replacement
 
 #### Scenario: Run CLI after global npm install
 - **WHEN** a developer installs Liftoff with `npm install -g @msn-control/liftoff@latest`
-- **THEN** the `liftoff` command is available from the developer's shell
-- **AND** running `liftoff help` displays the Liftoff command help
+- **THEN** `liftoff` is available from the shell and `liftoff help` displays command help
 
 ### Requirement: CLI reports the running Liftoff version
 The system SHALL expose the running package version through `liftoff --version` and general help without requiring a project, Python, registry access, or any other network operation.
@@ -41,51 +39,51 @@ The system SHALL expose the running package version through `liftoff --version` 
 - **THEN** the reported version exactly matches the packed package version
 
 ### Requirement: CLI captures required project decisions
-The system SHALL capture the project name, project type, spec-driven workflow, and one or more AI coding agents before generating files. For GenAI projects it SHALL also capture the GenAI pattern, target cloud provider, deployment region, frontend selection, and environment selection while using the approved Python/FastAPI/PydanticAI stack. The GenAI pattern choice SHALL offer an explicit generic option for users who are not ready to select a specialization and SHALL default to that option. For standard projects it SHALL capture one approved API stack, target cloud provider, deployment region, frontend selection, and environment selection without requiring a GenAI pattern. For Power Apps code apps it SHALL capture the optional Microsoft Code Apps plugin preference without requiring API, GenAI, cloud, region, frontend, or API environment decisions. When Spec Kit has multiple selected agents, the system SHALL also capture exactly one default agent.
+The system SHALL capture project name, supported project type, spec workflow, and one or more coding agents before generation. GenAI SHALL capture pattern, provider, region, frontend, and environments using the approved Python/FastAPI/PydanticAI stack, with the explicit generic pattern as default. Standard API SHALL capture one approved API stack and applicable cloud/frontend/environment decisions without a GenAI pattern. Supplied options SHALL retain the same meaning in interactive and noninteractive flows. Spec Kit with multiple agents SHALL require exactly one selected default agent. Power Apps SHALL NOT be offered as a supported workload.
 
 #### Scenario: Interactive GenAI project decisions
-- **WHEN** a developer runs `liftoff init` without all required options and selects a GenAI project
-- **THEN** the system prompts for missing common decisions, offers `I'm not sure yet - Generic GenAI starter` before specialized patterns, captures cloud decisions and one or more coding agents
-- **AND** the generic option is selected when the developer accepts the pattern default
-- **AND** the system defaults the spec-driven workflow to OpenSpec
+- **WHEN** a developer selects GenAI with missing options
+- **THEN** the system prompts for missing common decisions, offers `I'm not sure yet - Generic GenAI starter` before specializations, and captures applicable cloud decisions and agents
+- **AND** accepting the pattern and workflow defaults selects generic and OpenSpec
 
 #### Scenario: Interactive standard project decisions
-- **WHEN** a developer runs `liftoff init` without all required options and selects a standard project
-- **THEN** the system prompts for missing common decisions, the standard API stack, cloud decisions, and one or more coding agents
-- **AND** the system does not prompt for a GenAI pattern
+- **WHEN** a developer selects a standard project with missing options
+- **THEN** the system prompts for missing common decisions, API stack, cloud decisions, and agents without requesting a GenAI pattern
 
 #### Scenario: Interactive Power Apps project decisions
-- **WHEN** a developer runs `liftoff init` without all required options and selects a Power Apps code app
-- **THEN** the system prompts for the common spec workflow and coding agents followed by the optional preview-plugin preference
-- **AND** it does not prompt for an API stack, GenAI pattern, cloud, region, frontend, or API environments
+- **WHEN** a developer supplies the retired Power Apps workload to an interactive flow
+- **THEN** Liftoff reports that the workload is unsupported instead of offering its former decisions or generating files
 
 #### Scenario: Approved GenAI stack is not prompted
 - **WHEN** the CLI prompts for a GenAI project's decisions
-- **THEN** the system does not ask the developer to choose the generated application framework because PydanticAI with FastAPI remains the approved GenAI default
+- **THEN** PydanticAI with FastAPI remains the derived stack rather than another framework question
 
 #### Scenario: Approved standard framework is derived from API stack
-- **WHEN** the CLI prompts for a standard project's decisions
-- **THEN** each offered API stack identifies its approved language and framework
-- **AND** the system does not ask a separate framework-selection question
+- **WHEN** a developer selects an approved API stack
+- **THEN** its language and framework are identified without a separate framework-selection question
 
 #### Scenario: Both agents are selected for Spec Kit
-- **WHEN** a developer selects GitHub Copilot and Claude Code with Spec Kit for any workload
-- **THEN** the system asks which selected agent is the default integration before generation
+- **WHEN** GitHub Copilot and Claude Code are selected with Spec Kit for a supported workload
+- **THEN** exactly one selected agent is chosen as default before generation
+
+#### Scenario: Explicit standard flag is honored while prompting
+- **WHEN** a developer supplies `--no-genai` without an API stack and answers the remaining prompts
+- **THEN** the workload remains standard and the CLI asks for the API stack rather than offering a conflicting GenAI default
 
 ### Requirement: CLI supports all approved GenAI patterns
-The system SHALL allow developers to select generic/undecided, RAG, chatbot/conversational AI, agent-based, prompt-based app, multi-agent system, fine-tuned model app, real-time/streaming AI, or AI workflow/pipeline as the GenAI application pattern. Interactive and noninteractive selection SHALL resolve the stable identifier `generic` rather than silently mapping uncertainty to another specialization.
+The system SHALL retain the nine stable pattern identities for generic, RAG, chatbot, agent, prompt, multi-agent, fine-tuned, streaming, and workflow starters. Interactive and noninteractive uncertainty SHALL resolve to `generic`. Pattern listings and previews SHALL describe actual starter maturity and missing specialization rather than implying that selecting a named pattern implements its complete product behavior.
 
 #### Scenario: Select generic pattern
-- **WHEN** a developer chooses `I'm not sure yet - Generic GenAI starter` or supplies `--pattern generic`
-- **THEN** the system records the `generic` pattern and resolves a neutral GenAI project plan
+- **WHEN** a developer chooses the generic option or supplies `--pattern generic`
+- **THEN** the system records the explicit generic identity and a neutral project plan
 
 #### Scenario: Select RAG pattern
-- **WHEN** a developer selects the RAG pattern
-- **THEN** the system includes RAG-specific decisions in the project plan, including retrieval and ingestion scaffold decisions
+- **WHEN** a developer selects RAG
+- **THEN** the plan identifies its retrieval and ingestion scaffold boundaries and distinguishes implemented publishing from deferred retrieval behavior
 
 #### Scenario: Select each supported pattern
-- **WHEN** a developer selects any one of the nine approved GenAI patterns
-- **THEN** the system accepts the pattern and maps it to its explicit scaffold definition
+- **WHEN** a developer selects any of the nine patterns
+- **THEN** it maps to its explicit scaffold definition and accurate capability limitations
 
 ### Requirement: CLI handles planned cloud providers explicitly
 The system SHALL fully support Azure in V1 and identify AWS and GCP as planned provider adapters.
@@ -99,19 +97,23 @@ The system SHALL fully support Azure in V1 and identify AWS and GCP as planned p
 - **THEN** the system stops before generation and explains that AWS is a planned provider adapter, not a V1-supported provider
 
 ### Requirement: CLI resolves human-friendly deployment regions
-The system SHALL resolve exact cloud region slugs and human-friendly region aliases for supported providers.
+The system SHALL resolve exact region slugs and human-friendly aliases for supported providers. An exact `regions --region` filter SHALL restrict output to its resolved region rather than only changing the heading. Unsupported exact values SHALL produce corrective guidance instead of an unrelated complete region list.
 
 #### Scenario: Ambiguous interactive region
-- **WHEN** a developer enters `korea` as the Azure region during an interactive init flow
-- **THEN** the system presents matching Azure regions such as `koreacentral` and `koreasouth` and requires the developer to choose one before continuing
+- **WHEN** a developer enters `korea` during interactive Azure initialization
+- **THEN** the system presents the matching Korean regions and requires a selection
 
 #### Scenario: Ambiguous non-interactive region
-- **WHEN** a developer runs `liftoff init my-app --cloud azure --region korea --yes`
-- **THEN** the system stops before generation and lists the matching Azure region slugs the developer can provide
+- **WHEN** a noninteractive initialization supplies `--region korea`
+- **THEN** it stops before generation and lists the matching explicit region slugs
 
 #### Scenario: Default Azure region
-- **WHEN** a developer accepts the default Azure region
-- **THEN** the system uses East US with the slug `eastus`
+- **WHEN** the default Azure region is accepted
+- **THEN** the system uses East US with slug `eastus`
+
+#### Scenario: Filter a known region
+- **WHEN** a developer runs `liftoff regions --region westus2`
+- **THEN** output identifies West US 2 without listing unrelated regions
 
 ### Requirement: CLI deployment environments use canonical stage names
 For GenAI and standard API workloads, the CLI SHALL default environment
@@ -134,77 +136,75 @@ generation or helper output and identify the supported values.
 - **AND** performs no project write
 
 ### Requirement: CLI previews generation before writing files
-The system SHALL provide a workload-aware project plan preview before writing files in interactive init flows and through a standalone plan command. The preview SHALL include selected coding agents, the applicable default agent and optional plugin preference, generated boundaries, and the plan-derived workstation requirement summary without installing or writing anything.
+The system SHALL provide workload-aware interactive and standalone plan previews for API/GenAI projects. Previews SHALL include selected agents, applicable Spec Kit default, generated boundaries, starter limitations, and workstation requirements without installing tools or writing project files. Retired workload requests SHALL fail rather than render a former Power Apps plan.
 
 #### Scenario: Interactive GenAI plan confirmation
-- **WHEN** a developer completes the interactive prompts for a GenAI project
-- **THEN** the system displays the project type, selected stack, pattern, provider, region, environments, frontend choice, local development stack, infrastructure output, spec workflow, coding agents, and required workstation tools before asking for confirmation
+- **WHEN** a developer completes GenAI decisions
+- **THEN** the preview identifies workload, stack, pattern, provider, region, environments, frontend, local stack, infrastructure, workflow, agents, and tools before confirmation
 
 #### Scenario: Interactive standard plan confirmation
-- **WHEN** a developer completes the interactive prompts for a standard project
-- **THEN** the system displays the project type, API stack, provider, region, environments, frontend choice, local development stack, infrastructure output, spec workflow, coding agents, and required workstation tools without displaying a GenAI pattern
+- **WHEN** a developer completes standard API decisions
+- **THEN** the preview identifies applicable API, cloud, environment, frontend, local stack, infrastructure, workflow, agent, and tool decisions without a GenAI pattern
 
 #### Scenario: Interactive Power Apps plan confirmation
-- **WHEN** a developer completes the interactive prompts for a Power Apps code app
-- **THEN** the system displays the Power Apps starter identity, root application stack, spec workflow, coding agents, optional plugin preference, project dependency command, deferred environment-binding action, and required workstation tools
-- **AND** it does not display an API backend, Azure provider, region, Docker, or OpenTofu output
+- **WHEN** an interactive request identifies the retired Power Apps workload
+- **THEN** the CLI reports unsupported workload and never presents a Power Apps generation confirmation
 
 #### Scenario: Standalone GenAI plan command
 - **WHEN** a developer runs `liftoff plan --pattern rag --cloud azure --frontend --agents copilot,claude`
-- **THEN** the system displays the files, major components, selected agents, and workstation requirements without creating the project directory or installing tools
+- **THEN** files, components, agents, requirements, and actual starter limitations are shown without creating a project or installing tools
 
 #### Scenario: Standalone standard plan command
 - **WHEN** a developer runs `liftoff plan --no-genai --api node --cloud azure`
-- **THEN** the system displays the standard Node.js/Fastify files, major components, default Copilot integration, and workstation requirements without creating files
+- **THEN** it previews Node.js/Fastify output, default Copilot integration, and applicable requirements without writes
 
 #### Scenario: Standalone Power Apps plan command
-- **WHEN** a developer runs `liftoff plan --type power-apps-code-app --agents copilot,claude`
-- **THEN** the system displays the pinned starter files, both integrations, relevant readiness, and deferred Power Platform setup without creating files or contacting Power Platform
+- **WHEN** a developer runs `liftoff plan --type power-apps-code-app`
+- **THEN** it exits 1 with explicit retirement guidance without loading or rendering a Power Apps starter
 
 ### Requirement: CLI supports compatible non-interactive project-type inputs
-The system SHALL accept `--type genai|standard|power-apps-code-app`, SHALL retain existing `--genai`, `--no-genai`, pattern, and API-stack inference, SHALL accept a comma-separated selected-agent list, and SHALL reject contradictory or inapplicable project-type, pattern, API-stack, cloud, region, frontend, environment, workflow, selected-agent, default-agent, and Code Apps plugin combinations before generation.
+The system SHALL accept `--type genai|standard`, retain `--genai`, `--no-genai`, pattern and API-stack inference, and support selected-agent lists and applicable defaults. Contradictory or inapplicable options SHALL fail before preparation or generation. Power Apps type requests and the removed Code Apps plugin flags SHALL be rejected rather than ignored or mapped to another workload.
 
 #### Scenario: Existing GenAI options remain valid under init
-- **WHEN** a developer runs `liftoff init my-app --pattern rag --cloud azure --region eastus --spec openspec --no-frontend --yes`
-- **THEN** the system infers a GenAI project using the Python/FastAPI API stack and the default Copilot integration
-- **AND** generation proceeds without requiring a new project-type flag
+- **WHEN** initialization supplies a GenAI pattern and valid common options without an explicit type
+- **THEN** it infers GenAI with the approved Python API stack and default Copilot integration
 
 #### Scenario: Initialize a standard Node.js project non-interactively
-- **WHEN** a developer runs `liftoff init my-api --no-genai --api node --cloud azure --region eastus --spec openspec --agents copilot,claude --no-frontend --yes`
-- **THEN** the system resolves `node` to the approved Node.js/Fastify API stack and selects both coding agents without project-decision prompts
+- **WHEN** initialization supplies `--no-genai --api node --cloud azure --region eastus --spec openspec --agents copilot,claude --no-frontend --yes`
+- **THEN** it resolves Node.js/Fastify and both agents without project-decision prompts
 
 #### Scenario: Initialize a Power Apps project noninteractively
-- **WHEN** a developer runs `liftoff init my-code-app --type power-apps-code-app --spec openspec --agents copilot,claude --yes`
-- **THEN** the system resolves the Power Apps workload and both agents without API-oriented project-decision prompts
+- **WHEN** initialization supplies `--type power-apps-code-app`
+- **THEN** it exits 1 with an unsupported-workload explanation before tool installation or generation
 
 #### Scenario: Select a Spec Kit default agent non-interactively
-- **WHEN** a developer selects Spec Kit with `--agents copilot,claude --default-agent claude`
-- **THEN** the plan records both integrations and Claude Code as the default
+- **WHEN** Spec Kit receives both agents and `--default-agent claude`
+- **THEN** both integrations are selected and Claude Code is the default
 
 #### Scenario: Missing Spec Kit default agent is rejected
-- **WHEN** a non-interactive command selects Spec Kit with multiple agents and omits `--default-agent`
-- **THEN** Liftoff exits 1 before tool installation or generation and identifies the missing flag
+- **WHEN** a noninteractive Spec Kit request selects multiple agents but no default
+- **THEN** it exits 1 before preparation and identifies the missing default choice
 
 #### Scenario: Reject conflicting project decisions
-- **WHEN** a developer supplies `--no-genai` together with a GenAI pattern
-- **THEN** the system stops before generation and explains that standard projects cannot select a GenAI pattern
+- **WHEN** a developer combines `--no-genai` with a GenAI pattern
+- **THEN** the CLI stops before generation and explains the contradiction
 
 #### Scenario: Reject an inapplicable Power Apps option
-- **WHEN** a developer selects `--type power-apps-code-app` together with `--api`, `--pattern`, `--cloud`, `--region`, `--frontend`, or `--environments`
-- **THEN** Liftoff exits 1 before probes or writes and identifies the inapplicable option
+- **WHEN** a retired Power Apps request also contains former API, cloud, region, frontend, or environment options
+- **THEN** it fails as an unsupported workload rather than attempting a partially applicable Power Apps plan
 
 #### Scenario: Reject Code Apps plugin for another workload
-- **WHEN** a developer enables the Code Apps plugin preference for a GenAI or standard project
-- **THEN** Liftoff exits 1 before probes or writes and explains that the option applies only to Power Apps code apps
+- **WHEN** any request supplies a removed Code Apps plugin flag, including a false or negated form
+- **THEN** argument validation reports the retired option and performs no preparation or project write
 
 #### Scenario: Reject Power Apps migration in this release
-- **WHEN** a developer requests `liftoff migrate` with `--type power-apps-code-app`
-- **THEN** Liftoff exits 1 before source copying or destination writes
-- **AND** it directs the developer to initialize a fresh Power Apps project
+- **WHEN** migration requests the retired Power Apps workload
+- **THEN** it exits 1 before source copying or destination writes
+- **AND** does not recommend creating a fresh Power Apps project with this CLI
 
 #### Scenario: Reject an inapplicable default agent
-- **WHEN** a developer supplies `--default-agent` for OpenSpec or names an agent not present in `--agents`
-- **THEN** Liftoff exits 1 before tool installation or generation with corrective guidance
+- **WHEN** OpenSpec receives `--default-agent` or a Spec Kit default is not selected
+- **THEN** the CLI exits 1 with corrective guidance before preparation or generation
 
 ### Requirement: CLI creates files safely across platforms
 The system SHALL initialize at the current directory only when that directory is the exact real root of a Git worktree; otherwise it SHALL resolve the project to a named child directory. It SHALL stage and validate the complete Liftoff and official framework output before writing, SHALL preflight every staged path against the destination, and SHALL require one explicit authorization before replacing any conflicting regular file.
@@ -295,97 +295,99 @@ The system SHALL expose commands for project initialization, planning, managed-c
 - **THEN** the system scans the source project, generates a fresh Liftoff scaffold beside it, and emits a migration plan without modifying the source project
 
 ### Requirement: Packaged README documents the current CLI lifecycle
-The system SHALL provide a public repository root `README.md` included with the npm package that gives a concise first-use path, supported workloads, spec and agent integrations, exact-Git-root behavior, safety summary, validation and diagnostics entry points, and links to packaged detailed documentation. Detailed command lifecycle, ownership, consent, machine-output, generated-structure, and contributor contracts SHALL remain available through those links instead of requiring every contract to appear inline.
+The system SHALL package a concise root README covering first use, the two supported workloads, workflow/agent integrations, exact-Git-root initialization, safety, diagnostics, and links to detailed lifecycle contracts. It SHALL distinguish any-Git assessment from project-required mutation commands and unfinished production activation.
 
 #### Scenario: Review first-use workflow
-- **WHEN** a developer reads the Liftoff CLI README after installing or inspecting `@msn-control/liftoff`
-- **THEN** the README leads with installation and interactive `liftoff init`
-- **AND** it introduces GenAI, API, and Power Apps workloads plus OpenSpec, Spec Kit, Copilot, and Claude Code
+- **WHEN** a developer reads the packaged or repository README
+- **THEN** installation and interactive initialization lead the guide
+- **AND** GenAI/API, OpenSpec/Spec Kit, and Copilot/Claude are presented without Power Apps as a supported workload
 
 #### Scenario: Review command lifecycle
-- **WHEN** a developer needs the roles of `plan`, `init`, `migrate`, `validate`, `doctor`, `update`, `dev`, and `infra`
-- **THEN** the README links to packaged CLI lifecycle documentation that describes those commands
-- **AND** the documentation states that `create` was removed in favor of `init`
+- **WHEN** a developer needs the roles of plan, initialization, migration, validation, doctor, update, development, or infrastructure helpers
+- **THEN** linked packaged guidance explains those commands and the replacement of `create` by `init`
 
 #### Scenario: Understand initialization safety
-- **WHEN** a developer needs complete initialization safety details
-- **THEN** the README summarizes transactional staging and links to documentation covering exact-Git-root behavior, conflict disclosure, the manifest guard, and the separate meanings of `--yes`, `--force`, `--install-tools`, and `--install-dependencies`
+- **WHEN** a developer follows initialization safety guidance
+- **THEN** transactional staging, target behavior, conflict disclosure, manifest guards, and independent consent flags remain discoverable
 
 #### Scenario: Understand update safety
-- **WHEN** a developer needs update behavior
-- **THEN** linked documentation states that plain `liftoff update` applies only safe managed-core changes, `--check` inspects only that authority, `--force` cannot reach project files, configuration expansion is create-only, and production template changes require separate migration
-- **AND** it retains the documented JSON, exit-code, removed `--apply`, dependency-installation, conflict, orphan, and backup behavior
+- **WHEN** a developer follows update guidance
+- **THEN** it retains safe managed-core apply, read-only check, protected project files, create-only expansion, separate production migration, JSON/exit contracts, removed `--apply`, and accurate conflict/recovery guidance
 
 #### Scenario: Understand machine-readable and exit-code behavior
-- **WHEN** a developer reads the linked CLI contract documentation
-- **THEN** it states that check-mode core drift uses exit code 2, successful apply mode uses exit code 0, and JSON-capable commands emit a top-level numeric `schemaVersion`
+- **WHEN** a developer reads the linked CLI contract
+- **THEN** it distinguishes check-mode drift exit 2 from successful apply exit 0 and identifies numeric JSON schema versions
 
 #### Scenario: Review contributor workflow
-- **WHEN** a contributor follows the README contribution link
-- **THEN** `CONTRIBUTING.md` documents root-level build, test, check, package smoke, and release procedures
-- **AND** none of those commands require a Mission Control workspace selector
+- **WHEN** a contributor follows the contribution link
+- **THEN** root build, test, check, package-smoke, and release procedures remain documented without a workspace selector
 
 ### Requirement: CLI syntax is command-specific and strict
-The system SHALL validate commands, subcommands, positional arguments, and flags against an explicit command definition before executing command behavior. Unknown or removed flags, incompatible flag combinations, unsupported subcommands, missing values, invalid boolean forms, invalid agent lists, and unexpected positional arguments MUST exit 1, identify the invalid token or combination, and produce no project, workstation, or cloud side effects.
+The system SHALL validate commands, subcommands, positionals, flags, and catalog inputs against explicit definitions. Invalid or removed inputs MUST exit 1 with their token/combination identified and without project, workstation, or provider mutations. Interactive prompting SHALL NOT discard invalid supplied values before validation.
 
 #### Scenario: Reject a misspelled init flag
-- **WHEN** a developer supplies an unknown flag such as `--cluod` or `--frontned`
-- **THEN** Liftoff exits 1, identifies the unknown flag, and does not generate a project using fallback defaults
+- **WHEN** an unknown flag such as `--cluod` or `--frontned` is supplied
+- **THEN** the CLI exits 1 rather than generating from fallback defaults
 
 #### Scenario: Reject the removed command
-- **WHEN** a developer supplies `liftoff create`
-- **THEN** Liftoff exits 1, recommends `liftoff init`, and does not run readiness probes that can mutate state
+- **WHEN** `liftoff create` is supplied
+- **THEN** it exits 1, recommends initialization, and does not prepare the workstation
 
 #### Scenario: Reject removed update apply flag
-- **WHEN** a developer supplies `liftoff update --apply`
-- **THEN** Liftoff exits 1, recommends plain `liftoff update`, and performs no project read or write
+- **WHEN** `liftoff update --apply` is supplied
+- **THEN** it exits 1, recommends plain update, and performs no project access
 
 #### Scenario: Reject force in check mode
-- **WHEN** a developer supplies `liftoff update --check --force`
-- **THEN** Liftoff exits 1 with guidance to use either `--check` or `--force`, and performs no project write
+- **WHEN** `liftoff update --check --force` is supplied
+- **THEN** it exits 1 with separate check/apply guidance and no project write
 
 #### Scenario: Reject an unsupported helper subcommand
-- **WHEN** a developer runs a helper with an unsupported subcommand such as `liftoff dev destroy`
-- **THEN** Liftoff exits 1 and lists the supported subcommands instead of printing a default command
+- **WHEN** `liftoff dev destroy` is supplied
+- **THEN** it reports supported subcommands instead of printing a default recipe
 
 #### Scenario: Reject an unsupported region subcommand
-- **WHEN** a developer runs `liftoff regions typo`
-- **THEN** Liftoff exits 1 rather than listing all regions
+- **WHEN** `liftoff regions typo` is supplied
+- **THEN** it exits 1 rather than listing all regions
 
 #### Scenario: Render a missing-value error without a stack trace
-- **WHEN** a value-taking flag such as `--agents` has no value
-- **THEN** Liftoff exits 1 with concise usage guidance and does not print a JavaScript stack trace
+- **WHEN** a value flag such as `--agents` has no value
+- **THEN** concise usage guidance replaces a JavaScript stack trace
 
 #### Scenario: Reject an invalid agent list
-- **WHEN** `--agents` is empty or contains an unknown identifier
-- **THEN** Liftoff exits 1 before workstation or project side effects and lists the supported identifiers
+- **WHEN** an agent list is empty or includes an unknown identifier, even while other decisions need prompts
+- **THEN** the CLI exits 1 before preparation or generation and lists supported identifiers
+- **AND** does not silently discard the unknown identifier
 
 #### Scenario: Show command-specific help
-- **WHEN** a developer runs a supported command with `--help`
-- **THEN** Liftoff exits 0 and prints that command's supported arguments, flags, and subcommands without validating required project options or probing tools
+- **WHEN** a supported command receives `--help`
+- **THEN** it exits 0 with supported syntax without checking required project options or probing tools
 
 ### Requirement: Configuration files are runtime-validated
-The system SHALL validate JSON configuration values by field name, runtime type, selected workload, and applicability before merging them with flags. Catalog-backed strings MUST resolve through existing catalog lookups, booleans MUST be JSON booleans, lists MUST contain strings, and invalid or workload-inapplicable configuration MUST exit 1 before planning or generation.
+The system SHALL validate configuration field names, types, workload, and applicability before merging valid configuration with flags. Catalog-backed strings SHALL resolve explicitly, booleans SHALL be JSON booleans, and lists SHALL contain supported strings. Retired workload/plugin configuration SHALL fail before preparation or generation rather than be ignored.
 
 #### Scenario: Reject a string boolean
-- **WHEN** `liftoff.config.json` contains `"includeFrontend": "false"` or a non-boolean Code Apps plugin preference
-- **THEN** Liftoff reports that the named field must be a boolean and does not generate a project
+- **WHEN** configuration contains `"includeFrontend": "false"`
+- **THEN** it identifies the field's required Boolean type and does not generate a project
 
 #### Scenario: Reject a non-string catalog value
-- **WHEN** a configuration supplies a non-string project type, API stack, pattern, provider, region, or spec workflow
-- **THEN** Liftoff exits 1 with the field name instead of exposing a JavaScript type error
+- **WHEN** configuration supplies a non-string type, stack, pattern, provider, region, or workflow
+- **THEN** it names the invalid field rather than exposing a JavaScript type error
 
 #### Scenario: Reject an invalid environment list
-- **WHEN** a configuration environment value is not an array of supported environment strings
-- **THEN** Liftoff reports the invalid field and performs no write
+- **WHEN** environments are not an array of supported strings
+- **THEN** the invalid field is reported without a write
 
 #### Scenario: Reject Power Apps API fields
-- **WHEN** a Power Apps configuration contains an API stack, GenAI pattern, cloud, region, frontend, or API environment field
-- **THEN** Liftoff identifies the inapplicable field and performs no probe or write
+- **WHEN** configuration identifies Power Apps, with or without former API-related fields
+- **THEN** the CLI rejects the retired workload before preparation or generation
 
 #### Scenario: Flags override a valid configuration
-- **WHEN** a valid command flag overrides a compatible value from a valid configuration file
-- **THEN** the normal documented flag precedence remains unchanged
+- **WHEN** a valid flag overrides compatible valid configuration
+- **THEN** documented flag precedence is preserved
+
+#### Scenario: Reject retired plugin configuration
+- **WHEN** configuration includes the removed Code Apps plugin preference
+- **THEN** the CLI reports the retired field instead of silently ignoring it
 
 ### Requirement: Initialization consent flags are explicit and independent
 The system SHALL keep project-default acceptance, destination overwrite authorization, machine-tool installation authorization, global OpenSpec profile authorization, and project dependency installation authorization as five independent decisions. No flag SHALL imply another, and installation, global-profile, or overwrite consent SHALL NOT be read from project configuration.
@@ -619,22 +621,23 @@ The system SHALL use a checkbox-style selector when both input and output are re
 - **THEN** Liftoff restores terminal state, cancels initialization, and makes no destination change
 
 ### Requirement: Project-scoped helpers are workload-aware
-The system SHALL derive validation and helper behavior from normalized workload identity. Existing GenAI and standard API projects SHALL retain their Docker Compose and OpenTofu helper contracts. Power Apps code apps SHALL receive root application development guidance and SHALL NOT receive Docker or OpenTofu commands for infrastructure they do not contain.
+The system SHALL derive validation and printed-only helper behavior from supported workload identity and recorded generation context. API/GenAI projects SHALL receive applicable Docker Compose and environment-correct OpenTofu guidance. Recognized retired manifests SHALL be rejected without alternative Power Apps tooling or infrastructure guidance.
 
 #### Scenario: Show Power Apps development command
-- **WHEN** a developer runs `liftoff dev` inside a Power Apps project
-- **THEN** Liftoff prints the documented root application development command and dependency prerequisite
-- **AND** it does not print a Docker Compose command
+- **WHEN** `liftoff dev` resolves a retired Power Apps manifest
+- **THEN** it reports unsupported workload rather than printing its former development command
 
 #### Scenario: Power Apps infrastructure is not applicable
-- **WHEN** a developer runs `liftoff infra` inside a Power Apps project
-- **THEN** Liftoff reports that Liftoff-managed OpenTofu infrastructure is not applicable to the Power Platform-hosted workload
-- **AND** it does not print or execute an OpenTofu command
+- **WHEN** `liftoff infra` resolves a retired Power Apps manifest
+- **THEN** it reports unsupported workload rather than a successful not-applicable result
 
 #### Scenario: Validate a Power Apps project
-- **WHEN** a developer runs `liftoff validate` inside a fresh Power Apps project
-- **THEN** validation checks schema-v4 workload identity, named starter artifacts, package metadata, and selected framework markers
-- **AND** it does not require API, Docker, or infrastructure files
+- **WHEN** validation resolves a retired Power Apps manifest
+- **THEN** it exits 1 without validating the former starter or modifying any application file
+
+#### Scenario: Supported API helper remains printed-only
+- **WHEN** a supported API/GenAI project requests a development recipe
+- **THEN** the applicable Compose command is printed without execution
 
 ### Requirement: CLI exposes self-upgrade as a maintenance command
 The system SHALL expose `liftoff upgrade` as an explicit top-level maintenance command that is distinct from project-scoped `liftoff update`. Its command definition SHALL accept only `--check`, `--json`, and command help, require no positional project argument, and reject unsupported flags or arguments before registry lookup or installation.
@@ -719,189 +722,182 @@ Selecting a repository-governance profile or passing `--yes` SHALL authorize onl
 - **AND** no remote governance operation runs
 
 ### Requirement: CLI exposes deterministic governance setup commands
-The CLI SHALL expose a `governance` command group with `status`, `plan`,
-`apply-next`, `resume`, and `verify` subcommands. Commands SHALL use strict
-argument validation, project-root discovery, versioned JSON output, responsive
-human output, and existing independent consent boundaries. Apply-next SHALL
-identify the selected phase and, for execution, the successfully executed phase.
-Its legacy `nextReadyPhase` field SHALL retain selection semantics; subsequent
-status or verify output SHALL provide post-transition readiness. OpenSpec
-failures SHALL include bounded, sanitized diagnostics when safe to display.
-Ordinary progress on an intact active bootstrap seed before governance begins
-SHALL be reported as incomplete, not inconsistent solely because archival is
-pending.
+The CLI SHALL retain governance `status`, `plan`, `apply-next`, `resume`, and `verify` with strict arguments, supported-project discovery, versioned output, and independent consent. Selected/executed phase fields and legacy `nextReadyPhase` selection semantics SHALL remain distinct from post-transition readiness. Commands SHALL distinguish current executable identity, historical diagnostic-only identity, incomplete progress, inconsistency, and unavailable capabilities. Safe bounded framework diagnostics SHALL remain available without credential leakage.
 
 #### Scenario: Run governance status outside a project
-- **WHEN** no project manifest can be resolved
-- **THEN** the command fails with a project-root remedy and performs no mutation
+- **WHEN** no supported Liftoff manifest is resolvable, including an ordinary Git-only repository
+- **THEN** setup commands fail with a project-root remedy without initializing or mutating anything
 
 #### Scenario: Inspect governance identity
-- **WHEN** the developer runs a governance command with JSON output
-- **THEN** the versioned response identifies the creating Liftoff version, policy version, activation-contract version, applicable schema versions, and phase-graph hash
-- **AND** does not report a separate setup-skill version
+- **WHEN** governance JSON is requested
+- **THEN** it identifies CLI, policy, activation-contract, schema, and graph identities without a separate setup-skill version
 
 #### Scenario: Preview next transitions
-- **WHEN** the developer runs `liftoff governance plan --json`
-- **THEN** output lists ready and blocked phases, evidence, approval requirements, permitted mutations, and cost-envelope impact
-- **AND** changes no file or remote resource
+- **WHEN** governance plan is requested
+- **THEN** it reports phase readiness, executor availability, evidence, approvals, allowed mutations, and cost scope without writes
 
 #### Scenario: Apply a ready transition
-- **WHEN** the developer runs `liftoff governance apply-next --json --execute`
-- **THEN** only allowlisted operations for evidence-ready and approved phases execute
-- **AND** the result updates user-owned state transactionally
+- **WHEN** `apply-next --json --execute` selects an executable evidence-ready phase with satisfied approval
+- **THEN** only allowlisted operations execute and successful state is persisted transactionally after outcome validation
 
 #### Scenario: Preview a ready transition
-- **WHEN** the developer runs `liftoff governance apply-next --json` without `--execute`
-- **THEN** the command reports the exact operations and required execution flag
-- **AND** changes no file or remote resource
+- **WHEN** apply-next is called without `--execute`
+- **THEN** it reports exact operations and the required flag without local or remote mutation
 
 #### Scenario: Adapter returns a phase-forbidden terminal result
-- **WHEN** a transition adapter returns a result not declared by the selected phase
-- **THEN** apply-next records a blocker without writing invalid evidence
-- **AND** no dependent transition is authorized
+- **WHEN** an adapter returns an undeclared terminal result or incomplete required evidence
+- **THEN** execution reports a blocker without persisting successful invalid evidence or authorizing descendants
 
 #### Scenario: Verification is consistent before setup starts
-- **WHEN** `liftoff governance verify --json` finds no inconsistent state but no activation state exists
-- **THEN** `ok` and `consistent` are true while `complete` is false
-- **AND** `setupStatus` is `not-started` with the next ready phase
+- **WHEN** a supported project has no activation state or inconsistent artifacts
+- **THEN** verification reports `ok: true`, `consistent: true`, `complete: false`, and `setupStatus: not-started`
+- **AND** identifies the next local boundary without manufacturing persisted state
 
 #### Scenario: A valid bootstrap seed is still active
-- **WHEN** the generated seed is intact, no competing governance change exists, and no archive or later completion has been recorded
-- **THEN** verification reports consistency independently of the pending baseline or archive phases
-- **AND** `complete` remains false and publication remains approval-gated
+- **WHEN** a supported workflow's seed is intact with no competing work or contradictory finalization record
+- **THEN** setup remains incomplete rather than inconsistent merely because local finalization is pending
+- **AND** publication remains approval-gated
 
 #### Scenario: Active seed contradicts stored archive completion
-- **WHEN** activation state already claims the seed was archived but it is still active
-- **THEN** verification reports the contradiction as inconsistent
-- **AND** it does not treat the seed as ordinary pending bootstrap work
+- **WHEN** current state claims OpenSpec archival while the same seed remains active
+- **THEN** verification reports an inconsistency instead of ordinary pending progress
 
 #### Scenario: Verification cannot inspect state
-- **WHEN** `liftoff governance verify --json` encounters a malformed governance artifact
-- **THEN** `ok` and `consistent` are false while `complete` is false
-- **AND** `setupStatus` is `indeterminate`
+- **WHEN** a required governance artifact is malformed
+- **THEN** verification reports `ok: false`, `consistent: false`, `complete: false`, and indeterminate setup
 
 #### Scenario: Resume after a blocker
-- **WHEN** the external blocker evidence has changed
-- **THEN** `resume` reruns only the blocker preflight and downstream readiness calculation
-- **AND** does not repeat verified operations
+- **WHEN** a developer resumes after repairing a blocker
+- **THEN** resume recalculates preflight/readiness without executing operations
+- **AND** repaired local failures can be retried by a separate explicit execution while unchanged verified work is not repeated
 
 #### Scenario: Unsupported governance syntax is supplied
-- **WHEN** a misspelled subcommand, unknown flag, or excess positional argument is used
-- **THEN** parsing fails before project discovery or mutation
+- **WHEN** a subcommand, flag, or positional combination is unsupported
+- **THEN** it fails before project discovery or mutation
 
 #### Scenario: Distinguish selection from post-transition readiness
-- **WHEN** apply-next successfully executes `seed-valid`
-- **THEN** `selectedPhase` and `executedPhase` both identify `seed-valid`
-- **AND** the subsequent verify response identifies `seed-verified` as the next ready phase
-- **AND** failed execution reports no successfully executed phase
+- **WHEN** seed-valid executes successfully
+- **THEN** selectedPhase and executedPhase identify that phase, while subsequent status/verify supplies post-transition readiness
+- **AND** failed execution names no successfully executed phase
 
 #### Scenario: Explain an OpenSpec validation failure
-- **WHEN** OpenSpec exits unsuccessfully with a safe diagnostic
-- **THEN** the failure includes the command, exit condition, and bounded diagnostic without terminal control sequences
+- **WHEN** OpenSpec returns a safe failure diagnostic
+- **THEN** the command and exit condition are explained with bounded text stripped of terminal controls
 
 #### Scenario: Diagnostic includes credential-shaped content
-- **WHEN** OpenSpec output includes a credential detected by the shared credential policy
-- **THEN** the diagnostic is withheld before truncation and the response explains why
-- **AND** raw credentials are not copied into JSON, human output, or activation state
+- **WHEN** framework output contains credential-shaped content
+- **THEN** it is withheld before truncation and never copied into reports or activation state
+
+#### Scenario: Historical state requires reconciliation
+- **WHEN** state uses a recognized but non-executable historical activation identity
+- **THEN** commands explain the exact reconciliation or unavailable-migration blocker without rewriting history or recommending fabricated receipts
+
+#### Scenario: Production capability is not implemented
+- **WHEN** a selected phase requires an unavailable executor or public approval/credential workflow
+- **THEN** the CLI identifies the missing capability and stops rather than pretending completion or requesting manual state fabrication
 
 ### Requirement: CLI exposes a strictly read-only governance assessment
-The CLI SHALL expose `liftoff governance assess [project] [--json] [--live]`
-with existing safe project discovery, command-specific help, and the optional
-`--project` alternative. The command SHALL default to local-only assessment.
-Only `assess` SHALL accept `--live`; assessment SHALL reject execution, force,
-installation, automatic-upgrade, and output-file flags before project access.
-Existing governance subcommand meanings SHALL remain unchanged.
+The CLI SHALL expose `liftoff governance assess [path] [--json] [--live]` and the alternative `--project` target for supported Liftoff projects and ordinary Git repositories. It SHALL default to local-only assessment without requiring initialization or a generated slash command. Only assess SHALL accept `--live`; mutation, installation, automatic-upgrade, and output-file flags SHALL remain invalid. All assessment invocations SHALL remain excluded from telemetry and disclosure.
 
 #### Scenario: Run a local assessment
-- **WHEN** the developer invokes `liftoff governance assess --json` inside a Liftoff project
-- **THEN** the CLI returns the local assessment without network requests or project writes
-- **AND** live-only comparisons are explicitly unobserved
+- **WHEN** local assessment runs in a supported Liftoff project
+- **THEN** it returns local observations without network requests or project writes and marks unavailable live proof explicitly
 
 #### Scenario: Request live comparison
-- **WHEN** the developer invokes `liftoff governance assess --live --json`
-- **THEN** only supported scoped read operations are authorized
-- **AND** the command does not enroll credentials or execute remediation
+- **WHEN** `--live` is supplied
+- **THEN** only supported bounded reads for validated scope are permitted, without enrollment or remediation
 
 #### Scenario: Reject mutation flags
-- **WHEN** assessment receives `--execute`, `--force`, or an installation or upgrade flag
-- **THEN** argument validation fails before project discovery, network calls, or writes
+- **WHEN** execution, force, installation, upgrade, or output-file flags are supplied to assessment
+- **THEN** they fail before project discovery, network requests, or writes
 
 #### Scenario: Reject misplaced live flag
 - **WHEN** another governance subcommand receives `--live`
-- **THEN** parsing fails rather than broadening that subcommand's behavior
+- **THEN** parsing rejects it instead of broadening that command
 
 #### Scenario: Show help without a project
-- **WHEN** `liftoff governance assess --help` runs outside a project
-- **THEN** it describes local/live behavior, output, limitations, and exit codes
-- **AND** performs no project or credential discovery
+- **WHEN** assessment help is requested outside a project
+- **THEN** local/live behavior, ordinary-Git support, limitations, and exits are described without project, credential, or telemetry discovery
 
 #### Scenario: Resolve a project on supported operating systems
-- **WHEN** assessment is invoked from a nested directory or with an explicit project path containing spaces on Windows, macOS, or Linux
-- **THEN** it resolves the intended Liftoff project through the existing safe path rules
-- **AND** conflicting positional and `--project` targets are rejected
+- **WHEN** assessment starts in a nested directory or receives a path containing spaces on Windows, macOS, or Linux
+- **THEN** it resolves the intended supported project or Git boundary using safe native paths
+- **AND** rejects simultaneous positional and `--project` targets
+
+#### Scenario: Assess Liftoff's own source repository
+- **WHEN** assessment runs in an ordinary Git repository with no Liftoff manifest
+- **THEN** it assesses available facts against the displayed installed policy and reports absent Liftoff-specific proof as not observed
+- **AND** creates no manifest, integration, activation state, or evidence
+
+#### Scenario: Invalid or retired manifest blocks fallback
+- **WHEN** a discovered manifest is malformed, unsafe, unreadable, dangling, or identifies Power Apps
+- **THEN** assessment returns an explicit error rather than choosing an outer project or generic Git fallback
+- **AND** performs no live request or mutation
 
 ### Requirement: Assessment output distinguishes alignment, differences, and incomplete coverage
-Valid assessment invocations SHALL produce a schema-v1 report with
-`readOnly: true`, mode, pinned target, recorded identity availability, findings,
-provenance, diagnostics, coverage, and outcome. Human and JSON output SHALL
-derive from the same report. Exit 0 SHALL mean fully observed alignment or
-explicit `not-applicable` disabled governance; exit 2 SHALL mean `differences`
-or `partial`; exit 1 SHALL mean an invalid or unsafe request/input or catalog
-error. Accepted exceptions SHALL remain visible differences, not exact
-alignment.
+Assessment SHALL preserve schema-v1 reports with read-only mode, pinned target, identity availability, findings, provenance, diagnostics, coverage, and outcome. Human/JSON output SHALL derive from the same report. Exit 0 SHALL mean fully observed alignment or explicitly disabled not-applicable governance; exit 2 SHALL mean differences or partial coverage; exit 1 SHALL mean invalid/unsafe input or catalog error. Known differences SHALL remain visible alongside independent missing proof, and evaluator presence SHALL NOT imply completed coverage.
 
 #### Scenario: Fully observed controls match
-- **WHEN** every applicable catalog control has valid required proof and no difference or exception
-- **THEN** outcome is `aligned` and exit code is 0
+- **WHEN** every applicable catalog control has valid complete proof without differences or exceptions
+- **THEN** outcome is aligned with exit 0
 
 #### Scenario: Known difference is observed
-- **WHEN** complete observation finds outdated, missing, conflicting, or approved-exception controls
-- **THEN** outcome is `differences` and exit code is 2
-- **AND** the report distinguishes actionable differences from accepted exceptions
+- **WHEN** required proof is complete and outdated, missing, conflicting, or approved-exception controls are found
+- **THEN** outcome is differences with exit 2 and preserves the distinction between differences and accepted exceptions
 
 #### Scenario: Some proof cannot be collected
-- **WHEN** applicable proof or applicability remains unknown
-- **THEN** outcome is `partial` and exit code is 2
-- **AND** known differences and coverage limitations are both retained
+- **WHEN** applicable proof or applicability is unknown
+- **THEN** outcome is partial with exit 2 and retains independently established differences and coverage gaps
 
 #### Scenario: A report cannot be trusted
-- **WHEN** a syntactically valid JSON invocation encounters an unsafe path, malformed required input, or invalid packaged catalog
-- **THEN** it returns a versioned error report with safe diagnostics and exit code 1
-- **AND** does not emit a success-shaped fallback
+- **WHEN** a valid JSON invocation encounters unsafe paths, malformed required input, or an invalid catalog
+- **THEN** it emits a versioned safe error report and exit 1 instead of a successful-looking fallback
 
 #### Scenario: Governance is explicitly disabled
-- **WHEN** the resolved project profile is `none`
-- **THEN** outcome is `not-applicable` and exit code is 0
-- **AND** neither human nor JSON output describes governance as aligned or activated
+- **WHEN** a supported Liftoff project explicitly selects profile none
+- **THEN** outcome is not-applicable with exit 0, without an alignment or activation claim
+
+#### Scenario: Ordinary Git repository has no recorded Liftoff baseline
+- **WHEN** repository observations are available but no Liftoff baseline exists
+- **THEN** nullable recorded-identity fields and explicit missing proof are retained rather than an invented initialized project
 
 ### Requirement: Infrastructure recipes use the selected project's actual context
-Inside a known API project, infrastructure helpers SHALL render the generated
-OpenTofu module directory and an environment declared by that project. If no
-environment override is provided, they SHALL use the first selected environment.
-They SHALL remain printed-only and SHALL resolve paths portably on Windows,
-macOS, and Linux.
+For a supported API/GenAI project, helpers SHALL select its declared environment and recorded infrastructure layout, using the first selected environment by default. New per-environment layouts SHALL select that environment's independent root and inputs. Helpers SHALL remain printed-only and preserve literal paths on Windows, macOS, and Linux. Legacy shared-state layout SHALL be identified explicitly rather than silently migrated or treated as environment-isolated.
 
 #### Scenario: Project selects only production
-- **WHEN** the project declares only `prod` and the developer requests an infrastructure plan recipe
-- **THEN** the recipe targets the generated module and `prod.tfvars`
-- **AND** it does not reference nonexistent `dev.tfvars`
+- **WHEN** a newly generated project selects only prod and requests a plan recipe
+- **THEN** the recipe targets its independent production root and production inputs without nonexistent development files
 
 #### Scenario: Requested environment is absent
-- **WHEN** a helper requests an environment not declared by the project
-- **THEN** it reports the unsupported project environment instead of printing an unusable recipe
+- **WHEN** a helper requests an undeclared environment
+- **THEN** it reports that mismatch rather than an unusable recipe
 
 #### Scenario: Project path contains spaces
-- **WHEN** a helper resolves the generated module from a project path containing spaces on a supported host
-- **THEN** the printed command preserves that path as one argument
-- **AND** no infrastructure command is executed
+- **WHEN** an infrastructure path contains spaces or shell-significant characters on a supported host
+- **THEN** the printed recipe preserves it as a literal argument in its identified shell and executes nothing
+
+#### Scenario: Legacy project would switch shared state
+- **WHEN** recorded legacy infrastructure cannot prove an independent state root for the requested environment
+- **THEN** the helper explains the migration boundary and refuses a misleading environment-switch recipe without moving files or state
 
 ### Requirement: Dependency-failure output states the real preservation boundary
-Dependency setup failure output SHALL distinguish protected package/lock
-metadata from other project files that dependency lifecycle scripts may have
-modified. It SHALL NOT claim the entire scaffold was preserved unless that
-guarantee was actually enforced.
+Dependency setup output SHALL distinguish unchanged metadata, attributable restored metadata, preserved concurrent/uncertain edits, and possible lifecycle-script changes elsewhere. It SHALL NOT claim complete scaffold preservation or blame all observed changes on the dependency command.
 
 #### Scenario: Installation fails after running scripts
-- **WHEN** a dependency command fails and protected metadata is restored
-- **THEN** the output states which metadata was protected or restored
-- **AND** tells the developer that other file changes may require review
+- **WHEN** a command fails and an attributable conflict-free metadata write is restored
+- **THEN** output lists what was restored and warns that other script changes require review
+
+#### Scenario: Another edit occurs during installation
+- **WHEN** protected metadata changes with uncertain or concurrent provenance
+- **THEN** the edit is preserved and reported as a conflict rather than overwritten or described as successfully restored
+
+### Requirement: Repository discovery is independent of localized diagnostic wording
+Initialization SHALL distinguish a valid nonrepository directory from a failed or unsafe Git discovery on Windows, macOS, and Linux without depending on the user's Git diagnostic language. A genuine discovery failure SHALL NOT silently become permission to initialize a different target.
+
+#### Scenario: Nonrepository Git diagnostic is localized
+- **WHEN** initialization starts outside a Git repository on a supported host using non-English Git messages
+- **THEN** the normal named-child initialization path remains available subject to the existing target and consent guards
+
+#### Scenario: Git discovery fails for an unrelated reason
+- **WHEN** discovery fails because of unsafe ownership, permissions, or an uninterpretable result rather than a confirmed nonrepository directory
+- **THEN** initialization reports that failure without choosing another target or writing files

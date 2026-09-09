@@ -9,7 +9,7 @@ The system SHALL maintain an explicit inventory of every npm lockfile packaged f
 
 #### Scenario: Audit all current packaged templates
 - **WHEN** the template dependency audit runs
-- **THEN** it checks the standard Node.js backend lockfile, standard frontend lockfile, and current commit-addressed Power Apps starter lockfile
+- **THEN** it checks the standard Node.js backend lockfile and the standard frontend lockfile
 - **AND** it reports the stable logical name and repository-relative path for each audited template
 
 #### Scenario: Run the audit on a supported operating system
@@ -66,24 +66,6 @@ The system SHALL permit an unresolved template advisory only when checked-in str
 - **THEN** each affected manifest requires its own exact remediation or exception
 - **AND** an exception for one template does not authorize the finding in another
 
-### Requirement: Upstream-derived templates preserve verified provenance
-The system SHALL NOT alter a hash-verified upstream starter, inject a dependency override, or relabel upstream bytes solely to silence a finding that is covered by a valid non-reachability exception. Exceptions for an upstream-derived template SHALL bind to its commit-addressed manifest and SHALL be re-evaluated whenever that upstream snapshot changes.
-
-#### Scenario: Review a Power Apps advisory in unused code
-- **WHEN** a Power Apps dependency advisory affects an API not used by the generated SPA or its supported tooling flow
-- **THEN** Liftoff preserves the recorded Microsoft starter files and catalog hashes
-- **AND** policy records the complete dependency-chain set, evidence, upstream owner, and bounded review date
-
-#### Scenario: Refresh the official Power Apps starter
-- **WHEN** maintainers select a newer verified Microsoft starter commit
-- **THEN** the template audit treats its new lockfile path and dependency graph as a new review boundary
-- **AND** exceptions tied to the previous commit do not carry forward automatically
-
-#### Scenario: Discover reachable vulnerable behavior
-- **WHEN** review determines that an affected upstream API is reachable through generated or documented behavior
-- **THEN** a non-reachability exception is rejected
-- **AND** the template remains blocked until a verified patch or concrete mitigation is provided
-
 ### Requirement: Live advisory retrieval is isolated and actionable
 The system SHALL run live template advisory retrieval in a dedicated weekly and manually dispatchable workflow using canonical npm. The audit SHALL accept npm's documented finding exit code, distinguish retrieval or parse failures, avoid dependency installation and metadata mutation, and emit an actionable result for every finding.
 
@@ -120,19 +102,19 @@ The system SHALL validate each dependency refresh through deterministic scaffold
 #### Scenario: Validate the standard Node.js backend refresh
 - **WHEN** the backend dependency template is updated
 - **THEN** a generated Node.js standard backend completes `npm ci`, TypeScript build, and its generated tests
-- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release npm 11 line
+- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release-owned npm 12 line
 - **AND** its database schema and migration contract remain unchanged
 
 #### Scenario: Validate the standard frontend refresh
 - **WHEN** the frontend dependency template is updated
 - **THEN** a generated frontend completes `npm ci` and a Vite production build
-- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release npm 11 line
+- **AND** its lockfile installs with both the oldest supported npm 10 baseline and the release-owned npm 12 line
 - **AND** its Vue application and static deployment boundary remain unchanged
 
 #### Scenario: Validate unchanged Power Apps provenance
-- **WHEN** Power Apps advisories are handled through reviewed exceptions
-- **THEN** catalog hash validation still proves the packaged starter bytes
-- **AND** the generated starter completes its supported install, lint, and build verification
+- **WHEN** a retained Power Apps artifact exists only as a retired negative fixture
+- **THEN** template-security verification does not treat it as a supported generated npm template
+- **AND** it preserves that retired fixture outside active scaffold install, lint, build, or provenance checks
 
 ### Requirement: Reviewed baseline refreshes may cross npm major versions
 The system SHALL distinguish a focused advisory remediation from a reviewed supported-stack baseline refresh. A focused remediation SHALL continue selecting the smallest compatible patched release, while a baseline refresh MAY upgrade packaged npm templates across stable major versions only after source compatibility changes, deterministic lock regeneration, security audit, and representative install, build, lint, and test verification are complete.
@@ -152,7 +134,7 @@ The system SHALL distinguish a focused advisory remediation from a reviewed supp
 - **THEN** baseline promotion remains blocked
 
 ### Requirement: Packaged npm freshness inventory is explicit
-The system SHALL maintain explicit named inventory entries for the Liftoff package, telemetry service, standard Node.js backend, standard frontend, and current immutable Power Apps starter package graphs. Freshness and security checks SHALL resolve these paths with platform-native path handling and SHALL fail when a packaged npm graph is absent from the appropriate inventory.
+The system SHALL maintain explicit named inventory entries for the Liftoff package, telemetry service, standard Node.js backend, and standard frontend package graphs. Freshness and security checks SHALL resolve these paths with platform-native path handling and SHALL fail when a packaged npm graph is absent from the appropriate inventory.
 
 #### Scenario: Check every npm dependency surface
 - **WHEN** baseline verification runs
@@ -173,7 +155,7 @@ Every packaged npm graph SHALL install through its committed lockfile using the 
 - **AND** a before-and-after byte comparison confirms that package metadata was not rewritten
 
 ### Requirement: Dependency automation preserves integration and ownership boundaries
-The system SHALL configure automated dependency proposals so routine version updates target the repository's default integration branch, preserve release-owned supported-stack metadata, respect the selected runtime major, and never rewrite a commit-addressed upstream starter as if it were a Liftoff-owned package graph. Backlog reconciliation SHALL replace overlapping proposals with one reviewable baseline change before superseded pull requests are closed.
+The system SHALL configure automated dependency proposals so routine version updates target the repository's default integration branch, preserve release-owned supported-stack metadata, respect the selected runtime major, and never treat retired or historical Power Apps artifacts as active package graphs. Backlog reconciliation SHALL replace overlapping proposals with one reviewable baseline change before superseded pull requests are closed.
 
 #### Scenario: Dependabot targets the default integration branch
 - **WHEN** `develop` is the repository's default integration branch
@@ -191,9 +173,14 @@ The system SHALL configure automated dependency proposals so routine version upd
 - **AND** security update detection and other dependency majors remain enabled
 
 #### Scenario: Upstream starter dependency changes
-- **WHEN** a dependency update would modify the commit-addressed Power Apps starter manifest or lockfile
-- **THEN** Dependabot does not maintain that upstream snapshot as an ordinary package directory
-- **AND** the change proceeds only through selection and verification of a newer immutable upstream commit
+- **WHEN** a dependency update would touch a retired Power Apps starter artifact or other Power Apps historical bytes
+- **THEN** dependency automation does not maintain it as an active package directory
+- **AND** any review of that retired artifact proceeds through explicit historical maintenance rather than ordinary dependency proposals
+
+#### Scenario: Retired Power Apps files are not automated package directories
+- **WHEN** a retained Power Apps manifest, lockfile, or historical asset exists only for unsupported-workload detection or diagnostics
+- **THEN** dependency automation does not manage it as an active package directory
+- **AND** any review of that retired artifact proceeds through explicit historical maintenance rather than ordinary dependency proposals
 
 #### Scenario: Overlapping baseline proposals are admissible
 - **WHEN** multiple open dependency pull requests modify supported-stack-managed manifests or locks and their candidates remain compatible
