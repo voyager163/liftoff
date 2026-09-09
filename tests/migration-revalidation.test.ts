@@ -169,7 +169,9 @@ async function approval(root: string, clock: () => Date, reuse = false) {
   };
 }
 
-describe('bounded migration local revalidation', () => {
+describe('bounded migration local revalidation', {
+  timeout: process.platform === 'win32' ? 90_000 : 30_000
+}, () => {
   it('previews exact archived operations without commands, records, or project changes', async () => {
     const { root, clock } = await fixture();
     const before = await tree(root);

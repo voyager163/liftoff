@@ -50,6 +50,14 @@ async function fixture(): Promise<string> {
   return projectRoot;
 }
 
+function normalizeMaintenanceOutput(value: string, cwd: string, previewDirectory: string): string {
+  return value.replaceAll(cwd, '<project>')
+    .replaceAll(`${previewDirectory}${path.win32.sep}`, '<preview-store>/')
+    .replaceAll(`${previewDirectory}${path.posix.sep}`, '<preview-store>/')
+    .replaceAll(previewDirectory, '<preview-store>')
+    .replace(/[a-f0-9]{64}/g, 'a'.repeat(64));
+}
+
 async function run(
   args: string[],
   cwd: string,
@@ -67,9 +75,7 @@ async function run(
     : ttyCaptureStream();
   const stderr = new CaptureStream();
   const updatePreview = updateTestPreviewOptions(cwd);
-  const normalize = (value: string) => value.replaceAll(cwd, '<project>')
-    .replaceAll(getUpdatePreviewDirectory(updatePreview), '<preview-store>')
-    .replace(/[a-f0-9]{64}/g, 'a'.repeat(64));
+  const normalize = (value: string) => normalizeMaintenanceOutput(value, cwd, getUpdatePreviewDirectory(updatePreview));
   const reviewedArgs = options.reviewed ? await reviewedUpdateArguments(args, async (rawArgs) => {
     const out = new CaptureStream();
     const err = new CaptureStream();
@@ -111,6 +117,17 @@ async function addDrift(projectRoot: string): Promise<void> {
 }
 
 describe('maintenance presentation', () => {
+  it.each([
+    { label: 'Windows', paths: path.win32, root: 'C:\\fixture' },
+    { label: 'POSIX', paths: path.posix, root: '/fixture' }
+  ])('normalizes only the $label receipt path separator in snapshots', ({ paths, root }) => {
+    const project = paths.join(root, 'project');
+    const directory = paths.join(root, 'receipt-home', 'liftoff', 'update-previews');
+    const receipt = paths.join(directory, `${'b'.repeat(64)}.json`);
+    expect(normalizeMaintenanceOutput(`Location: ${receipt}`, project, directory))
+      .toBe(`Location: <preview-store>/${'a'.repeat(64)}.json`);
+  });
+
   for (const [name, columns] of [['rich', 100], ['plain', 50]] as const) {
     it(`snapshots ${name} update drift`, async () => {
       const projectRoot = await fixture();
