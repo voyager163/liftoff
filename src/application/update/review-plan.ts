@@ -21,7 +21,7 @@ export async function prepareUpdateReview(
   const preconditions = uniqueUpdateSnapshots([
     ...inspection.snapshots,
     ...inspection.stateMigration.preconditions
-  ]).sort((left, right) => left.pathParts.join('\0').localeCompare(right.pathParts.join('\0'), 'en'));
+  ], inspection.projectRoot).sort((left, right) => left.pathParts.join('\0').localeCompare(right.pathParts.join('\0'), 'en'));
   const blockers = inspection.reconciliation.status === 'blocked'
     ? [...inspection.reconciliation.issues] : [];
   if (inspection.historyMigration.status === 'eligible' && writePlan.skipped.length > 0) {

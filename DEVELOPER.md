@@ -51,7 +51,7 @@ and successful generated-file checks must not be described as those capabilities
 
 ## Activation version vector
 
-Current deterministic setup contract, retained by the 0.11.1 CLI patch:
+Current deterministic setup contract, retained by the 0.11.2 CLI patch:
 
 ```json
 {
@@ -273,16 +273,21 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.11.1 release checklist
+## 0.11.2 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.11.1`. Preparing these files is not publication or permission to create a tag.
+  `0.11.2`. Preparing these files is not publication or permission to create a tag.
 - Activation package identity remains `0.11.0`; no phase semantics or graph
   identity change is introduced by patch-release preparation.
+- Release notes prominently identify the breaking update-CLI/report changes:
+  mandatory matching preview and exact-plan approval, schema-3 project-update
+  reports, and exit 2 after committed but incomplete local revalidation.
 - Manifest writes use artifactVersion 7; readers accept v2-v7.
 - Policy version is `"6"`; activation contract/state/evidence-header/approval
-  and compatibility metadata are v2. Graph, supersession, credential-policy,
-  assessment report, and assessment catalog schemas remain v1.
+  remain v2. Compatibility metadata and update reports are v3; preview receipts,
+  transaction approvals, history indexes, and migration journals are v1. Graph,
+  supersession, credential-policy, assessment report, and assessment catalog
+  schemas remain v1.
 - The graph hash in code, docs, generated artifacts, compatibility metadata, and
   release-integrity tests is
   `ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c`.
@@ -290,7 +295,11 @@ npm run verify:release-identity
   B001–B006 bundle locally before separate publication and Phase 0 gates.
 - Power Apps and the eight explicitly retired flat-root infrastructure IDs have
   no positive new-generation lane. Old API/GenAI project provenance and v1
-  activation history remain preserved, not converted by update or force.
+  activation history remain preserved. Only the exact approved migration lane
+  can create a linked v2 successor; it does not retag historical proof.
+- Independent infrastructure provenance explicitly admits generation versions
+  `0.11.0`, `0.11.1`, and `0.11.2`, including mixed component histories. Unknown
+  releases remain blocked rather than being accepted through a version range.
 - No setup-skill version exists in manifests, JSON status, docs, or generated
   integrations.
 - Doctor states and remedies cover seed-incomplete, phase-blocked,

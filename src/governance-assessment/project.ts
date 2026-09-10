@@ -5,9 +5,12 @@ import {
 } from '../application/project/manifest.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { buildProjectPlan } from '../application/project/planning.js';
+import { formatUpdateCommand } from '../application/update/command-guidance.js';
 import { buildRepositoryGovernanceArtifacts } from '../repository-governance.js';
 import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
-import { canonicalJson } from '../domain/governance/activation/canonical-json.js';
+import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+import { planActivationHistoryMigration } from '../governance-activation/migration-history.js';
 import {
   validateActivationIdentity,
   validateApprovalEnvelope,
@@ -60,13 +63,58 @@ export interface AssessmentProject {
   inputSnapshot?: ActivationInputSnapshot;
   evidenceContexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
   activationSelections?: Partial<Record<PhaseId, EvidenceSelectionResult>>;
+  historicalActivation?: AssessmentHistoricalActivation;
   invalidEvidence: boolean;
   diagnostics: AssessmentDiagnostic[];
+}
+
+interface AssessmentHistoricalActivation {
+  fingerprint: string;
+  diagnostic: AssessmentDiagnostic;
 }
 
 function diagnostic(code: string, message: string, source: string): AssessmentDiagnostic {
   return { code, message: sanitizeAssessmentText(message), source: sanitizeAssessmentText(source), severity: 'warning' };
 }
+
+/** Returns only diagnostic data, never historical proof or update authority. */
+export async function inspectAssessmentHistoricalActivation(projectRoot: string): Promise<AssessmentHistoricalActivation> {
+  const checkCommand = formatUpdateCommand(projectRoot, 'check');
+  let migration = await planActivationHistoryMigration(projectRoot);
+  if (migration.status === 'blocked' && migration.reasonCode === 'unreviewed-historical-records' &&
+      migration.unreviewedPathParts) {
+    migration = await planActivationHistoryMigration(projectRoot, {
+      reviewedUnreferencedPathParts: migration.unreviewedPathParts
+    });
+  }
+  if (migration.status === 'eligible') {
+    const { laneId, sourceIdentity, targetIdentity } = migration.semanticPlan;
+    return {
+      fingerprint: migration.planDigest,
+      diagnostic: diagnostic(
+        'activation-migration-eligible',
+        `The complete historical inventory supports ${laneId}. ` +
+        `Source: activation contract ${sourceIdentity.activationContractVersion}, package ${sourceIdentity.liftoffVersion}, graph ${sourceIdentity.phaseGraphHash}. ` +
+        `Target: activation contract ${targetIdentity.activationContractVersion}, package ${targetIdentity.liftoffVersion}, graph ${targetIdentity.phaseGraphHash}. ` +
+        `Run ${checkCommand} to review the history-preserving successor and local revalidation before explicit approval. Eligibility is not current governance readiness.`,
+        'governance/activation-state.json'
+      )
+    };
+  }
+  const reasonCode = migration.status === 'blocked' ? migration.reasonCode : 'historical-source-changed';
+  const issues = migration.status === 'blocked' ? migration.issues
+    : ['The active representation no longer matches the historical manifest; rerun assessment against stable source files.'];
+  return {
+    fingerprint: canonicalSha256({ status: migration.status, reasonCode, issues }),
+    diagnostic: diagnostic(
+      'activation-migration-blocked',
+      `Historical migration eligibility is blocked (${reasonCode}). ${issues.map((issue) => sanitizeAssessmentText(issue)).join('; ')} ` +
+      `Preserve original bytes without reset or retagging. Resolve the named blocker, then run ${checkCommand} to review eligibility.`,
+      'governance/activation-state.json'
+    )
+  };
+}
+
 function exactKeys(value: Record<string, unknown>, allowed: readonly string[], label: string): void {
   if (Object.keys(value).some((key) => !allowed.includes(key))) throw new AssessmentInputError('malformed-manifest', `${label} contains unsupported fields.`, 'liftoff.manifest.json');
 }
@@ -136,11 +184,12 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
   rawArtifactPaths(raw);
   const gov = raw.artifactVersion >= 5 && isRecord(raw.governance) ? raw.governance : {};
   const recordedIdentity = gov.activationIdentity === undefined ? null : identityHeader(gov.activationIdentity, 'manifest activation identity');
+  const historical = isHistoricalActivationIdentity(recordedIdentity);
   const unsupported = recordedIdentity !== null && !compatibleIdentity(recordedIdentity) ||
     (typeof gov.policyVersion === 'string' && !['1', '2', '3', '4', '5', '6'].includes(gov.policyVersion));
   let manifest: LiftoffManifest | null;
   let project: LiftoffManifest['project'];
-  if (unsupported) {
+  if (unsupported && !historical) {
     if (raw.generatedBy !== 'Mission Control Liftoff' || typeof raw.liftoffVersion !== 'string' ||
         !/^\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$/u.test(raw.liftoffVersion)) {
       throw new AssessmentInputError('malformed-manifest', 'Manifest producer/version fields are invalid.', 'liftoff.manifest.json');
@@ -163,13 +212,18 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     project = parsed.project;
   }
   const diagnostics: AssessmentDiagnostic[] = [];
-  if (unsupported) diagnostics.push(diagnostic('unsupported-activation', 'The recorded activation tuple is not supported. Independent local facts remain assessable; no migration mapping is being inferred.', 'liftoff.manifest.json'));
+  if (historical) diagnostics.push(diagnostic(
+    'activation-history-diagnostic-only',
+    'Historical activation v1 is diagnostic-only. Its state, evidence, and approvals are not current proof or provider-read authority; assessment does not migrate or authorize them.',
+    'liftoff.manifest.json'
+  ));
+  else if (unsupported) diagnostics.push(diagnostic('unsupported-activation', 'The recorded activation tuple is not supported. Independent local facts remain assessable; no migration mapping is being inferred.', 'liftoff.manifest.json'));
   const profile = manifest?.governance.profile ?? String(gov.profile);
   const identity: AssessmentProjectIdentity = {
     availability: unsupported ? 'unsupported' : 'known', manifestVersion: raw.artifactVersion,
     cliVersion: typeof raw.liftoffVersion === 'string' ? raw.liftoffVersion : null,
     profile, policyVersion: typeof gov.policyVersion === 'string' ? sanitizeAssessmentText(gov.policyVersion, 64) : null,
-    recordedActivationIdentity: recordedIdentity, stateSource: 'not-started'
+    recordedActivationIdentity: recordedIdentity, stateSource: historical ? 'unsupported' : 'not-started'
   };
   const workload = project.workload;
   const plan = project.agents.length === 0 ? null : buildProjectPlan({
@@ -194,6 +248,11 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     stateIdentity: null, evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false, diagnostics
   };
   if (profile === 'none') return input;
+  if (historical) {
+    input.historicalActivation = await inspectAssessmentHistoricalActivation(files.root);
+    diagnostics.push(input.historicalActivation.diagnostic);
+    return input;
+  }
   for (const parts of await files.list(['governance', 'approvals'], ['.json'])) {
     const label = parts.join('/');
     const text = await files.read(parts);

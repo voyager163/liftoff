@@ -20,6 +20,7 @@ import {
 import { UpdatePlanError, type UpdateInspection } from './inspection.js';
 import { previewLocalRevalidation, type LocalRevalidationPreview } from './revalidation.js';
 import type { UpdateWritePlan } from './write-plan.js';
+import { formatUpdateCommand } from './command-guidance.js';
 
 export interface PreparedUpdateRevalidation {
   preview: LocalRevalidationPreview;
@@ -125,7 +126,8 @@ export function postUpdateProtectedInputs(
       if (canonicalSha256(actual) !== canonicalSha256(prepared.expectedInputSnapshot)) {
         throw new UpdatePlanError(
           'Protected application inputs changed after the reviewed update.',
-          'revalidation-inputs-changed', 'Preserve the edits and run liftoff update --check again.'
+          'revalidation-inputs-changed',
+          `Preserve the edits and run ${formatUpdateCommand(inspection.projectRoot, 'check')} again.`
         );
       }
       const observed = await captureRetainedProjectInputs(inspection.projectRoot);
@@ -133,7 +135,8 @@ export function postUpdateProtectedInputs(
       if (changed.length) {
         throw new UpdatePlanError(
           `Protected project scripts or sources changed after review: ${changed.join(', ')}`,
-          'revalidation-inputs-changed', 'Preserve the edits and run liftoff update --check again.'
+          'revalidation-inputs-changed',
+          `Preserve the edits and run ${formatUpdateCommand(inspection.projectRoot, 'check')} again.`
         );
       }
       return observed;

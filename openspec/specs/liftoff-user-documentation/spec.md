@@ -109,26 +109,28 @@ The system SHALL document the telemetry service's review, plan, apply, verificat
 - **THEN** it is clear that Liftoff sends only bounded command events and never deploys or authenticates to Azure on the developer's behalf
 
 ### Requirement: Update guidance uses the imperative command matrix
-The system SHALL document `liftoff update` as an imperative managed-core reconciliation command, `liftoff update --force` as explicit managed-core conflict overwrite, `liftoff update --check` as the read-only core check, and `liftoff update --check --json` as the read-only machine check. Public, packaged, generated-project, troubleshooting, safety, and existing-repository guidance SHALL state that project-owned production files remain outside every update mode and SHALL NOT instruct users to run the removed `--apply` flag.
+Public, packaged, generated-project, troubleshooting, safety, and existing-repository documentation SHALL present `liftoff update --check` as the primary human compatibility/migration preview, followed by `liftoff update` with explicit approval. It SHALL explain that project bytes remain unchanged during check while a disclosed user-local preview receipt is saved outside the repository. JSON SHALL be optional output formatting, and noninteractive apply SHALL require the exact plan fingerprint. Force SHALL remain limited, separately previewed, and unable to bypass receipt, approval, compatibility, or ownership guards. Removed `--apply` SHALL not be recommended.
 
 #### Scenario: Developer wants to update a project
-- **WHEN** a developer reads update guidance
-- **THEN** the primary command is plain `liftoff update`
-- **AND** the guidance explains that only safe managed-core changes apply immediately
+- **WHEN** update guidance is read
+- **THEN** it starts with `liftoff update --check` and explains the matching-preview and explicit-approval requirement before apply
 
 #### Scenario: Automation wants a drift gate
-- **WHEN** automation needs a read-only result
-- **THEN** guidance uses `liftoff update --check --json`
-- **AND** it documents exit code 0 for clean core state and 2 for actionable core or provisioning drift
+- **WHEN** automation needs a structured preview
+- **THEN** guidance uses `liftoff update --check --json` and documents external receipt persistence, schema 3, and exit 0/1/2 meanings
 
 #### Scenario: Developer reviews conflict overwrite
-- **WHEN** a developer needs to replace a locally modified managed-core file
-- **THEN** guidance requires reviewing `liftoff update --check` output before running `liftoff update --force`
-- **AND** states that force cannot overwrite project-owned files or provisioning collisions
+- **WHEN** an owned core conflict needs replacement
+- **THEN** guidance requires reviewing the check's exact force variant and approving that fingerprint for `update --force`
+- **AND** it states that project files and unowned/provisioning collisions remain protected
 
 #### Scenario: Existing apply syntax is encountered
-- **WHEN** a user follows old guidance or a script containing `liftoff update --apply`
-- **THEN** current migration guidance states that `--apply` was removed and maps it to plain `liftoff update`
+- **WHEN** old instructions use `liftoff update --apply`
+- **THEN** migration guidance explains the removed flag and the current check-then-approved-update sequence
+
+#### Scenario: A check is absent or stale
+- **WHEN** a user encounters a missing/stale preview message
+- **THEN** documentation directs them to rerun check rather than force, edit a receipt, or suppress compatibility
 
 ### Requirement: Documentation identifies the tested supported-stack baseline
 The system SHALL publish applicable runtime, package-manager, framework, frozen-dependency, immutable-source, and refresh contracts consistently across packaged and contributor guidance. Statements SHALL agree with the release-owned baseline and distinguish new-generation baselines from separately reviewed adoption into existing projects.
@@ -156,40 +158,39 @@ Contributor guidance SHALL identify canonical version sources, stable/LTS select
 - **AND** the resulting reviewed change includes affected baseline records, manifests, locks, digests, checksums, cases, and documentation
 
 ### Requirement: Documentation distinguishes CLI upgrade from core update
-Packaged README, getting-started, CLI-reference, maintenance, troubleshooting, and generated-project guidance SHALL describe `liftoff upgrade` as replacement of the supported global CLI installation and `liftoff update` as managed-core maintenance for one generated project. No guide SHALL imply that either command upgrades production application templates.
+Maintenance guidance SHALL describe `liftoff upgrade` as replacement of the supported global CLI installation and `liftoff update` as reviewed maintenance for one generated project, including only explicitly supported activation migrations. Neither command SHALL be presented as upgrading production application templates. The existing `liftoff migrate` command SHALL retain its distinct source-preserving non-Liftoff adoption role.
 
 #### Scenario: Developer wants the newest CLI
-- **WHEN** a developer reads installation or maintenance guidance
-- **THEN** it presents `liftoff upgrade --check` followed by `liftoff upgrade`
-- **AND** retains the exact manual global npm command for first installation and unsupported origins
+- **WHEN** installation or maintenance guidance is read
+- **THEN** it retains upgrade check/apply and exact manual installation fallbacks
 
 #### Scenario: Developer wants core template updates
-- **WHEN** a developer wants an existing project to adopt current Liftoff control-plane files
-- **THEN** documentation directs them to inspect `liftoff update --check` and then run `liftoff update`
-- **AND** states that CLI self-upgrade did not modify the project
+- **WHEN** a project needs newer Liftoff control-plane files
+- **THEN** guidance uses update check followed by exact approval and apply
+- **AND** it explains that CLI installation itself did not migrate the project
 
 #### Scenario: Developer wants project template changes
-- **WHEN** a developer wants newer starter source, dependencies, containers, database assets, environments, or infrastructure
-- **THEN** documentation states that ordinary update and force cannot perform that adoption
-- **AND** requires a separately reviewed project migration
+- **WHEN** a user needs new starter source, dependencies, containers, database assets, or infrastructure
+- **THEN** guidance requires separately reviewed project migration rather than ordinary update or force
 
 ### Requirement: Documentation explains template ownership
-The system SHALL document the `managed-core`, `project`, `desired-state`, `framework`, and `seed` lifecycle classes with representative files and exact update authority. It SHALL explain that categories and filenames do not determine ownership, that project files become production assets after generation, and that legacy manifests are migrated without rewriting those assets.
+Documentation SHALL retain the managed-core, project, desired-state, framework, and seed lifecycles and explain that filenames/categories do not grant ownership. It SHALL describe the narrow separately approved activation-history/successor write set without making history, existing production files, or an entire governance directory managed core. Project generation provenance and intentionally modified/deleted production files SHALL remain protected.
 
 #### Scenario: Existing project upgrades to the ownership-aware manifest
-- **WHEN** a developer reads migration guidance for a pre-v6 project
-- **THEN** the guidance states that non-core artifacts are released to project ownership
-- **AND** intentionally deleted or modified project files remain untouched
+- **WHEN** legacy ownership migration is documented
+- **THEN** non-core assets are released to project ownership without restoring or replacing them
 
 #### Scenario: Developer sees a file named config
-- **WHEN** documentation gives configuration examples
-- **THEN** it distinguishes developer-owned desired state, project runtime configuration, and Liftoff managed core
-- **AND** does not imply that a filename or category grants overwrite authority
+- **WHEN** configuration examples are read
+- **THEN** desired state, runtime files, and maintained core are distinguished by explicit contract
 
 #### Scenario: Developer considers force
-- **WHEN** documentation explains `liftoff update --force`
-- **THEN** it identifies the exact managed-core boundary
-- **AND** states that force can never replace project source, dependencies, schemas, containers, environments, documentation, or infrastructure
+- **WHEN** force is documented
+- **THEN** its exact eligible core boundary is explained and production/history replacement is excluded
+
+#### Scenario: Developer preserves activation history
+- **WHEN** v1 migration is documented
+- **THEN** the exact history inventory and successor/journal authority are distinguished from normal template reconciliation
 
 ### Requirement: Documentation explains self-upgrade safety and registry policy
 The documentation SHALL identify supported global npm installations, imperative apply behavior, read-only check behavior, exit codes, JSON mode, canonical stable target selection, configured-registry parity, stale-mirror blocking, unsupported local or `npx` origins, lack of automatic elevation, and exact post-failure recovery.
@@ -404,50 +405,74 @@ The root README, getting-started guide, generated README, and governance guide S
 - **AND** explains that an older project without the bundle needs separately reviewed seed adoption rather than automatic creation by update or force
 
 ### Requirement: Documentation distinguishes assessment from update and activation
-Public, generated, and contributor guidance SHALL describe read-only governance assessment for supported Liftoff projects and ordinary Git repositories, its local-only default and explicit live reads, installed policy target, four comparison layers, classifications, coverage, provenance, and exit codes. Assessment SHALL remain distinct from initialization, update, migration, activation, and permission to remediate.
+Guidance SHALL retain local-only and explicitly scoped live assessment for supported and ordinary Git repositories, installed targets, comparison layers, coverage/classifications, provenance, and exit codes. Assessment SHALL remain distinct from migration, activation, and remediation authority. Supported historical migration SHALL be described accurately through update check; unsupported lanes SHALL remain named limitations rather than invented commands or receipt edits.
 
 #### Scenario: Developer wants to see differences
 - **WHEN** assessment guidance is read
-- **THEN** target, recorded baseline, declared configuration, and observed enforcement are distinguished together with expected/observed values, provenance, impact, and advice
+- **THEN** target, baseline, declarations, and observed enforcement remain separately explained
 
 #### Scenario: Developer does not want network access
 - **WHEN** the default assessment example is followed
-- **THEN** it is local-only with no cloud/GitHub credentials and explains unobserved live proof
-- **AND** all assessment invocations, including help, are described as telemetry/disclosure-excluded
+- **THEN** it is local-only, credential-free, and telemetry/disclosure-excluded, including help
 
 #### Scenario: Developer requests live assessment
-- **WHEN** live mode is introduced
-- **THEN** bounded existing-permission scope and the no-mutation boundary are stated
-- **AND** denied or unavailable reads are not described as absence, alignment, or changed local files
+- **WHEN** live mode is described
+- **THEN** bounded existing-permission reads and the no-mutation boundary remain explicit
+- **AND** unavailable reads are not called absence or alignment
 
 #### Scenario: Assessment is partial or excepted
 - **WHEN** coverage is incomplete or an exception is accepted
-- **THEN** guidance explains exit 2 without claiming broken activation, permission to repair, or full alignment
-- **AND** states that unsupported applicable controls prevent a fully aligned outcome even in live mode
+- **THEN** exit 2 is explained without claiming full alignment or permission to repair
 
 #### Scenario: Upgrade is blocked by compatibility
-- **WHEN** assessment identifies historical or unsupported activation mapping
-- **THEN** guidance names the actual unavailable reconciliation capability without inventing a command or recommending edited receipts
-- **AND** force is not presented as a compatibility bypass
+- **WHEN** historical activation appears in an assessment
+- **THEN** guidance distinguishes a supported migration preview from an actually unavailable lane
+- **AND** neither force nor edited receipts are offered as compatibility bypasses
 
 #### Scenario: Developer installs a newer assessment integration
-- **WHEN** a compatible initialized project needs the selected-agent integration
-- **THEN** guidance uses normal guarded core update and states that installation/running the integration does not activate governance
-- **AND** ordinary Git repositories can use the CLI directly without installing an integration
+- **WHEN** a supported project needs an assessment integration
+- **THEN** guidance uses the reviewed core update flow without implying that installation activates governance
+- **AND** ordinary Git repositories can continue using the CLI directly
 
 #### Scenario: Maintainer extends policy assessment coverage
-- **WHEN** contributor guidance describes a new control or evaluator
-- **THEN** it requires stable IDs, policy/catalog coherence, explicit proof/support limits, deterministic cases, no-write guarantees, and cross-platform path coverage
-- **AND** does not introduce an independently maintained assessment-skill version
+- **WHEN** contributor guidance describes new evaluators
+- **THEN** stable IDs, explicit proof/support limits, deterministic no-write cases, and cross-platform safety remain required without a new assessment-skill version
 
 #### Scenario: Developer assesses Liftoff's source repository
-- **WHEN** an ordinary Git repository has no Liftoff manifest
-- **THEN** guidance uses the same read-only CLI and explains missing Liftoff-specific proof rather than requiring initialization
-- **AND** makes the installed single-maintainer policy target explicit instead of inferring policy from current branches
+- **WHEN** a repository has no Liftoff manifest
+- **THEN** guidance uses ordinary read-only assessment with the installed policy target and honest missing-proof findings
 
 #### Scenario: Manifest is retired or damaged
-- **WHEN** a repository contains an explicit retired, malformed, or unsafe manifest
-- **THEN** guidance explains its error boundary and does not recommend hiding that manifest to force generic fallback
+- **WHEN** a manifest is retired, malformed, or unsafe
+- **THEN** guidance preserves the error boundary rather than hiding it to force fallback
+
+### Requirement: Migration guidance explains preservation and resumable partial outcomes
+Documentation SHALL describe the compatibility/preview/approval/history/successor/revalidation/resume sequence, exact source support, in-project historical storage, and the separate external preview receipt. It SHALL distinguish pre-commit transaction recovery from post-commit revalidation failure, explain that committed v2 remains blocked/resumable after failure, and prohibit manual version retagging, historical approval reuse, automatic v1 restoration, or live-resource recreation. It SHALL identify unavailable producers and separate provider authority honestly.
+
+#### Scenario: A user migrates known v1
+- **WHEN** the migration walkthrough is followed
+- **THEN** it explains the readable preview, explicit approval, preserved bytes, linked v2, and fresh-proof requirements
+- **AND** it does not require a separate activation-migration command
+
+#### Scenario: A check fails after local commit
+- **WHEN** troubleshooting describes committed migration with failed revalidation
+- **THEN** it directs the user to repair the named blocker, obtain a fresh preview, and approve remaining work
+- **AND** it explains exit 2 and retained v2 progress without suggesting a reset
+
+#### Scenario: CI applies an update
+- **WHEN** automation guidance is read
+- **THEN** it shows a matching preview and `--approve-plan <fingerprint>` in the same materialized checkout/user-local storage context
+- **AND** it states that a changed workspace or plan requires a fresh check and approval, not a portable blanket authorization
+
+#### Scenario: A project moves to another machine
+- **WHEN** history/receipt portability is explained
+- **THEN** history travels inside the project but local preview receipts do not
+- **AND** Windows, macOS, and Linux storage and path behavior are documented without assuming a shared home-directory layout
+
+#### Scenario: Local validation runs project-controlled commands
+- **WHEN** validation safety is described
+- **THEN** the exact approved commands and known effects are disclosed
+- **AND** documentation does not claim a sandbox or authorize rollback of unexpected user-owned edits
 
 ### Requirement: Generated infrastructure guidance is environment-correct and authority-aware
 Generated guidance SHALL use selected environments and their recorded infrastructure layout. New output SHALL describe independent environment roots/state; existing shared-state output SHALL have an explicit migration boundary. Governed projects SHALL distinguish reference commands from separately approved execution and identify unavailable production capabilities instead of bypassing them.

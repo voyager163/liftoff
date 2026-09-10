@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
+import { formatUpdateCommand } from './command-guidance.js';
 
 export const updatePreviewSchemaVersion = 1;
 export const updatePreviewDirectoryParts: readonly string[] = Object.freeze(['liftoff', 'update-previews']);
@@ -250,7 +251,8 @@ export function validateUpdatePreviewReceipt(
   }
   if (options.projectRoot !== undefined &&
       receipt.projectRoot !== normalizeUpdatePreviewProjectRoot(options.projectRoot)) {
-    throw new UpdatePreviewError('preview-mismatch', 'Preview belongs to a different project or worktree. Run liftoff update --check.');
+    throw new UpdatePreviewError('preview-mismatch',
+      `Preview belongs to a different project or worktree. Run ${formatUpdateCommand(options.projectRoot, 'check')}.`);
   }
   if (options.now !== undefined &&
       (!Number.isFinite(options.now.getTime()) || Date.parse(receipt.issuedAt) > options.now.getTime())) {
@@ -269,7 +271,7 @@ export function matchUpdatePreviewReceipt(
   if (!matched || matched.fingerprint !== current.fingerprint) {
     throw new UpdatePreviewError(
       'preview-mismatch',
-      `The ${current.mode} preview is missing or stale for the current inputs, target, or operations. Run liftoff update --check.`
+      `The ${current.mode} preview is missing or stale for the current inputs, target, or operations. Run ${formatUpdateCommand(current.projectRoot, 'check')}.`
     );
   }
   return current;

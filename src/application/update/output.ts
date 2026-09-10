@@ -8,6 +8,8 @@ import { isUnownedUpdateConflict, provisioningJson } from './planning.js';
 import { entryDisplay, entryMarker, manifestChanges } from './reporting.js';
 import type { UpdateWritePlan } from './write-plan.js';
 import type { LocalRevalidationPhaseResult, LocalRevalidationPreview } from './revalidation.js';
+import { formatUpdateCommand } from './command-guidance.js';
+import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 
 export const updateReportSchemaVersion = 3 as const;
 
@@ -122,6 +124,52 @@ export function buildUpdateReport(
   };
 }
 
+function migrationReviewDetails(migration: UpdateMigrationSummary): string[] {
+  if (migration.status === 'not-required') return [];
+  return [
+    `Status: ${migration.status}; original history is not executable proof.`,
+    ...(migration.sourceIdentity ? [`Source activation identity: ${JSON.stringify(migration.sourceIdentity)}`] : []),
+    ...(migration.targetIdentity ? [`Target activation identity: ${JSON.stringify(migration.targetIdentity)}`] : []),
+    ...(migration.snapshotId ? [`History snapshot: ${migration.snapshotId}`] : []),
+    ...migration.historyPaths.map((entry) => `Preserve ${entry}`),
+    ...(migration.operations ?? []).map((entry) => `${entry.type} ${JSON.stringify(entry.path)}`),
+    ...migration.issues
+  ];
+}
+
+function revalidationReviewDetails(revalidation: UpdateRevalidationSummary): string[] {
+  if (revalidation.status === 'not-required') return [];
+  const preview = revalidation.preview;
+  const shell = commandShellForPlatform(process.platform);
+  const commandDetails = (entry: LocalRevalidationPreview['inspectionCommands'][number]) =>
+    `${formatShellCommand(entry.command, shell)} (directory: ${JSON.stringify(entry.cwdPathParts.join('/') || '.')}); environment overrides: ${JSON.stringify(entry.env)}`;
+  return [
+    `Status: ${revalidation.status}`,
+    ...revalidation.issues.map((issue) => `Known revalidation gap: ${issue}`),
+    ...(revalidation.issues.length ? ['Approval may commit v2 while these known revalidation gaps remain blocked.'] : []),
+    ...(preview ? [
+      `Commands are relative to project: ${JSON.stringify(preview.projectRoot)}`,
+      `Target activation identity: ${JSON.stringify(preview.targetIdentity)}`,
+      ...preview.effects,
+      ...preview.inspectionCommands.map((entry) => `Read-only inspection: ${commandDetails(entry)}`),
+      ...preview.phases.flatMap((phase) =>
+        phase.commands.map((entry) => `${phase.phaseId}: ${commandDetails(entry)}`)
+      ),
+      ...preview.reusedPhases.map((phase) =>
+        `Reuse fresh ${phase.phaseId} evidence ${phase.evidenceId} (header: ${phase.headerDigest}).`
+      ),
+      `Record writes: ${preview.recordWrites.plans}; ${preview.recordWrites.evidence}; ${preview.recordWrites.state}`,
+      preview.recordWrites.limit,
+      `Command limits: ${preview.commandLimits.timeoutMs} ms; ${preview.commandLimits.maxOutputBytes} output bytes.`,
+      ...preview.outputPolicy.map((policy) =>
+        `Generated-output policy for ${policy.executable} from ${JSON.stringify(policy.cwd.join('/') || '.')}: ${policy.outputs.map((parts) => JSON.stringify(parts.join('/'))).join(', ')}; only after a listed matching command executes.`
+      ),
+      preview.boundary
+    ] : []),
+    ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : [])
+  ];
+}
+
 export function renderUpdatePreview(
   presentation: PresentationSession,
   inspection: UpdateInspection,
@@ -155,25 +203,10 @@ export function renderUpdatePreview(
     presentation.bullets('Manifest maintenance', ['Release legacy project artifacts into provenance; no production file will be written.']);
   }
   if (migration.status !== 'not-required') {
-    presentation.bullets('Activation migration', [
-      `Status: ${migration.status}; original history is not executable proof.`,
-      ...migration.historyPaths.map((entry) => `Preserve ${entry}`),
-      ...(migration.operations ?? []).map((entry) => `${entry.type} ${entry.path}`),
-      ...migration.issues
-    ]);
+    presentation.bullets('Activation migration', migrationReviewDetails(migration));
   }
   if (revalidation.status !== 'not-required') {
-    presentation.bullets('Local revalidation', [
-      `Status: ${revalidation.status}`,
-      ...revalidation.issues,
-      ...(revalidation.preview?.effects ?? []),
-      ...(revalidation.preview?.phases ?? []).flatMap((phase) =>
-        phase.commands.map((entry) =>
-          `${entry.command.executable} ${entry.command.args.join(' ')} (directory: ${entry.cwdPathParts.join('/') || '.'})`
-        )
-      ),
-      ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : [])
-    ]);
+    presentation.bullets('Local revalidation', revalidationReviewDetails(revalidation));
   }
   for (const plan of plans) {
     presentation.definitions(plan.mode === 'force' ? 'Separately reviewed forced plan' : 'Reviewed update plan', [
@@ -190,14 +223,14 @@ export function renderUpdatePreview(
     ]);
   }
   if (plans.some((plan) => plan.eligible && plan.writeCount > 0)) {
-    presentation.command('liftoff update');
+    presentation.command(formatUpdateCommand(inspection.projectRoot));
     const hasForceableConflict = inspection.entries.some((entry) =>
       !isUnownedUpdateConflict(entry, inspection.oldByName) &&
       (entry.status === 'conflict' || entry.status === 'retired-conflict' ||
         entry.status === 'moved' && !entry.cleanMove)
     );
     if (hasForceableConflict && plans.some((plan) => plan.mode === 'force' && plan.eligible && plan.writeCount > 0)) {
-      presentation.command('liftoff update --force');
+      presentation.command(formatUpdateCommand(inspection.projectRoot, 'force'));
     }
   }
 }
@@ -220,12 +253,14 @@ export function renderUpdateApprovalScope(
   jsonMode: boolean,
   plan: UpdatePlanSummary,
   writePlan: UpdateWritePlan,
-  extraLines: readonly string[] = []
+  migration: UpdateMigrationSummary,
+  revalidation: UpdateRevalidationSummary
 ): void {
   const lines = [
     `Effective ${plan.mode} plan: ${plan.fingerprint}`,
     ...writePlan.mutations.map((mutation) => `${mutation.type} ${JSON.stringify(manifestDisplayPath(mutation.pathParts))}`),
-    ...extraLines,
+    ...migrationReviewDetails(migration),
+    ...revalidationReviewDetails(revalidation),
     'Only this exact local plan is authorized; future provider actions require separate approval.'
   ];
   if (jsonMode) presentation.rawStderr(`${lines.join('\n')}\n`);

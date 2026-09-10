@@ -70,11 +70,16 @@ liftoff update --check
 liftoff update
 ```
 
-Use `--check` first when the invocation must be read-only. Plain update applies
-safe managed-core changes immediately and preserves core conflicts and orphans.
-`--force` can replace only listed core conflicts. Project-owned production
-files are not compared and remain unreachable from every update mode. For CI
+Always run `--check` before a write-capable update. Check leaves project bytes
+unchanged and discloses a user-local preview receipt outside the repository.
+Plain update requires a matching preview and explicit approval of the exact
+plan before applying safe managed-core changes; core conflicts and orphans stay
+protected. `--force` requires separate approval of its previewed variant and
+can replace only listed, owned core conflicts. Project-owned production
+files are not compared with new templates or overwritten by update. For CI
 core-maintenance gates, use `liftoff update --check --json`.
+See [preview receipt storage](cli-reference.md#preview-receipt-storage) for
+platform-specific locations and checkout portability.
 
 OpenSpec skills and commands remain framework-owned. To give an existing
 project all 12 workflows as both skills and commands, run:

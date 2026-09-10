@@ -17,6 +17,7 @@ import type { UpdateMigrationSummary, UpdateRevalidationSummary } from './output
 import type { ReviewedUpdatePlan } from './review-plan.js';
 import { executeLocalRevalidation, type LocalRevalidationProgress } from './revalidation.js';
 import { postUpdateProtectedInputs } from './revalidation-plan.js';
+import { formatUpdateCommand } from './command-guidance.js';
 
 export function describeUpdateMigration(inspection: UpdateInspection): UpdateMigrationSummary {
   const history = inspection.historyMigration;
@@ -92,7 +93,7 @@ export function materializeUpdateMutations(
   const manifest = review.writePlan.mutations.filter((mutation) => mutation.pathParts.join('\0') === 'liftoff.manifest.json');
   if (manifest.length !== 1) {
     throw new UpdatePlanError('The successor has no uniquely planned manifest write.',
-      'invalid-successor-plan', 'Run liftoff update --check again.');
+      'invalid-successor-plan', `Run ${formatUpdateCommand(inspection.projectRoot, 'check')} again.`);
   }
   return { mutations: [...before, ...core, ...successor, ...manifest], journal: finalized.journal };
 }

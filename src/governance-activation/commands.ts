@@ -3,6 +3,7 @@ import path from 'node:path';
 import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
 import { findProjectRoot } from '../adapters/filesystem/project-discovery.js';
 import { loadManifest } from '../application/project/manifest.js';
+import { formatUpdateCommand } from '../application/update/command-guidance.js';
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
@@ -83,8 +84,8 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
-import { readMigrationJournal } from './migration-history.js';
-import type { MigrationJournal } from './history-contracts.js';
+import { inspectActivationMigrationHistory } from './migration-history.js';
+import { migrationRevalidationPhaseIds, type MigrationJournal } from './history-contracts.js';
 import {
   validateApprovalEnvelope,
   validateManagedPhaseGraph,
@@ -155,6 +156,21 @@ interface VerificationCheck {
   issues: readonly string[];
 }
 
+interface GovernanceMigrationSummary {
+  localCommit: MigrationJournal['transaction'];
+  snapshot: {
+    id: string;
+    indexPathParts: readonly string[];
+    indexDigest: string;
+    linkage: 'validated';
+    successor: MigrationJournal['successor'];
+  };
+  revalidation: MigrationJournal['revalidation'];
+  nextRecordedPhase: PhaseId | null;
+  currentProofRequired: true;
+  remedy: string | null;
+}
+
 type SetupCompletionStatus = 'not-started' | 'in-progress' | 'complete';
 
 interface GovernanceVerificationResult {
@@ -170,6 +186,8 @@ interface GovernanceVerificationResult {
   stateSource: GovernanceInspection['stateSource'];
   summary: string;
   activationIdentity: UserActivationState['identity'];
+  migration: MigrationJournal | null;
+  migrationSummary: GovernanceMigrationSummary | null;
   graphHash: string;
   activeChange: UserActivationState['activeChange'];
   activeSourceOfTruth: GovernanceSourceOfTruthInspection;
@@ -513,7 +531,7 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
   const graph = await loadGovernanceGraph(projectRoot);
   await assertPolicyIdentity(projectRoot, manifest);
   const loadedState = await loadActivationState(projectRoot);
-  const migration = await readMigrationJournal(projectRoot);
+  const migration = await inspectActivationMigrationHistory(projectRoot);
   const state = loadedState?.state ?? notStartedState(manifest);
   if (state.identity.phaseGraphHash !== graph.hash) {
     throw new Error(
@@ -590,7 +608,7 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
     archivedSeedIntegrity,
     retryArchivedSeedBaseline,
     expectedActiveSeed,
-    migration: migration ?? null
+    migration: migration.status === 'committed' ? migration.journal : null
   };
 }
 
@@ -640,6 +658,63 @@ function approvalEvaluationJson(evaluation: ApprovalEvaluation): Record<string, 
   };
 }
 
+function summarizeMigration(inspection: GovernanceInspection): GovernanceMigrationSummary | null {
+  const journal = inspection.migration;
+  if (!journal) return null;
+  const phases = migrationRevalidationPhaseIds.map((phaseId) =>
+    journal.revalidation.phases.find((phase) => phase.phaseId === phaseId)!
+  );
+  const needsRevalidation = journal.revalidation.status !== 'complete' ||
+    migrationRevalidationPhaseIds.some((phaseId) => inspection.readiness.phases[phaseId].state !== 'verified');
+  const checkCommand = formatUpdateCommand(inspection.projectRoot, 'check');
+  return {
+    localCommit: journal.transaction,
+    snapshot: {
+      id: journal.snapshotId,
+      indexPathParts: journal.historyIndexPathParts,
+      indexDigest: journal.historyIndexDigest,
+      linkage: 'validated',
+      successor: journal.successor
+    },
+    revalidation: { ...journal.revalidation, phases },
+    nextRecordedPhase: phases.find((phase) => phase.status !== 'complete')?.phaseId ?? null,
+    currentProofRequired: true,
+    remedy: needsRevalidation
+      ? `Keep the committed v2 successor and preserved v1 history. Repair the named blockers or stale current proof, run ${checkCommand} for a fresh preview, then explicitly approve the exact remaining local plan before retrying. Prior migration approval does not authorize new work.`
+      : null
+  };
+}
+
+function renderMigrationHuman(
+  summary: GovernanceMigrationSummary | null,
+  presentation: PresentationSession
+): void {
+  if (!summary) return;
+  presentation.definitions('Migration progress (journal)', [
+    { label: 'Local migration', value: `${summary.localCommit.status} at ${summary.localCommit.committedAt}` },
+    { label: 'History snapshot', value: summary.snapshot.id },
+    { label: 'History index', value: summary.snapshot.indexPathParts.join('/') },
+    { label: 'History index digest', value: summary.snapshot.indexDigest },
+    { label: 'History linkage', value: `${summary.snapshot.linkage}; successor ${summary.snapshot.successor.repositoryId}` },
+    { label: 'Recorded revalidation', value: summary.revalidation.status },
+    { label: 'Next recorded phase', value: summary.nextRecordedPhase ?? 'none' }
+  ]);
+  presentation.table('Recorded local revalidation', ['Phase', 'Progress', 'Blockers'], summary.revalidation.phases.map((phase) => [
+    phase.phaseId,
+    phase.status,
+    phase.blockers.join('; ') || 'none recorded'
+  ]));
+  if (summary.revalidation.nextAction) {
+    presentation.status('pending', 'Recorded next action', summary.revalidation.nextAction);
+  }
+  presentation.status(
+    'info',
+    'Migration scope',
+    'Journal progress is audit information, not current proof, governance completion, approval, or provider authority. Current readiness is evaluated separately from v2 evidence.'
+  );
+  if (summary.remedy) presentation.remedy(summary.remedy);
+}
+
 function statusJson(inspection: GovernanceInspection, command: GovernanceSubcommand): Record<string, unknown> {
   const blockers = phaseIds.flatMap((phaseId) =>
     inspection.readiness.phases[phaseId].blockers.map((message) => ({ phaseId, message }))
@@ -652,6 +727,7 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
     stateSource: inspection.stateSource,
     activationIdentity: inspection.state.identity,
     migration: inspection.migration,
+    migrationSummary: summarizeMigration(inspection),
     executionAnchor: inspection.state.repository.id === 'unbound' ? null : inspection.state.repository.id,
     remoteBinding: inspection.state.remoteBinding ?? null,
     graphHash: inspection.graph.hash,
@@ -713,6 +789,7 @@ function renderStatusHuman(inspection: GovernanceInspection, command: Governance
         : inspection.sourceOfTruth.status
     }
   ]);
+  renderMigrationHuman(summarizeMigration(inspection), presentation);
   if (inspection.sourceOfTruth.status === 'seed-blocked') {
     presentation.status('error', 'Seed blocker', inspection.sourceOfTruth.blockers.join('; '));
   } else if (inspection.sourceOfTruth.status === 'ambiguous' || inspection.sourceOfTruth.status === 'incompatible') {
@@ -1206,6 +1283,8 @@ async function verifyJson(inspection: GovernanceInspection): Promise<GovernanceV
     stateSource: inspection.stateSource,
     summary,
     activationIdentity: inspection.state.identity,
+    migration: inspection.migration,
+    migrationSummary: summarizeMigration(inspection),
     graphHash: inspection.graph.hash,
     activeChange: inspection.state.activeChange,
     activeSourceOfTruth: inspection.sourceOfTruth,
@@ -1223,6 +1302,7 @@ async function renderVerifyHuman(inspection: GovernanceInspection, presentation:
     'setup-completion',
     result.summary
   );
+  renderMigrationHuman(result.migrationSummary, presentation);
   for (const check of checks) {
     presentation.status(check.status === 'failed' ? 'error' : check.status === 'skipped' ? 'info' : 'success', check.id, check.issues[0]);
   }

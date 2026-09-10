@@ -25,6 +25,8 @@ import {
   acceptDeclaredCommandOutputs, captureRetainedProjectInputs, changedRetainedProjectInputs,
   localValidationOutputPolicy, outputsForLocalCommand, type RetainedProjectInput
 } from './protected-source.js';
+import { formatUpdateCommand } from './command-guidance.js';
+import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 
 const localPhases: readonly LocalSeedPhaseId[] = ['seed-valid', 'seed-verified', 'seed-archived'];
 const successfulStates = new Set(['verified', 'approved', 'inapplicable', 'retained', 'disposed']);
@@ -200,7 +202,7 @@ export async function executeLocalRevalidation(input: {
     if (protectedSnapshot) {
       const changed = changedRetainedProjectInputs(protectedSnapshot,
         observed ?? await captureRetainedProjectInputs(approved.projectRoot));
-      if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized. Run liftoff update --check again.`);
+      if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized. Run ${formatUpdateCommand(approved.projectRoot, 'check')} again.`);
     }
   }
 
@@ -257,8 +259,10 @@ export async function executeLocalRevalidation(input: {
       status, phaseId: status === 'blocked' ? activePhase : null, phaseResults: [...phaseResults],
       nextIncompletePhase: next, blockers,
       nextAction: status === 'blocked'
-        ? 'Repair the named local prerequisite or review the separate setup transition, then run liftoff update --check and approve a fresh plan.'
-        : next ? `Local revalidation is complete. Review liftoff governance plan for ${next}; update did not execute it.` : 'Local revalidation is complete.'
+        ? `Repair the named local prerequisite or review the separate setup transition, then run ${formatUpdateCommand(approved.projectRoot, 'check')} and approve a fresh plan.`
+        : next ? `Local revalidation is complete. Review ${formatShellCommand({
+          executable: 'liftoff', args: ['governance', 'plan', '--project', approved.projectRoot]
+        }, commandShellForPlatform(process.platform))} for ${next}; update did not execute it.` : 'Local revalidation is complete.'
     };
   }
 
@@ -274,7 +278,7 @@ export async function executeLocalRevalidation(input: {
       throw new Error('The approved local inspection, record-write, or command-limit descriptions changed; obtain a fresh preview.');
     }
     assertDigest(input.protectedInputs.binding, 'Current protected input');
-    if (input.protectedInputs.binding !== approved.protectedInputBinding) throw new Error('Protected input binding differs from the approved preview; run liftoff update --check again.');
+    if (input.protectedInputs.binding !== approved.protectedInputBinding) throw new Error(`Protected input binding differs from the approved preview; run ${formatUpdateCommand(approved.projectRoot, 'check')} again.`);
     if (await realpath(approved.projectRoot) !== approved.projectRoot) throw new Error('The approved project boundary changed.');
     if (approved.phases.length > localPhases.length ||
       approved.phases.some((phase, index) => !localPhases.includes(phase.phaseId) ||

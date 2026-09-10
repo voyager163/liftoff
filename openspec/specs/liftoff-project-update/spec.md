@@ -5,170 +5,167 @@ Define the `liftoff update` command that reconciles Liftoff-managed core files a
 ## Requirements
 
 ### Requirement: Update reconciles a generated project against a fresh render
-The system SHALL provide a `liftoff update` command that loads `liftoff.config.json` as desired state, renders artifacts with the current CLI templates, selects only explicitly declared managed-core artifacts plus configuration-authorized new component provisioning, and joins managed-core render entries against the manifest on `logicalName`. It SHALL classify each managed-core artifact into exactly one of unchanged, new, missing, upgrade, conflict, moved, orphan, retired, or retired-conflict. Existing project-owned artifacts SHALL remain outside classification regardless of their bytes. Plain `liftoff update` SHALL apply safe managed-core changes, authorized provisioning, and clean retired-alias ownership removal immediately; it SHALL skip managed-core conflicts unless `--force` is supplied, protect modified exact retired aliases unless `--force` is supplied, and SHALL leave other managed-core orphans untouched. `liftoff update --check` SHALL be read-only, SHALL report each actionable managed-core, retired-alias, or provisioning entry with a one-line reason, and SHALL exit 0 when no such drift exists and 2 when it exists.
+The system SHALL provide `liftoff update` with a compatibility-first, preview-gated workflow. It SHALL load `liftoff.config.json` as desired state, reconcile explicitly declared managed-core artifacts by `logicalName`, and separately identify configuration-authorized create-only provisioning and supported activation migration/revalidation. Core classifications SHALL remain unchanged, new, missing, upgrade, conflict, moved, orphan, retired, or retired-conflict. Existing production project artifacts SHALL remain outside template comparison. All write-capable plans SHALL require a matching prior check and explicit exact-plan approval. `liftoff update --check` SHALL present a human-readable preview without changing project bytes, disclose its external preview receipt, and exit 0 for no actionable work or 2 for actionable drift, migration, or revalidation.
 
 #### Scenario: Clean project reports no drift
-- **WHEN** project-owned files differ from current templates but managed-core files match
-- **THEN** update reports no drift, exits 0, and performs no unnecessary write
+- **WHEN** project-owned files differ from current templates but managed core and activation migration/revalidation require no work
+- **THEN** update exits 0 without approval or unnecessary project writes
 
 #### Scenario: Check classifies drift without applying
 - **WHEN** a managed-core template evolved and one managed-core file was edited
-- **THEN** the report lists untouched core changes as upgrades and the edited core file as a conflict
-- **AND** it exits 2 without writing any file
+- **THEN** check lists untouched core changes as upgrades and the edited file as a conflict
+- **AND** it exits 2 without changing project files while separately disclosing any external receipt
 
 #### Scenario: User modification is detected by hash
-- **WHEN** a managed-core file's content hash differs from the `contentHash` recorded in the manifest
-- **THEN** update treats the core file as locally modified and never classifies it as a safe upgrade
+- **WHEN** a core file differs from its recorded content hash
+- **THEN** update treats it as locally modified rather than a safe upgrade
 
 #### Scenario: Project modification is outside update
-- **WHEN** application source, dependencies, schema, container, environment, documentation, or infrastructure bytes differ from the current render
-- **THEN** update neither classifies nor reports those differences
+- **WHEN** source, dependency, schema, container, environment, documentation, or infrastructure bytes differ from the current render
+- **THEN** update does not classify or report those differences as template updates
+- **AND** reading a file as a migration-validation input does not grant replacement authority
 
 #### Scenario: Moved artifact is detected by logical name
-- **WHEN** the current templates emit a managed-core artifact whose `logicalName` exists in the manifest under different path parts
-- **THEN** update classifies it as moved and reports the old and new locations
+- **WHEN** a current core artifact has the same logical name and a different recorded location
+- **THEN** preview identifies the move and both portable paths
 
 #### Scenario: Redirected update applies safe changes
-- **WHEN** plain `liftoff update` runs with redirected input or output and actionable managed-core drift exists
-- **THEN** it requests no input and applies the safe core changes through the normal transaction
+- **WHEN** redirected update has actionable work, a matching preview receipt, and `--approve-plan` containing the exact effective fingerprint
+- **THEN** it applies the approved safe scope without prompting
+- **AND** redirected apply without either prerequisite performs no new project write
 
 #### Scenario: Redirected check stays read-only
-- **WHEN** `liftoff update --check` runs with redirected input or output
-- **THEN** it requests no input, writes nothing, and exits 2 only when managed-core or authorized-provisioning drift exists
+- **WHEN** check runs with redirected input or output
+- **THEN** it requests no input, leaves project bytes unchanged, and uses the same compatibility and exit rules
+- **AND** it discloses external receipt persistence in the selected output format
 
 #### Scenario: Check reports retired alias cleanup without mutation
-- **WHEN** an older manifest records an exact retired generated setup alias
-- **THEN** `liftoff update --check --json` reports the alias as retired or retired-conflict with its exact path and removal/protection reason
-- **AND** the manifest and alias file bytes remain unchanged
+- **WHEN** an older manifest records an exact retired setup alias
+- **THEN** human and JSON previews identify its retired or protected retired-conflict state and exact path
+- **AND** manifest and alias bytes remain unchanged
 
 ### Requirement: Apply writes only safe managed-core states by default
-The system SHALL, when plain `liftoff update` runs, write managed-core artifacts classified as new, missing, or upgrade only after verifying that the destination is absent or belongs to the same recorded managed-core artifact. It SHALL relocate a clean managed-core artifact only when the destination is absent or already matches the current render, SHALL classify any different pre-existing destination as a core conflict, SHALL skip core conflicts unless `--force` is supplied, and SHALL report core orphans without deleting them. Configuration-authorized component provisioning SHALL use a separate create-only lane that cannot replace existing bytes. The system SHALL never restore, upgrade, move, overwrite, or orphan-report an existing project-owned artifact.
+After matching preview validation and exact-plan approval, default update SHALL write only safe named core states whose destinations are absent, already identical, or owned by that same recorded core artifact. A clean move SHALL require an absent or matching destination. Core conflicts SHALL be skipped without an independently approved force variant; orphans SHALL not be deleted. Provisioning SHALL remain create-only, and supported activation migration SHALL have its own exact approved write set. Neither lane SHALL authorize production template replacement.
 
 #### Scenario: Update applies safe core changes
-- **WHEN** a project has collision-free new and upgrade core artifacts plus a core conflict
-- **THEN** the new and upgrade core artifacts are written, the conflict is left untouched and listed as skipped, and the command exits 0
+- **WHEN** an approved normal plan has collision-free new/upgraded core artifacts and a skipped conflict
+- **THEN** apply writes the safe core entries, lists the untouched conflict, and reports completion of that scope
 
 #### Scenario: Restore a deleted managed-core file
-- **WHEN** a developer deletes a recorded managed-core file and runs update
-- **THEN** the file is restored at the current core template version
+- **WHEN** a recorded core file is absent and its restoration appears in the approved plan
+- **THEN** update restores it at the current core version
 
 #### Scenario: Preserve a deleted project file
-- **WHEN** a developer deletes or relocates a recorded project-owned file and runs update
-- **THEN** update leaves the original path absent and performs no mutation for that artifact
+- **WHEN** a project-owned file was deleted or relocated
+- **THEN** update leaves the old path absent
 
 #### Scenario: Existing file blocks a new core artifact
-- **WHEN** a current managed-core render adds a logical artifact whose destination contains different bytes not owned by that artifact
-- **THEN** update classifies the destination as a core conflict and plain update leaves it unchanged
+- **WHEN** a new core destination contains different bytes not owned by that artifact
+- **THEN** it is an unowned conflict and remains unchanged
 
 #### Scenario: Existing file blocks a moved core artifact
-- **WHEN** a clean recorded managed-core artifact moved but its new destination already contains different project-owned bytes
-- **THEN** update classifies the move as a core conflict and leaves both old and new files unchanged without `--force`
+- **WHEN** a move destination contains different project-owned bytes
+- **THEN** both paths remain unchanged and force does not acquire destination ownership
 
 #### Scenario: Existing file blocks component provisioning
-- **WHEN** a newly configured component would create a project file at a destination containing different bytes
-- **THEN** update blocks the complete component provisioning before any component write
-- **AND** does not offer force as a remedy
+- **WHEN** a new component has a differing occupied destination
+- **THEN** the entire component is blocked before its first write without a force remedy
 
 #### Scenario: Existing matching core destination is adopted
-- **WHEN** a new or moved managed-core artifact destination already contains bytes identical to the current render
-- **THEN** update records the current destination without unnecessarily rewriting those bytes
+- **WHEN** a reviewed new or moved core destination already matches the render
+- **THEN** update records it without an unnecessary rewrite
 
 #### Scenario: Clean core relocation removes only its managed old path
-- **WHEN** a clean managed-core artifact has an unoccupied destination and the destination write succeeds
-- **THEN** update writes the new path, removes only the recorded managed-core old path, and records the new path
+- **WHEN** an approved clean move completes its destination write
+- **THEN** update removes only the exact recorded old core path and records the new path
 
 #### Scenario: Managed-core orphans are never auto-deleted
-- **WHEN** a managed-core artifact exists in the manifest but is no longer produced by the core render
-- **THEN** update leaves the file on disk and reports it as orphaned with guidance to delete manually if unwanted
+- **WHEN** a previously managed artifact no longer renders and is not an exact declared retirement
+- **THEN** update leaves it on disk and reports manual-review guidance
 
 #### Scenario: Clean retired setup alias is removed
-- **WHEN** an older manifest records an exact retired generated setup alias whose file is absent or still matches its recorded hash
-- **THEN** plain update removes that manifest ownership entry
-- **AND** deletes the alias file only when it is still present
-- **AND** records current governance as `handoff-generated` when no protected conflicts remain
+- **WHEN** an approved plan retires an exact alias whose file is absent or matches its recorded hash
+- **THEN** update removes its ownership entry and deletes only the exact present clean file
+- **AND** it records complete handoff only when no protected conflicts remain
 
 #### Scenario: Modified retired setup alias is protected
-- **WHEN** an older manifest records an exact retired generated setup alias whose file no longer matches its recorded hash
-- **THEN** plain update leaves the file and manifest entry in place
-- **AND** records governance as `handoff-partial`
-- **AND** reports a protected retired conflict rather than an ordinary orphan
+- **WHEN** the normal plan encounters a modified exact retired alias
+- **THEN** its file and recorded hash remain protected and the handoff remains partial
 
 ### Requirement: Apply failures are observable and recoverable
-The system SHALL preflight all artifact paths and destinations before mutation, SHALL treat only a confirmed missing path as absent, SHALL acquire a cooperating project mutation lock before writing, and SHALL stop with exit code 1 when a write, atomic replacement, move cleanup, manifest write, or lock acquisition fails. A failed apply MUST name the affected artifact and operation, MUST NOT print a successful completion summary, and MUST NOT record a failed mutation as completed. Recovery SHALL restore only an attributable unchanged transaction write set, SHALL preserve destination modes where the host filesystem supports them, SHALL clean partial temporary files, and SHALL NOT overwrite a concurrently changed destination during rollback.
+The system SHALL preflight the entire approved write set, treat only confirmed missing paths as absent, acquire the cooperating project lock, and verify current preconditions before mutation. Storage, replacement, cleanup, manifest, lock, and recovery failures SHALL exit 1 and name the failed operation without claiming success. Recovery SHALL preserve supported modes, clean only exact temporary paths, and restore only attributable unchanged transaction writes. Durable activation-migration recovery SHALL remain distinct from post-commit revalidation, which retains blocked/resumable v2.
 
 #### Scenario: Destination write fails
-- **WHEN** apply cannot write an artifact because of permissions, path type, storage, or another filesystem error
-- **THEN** it exits 1 with the artifact path and underlying operation, and the manifest does not claim that write succeeded
+- **WHEN** a filesystem operation cannot write a planned artifact
+- **THEN** output names its path and operation and the manifest does not claim success
 
 #### Scenario: Move cleanup fails
-- **WHEN** apply writes a moved artifact destination but cannot remove the verified old managed path
-- **THEN** it exits 1, reports the cleanup failure, and does not silently report a completed move
+- **WHEN** removal of a verified managed old path fails after destination creation
+- **THEN** update reports failure and recovery rather than a completed move
 
 #### Scenario: Preflight rejects every unsafe mutation before writes
-- **WHEN** any planned artifact path or destination fails project-boundary or collision validation
-- **THEN** apply performs no artifact mutation and reports the preflight failure
+- **WHEN** any destination fails boundary, collision, ownership, or effective-plan validation
+- **THEN** no new update mutation starts
 
 #### Scenario: Retry after a partial filesystem failure
-- **WHEN** a developer corrects the filesystem problem and reruns update after a failed apply
-- **THEN** reconciliation detects the actual bytes on disk and can safely converge the project without manual manifest editing
+- **WHEN** the filesystem issue is repaired
+- **THEN** bounded recovery uses actual bytes and the approved transaction record
+- **AND** new work requires a matching current preview rather than manual manifest editing
 
 #### Scenario: Retired alias transaction rolls back
-- **WHEN** update deletes a retired alias file but fails before the manifest rewrite is committed
-- **THEN** the alias file and manifest are restored to their pre-update bytes
-- **AND** the command reports rollback rather than claiming alias removal
+- **WHEN** alias deletion succeeds but the local transaction cannot commit its manifest
+- **THEN** recovery restores attributable unchanged alias and manifest bytes and reports the outcome
 
 #### Scenario: Cooperating writer lock blocks concurrent mutation
-- **WHEN** another Liftoff process already holds the project mutation lock
-- **THEN** update exits 1 before writing any managed artifact
-- **AND** it reports that a cooperating mutation is already in progress
+- **WHEN** another cooperating writer holds the project lock
+- **THEN** update exits 1 before writing and identifies the concurrent operation
 
 #### Scenario: Rollback preserves a concurrently changed destination
-- **WHEN** update needs rollback after writing a destination and that destination changed again before rollback can restore it
-- **THEN** update preserves the newer destination bytes
-- **AND** it reports the exact path as requiring developer review instead of clobbering the concurrent change
+- **WHEN** a destination changes again before recovery can restore it
+- **THEN** the newer bytes are preserved and the exact path is reported for review
 
 #### Scenario: Partial temporary files are cleaned up
-- **WHEN** a temporary file is created for an atomic write and the write later fails
-- **THEN** update removes the temporary file when it can do so safely
-- **AND** it does not leave that partial path as a new managed artifact
+- **WHEN** temporary replacement files remain after failure
+- **THEN** recovery removes only safely identified transaction temporaries and never records them as managed artifacts
 
 ### Requirement: Force extends apply only to conflicted managed-core files and exact retired aliases
-The system SHALL accept `--force` directly on plain `liftoff update` and SHALL overwrite only conflicted managed-core files or delete exact retired generated setup aliases after the existing conflict, path, transaction, and supported-project guards pass. It SHALL identify exactly which core files can be overwritten or retired aliases can be removed, SHALL exclude all project-owned and unknown legacy artifacts from force authority, SHALL reject retired workload manifests before forceable reconciliation begins, and SHALL print a commit-first warning when the project is a Git repository with uncommitted changes. The system SHALL reject `--force` together with `--check`.
+The system SHALL accept `--force` only for a separately previewed and approved effective plan. Its extra authority SHALL remain limited to exact already-owned core conflicts and exact retired aliases, subject to all ownership, path, compatibility, transaction, and receipt guards. Check SHALL display any available force variant and its different fingerprint without authorizing writes. `--check --force` SHALL remain invalid. Dirty-worktree guidance SHALL precede approval, not substitute for it.
 
 #### Scenario: Force overwrites a managed-core conflict
-- **WHEN** a developer runs `liftoff update --force` with a conflicted managed-core file
-- **THEN** that core file is overwritten with the current rendering without an interactive prompt
+- **WHEN** a matching forced-plan receipt and explicit approval authorize an exact owned conflict
+- **THEN** update may replace that file after all preconditions pass
 
 #### Scenario: Force cannot overwrite production source
-- **WHEN** application source differs from the current starter and the developer runs `liftoff update --force`
-- **THEN** the source file is not part of the force mutation set
-- **AND** its bytes remain unchanged
+- **WHEN** production source differs from the current starter
+- **THEN** it remains outside the forced mutation set
 
 #### Scenario: Force cannot overwrite a provisioning collision
-- **WHEN** a newly selected component has a destination collision and the developer runs `liftoff update --force`
-- **THEN** provisioning remains blocked and the existing destination is preserved
+- **WHEN** a requested component destination contains different existing bytes
+- **THEN** it remains blocked under force
 
 #### Scenario: Force deletes a modified retired setup alias
-- **WHEN** an exact retired generated setup alias was modified after generation
-- **THEN** `liftoff update --force` deletes that exact alias file and removes its manifest entry
-- **AND** unrelated or unknown orphan files remain untouched
+- **WHEN** the approved forced variant lists an exact modified retired alias
+- **THEN** apply removes only that file and ownership entry, not unrelated orphans
 
 #### Scenario: Force cannot bypass retired workload rejection
-- **WHEN** a project manifest or desired-state input identifies the retired `power-apps-code-app` workload and the developer runs `liftoff update --force`
-- **THEN** update exits before managed-artifact classification or deletion
-- **AND** it leaves the project's application files and historical state unchanged
+- **WHEN** the manifest or configuration identifies the retired Power Apps workload
+- **THEN** force fails before reconciliation or deletion and preserves all historical state
 
 #### Scenario: Force with check is rejected
-- **WHEN** a developer runs `liftoff update --check --force`
-- **THEN** the command exits 1 before project mutation and explains that a read-only check cannot authorize overwrites
+- **WHEN** `liftoff update --check --force` is supplied
+- **THEN** usage fails with separate preview/apply guidance before receipt or project writes
 
 #### Scenario: Removed apply flag is rejected
-- **WHEN** a developer runs `liftoff update --apply`
-- **THEN** the command exits 1 before project discovery or writes and directs the developer to plain `liftoff update`
+- **WHEN** `liftoff update --apply` is supplied
+- **THEN** it fails before project discovery and explains the current check-then-update flow
 
 #### Scenario: Dirty worktree warning
-- **WHEN** a developer runs an update that can write in a Git repository with uncommitted changes
-- **THEN** the command prints a hint to commit before applying and proceeds within the managed-core boundary
+- **WHEN** an approved update could write into a Git worktree with uncommitted changes
+- **THEN** a commit-first warning is shown without committing automatically or relaxing any guard
+
+#### Scenario: Normal approval is not forced approval
+- **WHEN** `--force` is supplied with the normal plan's fingerprint
+- **THEN** apply refuses the mismatched approval without writing
 
 ### Requirement: Configuration edits are a reconciled desired-state axis
 The system SHALL treat `liftoff.config.json` as developer-owned desired state that the CLI never rewrites after generation. For supported workloads with a compatible recorded generation/layout contract, newly selected environments or a newly enabled frontend MAY authorize create-only provisioning of that component when the recorded project did not previously select it; removed selections SHALL leave their project-owned files untouched. Legacy shared-state or unknown infrastructure layouts SHALL block new-environment provisioning as migration-required rather than force a shared-module rewrite or create dangling roots. No configuration edit SHALL grant update or force authority over an existing project-owned file, and a retired workload discriminator SHALL be rejected rather than reconciled.
@@ -235,26 +232,23 @@ The system SHALL refuse to run when configured workload kind or immutable worklo
 - **THEN** the command fails with a message to upgrade the CLI first
 
 ### Requirement: Apply rewrites the manifest as scoped recorded state
-The system SHALL, after a successful default update, rewrite `liftoff.manifest.json` at the latest supported schema with the current CLI version, fresh content hashes for managed-core artifacts it wrote or adopted, removed exact retired alias entries that were safely retired, and immutable generation provenance for project-owned artifacts. Skipped core conflicts and protected retired conflicts SHALL retain their previously recorded core hash. Project-owned disk bytes SHALL never be blessed as current template bytes or converted into update authority.
+After a successful approved local transaction, update SHALL write the supported manifest schema with the current CLI version, hashes only for written/adopted core artifacts, safely retired alias entries removed, and original generation provenance for project artifacts. Skipped conflicts SHALL retain their old hashes. An approved activation migration SHALL change the active identity only with its linked committed successor and preserved source metadata; post-commit revalidation failure SHALL not roll that manifest back or bless production bytes as template state.
 
 #### Scenario: Manifest catches up after core update
-- **WHEN** plain `liftoff update` completes
-- **THEN** the manifest records the running CLI version and hashes matching every managed-core file update wrote
-- **AND** preserves project artifact provenance without hashing current production bytes as managed state
+- **WHEN** an approved core transaction commits
+- **THEN** manifest hashes match its actual written/adopted files and project provenance is preserved
 
 #### Scenario: Skipped core conflict stays visible
-- **WHEN** a managed-core conflict was skipped and the developer runs `liftoff update --check`
-- **THEN** the core file is still reported as a conflict
+- **WHEN** a later check inspects a skipped core conflict
+- **THEN** the old recorded hash still exposes that conflict
 
 #### Scenario: Project file changed after generation
-- **WHEN** a project-owned file differs from its recorded generation hash
-- **THEN** a manifest rewrite preserves its original provenance
-- **AND** does not record the production bytes as a future overwrite baseline
+- **WHEN** a project-owned file has changed or disappeared
+- **THEN** its generation provenance remains unchanged and confers no replacement authority
 
 #### Scenario: Retired alias is not preserved in the next manifest
-- **WHEN** update successfully retires an exact generated setup alias
-- **THEN** the rewritten manifest contains only current managed-core setup logical names and paths
-- **AND** validation reports no drift for a clean migrated project
+- **WHEN** an exact alias is successfully retired
+- **THEN** its entry is removed and a clean migrated managed inventory has no alias drift
 
 ### Requirement: Project-scoped commands resolve the project root by walking up
 The system SHALL resolve the project root for project-scoped commands (`update`, `validate`, `doctor`) by using a supported explicit path argument when given, and otherwise walking parent directories from the current directory to the nearest `liftoff.manifest.json`, without assuming the project root equals the repository root. Resolution SHALL preserve the same boundary semantics with native paths on Windows, macOS, and Linux. A discovered manifest that is malformed, unreadable, dangling, a symlink or junction, or names a retired workload SHALL be treated as an error boundary rather than skipped in favor of an outer project or ordinary Git fallback.
@@ -300,16 +294,24 @@ The system SHALL treat seed-category artifacts as one-time gifted content: they 
 - **THEN** the command reports no drift related to the emitted plan
 
 ### Requirement: Update offers versioned machine-readable output
-The system SHALL support `--json` on update, emitting schema version 2 with `scope: "managed-core"`, ownership-migration state, managed-core entries and summary counts, retired-alias removal/protection details, and separate component-provisioning results. Plain `liftoff update --json` SHALL apply safe core changes and emit apply results; `liftoff update --check --json` SHALL emit scoped drift without mutation.
+The system SHALL emit schema-3 update JSON with `scope: "project-update"`, mode, stable status/reason codes, plan fingerprints, receipt/approval disposition, and separately named managed-core, provisioning, activation-migration, and revalidation results. It SHALL preserve exact retired-alias, skipped-conflict, ownership-migration, and source/target identity details. JSON SHALL not authorize apply. Stdout SHALL contain one JSON result, with progress and any interactive approval on stderr.
 
 #### Scenario: JSON apply result
-- **WHEN** a developer runs `liftoff update --json` in a drifted project
-- **THEN** safe core changes are applied and stdout contains a byte-pure JSON object with `schemaVersion`, `mode: "apply"`, managed-core scope, written entries, removed retired aliases, skipped core or protected retired conflicts, provisioning results, and summary counts
+- **WHEN** a matching explicitly approved plan is applied with `--json`
+- **THEN** stdout contains one schema-3 result with actual commit, written/removed/skipped entries, provisioning, and readiness outcomes
 
 #### Scenario: JSON drift report
-- **WHEN** a developer runs `liftoff update --check --json` in a drifted project
-- **THEN** stdout contains a byte-pure JSON object with `schemaVersion`, `mode: "check"`, managed-core and retired-alias states, provisioning results, and summary counts
-- **AND** no project file changes and the command exits 2
+- **WHEN** check finds actionable work with `--json`
+- **THEN** stdout contains the same semantic preview and fingerprints as human mode
+- **AND** it exits 2 without project changes and discloses the external receipt outcome
+
+#### Scenario: JSON does not imply consent
+- **WHEN** `liftoff update --json` lacks a matching preview or usable exact-plan approval
+- **THEN** it reports a blocked reason and exits 1 without project writes
+
+#### Scenario: Local migration committed but revalidation is blocked
+- **WHEN** a schema-3 apply result follows committed migration with incomplete revalidation
+- **THEN** it distinguishes commit from blocked readiness, identifies the next action, and exits 2
 
 ### Requirement: Update migrates supported manifests without production mutation
 The system SHALL normalize supported legacy manifests into the latest ownership-aware schema before reconciliation. Check mode SHALL leave the source manifest byte-for-byte unchanged. A successful plain update SHALL retain managed-core hashes, convert non-core durable entries into project provenance, preserve legacy framework uncertainty, and omit no project provenance merely because the corresponding file is modified or absent. Manifest migration MUST NOT write, restore, move, or delete project-owned files.
@@ -332,32 +334,27 @@ The system SHALL normalize supported legacy manifests into the latest ownership-
 - **THEN** the latest manifest preserves legacy framework state without fabricating selected-agent integrations
 
 ### Requirement: Existing projects adopt managed-core governance artifacts automatically
-When an existing configuration omits `governanceProfile`, the current CLI SHALL normalize it to `single-maintainer-gitflow` and render the profile's managed-core policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent `/liftoff-setup` integrations during normal update reconciliation. The CLI SHALL apply only safe named artifact states and SHALL NOT rewrite the user-owned configuration merely to materialize its default.
+When configuration omits `governanceProfile`, update SHALL continue automatically selecting `single-maintainer-gitflow` and its exact managed handoff artifacts as desired state. This automatic selection SHALL NOT authorize writes: adoption SHALL require the same preview receipt and exact-plan approval as other updates. The user-owned configuration SHALL not be rewritten to materialize its default.
 
 #### Scenario: Adopt into an untouched v4 project
-- **WHEN** a developer runs plain `liftoff update` in a valid existing project whose configuration has no governance field and whose new paths are absent
-- **THEN** update writes the explicitly named governance handoff artifacts and schema-v7 manifest transactionally
-- **AND** does not run an agent or contact GitHub
+- **WHEN** a matching approved plan adopts governance into a valid legacy project with absent destinations
+- **THEN** the named handoff artifacts and v7 manifest are written transactionally without running an agent or contacting GitHub
 
 #### Scenario: Preview automatic adoption
-- **WHEN** a developer runs `liftoff update --check` before adoption
-- **THEN** each applicable governance artifact appears as a new named artifact
-- **AND** the command exits 2 without writing any file
+- **WHEN** the user checks before adoption
+- **THEN** the applicable governance entries appear as new named artifacts and check exits 2 without project writes
 
 #### Scenario: Existing setup destination has different bytes
-- **WHEN** an unrecorded governance destination already contains different content
-- **THEN** update classifies that exact destination as a conflict
-- **AND** plain update preserves it while applying other collision-free artifacts
-- **AND** the v7 manifest records `handoff-partial` without recording a managed artifact entry or hash for the preserved destination
+- **WHEN** an unrecorded destination differs from the render
+- **THEN** the approved normal plan preserves it and records partial handoff without acquiring its ownership
 
 #### Scenario: Resolve a partial handoff
-- **WHEN** a later update finds that every previously unrecorded governance conflict is absent or byte-identical to the current artifact
-- **THEN** it writes or adopts those artifacts through normal safe reconciliation
-- **AND** the v7 manifest records `handoff-generated` with every applicable exact handoff artifact
+- **WHEN** a new approved plan finds old unowned conflicts absent or byte-identical
+- **THEN** it writes/adopts only eligible exact handoff files and records complete handoff
 
 #### Scenario: Existing setup destination already matches
-- **WHEN** an unrecorded destination contains bytes identical to the current setup integration
-- **THEN** update adopts it without rewriting the file
+- **WHEN** an approved adoption finds byte-identical unrecorded content
+- **THEN** it records the destination without rewriting it
 
 ### Requirement: Governance opt-out preserves user-owned files
 When configuration explicitly selects `none`, update SHALL stop rendering the profile's managed-core artifacts. Previously recorded governance artifacts SHALL follow the existing orphan contract and SHALL never be deleted automatically; active or archived spec changes and agent-created governance implementation files SHALL remain outside reconciliation.
@@ -373,72 +370,141 @@ When configuration explicitly selects `none`, update SHALL stop rendering the pr
 - **AND** does not recreate it from the managed-core policy
 
 ### Requirement: Update never activates remote governance
-Repository-governance reconciliation SHALL be limited to local managed-core artifacts and manifest state. Update SHALL NOT invoke a selected agent, inspect a remote, write an activation baseline, apply a ruleset, create a branch, or alter any GitHub or deployment setting.
+Reviewed update SHALL remain local. Its explicitly authorized activation-migration lane can preserve history, create a linked local successor, and perform its finite local revalidation, but SHALL NOT invoke an agent, inspect a provider, create a branch, commit, push, apply a ruleset, enroll credentials, or alter deployment settings. An update approval SHALL not authorize a later provider or governance gate.
 
 #### Scenario: Update with an authenticated GitHub CLI
-- **WHEN** `gh` and a writable remote are available during governance adoption
-- **THEN** update performs the same local filesystem operations as it would offline
-- **AND** sends no GitHub mutation
+- **WHEN** GitHub credentials and a writable remote are available
+- **THEN** update performs only its approved local operations and makes no provider request
+
+#### Scenario: A migrated phase requires remote proof
+- **WHEN** the next incomplete phase needs provider observation or mutation
+- **THEN** update stops at that boundary and identifies a separately reviewed action or missing capability
 
 ### Requirement: Update output identifies its authority boundary
-Human and JSON update output SHALL distinguish managed-core reconciliation, configuration-authorized component provisioning, skipped core conflicts, and manifest-only ownership migration. It SHALL NOT list project template differences as forceable conflicts or imply that production files match the running CLI templates.
+Human and JSON output SHALL distinguish managed-core maintenance, create-only provisioning, manifest ownership changes, narrowly approved activation/history mutations, and post-commit local revalidation. It SHALL identify skipped conflicts, withheld provisioning, and production files outside the plan. It SHALL never imply that migration updates application templates or that local migration completion proves live governance.
 
 #### Scenario: JSON check contains core drift
-- **WHEN** `liftoff update --check --json` finds a core conflict
-- **THEN** the versioned entry identifies the managed-core scope and exact portable project path
+- **WHEN** a core conflict appears in JSON preview
+- **THEN** its scope and exact portable path are identified separately from migration state
 
 #### Scenario: Ownership-only migration
-- **WHEN** a legacy project requires only manifest ownership migration
-- **THEN** check and apply output identify that no production file will be written
+- **WHEN** only manifest ownership normalization is planned
+- **THEN** check and apply state that no production file will be written
 
 #### Scenario: Project template changed
-- **WHEN** only project-owned template bytes changed between Liftoff releases
-- **THEN** update reports no actionable update drift
-- **AND** does not recommend `--force`
+- **WHEN** only production template bytes changed between releases
+- **THEN** update does not report them as actionable or recommend force
 
 ### Requirement: Update reconciles managed phase definitions without owning execution state
-Normal managed-core update SHALL reconcile the canonical phase graph and setup integrations. It SHALL preserve user-owned activation state and evidence, mark policy-incompatible active work as reconciliation-required, and never silently advance, reset, delete, or rewrite a phase. Historical activation bytes that are readable only for diagnosis SHALL remain preserved unless an explicit supported migration path in the compatibility matrix authorizes a transactional rewrite.
+Managed-core reconciliation SHALL not itself advance, reset, delete, or rewrite user-owned activation state or evidence. A separately declared, previewed, explicitly approved activation-migration lane SHALL be the only update exception, preserving original historical bytes before creating linked current state. Graph changes affecting active work SHALL remain reconciliation-required until current proof supports them.
 
 #### Scenario: Phase graph has managed drift
-- **WHEN** `liftoff update --check` detects a newer managed graph
-- **THEN** it reports the graph and setup integration changes without modifying user-owned state
+- **WHEN** check detects a managed graph change
+- **THEN** it reports the managed changes and activation impact without project mutation
 
 #### Scenario: Updated graph affects active work
-- **WHEN** plain update installs the reviewed graph
-- **THEN** the next governance status reports the affected phases and required reconciliation
-- **AND** performs no remote mutation
+- **WHEN** an approved plan installs a changed graph
+- **THEN** governance inspection identifies affected phases and required reconciliation without remote mutation
 
 #### Scenario: Historical phase state remains compatible
-- **WHEN** existing evidence satisfies the new graph
-- **THEN** update preserves it and governance verification records compatibility
+- **WHEN** existing current-format evidence genuinely satisfies the compatible graph
+- **THEN** it remains reusable under the current proof contract rather than being retagged
 
 #### Scenario: Historical diagnostic-only state is preserved
-- **WHEN** a supported project contains historical v1 activation state that remains readable only for diagnosis
-- **THEN** update preserves those user-owned bytes
-- **AND** it does not silently rewrite them as current executable state while applying managed-core updates
+- **WHEN** v1 history is encountered before an eligible migration is approved
+- **THEN** it remains unchanged and non-executable
+- **AND** eligibility alone does not authorize a successor
 
 ### Requirement: Update applies the activation compatibility matrix
-The system SHALL maintain an explicit compatibility matrix among supported manifest, policy, activation-contract, phase-graph, activation-state, evidence-header, approval-envelope, compatibility-metadata, supersession, and credential-policy versions. The current executable set SHALL be manifest version 7, policy version 6, activation contract version 2, phase graph schema version 1, activation state schema version 2, evidence header schema version 2, approval envelope schema version 2, compatibility metadata schema version 2, supersession schema version 1, and credential-policy schema version 1. It SHALL migrate only supported historical representations transactionally, SHALL preserve known historical v1 activation history as diagnostic-only bytes rather than executable proof, and SHALL leave future or incompatible identities untouched and blocked.
+The system SHALL use an exact release-owned compatibility matrix. The execution family SHALL remain manifest 7, policy 6, activation contract/state/evidence/approval versions 2, graph schema 1, and supersession/credential-policy schemas 1. Compatibility metadata schema 3 SHALL separately describe historically readable identities, currently executable identities, and explicit approved history-preserving migration lanes; schema-2 metadata SHALL remain readable as supported historical input, not as new migration authorization. No source tuple SHALL be inferred from version ordering.
 
 #### Scenario: Historical activation state is supported
-- **WHEN** update reads a supported older manifest, contract, or schema that the compatibility matrix marks as upgradeable to the current executable set
-- **THEN** check mode reports the complete migration without writing
-- **AND** apply writes the new representation only after every managed-artifact and user-state migration preflight succeeds
+- **WHEN** a complete historical source matches the declared migration lane
+- **THEN** check reports the entire plan and apply creates the successor only after receipt, approval, and all preflights pass
 
 #### Scenario: Historical v1 activation history is diagnostic-only
-- **WHEN** a project records activation contract or user-owned activation state using the historical v1 identity
-- **THEN** update reports that history as diagnostic-only and reconciliation-required or unsupported for execution
-- **AND** it preserves the original state and evidence bytes without automatic migration
+- **WHEN** the current lane permits a v1 successor
+- **THEN** the original state/evidence remain diagnostic-only in preserved history
+- **AND** fresh v2 proof is required for execution
 
 #### Scenario: Activation identity is from the future
-- **WHEN** a project records a newer unsupported contract or schema version
-- **THEN** update and setup block without downgrading or rewriting it
-- **AND** report the exact unsupported field and required Liftoff upgrade
+- **WHEN** a contract, schema, or graph is unsupported
+- **THEN** update/setup block with the exact incompatibility and preserve bytes without downgrade
 
 #### Scenario: Policy and activation contract are incompatible
-- **WHEN** their versions are individually known but their combination is absent from the compatibility matrix
-- **THEN** verification reports the incompatible pair
-- **AND** no phase advances
+- **WHEN** their complete combination is absent from the matrix
+- **THEN** no phase advances and force cannot authorize the pair
+
+### Requirement: Preview receipts are project-bound external metadata
+Only public update check SHALL issue schema-versioned preview receipts in user-local storage outside the project and repository. Each receipt SHALL bind the canonical project boundary, installed target, effective plan variants, relevant source/destination/input fingerprints, and planned validation operations. It SHALL contain no source bodies or credentials and SHALL never itself be approval. Platform-native absolute storage resolution, restrictive creation permissions where supported, and explicit storage failures SHALL apply on Windows, macOS, and Linux.
+
+#### Scenario: First eligible check
+- **WHEN** check successfully presents an actionable eligible plan
+- **THEN** it persists and discloses an external receipt while leaving every project byte unchanged
+
+#### Scenario: Receipt location is unsafe or unwritable
+- **WHEN** the user-state path resolves inside the project/repository, uses an unsafe path type, or cannot be written
+- **THEN** check reports failure without issuing a usable receipt or falling back to project storage
+
+#### Scenario: Unsupported preview
+- **WHEN** current compatibility or structural guards block the plan
+- **THEN** no apply-eligible receipt is issued and a previously cached receipt cannot bypass the blocker
+
+#### Scenario: Project path changes
+- **WHEN** a project is copied, moved, or opened through a different worktree identity
+- **THEN** the previous local receipt cannot authorize the new boundary
+- **AND** native Windows paths and spaces do not weaken this binding
+
+#### Scenario: Doctor reuses update planning
+- **WHEN** doctor or another read-only inspector evaluates the same plan
+- **THEN** it does not create, refresh, approve, or consume a preview receipt
+
+### Requirement: Every effective update plan needs current exact approval
+Before new update writes, the system SHALL rebuild the plan from current authoritative inputs, match a valid receipt for its exact effective mode, obtain explicit approval, and recheck all relevant preconditions under the project lock. Interactive approval SHALL default to no. Noninteractive approval SHALL require the full fingerprint through `--approve-plan`. Neither `--force`, `--json`, a generic yes, cached operations, nor a prior unrelated check SHALL bypass these gates.
+
+#### Scenario: The user did not run check
+- **WHEN** apply has actionable work but no matching receipt
+- **THEN** it exits 1 without new project writes and instructs the user to run `liftoff update --check`
+
+#### Scenario: The preview is stale
+- **WHEN** a source, target, mode, protected input, destination, or validation operation differs from the reviewed plan
+- **THEN** apply refuses the stale receipt/approval and requires a fresh check
+
+#### Scenario: The user declines
+- **WHEN** the interactive approval is declined or cancelled
+- **THEN** apply exits without project mutation and does not report success
+
+#### Scenario: Automation approves the precise plan
+- **WHEN** a valid receipt and full matching `--approve-plan` fingerprint are supplied
+- **THEN** the selected plan can apply without prompting after current preconditions pass
+
+#### Scenario: Inputs change while approval is displayed
+- **WHEN** project inputs change before the approved invocation acquires its write lock
+- **THEN** the locked recheck prevents mutation under the previous approval
+
+#### Scenario: A root-level project script changes
+- **WHEN** a reviewed validation command uses a project script outside the activation-input allowlist and that script changes after preview or during approval
+- **THEN** the retained-source binding invalidates the prior fingerprint before that changed script can execute
+- **AND** a directory name such as build or dist does not exempt existing script inputs from review
+
+#### Scenario: An approved command writes generated outputs
+- **WHEN** an executed approved command changes files only within its explicitly declared generated-output scope
+- **THEN** the execution guard accepts those resulting outputs after that command and protects them before subsequent commands
+- **AND** unrelated source edits are preserved and block continuation
+
+#### Scenario: A completed plan is replayed
+- **WHEN** an old receipt or approval is reused after its source transaction committed
+- **THEN** changed source preconditions prevent replaying that migration or write set
+
+#### Scenario: An approved interrupted transaction needs recovery
+- **WHEN** a durable journal identifies an incomplete already-approved transaction
+- **THEN** the system can recover only that exact attributable transaction under its recorded authorization
+- **AND** it stops before new update work, which requires a current preview and approval
+
+#### Scenario: A project-local journal falsely claims approval
+- **WHEN** a recovery journal lacks a matching separately persisted user-local approval for its exact finalized mutation digest
+- **THEN** recovery refuses to mutate the project
+- **AND** neither a preview receipt nor a project-local approval claim substitutes for explicit consent
 
 ### Requirement: Managed update does not claim unsupported project identity migrations
 Managed update SHALL reject requested project-name, cloud, or region changes

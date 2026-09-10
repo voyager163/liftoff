@@ -181,35 +181,35 @@ approve, extend, create, or repair exceptions.
 - **AND** the report identifies why the claim was not accepted
 
 ### Requirement: Unsupported activation identities remain diagnosable without unsafe parsing
-For supported manifest artifact 7 structures and API and GenAI readers 2
-through 7 with unsupported activation identities, assessment SHALL report
-found-versus-target identity and unavailable migration or evidence
-interpretation without modifying data. Known historical activation v1 records
-SHALL remain readable only for diagnosis; they SHALL NOT be auto-migrated,
-deleted, or accepted as current executable proof. Unknown state formats SHALL
-remain opaque. Assessment SHALL retain strict path and schema safeguards and
-SHALL NOT relax the loaders or compatibility requirements of mutating commands.
+Assessment SHALL retain safe found-versus-target diagnosis for supported manifests with unsupported activation identities. Original known v1 records SHALL remain diagnostic-only and SHALL not be migrated, deleted, or accepted as current proof by assessment. A declared supported successor lane SHALL be explained through the human-first update-check remedy. In an already migrated project, assessment SHALL distinguish the validated retained snapshot from the active v2 successor and evaluate only independently interpretable current facts. Unknown formats, unsafe paths, malformed active records, and broken declared migration links SHALL not trigger permissive fallback or relaxed mutation compatibility.
 
 #### Scenario: Activation policy or graph is unsupported
-- **WHEN** the recorded activation tuple cannot be used by the installed engine
-- **THEN** assessment reports the identity difference and assesses only independently interpretable facts
-- **AND** unsupported state or evidence-dependent comparisons are `not-observed`
-- **AND** no mapping is invented or applied
+- **WHEN** the recorded tuple cannot execute under the installed engine
+- **THEN** assessment reports the difference and assesses only independently interpretable facts
+- **AND** evidence-dependent unknowns remain not-observed without an invented mapping
 
 #### Scenario: Historical activation v1 is present
-- **WHEN** a supported API or GenAI project contains a historical activation v1 record
-- **THEN** assessment reports it as diagnostic-only historical state and any required reconciliation blocker
-- **AND** it does not reinterpret the record as current proof, reset it, or fabricate a migrated successor
+- **WHEN** known v1 is still the active historical representation
+- **THEN** assessment reports diagnostic-only status and actual migration eligibility
+- **AND** it recommends `liftoff update --check` only when relevant without creating a receipt, approval, or successor
 
 #### Scenario: Manifest structure is unknown or malformed
-- **WHEN** the manifest schema cannot be safely interpreted or its JSON is invalid
-- **THEN** assessment emits an error with safe target and diagnostic information
-- **AND** does not access artifact paths supplied by the unsupported document
+- **WHEN** the manifest cannot be safely interpreted
+- **THEN** assessment emits safe diagnostics without accessing artifact paths from the unsupported structure
 
 #### Scenario: Path attempts to escape the project
-- **WHEN** a supplied artifact path contains traversal, embedded separators, drive-qualified or UNC parts, or a symlink escape
-- **THEN** assessment refuses unsafe access before reading the destination
-- **AND** the same safeguard applies on Windows, macOS, and Linux
+- **WHEN** an artifact or migration-history reference contains traversal, embedded separators, drive/UNC parts, or an unsafe link
+- **THEN** assessment refuses access under the same Windows, macOS, and Linux boundary rules
+
+#### Scenario: Current proof coexists with preserved v1
+- **WHEN** a valid migration link connects retained v1 history to current v2 state
+- **THEN** assessment reports history separately and uses only validated current proof for present readiness and scope
+- **AND** historical presence alone does not make current evidence unsupported
+
+#### Scenario: Migration has incomplete revalidation
+- **WHEN** the local migration committed but current proof is incomplete
+- **THEN** assessment reports the actual coverage gaps without treating migration completion as alignment
+- **AND** it does not run revalidation, refresh a preview, or authorize a later transition
 
 ### Requirement: Live observation is explicit and scoped
 Live assessment SHALL use only allowlisted read operations with existing

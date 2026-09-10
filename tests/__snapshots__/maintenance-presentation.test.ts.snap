@@ -39,7 +39,7 @@ Eligible: yes; explicit approval still required
 Location: <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json
 Project bytes: unchanged; this receipt is not approval
 
-[35m$[39m [1mliftoff update[22m
+[35m$[39m [1mliftoff update --project <project>[22m
 [33m[warn][39m [1mLiftoff core maintenance available[22m: 0 core conflict(s); review the exact plans before approval
 ",
 }
@@ -84,7 +84,7 @@ External preview receipt
 Location: <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json
 Project bytes: unchanged; this receipt is not approval
 
-$ liftoff update
+$ liftoff update --project <project>
 [warn] Liftoff core maintenance available: 0 core conflict(s); review the exact plans before approval
 ",
 }
@@ -166,7 +166,7 @@ Applied Liftoff core changes
 
 [ok] Updated project: 1 core written, 0 core skipped
 Next recommended command
-$ liftoff validate && liftoff doctor
+$ cd -- '<project>' && liftoff validate && liftoff doctor
 
 ",
 }
@@ -211,7 +211,7 @@ External preview receipt
 Location: <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json
 Project bytes: unchanged; this receipt is not approval
 
-$ liftoff update
+$ liftoff update --project <project>
 [warn] Liftoff core maintenance available: 0 core conflict(s); review the exact plans before approval
 ",
 }
@@ -267,7 +267,7 @@ exports[`maintenance presentation > snapshots rich color prompt-free update chec
 │ <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json        │
 │ Project bytes  unchanged; this receipt is not approval                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-[35m$[39m [1mliftoff update[22m
+[35m$[39m [1mliftoff update --project <project>[22m
 [33m![39m [1mLiftoff core maintenance available[22m: 0 core conflict(s); review the exact plans before approval
 ",
 }
@@ -374,7 +374,7 @@ exports[`maintenance presentation > snapshots rich no-color prompt-free update c
 │ <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json        │
 │ Project bytes  unchanged; this receipt is not approval                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-$ liftoff update
+$ liftoff update --project <project>
 ! Liftoff core maintenance available: 0 core conflict(s); review the exact plans before approval
 ",
 }
@@ -413,7 +413,7 @@ exports[`maintenance presentation > snapshots rich update completion recommendat
 ✓ Updated project: 1 core written, 0 core skipped
 Next recommended command
 ────────────────────────
-$ liftoff validate && liftoff doctor
+$ cd -- '<project>' && liftoff validate && liftoff doctor
 
 ",
 }
@@ -469,7 +469,7 @@ exports[`maintenance presentation > snapshots rich update drift 1`] = `
 │ <preview-store>/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.json        │
 │ Project bytes  unchanged; this receipt is not approval                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-$ liftoff update
+$ liftoff update --project <project>
 ! Liftoff core maintenance available: 0 core conflict(s); review the exact plans before approval
 ",
 }

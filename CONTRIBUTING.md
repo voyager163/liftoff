@@ -228,7 +228,7 @@ The complete supplied standard is stored at
 metadata and the activation protocol are rendered by
 `src/repository-governance.ts`; canonical identity and pure activation rules live
 under `src/domain/governance/`. Current activation uses contract/state/header/
-approval v2 and compatibility metadata v2, while policy remains 6 and manifest
+approval v2 and compatibility metadata v3, while policy remains 6 and manifest
 remains 7. Keep policy schema/version, required invariant
 fragments, workload context adapters, exact artifact paths, logical names,
 manifest v7 activation identity, compatibility metadata, and Copilot/Claude
@@ -281,7 +281,7 @@ Before tagging, update package and lockfile metadata together and run:
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.11.1
+npm run verify:release-identity -- v0.11.2
 ```
 
 Replace the example tag with the intended release. The Git tag, root package

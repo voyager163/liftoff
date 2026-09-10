@@ -5,14 +5,16 @@ import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import type { CommandContext } from '../src/application/context.js';
 import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
+import { validateEvidenceFreshness } from '../src/domain/governance/activation/evidence.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import { writeProjectFile } from '../src/adapters/filesystem/project-files.js';
 import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
+import { inspectGovernanceTransition } from '../src/governance-activation/commands.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
 import { readActivationEvidence } from '../src/governance-activation/read-only.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
-import { formatCommand, type CommandResult, type CommandRunner } from '../src/process-runner.js';
+import { formatCommand, type CommandResult, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 import {
@@ -68,11 +70,11 @@ async function preview(root: string, mode: 'normal' | 'force' = 'normal') {
   return selected!.fingerprint;
 }
 
-async function historicalFixture() {
+async function historicalFixture(includeFrontend = false) {
   const root = await createReviewedUpdateFixture({
     projectName: 'Flight Log', projectType: 'standard', apiStack: 'node',
     cloud: 'azure', region: 'eastus', environments: ['dev'],
-    specWorkflow: 'openspec', agents: ['copilot'], includeFrontend: false
+    specWorkflow: 'openspec', agents: ['copilot'], includeFrontend
   });
   const manifest = await loadManifest(root);
   if (manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') {
@@ -97,6 +99,7 @@ async function historicalFixture() {
   await writeProjectFile(root, ['openspec', 'specs', capability, 'spec.md'],
     `# Application baseline\n\n${delta.replace('## ADDED Requirements', '## Requirements')}`);
   await mkdir(path.join(root, 'backend', 'node_modules'), { recursive: true });
+  if (includeFrontend) await mkdir(path.join(root, 'frontend', 'node_modules'), { recursive: true });
   await mkdir(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', 'dev', '.terraform'), { recursive: true });
   return { root, originalState: historical.files.get('governance/activation-state.json')! };
 }
@@ -105,12 +108,15 @@ class MigrationRunner implements CommandRunner {
   readonly calls: ExternalCommand[] = [];
   failBackend = false;
 
-  async run(command: ExternalCommand): Promise<CommandResult> {
+  constructor(private readonly onRun?: (command: ExternalCommand, options?: RunCommandOptions) => Promise<void>) {}
+
+  async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
     this.calls.push(command);
     if (['gh', 'az'].includes(command.executable) ||
       command.args.some((arg) => ['install', 'init', 'archive', 'commit', 'push', 'apply'].includes(arg))) {
       throw new Error(`Unexpected migration side effect: ${formatCommand(command)}`);
     }
+    await this.onRun?.(command, options);
     const failed = this.failBackend && command.executable === 'npm' && command.args.includes('test');
     return {
       command, displayCommand: formatCommand(command), status: failed ? 1 : 0,
@@ -232,6 +238,213 @@ describe('reviewed update command integration', () => {
     expect(await readFile(path.join(history, snapshots[0]!, 'files', 'governance', 'activation-state.json')))
       .toEqual(originalState);
     expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([2, 2, 2]);
+  }, process.platform === 'win32' ? 180_000 : 90_000);
+
+  it('accepts approved command-generated outputs and completes fresh revalidation', async () => {
+    const { root } = await historicalFixture(true);
+    const generated: string[] = [];
+    for (const component of ['backend', 'frontend']) {
+      await writeProjectFile(root, [component, 'dist', 'existing.js'], 'export const generated = "before";\n');
+    }
+    const runner = new MigrationRunner(async (command, options) => {
+      if (command.executable !== 'npm') return;
+      const component = command.args.includes('test') ? 'backend' : 'frontend';
+      expect(options?.cwd).toBe(path.join(root, component));
+      expect(command.args).toEqual([
+        '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+        ...(component === 'backend' ? ['test'] : ['run', 'build'])
+      ]);
+      await writeProjectFile(root, [component, 'dist', 'existing.js'], 'export const generated = "after";\n');
+      await writeProjectFile(root, [component, 'dist', 'new.js'], 'export const created = true;\n');
+      generated.push(component);
+    });
+    const checked = await run(root, ['update', '--check', '--json'], { runner });
+    expect(checked.code, checked.text).toBe(2);
+    expect(runner.calls).toEqual([]);
+    expect(generated).toEqual([]);
+    for (const component of ['backend', 'frontend']) {
+      expect(await readFile(path.join(root, component, 'dist', 'existing.js'), 'utf8')).toBe('export const generated = "before";\n');
+      await expect(access(path.join(root, component, 'dist', 'new.js'))).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(checked.report.revalidation).toMatchObject({ preview: {
+        outputPolicy: expect.arrayContaining([expect.objectContaining({
+          executable: 'npm', cwd: [component], outputs: expect.arrayContaining([[component, 'dist']])
+        })]),
+        phases: expect.arrayContaining([expect.objectContaining({
+          phaseId: 'seed-verified',
+          commands: expect.arrayContaining([expect.objectContaining({
+            command: { executable: 'npm', args: [
+              '--offline', '--ignore-scripts', '--no-audit', '--no-fund',
+              ...(component === 'backend' ? ['test'] : ['run', 'build'])
+            ] },
+            cwdPathParts: [component]
+          })])
+        })])
+      } });
+    }
+    const selected = checked.report.plans.find((entry) => entry.mode === 'normal')!;
+    const applied = await run(root, ['update', '--json', '--approve-plan', selected.fingerprint], { runner });
+
+    expect(applied.code, applied.text).toBe(0);
+    expect(applied.report.activationMigration).toMatchObject({ status: 'committed' });
+    expect(applied.report.revalidation).toMatchObject({ status: 'complete', nextPhase: 'committed' });
+    expect(generated).toEqual(['backend', 'frontend']);
+    for (const component of generated) {
+      expect(await readFile(path.join(root, component, 'dist', 'existing.js'), 'utf8')).toBe('export const generated = "after";\n');
+      expect(await readFile(path.join(root, component, 'dist', 'new.js'), 'utf8')).toBe('export const created = true;\n');
+    }
+    expect(runner.calls.some((command) => command.executable === 'docker')).toBe(true);
+    expect(runner.calls.filter((command) => command.executable === 'openspec')).toHaveLength(3);
+    expect((await readMigrationJournal(root))?.revalidation.status).toBe('complete');
+    const inspection = await inspectGovernanceTransition(root, { runner });
+    const records = await readActivationEvidence(root);
+    expect(records.map((record) => record.header.phaseId).sort()).toEqual(['seed-archived', 'seed-valid', 'seed-verified']);
+    for (const record of records) {
+      expect(record.header.schemaVersion).toBe(2);
+      expect(record.header.result).toBe('verified');
+      expect(validateEvidenceFreshness(record, inspection.contexts[record.header.phaseId]).valid).toBe(true);
+      expect(inspection.readiness.phases[record.header.phaseId].state).toBe('verified');
+    }
+  }, process.platform === 'win32' ? 180_000 : 90_000);
+
+  it('protects accepted generated outputs against external edits before a later command', async () => {
+    const { root } = await historicalFixture();
+    await mkdir(path.join(root, '.git'));
+    const output = ['backend', 'dist', 'generated.js'];
+    await writeProjectFile(root, output, 'export const generated = "before";\n');
+    let generated = false;
+    let metadataReads = 0;
+    let edited = false;
+    const runner = new MigrationRunner(async (command, options) => {
+      if (command.executable === 'npm' && command.args.includes('test')) {
+        expect(options?.cwd).toBe(path.join(root, 'backend'));
+        await writeProjectFile(root, output, 'export const generated = "approved";\n');
+        generated = true;
+      } else if (generated && command.executable === 'git' &&
+        command.args.join(' ') === 'rev-parse --show-toplevel' && ++metadataReads === 2) {
+        // Let the command's post-output check finish before the next metadata boundary introduces an edit.
+        expect(await readFile(path.join(root, ...output), 'utf8')).toBe('export const generated = "approved";\n');
+        await writeProjectFile(root, output, 'export const generated = "external edit";\n');
+        edited = true;
+      }
+    });
+    const checked = await run(root, ['update', '--check', '--json'], { runner });
+    expect(checked.code, checked.text).toBe(2);
+    expect(generated).toBe(false);
+    const selected = checked.report.plans.find((entry) => entry.mode === 'normal')!;
+    const applied = await run(root, ['update', '--json', '--approve-plan', selected.fingerprint], { runner });
+
+    expect(applied.code, applied.text).toBe(2);
+    expect(applied.report.activationMigration).toMatchObject({ status: 'committed' });
+    expect(applied.report.revalidation).toMatchObject({
+      status: 'blocked',
+      issues: expect.arrayContaining([expect.stringContaining(output.join('/'))])
+    });
+    expect(edited).toBe(true);
+    expect(await readFile(path.join(root, ...output), 'utf8')).toBe('export const generated = "external edit";\n');
+    expect(runner.calls.filter((command) => command.executable === 'npm')).toHaveLength(1);
+    expect(runner.calls.some((command) => ['docker', 'tofu'].includes(command.executable))).toBe(false);
+    expect(runner.calls.filter((command) => command.executable === 'openspec')).toHaveLength(1);
+    expect((await readActivationEvidence(root)).map((record) => record.header.phaseId)).toEqual(['seed-valid']);
+    expect((await readMigrationJournal(root))?.revalidation.status).toBe('blocked');
+  }, process.platform === 'win32' ? 180_000 : 90_000);
+
+  it('blocks disallowed sibling edits during an approved command without exempting build directories', async () => {
+    const { root } = await historicalFixture();
+    const siblings = [
+      ['backend', 'dist-sibling', 'test-backend.mjs'],
+      ['frontend', 'dist', 'test-backend.mjs'],
+      ['build', 'test-backend.mjs'],
+      ['dist', 'test-backend.mjs'],
+      ['tools', 'build', 'test-backend.mjs']
+    ];
+    for (const parts of siblings) await writeProjectFile(root, parts, 'export const reviewed = true;\n');
+    const output = ['backend', 'dist', 'generated.js'];
+    const runner = new MigrationRunner(async (command, options) => {
+      if (command.executable !== 'npm' || !command.args.includes('test')) return;
+      expect(options?.cwd).toBe(path.join(root, 'backend'));
+      await writeProjectFile(root, output, 'export const generated = true;\n');
+      for (const parts of siblings) await writeProjectFile(root, parts, 'export const reviewed = false;\n');
+    });
+    const checked = await run(root, ['update', '--check', '--json'], { runner });
+    expect(checked.code, checked.text).toBe(2);
+    expect(runner.calls).toEqual([]);
+    const selected = checked.report.plans.find((entry) => entry.mode === 'normal')!;
+    const applied = await run(root, ['update', '--json', '--approve-plan', selected.fingerprint], { runner });
+
+    expect(applied.code, applied.text).toBe(2);
+    expect(applied.report.activationMigration).toMatchObject({ status: 'committed' });
+    expect(applied.report.revalidation).toMatchObject({ status: 'blocked' });
+    for (const parts of siblings) {
+      expect(applied.report.revalidation).toMatchObject({
+        issues: expect.arrayContaining([expect.stringContaining(parts.join('/'))])
+      });
+      expect(await readFile(path.join(root, ...parts), 'utf8')).toBe('export const reviewed = false;\n');
+    }
+    expect(await readFile(path.join(root, ...output), 'utf8')).toBe('export const generated = true;\n');
+    expect(runner.calls.some((command) => ['docker', 'tofu'].includes(command.executable))).toBe(false);
+    expect((await readActivationEvidence(root)).some((record) => record.header.phaseId === 'seed-verified')).toBe(false);
+  }, process.platform === 'win32' ? 180_000 : 90_000);
+
+  it('defers requested component expansion until a fresh preview after an eligible v1 migration', async () => {
+    const { root } = await historicalFixture();
+    const originalManifest = await loadManifest(root);
+    const configPath = path.join(root, 'liftoff.config.json');
+    const config = JSON.parse(await readFile(configPath, 'utf8'));
+    config.includeFrontend = true;
+    config.environments = ['dev', 'staging'];
+    await writeFile(configPath, `${JSON.stringify(config, null, 2)}\n`);
+    const desiredConfig = await readFile(configPath);
+    const before = await fingerprintUpdateTestProject(root);
+    const runner = new MigrationRunner();
+    const checked = await run(root, ['update', '--check', '--json'], { runner });
+
+    expect(checked.code, checked.text).toBe(2);
+    expect(checked.report.activationMigration).toMatchObject({
+      status: 'available', sourceIdentity: historicalActivationIdentities[0]
+    });
+    expect(checked.report.receipt).toMatchObject({ status: 'issued' });
+    expect(checked.report.provisioning).toEqual(['frontend', 'environment:staging'].map((group) => ({
+      group, status: 'blocked', entries: [],
+      reason: 'Activation migration defers new component provisioning until a fresh post-migration preview.'
+    })));
+    expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+    const selected = checked.report.plans.find((entry) => entry.mode === 'normal')!;
+    const applied = await run(root, ['update', '--json', '--approve-plan', selected.fingerprint], { runner });
+
+    expect(applied.code, applied.text).toBe(0);
+    expect(applied.report.activationMigration).toMatchObject({ status: 'committed' });
+    expect(applied.report.revalidation).toMatchObject({ status: 'complete' });
+    expect(applied.report.provisioning).toEqual(checked.report.provisioning);
+    const migratedManifest = await loadManifest(root);
+    expect(migratedManifest.project.workload).toEqual(originalManifest.project.workload);
+    expect(migratedManifest.projectArtifacts).toEqual(originalManifest.projectArtifacts);
+    expect(await readFile(configPath)).toEqual(desiredConfig);
+    await expect(access(path.join(root, 'frontend'))).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(access(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', 'staging')))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+    const afterMigration = await fingerprintUpdateTestProject(root);
+    const callsAfterMigration = [...runner.calls];
+    const fresh = await run(root, ['update', '--check', '--json'], { runner });
+
+    expect(fresh.code, fresh.text).toBe(2);
+    expect(fresh.report.receipt).toMatchObject({ status: 'issued' });
+    expect(fresh.report.activationMigration).toMatchObject({ status: 'committed' });
+    const next = fresh.report.plans.find((entry) => entry.mode === 'normal');
+    expect(next).toBeDefined();
+    expect(next!.fingerprint).not.toBe(selected.fingerprint);
+    const provisioning = fresh.report.provisioning;
+    if (!Array.isArray(provisioning)) throw new Error('Expected separate post-migration provisioning.');
+    expect(provisioning.map((group) => group.group)).toEqual(['frontend', 'environment:staging']);
+    for (const group of provisioning) {
+      expect(group.status).toBe('ready');
+      expect(group.entries.length).toBeGreaterThan(0);
+      for (const entry of group.entries) {
+        expect(entry.status).toBe('create');
+        await expect(access(path.join(root, ...entry.path.split('/')))).rejects.toMatchObject({ code: 'ENOENT' });
+      }
+    }
+    expect(await fingerprintUpdateTestProject(root)).toEqual(afterMigration);
+    expect(runner.calls).toEqual(callsAfterMigration);
   }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('retains blocked v2 after revalidation failure and resumes after a new approval', async () => {

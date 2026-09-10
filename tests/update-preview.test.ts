@@ -8,6 +8,7 @@ import {
   validateUpdatePreviewReceipt
 } from '../src/application/update/preview.js';
 import type { UpdatePreviewInput, UpdatePreviewReceipt } from '../src/application/update/preview.js';
+import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
 import {
   consumeUpdatePreviewReceipt,
   createUpdateTransactionApprovalStore,
@@ -427,7 +428,7 @@ describe('schema-1 receipt validation', () => {
       { projectRoot: '/another-worktree' }, { cliVersion: '0.11.2' }
     ]) {
       expect(() => matchUpdatePreviewReceipt(receipt, createUpdatePreviewDescriptor({ ...input(), ...overrides })))
-        .toThrow(/liftoff update --check/u);
+        .toThrow(formatUpdateCommand(overrides.projectRoot ?? input().projectRoot, 'check'));
     }
   });
 });

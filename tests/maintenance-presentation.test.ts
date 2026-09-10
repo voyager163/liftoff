@@ -4,6 +4,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { getUpdatePreviewDirectory } from '../src/adapters/filesystem/update-previews.js';
+import { formatUpdateCommand, formatUpdateValidationCommands } from '../src/application/update/command-guidance.js';
 import {
   cleanupUpdateTestRoots, createReviewedUpdateFixture, reviewedUpdateArguments,
   updateTestPreviewOptions
@@ -50,8 +51,19 @@ async function fixture(): Promise<string> {
   return projectRoot;
 }
 
-function normalizeMaintenanceOutput(value: string, cwd: string, previewDirectory: string): string {
-  return value.replaceAll(cwd, '<project>')
+function normalizeMaintenanceOutput(
+  value: string,
+  cwd: string,
+  previewDirectory: string,
+  platform: NodeJS.Platform = process.platform
+): string {
+  let normalized = value.replaceAll(formatUpdateValidationCommands(cwd, platform),
+    "cd -- '<project>' && liftoff validate && liftoff doctor");
+  for (const mode of ['normal', 'check', 'force'] as const) {
+    normalized = normalized.replaceAll(formatUpdateCommand(cwd, mode, platform),
+      `liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`);
+  }
+  return normalized.replaceAll(cwd, '<project>')
     .replaceAll(`${previewDirectory}${path.win32.sep}`, '<preview-store>/')
     .replaceAll(`${previewDirectory}${path.posix.sep}`, '<preview-store>/')
     .replaceAll(previewDirectory, '<preview-store>')
@@ -118,14 +130,18 @@ async function addDrift(projectRoot: string): Promise<void> {
 
 describe('maintenance presentation', () => {
   it.each([
-    { label: 'Windows', paths: path.win32, root: 'C:\\fixture' },
-    { label: 'POSIX', paths: path.posix, root: '/fixture' }
-  ])('normalizes only the $label receipt path separator in snapshots', ({ paths, root }) => {
+    { label: 'Windows', platform: 'win32' as const, paths: path.win32, root: 'C:\\fixture' },
+    { label: 'POSIX', platform: 'linux' as const, paths: path.posix, root: '/fixture' }
+  ])('normalizes native $label receipt paths and project-bound commands in snapshots', ({ paths, root, platform }) => {
     const project = paths.join(root, 'project');
     const directory = paths.join(root, 'receipt-home', 'liftoff', 'update-previews');
     const receipt = paths.join(directory, `${'b'.repeat(64)}.json`);
     expect(normalizeMaintenanceOutput(`Location: ${receipt}`, project, directory))
       .toBe(`Location: <preview-store>/${'a'.repeat(64)}.json`);
+    expect(normalizeMaintenanceOutput(formatUpdateCommand(project, 'normal', platform), project, directory, platform))
+      .toBe('liftoff update --project <project>');
+    expect(normalizeMaintenanceOutput(formatUpdateValidationCommands(project, platform), project, directory, platform))
+      .toBe("cd -- '<project>' && liftoff validate && liftoff doctor");
   });
 
   for (const [name, columns] of [['rich', 100], ['plain', 50]] as const) {
@@ -163,7 +179,7 @@ describe('maintenance presentation', () => {
 
       expect(result.code).toBe(0);
       expect(result.out).toContain('Next recommended command');
-      expect(result.out).toContain('$ liftoff validate && liftoff doctor');
+      expect(result.out).toContain("$ cd -- '<project>' && liftoff validate && liftoff doctor");
       expect(result.err).toBe('');
       expect(runner.calls).toEqual([]);
       expect(result).toMatchSnapshot();

@@ -15,6 +15,7 @@ import { phaseIds } from '../../domain/governance/activation/types.js';
 import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import type { CommandRunner } from '../../process-runner.js';
 import { captureRetainedProjectInputs } from './protected-source.js';
+import { formatUpdateCommand } from './command-guidance.js';
 import { hasDrift, reconcileProject } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
 import { buildManifest } from '../../templates.js';
@@ -166,7 +167,8 @@ export async function inspectProjectUpdate(
   if (interrupted.status !== 'absent') {
     throw new UpdatePlanError(
       'An existing update transaction requires recovery before a new preview.',
-      'transaction-recovery-required', 'Review the reported transaction and run liftoff update for bounded recovery.'
+      'transaction-recovery-required',
+      `Review the reported transaction and run ${formatUpdateCommand(projectRoot)} for bounded recovery.`
     );
   }
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
@@ -277,7 +279,7 @@ export async function inspectProjectUpdate(
     entries,
     oldByName: new Map(manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])),
     provisioningPlans,
-    snapshots: uniqueUpdateSnapshots(snapshots),
+    snapshots: uniqueUpdateSnapshots(snapshots, projectRoot),
     stateMigration,
     historyMigration,
     revalidationSource,
@@ -295,7 +297,10 @@ export async function inspectProjectUpdate(
 
 export type UpdateInspection = Awaited<ReturnType<typeof inspectProjectUpdate>>;
 
-export function uniqueUpdateSnapshots(snapshots: readonly ProjectFileSnapshot[]): ProjectFileSnapshot[] {
+export function uniqueUpdateSnapshots(
+  snapshots: readonly ProjectFileSnapshot[],
+  projectRoot: string
+): ProjectFileSnapshot[] {
   const unique = new Map<string, ProjectFileSnapshot>();
   for (const snapshot of snapshots) {
     const key = snapshot.pathParts.join('\0');
@@ -307,7 +312,7 @@ export function uniqueUpdateSnapshots(snapshots: readonly ProjectFileSnapshot[])
     )) {
       throw new UpdatePlanError(
         `Project input changed during preview: ${snapshot.pathParts.join('/')}`,
-        'inputs-changed', 'Run liftoff update --check again.'
+        'inputs-changed', `Run ${formatUpdateCommand(projectRoot, 'check')} again.`
       );
     }
     unique.set(key, snapshot);

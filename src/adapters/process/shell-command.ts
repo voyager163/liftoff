@@ -26,7 +26,18 @@ export function formatShellDirectoryCommand(
   cwd: string,
   shell: CommandShell
 ): string {
-  const invocation = formatShellCommand(command, shell);
+  return formatShellDirectoryCommands([command], cwd, shell);
+}
+
+export function formatShellDirectoryCommands(
+  commands: readonly [ExternalCommand, ...ExternalCommand[]],
+  cwd: string,
+  shell: CommandShell
+): string {
+  const invocation = commands.map((command) => formatShellCommand(command, shell))
+    .reduceRight((next, current) => shell === 'powershell'
+      ? `${current}; if ($?) { ${next} }`
+      : `${current} && ${next}`);
   return shell === 'powershell'
     ? `Set-Location -LiteralPath ${literal(cwd, shell)}; if ($?) { ${invocation} }`
     : `cd -- ${literal(cwd, shell)} && ${invocation}`;

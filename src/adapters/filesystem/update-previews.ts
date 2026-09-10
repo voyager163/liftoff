@@ -13,6 +13,7 @@ import {
   validateUpdatePreviewReceipt
 } from '../../application/update/preview.js';
 import type { UpdatePreviewDescriptor, UpdatePreviewReceipt } from '../../application/update/preview.js';
+import { formatUpdateCommand } from '../../application/update/command-guidance.js';
 import {
   createUpdateTransactionApprovalSeal,
   updateTransactionApprovalKey,
@@ -452,10 +453,11 @@ function parseReceipt(content: string, storage: Storage): UpdatePreviewReceipt {
   return validateUpdatePreviewReceipt(value, { projectRoot: storage.location.projectRoot, now: storage.now() });
 }
 
-function missing(location: UpdatePreviewLocation): never {
+function missing(storage: Storage): never {
+  const { location } = storage;
   throw new UpdatePreviewError(
     'preview-missing',
-    `No preview receipt exists for this project at ${location.receiptPath}. Run liftoff update --check.`
+    `No preview receipt exists for this project at ${location.receiptPath}. Run ${formatUpdateCommand(location.projectRoot, 'check', storage.platform)}.`
   );
 }
 
@@ -465,9 +467,9 @@ export async function loadUpdatePreviewReceipt(
 ): Promise<StoredUpdatePreview> {
   const storage = await storageFor(projectRoot, options);
   const snapshot = await directories(storage, false);
-  if (!snapshot) missing(storage.location);
+  if (!snapshot) missing(storage);
   const content = await readText(storage, storage.location.receiptPath, snapshot);
-  if (content === undefined) missing(storage.location);
+  if (content === undefined) missing(storage);
   return { location: storage.location, receipt: parseReceipt(content, storage) };
 }
 
@@ -695,16 +697,16 @@ export async function consumeUpdatePreviewReceipt(
   const storage = await storageFor(projectRoot, options);
   const expected = validateUpdatePreviewReceipt(expectedReceipt, { projectRoot: storage.location.projectRoot, now: storage.now() });
   const snapshot = await directories(storage, false);
-  if (!snapshot) missing(storage.location);
+  if (!snapshot) missing(storage);
   await withStoreLock(storage, snapshot, async () => {
     const content = await readText(storage, storage.location.receiptPath, snapshot);
-    if (content === undefined) missing(storage.location);
+    if (content === undefined) missing(storage);
     const current = parseReceipt(content, storage);
     if (canonicalJson(current) !== canonicalJson(expected)) {
       throw new UpdatePreviewError('preview-mismatch', 'A newer or different preview receipt was found; it was preserved.');
     }
     const owned = await inspect(storage.fs, storage.location.receiptPath);
-    if (!owned) missing(storage.location);
+    if (!owned) missing(storage);
     if (await readText(storage, storage.location.receiptPath, snapshot) !== content) {
       throw storageError(`Preview receipt changed during cleanup: ${storage.location.receiptPath}`);
     }

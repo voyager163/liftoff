@@ -32,68 +32,88 @@ The system SHALL assign every generated artifact an explicit lifecycle of `manag
 - **AND** path parts remain portable while filesystem access uses platform-correct resolution
 
 ### Requirement: Managed core is the only post-generation update authority
-After initial generation, the system SHALL permit `liftoff update` to create, restore, upgrade, move, or overwrite only artifacts declared `managed-core`. Neither ordinary update nor any force option SHALL mutate an existing `project`, `desired-state`, `framework`, or `seed` file. Retirement of the eight flat-root OpenTofu generator identities SHALL NOT create managed-core ownership or deletion authority over their historical files or provenance.
+Managed-core declarations SHALL remain the only authority for post-generation template reconciliation. Existing project, desired-state, framework, and seed artifacts SHALL not become replaceable through update or force. A separate exact-plan-approved activation-migration lane SHALL authorize only its explicitly inventoried history copies, historical active-record retirements, linked successor state, and migration metadata; it SHALL not reclassify those records as managed core or confer general governance-directory ownership. Retirement of flat-root OpenTofu identities SHALL not grant mutation authority over historical infrastructure or provenance.
 
 #### Scenario: Project source differs from the current starter
-- **WHEN** a production source file differs from the template packaged by the running CLI
-- **THEN** update does not classify, report, restore, replace, move, or delete that file
+- **WHEN** production source differs from the current template
+- **THEN** update does not classify, restore, replace, move, or delete it as a template update
 
 #### Scenario: Untouched project file has a newer template
-- **WHEN** a project-owned file still matches its generation bytes but the running CLI renders newer bytes
-- **THEN** update leaves the file unchanged
-- **AND** it does not treat the matching generation hash as overwrite authorization
+- **WHEN** a project artifact still matches its generation bytes but its template changed
+- **THEN** it remains untouched and its generation hash is not overwrite consent
 
 #### Scenario: Project file was intentionally deleted
-- **WHEN** a developer removes or relocates a project-owned artifact
-- **THEN** update preserves the absence
-- **AND** it does not recreate the old template path
+- **WHEN** a project artifact is removed or relocated
+- **THEN** update preserves the absence rather than restoring its old path
 
 #### Scenario: Force is supplied
-- **WHEN** `liftoff update --force` runs in a production project
-- **THEN** force extends replacement authority only to conflicted `managed-core` artifacts
-- **AND** every project-owned file remains outside the mutation set
+- **WHEN** a matching explicitly approved force plan runs
+- **THEN** its extra authority covers only eligible exact managed-core conflicts or retired aliases
+- **AND** it cannot overwrite production or historical snapshot files
 
 #### Scenario: Managed core has safe drift
-- **WHEN** an explicitly declared managed-core artifact is new, missing, or untouched since its recorded version
-- **THEN** ordinary update reconciles it through the existing guarded transaction
+- **WHEN** exact core artifacts need safe updates
+- **THEN** they are reconciled only after matching preview and approval through the guarded transaction
 
 #### Scenario: Retired workload bytes remain user-owned
-- **WHEN** a user directory contains bytes from a retired `power-apps-code-app` project or manifest
-- **THEN** Liftoff does not classify, convert, restore, move, delete, or overwrite those application files through ordinary update or `--force`
-- **AND** retirement does not create a compatibility lane that expands managed-core authority
+- **WHEN** a project contains retired Power Apps workload bytes
+- **THEN** retirement grants no conversion, reconciliation, or activation-migration authority over them
 
 #### Scenario: Retired infrastructure identity does not authorize deletion
-- **WHEN** ordinary update or force encounters one of the eight retired flat-root OpenTofu identities in a supported project's provenance
-- **THEN** it preserves the recorded logical name, path, and generation hash and leaves the project-owned file unchanged
-- **AND** it does not alias the entry to a new module or environment path, move state, or recreate an intentionally deleted file
+- **WHEN** update encounters one of the eight retired flat-root infrastructure identities
+- **THEN** it preserves the recorded name, path, generation hash, and project-owned file
+- **AND** it does not move state, alias the entry, or restore deleted infrastructure
+
+#### Scenario: Approval authorizes one migration inventory
+- **WHEN** an activation migration is explicitly approved
+- **THEN** only exact entries in its reviewed historical and successor write sets can be copied, replaced, or retired
+- **AND** unknown neighboring files remain unowned even under force
 
 ### Requirement: Configuration expansion can provision new project components once
-The system SHALL treat an applicable developer configuration edit selecting a previously absent frontend or environment as authorization for create-only provisioning of that component. Provisioning SHALL require a compatible recorded generation/layout contract, preflight every destination, write only absent destinations or adopt byte-identical destinations, and never use force to replace differing project bytes. It SHALL NOT rewrite shared project-owned infrastructure merely to enable a new environment. Successful new artifacts SHALL remain project-owned.
+A supported configuration edit selecting a previously absent frontend or environment SHALL identify create-only provisioning intent, not waive update preview or approval. Provisioning SHALL require a compatible recorded layout, preflight every destination, write only absent files or adopt byte-identical files, and never overwrite differing project bytes or rewrite shared infrastructure through force. New artifacts SHALL remain project-owned. A simultaneous v1 activation migration SHALL defer new component provisioning to a fresh post-migration preview and approval.
 
 #### Scenario: Enable a previously absent frontend
-- **WHEN** a compatible project enables a frontend whose destinations are absent
-- **THEN** update transactionally creates the frontend starter and records project provenance rather than managed-core ownership
+- **WHEN** a matching approved plan enables a frontend in a compatible non-migrating project with absent destinations
+- **THEN** update creates the starter once and records project provenance
 
 #### Scenario: Add an environment
-- **WHEN** a project with a supported independent-environment layout selects a previously absent supported environment
-- **THEN** update creates only that environment's absent component files without reconciling existing environments or shared application code
+- **WHEN** an approved compatible independent-root plan adds an environment
+- **THEN** only its absent component files are created without reconciling existing environments
 
 #### Scenario: Provisioning destination contains production bytes
-- **WHEN** a new component destination contains differing bytes
-- **THEN** its complete provisioning group is blocked before any component write
-- **AND** force does not override that protection
+- **WHEN** a destination differs from the requested component's generated bytes
+- **THEN** the complete group remains blocked before writing and force cannot bypass it
 
 #### Scenario: Remove a configured component
-- **WHEN** a previously provisioned frontend or environment is deselected
-- **THEN** all of its files remain untouched and are not classified as managed-core orphans
+- **WHEN** a previously provisioned component is deselected
+- **THEN** its project files remain untouched and are not core orphans
 
 #### Scenario: Legacy environment layout cannot be expanded safely
-- **WHEN** a new environment would depend on an absent or incompatible shared infrastructure layout
-- **THEN** update reports that component as migration-required without changing shared project files or creating an unusable environment root
+- **WHEN** new provisioning depends on incompatible shared-state infrastructure
+- **THEN** it remains migration-required without rewriting shared project files
 
 #### Scenario: Component preflight runs on Windows
-- **WHEN** provisioning checks paths on Windows, macOS, or Linux
-- **THEN** the same recorded-layout, collision, and ownership rules apply using native path resolution and exact artifact identities
+- **WHEN** provisioning is previewed or applied on Windows, macOS, or Linux
+- **THEN** native path resolution enforces the same exact identity, layout, collision, and approval rules
+
+#### Scenario: A new component is requested during v1 migration
+- **WHEN** configuration expansion and activation-v1 migration are both present
+- **THEN** preview identifies the deferred component separately and migration does not provision it
+
+### Requirement: Migration history never becomes template replacement authority
+Completed migration snapshots SHALL be durable project-owned historical records. Ordinary update, force, receipt cleanup, and current-state revalidation SHALL not rewrite, delete, or regenerate that history. Mutable migration progress SHALL be limited to the exact registered journal and explicitly approved operations, not inferred from a directory prefix. Portable path validation SHALL reject escapes and unsafe links on every supported platform.
+
+#### Scenario: Managed templates change after migration
+- **WHEN** a later update changes current governance templates
+- **THEN** the preserved source snapshot remains byte-identical and outside normal reconciliation
+
+#### Scenario: Preview receipts are cleaned
+- **WHEN** a user-local preview receipt is removed or superseded
+- **THEN** no in-project history or evidence file is removed
+
+#### Scenario: Unrelated governance file exists
+- **WHEN** a file under a governance directory is absent from the explicit approved migration inventory
+- **THEN** its location alone does not grant copy, modification, or deletion authority
 
 ### Requirement: Project template evolution requires separate authorization
 The system SHALL keep release-driven project template evolution outside `liftoff update`, including application changes, dependency and lock refreshes, container changes, database changes, runtime configuration changes, and infrastructure topology changes. Adopting those changes into an existing project MUST use a separately reviewed migration process that is not implied by installing or updating the CLI. Retirement of a formerly supported workload SHALL NOT authorize automatic conversion, deletion, or fallback reinterpretation of its project files.

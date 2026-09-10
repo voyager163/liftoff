@@ -119,11 +119,21 @@ Governance JSON uses versioned objects and includes the complete activation
 version vector: creating Liftoff version, manifest artifact version 7, policy
 version 6, activation-contract version 2, state/evidence-header/approval schema
 versions 2, graph/supersession/credential schema versions 1, and the phase-graph
-hash. Compatibility metadata is version 2. It never
+hash. Compatibility metadata is version 3. It never
 emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
 names the exact field and required Liftoff upgrade. Known v1 history is
-diagnostic-only and byte-preserved; no automatic reconciliation command exists.
+diagnostic-only and byte-preserved; a supported successor requires
+`liftoff update --check` and explicit approval, not automatic reconciliation.
+
+Status, resume, and verify JSON include `migration` (the validated journal, or
+`null`) and `migrationSummary`. The summary separates `localCommit`, validated
+snapshot/index/successor linkage, recorded `revalidation`, `nextRecordedPhase`,
+and a project-bound fresh-preview remedy. `currentProofRequired` is always
+true: recorded completion is audit history, not current evidence or provider
+authority. Human output presents the same migration progress separately from
+readiness; stale current proof still blocks even when the journal says complete.
+These inspection commands neither advance phases nor create preview receipts.
 
 `/liftoff-setup` calls these commands instead of inferring phase completion from
 prose or task checkboxes.
@@ -323,6 +333,29 @@ recovery; activation migration additionally retains durable original history.
 Force cannot bypass preview, approval, ownership, project-boundary, symlink,
 structural, identity, or manifest guards.
 
+### Preview receipt storage
+
+Check reports the exact native receipt path. Receipts and separate transaction
+approval records use user-local storage, never the project or its containing
+repository:
+
+| Platform | Receipt directory |
+| --- | --- |
+| Linux | `$XDG_STATE_HOME/liftoff/update-previews` when `XDG_STATE_HOME` is set to an absolute path; otherwise, when unset, `$HOME/.local/state/liftoff/update-previews` |
+| macOS | `~/Library/Application Support/liftoff/update-previews` |
+| Windows | `%LOCALAPPDATA%\liftoff\update-previews` when `LOCALAPPDATA` is set to an absolute drive or UNC path; otherwise, when unset, `%USERPROFILE%\AppData\Local\liftoff\update-previews` |
+
+An empty or relative override is an error, not a request to use the fallback.
+Unsafe paths, links/junctions, or storage inside the project or repository also
+block the update; repair the reported storage issue rather than moving a receipt
+into the project. Commands containing spaces or shell metacharacters use literal
+native-shell quoting and retain the selected project path.
+
+The immutable history snapshot travels inside the project. Preview receipts and
+approval records do not: another machine, checkout, worktree, or moved project
+needs its own fresh check and approval. A receipt stores digests, not project
+source bodies, and is never portable blanket authorization.
+
 ### Reviewed activation-v1 migration
 
 An exact supported v1 source can be previewed with `liftoff update --check`.
@@ -408,8 +441,9 @@ liftoff update --check --json
 ```
 
 Each JSON object has a top-level numeric `schemaVersion`. Update JSON uses
-schema version 2 and includes `scope: "managed-core"`, ownership-migration
-state, activation compatibility, and a separate provisioning collection.
+schema version 3 and `scope: "project-update"`, with separate managed-core,
+provisioning, activation-migration, and revalidation outcomes plus preview and
+approval status. A committed migration does not imply governance readiness.
 Operational warnings, such as a dirty-worktree warning before JSON apply, are
 written to stderr so stdout remains one parseable JSON object.
 
@@ -417,8 +451,9 @@ Exit codes:
 
 - `0`: success or a clean check.
 - `1`: invalid input, unsafe state, or command failure.
-- `2`: an explicit update check found core maintenance or provisioning, or upgrade check found an
-  installable CLI release.
+- `2`: update check found differences, update committed a migration but local
+  revalidation is incomplete, or upgrade check found an installable CLI release.
+  Governance assessment also uses 2 for partial or excepted results.
 
 Raw installer, framework, and dependency child stdout and stderr are forwarded
 unchanged.

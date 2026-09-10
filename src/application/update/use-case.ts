@@ -17,6 +17,7 @@ import { manifestDisplayPath } from '../../domain/project/paths.js';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
 import { requestUpdateApproval } from './approval.js';
+import { formatUpdateCommand, formatUpdateValidationCommands } from './command-guidance.js';
 import { inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
 import {
   buildUpdateReport, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
@@ -81,7 +82,8 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     if (check && (force || request.approvePlan !== undefined)) {
       throw new UpdatePlanError(
         '--check cannot be combined with --force or --approve-plan.',
-        'invalid-update-options', 'Run liftoff update --check before explicitly approving an apply plan.'
+        'invalid-update-options',
+        `Run ${formatUpdateCommand(projectRoot, 'check')} before explicitly approving an apply plan.`
       );
     }
     const discovered = request.project ? projectRoot : await findProjectRoot(context.cwd);
@@ -102,7 +104,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           mode: check ? 'check' : 'apply', status: 'blocked',
           reasonCode: 'transaction-recovery-required', projectRoot, committed: recovery.committed,
           message: recovery.reason ?? 'An interrupted approved update requires bounded recovery.',
-          remedy: 'Review the reported transaction and run liftoff update for recovery; then run a fresh check.'
+          remedy: `Review the reported transaction and run ${formatUpdateCommand(projectRoot)} for recovery; then run ${formatUpdateCommand(projectRoot, 'check')}.`
         });
         return 1;
       }
@@ -114,7 +116,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           ? outcome.rollbackFailures.join('; ')
           : 'Recovered the previously approved transaction; no new update was started.',
         warnings: outcome.cleanupFailures,
-        remedy: 'Run liftoff update --check before approving new work.'
+        remedy: `Run ${formatUpdateCommand(projectRoot, 'check')} before approving new work.`
       });
       return outcome.status === 'blocked' ? 1 : 2;
     }
@@ -186,17 +188,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       if (jsonMode) presentation.rawStderr(`Warning: ${warning}\n`);
       else presentation.warning(warning);
     }
-    renderUpdateApprovalScope(presentation, jsonMode, selected.summary, selected.writePlan, [
-      ...(migration.operations ?? []).map((entry) => `${entry.type} ${JSON.stringify(entry.path)}`),
-      ...revalidation.issues.map((issue) => `Known revalidation gap: ${issue}`),
-      ...(revalidation.issues.length ? ['Approval may commit v2 while these known revalidation gaps remain blocked.'] : []),
-      ...(revalidation.preview?.effects ?? []),
-      ...(revalidation.preview?.phases ?? []).flatMap((phase) =>
-        phase.commands.map((entry) =>
-          `${entry.command.executable} ${entry.command.args.join(' ')} (directory: ${entry.cwdPathParts.join('/') || '.'})`
-        )
-      )
-    ]);
+    renderUpdateApprovalScope(presentation, jsonMode, selected.summary, selected.writePlan, migration, revalidation);
     const approval = await requestUpdateApproval({
       fingerprint: selected.descriptor.fingerprint, approvePlan: request.approvePlan
     }, context);
@@ -209,7 +201,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           : approval.status === 'mismatch'
             ? 'The approved fingerprint does not match the current effective plan.'
             : 'Update approval was declined or cancelled; no project files changed.',
-        remedy: 'Review liftoff update --check, then approve interactively or use --approve-plan with its exact fingerprint.'
+        remedy: `Review ${formatUpdateCommand(projectRoot, 'check')}, then approve interactively or use --approve-plan with its exact fingerprint.`
       }, inspection, selected);
       return 1;
     }
@@ -239,7 +231,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       if (!current.summary.eligible || current.descriptor.fingerprint !== approvedFingerprint) {
         throw new UpdatePlanError(
           'The effective update plan changed after review.',
-          'preview-mismatch', 'Run liftoff update --check again.'
+          'preview-mismatch', `Run ${formatUpdateCommand(projectRoot, 'check')} again.`
         );
       }
     };
@@ -300,25 +292,27 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         presentation.bullets('V2 revalidation is blocked and resumable', [
           ...revalidation.issues,
           ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : []),
-          'Repair the blocker, run liftoff update --check, and approve the remaining local work.'
+          `Repair the blocker, run ${formatUpdateCommand(projectRoot, 'check')}, and approve the remaining local work.`
         ]);
       }
       for (const failure of cleanupFailures) presentation.error(failure);
       if (!cleanupFailures.length && !revalidationBlocked) {
         presentation.completion('Updated project',
           `${selected.writePlan.written.length} core written, ${selected.writePlan.skipped.length} core skipped`,
-          [], 'liftoff validate && liftoff doctor');
+          [], formatUpdateValidationCommands(projectRoot));
       }
     }
     return cleanupFailures.length ? 1 : revalidationBlocked ? 2 : 0;
   } catch (error) {
     const reasonCode = error instanceof UpdatePlanError ? error.reasonCode :
       error instanceof UpdatePreviewError ? error.code : 'update-failed';
-    const message = error instanceof Error ? error.message : String(error);
+    const detail = error instanceof Error ? error.message : String(error);
+    const message = error instanceof UpdatePreviewError && !committed
+      ? `${detail} No new project update was performed.` : detail;
     const remedy = error instanceof UpdatePlanError ? error.remedy :
       error instanceof UpdatePreviewError
-        ? 'Repair any reported preview-storage issue, then run liftoff update --check before applying.'
-        : 'Review the reported failure. Preserve concurrent edits and run a fresh check after repair.';
+        ? `Repair any reported preview-storage issue, then run ${formatUpdateCommand(projectRoot, 'check')} before applying.`
+        : `Review the reported failure. Preserve concurrent edits and run ${formatUpdateCommand(projectRoot, 'check')} after repair.`;
     emit(context, jsonMode, {
       mode: check ? 'check' : 'apply', status: 'failed', reasonCode, projectRoot,
       committed, message, remedy, migration, revalidation

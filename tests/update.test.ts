@@ -24,6 +24,7 @@ import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
+import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
 import {
   canonicalJson,
@@ -51,6 +52,7 @@ import {
   cleanupUpdateTestRoots,
   createReviewedUpdateFixture as createFixtureProject,
   createUpdateTestRoot,
+  fingerprintUpdateTestProject,
   reviewedUpdateArguments,
   updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
@@ -973,7 +975,7 @@ describe('core-only update command', () => {
     }
     expect(check.out).toContain('Unowned destinations remain protected');
     expect(check.out).toContain('--force cannot overwrite it');
-    expect(check.out).not.toContain('liftoff update --force');
+    expect(check.out).not.toContain(formatUpdateCommand(root, 'force'));
     for (const output of applyOutputs) {
       expect(output).toContain('protected unowned destination');
       expect(output).toContain('--force cannot overwrite it');
@@ -1030,7 +1032,7 @@ describe('core-only update command', () => {
     expect(manifest.governance.state).toBe('handoff-partial');
     expect(manifest.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
     expect(await validateGeneratedProject(root)).toEqual([]);
-    expect(check.out).toContain('liftoff update --force');
+    expect(check.out).toContain(formatUpdateCommand(root, 'force'));
     expect(check.out).toContain('Unowned destinations remain protected');
   });
 
@@ -2051,6 +2053,56 @@ describe('core-only update command', () => {
     expect((await run(['update', '--check'], nested)).code).toBe(0);
     expect((await run(['update', '--check', root], path.dirname(root))).code).toBe(0);
   });
+
+  it.each(['positional', 'flag'] as const)(
+    'keeps %s project selection in preview, missing/stale, and approval follow-ups',
+    async (selection) => {
+      const original = await fixtureProject();
+      const root = path.join(path.dirname(original), 'Reviewed project with spaces');
+      await rename(original, root);
+      const cwd = await fixtureProject();
+      const otherBefore = await fingerprintUpdateTestProject(cwd);
+      const target = selection === 'positional' ? [root] : ['--project', path.relative(cwd, root)];
+      const policy = path.join(root, ...governanceArtifactPaths.policy);
+      await simulateCoreUpgrade(root, 'repository-governance-policy', governanceArtifactPaths.policy, '# Previous policy\n');
+      await writeFile(policy, '# Protected local policy\n');
+      const before = await fingerprintUpdateTestProject(root);
+      const checkCommand = formatUpdateCommand(root, 'check');
+
+      for (const json of [false, true]) {
+        const missing = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
+        expect(missing.code).toBe(1);
+        const output = json ? JSON.parse(missing.out) : { message: missing.err, remedy: missing.err };
+        expect(output.message).toContain(checkCommand);
+        expect(output.remedy).toContain(checkCommand);
+        expect(output.message).toContain('No new project update was performed');
+      }
+
+      const preview = await runRaw(['update', '--check', ...target], cwd);
+      expect(preview.code).toBe(2);
+      expect(preview.out).toContain(formatUpdateCommand(root));
+      expect(preview.out).toContain(formatUpdateCommand(root, 'force'));
+      expect(preview.out).not.toContain(formatUpdateCommand(cwd));
+      const unapproved = await runRaw(['update', '--force', ...target, '--json'], cwd);
+      expect(unapproved.code).toBe(1);
+      expect(JSON.parse(unapproved.out)).toMatchObject({
+        projectRoot: root, reasonCode: 'approval-required'
+      });
+      expect(JSON.parse(unapproved.out).remedy).toContain(checkCommand);
+      expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+
+      await writeFile(policy, '# Concurrently edited policy\n');
+      for (const json of [false, true]) {
+        const stale = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
+        expect(stale.code).toBe(1);
+        const output = json ? JSON.parse(stale.out) : { message: stale.err, remedy: stale.err };
+        expect(output.message).toContain(checkCommand);
+        expect(output.remedy).toContain(checkCommand);
+      }
+      expect(await readFile(policy, 'utf8')).toBe('# Concurrently edited policy\n');
+      expect(await fingerprintUpdateTestProject(cwd)).toEqual(otherBefore);
+    }
+  );
 
   it('detects a concurrent core mutation and preserves the newer bytes', async () => {
     const root = await fixtureProject();

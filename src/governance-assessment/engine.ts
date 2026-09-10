@@ -1,6 +1,7 @@
 import { canonicalJson, canonicalSha256, sha256Hex } from '../domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity, canonicalPhaseGraph } from '../domain/governance/activation/graph.js';
 import { canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../domain/governance/activation/approvals.js';
+import { formatUpdateCommand } from '../application/update/command-guidance.js';
 import { inspectCurrentActivationEvidence } from '../governance-activation/read-only.js';
 import { governanceChangeMetadataFileName, validateGovernanceChangeMetadata } from '../governance-activation/source-of-truth.js';
 import {
@@ -10,6 +11,7 @@ import {
 import type { CommandRunner } from '../process-runner.js';
 import { loadAssessmentCatalog } from './catalog.js';
 import {
+  inspectAssessmentHistoricalActivation,
   inspectAssessmentProject,
   ordinaryGitAssessmentProject,
   type AssessmentProject
@@ -909,7 +911,7 @@ export async function assessGovernance(
       }
       project = ordinaryGitAssessmentProject();
     }
-    if (project.manifest) {
+    if (project.manifest && project.identity.availability === 'known') {
       try {
         const activation = await inspectCurrentActivationEvidence(
           projectRoot,
@@ -940,7 +942,7 @@ export async function assessGovernance(
               source: 'governance/migration-state.json',
               message: sanitizeAssessmentText(complete
                 ? 'Local v2 migration and approved local revalidation are complete. Preserved v1 history is informational, not live enforcement proof.'
-                : `Local v2 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run liftoff update --check after repairing the named blocker.`)
+                : `Local v2 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run ${formatUpdateCommand(projectRoot, 'check')} after repairing the named blocker.`)
             });
           }
           for (const [phaseId, selection] of Object.entries(activation.selections)) {
@@ -1021,10 +1023,24 @@ export async function assessGovernance(
         activationStable = false;
       }
     }
+    let historicalActivationStable = true;
+    if (project.historicalActivation) {
+      const finalHistorical = await inspectAssessmentHistoricalActivation(projectRoot);
+      historicalActivationStable = finalHistorical.fingerprint === project.historicalActivation.fingerprint;
+      if (!historicalActivationStable) {
+        project.diagnostics = project.diagnostics.filter((entry) => entry !== project.historicalActivation?.diagnostic);
+        project.diagnostics.push({
+          code: 'activation-history-changed',
+          severity: 'warning',
+          source: 'activation read-only inspection',
+          message: sanitizeAssessmentText(`Historical activation inputs changed during collection; migration eligibility was withheld. Rerun assessment, then use ${formatUpdateCommand(projectRoot, 'check')} to review a stable source.`)
+        });
+      }
+    }
     const finalGit = await inspectAssessmentGit(projectRoot, options.runner);
     const filesStable = await files.stable();
     const gitStable = canonicalJson(git) === canonicalJson(finalGit);
-    const inputsStable = filesStable && gitStable && activationStable;
+    const inputsStable = filesStable && gitStable && activationStable && historicalActivationStable;
     if (!filesStable) {
       invalidateUnstableObservations(
         findings,

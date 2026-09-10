@@ -7,53 +7,37 @@ and credential contract without relying on model interpretation.
 ## Requirements
 
 ### Requirement: Activation identity uses an explicit compatibility version vector
-The engine SHALL distinguish the creating Liftoff semantic version, normative
-policy version, activation-contract version, phase-graph schema version and
-exact content hash, activation-state schema version, and applicable evidence,
-approval-envelope, compatibility-metadata, supersession, and credential-policy
-schema versions. For this release line, the managed activation identity SHALL
-advance to Liftoff 0.11.0 with manifest artifact 7, supported API and GenAI
-readers 2 through 7, policy 6, activation contract 2, phase-graph schema 1
-plus a computed content hash, activation-state schema 2, evidence-header
-schema 2, approval-envelope schema 2, compatibility-metadata schema 2, and
-supersession and credential-policy schemas 1. The generated setup skill SHALL
-have no independent manually maintained version, and the graph hash SHALL be
-computed from the implemented canonical bytes rather than fabricated in
-planning artifacts.
+The engine SHALL distinguish the activation package identity, CLI semantic version, policy, activation contract, graph schema/hash, state, evidence, approval, compatibility-metadata, supersession, and credential-policy versions. The current execution family SHALL retain activation package identity 0.11.0, manifest artifact 7 with supported API/GenAI readers 2 through 7, policy 6, activation contract 2, graph schema 1 with its actual packaged hash, state/evidence/approval schemas 2, and supersession/credential-policy schemas 1. Compatibility metadata SHALL advance independently to schema 3 to distinguish historical readability, current execution compatibility, and exact approved successor-migration lanes. The setup skill SHALL have no independent manually maintained version.
 
 #### Scenario: A CLI patch changes no governance contract
-- **WHEN** Liftoff fixes implementation behavior without changing policy semantics, phase behavior, JSON shapes, or managed graph bytes
-- **THEN** only the Liftoff package semantic version changes
-- **AND** compatible activation state resumes without reconciliation
+- **WHEN** implementation changes leave phase/proof semantics, shapes, and graph bytes unchanged
+- **THEN** only the applicable package/metadata contract changes
+- **AND** compatible current activation proof is not retagged solely because CLI SemVer changed
 
 #### Scenario: Normative governance behavior changes
-- **WHEN** a fixed governance requirement or decision changes
-- **THEN** the policy version advances
-- **AND** active setup reconciles affected verified phase evidence
+- **WHEN** a fixed policy requirement or decision changes
+- **THEN** the policy version advances and affected verified work requires reconciliation
 
 #### Scenario: Activation behavior changes
-- **WHEN** phase dependencies, approvals, allowed mutations, evidence semantics, invalidation, or rollback behavior changes
-- **THEN** the activation-contract version advances
-- **AND** compatibility metadata identifies its supported policy versions
+- **WHEN** phase dependencies, approval meaning, mutations, evidence semantics, invalidation, or rollback behavior changes
+- **THEN** the activation contract advances and compatibility metadata identifies the supported combinations
 
 #### Scenario: A serialized representation changes incompatibly
-- **WHEN** the graph, activation state, evidence header, approval envelope, or credential policy changes shape incompatibly
-- **THEN** the affected schema version advances
-- **AND** readers either migrate a supported historical representation transactionally or block it
+- **WHEN** a graph, state, evidence, approval, credential, or compatibility representation changes incompatibly
+- **THEN** its schema version advances and readers either use an explicitly supported conversion or block it
 
 #### Scenario: Managed graph bytes change without compatible identity
-- **WHEN** the phase-graph hash changes without the contract or schema identity required by the compatibility rules
-- **THEN** validation fails before release
+- **WHEN** graph bytes change without the identity/contract treatment required by compatibility
+- **THEN** release validation fails rather than inventing a graph hash
 
 #### Scenario: Future activation identity is encountered
-- **WHEN** an older CLI reads a policy, activation contract, or schema version newer than it supports
-- **THEN** setup blocks without rewriting state
-- **AND** reports the unsupported identity and upgrade remedy
+- **WHEN** the engine encounters a newer unsupported identity
+- **THEN** it blocks without rewriting history and reports the found identity and remedy
 
 #### Scenario: Historical activation v1 is encountered
-- **WHEN** the engine reads a preserved activation v1 state or evidence record
-- **THEN** it may report the historical identity for diagnosis
-- **AND** it does not auto-migrate, delete, or accept that history as current executable proof
+- **WHEN** the engine reads known v1 state or evidence
+- **THEN** that original remains diagnostic-only and cannot execute or authorize current scope
+- **AND** a declared successor lane is advertised through `liftoff update --check`, not automatically applied
 
 ### Requirement: Governance activation uses one canonical phase graph
 The system SHALL package a versioned, machine-readable governance phase graph
@@ -77,37 +61,29 @@ not override the graph.
 - **AND** dependent phases evaluate the declared inapplicability edge rather than inventing placeholder work
 
 ### Requirement: Activation state is typed, evidence-backed, and resumable
-The system SHALL maintain user-owned activation state using explicit
-`pending`, `blocked`, `ready`, `approved`, `running`, `verified`, `failed`,
-`inapplicable`, `retained`, and `disposed` states. Every successful completed
-phase MUST have the evidence, approval, or validated applicability proof
-required by its graph contract. Execution evidence SHALL bind repository identity, stable
-local anchor, verified remote binding when required, activation version vector,
-phase-graph hash, activation baseline, input digest, and body digest to the
-transition. Pending, ready, running, blocked, or failed states SHALL NOT be
-interpreted as successful proof. Establishing a stable local anchor SHALL require an explicitly
-executed local transition; inspection of an uninitialized project SHALL remain
-unbound. Only matching verified remote bindings permit remote evidence reuse.
+The engine SHALL retain typed pending, blocked, ready, approved, running, verified, failed, inapplicable, retained, and disposed states. Successful phases SHALL have the current graph's required evidence, approval, or applicability proof. Evidence SHALL bind local identity, independently verified remote identity where required, the activation vector, graph, baseline, current inputs, transition, and body. Explicitly approved local successor creation SHALL establish its local anchor without trusting historical remote identifiers. V1 terminal states and approvals SHALL not transfer as current proof. Post-commit migration revalidation failures SHALL remain blocked/resumable v2 rather than restore v1.
 
 #### Scenario: Setup is invoked repeatedly
-- **WHEN** `/liftoff-setup` or governance `resume` runs after verified phases exist
-- **THEN** completed phases remain no-ops
-- **AND** the next ready phase is reported, with execution occurring only through a separate explicit executable transition
+- **WHEN** fresh verified phases already exist
+- **THEN** inspection reports them as complete and identifies the next ready phase
+- **AND** execution remains a separate explicit operation
 
 #### Scenario: Evidence is missing or stale
-- **WHEN** a completed task lacks evidence or its activation identity, baseline SHA, graph hash, or input digest differs
-- **THEN** the phase becomes blocked for reconciliation
-- **AND** no downstream mutation is authorized
+- **WHEN** a completed task lacks fresh correctly bound evidence
+- **THEN** the phase and dependent mutation remain blocked
 
 #### Scenario: Evidence contradicts a task checkbox
-- **WHEN** a task is checked but its authoritative evidence reports `pending`, `failed`, or a missing prerequisite
-- **THEN** verification reports the mismatch and expected projection without modifying the task file
-- **AND** correction is allowed only within an explicitly planned local execution whose graph contract permits that write
+- **WHEN** a checked task conflicts with authoritative proof
+- **THEN** verification reports the mismatch without changing the task
+- **AND** any task correction needs an explicitly planned operation whose contract permits it
 
 #### Scenario: Remote binding changes after local anchoring
-- **WHEN** a later run finds that the repository's verified remote binding differs from the binding used by reusable remote evidence
-- **THEN** the local anchor remains intact for local history
-- **AND** remote evidence tied to the previous binding is not reused as current proof
+- **WHEN** the current verified remote binding differs from the binding of old remote evidence
+- **THEN** local history retains its stable anchor and that remote evidence is not reused
+
+#### Scenario: Successor is not automatically verified
+- **WHEN** migration creates v2 from a historical v1 snapshot
+- **THEN** unproven phases and applicability remain pending, blocked, or unknown until current proof establishes them
 
 ### Requirement: Setup completes the generated baseline before governance
 The engine SHALL require the generated local baseline handoff to be complete
@@ -265,95 +241,86 @@ logs, evidence, screenshots, or generated files.
 - **THEN** setup marks the credential compromised, blocks its use, and instructs revocation and rotation
 
 ### Requirement: Setup exposes strict project-aware commands
-The CLI SHALL expose project-aware governance `status`, `plan`, `apply-next`,
-`resume`, and `verify` operations with versioned JSON output and strict
-command-specific arguments. The slash skill SHALL call these operations rather
-than infer phase completion itself. It SHALL use `apply-next --json` as a
-read-only preview and SHALL use `apply-next --json --execute` only after the
-reported transition is ready and approval status is `not-required` or `reused`.
-`status`, `plan`, and `resume` SHALL remain read-only. Planning SHALL validate
-each proposed operation against the selected phase graph and mutation contract,
-and execution SHALL validate the completed outcome and required live proof
-before persisting success. Only `apply-next --json --execute` MAY rerun a
-blocked local seed, baseline, or archive transition.
+The CLI SHALL retain project-aware governance status, plan, apply-next, resume, and verify with strict arguments and versioned output. The slash skill SHALL use these operations rather than infer completion. Status, plan, resume, verify, and `apply-next` without `--execute` SHALL remain read-only. An explicit ready `apply-next --execute` SHALL execute at most one phase whose current approval is satisfied. The reviewed update coordinator SHALL additionally be able to execute only its finite approved local migration-revalidation operations through the same current operation/evidence constraints; this SHALL not give inspection commands execution authority or permit automatic future provider/authority-gated work.
 
 #### Scenario: Developer runs the slash skill
-- **WHEN** `/liftoff-setup` is invoked from a project subdirectory
-- **THEN** it resolves the nearest project root and invokes the deterministic setup engine
+- **WHEN** setup is invoked from a project subdirectory
+- **THEN** it resolves the nearest valid project boundary and calls the deterministic engine
 
 #### Scenario: Status is requested
-- **WHEN** governance `status --json` runs
-- **THEN** output identifies the complete activation version vector and graph hash, active change, current phase states, next ready phase, blockers, approvals, and evidence freshness
+- **WHEN** governance status runs
+- **THEN** output identifies identity, graph, active change, phase states, blockers, approval/freshness, migration progress when present, and the next supported action
 
 #### Scenario: Apply-next is requested
-- **WHEN** more than one phase is ready
-- **THEN** the engine selects only phases whose declared dependencies and approvals are satisfied
-- **AND** reports every permitted mutation before execution
+- **WHEN** multiple phases appear ready
+- **THEN** the engine selects only phases satisfying current dependencies and approvals and reports their permitted mutation
 
 #### Scenario: Apply-next is previewed
-- **WHEN** governance `apply-next --json` runs without `--execute`
-- **THEN** the engine reports the selected transition and exact permitted mutations
-- **AND** writes no activation state, evidence, approval, or remote resource
+- **WHEN** `apply-next` runs without `--execute`
+- **THEN** it reports the transition without writing state, evidence, approvals, preview receipts, or provider resources
 
 #### Scenario: Apply-next is executed
-- **WHEN** governance `apply-next --json --execute` runs for a ready approval-free or approved phase
-- **THEN** the engine executes at most that one phase
-- **AND** writes authoritative evidence and activation state for the result
+- **WHEN** a ready phase is explicitly executed with its current approval satisfied
+- **THEN** at most that phase executes and its outcome is validated before successful persistence
 
 #### Scenario: Resume is used after a local baseline failure
-- **WHEN** governance `resume --json` is run for a blocked local seed, baseline, or archive phase
-- **THEN** it reports the retryable blocker and the exact next executable transition
-- **AND** it does not rerun checks or write new evidence until `apply-next --json --execute` is invoked
+- **WHEN** resume inspects a blocked local phase
+- **THEN** it reports the retryable blocker and explicit next action without rerunning work
+- **AND** incomplete migration revalidation can instead be previewed through `liftoff update --check`
 
 #### Scenario: Planned operation is not allowed by the phase graph
-- **WHEN** a requested transition would mutate resources outside the ready phase's declared contract
-- **THEN** preview and execution both block the transition
-- **AND** no success state or evidence is persisted
+- **WHEN** an operation exceeds the phase contract
+- **THEN** preview and execution block without successful evidence
+- **AND** update-plan approval does not override that contract
 
 #### Scenario: Verify is requested
-- **WHEN** governance `verify` runs
-- **THEN** it validates the phase graph, state, evidence, task projection, policy version, active-change identity, and live readback requirements without inventing completion
-- **AND** reports consistency separately from setup status and completion
+- **WHEN** governance verify runs
+- **THEN** it evaluates graph, state, evidence, task projection, policy, active-change identity, applicable live readback, and declared migration links without inventing completion
+- **AND** it reports consistency separately from readiness
 
 #### Scenario: Not-started state is consistent
-- **WHEN** governance `verify --json` finds a valid deterministic not-started view
-- **THEN** verification status is `consistent` while setup status is `not-started`
-- **AND** `complete` is false even though `ok` remains true
+- **WHEN** verify finds a valid not-started view
+- **THEN** it may be consistent while setup remains not-started and incomplete
 
 #### Scenario: Phase has a forbidden terminal result
-- **WHEN** authoritative state or evidence gives a phase a terminal result not declared by that phase
-- **THEN** verification reports the state as inconsistent
-- **AND** readiness blocks the phase so no dependent transition can execute
-- **AND** setup completion remains false
+- **WHEN** state/evidence declares a terminal result outside its phase contract
+- **THEN** verification is inconsistent and dependent readiness remains blocked
 
 #### Scenario: Governance state cannot be inspected
-- **WHEN** governance `verify --json` encounters a malformed graph, state, evidence, or policy artifact
-- **THEN** it reports `verificationStatus` as `inconsistent` and `setupStatus` as `indeterminate`
-- **AND** `complete` is false
+- **WHEN** active graph, state, evidence, policy, or declared migration metadata is malformed
+- **THEN** verification reports an inconsistent, indeterminate, incomplete result
+- **AND** it does not fall back to preserved history as current state
+
+#### Scenario: An update revalidation plan reaches its boundary
+- **WHEN** its next operation requires new inputs, independent approval, provider access, or an unavailable producer
+- **THEN** the coordinator stops and reports the next separately reviewed action
 
 ### Requirement: Readiness uses authoritative proof and the selected applicable path
-Readiness SHALL distinguish current authoritative evidence from informational historical records and contradictions. Unknown applicability SHALL remain unresolved rather than becoming false or inapplicable. An alternative dependency SHALL require successful proof from the selected applicable path; skipping the unselected path SHALL NOT satisfy that prerequisite.
+Readiness SHALL distinguish current authoritative evidence, informational history, and current contradictions. Validated retained v1 snapshots SHALL never become execution proof and SHALL not poison a valid current v2 selection merely by existing. Unknown applicability SHALL remain unresolved. Alternative dependencies SHALL require successful proof from the selected applicable path. Migration completion alone SHALL not make governance complete.
 
 #### Scenario: Fresh evidence coexists with stale history
-- **WHEN** one valid current evidence selection exists alongside older stale records
-- **THEN** the current selection determines readiness and old records remain informational
-- **AND** status, readiness, doctor, and verification do not disagree solely because old records were preserved
+- **WHEN** valid current proof exists alongside retained historical records
+- **THEN** it determines readiness consistently across status, doctor, verification, and assessment
 
 #### Scenario: Current evidence is contradictory
-- **WHEN** equally authoritative current records contradict one another under the same selection precedence
-- **THEN** the phase and dependent execution remain blocked with the conflict identified
+- **WHEN** equally authoritative current records disagree
+- **THEN** the phase and dependent execution remain blocked
 
 #### Scenario: Private applicability has not been established
-- **WHEN** private-DAST or credential applicability lacks current validated facts
-- **THEN** it remains unknown and cannot skip required proof as if explicitly inapplicable
+- **WHEN** current validated facts do not establish private-DAST or credential applicability
+- **THEN** it remains unknown rather than skipping the required proof
 
 #### Scenario: Unselected backend path is inapplicable
-- **WHEN** the selected existing-private path is blocked and the unselected import path is inapplicable
-- **THEN** remote readiness remains blocked until the selected path supplies successful required proof
+- **WHEN** the selected path is blocked and another path is inapplicable
+- **THEN** the inapplicable path does not satisfy the selected dependency
 
 #### Scenario: Outcome cannot satisfy its own evidence contract
-- **WHEN** an executor returns success without required body binding or independent live readback
-- **THEN** the outcome is blocked before successful state/evidence persistence rather than failing only on a later inspection
+- **WHEN** an executor reports success without the required body binding or independent proof
+- **THEN** that result is blocked before successful state/evidence persistence
+
+#### Scenario: Migration committed but work remains
+- **WHEN** the linked successor exists but later phases lack current proof
+- **THEN** local migration is reported as committed while governance remains incomplete
 
 ### Requirement: Authority-gated execution binds exact approval timing and Git destinations
 Any approval reused for publication, remote mutation, or another
