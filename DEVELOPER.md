@@ -51,7 +51,7 @@ and successful generated-file checks must not be described as those capabilities
 
 ## Activation version vector
 
-Current deterministic setup contract, retained by the 0.11.2 CLI patch:
+Current deterministic setup contract, retained by the 0.11.3 CLI patch:
 
 ```json
 {
@@ -273,15 +273,16 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.11.2 release checklist
+## 0.11.3 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.11.2`. Preparing these files is not publication or permission to create a tag.
+  `0.11.3`. Preparing these files is not publication or permission to create a tag.
 - Activation package identity remains `0.11.0`; no phase semantics or graph
   identity change is introduced by patch-release preparation.
-- Release notes prominently identify the breaking update-CLI/report changes:
-  mandatory matching preview and exact-plan approval, schema-3 project-update
-  reports, and exit 2 after committed but incomplete local revalidation.
+- Release notes identify context-aware update follow-ups, root-aware validation
+  guidance, and reason-specific preview errors. Mandatory matching preview and
+  exact-plan approval, schema-3 project-update reports, and exit 2 after committed
+  but incomplete local revalidation remain unchanged.
 - Manifest writes use artifactVersion 7; readers accept v2-v7.
 - Policy version is `"6"`; activation contract/state/evidence-header/approval
   remain v2. Compatibility metadata and update reports are v3; preview receipts,
@@ -298,8 +299,8 @@ npm run verify:release-identity
   activation history remain preserved. Only the exact approved migration lane
   can create a linked v2 successor; it does not retag historical proof.
 - Independent infrastructure provenance explicitly admits generation versions
-  `0.11.0`, `0.11.1`, and `0.11.2`, including mixed component histories. Unknown
-  releases remain blocked rather than being accepted through a version range.
+  `0.11.0`, `0.11.1`, `0.11.2`, and `0.11.3`, including mixed component histories.
+  Unknown releases remain blocked rather than being accepted through a version range.
 - No setup-skill version exists in manifests, JSON status, docs, or generated
   integrations.
 - Doctor states and remedies cover seed-incomplete, phase-blocked,

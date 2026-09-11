@@ -33,7 +33,8 @@ export const independentInfrastructureGenerationVersion = '0.11.0' as const;
 export const compatibleIndependentInfrastructureGenerationVersions = [
   independentInfrastructureGenerationVersion,
   '0.11.1',
-  '0.11.2'
+  '0.11.2',
+  '0.11.3'
 ] as const;
 
 export const sharedApplicationModuleIdentities = [

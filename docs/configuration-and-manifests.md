@@ -210,7 +210,7 @@ comparisons to infer execution safety.
 
 | Contract | Current version |
 | --- | --- |
-| CLI package version | 0.11.2 |
+| CLI package version | 0.11.3 |
 | Activation package identity | 0.11.0 |
 | Manifest write / supported reads | 7 / 2-7 for API and GenAI |
 | Normative policy | 6 |
@@ -221,12 +221,12 @@ comparisons to infer execution safety.
 | Phase graph, supersession, credential policy | 1 |
 | Assessment report and control catalog | 1 |
 
-The 0.11.2 CLI patch retains the 0.11.0 activation identity because its phase
+The 0.11.3 CLI patch retains the 0.11.0 activation identity because its phase
 semantics and graph are unchanged. Independent infrastructure provenance
-explicitly recognizes generation versions 0.11.0, 0.11.1, and 0.11.2, including
-mixed component histories; unknown releases are not automatically trusted or
-treated as compatible. The mandatory preview/approval workflow and schema-3
-update reports are breaking CLI behavior despite the patch version.
+explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, and 0.11.3,
+including mixed component histories; unknown releases are not automatically
+trusted or treated as compatible. The mandatory preview/approval workflow and
+schema-3 update reports remain unchanged by this patch.
 
 Known activation-v1 history remains **diagnostic-only**, not executable proof.
 Compatibility metadata v3 separately declares the exact history-preserving
