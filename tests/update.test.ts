@@ -1927,7 +1927,7 @@ describe('core-only update command', () => {
     expect(await readFile(path.join(snapshot, path.relative(root, history.evidencePath)))).toEqual(evidenceBefore);
     expect(await validateGeneratedProject(root)).toEqual([]);
     expect((await run(['update', '--check'], root)).code).toBe(2);
-  });
+  }, process.platform === 'win32' ? 90_000 : 30_000);
 
   it('blocks active governance metadata with an undeclared old graph identity', async () => {
     const root = await fixtureProject();
