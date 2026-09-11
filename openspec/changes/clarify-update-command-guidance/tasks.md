@@ -19,4 +19,21 @@
 
 - [x] 4.1 Update the update-mode and preview-storage sections of `docs/cli-reference.md` and the relevant update guidance in `docs/troubleshooting.md`. Explain current-project discovery, context-aware human suggestions, explicit external/JSON targets, missing preview versus actual storage failure, and check's actionable exit code 2. Verify the examples match the implemented output and do not chain check and apply with `&&`.
 - [x] 4.2 Run the combined affected suites with `npm test -- tests/update-output.test.ts tests/update.test.ts tests/reviewed-update.test.ts tests/update-preview.test.ts tests/update-inspection.test.ts tests/migration-revalidation.test.ts tests/reviewed-update-transaction.test.ts tests/project-discovery.test.ts tests/doctor.test.ts`, followed by `npm run build`. Verify the delta scenarios and existing preview, approval, wrong-target, recovery, and diagnosis behavior without adding dependencies or broadening into unrelated fixes.
-- [ ] 4.3 Verify the path and shell regressions in the existing `windows-latest` CI job in `.github/workflows/ci.yml`, alongside the existing macOS/Linux matrix. Ensure the new scenarios are included in that job's executed suites and record the native Windows result before completing this task; local PowerShell string assertions alone do not satisfy native Windows verification.
+- [x] 4.3 Verify the path and shell regressions in the existing `windows-latest` CI job in `.github/workflows/ci.yml`, alongside the existing macOS/Linux matrix. Ensure the new scenarios are included in that job's executed suites and record the native Windows result before completing this task; local PowerShell string assertions alone do not satisfy native Windows verification.
+
+### Native CI evidence
+
+Completed on 2026-09-11 against commit `fc535f08c120a94fbb4cc940d9f93aa1b942f717`:
+[CI run 34547872851](https://github.com/voyager163/liftoff/actions/runs/34547872851)
+passed all six jobs. The native
+[Windows job](https://github.com/voyager163/liftoff/actions/runs/34547872851/job/103104290273)
+passed the dedicated project/packaging boundary coverage, full package check,
+and package smoke test. Its existing suites include the new project-discovery,
+command-output, receipt/approval, nested-target, and symlink/junction scenarios.
+The macOS and Linux matrix jobs also passed.
+
+The initial [run 34546540005](https://github.com/voyager163/liftoff/actions/runs/34546540005)
+passed Windows boundary coverage but hit the 30-second limit in the historical
+handoff migration scenario during the full suite. That single case now uses
+the existing 90-second Windows migration-test allowance; its assertions,
+non-Windows timeout, and application behavior are unchanged.
