@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import {
   executeLocalRevalidation, previewLocalRevalidation,
@@ -401,6 +402,9 @@ describe('bounded migration local revalidation', {
       protectedInputs: { ...approved.protectedInputs, binding: canonicalSha256('other source inputs') }, runner, clock
     });
     expect(mismatch.status).toBe('blocked');
+    expect(mismatch.blockers).toContain('Protected input binding differs from the approved preview.');
+    expect(mismatch.blockers.join(' ')).not.toContain('--project');
+    expect(mismatch.nextAction).toContain(formatUpdateCommand(root, 'check'));
     expect(await tree(root)).toEqual(before);
     const inspection = await inspectGovernanceTransition(root, { runner, now: clock() });
     await expect(executeApplyNext({
@@ -525,6 +529,8 @@ describe('bounded migration local revalidation', {
     expect(result, JSON.stringify(result)).toMatchObject({ status: 'blocked', nextIncompletePhase: kind === 'seed-checkbox' ? 'seed-verified' : 'seed-valid' });
     expect(result.blockers.join(' ')).toContain(parts.join('/'));
     expect(result.blockers.join(' ')).toContain('preserved');
+    expect(result.blockers.join(' ')).not.toContain('--project');
+    expect(result.nextAction).toContain(formatUpdateCommand(root, 'check'));
     expect(await readFile(path.join(root, ...parts), 'utf8')).toBe(changed);
     expect((await readActivationEvidence(root)).some((record) => record.header.phaseId === 'seed-verified')).toBe(false);
     expect(runner.calls.some(({ command }) => command.executable === 'tofu')).toBe(false);

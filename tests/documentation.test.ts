@@ -240,6 +240,10 @@ describe('public documentation', () => {
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
     expect(cli).toContain('`liftoff update --check` is the human-first compatibility and migration preview');
     expect(cli).toContain('A receipt is not approval');
+    expect(cli).toContain('Human follow-ups omit `--project`');
+    expect(cli).toContain('JSON remedies remain explicitly targeted');
+    expect(cli).toContain('do not join check and apply with `&&`');
+    expect(cli).toContain('`preview-missing` means no saved preview was found');
     expect(cli).toContain('`--approve-plan`');
     expect(cli).toContain('liftoff update --check --json');
     expect(cli).toContain('schema version 3 and `scope: "project-update"`');

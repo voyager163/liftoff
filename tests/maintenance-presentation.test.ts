@@ -4,7 +4,9 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { getUpdatePreviewDirectory } from '../src/adapters/filesystem/update-previews.js';
-import { formatUpdateCommand, formatUpdateValidationCommands } from '../src/application/update/command-guidance.js';
+import {
+  formatUpdateCommand, formatUpdateValidationCommands, type ResolvedUpdateGuidanceContext
+} from '../src/application/update/command-guidance.js';
 import {
   cleanupUpdateTestRoots, createReviewedUpdateFixture, reviewedUpdateArguments,
   updateTestPreviewOptions
@@ -57,11 +59,18 @@ function normalizeMaintenanceOutput(
   previewDirectory: string,
   platform: NodeJS.Platform = process.platform
 ): string {
+  const context: ResolvedUpdateGuidanceContext = {
+    state: 'resolved', projectRoot: cwd, requestedProjectRoot: cwd,
+    invocationDirectory: cwd, implicitProjectRoot: cwd
+  };
   let normalized = value.replaceAll(formatUpdateValidationCommands(cwd, platform),
-    "cd -- '<project>' && liftoff validate && liftoff doctor");
-  for (const mode of ['normal', 'check', 'force'] as const) {
+    "cd -- '<project>' && liftoff validate && liftoff doctor")
+    .replaceAll(formatUpdateValidationCommands(cwd, platform, context), 'liftoff validate && liftoff doctor');
+  for (const mode of ['check', 'force', 'normal'] as const) {
     normalized = normalized.replaceAll(formatUpdateCommand(cwd, mode, platform),
-      `liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`);
+      `liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`)
+      .replaceAll(formatUpdateCommand(cwd, mode, platform, context),
+        `liftoff update${mode === 'normal' ? '' : ` --${mode}`}`);
   }
   return normalized.replaceAll(cwd, '<project>')
     .replaceAll(`${previewDirectory}${path.win32.sep}`, '<preview-store>/')
@@ -142,6 +151,16 @@ describe('maintenance presentation', () => {
       .toBe('liftoff update --project <project>');
     expect(normalizeMaintenanceOutput(formatUpdateValidationCommands(project, platform), project, directory, platform))
       .toBe("cd -- '<project>' && liftoff validate && liftoff doctor");
+    const context: ResolvedUpdateGuidanceContext = {
+      state: 'resolved', projectRoot: project, requestedProjectRoot: project,
+      invocationDirectory: project, implicitProjectRoot: project
+    };
+    for (const mode of ['normal', 'check', 'force'] as const) {
+      expect(normalizeMaintenanceOutput(formatUpdateCommand(project, mode, platform, context), project, directory, platform))
+        .toBe(`liftoff update${mode === 'normal' ? '' : ` --${mode}`}`);
+    }
+    expect(normalizeMaintenanceOutput(formatUpdateValidationCommands(project, platform, context), project, directory, platform))
+      .toBe('liftoff validate && liftoff doctor');
   });
 
   for (const [name, columns] of [['rich', 100], ['plain', 50]] as const) {
@@ -179,7 +198,7 @@ describe('maintenance presentation', () => {
 
       expect(result.code).toBe(0);
       expect(result.out).toContain('Next recommended command');
-      expect(result.out).toContain("$ cd -- '<project>' && liftoff validate && liftoff doctor");
+      expect(result.out).toContain('$ liftoff validate && liftoff doctor');
       expect(result.err).toBe('');
       expect(runner.calls).toEqual([]);
       expect(result).toMatchSnapshot();

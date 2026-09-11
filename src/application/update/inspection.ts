@@ -15,7 +15,7 @@ import { phaseIds } from '../../domain/governance/activation/types.js';
 import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import type { CommandRunner } from '../../process-runner.js';
 import { captureRetainedProjectInputs } from './protected-source.js';
-import { formatUpdateCommand } from './command-guidance.js';
+import { formatUpdateGuidanceText, type UpdateGuidanceContext, type UpdateGuidanceText } from './command-guidance.js';
 import { hasDrift, reconcileProject } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
 import { buildManifest } from '../../templates.js';
@@ -43,10 +43,18 @@ export class UpdatePlanError extends Error {
   constructor(
     message: string,
     readonly reasonCode: string,
-    readonly remedy: string
+    private readonly remedyText: UpdateGuidanceText
   ) {
     super(message);
     this.name = 'UpdatePlanError';
+  }
+
+  get remedy(): string {
+    return this.formatRemedy();
+  }
+
+  formatRemedy(context?: UpdateGuidanceContext): string {
+    return formatUpdateGuidanceText(this.remedyText, context);
   }
 }
 
@@ -168,7 +176,7 @@ export async function inspectProjectUpdate(
     throw new UpdatePlanError(
       'An existing update transaction requires recovery before a new preview.',
       'transaction-recovery-required',
-      `Review the reported transaction and run ${formatUpdateCommand(projectRoot)} for bounded recovery.`
+      ['Review the reported transaction and run ', { projectRoot }, ' for bounded recovery.']
     );
   }
   if (compareSemver(manifest.liftoffVersion, liftoffVersion) > 0) {
@@ -312,7 +320,7 @@ export function uniqueUpdateSnapshots(
     )) {
       throw new UpdatePlanError(
         `Project input changed during preview: ${snapshot.pathParts.join('/')}`,
-        'inputs-changed', `Run ${formatUpdateCommand(projectRoot, 'check')} again.`
+        'inputs-changed', ['Run ', { projectRoot, mode: 'check' }, ' again.']
       );
     }
     unique.set(key, snapshot);

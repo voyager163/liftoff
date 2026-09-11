@@ -8,7 +8,7 @@ import { isUnownedUpdateConflict, provisioningJson } from './planning.js';
 import { entryDisplay, entryMarker, manifestChanges } from './reporting.js';
 import type { UpdateWritePlan } from './write-plan.js';
 import type { LocalRevalidationPhaseResult, LocalRevalidationPreview } from './revalidation.js';
-import { formatUpdateCommand } from './command-guidance.js';
+import { formatUpdateCommand, type UpdateGuidanceContext } from './command-guidance.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 
 export const updateReportSchemaVersion = 3 as const;
@@ -176,7 +176,8 @@ export function renderUpdatePreview(
   plans: readonly UpdatePlanSummary[],
   migration: UpdateMigrationSummary,
   revalidation: UpdateRevalidationSummary,
-  receiptPath?: string
+  receiptPath?: string,
+  guidance?: UpdateGuidanceContext
 ): void {
   presentation.definitions('Project versions', [
     { label: 'Liftoff CLI', value: liftoffVersion },
@@ -223,14 +224,14 @@ export function renderUpdatePreview(
     ]);
   }
   if (plans.some((plan) => plan.eligible && plan.writeCount > 0)) {
-    presentation.command(formatUpdateCommand(inspection.projectRoot));
+    presentation.command(formatUpdateCommand(inspection.projectRoot, 'normal', process.platform, guidance));
     const hasForceableConflict = inspection.entries.some((entry) =>
       !isUnownedUpdateConflict(entry, inspection.oldByName) &&
       (entry.status === 'conflict' || entry.status === 'retired-conflict' ||
         entry.status === 'moved' && !entry.cleanMove)
     );
     if (hasForceableConflict && plans.some((plan) => plan.mode === 'force' && plan.eligible && plan.writeCount > 0)) {
-      presentation.command(formatUpdateCommand(inspection.projectRoot, 'force'));
+      presentation.command(formatUpdateCommand(inspection.projectRoot, 'force', process.platform, guidance));
     }
   }
 }

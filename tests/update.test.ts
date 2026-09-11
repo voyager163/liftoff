@@ -25,6 +25,7 @@ import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
+import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
 import {
   canonicalJson,
@@ -975,7 +976,8 @@ describe('core-only update command', () => {
     }
     expect(check.out).toContain('Unowned destinations remain protected');
     expect(check.out).toContain('--force cannot overwrite it');
-    expect(check.out).not.toContain(formatUpdateCommand(root, 'force'));
+    expect(check.out).not.toContain(formatUpdateCommand(root, 'force', process.platform,
+      await resolveUpdateGuidanceContext(root, root)));
     for (const output of applyOutputs) {
       expect(output).toContain('protected unowned destination');
       expect(output).toContain('--force cannot overwrite it');
@@ -1032,7 +1034,8 @@ describe('core-only update command', () => {
     expect(manifest.governance.state).toBe('handoff-partial');
     expect(manifest.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
     expect(await validateGeneratedProject(root)).toEqual([]);
-    expect(check.out).toContain(formatUpdateCommand(root, 'force'));
+    expect(check.out).toContain(formatUpdateCommand(root, 'force', process.platform,
+      await resolveUpdateGuidanceContext(root, root)));
     expect(check.out).toContain('Unowned destinations remain protected');
   });
 
@@ -2073,9 +2076,12 @@ describe('core-only update command', () => {
         const missing = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
         expect(missing.code).toBe(1);
         const output = json ? JSON.parse(missing.out) : { message: missing.err, remedy: missing.err };
-        expect(output.message).toContain(checkCommand);
         expect(output.remedy).toContain(checkCommand);
         expect(output.message).toContain('No new project update was performed');
+        if (json) {
+          expect(output).toMatchObject({ projectRoot: root, reasonCode: 'preview-missing' });
+          expect(output.message).not.toContain('--project');
+        }
       }
 
       const preview = await runRaw(['update', '--check', ...target], cwd);
@@ -2096,8 +2102,11 @@ describe('core-only update command', () => {
         const stale = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
         expect(stale.code).toBe(1);
         const output = json ? JSON.parse(stale.out) : { message: stale.err, remedy: stale.err };
-        expect(output.message).toContain(checkCommand);
         expect(output.remedy).toContain(checkCommand);
+        if (json) {
+          expect(output).toMatchObject({ projectRoot: root, reasonCode: 'preview-mismatch' });
+          expect(output.message).not.toContain('--project');
+        }
       }
       expect(await readFile(policy, 'utf8')).toBe('# Concurrently edited policy\n');
       expect(await fingerprintUpdateTestProject(cwd)).toEqual(otherBefore);

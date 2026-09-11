@@ -20,7 +20,6 @@ import {
 import { UpdatePlanError, type UpdateInspection } from './inspection.js';
 import { previewLocalRevalidation, type LocalRevalidationPreview } from './revalidation.js';
 import type { UpdateWritePlan } from './write-plan.js';
-import { formatUpdateCommand } from './command-guidance.js';
 
 export interface PreparedUpdateRevalidation {
   preview: LocalRevalidationPreview;
@@ -127,7 +126,7 @@ export function postUpdateProtectedInputs(
         throw new UpdatePlanError(
           'Protected application inputs changed after the reviewed update.',
           'revalidation-inputs-changed',
-          `Preserve the edits and run ${formatUpdateCommand(inspection.projectRoot, 'check')} again.`
+          ['Preserve the edits and run ', { projectRoot: inspection.projectRoot, mode: 'check' }, ' again.']
         );
       }
       const observed = await captureRetainedProjectInputs(inspection.projectRoot);
@@ -136,7 +135,7 @@ export function postUpdateProtectedInputs(
         throw new UpdatePlanError(
           `Protected project scripts or sources changed after review: ${changed.join(', ')}`,
           'revalidation-inputs-changed',
-          `Preserve the edits and run ${formatUpdateCommand(inspection.projectRoot, 'check')} again.`
+          ['Preserve the edits and run ', { projectRoot: inspection.projectRoot, mode: 'check' }, ' again.']
         );
       }
       return observed;

@@ -1,9 +1,15 @@
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import type { CommandContext } from '../src/application/context.js';
+import { createUpdateTransactionApprovalStore, loadUpdatePreviewReceipt } from '../src/adapters/filesystem/update-previews.js';
+import { applyReviewedUpdateTransaction, inspectReviewedUpdateTransaction } from '../src/adapters/filesystem/reviewed-update-transaction.js';
+import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
+import { formatUpdateCommand, formatUpdateValidationCommands } from '../src/application/update/command-guidance.js';
+import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
+import { UpdatePreviewError } from '../src/application/update/preview.js';
 import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { validateEvidenceFreshness } from '../src/domain/governance/activation/evidence.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
@@ -43,13 +49,19 @@ async function fixture() {
   return { root, guide, originalGuide };
 }
 
-async function run(root: string, args: string[], overrides: Partial<CommandContext> = {}) {
+async function runRaw(root: string, args: string[], overrides: Partial<CommandContext> = {}) {
   const stdout = new CaptureStream();
-  const stderr = overrides.stderr ?? new CaptureStream();
+  const capturedStderr = new CaptureStream();
+  const stderr = overrides.stderr ?? capturedStderr;
   const code = await runCommand(parseArgs(args), {
-    cwd: root, stdout, stderr, updatePreview: updateTestPreviewOptions(root), ...overrides
+    cwd: root, stdout, stderr, updatePreview: updateTestPreviewOptions(root),
+    terminal: { layout: 'plain', color: false }, ...overrides
   });
-  const text = stdout.text();
+  return { code, text: stdout.text(), err: capturedStderr.text(), stderr };
+}
+
+async function run(root: string, args: string[], overrides: Partial<CommandContext> = {}) {
+  const { code, text, stderr } = await runRaw(root, args, overrides);
   const report: unknown = JSON.parse(text);
   if (!isRecord(report) || !Array.isArray(report.plans)) throw new Error(`Invalid update report: ${text}`);
   const plans = report.plans.map((value) => {
@@ -58,6 +70,12 @@ async function run(root: string, args: string[], overrides: Partial<CommandConte
     return { mode: value.mode, fingerprint: value.fingerprint };
   });
   return { code, report: { ...report, plans }, text, stderr };
+}
+
+function implicitUpdate(mode: 'normal' | 'check' | 'force' = 'normal'): string {
+  return formatShellCommand({
+    executable: 'liftoff', args: ['update', ...(mode === 'normal' ? [] : [`--${mode}`])]
+  }, commandShellForPlatform(process.platform));
 }
 
 async function preview(root: string, mode: 'normal' | 'force' = 'normal') {
@@ -126,6 +144,228 @@ class MigrationRunner implements CommandRunner {
 }
 
 describe('reviewed update command integration', () => {
+  it('retains the canonical explicit target when cwd is a leaf project symlink or junction', async () => {
+    const { root, guide, originalGuide } = await fixture();
+    const cwd = path.join(path.dirname(root), 'leaf project alias');
+    await symlink(root, cwd, process.platform === 'win32' ? 'junction' : 'dir');
+    const before = await fingerprintUpdateTestProject(root);
+    const checked = await runRaw(root, ['update', '--check', '--project', root], { cwd });
+    expect(checked.code, checked.err).toBe(2);
+    expect(checked.text).toContain(formatUpdateCommand(root));
+    expect(checked.text + checked.err).toContain('not a symlink or junction');
+    const implicit = await runRaw(root, ['update'], { cwd });
+    expect(implicit.code).toBe(1);
+    expect(implicit.err).toContain('not a symlink or junction');
+    expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+
+    const stored = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
+    const selected = stored.receipt.variants.find((entry) => entry.mode === 'normal');
+    if (!selected) throw new Error('Expected a reviewed normal plan.');
+    const applied = await runRaw(root, ['update', '--project', root, '--approve-plan', selected.fingerprint], { cwd });
+    expect(applied.code, applied.err).toBe(0);
+    expect(applied.text).toContain(formatUpdateValidationCommands(root));
+    expect(await readFile(guide)).toEqual(originalGuide);
+  });
+
+  it.each(['root', 'subdirectory', 'another project'])('preserves bounded recovery guidance from %s', async (location) => {
+    const { root, guide, originalGuide } = await fixture();
+    let cwd = root;
+    if (location === 'subdirectory') {
+      cwd = path.join(root, 'backend', 'nested');
+      await mkdir(cwd, { recursive: true });
+    } else if (location === 'another project') {
+      cwd = (await fixture()).root;
+    }
+    const previewOptions = updateTestPreviewOptions(root);
+    const approvalStore = createUpdateTransactionApprovalStore(root, previewOptions);
+    const committed = await applyReviewedUpdateTransaction(root, [{
+      type: 'write', pathParts: [...governanceArtifactPaths.guide], content: originalGuide.toString('utf8')
+    }], {
+      planFingerprint: 'a'.repeat(64),
+      approvalStore,
+      onCheckpoint: async ({ phase }) => {
+        if (phase === 'committed') throw new Error('Fixture interruption after commit.');
+      }
+    });
+    expect(committed).toMatchObject({ committed: true, status: 'committed' });
+    expect(committed.cleanupFailures).toContainEqual(expect.stringContaining('Fixture interruption'));
+    const target = location === 'another project' ? ['--project', root] : [];
+    const json = await run(root, ['update', '--check', '--json', ...target], { cwd });
+    expect(json.code, json.text).toBe(1);
+    expect(json.report).toMatchObject({ reasonCode: 'transaction-recovery-required', committed: true });
+    expect(json.report.remedy).toContain(formatUpdateCommand(root));
+    const guidance = await resolveUpdateGuidanceContext(cwd, root);
+    const checked = await runRaw(root, ['update', '--check', ...target], { cwd });
+    expect(checked.code, checked.err).toBe(1);
+    expect(checked.err).toContain(formatUpdateCommand(root, 'normal', process.platform, guidance));
+    expect(checked.err).toContain(formatUpdateCommand(root, 'check', process.platform, guidance));
+    if (location !== 'another project') expect(checked.err).not.toContain('--project');
+    await expect(loadUpdatePreviewReceipt(root, previewOptions)).rejects.toMatchObject({ code: 'preview-missing' });
+
+    const recovered = await runRaw(root, ['update', ...target], { cwd });
+    expect(recovered.code, recovered.err).toBe(2);
+    expect(recovered.text).toContain('no new update was started');
+    expect(recovered.text).toContain(formatUpdateCommand(root, 'check', process.platform, guidance));
+    expect(await readFile(guide)).toEqual(originalGuide);
+    expect(await inspectReviewedUpdateTransaction(root, { approvalStore })).toMatchObject({ status: 'absent' });
+  });
+
+  it.each(['root', 'subdirectory', 'ancestor alias'])(
+    'guides the raw preview and approval sequence from the %s without a redundant project argument',
+    async (location) => {
+      const { root, guide, originalGuide } = await fixture();
+      let cwd = root;
+      if (location === 'subdirectory') {
+        cwd = path.join(root, 'backend', 'nested directory');
+        await mkdir(cwd, { recursive: true });
+      } else if (location === 'ancestor alias') {
+        const alias = path.join(path.dirname(path.dirname(root)), 'repository alias');
+        await symlink(path.dirname(root), alias, process.platform === 'win32' ? 'junction' : 'dir');
+        cwd = path.join(alias, path.basename(root));
+      }
+      const before = await fingerprintUpdateTestProject(root);
+      const missing = await runRaw(root, ['update'], { cwd });
+      expect(missing.code, missing.err).toBe(1);
+      expect(missing.text).toContain(await realpath(root));
+      expect(missing.err).toContain('No saved update preview was found');
+      expect(missing.err).toContain('No new project update was performed');
+      expect(missing.err).toContain(implicitUpdate('check'));
+      expect(missing.err).not.toContain('preview-storage');
+      expect(missing.err).not.toContain('--project');
+
+      const checked = await runRaw(root, ['update', '--check'], { cwd });
+      expect(checked.code, checked.err).toBe(2);
+      expect(checked.text).toContain(implicitUpdate());
+      expect(checked.text).not.toContain('--project');
+      const stored = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
+      const selected = stored.receipt.variants.find((entry) => entry.mode === 'normal');
+      if (!selected) throw new Error('Expected a reviewed normal plan.');
+
+      const unapproved = await runRaw(root, ['update'], { cwd });
+      expect(unapproved.code, unapproved.err).toBe(1);
+      expect(unapproved.err).toContain('Explicit approval of this exact update plan is required.');
+      expect(unapproved.err).not.toContain('--project');
+      expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+
+      const applied = await runRaw(root, ['update', '--approve-plan', selected.fingerprint], { cwd });
+      expect(applied.code, applied.err).toBe(0);
+      const guidance = await resolveUpdateGuidanceContext(cwd, root);
+      expect(applied.text).toContain(formatUpdateValidationCommands(root, process.platform, guidance));
+      if (location !== 'subdirectory') {
+        expect(applied.text).not.toContain('cd --');
+        expect(applied.text).not.toContain('Set-Location');
+      }
+      expect(await readFile(guide)).toEqual(originalGuide);
+      await expect(loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root)))
+        .rejects.toMatchObject({ code: 'preview-missing' });
+    }
+  );
+
+  it.each([
+    ['implicit', 'flag'],
+    ['flag', 'implicit'],
+    ['implicit', 'positional'],
+    ['positional', 'implicit']
+  ])('keeps receipt identity for %s check and %s apply targeting', async (checkTarget, applyTarget) => {
+    const { root, guide, originalGuide } = await fixture();
+    const cwd = path.join(root, 'backend', 'nested');
+    await mkdir(cwd, { recursive: true });
+    const target = (kind: string) => kind === 'implicit' ? [] : kind === 'flag' ? ['--project', root] : [root];
+    const checked = await run(root, ['update', '--check', '--json', ...target(checkTarget)], { cwd });
+    expect(checked.code, checked.text).toBe(2);
+    const first = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
+    const rechecked = await run(root, ['update', '--check', '--json', ...target(applyTarget)], { cwd });
+    expect(rechecked.code, rechecked.text).toBe(2);
+    const second = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
+    expect(second.receipt.projectKey).toBe(first.receipt.projectKey);
+    expect(rechecked.report.plans).toEqual(checked.report.plans);
+    const selected = checked.report.plans.find((entry) => entry.mode === 'normal');
+    if (!selected) throw new Error('Expected a reviewed normal plan.');
+
+    const applied = await run(root, ['update', '--json', '--approve-plan', selected.fingerprint, ...target(applyTarget)], { cwd });
+    expect(applied.code, applied.text).toBe(0);
+    expect(applied.report).toMatchObject({
+      schemaVersion: 3, scope: 'project-update', projectRoot: await realpath(root),
+      reasonCode: 'approved-update-applied', committed: true
+    });
+    expect(applied.report).not.toHaveProperty('guidance');
+    expect(applied.report).not.toHaveProperty('invocationDirectory');
+    expect(await readFile(guide)).toEqual(originalGuide);
+  });
+
+  it.each(['another project', 'nested project', 'broken caller boundary'])(
+    'keeps an explicit target when invoked from %s',
+    async (location) => {
+      const { root, guide, originalGuide } = await fixture();
+      const other = await fixture();
+      let cwd = other.root;
+      if (location === 'nested project') {
+        cwd = path.join(root, 'inner project');
+        await rename(other.root, cwd);
+      } else if (location === 'broken caller boundary') {
+        cwd = path.join(other.root, 'unreadable context');
+        await mkdir(path.join(cwd, 'liftoff.manifest.json'), { recursive: true });
+        const failedImplicit = await runRaw(root, ['update'], { cwd });
+        expect(failedImplicit.code).toBe(1);
+        expect(failedImplicit.err).toContain('regular file');
+      }
+      const callerBefore = await fingerprintUpdateTestProject(cwd);
+      const checked = await runRaw(root, ['update', '--check', '--project', root], { cwd });
+      expect(checked.code, checked.err).toBe(2);
+      expect(checked.text).toContain(formatUpdateCommand(root));
+      if (location === 'broken caller boundary') {
+        expect(checked.text + checked.err).toContain('invocation context could not be resolved');
+      }
+      const stored = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
+      const selected = stored.receipt.variants.find((entry) => entry.mode === 'normal');
+      if (!selected) throw new Error('Expected a reviewed normal plan.');
+      const applied = await runRaw(root, ['update', '--project', root, '--approve-plan', selected.fingerprint], { cwd });
+      expect(applied.code, applied.err).toBe(0);
+      expect(applied.text).toContain(formatUpdateValidationCommands(root));
+      expect(await fingerprintUpdateTestProject(cwd)).toEqual(callerBefore);
+      expect(await readFile(guide)).toEqual(originalGuide);
+    }
+  );
+
+  it.each([
+    ['preview-missing', 'review the proposed changes'],
+    ['preview-mismatch', 'review the current plan'],
+    ['preview-storage', 'Repair the reported preview-storage failure'],
+    ['preview-invalid', 'Repair the reported invalid preview receipt'],
+    ['preview-unsupported', 'preview-format incompatibility'],
+    ['preview-busy', 'Wait for the other preview operation']
+  ] as const)('renders typed %s failures with factual details and a specific remedy', async (code, remedy) => {
+    const { root } = await fixture();
+    const before = await fingerprintUpdateTestProject(root);
+    const detail = `Reported ${code} diagnostic.`;
+    for (const json of [false, true]) {
+      const failed = await runRaw(root, ['update', '--check', ...(json ? ['--json'] : [])], {
+        updatePreview: {
+          ...updateTestPreviewOptions(root),
+          clock: () => { throw new UpdatePreviewError(code, detail); }
+        }
+      });
+      expect(failed.code, failed.text + failed.err).toBe(1);
+      if (json) {
+        const report: unknown = JSON.parse(failed.text);
+        if (!isRecord(report)) throw new Error('Expected a structured failure report.');
+        expect(report).toMatchObject({
+          schemaVersion: 3, reasonCode: code, projectRoot: await realpath(root), committed: false,
+          message: `${detail} No new project update was performed.`
+        });
+        expect(report.remedy).toContain(remedy);
+        expect(report.remedy).toContain(formatUpdateCommand(root, 'check'));
+      } else {
+        expect(failed.err).toContain(detail);
+        expect(failed.err).toContain(remedy);
+        expect(failed.err).toContain(implicitUpdate('check'));
+        expect(failed.err).not.toContain('--project');
+      }
+      expect(failed.text + failed.err).not.toContain('Repair any reported preview-storage issue');
+      expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+    }
+  });
+
   it('requires a real prior preview before any apply writes', async () => {
     const { root, guide } = await fixture();
     const before = await fingerprintUpdateTestProject(root);
@@ -133,6 +373,9 @@ describe('reviewed update command integration', () => {
 
     expect(result.code).toBe(1);
     expect(result.report.reasonCode).toBe('preview-missing');
+    expect(result.report.remedy).toContain(formatUpdateCommand(root, 'check'));
+    expect(result.report.message).not.toContain('--project');
+    expect(result.report.remedy).not.toContain('preview-storage');
     expect(await fingerprintUpdateTestProject(root)).toEqual(before);
     await expect(access(guide)).rejects.toMatchObject({ code: 'ENOENT' });
   });

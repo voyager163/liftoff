@@ -13,7 +13,6 @@ import {
   validateUpdatePreviewReceipt
 } from '../../application/update/preview.js';
 import type { UpdatePreviewDescriptor, UpdatePreviewReceipt } from '../../application/update/preview.js';
-import { formatUpdateCommand } from '../../application/update/command-guidance.js';
 import {
   createUpdateTransactionApprovalSeal,
   updateTransactionApprovalKey,
@@ -457,7 +456,8 @@ function missing(storage: Storage): never {
   const { location } = storage;
   throw new UpdatePreviewError(
     'preview-missing',
-    `No preview receipt exists for this project at ${location.receiptPath}. Run ${formatUpdateCommand(location.projectRoot, 'check', storage.platform)}.`
+    `No saved update preview was found for project ${location.projectRoot}. Expected receipt: ${location.receiptPath}.`,
+    { projectRoot: location.projectRoot, platform: storage.platform }
   );
 }
 

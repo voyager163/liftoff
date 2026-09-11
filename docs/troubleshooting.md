@@ -146,6 +146,34 @@ Restore `liftoff.manifest.json` from version control or regenerate the project
 with the matching Liftoff version. Do not weaken path validation or retain a
 hand-edited unsafe path.
 
+## Update reports a missing preview
+
+`preview-missing` means Liftoff found the project but has no saved update preview
+for it in the current user-local store. It is not a requirement to repeat the
+project folder or evidence of a storage fault. From inside the project, run
+these commands separately:
+
+```bash
+liftoff update --check
+liftoff update
+```
+
+Review the preview before approving apply. Check exits 2 when it finds actionable
+work, so joining check and apply with `&&` would skip the second command.
+A previously saved preview may have been consumed; run a fresh check rather than
+assuming the earlier check is still available.
+
+Human follow-ups omit a redundant `--project` when the current directory resolves
+to the selected project. They retain an explicit target when operating on another
+project or when the caller's context cannot be established. JSON remedies keep
+explicit targets. Completion omits a redundant directory change only when
+already at the project root.
+
+A stale preview (`preview-mismatch`) also needs a fresh check and approval.
+Storage, invalid-receipt, unsupported-format, and busy-operation failures have
+their own remedies; repair the named condition instead of changing the project
+argument or deleting an active lock.
+
 ## Update reports managed-core conflicts or orphans
 
 Run `liftoff update --check` before apply. `liftoff update` requires the matching

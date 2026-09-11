@@ -1,3 +1,4 @@
+import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   commandShellForPlatform,
@@ -5,9 +6,11 @@ import {
 } from '../src/adapters/process/shell-command.js';
 import {
   formatUpdateCommand,
-  formatUpdateValidationCommands
+  formatUpdateValidationCommands,
+  type ResolvedUpdateGuidanceContext
 } from '../src/application/update/command-guidance.js';
-import { inspectProjectUpdate } from '../src/application/update/inspection.js';
+import { inspectProjectUpdate, UpdatePlanError } from '../src/application/update/inspection.js';
+import { formatUpdatePreviewRemedy, UpdatePreviewError } from '../src/application/update/preview.js';
 import {
   buildUpdateReport,
   renderUpdateApprovalScope,
@@ -68,6 +71,69 @@ describe('project-bound update command guidance', () => {
       expect(formatUpdateCommand(entry.root, mode, entry.platform)).toBe(entry[mode]);
     }
     expect(formatUpdateValidationCommands(entry.root, entry.platform)).toBe(entry.validation);
+
+    const context: ResolvedUpdateGuidanceContext = {
+      state: 'resolved',
+      requestedProjectRoot: entry.root,
+      projectRoot: entry.root,
+      invocationDirectory: entry.root,
+      implicitProjectRoot: entry.root
+    };
+    for (const mode of ['normal', 'check', 'force'] as const) {
+      const expected = formatShellCommand({
+        executable: 'liftoff',
+        args: ['update', ...(mode === 'normal' ? [] : [`--${mode}`])]
+      }, commandShellForPlatform(entry.platform));
+      expect(formatUpdateCommand(entry.root, mode, entry.platform, context)).toBe(expected);
+      expect(formatUpdateCommand(entry.root, mode, entry.platform, {
+        ...context, invocationDirectory: (entry.platform === 'win32' ? path.win32 : path.posix).join(entry.root, 'backend')
+      })).toBe(expected);
+      expect(formatUpdateCommand(entry.root, mode, entry.platform, {
+        state: 'unresolved', detail: 'No trustworthy invocation context'
+      })).toBe(entry[mode]);
+      expect(formatUpdateCommand(entry.root, mode, entry.platform, {
+        ...context, implicitProjectRoot: `${entry.root}-other`
+      })).toBe(entry[mode]);
+      expect(formatUpdateCommand(entry.root, mode, entry.platform, {
+        ...context, requestedProjectRoot: `${entry.root}-other`, projectRoot: `${entry.root}-other`
+      })).toBe(entry[mode]);
+    }
+    expect(formatUpdateValidationCommands(entry.root, entry.platform, context)).toBe(
+      entry.platform === 'win32'
+        ? "& 'liftoff' 'validate'; if ($?) { & 'liftoff' 'doctor' }"
+        : 'liftoff validate && liftoff doctor'
+    );
+    expect(formatUpdateValidationCommands(entry.root, entry.platform, {
+      ...context, invocationDirectory: (entry.platform === 'win32' ? path.win32 : path.posix).join(entry.root, 'backend')
+    })).toBe(entry.validation);
+    expect(formatUpdateValidationCommands(entry.root, entry.platform, {
+      state: 'unresolved', detail: 'No trustworthy invocation context'
+    })).toBe(entry.validation);
+  });
+
+  it('renders structured lower-layer remedies without altering standalone guidance', () => {
+    const root = path.resolve('project');
+    const context: ResolvedUpdateGuidanceContext = {
+      state: 'resolved', projectRoot: root, requestedProjectRoot: root,
+      invocationDirectory: root, implicitProjectRoot: root
+    };
+    const error = new UpdatePlanError('Inputs changed.', 'inputs-changed',
+      ['Preserve the edits and run ', { projectRoot: root, mode: 'check' }, ' again.']);
+    const explicit = `Preserve the edits and run ${formatUpdateCommand(root, 'check')} again.`;
+    expect(error.message).toBe('Inputs changed.');
+    expect(error.remedy).toBe(explicit);
+    expect(error.formatRemedy(context)).toBe(
+      `Preserve the edits and run ${formatUpdateCommand(root, 'check', process.platform, context)} again.`
+    );
+    expect(error.remedy).toBe(explicit);
+    const previewError = new UpdatePreviewError('preview-mismatch', 'The reviewed inputs changed.', {
+      projectRoot: root
+    });
+    expect(previewError.message).toContain(formatUpdateCommand(root, 'check'));
+    expect(previewError.detail).toBe('The reviewed inputs changed.');
+    expect(formatUpdatePreviewRemedy('preview-missing', root, context, 'force'))
+      .toContain(formatUpdateCommand(root, 'force', process.platform, context));
+    expect(formatUpdatePreviewRemedy('preview-missing', root, context)).not.toContain('&&');
   });
 });
 

@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
-import { formatUpdateCommand } from './command-guidance.js';
+import { formatUpdateCommand, type UpdateGuidanceContext } from './command-guidance.js';
 
 export const updatePreviewSchemaVersion = 1;
 export const updatePreviewDirectoryParts: readonly string[] = Object.freeze(['liftoff', 'update-previews']);
@@ -14,10 +14,43 @@ export type UpdatePreviewErrorCode =
   | 'preview-storage'
   | 'preview-busy';
 
+interface UpdatePreviewErrorOptions extends ErrorOptions {
+  projectRoot?: string;
+  platform?: NodeJS.Platform;
+  mode?: UpdatePreviewMode;
+}
+
 export class UpdatePreviewError extends Error {
-  constructor(readonly code: UpdatePreviewErrorCode, message: string, options?: ErrorOptions) {
-    super(message, options);
+  constructor(readonly code: UpdatePreviewErrorCode, readonly detail: string, options?: UpdatePreviewErrorOptions) {
+    super(options?.projectRoot
+      ? `${detail} ${formatUpdatePreviewRemedy(code, options.projectRoot, undefined, options.mode, options.platform)}`
+      : detail, options);
     this.name = 'UpdatePreviewError';
+  }
+}
+
+export function formatUpdatePreviewRemedy(
+  code: UpdatePreviewErrorCode,
+  projectRoot: string,
+  context?: UpdateGuidanceContext,
+  mode: UpdatePreviewMode = 'normal',
+  platform: NodeJS.Platform = process.platform
+): string {
+  const check = formatUpdateCommand(projectRoot, 'check', platform, context);
+  const apply = formatUpdateCommand(projectRoot, mode, platform, context);
+  switch (code) {
+    case 'preview-missing':
+      return `Run ${check}, review the proposed changes, then run ${apply} and explicitly approve the matching plan.`;
+    case 'preview-mismatch':
+      return `Run ${check} again, review the current plan, then run ${apply} and explicitly approve that plan.`;
+    case 'preview-storage':
+      return `Repair the reported preview-storage failure, then run ${check} before applying.`;
+    case 'preview-invalid':
+      return `Repair the reported invalid preview receipt without changing project files, then run ${check} and review a fresh plan.`;
+    case 'preview-unsupported':
+      return `Resolve the reported preview-format incompatibility with a compatible Liftoff CLI, then run ${check} and review a fresh plan.`;
+    case 'preview-busy':
+      return `Wait for the other preview operation to finish, then retry ${check} before applying. Do not remove an active lock.`;
   }
 }
 
@@ -252,7 +285,7 @@ export function validateUpdatePreviewReceipt(
   if (options.projectRoot !== undefined &&
       receipt.projectRoot !== normalizeUpdatePreviewProjectRoot(options.projectRoot)) {
     throw new UpdatePreviewError('preview-mismatch',
-      `Preview belongs to a different project or worktree. Run ${formatUpdateCommand(options.projectRoot, 'check')}.`);
+      'Preview belongs to a different project or worktree.', { projectRoot: options.projectRoot });
   }
   if (options.now !== undefined &&
       (!Number.isFinite(options.now.getTime()) || Date.parse(receipt.issuedAt) > options.now.getTime())) {
@@ -271,7 +304,8 @@ export function matchUpdatePreviewReceipt(
   if (!matched || matched.fingerprint !== current.fingerprint) {
     throw new UpdatePreviewError(
       'preview-mismatch',
-      `The ${current.mode} preview is missing or stale for the current inputs, target, or operations. Run ${formatUpdateCommand(current.projectRoot, 'check')}.`
+      `The ${current.mode} preview is missing or stale for the current inputs, target, or operations.`,
+      { projectRoot: current.projectRoot, mode: current.mode }
     );
   }
   return current;

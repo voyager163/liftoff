@@ -273,12 +273,30 @@ liftoff update --check --json
 liftoff update --approve-plan <fingerprint> --json
 ```
 
+Run update from the project root or a subdirectory: Liftoff finds the nearest
+`liftoff.manifest.json`, so `--project` is not required for that project.
+Human follow-ups omit `--project` when discovery from the invocation directory
+selects the same target, and identify the selected project separately.
+When a positional path or `--project` selects a different project, follow-ups
+keep its explicit absolute target. An inner project never substitutes for an
+explicitly selected outer project. JSON remedies remain explicitly targeted so
+they can be used outside the originating shell.
+
+After apply, the recommended validation sequence omits a directory change when
+already at the project root. From other directories, including project
+subdirectories, it retains the change to that root. Validate must succeed before
+doctor runs; Liftoff prints these instructions without executing them.
+
 `liftoff update --check` is the human-first compatibility and migration preview.
 It changes no project bytes, but saves and discloses a project-bound preview
 receipt in user-local storage outside the repository. A receipt is not approval.
 `liftoff update` requires a matching preview, recomputes its effective plan, and
 asks for explicit approval with a negative default. Missing or stale previews
 stop with instructions to rerun check. No-op inspection requires no approval.
+
+Run check and apply as separate commands; do not join check and apply with `&&`.
+Check returns exit code 2 for an actionable preview, so a success-only shell
+chain would skip apply even though the preview was created successfully.
 
 Noninteractive apply additionally requires the exact full plan fingerprint
 through `--approve-plan`. Check and apply must share the same materialized
@@ -348,8 +366,23 @@ repository:
 An empty or relative override is an error, not a request to use the fallback.
 Unsafe paths, links/junctions, or storage inside the project or repository also
 block the update; repair the reported storage issue rather than moving a receipt
-into the project. Commands containing spaces or shell metacharacters use literal
-native-shell quoting and retain the selected project path.
+into the project. When an explicit target is needed, commands containing spaces
+or shell metacharacters use literal native-shell quoting and retain the selected
+project path.
+
+`preview-missing` means no saved preview was found for the selected project.
+It does not mean project discovery failed or that storage is damaged. A receipt
+may have been consumed or may be absent from this user-local store; run a fresh
+check, review it, then approve the matching apply plan. `preview-mismatch` also
+requires a fresh check because the saved preview no longer matches the current
+plan. Repeating the project argument does not satisfy either prerequisite.
+
+Other preview failures retain their specific diagnosis: `preview-storage` names
+a storage operation or path to repair, `preview-invalid` identifies an invalid
+receipt, `preview-unsupported` reports a format incompatibility, and
+`preview-busy` reports concurrent access. Follow the named remedy rather than
+treating every failure as a missing preview. Do not remove an active lock or
+change project files to repair preview metadata.
 
 The immutable history snapshot travels inside the project. Preview receipts and
 approval records do not: another machine, checkout, worktree, or moved project

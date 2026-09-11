@@ -202,7 +202,7 @@ export async function executeLocalRevalidation(input: {
     if (protectedSnapshot) {
       const changed = changedRetainedProjectInputs(protectedSnapshot,
         observed ?? await captureRetainedProjectInputs(approved.projectRoot));
-      if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized. Run ${formatUpdateCommand(approved.projectRoot, 'check')} again.`);
+      if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized.`);
     }
   }
 
@@ -278,7 +278,7 @@ export async function executeLocalRevalidation(input: {
       throw new Error('The approved local inspection, record-write, or command-limit descriptions changed; obtain a fresh preview.');
     }
     assertDigest(input.protectedInputs.binding, 'Current protected input');
-    if (input.protectedInputs.binding !== approved.protectedInputBinding) throw new Error(`Protected input binding differs from the approved preview; run ${formatUpdateCommand(approved.projectRoot, 'check')} again.`);
+    if (input.protectedInputs.binding !== approved.protectedInputBinding) throw new Error('Protected input binding differs from the approved preview.');
     if (await realpath(approved.projectRoot) !== approved.projectRoot) throw new Error('The approved project boundary changed.');
     if (approved.phases.length > localPhases.length ||
       approved.phases.some((phase, index) => !localPhases.includes(phase.phaseId) ||

@@ -17,14 +17,17 @@ import { manifestDisplayPath } from '../../domain/project/paths.js';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
 import { requestUpdateApproval } from './approval.js';
-import { formatUpdateCommand, formatUpdateValidationCommands } from './command-guidance.js';
+import {
+  formatUpdateCommand, formatUpdateValidationCommands, type UpdateCommandMode, type UpdateGuidanceContext
+} from './command-guidance.js';
+import { resolveUpdateGuidanceContext } from './guidance-context.js';
 import { inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
 import {
   buildUpdateReport, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
   type UpdateMigrationSummary, type UpdateRevalidationSummary, type UpdateReportInput
 } from './output.js';
 import { assertAuthorizedUpdateMutations, preflightUpdate } from './planning.js';
-import { matchUpdatePreviewReceipt, UpdatePreviewError } from './preview.js';
+import { formatUpdatePreviewRemedy, matchUpdatePreviewReceipt, UpdatePreviewError } from './preview.js';
 import { prepareUpdateReview, type ReviewedUpdatePlan } from './review-plan.js';
 import { entryDisplay, maybeInjectUpdateFailure } from './reporting.js';
 import {
@@ -73,6 +76,9 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
   const { check, force, jsonMode } = request;
   presentation.commandIdentity('update', 'Preview and explicitly approve scoped project updates');
   let projectRoot = request.project ? path.resolve(context.cwd, request.project) : context.cwd;
+  let guidance: UpdateGuidanceContext | undefined;
+  const updateCommand = (mode: UpdateCommandMode = 'normal') =>
+    formatUpdateCommand(projectRoot, mode, process.platform, guidance);
   let inspection: UpdateInspection | undefined;
   let selected: ReviewedUpdatePlan | undefined;
   let committed = false;
@@ -83,7 +89,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       throw new UpdatePlanError(
         '--check cannot be combined with --force or --approve-plan.',
         'invalid-update-options',
-        `Run ${formatUpdateCommand(projectRoot, 'check')} before explicitly approving an apply plan.`
+        `Run ${updateCommand('check')} before explicitly approving an apply plan.`
       );
     }
     const discovered = request.project ? projectRoot : await findProjectRoot(context.cwd);
@@ -95,6 +101,15 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     }
     projectRoot = discovered;
     await loadManifest(projectRoot);
+    if (!jsonMode) {
+      guidance = await resolveUpdateGuidanceContext(context.cwd, projectRoot, request.project ? undefined : discovered);
+      if (guidance.state === 'unresolved') {
+        presentation.warning(`Follow-up commands remain explicitly targeted because the invocation context could not be resolved: ${guidance.detail}`);
+      }
+      presentation.definitions('Selected project', [
+        { label: 'Root', value: guidance.state === 'resolved' ? guidance.projectRoot : projectRoot }
+      ]);
+    }
     const initialOptions = storeOptions(context);
     const approvalStore = createUpdateTransactionApprovalStore(projectRoot, initialOptions);
     const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
@@ -104,7 +119,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           mode: check ? 'check' : 'apply', status: 'blocked',
           reasonCode: 'transaction-recovery-required', projectRoot, committed: recovery.committed,
           message: recovery.reason ?? 'An interrupted approved update requires bounded recovery.',
-          remedy: `Review the reported transaction and run ${formatUpdateCommand(projectRoot)} for recovery; then run ${formatUpdateCommand(projectRoot, 'check')}.`
+          remedy: `Review the reported transaction and run ${updateCommand()} for recovery; then run ${updateCommand('check')}.`
         });
         return 1;
       }
@@ -116,7 +131,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           ? outcome.rollbackFailures.join('; ')
           : 'Recovered the previously approved transaction; no new update was started.',
         warnings: outcome.cleanupFailures,
-        remedy: `Run ${formatUpdateCommand(projectRoot, 'check')} before approving new work.`
+        remedy: `Run ${updateCommand('check')} before approving new work.`
       });
       return outcome.status === 'blocked' ? 1 : 2;
     }
@@ -152,7 +167,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           variants.filter((entry) => entry.summary.eligible).map((entry) => entry.descriptor), options)
         : undefined;
       if (!jsonMode) {
-        renderUpdatePreview(presentation, inspection, plans, migration, revalidation, stored?.location.receiptPath);
+        renderUpdatePreview(presentation, inspection, plans, migration, revalidation, stored?.location.receiptPath, guidance);
         if (!hasWork) {
           presentation.status('success', 'Liftoff core is current',
             `${inspection.summary.unchanged} managed-core artifacts match; project files are not compared`);
@@ -201,7 +216,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           : approval.status === 'mismatch'
             ? 'The approved fingerprint does not match the current effective plan.'
             : 'Update approval was declined or cancelled; no project files changed.',
-        remedy: `Review ${formatUpdateCommand(projectRoot, 'check')}, then approve interactively or use --approve-plan with its exact fingerprint.`
+        remedy: `Review ${updateCommand('check')}, then approve interactively or use --approve-plan with its exact fingerprint.`
       }, inspection, selected);
       return 1;
     }
@@ -231,7 +246,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       if (!current.summary.eligible || current.descriptor.fingerprint !== approvedFingerprint) {
         throw new UpdatePlanError(
           'The effective update plan changed after review.',
-          'preview-mismatch', `Run ${formatUpdateCommand(projectRoot, 'check')} again.`
+          'preview-mismatch', `Run ${updateCommand('check')} again.`
         );
       }
     };
@@ -292,27 +307,28 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         presentation.bullets('V2 revalidation is blocked and resumable', [
           ...revalidation.issues,
           ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : []),
-          `Repair the blocker, run ${formatUpdateCommand(projectRoot, 'check')}, and approve the remaining local work.`
+          `Repair the blocker, run ${updateCommand('check')}, and approve the remaining local work.`
         ]);
       }
       for (const failure of cleanupFailures) presentation.error(failure);
       if (!cleanupFailures.length && !revalidationBlocked) {
         presentation.completion('Updated project',
           `${selected.writePlan.written.length} core written, ${selected.writePlan.skipped.length} core skipped`,
-          [], formatUpdateValidationCommands(projectRoot));
+          [], formatUpdateValidationCommands(projectRoot, process.platform, guidance));
       }
     }
     return cleanupFailures.length ? 1 : revalidationBlocked ? 2 : 0;
   } catch (error) {
     const reasonCode = error instanceof UpdatePlanError ? error.reasonCode :
       error instanceof UpdatePreviewError ? error.code : 'update-failed';
-    const detail = error instanceof Error ? error.message : String(error);
+    const detail = error instanceof UpdatePreviewError ? error.detail :
+      error instanceof Error ? error.message : String(error);
     const message = error instanceof UpdatePreviewError && !committed
       ? `${detail} No new project update was performed.` : detail;
-    const remedy = error instanceof UpdatePlanError ? error.remedy :
+    const remedy = error instanceof UpdatePlanError ? error.formatRemedy(guidance) :
       error instanceof UpdatePreviewError
-        ? `Repair any reported preview-storage issue, then run ${formatUpdateCommand(projectRoot, 'check')} before applying.`
-        : `Review the reported failure. Preserve concurrent edits and run ${formatUpdateCommand(projectRoot, 'check')} after repair.`;
+        ? formatUpdatePreviewRemedy(error.code, projectRoot, guidance, force ? 'force' : 'normal')
+        : `Review the reported failure. Preserve concurrent edits and run ${updateCommand('check')} after repair.`;
     emit(context, jsonMode, {
       mode: check ? 'check' : 'apply', status: 'failed', reasonCode, projectRoot,
       committed, message, remedy, migration, revalidation
