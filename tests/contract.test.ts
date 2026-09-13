@@ -10,6 +10,7 @@ import { loadManifest, validateGeneratedProject, writeArtifacts, writeProjectFil
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { currentActivationIdentity } from '../src/governance-activation/index.js';
+import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { reconcileProject } from '../src/reconcile.js';
 import type { ProjectOptions } from '../src/types.js';
@@ -109,7 +110,12 @@ describe('manifest contract', () => {
         apiStack: 'node',
         agents: ['copilot']
       });
-      const names = new Set(['liftoff-governance-assess-copilot', 'liftoff-governance-assess-claude']);
+      const names = new Set([
+        'liftoff-governance-assess-copilot',
+        'liftoff-governance-assess-claude',
+        'liftoff-setup-codex',
+        'liftoff-governance-assess-codex'
+      ]);
       const assessmentPaths = new Set(Object.values(governanceArtifactPaths.assessment)
         .map((parts) => parts.join('\0')));
       const metadata = JSON.parse(current.find((artifact) =>
@@ -137,11 +143,9 @@ describe('manifest contract', () => {
             ? manifestContent
             : artifact.content
       })));
-      await writeProjectFile(
-        root,
-        ['.github', 'skills', 'openspec-apply-change', 'SKILL.md'],
-        '# Framework-owned marker\n'
-      );
+      for (const marker of openSpecIntegrationPaths('github-copilot')) {
+        await writeProjectFile(root, marker, '# Framework-owned marker\n');
+      }
       const manifest = await loadManifest(root);
       expect(manifest.governance.state).toBe('handoff-generated');
       expect(await validateGeneratedProject(root)).toEqual([]);
@@ -188,7 +192,7 @@ describe('manifest contract', () => {
       projectName: 'All Core Launchers',
       pattern: 'prompt',
       cloud: 'azure',
-      agents: ['copilot', 'claude']
+      agents: ['copilot', 'claude', 'codex']
     })) {
       if (artifact.lifecycle === 'managed-core') {
         renderedManagedCore.add(artifact.logicalName);

@@ -1,19 +1,16 @@
 import { createHash } from 'node:crypto';
-import { writeFileSync } from 'node:fs';
 import {
   access,
   mkdir,
-  mkdtemp,
   readFile,
   rename,
   rm,
   writeFile
 } from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
-import { createFixtureProject, runCommand } from '../src/commands.js';
+import { runCommand } from '../src/commands.js';
 import { loadManifest, validateGeneratedProject } from '../src/file-system.js';
 import { compareSemver } from '../src/semver.js';
 import { buildProjectPlan } from '../src/planner.js';
@@ -26,13 +23,28 @@ import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../src/a
 import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
+import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
+import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
+import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
+import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
+import {
+  writeGovernanceApprovalAuthority
+} from '../src/governance-activation/authority-records.js';
 import {
   canonicalJson,
+  canonicalPhaseGraph,
+  canonicalSha256,
   createActivationIdentity,
   currentActivationIdentity,
+  evidenceBodyDigest,
+  evidenceContextForPhase,
   historicalActivationIdentities,
   phaseIds,
   renderGovernanceChangeWritePlan,
+  transitionPlanForPhase,
+  validateApprovalEnvelope,
+  validateEvidenceHeader,
+  type PhaseEvidenceRecord,
   type UserActivationState
 } from '../src/governance-activation/index.js';
 import {
@@ -40,14 +52,26 @@ import {
   scriptedTtyInput,
   ttyCaptureStream
 } from './helpers.js';
+import {
+  cleanupUpdateTestRoots,
+  createReviewedUpdateFixture as createFixtureProject,
+  createUpdateTestRoot,
+  fingerprintUpdateTestProject,
+  reviewedUpdateArguments,
+  updateTestPreviewOptions
+} from './reviewed-update-helpers.js';
 
 const sha = (content: string) =>
   `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 
 const cleanups: string[] = [];
 afterEach(async () => {
-  while (cleanups.length > 0) {
-    await rm(cleanups.pop()!, { recursive: true, force: true });
+  try {
+    while (cleanups.length > 0) {
+      await rm(cleanups.pop()!, { recursive: true, force: true });
+    }
+  } finally {
+    await cleanupUpdateTestRoots();
   }
 });
 
@@ -86,12 +110,25 @@ async function run(
   runner?: CommandRunner,
   env?: NodeJS.ProcessEnv
 ): Promise<{ code: number; out: string; err: string }> {
+  const approved = await reviewedUpdateArguments(args, (previewArgs) =>
+    runRaw(previewArgs, cwd, runner, env)
+  );
+  return runRaw(approved, cwd, runner, env);
+}
+
+async function runRaw(
+  args: string[],
+  cwd: string,
+  runner?: CommandRunner,
+  env?: NodeJS.ProcessEnv
+): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
   const code = await runCommand(parseArgs(args), {
     cwd,
     stdout,
     stderr,
+    updatePreview: updateTestPreviewOptions(cwd),
     ...(runner ? { runner } : {}),
     ...(env ? { env } : {})
   });
@@ -102,46 +139,17 @@ async function runInteractive(
   args: string[],
   cwd: string
 ): Promise<{ code: number; out: string; err: string }> {
+  const approved = await reviewedUpdateArguments(args, (previewArgs) => runRaw(previewArgs, cwd));
   const stdout = ttyCaptureStream();
-  const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), {
+  const stderr = ttyCaptureStream();
+  const code = await runCommand(parseArgs(approved), {
     cwd,
     stdin: scriptedTtyInput(''),
     stdout,
-    stderr
+    stderr,
+    updatePreview: updateTestPreviewOptions(cwd)
   });
   return { code, out: stdout.text(), err: stderr.text() };
-}
-
-class TriggerCaptureStream extends CaptureStream {
-  private triggered = false;
-
-  constructor(
-    private readonly trigger: string,
-    private readonly action: () => void
-  ) {
-    super();
-  }
-
-  override _write(
-    chunk: unknown,
-    _encoding: BufferEncoding,
-    callback: (error?: Error | null) => void
-  ): void {
-    const value = String(chunk);
-    this.chunks.push(value);
-    if (this.triggered || !value.includes(this.trigger)) {
-      callback();
-      return;
-    }
-    this.triggered = true;
-    try {
-      this.action();
-      callback();
-    } catch (error) {
-      callback(error instanceof Error ? error : new Error(String(error)));
-    }
-  }
 }
 
 async function editJson(
@@ -394,6 +402,52 @@ function currentActivationState(activeChangeId: string | null): UserActivationSt
   };
 }
 
+function retainedCurrentEvidence(evidenceId: string): PhaseEvidenceRecord {
+  const context = evidenceContextForPhase('seed-valid', {
+    repositoryId: 'R_update',
+    baselineSha: canonicalSha256('retained update fixture baseline'),
+    inputDigest: canonicalSha256('retained update fixture inputs')
+  });
+  const payload = { kind: 'seed-valid.v1', validated: false };
+  return {
+    evidenceId,
+    payload,
+    header: validateEvidenceHeader({
+      schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
+      repositoryId: context.repositoryId,
+      identity: currentActivationIdentity,
+      phaseGraphHash: context.phaseGraphHash,
+      phaseId: context.phaseId,
+      phaseContractDigest: context.phaseContractDigest,
+      baselineSha: context.baselineSha,
+      inputDigest: context.inputDigest,
+      transition: context.transition,
+      producedAt: '2026-09-04T00:00:00.000Z',
+      producer: 'retained-update-fixture',
+      result: 'failed',
+      bodyDigest: evidenceBodyDigest(payload)
+    })
+  };
+}
+
+function retainedCurrentApproval() {
+  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'activation-approved')!;
+  const state = currentActivationState(null);
+  const context = evidenceContextForPhase(phase.id, {
+    repositoryId: state.repository.id,
+    baselineSha: canonicalSha256('retained approval fixture baseline'),
+    inputDigest: canonicalSha256('retained approval fixture inputs')
+  });
+  return validateApprovalEnvelope({
+    ...transitionPlanForPhase(phase, state, context.transition),
+    schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion,
+    id: 'retained-update-approval',
+    approvedAt: '2026-09-04T00:00:00.000Z',
+    expiresAt: '2026-09-05T00:00:00.000Z',
+    approver: 'fixture-maintainer'
+  });
+}
+
 async function installDiagnosticActivationV1(
   root: string,
   governanceState?: 'handoff-generated' | 'handoff-partial'
@@ -409,16 +463,14 @@ async function installDiagnosticActivationV1(
     if (governanceState) manifest.governance.state = governanceState;
   });
   const statePath = path.join(root, 'governance', 'activation-state.json');
-  const evidencePath = path.join(root, 'governance', 'evidence', 'historical-v1.json');
-  await writeProjectOwnedFile(root, ['governance', 'activation-state.json'], `${JSON.stringify({
-    schemaVersion: 1,
-    identity
-  }, null, 2)}\n`);
-  await writeProjectOwnedFile(root, ['governance', 'evidence', 'historical-v1.json'], `${JSON.stringify({
-    schemaVersion: 1,
-    identity,
-    historical: true
-  }, null, 2)}\n`);
+  const historical = buildHistoricalV1Fixture();
+  const evidencePath = path.join(root, 'governance', 'evidence', `${historical.records[0].evidenceId}.json`);
+  for (const [name, content] of historical.files) {
+    if (name === 'governance/activation-state.json' || name.startsWith('governance/evidence/') ||
+      name.startsWith('governance/plans/') || name.startsWith('governance/approvals/')) {
+      await writeProjectOwnedFile(root, name.split('/'), content.toString('utf8'));
+    }
+  }
   return { identity, statePath, evidencePath };
 }
 
@@ -481,6 +533,67 @@ async function pathFingerprints(root: string, paths: readonly (readonly string[]
   return result;
 }
 
+describe('reviewed update argument helpers', () => {
+  const normal = 'a1'.repeat(32);
+  const force = 'b2'.repeat(32);
+  const preview = (plans = [
+    { mode: 'normal', fingerprint: normal },
+    { mode: 'force', fingerprint: force }
+  ], code = 2) => ({
+    code,
+    out: JSON.stringify({ schemaVersion: 3, scope: 'project-update', plans }),
+    err: ''
+  });
+
+  it.each([
+    { args: ['update', 'project with spaces', '--json'], project: 'project with spaces', fingerprint: normal },
+    { args: ['update', '--project', 'C:\\Projects\\Claim App', '--force'], project: 'C:\\Projects\\Claim App', fingerprint: force }
+  ])('reviews the exact target and mode before approving $args', async ({ args, project, fingerprint }) => {
+    const invocations: string[][] = [];
+    const approved = await reviewedUpdateArguments(args, async (checkArgs) => {
+      invocations.push(checkArgs);
+      return preview();
+    });
+    expect(invocations).toEqual([['update', '--check', '--json', '--project', project]]);
+    expect(approved).toEqual([...args, '--approve-plan', fingerprint]);
+    expect(args).not.toContain('--approve-plan');
+  });
+
+  it('leaves no-op apply without an approval flag', async () => {
+    expect(await reviewedUpdateArguments(['update'], async () => preview([], 0)))
+      .toEqual(['update']);
+  });
+
+  it.each([
+    ['update', '--check', '--json'],
+    ['update', '--approve-plan', normal],
+    ['update', '--help']
+  ])('does not generate a new preview for the explicit raw invocation %j', async (...args) => {
+    const invoked: string[][] = [];
+    expect(await reviewedUpdateArguments(args, async (checkArgs) => {
+      invoked.push(checkArgs);
+      return preview();
+    })).toEqual(args);
+    expect(invoked).toEqual([]);
+  });
+
+  it('never substitutes a normal fingerprint for a missing forced variant', async () => {
+    await expect(reviewedUpdateArguments(
+      ['update', '--force'],
+      async () => preview([{ mode: 'normal', fingerprint: normal }])
+    )).rejects.toThrow(/exactly one previewed force plan/);
+  });
+
+  it('does not manufacture approval after a rejected or malformed preview', async () => {
+    await expect(reviewedUpdateArguments(['update'], async () => preview([], 1)))
+      .rejects.toThrow(/Expected an eligible preview/);
+    await expect(reviewedUpdateArguments(
+      ['update'],
+      async () => preview([{ mode: 'normal', fingerprint: 'short' }])
+    )).rejects.toThrow();
+  });
+});
+
 describe('semver comparison', () => {
   it('orders releases and prereleases correctly', () => {
     expect(compareSemver('0.2.0', '0.2.0')).toBe(0);
@@ -497,11 +610,50 @@ describe('core-only update command', () => {
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const before = await readFile(manifestPath, 'utf8');
 
-    const result = await run(['update'], root);
+    const result = await runRaw(['update'], root);
 
     expect(result.code).toBe(0);
     expect(result.out).toContain('Liftoff core is current');
+    expect(result.out).toContain('project files were not changed');
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
+  });
+
+  it('retains raw coverage for apply without a matching prior preview', async () => {
+    const root = await fixtureProject();
+    await simulateCoreUpgrade(
+      root,
+      'repository-governance-policy',
+      governanceArtifactPaths.policy,
+      '# previous policy\n'
+    );
+    const watched = [['liftoff.manifest.json'], governanceArtifactPaths.policy];
+    const before = await pathFingerprints(root, watched);
+
+    const result = await runRaw(['update', '--json'], root);
+
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out)).toMatchObject({
+      schemaVersion: 3,
+      scope: 'project-update'
+    });
+    expect(await pathFingerprints(root, watched)).toEqual(before);
+  });
+
+  it('retains raw coverage for a preview without force or JSON implying consent', async () => {
+    const root = await fixtureProject();
+    await writeFile(path.join(root, ...governanceArtifactPaths.policy), '# modified managed policy\n');
+    const watched = [['liftoff.manifest.json'], governanceArtifactPaths.policy];
+    const before = await pathFingerprints(root, watched);
+    const check = await runRaw(['update', '--check', '--json'], root);
+    expect(check.code).toBe(2);
+    expect(JSON.parse(check.out).plans).toEqual(expect.arrayContaining([
+      expect.objectContaining({ mode: 'force', fingerprint: expect.stringMatching(/^[a-f0-9]{64}$/u) })
+    ]));
+
+    const result = await runRaw(['update', '--force', '--json'], root);
+
+    expect(result.code).toBe(1);
+    expect(await pathFingerprints(root, watched)).toEqual(before);
   });
 
   it('keeps production files and intentional absences outside check, update, and force', async () => {
@@ -537,9 +689,9 @@ describe('core-only update command', () => {
     const check = await run(['update', '--check', '--json'], root);
     expect(check.code).toBe(0);
     expect(JSON.parse(check.out)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: 'check',
-      scope: 'managed-core',
+      scope: 'project-update',
       entries: [],
       provisioning: []
     });
@@ -551,8 +703,8 @@ describe('core-only update command', () => {
         throw new Error('update must not invoke command runners or remote adapters');
       }
     };
-    expect((await run(['update', '--check', '--json'], root, authorityRunner)).code).toBe(0);
-    expect((await run(['update', '--force', '--json'], root, authorityRunner)).code).toBe(0);
+    expect((await runRaw(['update', '--check', '--json'], root, authorityRunner)).code).toBe(0);
+    expect((await runRaw(['update', '--force', '--json'], root, authorityRunner)).code).toBe(0);
     expect(commandRunnerCalls).toEqual([]);
 
     expect((await run(['update'], root)).code).toBe(0);
@@ -578,8 +730,8 @@ describe('core-only update command', () => {
     const restored = await run(['update', '--json'], root);
     expect(restored.code).toBe(0);
     expect(JSON.parse(restored.out)).toMatchObject({
-      schemaVersion: 2,
-      scope: 'managed-core',
+      schemaVersion: 3,
+      scope: 'project-update',
       written: ['.liftoff/governance/policy.md']
     });
     expect(await readFile(policyPath, 'utf8')).toBe(currentPolicy);
@@ -601,12 +753,12 @@ describe('core-only update command', () => {
 
     const skipped = await runInteractive(['update'], root);
     expect(skipped.code).toBe(0);
-    expect(skipped.out).toContain('Skipped Liftoff core conflicts');
     expect(await readFile(policyPath, 'utf8')).toBe('# local governance policy\n');
 
     const forced = await run(['update', '--force'], root);
     expect(forced.code).toBe(0);
     expect(await readFile(policyPath, 'utf8')).toBe(currentPolicy);
+    expect(skipped.out).toContain('Skipped Liftoff core conflicts');
   });
 
   it('previews and applies a policy-v2 handoff upgrade without hand-editing the manifest', async () => {
@@ -636,9 +788,9 @@ describe('core-only update command', () => {
     const check = await run(['update', '--check', '--json'], root);
     expect(check.code).toBe(2);
     expect(JSON.parse(check.out)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: 'check',
-      scope: 'managed-core',
+      scope: 'project-update',
       projectVersion: '0.9.5',
       entries: expect.arrayContaining([
         expect.objectContaining({
@@ -815,19 +967,24 @@ describe('core-only update command', () => {
 
     const check = await run(['update', '--check'], root);
     expect(check.code).toBe(2);
-    expect(check.out).toContain('Unowned destinations remain protected');
-    expect(check.out).toContain('--force cannot overwrite it');
-    expect(check.out).not.toContain('liftoff update --force');
+    const applyOutputs: string[] = [];
     for (const args of [['update'], ['update', '--force']]) {
       const applied = await run(args, root);
       expect(applied.code).toBe(0);
-      expect(applied.out).toContain('protected unowned destination');
-      expect(applied.out).toContain('--force cannot overwrite it');
-      expect(applied.out).not.toContain('use --force to overwrite');
+      applyOutputs.push(applied.out);
       expect(await readFile(path.join(root, ...identity.pathParts), 'utf8')).toBe(custom);
       expect((await loadManifest(root)).managedArtifacts.some((entry) =>
         entry.logicalName === identity.logicalName
       )).toBe(false);
+    }
+    expect(check.out).toContain('Unowned destinations remain protected');
+    expect(check.out).toContain('--force cannot overwrite it');
+    expect(check.out).not.toContain(formatUpdateCommand(root, 'force', process.platform,
+      await resolveUpdateGuidanceContext(root, root)));
+    for (const output of applyOutputs) {
+      expect(output).toContain('protected unowned destination');
+      expect(output).toContain('--force cannot overwrite it');
+      expect(output).not.toContain('use --force to overwrite');
     }
   });
 
@@ -867,8 +1024,6 @@ describe('core-only update command', () => {
 
     const check = await run(['update', '--check'], root);
     expect(check.code).toBe(2);
-    expect(check.out).toContain('liftoff update --force');
-    expect(check.out).toContain('Unowned destinations remain protected');
     const applied = await run(['update', '--force', '--json'], root);
     expect(applied.code).toBe(0);
     expect(JSON.parse(applied.out).written).toContain(governanceArtifactPaths.policy.join('/'));
@@ -882,6 +1037,9 @@ describe('core-only update command', () => {
     expect(manifest.governance.state).toBe('handoff-partial');
     expect(manifest.managedArtifacts.some((entry) => entry.logicalName === identity.logicalName)).toBe(false);
     expect(await validateGeneratedProject(root)).toEqual([]);
+    expect(check.out).toContain(formatUpdateCommand(root, 'force', process.platform,
+      await resolveUpdateGuidanceContext(root, root)));
+    expect(check.out).toContain('Unowned destinations remain protected');
   });
 
   it('guards modified managed assessment integrations until explicit force', async () => {
@@ -911,7 +1069,8 @@ describe('core-only update command', () => {
     await removeAssessmentInventory(root);
     const active = await installActiveGovernanceChange(root);
     const evidence = ['governance', 'evidence', 'assessment-retained.json'];
-    await writeProjectOwnedFile(root, evidence, '{\r\n  "userOwned": true\r\n}\r\n');
+    await writeProjectOwnedFile(root, evidence,
+      `${JSON.stringify(retainedCurrentEvidence('assessment-retained'), null, 2).replaceAll('\n', '\r\n')}\r\n`);
     const protectedPaths = [...active.paths, evidence];
     const before = await pathFingerprints(root, protectedPaths);
     const managed = (await loadManifest(root)).managedArtifacts.map((entry) => entry.pathParts);
@@ -919,7 +1078,7 @@ describe('core-only update command', () => {
     const rollbackBefore = await pathFingerprints(root, rollbackPaths);
 
     const check = await run(['update', '--check', '--json'], root);
-    expect(check.code).toBe(2);
+    expect(check.code, `${check.out}\n${check.err}`).toBe(2);
     expect(await pathFingerprints(root, rollbackPaths)).toEqual(rollbackBefore);
     const failed = await run(
       ['update', '--json'],
@@ -928,7 +1087,13 @@ describe('core-only update command', () => {
       { ...process.env, LIFTOFF_UPDATE_INJECT_FAILURE: 'before-path:liftoff.manifest.json' }
     );
     expect(failed.code).toBe(1);
-    expect(failed.err).toContain('All applied changes were rolled back');
+    expect(JSON.parse(failed.out)).toMatchObject({
+      schemaVersion: 3,
+      scope: 'project-update',
+      status: 'failed',
+      committed: false,
+      message: expect.stringContaining('All attributable changes were rolled back')
+    });
     expect(await pathFingerprints(root, rollbackPaths)).toEqual(rollbackBefore);
     await expect(access(path.join(root, ...assessmentIdentities[0].pathParts)))
       .rejects.toMatchObject({ code: 'ENOENT' });
@@ -1162,7 +1327,13 @@ describe('core-only update command', () => {
     );
 
     expect(failed.code).toBe(1);
-    expect(failed.err).toContain('All applied changes were rolled back');
+    expect(JSON.parse(failed.out)).toMatchObject({
+      schemaVersion: 3,
+      scope: 'project-update',
+      status: 'failed',
+      committed: false,
+      message: expect.stringContaining('All attributable changes were rolled back')
+    });
     expect(await readFile(aliasPath, 'utf8')).toBe(aliasBefore);
     expect(await readFile(manifestPath, 'utf8')).toBe(manifestBefore);
   });
@@ -1225,7 +1396,7 @@ describe('core-only update command', () => {
     const before = await pathFingerprints(root, watched);
 
     for (const args of [['update'], ['update', '--force']]) {
-      const result = await run(args, root);
+      const result = await runRaw(args, root);
       expect(result.code).toBe(1);
       expect(result.err).toContain(expected);
       expect(result.err).toContain('separately reviewed project migration');
@@ -1248,11 +1419,11 @@ describe('core-only update command', () => {
     const before = await pathFingerprints(root, watched);
 
     for (const args of [['update'], ['update', '--check'], ['update', '--force']]) {
-      const result = await run(args, root);
+      const result = await runRaw(args, root);
       expect(result.code).toBe(1);
       expect(result.err).toContain('cannot be disabled');
       expect(result.err).toContain('separately supported deactivation');
-      expect(result.err).toContain('does not infer deactivation');
+      expect(result.err).toContain('does not infer the absence of live enforcement');
       expect(await pathFingerprints(root, watched)).toEqual(before);
     }
   });
@@ -1279,7 +1450,7 @@ describe('core-only update command', () => {
     const check = await run(['update', '--check', '--json'], root);
     expect(check.code).toBe(2);
     expect(JSON.parse(check.out)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       entries: [{
         logicalName: 'repository-governance-context',
         status: 'upgrade',
@@ -1448,7 +1619,7 @@ describe('core-only update command', () => {
     const result = await run(['update', '--force', '--json'], root);
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       status: 'partial',
       provisioning: [
         expect.objectContaining({ group: 'frontend', status: 'blocked' })
@@ -1510,7 +1681,7 @@ describe('core-only update command', () => {
     ['update'],
     ['update', '--force']
   ])('rejects a retired manifest before force or ownership classification: %j', async (...args) => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-retired-update-'));
+    const root = await createUpdateTestRoot();
     cleanups.push(root);
     const fixture = JSON.parse(
       await readFile(path.resolve('tests/fixtures/manifest-v4-power-apps.json'), 'utf8')
@@ -1534,7 +1705,7 @@ describe('core-only update command', () => {
       }
     };
 
-    const result = await run(args, root, runner);
+    const result = await runRaw(args, root, runner);
 
     expect(result.code).toBe(1);
     expect(`${result.out}\n${result.err}`).toMatch(
@@ -1544,7 +1715,7 @@ describe('core-only update command', () => {
     expect(await readFile(sourcePath, 'utf8')).toBe('production bytes\n');
   });
 
-  it('keeps check mode read-only and versions JSON around managed-core scope', async () => {
+  it('keeps check project-read-only and versions project-update JSON with managed-core summaries', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const policyPath = path.join(root, ...governanceArtifactPaths.policy);
@@ -1554,9 +1725,9 @@ describe('core-only update command', () => {
     const result = await run(['update', '--check', '--json'], root);
     expect(result.code).toBe(2);
     expect(JSON.parse(result.out)).toMatchObject({
-      schemaVersion: 2,
+      schemaVersion: 3,
       mode: 'check',
-      scope: 'managed-core',
+      scope: 'project-update',
       ownershipMigrationPending: false
     });
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
@@ -1573,8 +1744,12 @@ describe('core-only update command', () => {
       ['governance', 'supersessions', 'manual-supersession.json'],
       ['governance', 'reconciliation', 'manual-reconciliation.json']
     ];
-    await writeProjectOwnedFile(root, ['governance', 'evidence', 'manual-evidence.json'], '{"user":"evidence"}\n');
-    await writeProjectOwnedFile(root, ['governance', 'approvals', 'manual-approval.json'], '{"user":"approval"}\n');
+    await writeProjectOwnedFile(root, ['governance', 'evidence', 'manual-evidence.json'],
+      `${JSON.stringify(retainedCurrentEvidence('manual-evidence'), null, 4)}\n`);
+    const retainedApproval = retainedCurrentApproval();
+    await writeProjectOwnedFile(root, ['governance', 'approvals', 'manual-approval.json'],
+      `${JSON.stringify(retainedApproval, null, 4)}\n`);
+    await writeGovernanceApprovalAuthority(root, canonicalSha256({ test: 'retained-update-approval' }), retainedApproval);
     await writeProjectOwnedFile(root, ['governance', 'credentials', 'preflight-policy.json'], '{"user":"credential-metadata"}\n');
     await writeProjectOwnedFile(root, ['governance', 'supersessions', 'manual-supersession.json'], '{"user":"supersession"}\n');
     await writeProjectOwnedFile(root, ['governance', 'reconciliation', 'manual-reconciliation.json'], '{"user":"reconciliation"}\n');
@@ -1587,7 +1762,7 @@ describe('core-only update command', () => {
     const before = await pathFingerprints(root, userFiles);
 
     const check = await run(['update', '--check', '--json'], root);
-    expect(check.code).toBe(2);
+    expect(check.code, `${check.out}\n${check.err}`).toBe(2);
     expect(await pathFingerprints(root, userFiles)).toEqual(before);
 
     const applied = await run(['update', '--force', '--json'], root);
@@ -1596,7 +1771,34 @@ describe('core-only update command', () => {
     expect(await pathFingerprints(root, userFiles)).toEqual(before);
   });
 
-  it('maintains managed core around diagnostic-only activation v1 without retagging history', async () => {
+  it.each(['evidence', 'approvals'])('rejects malformed current %s without rewriting any project bytes', async (directory) => {
+    const root = await fixtureProject();
+    const active = await installActiveGovernanceChange(root);
+    const invalidPath = ['governance', directory, 'invalid-current.json'];
+    await writeProjectOwnedFile(root, invalidPath, '{"userOwned":true}\n');
+    await simulateCoreUpgrade(root, 'repository-governance-policy', governanceArtifactPaths.policy, '# previous policy\n');
+    const watched = [['liftoff.manifest.json'], governanceArtifactPaths.policy, ...active.paths, invalidPath];
+    const before = await pathFingerprints(root, watched);
+
+    for (const args of [
+      ['update', '--check', '--json'],
+      ['update', '--force', '--json']
+    ]) {
+      const result = await runRaw(args, root);
+      expect(result.code, result.out).toBe(1);
+      expect(JSON.parse(result.out)).toMatchObject({
+        schemaVersion: 3,
+        scope: 'project-update',
+        status: 'blocked',
+        reasonCode: 'incompatible-update',
+        committed: false,
+        activationMigration: { reasonCode: 'invalid-current-proof' }
+      });
+      expect(await pathFingerprints(root, watched)).toEqual(before);
+    }
+  });
+
+  it('blocks incomplete v1 history before managed-core or component writes', async () => {
     const root = await fixtureProject();
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const statePath = path.join(root, 'governance', 'activation-state.json');
@@ -1627,22 +1829,18 @@ describe('core-only update command', () => {
     const stateBefore = await readFile(statePath);
     const evidenceBefore = await readFile(evidencePath);
 
-    const applied = await run(['update', '--json'], root);
+    const applied = await runRaw(['update', '--json'], root);
 
-    expect(applied.code).toBe(0);
+    expect(applied.code).toBe(1);
     expect(JSON.parse(applied.out)).toMatchObject({
-      activationStateMigration: {
-        status: 'blocked',
-        diagnosticOnly: true,
-        evidencePolicy: 'preserve-bytes'
-      },
-      reconciliation: { status: 'reconciliation-required' },
+      committed: false,
+      activationMigration: { status: 'blocked' },
+      reconciliation: { status: 'blocked' },
       provisioning: [{
         group: 'frontend',
         status: 'blocked',
-        reason: expect.stringContaining('managed core')
-      }],
-      stateWritten: []
+        reason: expect.stringContaining('migration')
+      }]
     });
     expect(await readFile(statePath)).toEqual(stateBefore);
     expect(await readFile(evidencePath)).toEqual(evidenceBefore);
@@ -1652,7 +1850,7 @@ describe('core-only update command', () => {
     expect(updatedManifest.governance.activationIdentity).toEqual(historicalIdentity);
   });
 
-  it('keeps computed partial handoff state when one historical wrapper conflicts', async () => {
+  it('blocks a v1 successor when a required historical wrapper destination is unowned', async () => {
     const root = await createFixtureProject({
       projectName: 'Historical Partial',
       pattern: 'prompt',
@@ -1672,24 +1870,24 @@ describe('core-only update command', () => {
     const stateBefore = await readFile(history.statePath);
     const evidenceBefore = await readFile(history.evidencePath);
 
-    expect((await run(['update', '--json'], root)).code).toBe(0);
+    const result = await runRaw(['update', '--check', '--json'], root);
+    expect(result.code, result.out).toBe(1);
 
     const loaded = await loadManifest(root);
     expect(loaded.governance).toMatchObject({
-      state: 'handoff-partial',
+      state: 'handoff-generated',
       activationIdentity: history.identity
     });
     expect(loaded.managedArtifacts.some((entry) =>
       entry.logicalName === assessmentIdentities[1].logicalName
-    )).toBe(true);
+    )).toBe(false);
     expect(loaded.managedArtifacts.some((entry) =>
       entry.logicalName === assessmentIdentities[0].logicalName
     )).toBe(false);
     expect(await readFile(conflict, 'utf8')).toBe(custom);
     expect(await readFile(history.statePath)).toEqual(stateBefore);
     expect(await readFile(history.evidencePath)).toEqual(evidenceBefore);
-    expect(await validateGeneratedProject(root)).toEqual([]);
-    expect((await run(['update', '--check'], root)).code).toBe(2);
+    expect((await runRaw(['update', '--force', '--json'], root)).code).toBe(1);
   });
 
   it('promotes an old partial handoff after historical wrappers become complete', async () => {
@@ -1709,23 +1907,32 @@ describe('core-only update command', () => {
     const stateBefore = await readFile(history.statePath);
     const evidenceBefore = await readFile(history.evidencePath);
 
-    expect((await run(['update', '--json'], root)).code).toBe(0);
+    const result = await run(['update', '--json'], root, {
+      run: async (command) => ({
+        command, displayCommand: command.executable, status: 1, signal: null,
+        stdout: '', stderr: 'Local validation is unavailable in this fixture.', timedOut: false
+      })
+    });
+    expect(result.code, result.out).toBe(2);
 
     const loaded = await loadManifest(root);
     expect(loaded.governance).toMatchObject({
       state: 'handoff-generated',
-      activationIdentity: history.identity
+      activationIdentity: currentActivationIdentity
     });
     for (const identity of assessmentIdentities) {
       expect(loaded.managedArtifacts.some((entry) =>
         entry.logicalName === identity.logicalName
       )).toBe(true);
     }
-    expect(await readFile(history.statePath)).toEqual(stateBefore);
-    expect(await readFile(history.evidencePath)).toEqual(evidenceBefore);
+    const journal = await readMigrationJournal(root);
+    expect(journal).toBeDefined();
+    const snapshot = path.join(root, 'governance', 'history', journal!.snapshotId, 'files');
+    expect(await readFile(path.join(snapshot, 'governance', 'activation-state.json'))).toEqual(stateBefore);
+    expect(await readFile(path.join(snapshot, path.relative(root, history.evidencePath)))).toEqual(evidenceBefore);
     expect(await validateGeneratedProject(root)).toEqual([]);
-    expect((await run(['update', '--check'], root)).code).toBe(0);
-  });
+    expect((await run(['update', '--check'], root)).code).toBe(2);
+  }, process.platform === 'win32' ? 90_000 : 30_000);
 
   it('blocks active governance metadata with an undeclared old graph identity', async () => {
     const root = await fixtureProject();
@@ -1742,7 +1949,7 @@ describe('core-only update command', () => {
     );
     const before = await pathFingerprints(root, watched);
 
-    const result = await run(['update', '--json'], root);
+    const result = await runRaw(['update', '--json'], root);
 
     expect(result.code).toBe(1);
     const report = JSON.parse(result.out);
@@ -1763,11 +1970,18 @@ describe('core-only update command', () => {
     });
     const before = await readFile(manifestPath, 'utf8');
 
-    const result = await run(['update', '--json'], root);
+    const result = await runRaw(['update', '--json'], root);
 
     expect(result.code).toBe(1);
-    expect(result.err).toContain('explicit compatibility map');
-    expect(result.err).toContain('recognized graph hashes');
+    const report = JSON.parse(result.out);
+    expect(report).toMatchObject({
+      schemaVersion: 3,
+      scope: 'project-update',
+      status: 'failed',
+      committed: false
+    });
+    expect(report.message).toContain('explicit compatibility map');
+    expect(report.message).toContain('recognized graph hashes');
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
   });
 
@@ -1779,7 +1993,7 @@ describe('core-only update command', () => {
       config.apiStack = 'node-fastify';
     });
 
-    const result = await run(['update', '--force'], root);
+    const result = await runRaw(['update', '--force'], root);
     expect(result.code).toBe(1);
     expect(result.err).toContain('API stack changes');
     expect(await readFile(sourcePath, 'utf8')).toBe(source);
@@ -1812,7 +2026,7 @@ describe('core-only update command', () => {
         config.pattern = desiredPattern;
       });
 
-      const result = await run(['update', '--force'], root);
+      const result = await runRaw(['update', '--force'], root);
       expect(result.code).toBe(1);
       expect(result.err).toContain(
         `Pattern changes (${recordedPattern} -> ${desiredPattern}) are a migration`
@@ -1827,7 +2041,7 @@ describe('core-only update command', () => {
       manifest.liftoffVersion = '999.0.0';
     });
 
-    const result = await run(['update'], root);
+    const result = await runRaw(['update'], root);
     expect(result.code).toBe(1);
     expect(result.err).toContain('newer than this CLI');
   });
@@ -1848,6 +2062,62 @@ describe('core-only update command', () => {
     expect((await run(['update', '--check', root], path.dirname(root))).code).toBe(0);
   });
 
+  it.each(['positional', 'flag'] as const)(
+    'keeps %s project selection in preview, missing/stale, and approval follow-ups',
+    async (selection) => {
+      const original = await fixtureProject();
+      const root = path.join(path.dirname(original), 'Reviewed project with spaces');
+      await rename(original, root);
+      const cwd = await fixtureProject();
+      const otherBefore = await fingerprintUpdateTestProject(cwd);
+      const target = selection === 'positional' ? [root] : ['--project', path.relative(cwd, root)];
+      const policy = path.join(root, ...governanceArtifactPaths.policy);
+      await simulateCoreUpgrade(root, 'repository-governance-policy', governanceArtifactPaths.policy, '# Previous policy\n');
+      await writeFile(policy, '# Protected local policy\n');
+      const before = await fingerprintUpdateTestProject(root);
+      const checkCommand = formatUpdateCommand(root, 'check');
+
+      for (const json of [false, true]) {
+        const missing = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
+        expect(missing.code).toBe(1);
+        const output = json ? JSON.parse(missing.out) : { message: missing.err, remedy: missing.err };
+        expect(output.remedy).toContain(checkCommand);
+        expect(output.message).toContain('No new project update was performed');
+        if (json) {
+          expect(output).toMatchObject({ projectRoot: root, reasonCode: 'preview-missing' });
+          expect(output.message).not.toContain('--project');
+        }
+      }
+
+      const preview = await runRaw(['update', '--check', ...target], cwd);
+      expect(preview.code).toBe(2);
+      expect(preview.out).toContain(formatUpdateCommand(root));
+      expect(preview.out).toContain(formatUpdateCommand(root, 'force'));
+      expect(preview.out).not.toContain(formatUpdateCommand(cwd));
+      const unapproved = await runRaw(['update', '--force', ...target, '--json'], cwd);
+      expect(unapproved.code).toBe(1);
+      expect(JSON.parse(unapproved.out)).toMatchObject({
+        projectRoot: root, reasonCode: 'approval-required'
+      });
+      expect(JSON.parse(unapproved.out).remedy).toContain(checkCommand);
+      expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+
+      await writeFile(policy, '# Concurrently edited policy\n');
+      for (const json of [false, true]) {
+        const stale = await runRaw(['update', '--force', ...target, ...(json ? ['--json'] : [])], cwd);
+        expect(stale.code).toBe(1);
+        const output = json ? JSON.parse(stale.out) : { message: stale.err, remedy: stale.err };
+        expect(output.remedy).toContain(checkCommand);
+        if (json) {
+          expect(output).toMatchObject({ projectRoot: root, reasonCode: 'preview-mismatch' });
+          expect(output.message).not.toContain('--project');
+        }
+      }
+      expect(await readFile(policy, 'utf8')).toBe('# Concurrently edited policy\n');
+      expect(await fingerprintUpdateTestProject(cwd)).toEqual(otherBefore);
+    }
+  );
+
   it('detects a concurrent core mutation and preserves the newer bytes', async () => {
     const root = await fixtureProject();
     const policyPath = path.join(root, ...governanceArtifactPaths.policy);
@@ -1859,18 +2129,32 @@ describe('core-only update command', () => {
     );
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const manifestBefore = await readFile(manifestPath, 'utf8');
-    const stdout = new TriggerCaptureStream(
-      'Apply safe Liftoff core changes',
-      () => writeFileSync(policyPath, '# concurrent policy\n')
+    const approvedArgs = await reviewedUpdateArguments(
+      ['update'],
+      (previewArgs) => runRaw(previewArgs, root)
     );
-    const stderr = new CaptureStream();
+    const fingerprint = parseArgs(approvedArgs).flags['approve-plan'];
+    expect(fingerprint).toMatch(/^[a-f0-9]{64}$/u);
+    const stdout = new CaptureStream();
+    const stderr = ttyCaptureStream();
+    let prompted = false;
 
     const code = await runCommand(parseArgs(['update']), {
       cwd: root,
+      stdin: scriptedTtyInput(''),
       stdout,
-      stderr
+      stderr,
+      updatePreview: updateTestPreviewOptions(root),
+      approveUpdatePlan: async (config) => {
+        prompted = true;
+        expect(config.default).toBe(false);
+        expect(config.message).toContain(fingerprint);
+        await writeFile(policyPath, '# concurrent policy\n');
+        return true;
+      }
     });
 
+    expect(prompted).toBe(true);
     expect(code).toBe(1);
     expect(await readFile(policyPath, 'utf8')).toBe('# concurrent policy\n');
     expect(await readFile(manifestPath, 'utf8')).toBe(manifestBefore);
@@ -1914,7 +2198,7 @@ describe('managed-core reconciliation states', () => {
   }
 
   it('classifies clean managed-core moves and orphans without project artifacts', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-reconcile-'));
+    const root = await createUpdateTestRoot();
     cleanups.push(root);
     const oldParts = ['legacy', 'policy.md'];
     await mkdir(path.join(root, 'legacy'), { recursive: true });

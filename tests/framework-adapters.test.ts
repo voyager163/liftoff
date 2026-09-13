@@ -7,7 +7,7 @@ import {
   initializeFramework
 } from '../src/framework-adapters.js';
 import { loadManifest, validateGeneratedProject } from '../src/file-system.js';
-import { validateFrameworkInstallation } from '../src/framework-validation.js';
+import { specKitIntegrationPaths, validateFrameworkInstallation } from '../src/framework-validation.js';
 import { validateStagedTree, withStagingArea, writeStagedArtifacts } from '../src/init-filesystem.js';
 import type {
   CommandResult,
@@ -22,7 +22,18 @@ import {
 } from '../src/openspec-profile.js';
 import { reconcileProject } from '../src/reconcile.js';
 import { buildArtifacts, partitionGeneratedArtifacts } from '../src/templates.js';
-import type { ExternalCommand, ProjectPlan } from '../src/types.js';
+import type { CodingAgentId, ExternalCommand, ProjectPlan, SpecWorkflowId } from '../src/types.js';
+
+const agentSubsets = [
+  ['copilot'], ['claude'], ['copilot', 'claude'], ['codex'],
+  ['copilot', 'codex'], ['claude', 'codex'], ['copilot', 'claude', 'codex']
+];
+const integrationCases: Array<[SpecWorkflowId, string[], string | undefined]> = agentSubsets.flatMap(
+  (agents): Array<[SpecWorkflowId, string[], string | undefined]> => [
+    ['openspec', agents, undefined],
+    ...agents.map((defaultAgent): [SpecWorkflowId, string[], string] => ['spec-kit', agents, defaultAgent])
+  ]
+);
 
 class FrameworkRunner implements CommandRunner {
   calls: ExternalCommand[] = [];
@@ -83,14 +94,11 @@ class FrameworkRunner implements CommandRunner {
   private async writeOpenSpec(cwd: string, command: ExternalCommand): Promise<void> {
     const tools = command.args[command.args.indexOf('--tools') + 1]?.split(',') ?? [];
     await write(path.join(cwd, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
-    if (tools.includes('github-copilot')) {
-      for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
-        await write(path.join(cwd, ...pathParts), 'copilot\n');
-      }
-    }
-    if (tools.includes('claude')) {
-      for (const pathParts of openSpecIntegrationPaths('claude')) {
-        await write(path.join(cwd, ...pathParts), 'claude\n');
+    for (const agent of ['github-copilot', 'claude', 'codex'] as const) {
+      if (tools.includes(agent)) {
+        for (const pathParts of openSpecIntegrationPaths(agent)) {
+          await write(path.join(cwd, ...pathParts), `${agent}\n`);
+        }
       }
     }
     if (command.args.includes('--copilot-cloud')) {
@@ -114,10 +122,11 @@ class FrameworkRunner implements CommandRunner {
       }
     }
     for (const integration of this.installed) {
-      if (integration === 'copilot') {
-        await write(path.join(cwd, '.github', 'skills', 'speckit-specify', 'SKILL.md'), 'copilot\n');
-      } else if (integration === 'claude') {
-        await write(path.join(cwd, '.claude', 'skills', 'speckit-specify', 'SKILL.md'), 'claude\n');
+      const agents: Record<string, CodingAgentId> = {
+        copilot: 'github-copilot', claude: 'claude', codex: 'codex'
+      };
+      for (const parts of specKitIntegrationPaths(agents[integration])) {
+        await write(path.join(cwd, ...parts), `${integration}\n`);
       }
     }
     await write(path.join(cwd, '.specify', 'integration.json'), `${JSON.stringify({
@@ -158,6 +167,42 @@ function plan(values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}): Pro
 }
 
 describe('official framework commands', () => {
+  it.each(agentSubsets)('builds OpenSpec for the complete selected set %j', (...agents) => {
+    const selectedPlan = plan({ agents });
+    const command = buildOpenSpecInitCommand(selectedPlan);
+    expect(command.args[command.args.indexOf('--tools') + 1])
+      .toBe(selectedPlan.agents.map((agent) => agent.integrationIds.openspec).join(','));
+    expect(command.args.includes('--no-copilot-cloud')).toBe(agents.includes('copilot'));
+    expect(command.args).toContain('custom');
+  });
+
+  it.each(integrationCases.filter(([workflow]) => workflow === 'spec-kit'))(
+    'preserves every selected %s default for %j: %s',
+    (_workflow, agents, defaultAgent) => {
+      const selected = plan({ specWorkflow: 'spec-kit', agents, defaultAgent });
+      const commands = buildSpecKitInitCommands(selected);
+      const primary = selected.defaultAgent!;
+      expect(commands[0]).toEqual({
+        executable: 'specify',
+        args: [
+          'init', '--here', '--force', '--ignore-agent-tools', '--non-interactive',
+          '--integration', primary.integrationIds['spec-kit'],
+          ...(primary.id === 'github-copilot' ? ['--integration-options=--skills'] : [])
+        ]
+      });
+      expect(commands.slice(1)).toEqual(selected.agents
+        .filter((agent) => agent.id !== primary.id)
+        .map((agent) => ({
+          executable: 'specify',
+          args: [
+            'integration', 'install', agent.integrationIds['spec-kit'], '--force',
+            ...(agent.id === 'github-copilot' ? ['--integration-options=--skills'] : [])
+          ]
+        })));
+      expect(commands.some((command) => command.args.includes('use'))).toBe(false);
+    }
+  );
+
   it('maps every selected agent into one pinned OpenSpec complete-profile initialization', () => {
     expect(buildOpenSpecInitCommand(plan({ agents: ['claude', 'copilot'] }))).toEqual({
       executable: 'openspec',
@@ -217,15 +262,7 @@ describe('official framework commands', () => {
 });
 
 describe('framework adapter lifecycle', () => {
-  it.each([
-    ['openspec', ['copilot'], undefined],
-    ['openspec', ['claude'], undefined],
-    ['openspec', ['copilot', 'claude'], undefined],
-    ['spec-kit', ['copilot'], 'copilot'],
-    ['spec-kit', ['claude'], 'claude'],
-    ['spec-kit', ['copilot', 'claude'], 'copilot'],
-    ['spec-kit', ['copilot', 'claude'], 'claude']
-  ] as const)('initializes and validates %s with agents %j and default %s', async (workflow, agents, defaultAgent) => {
+  it.each(integrationCases)('initializes and validates %s with agents %j and default %s', async (workflow, agents, defaultAgent) => {
     const selectedPlan = plan({
       specWorkflow: workflow,
       agents: [...agents],
@@ -242,7 +279,7 @@ describe('framework adapter lifecycle', () => {
       const initialized = await initializeFramework(area, selectedPlan, runner);
       const files = await validateStagedTree(area);
 
-      expect(initialized.commands).toHaveLength(workflow === 'openspec' || agents.length === 1 ? 1 : 2);
+      expect(initialized.commands).toHaveLength(workflow === 'openspec' ? 1 : agents.length);
       expect(files.filter((file) => file.origin === 'framework').length).toBeGreaterThan(0);
       expect(await validateFrameworkInstallation(area.root, {
         workflow,

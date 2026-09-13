@@ -82,7 +82,7 @@ describe('public documentation', () => {
     const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(135);
+    expect(readme.split('\n').length).toBeLessThan(165);
     expect(readme).not.toContain('Status: implemented');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
@@ -101,10 +101,11 @@ describe('public documentation', () => {
     expect(readme).toContain('Claude Code');
     expect(readme).toContain('exact current Git root');
     expect(readme).toContain('docs/safety-and-consent.md');
-    expect(readme).toContain('liftoff update --check --json');
+    expect(readme).toContain('liftoff update --check');
+    expect(readme).toContain('--approve-plan <fingerprint>');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(
-      /replaces the CLI only; generated projects use `liftoff update` separately\s+for Liftoff-managed core files/
+      /replaces the CLI only; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
     );
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
@@ -113,6 +114,36 @@ describe('public documentation', () => {
     expect(bashExamples).not.toMatch(/liftoff init .+--/);
     expect(bashExamples).not.toContain('liftoff init\n');
     expect(bashExamples).not.toContain('liftoff create');
+  });
+
+  it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
+    const docs = await Promise.all([
+      repositoryFile('README.md'), repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/repository-governance.md')
+    ]);
+    for (const content of docs) {
+      const text = content.replace(/\s+/g, ' ');
+      expect(text).toContain('Local baseline');
+      expect(text).toContain('not an OpenSpec feature change');
+      expect(text).toContain('existing authentication');
+      expect(text).toContain('--subscription <UUID>');
+      expect(text).toContain('state/backend metadata');
+      expect(text).toContain('plan-only');
+      expect(text).toMatch(/Agent installation[\s\S]*public stateful migration coordinator[\s\S]*not implemented|public stateful migration coordinator[\s\S]*\*\*not implemented\*\*/);
+      expect(text).toContain('liftoff setup');
+      expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
+    }
+    expect(docs[1]).toContain('liftoff repair [project-path] --approve-plan <fingerprint>');
+    expect(docs[1]).toContain('liftoff repair [project-path] --recover');
+    expect(docs[1]).toContain('revalidation.nextPhaseLabel');
+    expect(docs[1]).toContain('infrastructureRepair');
+    expect(docs[1]).toContain('120-second overall deadline');
+    expect(docs[1]).toContain('30-second per-command');
+    expect(docs[1]).toContain('maximum of 24 resource groups');
+    expect(docs[1]).toContain('compatible stable release line');
+    expect(docs[1]).toContain('Whole Azure root | `tofu fmt -check -recursive`');
+    expect(docs[1]).toContain('tofu init -backend=false -input=false -lockfile=readonly -no-color');
+    expect(docs[1]).toContain('tofu validate -json');
   });
 
   it('uses factual badges and an accessible theme-independent terminal visual', async () => {
@@ -237,10 +268,33 @@ describe('public documentation', () => {
     expect(cli).toContain('deterministic plain text');
     expect(cli).toMatch(/child stdout and stderr are forwarded\s+unchanged/);
     expect(cli).toMatch(/former `liftoff create` command is intentionally rejected/);
-    expect(cli).toContain('Plain `liftoff update` is imperative and prompt-free');
+    expect(cli).toContain('`liftoff update --check` is the human-first compatibility and migration preview');
+    expect(cli).toContain('A receipt is not approval');
+    expect(cli).toContain('Human follow-ups omit `--project`');
+    expect(cli).toContain('JSON remedies remain explicitly targeted');
+    expect(cli).toContain('do not join check and apply with `&&`');
+    expect(cli).toContain('`preview-missing` means no saved preview was found');
+    expect(cli).toContain('`--approve-plan`');
     expect(cli).toContain('liftoff update --check --json');
+    expect(cli).toContain('schema version 3 and `scope: "project-update"`');
+    expect(cli).not.toMatch(/schema version 2 and includes `scope: "managed-core"`/);
+    expect(cli).not.toContain('Compatibility metadata is version 2');
+    expect(cli).toContain('`migrationSummary`');
+    expect(cli).toContain('`nextRecordedPhase`');
+    expect(cli).toContain('`currentProofRequired`');
+    expect(cli).toMatch(/update committed a migration but local\s+revalidation is incomplete/);
+    expect(existing).toContain('Always run `--check` before a write-capable update');
+    expect(existing).not.toMatch(/Use `--check` first when the invocation must be read-only/);
+    expect(existing).not.toMatch(/safe managed-core changes immediately/);
+    expect(cli).toContain('$XDG_STATE_HOME/liftoff/update-previews');
+    expect(cli).toContain('$HOME/.local/state/liftoff/update-previews');
+    expect(cli).toContain('~/Library/Application Support/liftoff/update-previews');
+    expect(cli).toContain('%LOCALAPPDATA%\\liftoff\\update-previews');
+    expect(cli).toContain('%USERPROFILE%\\AppData\\Local\\liftoff\\update-previews');
+    expect(cli).toContain('An empty or relative override is an error');
+    expect(cli).toMatch(/history snapshot travels inside the project\. Preview receipts and\s+approval records do not/);
     expect(cli).toContain('Migration from 0.6.x');
-    expect(cli).toMatch(/Liftoff retains no backup after a successful core overwrite/);
+    expect(cli).toMatch(/activation migration additionally retains durable original history/);
     expect(cli).toContain('Next recommended command');
     expect(cli).toContain('Liftoff has not executed it automatically');
     expect(safety).toContain('Default update skips core conflicts');
@@ -267,7 +321,7 @@ describe('public documentation', () => {
     expect(existing).toMatch(
       /For CI\s+core-maintenance gates, use `liftoff update --check --json`/
     );
-    expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed update/);
+    expect(troubleshooting).toMatch(/Transaction rollback protects a\s+failed ordinary update/);
     expect(troubleshooting).toContain('Do not regenerate the lock as a connectivity workaround');
     expect(troubleshooting).toContain('UV_DEFAULT_INDEX');
     expect(manifests).toContain('`liftoff update --check`');
@@ -480,6 +534,8 @@ describe('public documentation', () => {
     expect(contributing).toContain("npm deprecate '@msn-control/liftoff@<0.3.0'");
     expect(contributing).toContain('withhold internal installation guidance');
     expect(contributing).toContain('Liftoff must not silently downgrade');
+    expect(contributing).toContain('approval v2 and compatibility metadata v3');
+    expect(contributing).not.toContain('compatibility metadata v2');
     expect(security).toContain('Versions before 0.3.0 are unsupported');
     expect(security).toContain('A successful installation of an older mirrored version does not make that version supported');
   });
@@ -610,7 +666,7 @@ describe('public documentation', () => {
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(14);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(16);
     expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(2);
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');
@@ -704,14 +760,15 @@ describe('public documentation', () => {
     expect(workflow).toContain('not an active governance change');
     expect(workflow).toContain('no\n`liftoff-governance.json`');
     expect(governance).toMatch(/`tofu fmt -check -recursive` at `infrastructure\/opentofu\/azure`/);
-    expect(governance).toContain('migration-required and no commands');
+    expect(governance).toContain('Before retrying blocked verification,');
+    expect(governance).toContain('native setup runs `liftoff repair --check --json`');
     for (const source of [developer, configuration]) {
       expect(source).toContain('diagnostic-only');
       expect(source).toMatch(/historical (?:identity, )?state|historical identity\/state\/evidence/);
     }
     expect(developer).toContain('validateReadableActivationIdentity');
     expect(developer).toContain('scope use strict current validation');
-    expect(configuration).toMatch(/readable historical manifest cannot\s+bootstrap current activation or authorize provider scope/);
+    expect(configuration).toMatch(/readable historical record never authorizes current provider scope/);
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

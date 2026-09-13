@@ -1,5 +1,3 @@
-import { access } from 'node:fs/promises';
-import path from 'node:path';
 import { stdin as processInput, stdout as processOutput } from 'node:process';
 import { createInterface } from 'node:readline/promises';
 import type { Readable } from 'node:stream';
@@ -39,6 +37,7 @@ import {
   retiredPowerAppsMessage
 } from './domain/project/retired-workload.js';
 import { normalizeProjectOptions, resolveProjectTypeInput } from './domain/project/inputs.js';
+import { frameworkMarkerIssue } from './framework-validation.js';
 
 interface AgentCheckboxChoice {
   name: string;
@@ -103,13 +102,6 @@ export class InteractiveCancelledError extends Error {
     super(message);
     this.name = 'InteractiveCancelledError';
   }
-}
-
-function errorCode(error: unknown): string | undefined {
-  return typeof error === 'object' && error !== null && 'code' in error &&
-    typeof (error as { code?: unknown }).code === 'string'
-    ? (error as { code: string }).code
-    : undefined;
 }
 
 function isPromptCancellation(error: unknown): boolean {
@@ -462,7 +454,7 @@ export class InteractivePrompter {
         const byIndex = codingAgents[Number(value) - 1];
         return byIndex ?? getCodingAgent(value);
       });
-      if (resolved.some((agent) => !agent)) {
+      if (resolved.length === 0 || resolved.some((agent) => !agent)) {
         this.presentation.warning('Please choose valid agent options.');
         continue;
       }
@@ -508,7 +500,7 @@ export class InteractivePrompter {
     await Promise.all(codingAgents.map(async (agent) => {
       if (this.configuredRoot) {
         const markerStates = await Promise.all(framework.agentMarkers[agent.id].map(
-          async (pathParts) => this.pathExists(path.join(this.configuredRoot!, ...pathParts))
+          async (pathParts) => (await frameworkMarkerIssue(this.configuredRoot!, pathParts)) === undefined
         ));
         if (markerStates.some(Boolean)) {
           configured.add(agent.id);
@@ -533,18 +525,6 @@ export class InteractivePrompter {
           : agent.id === 'github-copilot')
       .map((agent) => agent.id);
     return { configured, detected, defaults };
-  }
-
-  private async pathExists(file: string): Promise<boolean> {
-    try {
-      await access(file);
-      return true;
-    } catch (error) {
-      if (errorCode(error) === 'ENOENT' || errorCode(error) === 'ENOTDIR') {
-        return false;
-      }
-      throw error;
-    }
   }
 
   private agentChoiceLabel(agentId: CodingAgentId, discovery: AgentDiscovery): string {

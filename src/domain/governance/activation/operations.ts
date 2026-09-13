@@ -1,6 +1,27 @@
-import type { PhaseGraphNode, PhaseId, SavedTransitionPlan, TransitionOperation } from './types.js';
+import type { GovernanceTaskProjectionContract, LiveReadbackProvider, MutationClass, PhaseGraphNode, PhaseId, SavedTransitionPlan, TransitionOperation } from './types.js';
 import { canonicalSha256 } from './canonical-json.js';
-import { type ManagedPhaseGraph, phaseIds, type TransitionOperationDestination, type TransitionRollbackPlan, type RollbackOperation } from './types.js';
+import { canonicalPhaseGraph } from './graph.js';
+import { type ManagedPhaseGraph, phaseIds, phaseScope, type TransitionOperationDestination, type TransitionRollbackPlan, type RollbackOperation } from './types.js';
+import { validateGovernanceTaskProjectionContract } from './validators.js';
+
+export const governanceTaskProjectionAction = 'governance.tasks.project' as const;
+
+export function taskProjectionContract(operations: readonly TransitionOperation[]): GovernanceTaskProjectionContract | undefined {
+  const projections = operations.filter((operation) => operation.actionId === governanceTaskProjectionAction);
+  if (projections.length > 1) throw new Error('A phase can project only one exact current governance task document.');
+  if (!projections.length) return undefined;
+  const operation = projections[0];
+  if (Object.keys(operation.inputs).join(',') !== 'projection') throw new Error('Task projection has no unbounded adapter inputs.');
+  const contract = validateGovernanceTaskProjectionContract(operation.inputs.projection);
+  if (operation.adapter !== 'local-evidence' || operation.mutationClass !== 'project-governance-tasks' ||
+    operation.remote || operation.destructive || operation.effects?.length ||
+    operation.destination.type !== 'local' || operation.destination.identity !== contract.taskPathParts.join('/') ||
+    operation.destination.pathParts?.join('/') !== contract.taskPathParts.join('/') ||
+    Object.keys(operation.destination).some((key) => !['type', 'identity', 'pathParts'].includes(key))) {
+    throw new Error('Task projection must name only its exact local checkbox destination.');
+  }
+  return contract;
+}
 
 export function phaseById(graph: ManagedPhaseGraph, phaseId: PhaseId): PhaseGraphNode {
   const phase = graph.phases.find((entry) => entry.id === phaseId);
@@ -10,6 +31,15 @@ export function phaseById(graph: ManagedPhaseGraph, phaseId: PhaseId): PhaseGrap
 
 export function phaseOrder(phaseId: PhaseId): number {
   return phaseIds.indexOf(phaseId);
+}
+
+const providerMutationClasses: Record<LiveReadbackProvider, ReadonlySet<MutationClass>> = {
+  github: new Set(['git-push', 'github-read', 'github-write', 'github-repository-create', 'github-workflow-dispatch', 'github-secret-write', 'github-ruleset-write']),
+  azure: new Set(['azure-read', 'azure-provider-register', 'azure-network-provision', 'azure-state-import', 'azure-resource-provision', 'backend-state-read', 'backend-state-write', 'registry-publish'])
+};
+
+export function phaseUsesProvider(phase: PhaseGraphNode, provider: LiveReadbackProvider): boolean {
+  return phase.allowedMutations.remote.some((mutation) => providerMutationClasses[provider].has(mutation));
 }
 
 export function operation(input: Omit<TransitionOperation, 'phaseId'> & { phaseId: PhaseId }): TransitionOperation {
@@ -110,9 +140,10 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
   'seed-verified': ['openspec.seed.baseline-verify', 'seed.tasks.project', ...persistence],
   'seed-archived': ['openspec.seed.archive', ...persistence],
   committed: ['git.init', 'git.add-reviewed', 'git.commit-reviewed', 'git.verify-existing-commit', ...persistence],
-  pushed: ['git.push-approved-ref', 'git.verify-existing-push', ...persistence],
+  pushed: ['github.repository.ensure', 'git.remote.bind', 'git.push-approved-ref', 'git.verify-existing-push', 'github.repository.default-branch', ...persistence],
   'phase-0-complete': ['github.phase0.discover', 'azure.phase0.discover', ...persistence],
   'activation-approved': ['openspec.governance.create-change', 'spec-kit.governance.create-change', 'governance.activation-state.write'],
+  'bootstrap-workflow-source-ready': ['local.workflow-source.write', 'git.commit-reviewed', 'git.push-approved-ref', 'github.bootstrap-local.configure', ...persistence],
   'credential-ready': ['github.credential.verify-policy', 'github.credential.enroll-masked', ...persistence],
   'provider-ready': ['azure.provider.ensure-ready', ...persistence],
   'state-path-selected': ['azure.state-path.select', ...persistence],
@@ -122,6 +153,8 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
   'private-backend-proof': ['github.runner.backend-proof', 'azure.remote-state.read', ...persistence],
   'remote-import-verified': ['azure.remote-import.verify', ...persistence],
   'remote-ready': ['azure.remote-ready.verify', ...persistence],
+  'application-prerequisites-ready': ['azure.prerequisites.apply', 'azure.prerequisites.verify', ...persistence],
+  'application-artifact-ready': ['github.artifact.build-dispatch', 'azure.artifact.readback', ...persistence],
   'application-foundation': ['azure.application-foundation.apply', 'openspec.governance.update', ...persistence],
   'workflow-source-ready': ['local.workflow-source.write', 'local.ruleset-source.write', ...persistence],
   'dev-proof': ['github.checks.dev-proof', ...persistence],
@@ -134,12 +167,16 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
   'bootstrap-state-disposed': ['local.bootstrap-state.dispose', ...persistence]
 };
 
-type OperationContract = Pick<TransitionOperation, 'adapter' | 'remote'> & { mutations: readonly TransitionOperation['mutationClass'][] };
+type OperationContract = Pick<TransitionOperation, 'adapter' | 'remote'> & {
+  mutations: readonly TransitionOperation['mutationClass'][];
+  effects?: readonly TransitionOperation['mutationClass'][];
+};
 
 function operationContract(action: string): OperationContract {
   const explicit: Record<string, OperationContract> = {
     'governance.evidence.write': { adapter: 'local-evidence', remote: false, mutations: ['write-evidence'] },
     'governance.activation-state.write': { adapter: 'local-evidence', remote: false, mutations: ['write-activation-state'] },
+    [governanceTaskProjectionAction]: { adapter: 'local-evidence', remote: false, mutations: ['project-governance-tasks'] },
     'openspec.seed.validate': { adapter: 'selected-spec-workflow', remote: false, mutations: ['read-worktree'] },
     'openspec.seed.baseline-verify': { adapter: 'selected-spec-workflow', remote: false, mutations: ['read-worktree'] },
     'openspec.seed.archive': { adapter: 'selected-spec-workflow', remote: false, mutations: ['write-openspec-seed', 'read-worktree'] },
@@ -151,51 +188,86 @@ function operationContract(action: string): OperationContract {
     'git.add-reviewed': { adapter: 'git', remote: false, mutations: ['git-commit'] },
     'git.commit-reviewed': { adapter: 'git', remote: false, mutations: ['git-commit'] },
     'git.verify-existing-commit': { adapter: 'git', remote: false, mutations: ['read-worktree'] },
+    'git.remote.bind': { adapter: 'git', remote: false, mutations: ['git-remote-bind'] },
+    'github.repository.ensure': { adapter: 'github', remote: true, mutations: ['github-read', 'github-repository-create'] },
+    'github.repository.default-branch': { adapter: 'github', remote: true, mutations: ['github-write'] },
     'git.push-approved-ref': { adapter: 'git', remote: true, mutations: ['git-push'] },
     'git.verify-existing-push': { adapter: 'git', remote: true, mutations: ['github-read'] },
+    'github.phase0.discover': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'azure.phase0.discover': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'github.credential.verify-policy': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'github.credential.enroll-masked': { adapter: 'github', remote: true, mutations: ['github-secret-write'] },
+    'azure.provider.ensure-ready': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-provider-register', 'azure-read'] },
+    'azure.state-path.select': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'azure.existing-private-path.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['backend-state-read'] },
+    'azure.bootstrap-local.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-network-provision'], effects: ['write-local-state', 'azure-read'] },
+    'github.bootstrap-local.configure': { adapter: 'github', remote: true, mutations: ['github-write'] },
+    'github.runner.ensure-ready': { adapter: 'github', remote: true, mutations: ['github-write', 'github-read'], effects: ['github-workflow-dispatch'] },
+    'github.runner.backend-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['backend-state-read', 'azure-read'] },
+    'azure.remote-state.read': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read', 'backend-state-read'] },
+    'azure.remote-import.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-state-import'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
+    'azure.remote-ready.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['backend-state-read'] },
+    'azure.prerequisites.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
+    'azure.prerequisites.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'github.artifact.build-dispatch': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'registry-publish'] },
+    'azure.artifact.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'azure.application-foundation.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
+    'github.checks.dev-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read'] },
+    'github.checks.staging': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write'] },
+    'azure.staging.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'github.checks.production-rehearsal': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write'] },
+    'azure.production-readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'github.checks.green-red-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'git-push', 'github-write'] },
+    'github.ruleset.apply': { adapter: 'github', remote: true, mutations: ['github-ruleset-write'] },
+    'github.ruleset.readback': { adapter: 'github', remote: true, mutations: ['github-read'] },
     'local.workflow-source.write': { adapter: 'local-state', remote: false, mutations: ['write-workflows'] },
     'local.ruleset-source.write': { adapter: 'local-state', remote: false, mutations: ['write-ruleset-source'] },
     'local.bootstrap-state.dispose': { adapter: 'local-state', remote: false, mutations: ['delete-local-state'] }
   };
   if (explicit[action]) return explicit[action];
-  if (action.startsWith('github.')) {
-    const mutation = action === 'github.credential.enroll-masked' ? 'github-secret-write' :
-      action === 'github.ruleset.apply' ? 'github-ruleset-write' :
-        ['github.bootstrap-local.configure', 'github.runner.ensure-ready'].includes(action) ? 'github-write' : 'github-read';
-    return { adapter: 'github', remote: true, mutations: [mutation] };
+  throw new Error(`Operation ${action} has no declared execution contract.`);
+}
+
+function assertConcreteDestination(destination: TransitionOperationDestination, remote: boolean, actionId: string): void {
+  if (destination.type === 'subscription' &&
+    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(destination.subscriptionId ?? '')) {
+    throw new Error(`Operation ${actionId} has no verified subscription destination; placeholders cannot authorize a transition.`);
   }
-  const mutation = action === 'azure.provider.ensure-ready' ? 'azure-provider-register' :
-    action === 'azure.bootstrap-local.apply' ? 'azure-network-provision' :
-      action === 'azure.remote-import.verify' ? 'azure-state-import' :
-        action === 'azure.application-foundation.apply' ? 'azure-resource-provision' : 'azure-read';
-  return { adapter: 'azure-opentofu', remote: true, mutations: [mutation] };
+  if (remote && destination.type === 'repository' &&
+    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(destination.repository ?? '')) {
+    throw new Error(`Operation ${actionId} requires a verified owner/repository destination.`);
+  }
 }
 
 export function assertOperationAllowed(phase: PhaseGraphNode, operation: TransitionOperation): void {
-  if (operation.phaseId !== phase.id || !actions[phase.id].includes(operation.actionId)) {
+  if (operation.phaseId !== phase.id ||
+    !actions[phase.id].includes(operation.actionId) && operation.actionId !== governanceTaskProjectionAction) {
     throw new Error(`Operation ${operation.actionId} is not allowlisted for phase ${phase.id}.`);
   }
   const contract = operationContract(operation.actionId);
   const allowed = operation.remote ? phase.allowedMutations.remote : phase.allowedMutations.local;
   if (operation.adapter !== contract.adapter || operation.remote !== contract.remote ||
-    !contract.mutations.includes(operation.mutationClass) || !allowed.includes(operation.mutationClass)) {
+    !contract.mutations.includes(operation.mutationClass) ||
+    (!allowed.includes(operation.mutationClass) && operation.actionId !== governanceTaskProjectionAction)) {
     throw new Error(`Operation ${operation.actionId} adapter, authority, or mutation class is not declared by phase ${phase.id}.`);
   }
   if (operation.destructive !== (operation.actionId === 'local.bootstrap-state.dispose')) {
     throw new Error(`Operation ${operation.actionId} has an invalid destructive scope.`);
   }
-  if (operation.destination.type === 'subscription' &&
-    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(operation.destination.subscriptionId ?? '')) {
-    throw new Error(`Operation ${operation.actionId} has no verified subscription destination; placeholders cannot authorize a transition.`);
-  }
-  if (operation.remote && operation.destination.type === 'repository' &&
-    !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(operation.destination.repository ?? '')) {
-    throw new Error(`Operation ${operation.actionId} requires a verified owner/repository destination.`);
+  assertConcreteDestination(operation.destination, operation.remote, operation.actionId);
+  if (operation.actionId === governanceTaskProjectionAction) taskProjectionContract([operation]);
+  for (const effect of operation.effects ?? []) {
+    const effectAllowed = effect.remote ? phase.allowedMutations.remote : phase.allowedMutations.local;
+    if (!contract.effects?.includes(effect.mutationClass) || !effectAllowed.includes(effect.mutationClass) || effect.destructive) {
+      throw new Error(`Delegated effect ${effect.mutationClass} is not authorized for ${operation.actionId} in ${phase.id}.`);
+    }
+    assertConcreteDestination(effect.destination, effect.remote, operation.actionId);
   }
 }
 
 export function assertPlanOperationsAllowed(plan: SavedTransitionPlan, phase: PhaseGraphNode): void {
-  if (plan.phaseId !== phase.id || canonicalSha256(plan.mutationClasses) !== canonicalSha256(phase.allowedMutations) ||
+  if (plan.phaseId !== phase.id || plan.scope !== phaseScope(phase.id) ||
+    canonicalSha256(plan.mutationClasses) !== canonicalSha256(phase.allowedMutations) ||
     plan.approval.gateKind !== phase.approvalGate.kind || plan.approval.required !== phase.approvalGate.required ||
     plan.approval.evaluation.phaseId !== phase.id || plan.approval.evaluation.gateKind !== phase.approvalGate.kind ||
     plan.approval.envelopeId !== plan.approval.evaluation.envelopeId ||
@@ -204,4 +276,23 @@ export function assertPlanOperationsAllowed(plan: SavedTransitionPlan, phase: Ph
     throw new Error(`Plan metadata, approval gate, or validity interval does not match phase ${phase.id}.`);
   }
   for (const operation of plan.operations) assertOperationAllowed(phase, operation);
+  const projection = taskProjectionContract(plan.operations);
+  if (projection) {
+    if (plan.fileChanges?.some((change) => change.pathParts.join('/') === projection.taskPathParts.join('/'))) {
+      throw new Error('Derived checkbox projection cannot also authorize a generic task-file replacement.');
+    }
+    const metadata = plan.fileChanges?.find((change) => change.pathParts.join('/') === projection.metadataPathParts.join('/'));
+    if (projection.source === 'create'
+      ? !metadata || metadata.beforeHash !== null || metadata.afterHash !== projection.metadataHash
+      : metadata !== undefined) {
+      throw new Error('Task projection metadata must be the exact new source or an unchanged existing source.');
+    }
+  }
+  for (const bundled of plan.approvalBundle ?? []) {
+    const node = phaseById(canonicalPhaseGraph, bundled.phaseId);
+    if (phaseScope(node.id) !== plan.scope || node.approvalGate.kind !== phase.approvalGate.kind) {
+      throw new Error('Bundled operations cannot expand the approval scope or authority gate.');
+    }
+    for (const operation of bundled.operations) assertOperationAllowed(node, operation);
+  }
 }

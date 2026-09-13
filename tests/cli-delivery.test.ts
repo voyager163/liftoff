@@ -33,10 +33,17 @@ async function invoke(
 ) {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
+  const workspaceRoot = roots.find((root) => {
+    const relative = path.relative(root, cwd);
+    return relative === '' || !relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative);
+  });
+  if (!workspaceRoot) throw new Error('CLI delivery tests require an isolated workspace.');
   const code = await runCli({
     argv, cwd, stdout, stderr, telemetry,
     env: { CI: 'true', DO_NOT_TRACK: '1', LIFTOFF_TELEMETRY: '0' },
-    execute: (parsed, context) => runCommand(parsed, { ...context, runner })
+    execute: (parsed, context) => runCommand(parsed, {
+      ...context, runner, updatePreview: { homedir: path.join(workspaceRoot, 'receipt-home'), env: {} }
+    })
   });
   return { code, out: stdout.text(), err: stderr.text() };
 }
@@ -82,7 +89,13 @@ describe('public CLI delivery flows', () => {
     const originalGuide = await readFile(guidePath, 'utf8');
     await writeFile(applicationPath, 'project-owned application edit\n');
     await writeFile(guidePath, 'managed guide edit\n');
-    const maintained = await invoke(['update', '--force', '--json'], project, runner);
+    const maintenancePreview = await invoke(['update', '--check', '--json'], project, runner);
+    expect(maintenancePreview.code, maintenancePreview.out + maintenancePreview.err).toBe(2);
+    const maintenancePlan = JSON.parse(maintenancePreview.out).plans.find((entry: { mode: string }) => entry.mode === 'force');
+    expect(maintenancePlan).toBeDefined();
+    const maintained = await invoke([
+      'update', '--force', '--json', '--approve-plan', maintenancePlan.fingerprint
+    ], project, runner);
     expect(maintained.code, maintained.out + maintained.err).toBe(0);
     expect(await readFile(applicationPath, 'utf8')).toBe('project-owned application edit\n');
     expect(await readFile(guidePath, 'utf8')).toBe(originalGuide);

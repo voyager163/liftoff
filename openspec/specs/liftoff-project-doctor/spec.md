@@ -62,39 +62,60 @@ The system SHALL read the normalized manifest to configure diagnostics. Cloud ch
 - **THEN** it exits with an unsupported retired-workload error before selecting workload-specific runtime, dependency, or cloud checks
 
 ### Requirement: Doctor reports version freshness and managed-core drift
-The system SHALL always report the running CLI version and SHALL compare it with the stable version published by the authoritative registry using a short timeout regardless of whether a generated project exists. Inside a project, the system SHALL also compare the manifest's `liftoffVersion` against the running CLI and SHALL surface managed-core drift as a single warning line with a count and a pointer to `liftoff update`, using the update engine's scoped check classification. Doctor SHALL NOT compare project-owned files with current templates or imply that a CLI upgrade can replace production files. Any registry network failure SHALL leave local diagnostics intact and suppress only the freshness result. Doctor SHALL remain read-only and SHALL direct supported installations to the explicit self-upgrade command rather than invoking it.
+Doctor SHALL always report the running CLI and use the existing bounded authoritative stable-release lookup independently of project discovery. Inside a project it SHALL compare recorded and running CLI versions and report managed-core drift as one count-based warning directing the user to `liftoff update --check`, using the shared pure update classification. It SHALL report activation migration/revalidation separately, not count it as production-template drift. Doctor SHALL never issue a preview receipt, approve/apply an update, compare production files with current templates, or imply that upgrading the CLI replaces production files. Registry failure SHALL suppress only freshness, not local diagnosis.
 
 #### Scenario: Freshness check runs outside a project
-- **WHEN** a developer runs doctor outside a generated project with registry access
-- **THEN** the CLI layer reports the running Liftoff version
-- **AND** it reports whether a newer stable version is published
+- **WHEN** doctor runs outside a generated project with registry access
+- **THEN** it reports the running version and whether a newer stable CLI is published
 
 #### Scenario: Authoritative registry is newer than the running CLI
-- **WHEN** the authoritative registry reports a stable Liftoff version newer than the running CLI
-- **THEN** doctor emits a warning naming both exact versions
-- **AND** the primary remedy tells the developer to run `liftoff upgrade --check` and then `liftoff upgrade`
-- **AND** it retains an exact manual npm command for unsupported installation origins or explicit recovery
+- **WHEN** canonical stable release data is newer than the running CLI
+- **THEN** doctor names both exact versions and recommends `liftoff upgrade --check` followed by `liftoff upgrade`
+- **AND** it retains the exact manual npm fallback for unsupported origins or recovery
 
 #### Scenario: Configured managed mirror is stale
-- **WHEN** a developer's configured npm mirror exposes an older Liftoff version than the authoritative registry lookup
-- **THEN** doctor does not claim the running CLI is current based on the configured mirror
-- **AND** the remedy states that self-upgrade remains blocked until the approved mirror exposes the canonical target
-- **AND** doctor does not modify npm configuration or perform an automatic update
+- **WHEN** the configured mirror does not expose the authoritative target
+- **THEN** doctor reports the synchronization blocker rather than declaring the CLI current
+- **AND** it neither changes registry configuration nor performs an upgrade
 
 #### Scenario: Drift warning line
-- **WHEN** doctor runs in a project with four reconcilable managed-core differences
-- **THEN** the output contains one warning stating four core updates are available and naming `liftoff update`
-- **AND** it does not count project template differences
+- **WHEN** four managed-core differences are present
+- **THEN** one warning identifies four core maintenance actions and `liftoff update --check`
+- **AND** it neither counts project-template differences nor creates the external receipt itself
 
 #### Scenario: Production files differ from templates
-- **WHEN** only project-owned files differ from the running CLI templates
-- **THEN** doctor reports no managed-core drift warning
-- **AND** retains independent runtime and structural diagnostics
+- **WHEN** only production templates differ
+- **THEN** doctor reports no managed-core drift and retains independent runtime/structural diagnostics
 
 #### Scenario: Offline doctor preserves local version diagnostics
-- **WHEN** doctor runs without network access
-- **THEN** all local checks complete normally and the running CLI version remains visible
-- **AND** no freshness warning or error appears
+- **WHEN** the registry is unavailable
+- **THEN** local diagnostics and the running version remain available without a freshness error
+
+### Requirement: Doctor distinguishes migration eligibility from current readiness
+Doctor SHALL identify known active v1, supported migration eligibility, committed linked v2, incomplete revalidation, and invalid declared history as distinct diagnostic conditions. Eligible v1 SHALL still be non-executable, with `liftoff update --check` as the human-first remedy. A valid retained v1 snapshot SHALL not fail otherwise valid current v2 simply because it exists. Post-commit revalidation blockers SHALL identify the failed phase and actual repair/resume path without recommending a reset, manual version editing, or force bypass.
+
+#### Scenario: A supported v1 migration is available
+- **WHEN** active v1 satisfies the installed migration lane
+- **THEN** doctor explains that migration can be previewed through `liftoff update --check`
+- **AND** it does not claim current execution readiness or require JSON
+
+#### Scenario: Migration has committed but validation failed
+- **WHEN** the journal identifies a committed successor with blocked revalidation
+- **THEN** doctor reports the retained v2 identity, exact blocker, and preview/retry remedy
+- **AND** it does not label the project as unmigrated v1 or recommend restoring v1 automatically
+
+#### Scenario: Retained history is valid
+- **WHEN** linked v2 proof is valid alongside the exact preserved v1 inventory
+- **THEN** historical presence alone does not cause an incompatible-identity failure
+
+#### Scenario: Declared history is damaged
+- **WHEN** a declared history/index link is missing, unsafe, or digest-mismatched
+- **THEN** doctor reports that specific problem without silently repairing or reinterpreting it
+
+#### Scenario: Diagnosis does not acknowledge a preview
+- **WHEN** doctor diagnoses migration or revalidation
+- **THEN** it writes no project/environment file or preview receipt
+- **AND** the user still needs the actual update check before new update writes
 
 ### Requirement: Runtime readiness checks degrade honestly
 The system SHALL check that `.env` exists when `.env.example` is present and that the Docker Compose configuration parses when a compose file exists and docker is available; when a runtime check's prerequisites are missing, the system SHALL report the check as skipped with the reason rather than passing or failing it.
@@ -180,25 +201,35 @@ The system SHALL derive doctor checks from the same workload-aware requirement r
 - **THEN** each workstation result includes the stable registry identifier, severity, observed state, and remedy
 
 ### Requirement: Doctor reports selected AI coding-agent readiness honestly
-The system SHALL check every agent recorded by the current supported manifest. Copilot SHALL be present when its CLI probe succeeds or an observable VS Code extension list contains the supported Copilot identifiers. Claude Code SHALL be present when its CLI probe succeeds, and its doctor result SHALL be reported without Liftoff automating authentication.
+The system SHALL check every agent recorded by the supported manifest using the shared compatibility and cause model. Copilot SHALL be present when its compatible CLI probe succeeds or supported VS Code extension identifiers are observed. Claude and Codex SHALL be present when their compatible CLI probes succeed. Compatible official preview agents SHALL be ready with a notice, not an outdated-tool failure. Authentication SHALL remain external and SHALL not be automated or collected by doctor.
 
 #### Scenario: Copilot CLI is detected
-- **WHEN** the manifest selects Copilot and `copilot --version` succeeds
-- **THEN** doctor reports the Copilot installation as ready
+- **WHEN** the manifest selects Copilot and its compatible version probe succeeds
+- **THEN** doctor reports the installation as ready with its actual observed version
 
 #### Scenario: VS Code Copilot extension is detected
-- **WHEN** the Copilot CLI is absent, `code --list-extensions` succeeds, and the list contains `GitHub.copilot` or `GitHub.copilot-chat` case-insensitively
+- **WHEN** the Copilot CLI is absent and a successful extension listing contains `GitHub.copilot` or `GitHub.copilot-chat` case-insensitively
 - **THEN** doctor reports Copilot as installed through VS Code
 
 #### Scenario: VS Code extension state is not observable
-- **WHEN** the Copilot CLI and the `code` command are both unavailable
-- **THEN** doctor reports Copilot as not observable rather than claiming the extension is absent
-- **AND** it offers the supported Copilot CLI installation remedy
+- **WHEN** both the Copilot CLI and the VS Code command are unavailable
+- **THEN** doctor reports not-observable installation rather than claiming the extension is absent
+- **AND** it offers the supported CLI installation remedy
 
 #### Scenario: Claude authentication remains external
-- **WHEN** `claude --version` succeeds but `claude doctor` reports an authentication problem
-- **THEN** doctor reports Claude Code as installed with an authentication warning and agent-owned remedy
+- **WHEN** Claude's version probe succeeds but its doctor command reports an authentication problem
+- **THEN** Liftoff reports an installed agent with an authentication warning and agent-owned remedy
 - **AND** it does not request credentials
+
+#### Scenario: Codex is selected
+- **WHEN** the manifest selects Codex with OpenSpec or Spec Kit
+- **THEN** doctor probes the registered Codex executable and native framework markers
+- **AND** it does not require unselected Copilot or Claude integrations
+
+#### Scenario: A selected preview agent is compatible
+- **WHEN** a selected agent reports a compatible official preview build
+- **THEN** doctor agrees with setup that the requirement is ready with a preview notice
+- **AND** it does not recommend reinstalling merely to remove the preview suffix
 
 ### Requirement: Doctor distinguishes blocking and advisory workstation readiness
 The system SHALL preserve each selected requirement's blocking or advisory classification in human and JSON output. Missing blocking requirements SHALL contribute a failure, while missing advisory infrastructure tools SHALL contribute warnings and SHALL never be reported as successful.
@@ -263,3 +294,59 @@ timeouts explicitly without installing tools or changing project state.
 #### Scenario: A test injects a release lookup
 - **WHEN** a deterministic diagnostic test supplies an explicit lookup dependency
 - **THEN** doctor uses that injected dependency without contacting a real registry
+
+### Requirement: Doctor separates local completion activation and repair progress
+Doctor SHALL distinguish local readiness, activation planning/approval/execution, stateful migration checkpoints, recovery, and lifecycle obligations. It SHALL share active-layout, compatibility, and proof interpretation with the other commands while remaining probe-only. Real external prerequisites SHALL be distinguished from a missing implementation, and no incomplete global stage SHALL erase valid local completion.
+
+#### Scenario: Local setup is complete while activation is pending
+- **WHEN** local proof is current but no publication or cloud activation has occurred
+- **THEN** doctor identifies completed local setup and pending activation separately
+
+#### Scenario: Infrastructure repair needs discovery
+- **WHEN** legacy conformance is unresolved and deployment eligibility is unknown
+- **THEN** doctor names the supported project-bound repair preview and missing discovery
+- **AND** it does not create a receipt, perform the repair, or assume undeployed state
+
+#### Scenario: Repair committed but verification is incomplete
+- **WHEN** a repair progress record identifies committed files and failed local checks
+- **THEN** doctor reports both facts and the supported scoped retry
+- **AND** it does not recommend reverting to legacy provenance
+
+#### Scenario: Stateful migration is interrupted
+- **WHEN** a journal records partial backend effects
+- **THEN** doctor identifies the verified checkpoint and supported recovery inspection
+- **AND** it neither writes state nor recommends blindly restoring an old snapshot
+
+#### Scenario: Activation is verified and disposal is not due
+- **WHEN** live activation proof is current while retained-state disposal is scheduled for later
+- **THEN** doctor reports active governance and pending lifecycle separately
+- **AND** it does not declare lifecycle complete or delete retained material
+
+### Requirement: Doctor identifies successor and sensitive-operation boundaries
+Doctor SHALL identify historical v1/v2 identities, declared successor eligibility, current execution identity, and corrupted or incomplete migration links without rewriting them. It SHALL not pull sensitive state, run deployment plans, grant authority, enroll credentials, release locks, or execute recovery merely to produce a diagnosis.
+
+#### Scenario: Historical contract needs upgrade
+- **WHEN** current execution requires a supported reviewed successor
+- **THEN** doctor names the actual update preview and required fresh-proof work
+- **AND** it does not tell the developer to edit version fields or reuse historical approvals
+
+#### Scenario: A sensitive state read is needed
+- **WHEN** metadata-only diagnostics cannot establish a migration mapping
+- **THEN** doctor identifies the separate state-inspection approval path
+- **AND** it does not include raw state or secrets in its output
+
+### Requirement: Doctor reports executable identity and causal remedies
+Doctor SHALL expose running CLI identity and selected tool executable observations separately from manifest-writing versions, release-channel notices, and required constraints. It SHALL distinguish unavailable executables, no-op repairs, incompatible versions/channels, and actual PATH problems. Diagnostics SHALL remain read-only and SHALL not infer successful installation from a path's existence.
+
+#### Scenario: A compatibility-rejected executable is found
+- **WHEN** a tool version command resolves and succeeds but a real constraint is not satisfied
+- **THEN** doctor reports the constraint mismatch and actual executable
+- **AND** it does not diagnose PATH solely from the unresolved requirement
+
+#### Scenario: Command availability differs between sessions
+- **WHEN** installation identity is needed to investigate an unknown-command report
+- **THEN** doctor identifies the running CLI version and resolved executable/package boundary without claiming that another session used the same binary
+
+#### Scenario: Windows uses an executable shim
+- **WHEN** a selected tool resolves through a Windows executable shim
+- **THEN** observations and remedies distinguish that resolved path from a missing-command condition using native path handling

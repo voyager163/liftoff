@@ -6,6 +6,7 @@ import {
   compareOpenSpecProfile,
   configureOpenSpecProfile,
   inspectOpenSpecProfile,
+  OPEN_SPEC_AGENT_SURFACES,
   OPEN_SPEC_COPILOT_CLOUD_PATHS,
   OPEN_SPEC_DELIVERY,
   OPEN_SPEC_PROFILE,
@@ -111,6 +112,17 @@ describe('OpenSpec complete profile contract', () => {
     ]);
     expect(openSpecIntegrationPaths('github-copilot')).toHaveLength(24);
     expect(openSpecIntegrationPaths('claude')).toHaveLength(24);
+    expect(openSpecIntegrationPaths('codex')).toHaveLength(12);
+    expect(OPEN_SPEC_AGENT_SURFACES.codex.commands).toBeUndefined();
+    expect(openSpecIntegrationPaths('codex')).toEqual([
+      'openspec-propose', 'openspec-explore', 'openspec-new-change',
+      'openspec-continue-change', 'openspec-apply-change', 'openspec-update-change',
+      'openspec-ff-change', 'openspec-sync-specs', 'openspec-archive-change',
+      'openspec-bulk-archive-change', 'openspec-verify-change', 'openspec-onboard'
+    ].map((skill) => ['.agents', 'skills', skill, 'SKILL.md']));
+    expect(openSpecIntegrationPaths('codex').some((parts) =>
+      parts.includes('.codex') || parts.includes('commands') || parts.includes('prompts')
+    )).toBe(false);
     expect(openSpecIntegrationPaths('github-copilot')).toContainEqual([
       '.github', 'skills', 'openspec-bulk-archive-change', 'SKILL.md'
     ]);

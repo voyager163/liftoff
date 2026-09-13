@@ -1,4 +1,5 @@
 import type { ProjectProvisioningGroup } from './contracts.js';
+import { governanceAgentIntegrations } from './catalog.js';
 
 export const explicitArtifactLifecycleIdentities = [
   {
@@ -75,7 +76,7 @@ export function explicitArtifactLifecycleIdentityFor(
   return explicitArtifactLifecycleIdentityMap.get(logicalName);
 }
 
-export const managedCoreLogicalNames = [
+export const preCodexManagedCoreLogicalNames = [
   'repository-governance-policy',
   'repository-governance-context',
   'repository-governance-guide',
@@ -86,6 +87,12 @@ export const managedCoreLogicalNames = [
   'liftoff-setup-claude',
   'liftoff-governance-assess-copilot',
   'liftoff-governance-assess-claude'
+] as const;
+
+export const managedCoreLogicalNames = [
+  ...preCodexManagedCoreLogicalNames,
+  governanceAgentIntegrations.codex.setup.logicalName,
+  governanceAgentIntegrations.codex.assessment.logicalName
 ] as const;
 
 const managedCoreLogicalNameSet = new Set<string>(managedCoreLogicalNames);

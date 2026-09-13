@@ -261,66 +261,109 @@ The system SHALL initialize at the current directory only when that directory is
 - **AND** manifest path semantics remain identical to macOS and Linux
 
 ### Requirement: CLI exposes discovery and validation commands
-The system SHALL expose commands for project initialization, planning, managed-core project update, explicit managed-core update checks, project migration, pattern discovery, provider discovery, region discovery, validation, local development helpers, infrastructure helpers, and environment diagnostics.
+The system SHALL expose initialization, generation planning, reviewed project update and explicit checks, non-Liftoff project adoption, pattern/provider/region discovery, validation, local-development helpers, infrastructure helpers, and diagnostics. Supported activation migration SHALL use the existing update command. `--json` SHALL remain output formatting rather than a separate safety or authorization mode.
 
 #### Scenario: List supported patterns
-- **WHEN** a developer runs `liftoff patterns`
-- **THEN** the system lists all nine GenAI patterns, including the generic uncertainty option, with their scaffold status
+- **WHEN** `liftoff patterns` runs
+- **THEN** all nine GenAI patterns including the generic uncertainty option retain their scaffold status
 
 #### Scenario: Search regions
-- **WHEN** a developer runs `liftoff regions search korea --cloud azure`
-- **THEN** the system lists matching Azure regions with display names and slugs
+- **WHEN** `liftoff regions search korea --cloud azure` runs
+- **THEN** matching region display names and slugs are listed
 
 #### Scenario: Run diagnostics
-- **WHEN** a developer runs `liftoff doctor`
-- **THEN** the system reports local readiness for the context-selected runtimes, spec framework, coding agents, Docker, and OpenTofu without modifying the project or workstation
+- **WHEN** doctor runs
+- **THEN** it reports context-selected readiness without modifying the project, workstation, or preview receipts
 
 #### Scenario: Check a project for drift
-- **WHEN** a developer or automation runs `liftoff update --check`
-- **THEN** the system reports only managed-core drift and configuration-authorized component provisioning without requesting input or writing files
-- **AND** it does not compare production project files with current starter templates
+- **WHEN** a user or automation runs `liftoff update --check`
+- **THEN** it previews compatibility, managed-core drift, eligible provisioning, and activation migration/revalidation without prompting or changing project files
+- **AND** it discloses its external receipt rather than comparing production files with new templates
 
 #### Scenario: Apply safe drift by default
-- **WHEN** a developer or automation runs plain `liftoff update` and actionable managed-core drift exists
-- **THEN** the system applies safe core changes without requesting input
-- **AND** core conflicts remain untouched unless `--force` is supplied
+- **WHEN** a write-capable normal update plan is requested
+- **THEN** a matching prior preview and explicit exact-plan approval are required before safe core changes apply
+- **AND** core conflicts remain skipped without an approved forced variant
 
 #### Scenario: Force stays inside the core boundary
-- **WHEN** a developer runs `liftoff update --force`
-- **THEN** only listed managed-core conflicts are eligible for overwrite
-- **AND** project-owned files and provisioning collisions remain untouched
+- **WHEN** a forced update is requested
+- **THEN** only its separately previewed eligible core conflicts/retired aliases can be overwritten or removed
+- **AND** project bytes and provisioning collisions remain protected
 
 #### Scenario: Migrate an existing project
-- **WHEN** a developer runs `liftoff migrate ../legacy-app`
-- **THEN** the system scans the source project, generates a fresh Liftoff scaffold beside it, and emits a migration plan without modifying the source project
+- **WHEN** `liftoff migrate ../legacy-app` runs
+- **THEN** it retains its source-preserving adoption into a fresh adjacent Liftoff scaffold
+- **AND** it is not repurposed as in-place activation migration
 
 ### Requirement: Packaged README documents the current CLI lifecycle
-The system SHALL package a concise root README covering first use, the two supported workloads, workflow/agent integrations, exact-Git-root initialization, safety, diagnostics, and links to detailed lifecycle contracts. It SHALL distinguish any-Git assessment from project-required mutation commands and unfinished production activation.
+The packaged root README SHALL retain concise first-use, supported-workload, framework/agent, exact-Git-root initialization, safety, and diagnostic guidance. Its maintenance journey SHALL lead with `liftoff update --check`, then approval through `liftoff update`, and explain the separation between CLI self-upgrade, reviewed activation migration, application-template migration, and read-only assessment. Detailed contracts SHALL remain linked rather than imply unfinished production activation is implemented.
 
 #### Scenario: Review first-use workflow
-- **WHEN** a developer reads the packaged or repository README
-- **THEN** installation and interactive initialization lead the guide
-- **AND** GenAI/API, OpenSpec/Spec Kit, and Copilot/Claude are presented without Power Apps as a supported workload
+- **WHEN** the README is read
+- **THEN** installation and interactive initialization lead the guide and Power Apps is not listed as supported
 
 #### Scenario: Review command lifecycle
-- **WHEN** a developer needs the roles of plan, initialization, migration, validation, doctor, update, development, or infrastructure helpers
-- **THEN** linked packaged guidance explains those commands and the replacement of `create` by `init`
+- **WHEN** a user follows lifecycle links
+- **THEN** command roles and the replacement of create by init remain documented
+- **AND** supported activation migration stays under update
 
 #### Scenario: Understand initialization safety
-- **WHEN** a developer follows initialization safety guidance
-- **THEN** transactional staging, target behavior, conflict disclosure, manifest guards, and independent consent flags remain discoverable
+- **WHEN** initialization guidance is read
+- **THEN** staging, target/conflict behavior, manifest guards, and independent consent remain discoverable
 
 #### Scenario: Understand update safety
-- **WHEN** a developer follows update guidance
-- **THEN** it retains safe managed-core apply, read-only check, protected project files, create-only expansion, separate production migration, JSON/exit contracts, removed `--apply`, and accurate conflict/recovery guidance
+- **WHEN** update guidance is read
+- **THEN** it explains project-read-only preview, external receipts, exact approval, protected production files, create-only expansion, preserved history, partial recovery, and removed `--apply`
 
 #### Scenario: Understand machine-readable and exit-code behavior
-- **WHEN** a developer reads the linked CLI contract
-- **THEN** it distinguishes check-mode drift exit 2 from successful apply exit 0 and identifies numeric JSON schema versions
+- **WHEN** the CLI reference is read
+- **THEN** it identifies update JSON schema 3 and distinguishes clean/completed scope, rejected/failed operations, and drift or committed partial revalidation
 
 #### Scenario: Review contributor workflow
-- **WHEN** a contributor follows the contribution link
-- **THEN** root build, test, check, package-smoke, and release procedures remain documented without a workspace selector
+- **WHEN** the contribution link is followed
+- **THEN** existing root build, test, check, package-smoke, and release procedures remain documented without a workspace selector
+
+### Requirement: Update approval has a strict plan-bound CLI surface
+The update command SHALL accept `--approve-plan <fingerprint>` only with a complete valid fingerprint for its effective normal or forced plan. It SHALL reject missing, abbreviated, malformed, or conflicting values and reject approval flags combined with check before mutations. Interactive approval SHALL use the injected command input/output and default to decline; noninteractive runs SHALL not infer approval from redirected input, JSON, force, defaults, or a generic yes.
+
+#### Scenario: CI supplies exact approval
+- **WHEN** a matching receipt and full effective fingerprint are supplied through `--approve-plan`
+- **THEN** update proceeds without prompting only after current compatibility and preconditions pass
+
+#### Scenario: CI omits approval
+- **WHEN** noninteractive apply has a receipt but no exact-plan approval
+- **THEN** it exits 1 with approval-required guidance and no project write
+
+#### Scenario: The fingerprint belongs to another plan
+- **WHEN** approval names a different project, target, or normal/force variant
+- **THEN** apply reports the mismatch without selecting a fallback plan
+
+#### Scenario: Check receives an approval flag
+- **WHEN** check is combined with `--approve-plan`
+- **THEN** usage is rejected before issuing a receipt or touching project files
+
+#### Scenario: Interactive cancellation
+- **WHEN** the user declines or cancels the approval prompt
+- **THEN** apply performs no project mutation and reports the cancellation
+
+#### Scenario: JSON is used interactively
+- **WHEN** a terminal-backed apply uses JSON output and needs explicit approval
+- **THEN** the prompt/progress use stderr and stdout remains one versioned result
+
+### Requirement: Update help and errors expose the review sequence
+Command help and remedies SHALL show `liftoff update --check` as the human preview, ordinary update as explicitly approved apply, the exact-plan automation flag, and the limited force variant. Missing/stale preview errors SHALL name the check command and state that no new project update was performed. Unsupported compatibility SHALL not be described as forceable.
+
+#### Scenario: User starts with apply
+- **WHEN** actionable work exists but the user has no matching preview
+- **THEN** the CLI stops and directs them to `liftoff update --check`
+
+#### Scenario: User requests update help
+- **WHEN** `liftoff update --help` runs
+- **THEN** it explains preview, approval, receipt storage, normal/forced plans, JSON, and exit behavior without probing or writing
+
+#### Scenario: Project path contains spaces on Windows
+- **WHEN** help/remediation describes a supported explicit project path on Windows, macOS, or Linux
+- **THEN** the displayed command uses appropriate literal quoting and the same project-bound preview rules
 
 ### Requirement: CLI syntax is command-specific and strict
 The system SHALL validate commands, subcommands, positionals, flags, and catalog inputs against explicit definitions. Invalid or removed inputs MUST exit 1 with their token/combination identified and without project, workstation, or provider mutations. Interactive prompting SHALL NOT discard invalid supplied values before validation.
@@ -722,7 +765,7 @@ Selecting a repository-governance profile or passing `--yes` SHALL authorize onl
 - **AND** no remote governance operation runs
 
 ### Requirement: CLI exposes deterministic governance setup commands
-The CLI SHALL retain governance `status`, `plan`, `apply-next`, `resume`, and `verify` with strict arguments, supported-project discovery, versioned output, and independent consent. Selected/executed phase fields and legacy `nextReadyPhase` selection semantics SHALL remain distinct from post-transition readiness. Commands SHALL distinguish current executable identity, historical diagnostic-only identity, incomplete progress, inconsistency, and unavailable capabilities. Safe bounded framework diagnostics SHALL remain available without credential leakage.
+The CLI SHALL retain governance inspection/execution commands and add usable approval, secure credential enrollment, and recovery operations with strict arguments and schema-2 results. It SHALL accept explicit local, activation, and lifecycle scopes, default direct governance invocations to activation, and report journey/local/migration/activation/lifecycle progress separately. Dependency-ready planning SHALL not require an already granted approval. Executed-phase identity SHALL remain distinct from current next readiness, and no scope or JSON flag SHALL imply authorization.
 
 #### Scenario: Run governance status outside a project
 - **WHEN** no supported Liftoff manifest is resolvable, including an ordinary Git-only repository
@@ -730,15 +773,17 @@ The CLI SHALL retain governance `status`, `plan`, `apply-next`, `resume`, and `v
 
 #### Scenario: Inspect governance identity
 - **WHEN** governance JSON is requested
-- **THEN** it identifies CLI, policy, activation-contract, schema, and graph identities without a separate setup-skill version
+- **THEN** it identifies running CLI/executable, policy, activation-contract, schema, and graph identities without a separate setup-skill version
+- **AND** recorded generator versions remain distinct from the running CLI
 
 #### Scenario: Preview next transitions
 - **WHEN** governance plan is requested
-- **THEN** it reports phase readiness, executor availability, evidence, approvals, allowed mutations, and cost scope without writes
+- **THEN** it reports dependency-ready plans, required authority, evidence, actual operations, and cost scope without executing them
+- **AND** any external preview receipt is explicitly disclosed rather than confused with approval
 
 #### Scenario: Apply a ready transition
 - **WHEN** `apply-next --json --execute` selects an executable evidence-ready phase with satisfied approval
-- **THEN** only allowlisted operations execute and successful state is persisted transactionally after outcome validation
+- **THEN** only allowlisted operations in the selected scope execute and successful state is persisted transactionally after outcome validation
 
 #### Scenario: Preview a ready transition
 - **WHEN** apply-next is called without `--execute`
@@ -749,35 +794,36 @@ The CLI SHALL retain governance `status`, `plan`, `apply-next`, `resume`, and `v
 - **THEN** execution reports a blocker without persisting successful invalid evidence or authorizing descendants
 
 #### Scenario: Verification is consistent before setup starts
-- **WHEN** a supported project has no activation state or inconsistent artifacts
-- **THEN** verification reports `ok: true`, `consistent: true`, `complete: false`, and `setupStatus: not-started`
-- **AND** identifies the next local boundary without manufacturing persisted state
+- **WHEN** a supported project has no activation state and no inconsistent required artifacts
+- **THEN** verification reports consistency with incomplete not-started selected scope and exits 2
+- **AND** it identifies the next local boundary without manufacturing persisted state
 
 #### Scenario: A valid bootstrap seed is still active
 - **WHEN** a supported workflow's seed is intact with no competing work or contradictory finalization record
-- **THEN** setup remains incomplete rather than inconsistent merely because local finalization is pending
-- **AND** publication remains approval-gated
+- **THEN** local setup remains incomplete rather than inconsistent merely because local finalization is pending
+- **AND** publication remains separately approval-gated
 
 #### Scenario: Active seed contradicts stored archive completion
 - **WHEN** current state claims OpenSpec archival while the same seed remains active
 - **THEN** verification reports an inconsistency instead of ordinary pending progress
 
 #### Scenario: Verification cannot inspect state
-- **WHEN** a required governance artifact is malformed
-- **THEN** verification reports `ok: false`, `consistent: false`, `complete: false`, and indeterminate setup
+- **WHEN** a required shared governance artifact is malformed
+- **THEN** verification exits 1 with inconsistent, incomplete, indeterminate selected scope
+- **AND** local scope does not hide malformed shared identity or state
 
 #### Scenario: Resume after a blocker
 - **WHEN** a developer resumes after repairing a blocker
-- **THEN** resume recalculates preflight/readiness without executing operations
-- **AND** repaired local failures can be retried by a separate explicit execution while unchanged verified work is not repeated
+- **THEN** resume recalculates selected-scope readiness without executing operations
+- **AND** repaired local failures can be retried by separate explicit execution while unchanged verified work is not repeated
 
 #### Scenario: Unsupported governance syntax is supplied
-- **WHEN** a subcommand, flag, or positional combination is unsupported
+- **WHEN** a subcommand, flag, scope value, or positional combination is unsupported
 - **THEN** it fails before project discovery or mutation
 
 #### Scenario: Distinguish selection from post-transition readiness
 - **WHEN** seed-valid executes successfully
-- **THEN** selectedPhase and executedPhase identify that phase, while subsequent status/verify supplies post-transition readiness
+- **THEN** `selectedPhase` and `executedPhase` identify seed-valid while `nextReadyPhase` reflects a new inspection of the selected scope
 - **AND** failed execution names no successfully executed phase
 
 #### Scenario: Explain an OpenSpec validation failure
@@ -793,8 +839,9 @@ The CLI SHALL retain governance `status`, `plan`, `apply-next`, `resume`, and `v
 - **THEN** commands explain the exact reconciliation or unavailable-migration blocker without rewriting history or recommending fabricated receipts
 
 #### Scenario: Production capability is not implemented
-- **WHEN** a selected phase requires an unavailable executor or public approval/credential workflow
-- **THEN** the CLI identifies the missing capability and stops rather than pretending completion or requesting manual state fabrication
+- **WHEN** a required producer is absent from the advertised supported activation path
+- **THEN** that path fails release qualification rather than shipping a placeholder as implemented
+- **AND** genuinely unsupported external capabilities remain explicit limitations without invalidating completed local work
 
 ### Requirement: CLI exposes a strictly read-only governance assessment
 The CLI SHALL expose `liftoff governance assess [path] [--json] [--live]` and the alternative `--project` target for supported Liftoff projects and ordinary Git repositories. It SHALL default to local-only assessment without requiring initialization or a generated slash command. Only assess SHALL accept `--live`; mutation, installation, automatic-upgrade, and output-file flags SHALL remain invalid. All assessment invocations SHALL remain excluded from telemetry and disclosure.
@@ -901,3 +948,102 @@ Initialization SHALL distinguish a valid nonrepository directory from a failed o
 #### Scenario: Git discovery fails for an unrelated reason
 - **WHEN** discovery fails because of unsafe ownership, permissions, or an uninterpretable result rather than a confirmed nonrepository directory
 - **THEN** initialization reports that failure without choosing another target or writing files
+
+### Requirement: CLI offers Codex consistently across both workflows
+Liftoff SHALL accept canonical agent `codex` alongside `github-copilot` and `claude` through interactive selection, CLI agent options, configuration, and manifest interpretation. It SHALL support each nonempty combination for OpenSpec and Spec Kit in stable canonical order. A Spec Kit default SHALL be exactly one selected agent; OpenSpec SHALL not acquire a default-agent requirement.
+
+#### Scenario: Select Codex alone
+- **WHEN** a supported workload selects Codex with either spec workflow
+- **THEN** the resolved plan includes Codex and does not require Copilot or Claude integration files
+
+#### Scenario: Select all three agents
+- **WHEN** a developer selects Copilot, Claude, and Codex
+- **THEN** interactive and noninteractive plans preserve all three without duplicates or two-agent assumptions
+
+#### Scenario: Codex is the Spec Kit default
+- **WHEN** a multi-agent Spec Kit request explicitly selects Codex as default
+- **THEN** Codex is recorded as the default and the other selected integrations remain included
+
+### Requirement: CLI exposes reviewed project repair without implicit authorization
+The CLI SHALL expose `liftoff repair` for local and stateful plans with project selection, `--check`, scoped `--live`, additive-agent/default options, explicit sensitive-state inspection/read approval, exact apply approval, and reviewed recovery. JSON SHALL remain formatting only. Machine/dependency/global-profile permissions SHALL remain independent. Invalid combinations, conflicting paths, unselected defaults, force bypasses, state access without read authority, and expanded write scope SHALL fail before the affected operation.
+
+#### Scenario: Preview without granting writes
+- **WHEN** `liftoff repair --check --json` is invoked inside a supported project
+- **THEN** it reports the actual project-bound plan and disclosed external receipt
+- **AND** JSON formatting does not authorize any execution
+
+#### Scenario: Noninteractive application lacks approval
+- **WHEN** repair application has no current matching fingerprint in a noninteractive invocation
+- **THEN** it exits 1 with the exact preview/approval remedy and performs no project write
+
+#### Scenario: Add agents without replacing the current selection
+- **WHEN** `--check --add-agents codex` is requested
+- **THEN** the preview adds Codex to the existing set rather than removing other selected agents
+
+#### Scenario: Commands remain portable and target-bound
+- **WHEN** a repair action is printed for a Windows project whose path contains spaces
+- **THEN** its executable, arguments, and working directory describe that exact project safely
+- **AND** no `liftoff init` project-name argument is misrepresented as a temporary output directory
+
+### Requirement: Governance verification reports selected-scope completion honestly
+Schema-2 verification SHALL use exit 0 for a consistent complete selected scope, exit 2 for a consistent incomplete selected scope, and exit 1 for inconsistency or failed inspection. Successful status, plan, and resume inspection SHALL remain exit 0 even when they report incomplete work. A committed execution with failed post-operation inspection SHALL report committed progress and indeterminate readiness as a partial outcome.
+
+#### Scenario: Local setup is complete while activation is pending
+- **WHEN** local verification succeeds but publication or activation has not started
+- **THEN** local-scoped verify exits 0 with local completion and separately reports pending activation
+
+#### Scenario: Only one local phase is complete
+- **WHEN** local state is consistent but further local work remains
+- **THEN** local verify exits 2 without calling the project inconsistent or complete
+
+#### Scenario: Readiness cannot be observed after commit
+- **WHEN** an execution commits successfully but reinspection fails
+- **THEN** the result retains the executed phase and failure detail
+- **AND** it reports indeterminate next readiness rather than the executed phase as a future action
+
+### Requirement: Setup drives the approved end-to-end journey
+The single native setup integration SHALL guide supported projects through local readiness, required repair/migration, publication and activation planning, separately approved production execution, and live verification. It SHALL retain a local-only mode and allow the developer to decline later authority without losing local progress. An unqualified full-journey success SHALL require the requested immediate activation and migration work to be verified.
+
+#### Scenario: Developer approves the full journey
+- **WHEN** supported prerequisites are satisfied and the developer approves each required scope
+- **THEN** setup continues beyond local preparation and implements the approved cloud/governance plan
+- **AND** completion is based on real deployment and enforcement readback
+
+#### Scenario: Developer declines activation
+- **WHEN** local readiness is complete but later approval is declined
+- **THEN** the result reports local completion and activation not performed
+- **AND** it does not claim a deployed governed system
+
+### Requirement: Approval credential and recovery commands are executable interfaces
+Governance SHALL expose exact-plan approval persistence, protected credential enrollment, and recovery operations through its command registry. Approval SHALL not execute a plan. Credential input SHALL use private operator channels or approved secure references, never argv/chat values. Recovery SHALL use validated current conditions and the approved compensation boundary rather than force-unlocking or restoring arbitrary state.
+
+#### Scenario: A dependency-ready phase awaits approval
+- **WHEN** the phase has a complete plan but no valid approval
+- **THEN** the CLI presents its fingerprint and the actual approval command
+- **AND** the user is not asked to hand-create an approval file
+
+#### Scenario: An automation caller enrolls a credential
+- **WHEN** approved enrollment uses explicitly selected protected stdin or a supported secure reference
+- **THEN** the value is excluded from command arguments, output, evidence, and source files
+
+#### Scenario: A migration is partially executed
+- **WHEN** recovery is requested for recorded partial effects
+- **THEN** the CLI identifies the current checkpoint and exact permitted recovery plan
+- **AND** it does not automatically re-run the original mutation
+
+### Requirement: Repair is reachable from the installed CLI and native setup
+The installed CLI SHALL register repair check, exact-plan application, explicit live metadata discovery, and interrupted local transaction recovery. Human and schema-1 JSON results SHALL distinguish clean, available, blocked, applied, failed and recovery outcomes with actual next actions. Native setup SHALL use this command when infrastructure conformance blocks local verification, without inventing unsupported commands or manually changing provenance.
+
+#### Scenario: Repair help and invalid authority
+- **WHEN** a developer requests repair help or supplies conflicting check/apply/recovery flags
+- **THEN** help describes the supported scopes or invalid flags fail before access and mutation
+- **AND** force or a generic yes flag cannot bypass repair approval
+
+#### Scenario: Native setup encounters legacy infrastructure
+- **WHEN** local setup is blocked by recorded legacy OpenTofu layout
+- **THEN** its integration directs the developer through repair preview, separate approval, and resumed local verification
+- **AND** cloud mutation and stateful migration remain separately authorized rather than assumed
+
+#### Scenario: Plan-only is not success
+- **WHEN** an unsupported or stateful project cannot be transformed by the public local lane
+- **THEN** repair returns exit 2 with concrete limitations and leaves source and state untouched

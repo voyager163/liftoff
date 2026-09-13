@@ -19,12 +19,18 @@ import { buildArtifacts } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import {
+  activationContractVersion,
+  compatibilityMetadataSchemaVersion,
+  historicalActivationIdentities,
+  liftoffActivationPackageVersion
+} from '../src/governance-activation/identity.js';
+import {
   canonicalPhaseGraphHash,
   canonicalPhaseGraphJson,
-  currentActivationIdentity,
-  validateGovernanceCompatibilityMetadata,
-  validateManagedPhaseGraph
-} from '../src/governance-activation/index.js';
+  currentActivationIdentity
+} from '../src/governance-activation/graph.js';
+import { validateGovernanceCompatibilityMetadata } from '../src/governance-activation/compatibility.js';
+import { validateManagedPhaseGraph } from '../src/domain/governance/activation/validators.js';
 
 function plan(values: Partial<Parameters<typeof buildProjectPlan>[0]> = {}) {
   return buildProjectPlan({
@@ -406,7 +412,7 @@ describe('repository governance artifacts', () => {
     expect(new Set(assessment.map((artifact) => artifact.content)).size).toBe(1);
     for (const artifact of assessment) {
       expect(artifact.lifecycle).toBe('managed-core');
-      expect(artifact.content.length).toBeLessThan(2_000);
+      expect(artifact.content.length).toBeLessThan(2_500);
       expect([...artifact.content.matchAll(/`(liftoff [^`]+)`/g)].map((match) => match[1]))
         .toEqual([
           'liftoff governance assess --json',
@@ -492,15 +498,26 @@ describe('repository governance artifacts', () => {
     expect(setup).toHaveLength(2);
     expect(new Set(setup.map((artifact) => artifact.content)).size).toBe(1);
     for (const launcher of setup) {
-      expect(launcher.content.length).toBeLessThan(1_500);
-      expect(launcher.content).toContain('liftoff governance status --json');
-      expect(launcher.content).toContain('liftoff governance plan --json');
-      expect(launcher.content).toContain('liftoff governance apply-next --json');
-      expect(launcher.content).toContain('liftoff governance apply-next --json --execute');
-      expect(launcher.content).toContain('liftoff governance resume --json');
-      expect(launcher.content).toContain('liftoff governance verify --json');
+      expect(launcher.content.length).toBeLessThan(3_000);
+      expect(launcher.content).toContain('liftoff governance status --scope local --json');
+      expect(launcher.content).toContain('liftoff governance plan --scope local --json');
+      expect(launcher.content).toContain('liftoff governance apply-next --scope local --json');
+      expect(launcher.content).toContain('liftoff governance apply-next --scope local --json --execute');
+      expect(launcher.content).toContain('liftoff governance verify --scope local --json');
+      expect(launcher.content).toContain('liftoff governance plan --scope activation --json');
+      expect(launcher.content).toContain('liftoff governance verify --scope activation --json');
+      expect(launcher.content).toContain('Never automatically approve a plan');
+      expect(launcher.content).toContain('nextActions');
+      expect(launcher.content).toContain('private operator channel');
+      expect(launcher.content).toContain('Plan saves a disclosed external preview, not approval');
+      expect(launcher.content).toContain('Apply-next without `--execute` is strictly read-only');
+      expect(launcher.content).toContain('--inputs <public-json-file>');
+      expect(launcher.content).toContain('--protected-stdin');
+      expect(launcher.content).not.toContain('Status, plan, and resume are read-only');
+      expect(launcher.content).toContain('post-operation readiness');
+      expect(launcher.content).toContain('consistent but\n   incomplete');
       expect(launcher.content).toMatch(
-        /Use `liftoff governance apply-next --json` only to preview[\s\S]+approval status is `not-required` or\s+`reused`[\s\S]+run\s+`liftoff governance apply-next --json --execute`/
+        /[Pp]review[\s\S]+approval-free local action[\s\S]+`liftoff governance apply-next --scope local --json --execute`/
       );
       expect(launcher.content).toMatch(/Liftoff\s+governance engine/);
       expect(launcher.content).not.toContain('liftoff-repository-governance');
@@ -515,14 +532,51 @@ describe('repository governance artifacts', () => {
     }
   });
 
-  it('describes Spec Kit bootstrap and missing entry capabilities without inventing workflows', () => {
+  it.each(['openspec', 'spec-kit'] as const)('routes every native %s setup through separately approved repair before local retry', (workflow) => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan({
+      agents: ['copilot', 'claude', 'codex'], specWorkflow: workflow,
+      ...(workflow === 'spec-kit' ? { defaultAgent: 'copilot' } : {})
+    }));
+    const integrations = artifacts.filter((artifact) => artifact.logicalName.startsWith('liftoff-setup-'));
+    const guide = artifacts.find((artifact) => artifact.logicalName === 'repository-governance-guide')!.content;
+    expect(guide).toContain('120 seconds overall, 30 seconds per command');
+    expect(guide).toContain('at most 24 resource groups');
+    expect(guide).toContain('tofu init -backend=false -input=false -lockfile=readonly -no-color');
+    expect(guide).toContain('tofu validate -json');
+    expect(integrations).toHaveLength(3);
+    for (const { content } of integrations) {
+      expect(content.length).toBeLessThan(3_000);
+      const check = content.indexOf('liftoff repair --check --json');
+      const live = content.indexOf('liftoff repair --check --live --subscription <UUID> --json');
+      const apply = content.indexOf('liftoff repair --approve-plan <fingerprint> --json');
+      const update = content.indexOf('liftoff update --check --json');
+      const local = content.indexOf('liftoff governance plan --scope local --json');
+      expect(check).toBeGreaterThan(-1);
+      expect(live).toBeGreaterThan(check);
+      expect(apply).toBeGreaterThan(live);
+      expect(update).toBeGreaterThan(apply);
+      expect(local).toBeGreaterThan(update);
+      expect(content).toContain('separate explicit approval of the exact eligible fingerprint');
+      expect(content).toContain('Ordinary check makes no cloud calls');
+      expect(content).toContain('public stateful migration coordinator are not implemented');
+      expect(content).toContain('liftoff repair --recover');
+      expect(content).toContain('not an OpenSpec feature change');
+      expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
+    }
+  });
+
+  it('describes Spec Kit local finalization and separately approved protected enrollment', () => {
     const artifacts = buildRepositoryGovernanceArtifacts(plan({
       specWorkflow: 'spec-kit', defaultAgent: 'copilot'
     }));
     const guide = artifacts.find(artifact => artifact.logicalName === 'repository-governance-guide')!.content;
     expect(guide).toContain('specs/000-liftoff-bootstrap/');
     expect(guide).toContain('without an OpenSpec archive or new Git branch');
-    expect(guide).toContain('No masked credential-input channel');
+    expect(guide).toContain('liftoff governance credential-enroll --plan <fingerprint>');
+    expect(guide).toContain('private operator channel');
+    expect(guide).toContain('--protected-stdin');
+    expect(guide).toContain('not the end of a requested full journey');
+    expect(guide).not.toContain('No masked credential-input channel');
     expect(guide).toContain('adoption; update, force, and assessment never create it');
     expect(guide).not.toContain('Enter the value only through the masked input');
   });
@@ -618,8 +672,8 @@ describe('repository governance artifacts', () => {
       artifact.category === 'governance'
     )).toHaveLength(10);
     expect(manifest.liftoffVersion).toBe(liftoffVersion);
-    expect(manifest.governance.activationIdentity.liftoffVersion).toBe('0.11.0');
-    expect(manifest.governance.activationIdentity.activationContractVersion).toBe(2);
+    expect(manifest.governance.activationIdentity.liftoffVersion).toBe(liftoffActivationPackageVersion);
+    expect(manifest.governance.activationIdentity.activationContractVersion).toBe(activationContractVersion);
     expect(manifest.managedArtifacts.some((artifact: { pathParts: string[] }) =>
       artifact.pathParts.join('/') === 'governance/activation-baseline.json'
     )).toBe(false);
@@ -644,13 +698,12 @@ describe('repository governance artifacts', () => {
     expect(createHash('sha256').update(graph.content).digest('hex')).toBe(canonicalPhaseGraphHash);
     expect(() => validateManagedPhaseGraph(JSON.parse(graph.content))).not.toThrow();
     const parsedCompatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibility.content));
-    expect(parsedCompatibility.schemaVersion).toBe(2);
-    expect(parsedCompatibility.activation.historicalReadability).toMatchObject({
-      activationContractVersion: 1,
-      activationStateSchemaVersion: 1,
-      evidenceHeaderSchemaVersion: 1,
+    expect(parsedCompatibility.schemaVersion).toBe(compatibilityMetadataSchemaVersion);
+    expect(parsedCompatibility.activation.historicalReadability).toEqual({
+      tuples: historicalActivationIdentities,
+      readers: ['activation-v1', 'activation-v2'],
       execution: 'diagnostic-only',
-      migration: 'unsupported-preserve-bytes'
+      migration: 'explicit-successor-preserve-bytes'
     });
     expect(parsedCompatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(parsedCompatibility.manifest.writeVersion).toBe(7);

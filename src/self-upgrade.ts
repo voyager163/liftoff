@@ -32,6 +32,12 @@ export const selfUpgradeInstallTimeoutMs = 10 * 60_000;
 export const selfUpgradeProbeTimeoutMs = 30_000;
 export const selfUpgradeVerificationTimeoutMs = 15_000;
 
+const homebrewPrefixes = {
+  'homebrew-opt': path.posix.join('/', 'opt', 'homebrew'),
+  'homebrew-usr-local': path.posix.join('/', 'usr', 'local')
+} as const;
+export type SelfUpgradeInstallationTarget = keyof typeof homebrewPrefixes;
+
 export type SelfUpgradeMode = 'apply' | 'check';
 export type SelfUpgradeStatus =
   | 'blocked'
@@ -52,6 +58,7 @@ export type SelfUpgradeReasonCode =
   | 'npm_install_timeout'
   | 'npm_unavailable'
   | 'registry_invalid'
+  | 'registry_prefix_mismatch'
   | 'registry_stale'
   | 'registry_unavailable'
   | 'unsupported_installation'
@@ -65,6 +72,7 @@ interface SelfUpgradeResultBase {
   status: SelfUpgradeStatus;
   currentVersion: string;
   reasonCode: SelfUpgradeReasonCode;
+  installationTarget?: SelfUpgradeInstallationTarget;
 }
 
 export type SelfUpgradeResult =
@@ -136,6 +144,7 @@ export interface SelfUpgradeDependencies {
 interface InstallationInspection {
   npmExecutable: string;
   packageRoot: string;
+  installationTarget?: SelfUpgradeInstallationTarget;
 }
 
 interface RegistryInspection {
@@ -203,17 +212,36 @@ export function expectedGlobalPackageRoot(
 
 export function buildGlobalNpmInstallCommand(
   targetVersion: string,
-  platform: NodeJS.Platform
+  platform: NodeJS.Platform,
+  installationTarget?: SelfUpgradeInstallationTarget
 ): ExternalCommand {
-  return {
-    executable: npmExecutableForPlatform(platform),
-    args: [
+  return npmCommand(
+    npmExecutableForPlatform(platform),
+    [
       'install',
       '--global',
       '--ignore-scripts',
       '--no-audit',
       '--no-fund',
       `${liftoffPackageName}@${targetVersion}`
+    ],
+    installationTarget
+  );
+}
+
+function npmCommand(
+  executable: string,
+  args: string[],
+  installationTarget?: SelfUpgradeInstallationTarget
+): ExternalCommand {
+  return {
+    executable,
+    args: [
+      ...args,
+      ...(installationTarget ? [
+        ...(!args.includes('--global') ? ['--global'] : []),
+        '--prefix', homebrewPrefixes[installationTarget]
+      ] : [])
     ]
   };
 }
@@ -225,6 +253,7 @@ function result(
   details: {
     targetVersion?: string;
     registryKind?: SelfUpgradeRegistryKind;
+    installationTarget?: SelfUpgradeInstallationTarget;
   } = {}
 ): SelfUpgradeResult {
   return {
@@ -233,6 +262,7 @@ function result(
     status,
     currentVersion: request.currentVersion,
     reasonCode,
+    ...(details.installationTarget ? { installationTarget: details.installationTarget } : {}),
     ...(details.targetVersion ? { targetVersion: details.targetVersion } : {}),
     ...(details.registryKind ? { registryKind: details.registryKind } : {})
   } as SelfUpgradeResult;
@@ -258,6 +288,7 @@ export function selfUpgradeExitCode(value: SelfUpgradeResult): number {
 }
 
 export function selfUpgradeRemedy(value: SelfUpgradeResult): string | undefined {
+  const prefix = value.installationTarget ? ` --prefix ${homebrewPrefixes[value.installationTarget]}` : '';
   switch (value.reasonCode) {
     case 'current':
     case 'update_available':
@@ -269,13 +300,13 @@ export function selfUpgradeRemedy(value: SelfUpgradeResult): string | undefined 
     case 'npm_install_timeout':
     case 'verification_failed':
       return value.targetVersion
-        ? `Run the exact repair command manually: ${exactGlobalInstallCommand(value.targetVersion)}`
+        ? `Run the exact repair command manually: ${exactGlobalInstallCommand(value.targetVersion)}${prefix}`
         : undefined;
     case 'unsupported_installation':
     case 'invalid_global_root':
     case 'invalid_package':
     case 'npm_unavailable':
-      return `Use a supported global npm installation: ${canonicalManualInstallCommand()}`;
+      return `Use a supported global npm installation: ${canonicalManualInstallCommand()}${prefix}`;
     case 'canonical_invalid':
     case 'canonical_timeout':
     case 'canonical_unavailable':
@@ -283,6 +314,8 @@ export function selfUpgradeRemedy(value: SelfUpgradeResult): string | undefined 
     case 'registry_invalid':
     case 'registry_unavailable':
       return 'Repair the approved npm registry configuration without placing credentials in the registry URL, then retry.';
+    case 'registry_prefix_mismatch':
+      return 'The active npm and verified Homebrew prefix select different registries. Reconcile the approved machine-level registry policy before retrying; Liftoff did not switch registries or install.';
     case 'downgrade_refused':
       return 'Keep the newer installed CLI; Liftoff does not perform automatic downgrades.';
     default:
@@ -325,6 +358,80 @@ function commandFailed(command: CommandResult): boolean {
     command.status !== 0;
 }
 
+async function homebrewInstallationTarget(
+  globalRoot: string,
+  runningRoot: string,
+  dependencies: SelfUpgradeDependencies
+): Promise<SelfUpgradeInstallationTarget | undefined> {
+  if (dependencies.platform !== 'darwin') return undefined;
+  for (const target of Object.keys(homebrewPrefixes) as SelfUpgradeInstallationTarget[]) {
+    const prefix = homebrewPrefixes[target];
+    const stableRoot = path.posix.join(prefix, 'lib', 'node_modules');
+    if (runningRoot !== expectedGlobalPackageRoot(stableRoot, 'darwin')) continue;
+    try {
+      const executable = await dependencies.realpath(dependencies.execPath);
+      const parts = path.posix.relative(prefix, executable).split(path.posix.sep);
+      if (parts.length !== 5 || parts[0] !== 'Cellar' || parts[3] !== 'bin' || parts[4] !== 'node' ||
+        !/^\d+\.\d+\.\d+(?:_\d+)?$/u.test(parts[2]) ||
+        !['node', `node@${parts[2].split('.')[0]}`].includes(parts[1])) continue;
+      const cellarRoot = path.posix.join(prefix, ...parts.slice(0, 3), 'lib', 'node_modules');
+      if (globalRoot !== cellarRoot || await dependencies.realpath(stableRoot) !== stableRoot) continue;
+      return target;
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+async function assertHomebrewInstallation(
+  installation: InstallationInspection,
+  version: string,
+  dependencies: SelfUpgradeDependencies
+): Promise<void> {
+  if (!installation.installationTarget) return;
+  const prefix = homebrewPrefixes[installation.installationTarget];
+  const globalRoot = path.posix.join(prefix, 'lib', 'node_modules');
+  const packageRoot = expectedGlobalPackageRoot(globalRoot, 'darwin');
+  try {
+    for (const directory of [prefix, path.posix.join(prefix, 'bin'), globalRoot,
+      path.posix.dirname(packageRoot), packageRoot]) {
+      const details = await dependencies.lstat(directory);
+      if (!details.isDirectory() || details.isSymbolicLink() || await dependencies.realpath(directory) !== directory) {
+        throw new Error('Unsafe Homebrew installation directory.');
+      }
+    }
+    const metadataPath = path.posix.join(packageRoot, 'package.json');
+    const metadataDetails = await dependencies.lstat(metadataPath);
+    if (!metadataDetails.isFile() || metadataDetails.isSymbolicLink()) {
+      throw new Error('Unsafe Homebrew package metadata.');
+    }
+    const metadata = await dependencies.readJson(metadataPath) as Record<string, unknown> | null;
+    if (!metadata || metadata.name !== liftoffPackageName || metadata.version !== version ||
+      !metadata.bin || typeof metadata.bin !== 'object' || Array.isArray(metadata.bin)) {
+      throw new Error('Invalid Homebrew package metadata.');
+    }
+    const declaredBin = (metadata.bin as Record<string, unknown>)[liftoffBinaryName];
+    if (typeof declaredBin !== 'string' || !declaredBin || path.posix.isAbsolute(declaredBin)) {
+      throw new Error('Invalid Homebrew package binary.');
+    }
+    const binary = path.posix.resolve(packageRoot, declaredBin);
+    const launcher = path.posix.join(prefix, 'bin', liftoffBinaryName);
+    if (!pathIsContained(packageRoot, binary, 'darwin')) {
+      throw new Error('Escaping Homebrew package binary.');
+    }
+    const binaryDetails = await dependencies.lstat(binary);
+    if (!binaryDetails.isFile() || binaryDetails.isSymbolicLink() ||
+      await dependencies.realpath(binary) !== binary ||
+      !(await dependencies.lstat(launcher)).isSymbolicLink() ||
+      await dependencies.realpath(launcher) !== binary) {
+      throw new Error('Homebrew launcher does not identify the running package.');
+    }
+  } catch {
+    throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+  }
+}
+
 async function inspectGlobalInstallation(
   request: SelfUpgradeRequest,
   neutralDirectory: string,
@@ -365,14 +472,21 @@ async function inspectGlobalInstallation(
   } catch {
     throw new SelfUpgradeFailure('blocked', 'invalid_global_root');
   }
-  const packageRoot = expectedGlobalPackageRoot(globalRoot, dependencies.platform);
+  let packageRoot = expectedGlobalPackageRoot(globalRoot, dependencies.platform);
+  let installationTarget: SelfUpgradeInstallationTarget | undefined;
   if (
     !pathIsContained(globalRoot, packageRoot, dependencies.platform) ||
     comparisonPath(packageRoot, dependencies.platform) !==
       comparisonPath(runningRoot, dependencies.platform)
   ) {
-    throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    installationTarget = await homebrewInstallationTarget(globalRoot, runningRoot, dependencies);
+    if (!installationTarget) throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    packageRoot = expectedGlobalPackageRoot(
+      path.posix.join(homebrewPrefixes[installationTarget], 'lib', 'node_modules'), 'darwin'
+    );
   }
+  const installation = { npmExecutable, packageRoot, ...(installationTarget ? { installationTarget } : {}) };
+  await assertHomebrewInstallation(installation, request.currentVersion, dependencies);
 
   let packageDetails: Stats;
   let metadata: unknown;
@@ -395,7 +509,13 @@ async function inspectGlobalInstallation(
   ) {
     throw new SelfUpgradeFailure('blocked', 'invalid_package');
   }
-  return { npmExecutable, packageRoot };
+  if (installationTarget) {
+    const confirmedRoot = await npmGlobalRoot(npmExecutable, neutralDirectory, dependencies, installationTarget);
+    if (expectedGlobalPackageRoot(confirmedRoot, dependencies.platform) !== packageRoot) {
+      throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+    }
+  }
+  return installation;
 }
 
 function registryKind(value: string): SelfUpgradeRegistryKind {
@@ -418,23 +538,20 @@ function registryKind(value: string): SelfUpgradeRegistryKind {
   return normalized === canonicalNpmRegistry ? 'canonical' : 'configured';
 }
 
-async function inspectRegistryParity(
-  targetVersion: string,
+async function configuredUpgradeRegistry(
   npmExecutable: string,
   neutralDirectory: string,
   dependencies: SelfUpgradeDependencies,
-  timeoutMs = selfUpgradeProbeTimeoutMs
-): Promise<RegistryInspection> {
+  timeoutMs: number,
+  installationTarget?: SelfUpgradeInstallationTarget
+): Promise<{ url: string; kind: SelfUpgradeRegistryKind }> {
   const options = {
     cwd: neutralDirectory,
     env: readOnlyEnvironment(dependencies, neutralDirectory),
     timeoutMs
   };
   const scopedRegistryResult = await dependencies.runner.run(
-    {
-      executable: npmExecutable,
-      args: ['config', 'get', liftoffScopedRegistryKey]
-    },
+    npmCommand(npmExecutable, ['config', 'get', liftoffScopedRegistryKey], installationTarget),
     options
   );
   if (commandFailed(scopedRegistryResult)) {
@@ -449,7 +566,7 @@ async function inspectRegistryParity(
     configuredRegistry === 'null'
   ) {
     const defaultRegistryResult = await dependencies.runner.run(
-      { executable: npmExecutable, args: ['config', 'get', 'registry'] },
+      npmCommand(npmExecutable, ['config', 'get', 'registry'], installationTarget),
       options
     );
     if (commandFailed(defaultRegistryResult)) {
@@ -458,17 +575,38 @@ async function inspectRegistryParity(
     configuredRegistry = defaultRegistryResult.stdout.trim();
   }
   const kind = registryKind(configuredRegistry);
+  return { url: new URL(configuredRegistry).toString().replace(/\/$/, ''), kind };
+}
+
+async function inspectRegistryParity(
+  targetVersion: string,
+  npmExecutable: string,
+  neutralDirectory: string,
+  dependencies: SelfUpgradeDependencies,
+  timeoutMs = selfUpgradeProbeTimeoutMs,
+  installationTarget?: SelfUpgradeInstallationTarget
+): Promise<RegistryInspection> {
+  const active = await configuredUpgradeRegistry(npmExecutable, neutralDirectory, dependencies, timeoutMs);
+  const delivery = installationTarget
+    ? await configuredUpgradeRegistry(npmExecutable, neutralDirectory, dependencies, timeoutMs, installationTarget)
+    : active;
+  if (delivery.url !== active.url) {
+    throw new SelfUpgradeFailure('blocked', 'registry_prefix_mismatch');
+  }
+  const kind = delivery.kind;
+  const options = {
+    cwd: neutralDirectory,
+    env: readOnlyEnvironment(dependencies, neutralDirectory),
+    timeoutMs
+  };
   const targetResult = await dependencies.runner.run(
-    {
-      executable: npmExecutable,
-      args: [
-        'view',
-        `${liftoffPackageName}@${targetVersion}`,
-        'name',
-        'version',
-        '--json'
-      ]
-    },
+    npmCommand(npmExecutable, [
+      'view',
+      `${liftoffPackageName}@${targetVersion}`,
+      'name',
+      'version',
+      '--json'
+    ], installationTarget),
     options
   );
   if (commandFailed(targetResult)) {
@@ -541,10 +679,11 @@ export async function checkConfiguredRegistryTarget(
 async function npmGlobalRoot(
   npmExecutable: string,
   neutralDirectory: string,
-  dependencies: SelfUpgradeDependencies
+  dependencies: SelfUpgradeDependencies,
+  installationTarget?: SelfUpgradeInstallationTarget
 ): Promise<string> {
   const rootResult = await dependencies.runner.run(
-    { executable: npmExecutable, args: ['root', '--global'] },
+    npmCommand(npmExecutable, ['root', '--global'], installationTarget),
     {
       cwd: neutralDirectory,
       env: readOnlyEnvironment(dependencies, neutralDirectory),
@@ -567,13 +706,18 @@ async function npmGlobalRoot(
 
 async function verifyReplacement(
   targetVersion: string,
-  npmExecutable: string,
+  installation: InstallationInspection,
   neutralDirectory: string,
   dependencies: SelfUpgradeDependencies
 ): Promise<void> {
   const pathApi = pathApiForPlatform(dependencies.platform);
-  const globalRoot = await npmGlobalRoot(npmExecutable, neutralDirectory, dependencies);
+  const globalRoot = await npmGlobalRoot(
+    installation.npmExecutable, neutralDirectory, dependencies, installation.installationTarget
+  );
   const packageRoot = expectedGlobalPackageRoot(globalRoot, dependencies.platform);
+  if (comparisonPath(packageRoot, dependencies.platform) !== comparisonPath(installation.packageRoot, dependencies.platform)) {
+    throw new SelfUpgradeFailure('failed', 'verification_failed');
+  }
   let packageDetails: Stats;
   let metadata: unknown;
   try {
@@ -589,6 +733,15 @@ async function verifyReplacement(
     typeof metadata !== 'object' ||
     Array.isArray(metadata)
   ) {
+    throw new SelfUpgradeFailure('failed', 'verification_failed');
+  }
+  try {
+    if (comparisonPath(await dependencies.realpath(packageRoot), dependencies.platform) !==
+      comparisonPath(packageRoot, dependencies.platform)) {
+      throw new Error('Replacement package escaped its original root.');
+    }
+    await assertHomebrewInstallation(installation, targetVersion, dependencies);
+  } catch {
     throw new SelfUpgradeFailure('failed', 'verification_failed');
   }
   const record = metadata as Record<string, unknown>;
@@ -675,6 +828,12 @@ export async function runSelfUpgrade(
   const neutralDirectory = await dependencies.makeNeutralDirectory();
   let targetVersion: string | undefined;
   let registry: SelfUpgradeRegistryKind | undefined;
+  let installationTarget: SelfUpgradeInstallationTarget | undefined;
+  const finish = (
+    status: SelfUpgradeStatus,
+    reasonCode: SelfUpgradeReasonCode,
+    details: { targetVersion?: string; registryKind?: SelfUpgradeRegistryKind } = {}
+  ) => result(request, status, reasonCode, { ...details, installationTarget });
   try {
     request.onStage?.('Inspect global installation');
     const installation = await inspectGlobalInstallation(
@@ -682,6 +841,7 @@ export async function runSelfUpgrade(
       neutralDirectory,
       dependencies
     );
+    installationTarget = installation.installationTarget;
 
     request.onStage?.('Resolve canonical stable target');
     let stable: StableRelease;
@@ -689,20 +849,20 @@ export async function runSelfUpgrade(
       stable = await dependencies.lookupStableRelease();
     } catch (error) {
       if (error instanceof StableReleaseLookupError) {
-        return result(request, 'failed', canonicalFailureReason(error));
+        return finish('failed', canonicalFailureReason(error));
       }
-      return result(request, 'failed', 'canonical_unavailable');
+      return finish('failed', 'canonical_unavailable');
     }
     if (stable.name !== liftoffPackageName || !isStableSemver(stable.version)) {
-      return result(request, 'failed', 'canonical_invalid');
+      return finish('failed', 'canonical_invalid');
     }
     targetVersion = stable.version;
     const comparison = compareSemver(targetVersion, request.currentVersion);
     if (comparison === 0) {
-      return result(request, 'current', 'current');
+      return finish('current', 'current');
     }
     if (comparison < 0) {
-      return result(request, 'blocked', 'downgrade_refused', { targetVersion });
+      return finish('blocked', 'downgrade_refused', { targetVersion });
     }
 
     request.onStage?.('Verify configured registry parity');
@@ -710,20 +870,32 @@ export async function runSelfUpgrade(
       targetVersion,
       installation.npmExecutable,
       neutralDirectory,
-      dependencies
+      dependencies,
+      selfUpgradeProbeTimeoutMs,
+      installationTarget
     );
     registry = registryInspection.kind;
     if (request.mode === 'check') {
-      return result(request, 'update-available', 'update_available', {
+      return finish('update-available', 'update_available', {
         targetVersion,
         registryKind: registry
       });
     }
 
+    if (installationTarget) {
+      const confirmedRoot = await npmGlobalRoot(
+        installation.npmExecutable, neutralDirectory, dependencies, installationTarget
+      );
+      if (expectedGlobalPackageRoot(confirmedRoot, dependencies.platform) !== installation.packageRoot) {
+        throw new SelfUpgradeFailure('blocked', 'unsupported_installation');
+      }
+      await assertHomebrewInstallation(installation, request.currentVersion, dependencies);
+    }
     request.onStage?.('Install exact Liftoff release', targetVersion);
     const installCommand = buildGlobalNpmInstallCommand(
       targetVersion,
-      dependencies.platform
+      dependencies.platform,
+      installationTarget
     );
     request.onInstallCommand?.(installCommand);
     const installResult = await dependencies.runner.run(installCommand, {
@@ -735,13 +907,13 @@ export async function runSelfUpgrade(
       stderr: request.stderr
     });
     if (installResult.timedOut) {
-      return result(request, 'failed', 'npm_install_timeout', {
+      return finish('failed', 'npm_install_timeout', {
         targetVersion,
         registryKind: registry
       });
     }
     if (commandFailed(installResult)) {
-      return result(request, 'failed', 'npm_install_failed', {
+      return finish('failed', 'npm_install_failed', {
         targetVersion,
         registryKind: registry
       });
@@ -750,24 +922,24 @@ export async function runSelfUpgrade(
     request.onStage?.('Verify replacement', targetVersion);
     await verifyReplacement(
       targetVersion,
-      installation.npmExecutable,
+      installation,
       neutralDirectory,
       dependencies
     );
-    return result(request, 'upgraded', 'upgrade_complete', {
+    return finish('upgraded', 'upgrade_complete', {
       targetVersion,
       registryKind: registry
     });
   } catch (error) {
     if (error instanceof SelfUpgradeFailure) {
-      return result(request, error.status, error.reasonCode, {
+      return finish(error.status, error.reasonCode, {
         ...(targetVersion ? { targetVersion } : {}),
         ...(registry ?? error.registryKind
           ? { registryKind: registry ?? error.registryKind }
           : {})
       });
     }
-    return result(request, 'failed', 'verification_failed', {
+    return finish('failed', 'verification_failed', {
       ...(targetVersion ? { targetVersion } : {}),
       ...(registry ? { registryKind: registry } : {})
     });

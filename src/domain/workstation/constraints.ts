@@ -2,6 +2,7 @@ export interface VersionConstraint {
   exactVersion?: string;
   minimumVersion?: string;
   releaseLine?: string;
+  allowPrerelease?: boolean;
 }
 
 export function formatRequirementVersion(requirement: VersionConstraint): string {

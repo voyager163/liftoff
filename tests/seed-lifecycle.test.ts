@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand, type CommandContext } from '../src/commands.js';
@@ -22,15 +23,20 @@ import { buildArtifacts } from '../src/templates.js';
 import type { ExternalCommand, ProjectOptions, ProjectPlan } from '../src/types.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { reviewedUpdateArguments } from './reviewed-update-helpers.js';
+import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
+import { SPEC_KIT_AGENT_SURFACES, SPEC_KIT_WORKFLOW_IDS } from '../src/domain/project/catalog.js';
 
 const cleanups: string[] = [];
 let workspaceCounter = 0;
+const receiptHome = path.join(os.tmpdir(), `liftoff-seed-preview-${process.pid}`);
 
 afterEach(async () => {
   delete process.env.LIFTOFF_STAGING_ROOT;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
+  await rm(receiptHome, { recursive: true, force: true });
 });
 
 async function testWorkspace(prefix: string): Promise<string> {
@@ -45,7 +51,9 @@ async function testWorkspace(prefix: string): Promise<string> {
 async function writeFrameworkMarkers(root: string, plan: ProjectPlan): Promise<void> {
   for (const marker of [
     ...plan.framework.baseMarkers,
-    ...plan.agents.flatMap((agent) => plan.framework.agentMarkers[agent.id])
+    ...plan.agents.flatMap((agent) => plan.specWorkflow.id === 'openspec'
+      ? openSpecIntegrationPaths(agent.id)
+      : SPEC_KIT_WORKFLOW_IDS.map((workflow) => [...SPEC_KIT_AGENT_SURFACES[agent.id].skillsRoot, `speckit-${workflow}`, 'SKILL.md']))
   ]) {
     await writeProjectFile(root, marker, 'fixture marker\n');
   }
@@ -90,11 +98,15 @@ async function runCli(
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(args), {
+  const reviewedArgs = await reviewedUpdateArguments(args, (rawArgs) => runCli(rawArgs, cwd, context));
+  const scopedArgs = reviewedArgs[0] === 'governance' && !reviewedArgs.includes('--scope')
+    ? [...reviewedArgs, '--scope', 'local'] : reviewedArgs;
+  const code = await runCommand(parseArgs(scopedArgs), {
     cwd,
     stdout,
     stderr,
     runner: new ReadyInitRunner(),
+    updatePreview: { homedir: receiptHome, env: {} },
     ...context
   });
   return { code, out: stdout.text(), err: stderr.text() };
@@ -312,7 +324,7 @@ describe('seed artifact lifecycle', () => {
       expect(await fileExists(path.join(root, '.claude', 'commands', 'liftoff-setup.md')))
         .toBe(selected.includes('claude'));
       expect(status.code, `${status.out}${status.err}`).toBe(0);
-      expect(body.schemaVersion).toBe(1);
+      expect(body.schemaVersion).toBe(2);
       expect(body.nextReadyPhase).toBe('seed-valid');
       expect(body.activeSourceOfTruth.createPlan.status).toBe('blocked');
       expect(JSON.stringify(body)).not.toMatch(/setup[-_]?skillVersion|gh repo|az deployment|tofu apply/i);
@@ -334,15 +346,13 @@ describe('seed artifact lifecycle', () => {
       path.join(root, '.claude', 'commands', 'liftoff-setup.md')
     ]) {
       const skill = await readFile(skillPath, 'utf8');
-      expect(skill).toContain('liftoff governance apply-next --json');
-      expect(skill).toContain('liftoff governance apply-next --json --execute');
+      expect(skill).toContain('liftoff governance apply-next --scope local --json');
+      expect(skill).toContain('liftoff governance apply-next --scope local --json --execute');
       expect(skill).toContain('`selectedPhase`');
       expect(skill).toContain('`executedPhase`');
-      expect(skill).toContain('not post-transition readiness');
-      expect(skill).toContain('do not repeatedly retry an unchanged failure');
-      expect(skill).toMatch(
-        /Use `liftoff governance apply-next --json` only to preview[\s\S]+approval status is `not-required` or\s+`reused`[\s\S]+run\s+`liftoff governance apply-next --json --execute`/
-      );
+      expect(skill).toContain('nextReadyPhase');
+      expect(skill).toContain('Do not repeat an unchanged failure');
+      expect(skill).toContain('Only for a reported ready, approval-free local action');
     }
 
     const preview = await runCli(['governance', 'apply-next', '--json'], root);
@@ -366,7 +376,7 @@ describe('seed artifact lifecycle', () => {
       reason: 'phase-executed',
       selectedPhase: 'seed-valid',
       executedPhase: 'seed-valid',
-      nextReadyPhase: 'seed-valid',
+      nextReadyPhase: 'seed-verified',
       evidence: { result: 'verified' }
     });
     const state = JSON.parse(
@@ -570,7 +580,7 @@ describe('seed artifact lifecycle', () => {
       ['.claude', 'commands', 'liftoff-setup.md']
     ]) {
       expect(await readFile(path.join(root, ...parts), 'utf8'))
-        .toContain('`liftoff governance apply-next --json --execute`');
+        .toContain('`liftoff governance apply-next --scope local --json --execute`');
     }
 
     const resumed = await runCli(['governance', 'resume', '--json'], root, { runner });
@@ -607,7 +617,7 @@ describe('seed artifact lifecycle', () => {
       expect(verified.code, verified.out).toBe(0);
       expect(JSON.parse(verified.out)).toMatchObject({
         consistent: true,
-        complete: false,
+        complete: next === null,
         nextReadyPhase: next
       });
     }
@@ -688,7 +698,7 @@ describe('seed artifact lifecycle', () => {
         expect(JSON.parse(applied.out)).toMatchObject({ executedPhase: phase, applied: true });
         const verify = await runCli(['governance', 'verify', '--json'], root, { runner });
         expect(verify.code, verify.out).toBe(0);
-        expect(JSON.parse(verify.out)).toMatchObject({ consistent: true, complete: false });
+        expect(JSON.parse(verify.out)).toMatchObject({ consistent: true, complete: phase === 'seed-archived' });
       }
       const final = await runCli(['governance', 'status', '--json'], root, { runner });
       expect(JSON.parse(final.out).phases.find((phase: { id: string }) => phase.id === 'committed'))
@@ -992,7 +1002,8 @@ describe('seed artifact lifecycle', () => {
       expect(applied.code, `${phase}: ${applied.out}${applied.err}`).toBe(0);
       expect(JSON.parse(applied.out)).toMatchObject({
         applied: true,
-        nextReadyPhase: phase
+        executedPhase: phase,
+        nextReadyPhase: phase === 'seed-valid' ? 'seed-verified' : 'seed-archived'
       });
     }
     const failingRunner = new SeedLifecycleRunner({
@@ -1037,7 +1048,7 @@ describe('seed artifact lifecycle', () => {
     expect(recovered.code, recovered.out).toBe(0);
     expect(JSON.parse(recovered.out)).toMatchObject({
       applied: true,
-      nextReadyPhase: 'seed-archived'
+      nextReadyPhase: null
     });
     const finalState = JSON.parse(
       await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')

@@ -15,6 +15,7 @@ import {
   type OpenSpecGlobalProfile
 } from '../src/openspec-profile.js';
 import type { ExternalCommand } from '../src/types.js';
+import { SPEC_KIT_WORKFLOW_IDS } from '../src/domain/project/catalog.js';
 
 export class CaptureStream extends Writable {
   chunks: string[] = [];
@@ -114,7 +115,7 @@ export class ReadyInitRunner implements CommandRunner {
       if (key.startsWith('python3 ') || key.startsWith('python ') || key.startsWith('py ')) {
         return this.result(command, { stdout: 'Python 3.14.0\n' });
       }
-      if (key.startsWith('go ')) return this.result(command, { stdout: 'go version go1.27.0 test\n' });
+      if (key.startsWith('go ')) return this.result(command, { stdout: 'go version go1.27.0 linux/amd64\n' });
       if (key.startsWith('uv ')) return this.result(command, { stdout: 'uv 0.12.7\n' });
       if (key === 'docker --version') return this.result(command, { stdout: 'Docker version 27.0.0\n' });
       if (key.startsWith('docker info')) return this.result(command, { stdout: '27.0.0\n' });
@@ -125,6 +126,7 @@ export class ReadyInitRunner implements CommandRunner {
       if (key === 'specify --version') return this.result(command, { stdout: 'Specify CLI 1.0.1\n' });
       if (key === 'copilot --version') return this.result(command, { stdout: 'GitHub Copilot CLI 1.0.0\n' });
       if (key === 'claude --version') return this.result(command, { stdout: 'Claude Code 1.0.0\n' });
+      if (key === 'codex --version') return this.result(command, { stdout: 'codex-cli 1.0.0\n' });
       if (key === 'claude doctor') return this.result(command, { stdout: 'healthy\n' });
       if (key.startsWith('brew ') || key.startsWith('winget ')) {
         return this.result(command, { stdout: 'package manager ready\n' });
@@ -174,14 +176,11 @@ export class ReadyInitRunner implements CommandRunner {
       if (!cwd) throw new Error('OpenSpec fixture command requires cwd');
       const tools = command.args[command.args.indexOf('--tools') + 1]?.split(',') ?? [];
       await this.write(path.join(cwd, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
-      if (tools.includes('github-copilot')) {
-        for (const pathParts of openSpecIntegrationPaths('github-copilot')) {
-          await this.write(path.join(cwd, ...pathParts), 'copilot\n');
-        }
-      }
-      if (tools.includes('claude')) {
-        for (const pathParts of openSpecIntegrationPaths('claude')) {
-          await this.write(path.join(cwd, ...pathParts), 'claude\n');
+      for (const agent of ['github-copilot', 'claude', 'codex'] as const) {
+        if (tools.includes(agent)) {
+          for (const pathParts of openSpecIntegrationPaths(agent)) {
+            await this.write(path.join(cwd, ...pathParts), `${agent}\n`);
+          }
         }
       }
       if (command.args.includes('--copilot-cloud')) {
@@ -203,12 +202,18 @@ export class ReadyInitRunner implements CommandRunner {
         await this.write(path.join(cwd, '.specify', 'templates', 'plan-template.md'), 'official\n');
       } else if (state) {
         const integration = command.args[2];
-        if (!state.installed.includes(integration)) state.installed.push(integration);
+        if (command.args[1] === 'use') {
+          if (!state.installed.includes(integration)) throw new Error('Spec Kit cannot select an uninstalled integration.');
+          state.defaultIntegration = integration;
+        } else if (!state.installed.includes(integration)) state.installed.push(integration);
       }
       if (!state) throw new Error('Spec Kit fixture integration ran before init');
       for (const integration of state.installed) {
-        const root = integration === 'copilot' ? '.github' : '.claude';
-        await this.write(path.join(cwd, root, 'skills', 'speckit-specify', 'SKILL.md'), `${integration}\n`);
+        const root = integration === 'copilot' ? '.github' : integration === 'claude' ? '.claude' : integration === 'codex' ? '.agents' : null;
+        if (!root) throw new Error(`Unsupported Spec Kit fixture integration ${integration}.`);
+        for (const workflow of SPEC_KIT_WORKFLOW_IDS) {
+          await this.write(path.join(cwd, root, 'skills', `speckit-${workflow}`, 'SKILL.md'), `${integration}\n`);
+        }
       }
       await this.write(path.join(cwd, '.specify', 'integration.json'), `${JSON.stringify({
         integration_state_schema: 1,

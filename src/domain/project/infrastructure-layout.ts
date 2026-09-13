@@ -32,7 +32,12 @@ const azureRoot = ['infrastructure', 'opentofu', 'azure'] as const;
 export const independentInfrastructureGenerationVersion = '0.11.0' as const;
 export const compatibleIndependentInfrastructureGenerationVersions = [
   independentInfrastructureGenerationVersion,
-  '0.11.1'
+  '0.11.1',
+  '0.11.2',
+  '0.11.3',
+  '0.12.0',
+  '0.12.1',
+  '0.12.2'
 ] as const;
 
 export const sharedApplicationModuleIdentities = [
