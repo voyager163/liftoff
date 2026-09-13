@@ -210,7 +210,7 @@ comparisons to infer execution safety.
 
 | Contract | Current version |
 | --- | --- |
-| CLI package version | 0.12.0 |
+| CLI package version | 0.12.1 |
 | Activation package identity | 0.12.0 |
 | Manifest write / supported reads | 7 / 2-7 for API and GenAI |
 | Normative policy | 6 |
@@ -221,10 +221,10 @@ comparisons to infer execution safety.
 | Phase graph, supersession, credential policy | 1 |
 | Assessment report and control catalog | 1 |
 
-Liftoff 0.12.0 advances the activation contract, state, evidence header, and approval
-envelope to version 3, and compatibility metadata to schema version 4, covering the
+Liftoff 0.12.1 retains the activation contract, state, evidence header, and approval
+envelope at version 3, and compatibility metadata at schema version 4, covering the
 29-phase canonical phase graph. Independent infrastructure provenance
-explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, 0.11.3, and 0.12.0,
+explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, 0.11.3, 0.12.0, and 0.12.1,
 including mixed component histories; unknown releases are not automatically
 trusted or treated as compatible. The mandatory preview/approval workflow and
 schema-3 update reports remain unchanged.
