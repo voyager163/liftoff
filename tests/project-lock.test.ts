@@ -218,10 +218,18 @@ describe('cooperating project mutation lock', () => {
     const managed = manifest.managedArtifacts[0];
     expect(managed).toBeDefined();
     await unlink(path.join(root, ...managed.pathParts));
+    const updatePreview = { homedir: path.join(path.dirname(root), 'receipt-home'), env: {} };
+    const previewOutput = new CaptureStream();
+    const previewError = new CaptureStream();
+    expect(await runCommand(parseArgs(['update', '--check', '--json']), {
+      cwd: root, stdout: previewOutput, stderr: previewError, updatePreview
+    })).toBe(2);
+    const preview = JSON.parse(previewOutput.text());
+    const fingerprint = preview.plans.find((entry: { mode: string }) => entry.mode === 'normal').fingerprint;
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
-    expect(await runCommand(parseArgs(['update', '--json']), {
-      cwd: root, stdout, stderr, runner: new ReadyInitRunner()
+    expect(await runCommand(parseArgs(['update', '--json', '--approve-plan', fingerprint]), {
+      cwd: root, stdout, stderr, runner: new ReadyInitRunner(), updatePreview
     })).toBe(1);
     expect(`${stdout.text()}${stderr.text()}`).toContain('Another cooperating Liftoff mutation');
     await expect(readFile(path.join(root, ...managed.pathParts))).rejects.toMatchObject({ code: 'ENOENT' });

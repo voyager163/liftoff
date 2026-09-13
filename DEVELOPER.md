@@ -51,32 +51,33 @@ and successful generated-file checks must not be described as those capabilities
 
 ## Activation version vector
 
-Current deterministic setup contract, retained by the 0.11.1 CLI patch:
+Current deterministic setup contract, published by Liftoff 0.12.0:
 
 ```json
 {
-  "liftoffVersion": "0.11.0",
+  "liftoffVersion": "0.12.0",
   "manifestArtifactVersion": 7,
   "policyVersion": "6",
-  "activationContractVersion": 2,
-  "phaseGraphSchemaVersion": 1,
-  "phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
-  "activationStateSchemaVersion": 2,
-  "evidenceHeaderSchemaVersion": 2,
-  "approvalEnvelopeSchemaVersion": 2,
+  "activationContractVersion": 3,
+  "phaseGraphSchemaVersion": 2,
+  "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+  "activationStateSchemaVersion": 3,
+  "evidenceHeaderSchemaVersion": 3,
+  "approvalEnvelopeSchemaVersion": 3,
   "supersessionSchemaVersion": 1,
   "credentialPolicySchemaVersion": 1
 }
 ```
 
 `phaseGraphHash` is the lowercase SHA-256 hex digest of the canonical packaged
-phase graph bytes. When documenting unreleased work before the final graph is
+29-phase graph bytes, spanning from local readiness through `bootstrap-workflow-source-ready`
+to final lifecycle disposal. When documenting unreleased work before the final graph is
 known, use a clear placeholder such as `<sha256-of-canonical-phase-graph-json>`;
 do not fabricate a historical value.
 
 The generated `liftoff.manifest.json` records this as manifest `artifactVersion`
 7 plus the activation identity fields shown above. Compatibility metadata uses
-schema version 2 in its own document, not a new required manifest field.
+schema version 4 in its own document, not a new required manifest field.
 Assessment report/catalog, graph, supersession, and credential-policy schemas
 remain at version 1; normative policy remains 6.
 
@@ -126,9 +127,18 @@ changes in another.
 - Manifest composition injects `validateReadableActivationIdentity` only at the
   manifest boundary. Exact known v1 identities remain readable without retagging;
   state, evidence, approval, readiness, and scope use strict current validation.
-- Known v1 activation is diagnostic-only. `diagnosticOnly` maintenance may update
-  safe managed core while retaining historical identity/state/evidence. No public
-  history reconciliation or automatic old-to-new state migration is implemented.
+- Known v1 activation remains non-executable. The exact packaged successor lane
+  requires update preview and approval, preserves original history, and creates
+  new v2 proof only through current validation. Never add v1 to the executable map.
+- Compatibility metadata v3 distinguishes successor eligibility from execution;
+  retain strict schema-2 input reading without treating it as migration authority.
+  Update report v3 distinguishes local commit from incomplete revalidation.
+- Preview receipts are external user-local metadata, never approval. Persist
+  transaction approval separately after explicit consent; recovery must validate
+  that external binding rather than trust project-local JSON claiming approval.
+- Durable history stays inside the project and outside managed-core ownership.
+  It preserves historical state and evidence byte-for-byte. After migration
+  commits, repair/resume blocked v2 rather than restore v1.
 - The eight flat-root OpenTofu identities are an explicit new-output-only
   exception to append-only naming in 0.11.0. Preserve historical records and
   files; use the exact [retirement inventory](docs/azure-deployment.md#explicit-flat-root-identity-retirement),
@@ -264,24 +274,25 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.11.1 release checklist
+## 0.12.2 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.11.1`. Preparing these files is not publication or permission to create a tag.
-- Activation package identity remains `0.11.0`; no phase semantics or graph
+  `0.12.2`. Preparing these files is not publication or permission to create a tag.
+- Activation package identity remains `0.12.0`; no phase semantics or graph
   identity change is introduced by patch-release preparation.
+- Release notes identify reviewed `liftoff repair` for supported undeployed Azure
+  infrastructure, exact project-bound approval, preserved source/provenance,
+  recoverable transactions, and the update/native setup handoff. Deployed or
+  unknown infrastructure remains plan-only; no public stateful cutover is claimed.
 - Manifest writes use artifactVersion 7; readers accept v2-v7.
 - Policy version is `"6"`; activation contract/state/evidence-header/approval
-  and compatibility metadata are v2. Graph, supersession, credential-policy,
-  assessment report, and assessment catalog schemas remain v1.
-- The graph hash in code, docs, generated artifacts, compatibility metadata, and
-  release-integrity tests is
-  `ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c`.
-- `/liftoff-setup` archives the OpenSpec bootstrap or finalizes the real Spec Kit
-  B001–B006 bundle locally before separate publication and Phase 0 gates.
-- Power Apps and the eight explicitly retired flat-root infrastructure IDs have
-  no positive new-generation lane. Old API/GenAI project provenance and v1
-  activation history remain preserved, not converted by update or force.
+  remain v3. Compatibility metadata is v4; preview receipts,
+  transaction approvals, history indexes, and migration journals are v1. Graph,
+  supersession, credential-policy, assessment report, and assessment catalog
+  schemas remain v1.
+- Independent infrastructure provenance explicitly admits generation versions
+  `0.11.0`, `0.11.1`, `0.11.2`, `0.11.3`, `0.12.0`, `0.12.1`, and `0.12.2`, including mixed component histories.
+  Unknown releases remain blocked rather than being accepted through a version range.
 - No setup-skill version exists in manifests, JSON status, docs, or generated
   integrations.
 - Doctor states and remedies cover seed-incomplete, phase-blocked,
@@ -411,17 +422,17 @@ and facade use. Packed smoke covers runtime asset lookup outside this checkout.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 26 declared phases, 10 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 14
+Of its 29 declared phases, 11 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 16
 fall back to an explicit missing-production-adapter blocker.
 
-The missing production phase handlers are `provider-ready`,
-`state-path-selected`, `existing-private-path`, `bootstrap-local`,
+The missing production phase handlers are `bootstrap-workflow-source-ready`,
+`provider-ready`, `state-path-selected`, `existing-private-path`, `bootstrap-local`,
 `runner-ready`, `private-backend-proof`, `remote-import-verified`,
+`application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
-`staging-qualified`, `production-rehearsed`, `green-red-proof`, and
-`enforcement-approved`. `rulesets-applied` and `live-readback` have adapter
-contracts but need production wiring.
+`staging-qualified`, `production-rehearsed`, and `green-red-proof`.
+`rulesets-applied` and `live-readback` have adapter contracts but need production wiring.
 
 Built-in handler presence does not establish a complete user journey:
 approval envelopes are read from disk but no public approval-persistence

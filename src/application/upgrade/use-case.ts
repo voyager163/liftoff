@@ -24,6 +24,9 @@ function renderSelfUpgradeResult(
 ): void {
   const details = [
     { label: 'Current CLI', value: value.currentVersion },
+    ...(value.installationTarget
+      ? [{ label: 'Installation target', value: value.installationTarget }]
+      : []),
     ...('targetVersion' in value && value.targetVersion
       ? [{ label: 'Canonical target', value: value.targetVersion }]
       : []),

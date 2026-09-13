@@ -82,6 +82,7 @@
       "freshnessPolicy": "latest",
       "requirements": {
         "dependencies": {
+          "@cdktf/hcl2json": "0.21.0",
           "@inquirer/prompts": "^8.6.0",
           "cross-spawn": "^7.0.6",
           "picocolors": "^1.1.1",
@@ -98,6 +99,7 @@
       },
       "resolved": {
         "dependencies": {
+          "@cdktf/hcl2json": "0.21.0",
           "@inquirer/prompts": "8.7.0",
           "cross-spawn": "7.0.6",
           "picocolors": "1.1.1",

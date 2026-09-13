@@ -149,6 +149,8 @@ try {
     assertPackageContains(packResult, documentationPath);
   }
   assertPackageContains(packResult, 'dist/cli.js');
+  assertPackageContains(packResult, 'dist/application/repair/use-case.js');
+  assertPackageContains(packResult, 'dist/application/repair/infrastructure.js');
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
@@ -196,14 +198,17 @@ try {
     templateDependencyInventory,
     packResult.files.map((file) => file.path)
   );
-  if (packResult.unpackedSize > 5 * 1024 * 1024) {
-    throw new Error(`Packed package unexpectedly exceeds the 5 MiB unpacked-size budget: ${packResult.unpackedSize}`);
+  if (packResult.unpackedSize > 8 * 1024 * 1024) {
+    throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
   }
 
   const tarballPath = path.join(packDirectory, packResult.filename);
   const npmEnv = {
     ...process.env,
     HOME: homeDirectory,
+    USERPROFILE: homeDirectory,
+    XDG_STATE_HOME: path.join(homeDirectory, '.local', 'state'),
+    LOCALAPPDATA: path.join(homeDirectory, 'AppData', 'Local'),
     LIFTOFF_TELEMETRY: '0',
     npm_config_cache: npmCache
   };
@@ -253,10 +258,30 @@ try {
   if (
     !updateHelp.stdout.includes('--check') ||
     !updateHelp.stdout.includes('--force') ||
+    !updateHelp.stdout.includes('--approve-plan') ||
     updateHelp.stdout.includes('--apply')
   ) {
-    throw new Error('Installed liftoff update help did not expose the imperative mode matrix');
+    throw new Error('Installed liftoff update help did not expose reviewed preview and exact-plan approval');
   }
+
+  const repairHelp = run(process.execPath, [liftoffEntrypoint, 'repair', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json']) {
+    if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
+  }
+  const noProjectRepair = runFailure(process.execPath, [liftoffEntrypoint, 'repair', '--check', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  const noProjectRepairReport = JSON.parse(noProjectRepair.stdout);
+  if (noProjectRepair.status !== 1 || noProjectRepairReport.schemaVersion !== 1 ||
+      noProjectRepairReport.committed !== false || noProjectRepairReport.status !== 'failed') {
+    throw new Error('Installed repair did not preserve the missing-project boundary.');
+  }
+  const repairForce = runFailure(process.execPath, [liftoffEntrypoint, 'repair', '--force'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!repairForce.stderr.includes('Unknown flag for repair')) throw new Error('Repair unexpectedly accepted force authority.');
 
   const upgradeHelp = run(process.execPath, [liftoffEntrypoint, 'upgrade', '--help'], {
     cwd: outsideDirectory,

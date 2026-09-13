@@ -184,6 +184,23 @@ describe('upgrade command surface', () => {
   });
 
   it.each([
+    ['homebrew-opt', '/opt/homebrew'],
+    ['homebrew-usr-local', '/usr/local']
+  ] as const)('discloses the %s target without adding package paths to JSON', async (installationTarget, prefix) => {
+    const value = { ...upgradeResult('failed', 'apply'), installationTarget };
+    const human = await execute(['upgrade'], async () => value);
+    expect(human.code).toBe(1);
+    expect(`${human.out}${human.err}`).toContain('Installation target');
+    expect(`${human.out}${human.err}`).toContain(installationTarget);
+    expect(`${human.out}${human.err}`).toContain(`@msn-control/liftoff@99.0.0 --prefix ${prefix}`);
+    const json = await execute(['upgrade', '--json'], async () => value);
+    expect(json.code).toBe(1);
+    expect(JSON.parse(json.out)).toEqual(value);
+    expect(json.out).not.toContain(prefix);
+    expect(json.err).toBe('');
+  });
+
+  it.each([
     ['rich', 100],
     ['compact', 80],
     ['plain', 50]

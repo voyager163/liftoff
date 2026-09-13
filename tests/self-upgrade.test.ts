@@ -640,6 +640,22 @@ describe('self-upgrade state machine', () => {
     expect(await runSelfUpgrade(fixture.request, fixture.dependencies))
       .toMatchObject({ status: 'failed', reasonCode: 'verification_failed' });
   });
+
+  it('does not verify another global root after npm reports installation success', async () => {
+    const fixture = await harness({ mode: 'apply' });
+    const otherRoot = path.join(fixture.root, 'other-global', 'node_modules');
+    await writePackage(expectedGlobalPackageRoot(otherRoot, process.platform), fixture.targetVersion);
+    const nativeRun = fixture.runner.run.bind(fixture.runner);
+    fixture.runner.run = async (command, options) => {
+      const result = await nativeRun(command, options);
+      return command.args[0] === 'root' && fixture.runner.rootCalls > 1
+        ? { ...result, stdout: `${otherRoot}\n` }
+        : result;
+    };
+    expect(await runSelfUpgrade(fixture.request, fixture.dependencies))
+      .toMatchObject({ status: 'failed', reasonCode: 'verification_failed' });
+    expect(fixture.runner.calls.some(({ command }) => command.executable === process.execPath)).toBe(false);
+  });
 });
 
 describe('cross-platform global npm paths', () => {

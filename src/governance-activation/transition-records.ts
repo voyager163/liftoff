@@ -2,6 +2,7 @@ import type {
   SavedTransitionPlan, UserActivationState, PhaseGraphNode, TransitionOperation, EvidenceHeader,
   LiveReadbackProof, PhaseId, PhaseEvidenceRecord
 } from '../domain/governance/activation/types.js';
+import { phaseScope, type ExternalOperationState, type PhaseOutputBindings, type InputTransitionBinding } from '../domain/governance/activation/types.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { operation, transitionDestination } from '../domain/governance/activation/operations.js';
 import { detectCredentialLeaks } from './credentials.js';
@@ -18,6 +19,9 @@ import { remoteBindingDigest } from '../domain/governance/activation/inputs.js';
 import { stateWithSelectedActiveChange } from './source-of-truth.js';
 import { activationStateContentHash } from './activation-state.js';
 import { randomUUID } from 'node:crypto';
+import {
+  uniqueTaskWritePreconditions, validatePreparedTaskProjection, type PreparedGovernanceTaskProjection
+} from './task-writes.js';
 
 export const governancePlanDirectoryPathParts = ['governance', 'plans'] as const;
 const engineProducer = 'liftoff-governance-transition-engine';
@@ -48,6 +52,10 @@ export function cloneState(state: UserActivationState): UserActivationState {
 export async function initializeExecutionAnchor(inspection: GovernanceTransitionInspection, now: Date): Promise<void> {
   const state = cloneState(inspection.state);
   state.repository.id = `local:${randomUUID()}`;
+  if (inspection.contexts?.['seed-valid']?.baselineSha) {
+    state.baselineAnchor = inspection.contexts['seed-valid'].baselineSha;
+  }
+  if (inspection.activationInputs) state.activationInputs = inspection.activationInputs;
   state.createdAt = now.toISOString();
   state.updatedAt = state.createdAt;
   const pathParts = activationStatePathParts();
@@ -102,6 +110,9 @@ export async function saveTransitionPlan(projectRoot: string, plan: SavedTransit
   const pathParts = transitionPlanPathParts(validated);
   const existing = await readProjectFile(projectRoot, pathParts);
   if (existing !== undefined) {
+    if (existing.toString('utf8') === `${canonicalJson(validated)}\n`) {
+      return { pathParts, digest: canonicalSha256(validated) };
+    }
     throw new Error(`Refusing to overwrite existing governance transition plan ${pathParts.join('/')}.`);
   }
   const content = `${canonicalJson(validated)}\n`;
@@ -119,6 +130,8 @@ export function evidenceHeaderFor(input: {
   now: Date;
   payload?: unknown;
   liveReadback?: readonly LiveReadbackProof[];
+  afterInputDigest?: string;
+  gitBinding?: InputTransitionBinding['git'];
 }): EvidenceHeader {
   const context = input.inspection.contexts[input.phase.id];
   return validateEvidenceHeader({
@@ -128,12 +141,23 @@ export function evidenceHeaderFor(input: {
     phaseGraphHash: input.inspection.state.identity.phaseGraphHash,
     phaseId: input.phase.id,
     phaseContractDigest: phaseContractDigests(input.inspection.graph)[input.phase.id],
-    inputDigest: input.plan.inputDigest,
+    inputDigest: (input.plan.fileChanges?.length || input.gitBinding)
+      ? (input.afterInputDigest ?? input.plan.inputDigest)
+      : input.plan.inputDigest,
     baselineSha: input.plan.baselineDigest,
     transition: context.transition,
     producedAt: input.now.toISOString(),
     producer: engineProducer,
     bodyDigest: evidenceBodyDigest(input.payload, input.liveReadback),
+    scope: phaseScope(input.phase.id),
+    ...(input.plan.fileChanges?.length || input.gitBinding ? {
+      inputBindings: {
+        beforeDigest: input.plan.inputDigest,
+        afterDigest: input.afterInputDigest ?? input.plan.inputDigest,
+        files: input.plan.fileChanges ?? [],
+        ...(input.gitBinding ? { git: input.gitBinding } : {})
+      }
+    } : {}),
     ...(input.inspection.state.remoteBinding && !input.phase.id.startsWith('seed-') && input.phase.id !== 'committed' ? {
       remoteBindingDigest: remoteBindingDigest(input.inspection.state.remoteBinding)
     } : {}),
@@ -149,11 +173,13 @@ export function nextStateForOutcome(input: {
   inspection: GovernanceTransitionInspection;
   phase: PhaseGraphNode;
   plan: SavedTransitionPlan;
-  resultState: EvidenceHeader['result'] | 'approved';
+  resultState: EvidenceHeader['result'] | 'approved' | 'running';
   evidenceReference?: UserActivationState['phases'][PhaseId]['evidence'][number];
   blocker?: string;
   override?: UserActivationState;
   now: Date;
+  operation?: ExternalOperationState;
+  outputs?: PhaseOutputBindings;
 }): UserActivationState {
   const base = cloneState(input.override ?? input.inspection.state);
   if (input.inspection.sourceOfTruth.status === 'selected' && input.inspection.sourceOfTruth.recordActiveChangeOnNextMutation) {
@@ -166,8 +192,13 @@ export function nextStateForOutcome(input: {
     updatedAt: input.now.toISOString(),
     evidence: input.evidenceReference ? [...base.phases[input.phase.id].evidence, input.evidenceReference] : base.phases[input.phase.id].evidence,
     approvals: appendUnique(base.phases[input.phase.id].approvals, input.plan.approval.envelopeId),
-    blockers: input.blocker ? [input.blocker] : []
+    blockers: input.blocker ? [input.blocker] : [],
+    executionPlanDigest: input.plan.planDigest,
+    ...(input.operation ? { operation: input.operation } : {})
   };
+  if (!base.baselineAnchor) base.baselineAnchor = input.plan.baselineDigest;
+  if (input.plan.configuration) base.activationInputs = input.plan.configuration;
+  if (input.outputs) base.phaseOutputs = { ...base.phaseOutputs, [input.phase.id]: input.outputs };
   base.updatedAt = input.now.toISOString();
   return validateUserActivationState(base);
 }
@@ -178,6 +209,8 @@ export function blockedState(input: {
   plan: SavedTransitionPlan;
   blocker: string;
   now: Date;
+  operation?: ExternalOperationState;
+  executionStarted?: boolean;
 }): UserActivationState {
   const base = cloneState(input.inspection.state);
   base.phases[input.phase.id] = {
@@ -185,7 +218,11 @@ export function blockedState(input: {
     updatedAt: input.now.toISOString(),
     evidence: base.phases[input.phase.id].evidence,
     approvals: appendUnique(base.phases[input.phase.id].approvals, input.plan.approval.envelopeId),
-    blockers: [input.blocker]
+    blockers: [input.blocker],
+    ...(input.executionStarted || base.phases[input.phase.id].executionPlanDigest
+      ? { executionPlanDigest: input.plan.planDigest } : {}),
+    ...(input.operation ?? base.phases[input.phase.id].operation
+      ? { operation: input.operation ?? base.phases[input.phase.id].operation } : {})
   };
   base.updatedAt = input.now.toISOString();
   return validateUserActivationState(base);
@@ -208,6 +245,8 @@ export async function writeOutcomeTransaction(input: {
   evidencePathParts?: readonly string[];
   fileMutations?: readonly ProjectFileMutation[];
   filePreconditions?: readonly ProjectFileSnapshot[];
+  expectedStateHash?: string | null;
+  taskProjection?: PreparedGovernanceTaskProjection;
 }): Promise<{ stateHash: string; evidence: ApplyNextExecutionResult['evidence'] }> {
   if (input.evidenceRecord) {
     const scan = detectCredentialLeaks([{
@@ -219,13 +258,25 @@ export async function writeOutcomeTransaction(input: {
       throw new Error(`Governance evidence contains credential-shaped content: ${scan.leaks.map((leak) => leak.pattern).join(', ')}.`);
     }
   }
-  const statePrecondition = await assertLoadedStateHash(input.projectRoot, input.plan.stateHash);
+  const statePrecondition = await assertLoadedStateHash(
+    input.projectRoot, input.expectedStateHash === undefined ? input.plan.stateHash : input.expectedStateHash
+  );
+  if (input.taskProjection) {
+    validatePreparedTaskProjection(input.plan, input.nextState, input.taskProjection);
+    if (input.fileMutations?.some((mutation) =>
+      mutation.pathParts.join('/') === input.taskProjection!.record.taskPathParts.join('/'))) {
+      throw new Error('Generic source writes cannot overlap the derived current-task projection.');
+    }
+  }
   const stateContent = `${canonicalJson(validateUserActivationState(input.nextState))}\n`;
+  const stateScan = detectCredentialLeaks([{ source: 'generated-artifact', label: 'activation state', text: stateContent }]);
+  if (stateScan.status === 'compromised') throw new Error('Activation state contains credential-shaped content; the private execution checkpoint was preserved.');
   const mutations: ProjectFileMutation[] = [
     ...(input.fileMutations ?? []).map((mutation) => ({
       ...mutation,
       pathParts: validateArtifactPathParts([...mutation.pathParts], 'Governance transition file mutation path')
     })),
+    ...(input.taskProjection?.mutation ? [input.taskProjection.mutation] : []),
     ...(input.evidenceRecord && input.evidencePathParts ? [{
       type: 'write' as const,
       pathParts: [...input.evidencePathParts],
@@ -238,8 +289,11 @@ export async function writeOutcomeTransaction(input: {
     if (existing !== undefined) throw new Error(`Refusing to overwrite existing governance evidence ${input.evidencePathParts.join('/')}.`);
   }
   await applyProjectFileTransaction(input.projectRoot, mutations, {
-    preconditions: [statePrecondition, ...(input.filePreconditions ?? []),
-      ...(input.evidencePathParts ? [{ pathParts: [...input.evidencePathParts] }] : [])]
+    preconditions: uniqueTaskWritePreconditions([
+      statePrecondition, ...(input.filePreconditions ?? []),
+      ...(input.taskProjection ? [input.taskProjection.source.taskBefore, input.taskProjection.source.metadataBefore] : []),
+      ...(input.evidencePathParts ? [{ pathParts: [...input.evidencePathParts] }] : [])
+    ])
   });
   return {
     stateHash: activationStateContentHash(stateContent),

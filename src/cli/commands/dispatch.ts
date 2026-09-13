@@ -57,12 +57,14 @@ import {
 import {
   upgradeCommand
 } from './upgrade.js';
+import { repairCommand } from './repair.js';
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
   const jsonMode = !helpRequested && (
     parsed.command === 'doctor' ||
     parsed.command === 'update' ||
+    parsed.command === 'repair' ||
     parsed.command === 'governance' ||
     parsed.command === 'upgrade' ||
     parsed.command === 'validate'
@@ -107,6 +109,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return await validateCommand(parsed, executionContext);
       case 'update':
         return await updateCommand(parsed, executionContext);
+      case 'repair':
+        return await repairCommand(parsed, executionContext);
       case 'upgrade':
         return await upgradeCommand(parsed, executionContext);
       case 'migrate':
