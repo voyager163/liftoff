@@ -119,17 +119,48 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 1
   },
   update: {
-    description: 'Reconcile Liftoff-managed core files in a project',
+    description: 'Preview and explicitly approve scoped project updates',
     usage: '[project-path]',
     group: 'Maintenance',
     flags: {
       project: valueFlag('Project path', 'Project', 'path'),
-      check: booleanFlag('Report drift without changing project files', 'Command'),
-      force: booleanFlag('Replace modified managed files', 'Consent'),
-      json: booleanFlag('Emit machine-readable JSON', 'Output'),
+      check: booleanFlag(
+        'Preview normal and eligible forced plans without project writes; save an external preview receipt',
+        'Command'
+      ),
+      force: booleanFlag(
+        'Select the separately previewed forced plan for exact owned-core conflicts and retired aliases; still requires approval',
+        'Consent'
+      ),
+      'approve-plan': valueFlag(
+        'Approve the exact effective plan from check using its full lowercase 64-hex SHA-256 fingerprint',
+        'Consent',
+        'fingerprint'
+      ),
+      json: booleanFlag(
+        'Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no',
+        'Output'
+      ),
       ...helpFlag
     },
     arguments: [{ syntax: 'project-path', description: 'Generated project to reconcile' }],
+    defaultMaxPositionals: 1
+  },
+  repair: {
+    description: 'Preview and approve safe reorganization of existing OpenTofu infrastructure',
+    usage: '[project-path]',
+    group: 'Maintenance',
+    flags: {
+      project: valueFlag('Exact Liftoff project path', 'Project', 'path'),
+      check: booleanFlag('Preview without project writes or tool execution; bare repair also previews', 'Command'),
+      live: booleanFlag('Allow bounded Azure metadata reads with existing authentication; never read state', 'Consent'),
+      subscription: valueFlag('Exact Azure subscription ID for live absence checks', 'Project', 'id'),
+      'approve-plan': valueFlag('Apply the exact unexpired external repair preview; includes isolated validation', 'Consent', 'fingerprint'),
+      recover: booleanFlag('Recover only the previously approved interrupted local repair transaction', 'Command'),
+      json: booleanFlag('Emit one schema-1 repair result; blocked or incomplete work exits 2', 'Output'),
+      ...helpFlag
+    },
+    arguments: [{ syntax: 'project-path', description: 'Existing Liftoff project; never an initialization destination' }],
     defaultMaxPositionals: 1
   },
   upgrade: {
@@ -170,23 +201,31 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 0
   },
   governance: {
-    description: 'Inspect governance activation and assess policy alignment',
-    usage: '<status|plan|apply-next|resume|verify|assess> [project-path]',
+    description: 'Plan, approve, execute, recover, and inspect scoped governance work',
+    usage: '<status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]',
     group: 'Operations',
     flags: {
       project: valueFlag('Liftoff project path', 'Project', 'path'),
+      scope: valueFlag('Execution/verification boundary: local, activation, or lifecycle', 'Command', 'scope', 'activation'),
+      inputs: valueFlag('Public activation configuration JSON; never credentials or state', 'Project', 'file'),
+      plan: valueFlag('Exact project-bound fingerprint from governance plan', 'Consent', 'fingerprint'),
+      'recover-phase': valueFlag('Plan explicit recovery of one failed or interrupted phase without executing it', 'Command', 'phase'),
+      'protected-stdin': booleanFlag('Read credential enrollment material from explicitly protected stdin instead of a private TTY', 'Consent'),
       execute: booleanFlag('Execute the reviewed governance apply-next plan; required for any mutation', 'Consent'),
       live: booleanFlag('Assess only: request bounded read-only GitHub/Azure metadata with existing permissions', 'Consent'),
       json: booleanFlag('Emit machine-readable JSON', 'Output'),
       ...helpFlag
     },
-    subcommands: ['status', 'plan', 'apply-next', 'resume', 'verify', 'assess'],
+    subcommands: ['status', 'plan', 'approve', 'apply-next', 'credential-enroll', 'recover', 'resume', 'verify', 'assess'],
     arguments: [{ syntax: 'project-path', description: 'Liftoff project to inspect' }],
     defaultMaxPositionals: 0,
     subcommandMaxPositionals: {
       status: 1,
       plan: 1,
+      approve: 1,
       'apply-next': 1,
+      'credential-enroll': 1,
+      recover: 1,
       resume: 1,
       verify: 1,
       assess: 1

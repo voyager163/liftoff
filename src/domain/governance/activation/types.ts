@@ -6,6 +6,7 @@ export const phaseIds = [
   'pushed',
   'phase-0-complete',
   'activation-approved',
+  'bootstrap-workflow-source-ready',
   'credential-ready',
   'provider-ready',
   'state-path-selected',
@@ -15,8 +16,10 @@ export const phaseIds = [
   'private-backend-proof',
   'remote-import-verified',
   'remote-ready',
-  'application-foundation',
+  'application-prerequisites-ready',
   'workflow-source-ready',
+  'application-artifact-ready',
+  'application-foundation',
   'dev-proof',
   'staging-qualified',
   'production-rehearsed',
@@ -28,6 +31,21 @@ export const phaseIds = [
 ] as const;
 
 export type PhaseId = typeof phaseIds[number];
+
+export const governanceScopes = ['local', 'activation', 'lifecycle'] as const;
+export type GovernanceScope = typeof governanceScopes[number];
+
+export const localSetupPhaseIds = ['seed-valid', 'seed-verified', 'seed-archived'] as const satisfies readonly PhaseId[];
+export const lifecyclePhaseIds = ['bootstrap-state-disposed'] as const satisfies readonly PhaseId[];
+export const activationPhaseIds: readonly PhaseId[] = phaseIds.filter((id) =>
+  !(localSetupPhaseIds as readonly PhaseId[]).includes(id) && !(lifecyclePhaseIds as readonly PhaseId[]).includes(id)
+);
+
+export function phaseScope(phaseId: PhaseId): GovernanceScope {
+  if ((localSetupPhaseIds as readonly PhaseId[]).includes(phaseId)) return 'local';
+  if ((lifecyclePhaseIds as readonly PhaseId[]).includes(phaseId)) return 'lifecycle';
+  return 'activation';
+}
 
 export const phaseStates = [
   'pending',
@@ -55,16 +73,24 @@ export const mutationClasses = [
   'write-evidence',
   'write-openspec-seed',
   'write-seed-tasks',
+  'project-governance-tasks',
   'write-openspec-governance',
   'write-local-state',
   'delete-local-state',
   'write-workflows',
   'write-ruleset-source',
+  'write-credential-policy',
   'git-commit',
+  'git-remote-bind',
   'git-push',
   'github-read',
   'github-write',
+  'github-repository-create',
+  'github-workflow-dispatch',
   'github-secret-write',
+  'registry-publish',
+  'backend-state-read',
+  'backend-state-write',
   'azure-read',
   'azure-provider-register',
   'azure-network-provision',
@@ -152,7 +178,7 @@ export type PhaseApplicability =
   | { kind: 'always' }
   | {
       kind: 'conditional';
-      discriminator: 'state-path' | 'private-staging-dast' | 'credential-required';
+      discriminator: 'state-path' | 'private-staging-dast' | 'credential-required' | 'cloud-state-required' | 'private-runner-required';
       when: string;
       inapplicableWhen: string;
       exclusiveWith: readonly PhaseId[];
@@ -201,6 +227,96 @@ export interface ManagedPhaseGraph {
   schemaVersion: number;
   versions: GraphVersionIdentity;
   phases: readonly PhaseGraphNode[];
+  completionGroups: {
+    local: readonly PhaseId[];
+    activation: readonly PhaseId[];
+    lifecycle: readonly PhaseId[];
+  };
+}
+
+export interface ActivationConfiguration {
+  schemaVersion: 1;
+  repository?: {
+    name: string;
+    defaultBranch?: string;
+    visibility?: 'private' | 'public';
+    create?: boolean;
+  };
+  azure?: {
+    subscriptionId: string;
+    tenantId: string;
+    region: string;
+  };
+  budget?: ApprovalCostCeiling;
+  phases: Partial<Record<PhaseId, Readonly<Record<string, unknown>>>>;
+}
+
+export interface ExternalOperationState {
+  provider: LiveReadbackProvider;
+  actionId: string;
+  operationId: string;
+  resourceId: string;
+  startedAt: string;
+  observedAt: string;
+  status: 'running' | 'completed' | 'failed';
+  pollUrl?: string;
+  planDigest?: string;
+}
+
+export interface PlannedFileChange {
+  pathParts: readonly string[];
+  beforeHash: string | null;
+  afterHash: string | null;
+}
+
+export interface InputTransitionBinding {
+  beforeDigest: string;
+  afterDigest: string;
+  files: readonly PlannedFileChange[];
+  git?: {
+    before: { head: string | null; branch: string | null; pushUrls: readonly string[] };
+    after: { head: string | null; branch: string | null; pushUrls: readonly string[] };
+  };
+}
+
+export type GovernanceTaskProjectionContract = {
+  schemaVersion: 1;
+  derivation: 'validated-current-readiness';
+  changeId: string;
+  workflowKind: 'openspec' | 'spec-kit';
+  taskPathParts: readonly string[];
+  metadataPathParts: readonly string[];
+  metadataHash: string;
+  layoutHash: string;
+} & (
+  | { source: 'existing' }
+  | { source: 'create'; template: string; metadataText: string }
+);
+
+export interface GovernanceTaskProjectionRecord {
+  schemaVersion: 1;
+  purpose: 'projection-audit-only';
+  phaseId: PhaseId;
+  planDigest: string;
+  contractDigest: string;
+  taskPathParts: readonly string[];
+  metadataHash: string;
+  layoutHash: string;
+  status: 'complete' | 'blocked';
+  observedAt: string;
+  beforeHash: string | null;
+  afterHash: string | null;
+  states: Readonly<Record<PhaseId, PhaseState | 'identity-incompatible'>> | null;
+  blockers: readonly string[];
+}
+
+export interface PhaseOutputBindings {
+  values: Readonly<Record<string, string | number | boolean | null>>;
+  resources: readonly {
+    provider: LiveReadbackProvider;
+    resourceType: string;
+    resourceId: string;
+  }[];
 }
 
 export interface EvidenceReference {
@@ -223,6 +339,17 @@ export interface PhaseExecutionState {
   evidence: readonly EvidenceReference[];
   approvals: readonly string[];
   blockers: readonly string[];
+  operation?: ExternalOperationState;
+  executionPlanDigest?: string;
+}
+
+export interface ActivationSuccessorHistory {
+  schemaVersion: 1;
+  snapshotId: string;
+  journalPathParts: readonly ['governance', 'migration-state.json'];
+  historyIndexPathParts: readonly string[];
+  historyIndexDigest: string;
+  sourceActiveChange: { id: string; kind: 'openspec' | 'spec-kit' } | null;
 }
 
 export interface UserActivationState {
@@ -248,7 +375,14 @@ export interface UserActivationState {
     statePath: 'existing-private' | 'bootstrap-local' | 'none';
     privateStagingDast: boolean | 'unknown';
     credentialRequired: boolean | 'unknown';
+    cloudStateRequired?: boolean | 'unknown';
+    privateRunnerRequired?: boolean | 'unknown';
   };
+  baselineAnchor?: string;
+  successorHistory?: ActivationSuccessorHistory;
+  taskProjection?: GovernanceTaskProjectionRecord;
+  activationInputs?: ActivationConfiguration;
+  phaseOutputs?: Partial<Record<PhaseId, PhaseOutputBindings>>;
   bootstrapState?: BootstrapStateRetention;
   phases: Record<PhaseId, PhaseExecutionState>;
   createdAt: string;
@@ -269,6 +403,8 @@ export interface EvidenceHeader {
   producer: string;
   bodyDigest: string;
   remoteBindingDigest?: string;
+  scope?: GovernanceScope;
+  inputBindings?: InputTransitionBinding;
   result: Extract<TerminalPhaseState, 'verified' | 'failed' | 'inapplicable' | 'retained' | 'disposed'>;
 }
 
@@ -323,6 +459,12 @@ export interface TransitionOperation {
   destination: TransitionOperationDestination;
   remote: boolean;
   destructive: boolean;
+  effects?: readonly {
+    mutationClass: MutationClass;
+    destination: TransitionOperationDestination;
+    remote: boolean;
+    destructive: boolean;
+  }[];
 }
 
 export interface RollbackOperation {
@@ -346,7 +488,8 @@ export interface TransitionRollbackPlan {
 }
 
 export interface SavedTransitionPlan {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  scope: GovernanceScope;
   phaseId: PhaseId;
   createdAt: string;
   expiresAt: string;
@@ -368,6 +511,16 @@ export interface SavedTransitionPlan {
   };
   rollbackPlan: TransitionRollbackPlan;
   noSecrets: true;
+  configuration?: ActivationConfiguration;
+  fileChanges?: readonly PlannedFileChange[];
+  recovery?: boolean;
+  approvalBundle?: readonly {
+    phaseId: PhaseId;
+    inputDigest: string;
+    transitionDigest: string;
+    operations: readonly TransitionOperation[];
+    fileChanges: readonly PlannedFileChange[];
+  }[];
 }
 
 export interface BootstrapStateRetention {
@@ -434,13 +587,12 @@ export interface ApprovalEnvelope {
   policyExceptions: readonly string[];
   destructiveScope: readonly string[];
   expiresAt: string;
-  /**
-   * Approval metadata is validated and persisted for audit display, but it is
-   * deliberately excluded from the canonical approval-envelope hash so retries
-   * inside the same reviewed scope remain hash-stable.
-   */
   approvedAt: string;
   approver: string;
+  scope?: GovernanceScope;
+  coveredPhases?: readonly PhaseId[];
+  operationDigests?: readonly string[];
+  phasePlanDigests?: Readonly<Partial<Record<PhaseId, string>>>;
 }
 
 export interface RequestedTransitionPlan {
@@ -455,6 +607,10 @@ export interface RequestedTransitionPlan {
   costCeiling: ApprovalCostCeiling;
   policyExceptions: readonly string[];
   destructiveScope: readonly string[];
+  scope?: GovernanceScope;
+  coveredPhases?: readonly PhaseId[];
+  operationDigests?: readonly string[];
+  phasePlanDigests?: Readonly<Partial<Record<PhaseId, string>>>;
 }
 
 export interface ApprovalEvaluation {

@@ -287,7 +287,7 @@ describe('governance command parsing and discovery', () => {
   it('strictly parses governance subcommands, flags, project arguments, and help', async () => {
     expect(parseArgs(['governance', 'status', '--json']).subcommand).toBe('status');
     expect(parseArgs(['governance', 'apply-next', '--execute']).flags.execute).toBe(true);
-    expect(parseArgs(['governance', 'plan', 'project', '--project', 'other']).flags.project).toBe('other');
+    expect(() => parseArgs(['governance', 'plan', 'project', '--project', 'other'])).toThrow(/either positionally or with --project/);
     expect(() => parseArgs(['governance', 'stats'])).toThrow(/Unsupported governance subcommand/);
     expect(() => parseArgs(['governance', 'status', '--unknown'])).toThrow(/Unknown flag/);
     expect(() => parseArgs(['governance', 'status', 'one', 'two'])).toThrow(/Too many positional/);
@@ -327,10 +327,10 @@ describe('governance command parsing and discovery', () => {
 describe('governance status, plan, resume, verify, and apply-next', () => {
   it('emits status schema v1 identity, graph hash, blockers, approvals, and evidence freshness without setup skill version', async () => {
     const root = await writeProject('status');
-    const result = await run(['governance', 'status', '--json'], root);
+    const result = await run(['governance', 'status', '--scope', 'local', '--json'], root);
     expect(result.code).toBe(0);
     const body = JSON.parse(result.out);
-    expect(body.schemaVersion).toBe(1);
+    expect(body.schemaVersion).toBe(2);
     expect(body.activationIdentity).toEqual(currentActivationIdentity);
     expect(body.graphHash).toBe(canonicalPhaseGraphHash);
     expect(body.nextReadyPhase).toBe('seed-valid');
@@ -350,7 +350,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
   it('distinguishes consistent verification from setup completion before activation starts', async () => {
     const root = await writeProject('verify-not-started');
 
-    const result = await run(['governance', 'verify', '--json'], root);
+    const result = await run(['governance', 'verify', '--scope', 'local', '--json'], root);
 
     expect(result.code).toBe(0);
     expect(JSON.parse(result.out)).toMatchObject({
@@ -384,7 +384,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     await writeState(root, state);
     await writeEvidence(root, 'seed-valid-current', evidence);
 
-    const result = await run(['governance', 'verify', '--json'], root);
+    const result = await run(['governance', 'verify', '--scope', 'local', '--json'], root);
 
     expect(result.code, result.out).toBe(0);
     expect(JSON.parse(result.out)).toMatchObject({

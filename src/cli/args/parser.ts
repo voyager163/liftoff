@@ -1,5 +1,7 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
+import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
 import { commandDefinitions } from './definitions.js';
+import { phaseIds } from '../../domain/governance/activation/types.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -103,10 +105,11 @@ export function parseArgs(argv: string[]): ParsedArgs {
           );
         throw new UsageError(
           legacyForceRequested
-            ? 'Flag --apply was removed. Replace this command with `liftoff update --force`, ' +
-              'or use `liftoff update --check` for a read-only managed-core check.'
-            : 'Flag --apply was removed. Run `liftoff update` to apply safe managed-core changes or ' +
-              '`liftoff update --check` for a read-only managed-core check.'
+            ? 'Flag --apply was removed. Run `liftoff update --check` first to review the separate ' +
+              'forced plan and save its external receipt, then explicitly approve it with ' +
+              '`liftoff update --force`. Force does not bypass preview or approval.'
+            : 'Flag --apply was removed. Run `liftoff update --check` first to preview changes and ' +
+              'save an external receipt, then run `liftoff update` to explicitly approve the matching plan.'
         );
       }
       throw new UsageError(`Unknown flag for ${command}: --${rawName}.`);
@@ -141,23 +144,89 @@ export function parseArgs(argv: string[]): ParsedArgs {
     index += 1;
   }
 
-  if (command === 'update' && flags.check === true && flags.force === true) {
-    throw new UsageError(
-      'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
-        'to inspect managed-core drift or `liftoff update --force` to overwrite core conflicts.'
-    );
+  if (command === 'update') {
+    if (Object.hasOwn(flags, 'approve-plan')) {
+      if (!isUpdatePlanFingerprint(flags['approve-plan'])) {
+        throw new UsageError(
+          'Flag --approve-plan expects the complete fingerprint from `liftoff update --check`: ' +
+            'exactly 64 lowercase hexadecimal characters.'
+        );
+      }
+      if (flags.check === true) {
+        throw new UsageError(
+          'Flags --check and --approve-plan cannot be combined. Run `liftoff update --check` first, ' +
+            'then approve its exact effective plan with `liftoff update --approve-plan <fingerprint>`.'
+        );
+      }
+    }
+    if (flags.check === true && flags.force === true) {
+      throw new UsageError(
+        'Flags --check and --force cannot be combined. Run `liftoff update --check` ' +
+          'to review the normal and eligible forced plans, then explicitly approve the matching ' +
+          'forced plan with `liftoff update --force`.'
+      );
+    }
+  }
+
+  if (command === 'repair') {
+    if (positional.length && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a project path either positionally or with --project, not both.');
+    }
+    if (Object.hasOwn(flags, 'approve-plan') && !isUpdatePlanFingerprint(flags['approve-plan'])) {
+      throw new UsageError('Flag --approve-plan expects the complete 64-character lowercase fingerprint from liftoff repair --check.');
+    }
+    if ((flags.check === true && (flags['approve-plan'] !== undefined || flags.recover === true)) ||
+        (flags['approve-plan'] !== undefined && flags.recover === true)) {
+      throw new UsageError('Repair check, plan application and recovery are separate operations.');
+    }
+    if ((flags['approve-plan'] !== undefined || flags.recover === true) &&
+        (Object.hasOwn(flags, 'live') || Object.hasOwn(flags, 'subscription'))) {
+      throw new UsageError('Apply or recover only the saved repair scope; live/subscription options belong on the check.');
+    }
+    if (flags.help !== true && (flags.live === true) !== (flags.subscription !== undefined)) {
+      throw new UsageError('Live repair discovery requires both --live and --subscription <id>.');
+    }
+    if (flags.subscription !== undefined &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(String(flags.subscription))) {
+      throw new UsageError('Flag --subscription requires an Azure subscription UUID, not a name or guessed default.');
+    }
   }
 
   if (command === 'governance') {
+    if (Object.hasOwn(flags, 'scope') && !['local', 'activation', 'lifecycle'].includes(String(flags.scope))) {
+      throw new UsageError('Flag --scope expects local, activation, or lifecycle.');
+    }
+    if (Object.hasOwn(flags, 'plan') && !isUpdatePlanFingerprint(flags.plan)) {
+      throw new UsageError('Flag --plan expects the complete 64-character lowercase SHA-256 fingerprint from governance plan.');
+    }
+    if (Object.hasOwn(flags, 'execute') && !['apply-next', 'recover'].includes(subcommand ?? '')) {
+      throw new UsageError('Flag --execute is not allowed; it is allowed only for governance apply-next or recover.');
+    }
+    if (Object.hasOwn(flags, 'plan') && !['approve', 'apply-next', 'credential-enroll', 'recover'].includes(subcommand ?? '')) {
+      throw new UsageError('Flag --plan is allowed only for governance approve, apply-next, credential-enroll, or recover.');
+    }
+    if (Object.hasOwn(flags, 'protected-stdin') && subcommand !== 'credential-enroll') {
+      throw new UsageError('Flag --protected-stdin is allowed only for governance credential-enroll.');
+    }
+    if (Object.hasOwn(flags, 'recover-phase') &&
+      (subcommand !== 'plan' || !(phaseIds as readonly string[]).includes(String(flags['recover-phase'])))) {
+      throw new UsageError('Flag --recover-phase requires governance plan and one canonical phase ID.');
+    }
+    if (flags.help !== true && ['approve', 'credential-enroll', 'recover'].includes(subcommand ?? '') && !flags.plan) {
+      throw new UsageError(`Governance ${subcommand} requires --plan with the exact reviewed preview fingerprint.`);
+    }
     if (Object.hasOwn(flags, 'live') && subcommand !== 'assess') {
       throw new UsageError('Flag --live is allowed only for `liftoff governance assess`.');
     }
+    if (positional.length > 0 && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a project path either positionally or with --project, not both.');
+    }
     if (subcommand === 'assess') {
+      if (['scope', 'inputs', 'plan', 'protected-stdin', 'recover-phase'].some((flag) => Object.hasOwn(flags, flag))) {
+        throw new UsageError('Governance assess does not accept execution, configuration, or approval flags.');
+      }
       if (Object.hasOwn(flags, 'execute')) {
         throw new UsageError('Flag --execute is not allowed for read-only `liftoff governance assess`.');
-      }
-      if (positional.length > 0 && Object.hasOwn(flags, 'project')) {
-        throw new UsageError('Provide the assessment project either positionally or with --project, not both.');
       }
     }
   }

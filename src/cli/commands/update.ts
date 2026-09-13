@@ -14,6 +14,7 @@ export const updateCommand = (
   context: ExecutionContext
 ): Promise<number> => updateProject({
   check: readBooleanFlag(parsed.flags, 'check') ?? false,
+  approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
   force: readBooleanFlag(parsed.flags, 'force') ?? false,
   jsonMode: readBooleanFlag(parsed.flags, 'json') ?? false,
   project: parsed.positional[0] ?? readStringFlag(parsed.flags, 'project')

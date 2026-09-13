@@ -117,10 +117,15 @@ Existing destination modes are preserved where supported, including POSIX 0600
 files. Windows does not provide equivalent POSIX mode-bit guarantees; this is
 not a promise to preserve all Windows ACLs or filesystem metadata.
 
-Plain `liftoff update` preflights every eligible managed-core or authorized
-create-only provisioning path and applies those writes, managed-core moves or
-deletes, and the manifest as one rollback-capable transaction. Schema upgrades
-are committed only after the other mutations succeed.
+`liftoff update --check` presents compatibility and the exact proposed changes,
+then discloses its external preview receipt without changing project bytes.
+Apply requires that matching preview and explicit exact-plan approval. It
+rechecks protected inputs under the project lock before writing. Noninteractive
+approval uses `--approve-plan <fingerprint>`, not a generic yes.
+
+The approved transaction preflights exact managed-core and create-only
+provisioning paths separately from any explicitly authorized activation migration.
+Schema/successor changes commit consistently with their manifest and history link.
 
 Managed update may install manifest v7, policy v6, activation-contract v2,
 phase graph, compatibility metadata, credential-policy schema, setup
@@ -130,17 +135,21 @@ immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact known historical v1 identity is a separate diagnostic-only case:
-safe managed-core maintenance may continue while preserving the recorded
-historical identity, state, and receipts. That maintenance never makes history
-executable or supplies a missing reconciliation workflow.
+Exact known historical v1 can use the reviewed successor lane, not in-place
+retagging. Original records are copied byte-for-byte into immutable in-project
+history before their exact active paths are retired or replaced. A linked v2
+activation obtains fresh evidence; historical approvals never become current
+permission. Unavailable revalidation remains an explicit blocker.
 
 If automatic rollback itself cannot safely restore a path because another
 process changed it, Liftoff reports the incomplete rollback rather than
 overwriting unknown bytes.
 
-Update snapshots exist only for rollback after a failed transaction. Liftoff
-does not retain them as backups after success.
+Ordinary transaction backups are for failed-write recovery. Activation history
+is different: it remains after success and is never removed with disposable
+preview receipts. A durable recovery journal must match a separately persisted
+external transaction approval; a project-local claim alone cannot authorize
+recovery. Post-commit revalidation failure preserves v2 and its historical link.
 
 Dependency execution has a different recovery boundary: installer scripts can
 write arbitrary project files, and a concurrent developer edit cannot be
@@ -154,12 +163,12 @@ literal-path recipe. This does not claim the entire scaffold was unchanged.
 Update mode is selected explicitly rather than from terminal interactivity:
 
 - Existing project artifacts are never compared with current template bytes.
-- Plain `liftoff update` immediately applies safe new, missing,
-  untouched-upgrade, clean-move, and recorded-state changes only for exact
-  managed-core artifacts.
-- `liftoff update --check` is read-only and performs no preflight or mutation.
-- `liftoff update --json` applies safe changes and returns an apply result;
-  `liftoff update --check --json` is the read-only machine drift gate.
+- Plain `liftoff update` applies the matching explicitly approved plan, retaining
+  safe managed-core classification and the separate migration/provisioning lanes.
+- `liftoff update --check` changes no project bytes but saves and discloses a
+  preview receipt outside the repository.
+- `--json` changes output formatting only; machine apply still requires the
+  matching preview and exact plan-fingerprint approval.
 - Managed-core developer edits are conflicts. Project edits are outside update.
 - Default update skips core conflicts and lists them by portable relative path.
   `liftoff update --force` extends authority only to those guarded core
@@ -179,8 +188,8 @@ Update mode is selected explicitly rather than from terminal interactivity:
 - Dependency definitions and locks are project-owned; update neither changes
   nor installs them.
 
-`--force` cannot be combined with `--check` and cannot weaken project-boundary,
-symlink, collision, manifest, or transaction guards.
+`--force` cannot be combined with `--check` and cannot weaken preview, approval,
+compatibility, project-boundary, symlink, collision, manifest, or transaction guards.
 
 Power Apps support is retired. Its manifests are rejected without fetching
 starter source, changing application files, or treating force as conversion

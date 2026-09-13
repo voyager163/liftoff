@@ -181,35 +181,35 @@ approve, extend, create, or repair exceptions.
 - **AND** the report identifies why the claim was not accepted
 
 ### Requirement: Unsupported activation identities remain diagnosable without unsafe parsing
-For supported manifest artifact 7 structures and API and GenAI readers 2
-through 7 with unsupported activation identities, assessment SHALL report
-found-versus-target identity and unavailable migration or evidence
-interpretation without modifying data. Known historical activation v1 records
-SHALL remain readable only for diagnosis; they SHALL NOT be auto-migrated,
-deleted, or accepted as current executable proof. Unknown state formats SHALL
-remain opaque. Assessment SHALL retain strict path and schema safeguards and
-SHALL NOT relax the loaders or compatibility requirements of mutating commands.
+Assessment SHALL retain safe found-versus-target diagnosis for supported manifests with unsupported activation identities. Original known v1 records SHALL remain diagnostic-only and SHALL not be migrated, deleted, or accepted as current proof by assessment. A declared supported successor lane SHALL be explained through the human-first update-check remedy. In an already migrated project, assessment SHALL distinguish the validated retained snapshot from the active v2 successor and evaluate only independently interpretable current facts. Unknown formats, unsafe paths, malformed active records, and broken declared migration links SHALL not trigger permissive fallback or relaxed mutation compatibility.
 
 #### Scenario: Activation policy or graph is unsupported
-- **WHEN** the recorded activation tuple cannot be used by the installed engine
-- **THEN** assessment reports the identity difference and assesses only independently interpretable facts
-- **AND** unsupported state or evidence-dependent comparisons are `not-observed`
-- **AND** no mapping is invented or applied
+- **WHEN** the recorded tuple cannot execute under the installed engine
+- **THEN** assessment reports the difference and assesses only independently interpretable facts
+- **AND** evidence-dependent unknowns remain not-observed without an invented mapping
 
 #### Scenario: Historical activation v1 is present
-- **WHEN** a supported API or GenAI project contains a historical activation v1 record
-- **THEN** assessment reports it as diagnostic-only historical state and any required reconciliation blocker
-- **AND** it does not reinterpret the record as current proof, reset it, or fabricate a migrated successor
+- **WHEN** known v1 is still the active historical representation
+- **THEN** assessment reports diagnostic-only status and actual migration eligibility
+- **AND** it recommends `liftoff update --check` only when relevant without creating a receipt, approval, or successor
 
 #### Scenario: Manifest structure is unknown or malformed
-- **WHEN** the manifest schema cannot be safely interpreted or its JSON is invalid
-- **THEN** assessment emits an error with safe target and diagnostic information
-- **AND** does not access artifact paths supplied by the unsupported document
+- **WHEN** the manifest cannot be safely interpreted
+- **THEN** assessment emits safe diagnostics without accessing artifact paths from the unsupported structure
 
 #### Scenario: Path attempts to escape the project
-- **WHEN** a supplied artifact path contains traversal, embedded separators, drive-qualified or UNC parts, or a symlink escape
-- **THEN** assessment refuses unsafe access before reading the destination
-- **AND** the same safeguard applies on Windows, macOS, and Linux
+- **WHEN** an artifact or migration-history reference contains traversal, embedded separators, drive/UNC parts, or an unsafe link
+- **THEN** assessment refuses access under the same Windows, macOS, and Linux boundary rules
+
+#### Scenario: Current proof coexists with preserved v1
+- **WHEN** a valid migration link connects retained v1 history to current v2 state
+- **THEN** assessment reports history separately and uses only validated current proof for present readiness and scope
+- **AND** historical presence alone does not make current evidence unsupported
+
+#### Scenario: Migration has incomplete revalidation
+- **WHEN** the local migration committed but current proof is incomplete
+- **THEN** assessment reports the actual coverage gaps without treating migration completion as alignment
+- **AND** it does not run revalidation, refresh a preview, or authorize a later transition
 
 ### Requirement: Live observation is explicit and scoped
 Live assessment SHALL use only allowlisted read operations with existing
@@ -302,23 +302,71 @@ unqualified aligned outcome.
 - **AND** does not claim full-policy alignment
 
 ### Requirement: Diagnostics and recommendations preserve authority boundaries
-Reports SHALL retain only bounded, sanitized, relevant observations. Secrets,
-credential values, webhook URLs, state payloads, and raw sensitive responses
-SHALL NOT appear in output or persisted artifacts. Recommendations SHALL state
-ownership and approval needs but SHALL NOT execute remediation, create issues,
-write a report into the worktree, or invoke an unavailable migration command.
+Reports SHALL retain only bounded, sanitized observations and no credentials, state contents, private keys, sensitive plans, or raw sensitive responses. Recommendations SHALL distinguish eligible local/stateful/activation plans from unknown or unsupported work and state their required authority. Assessment SHALL never execute those recommendations, enroll credentials, inspect sensitive state through its ordinary report path, or create project files, issues, approvals, or mutations.
 
 #### Scenario: Collector output contains sensitive data
-- **WHEN** an observation or failure includes credential-shaped or otherwise prohibited payloads
+- **WHEN** an observation or failure includes prohibited sensitive payloads
 - **THEN** the data is redacted or withheld before output, truncation, or retention
-- **AND** the affected finding states any resulting observation limitation
+- **AND** the finding states any resulting observation limitation
 
 #### Scenario: Managed and project-owned drift coexist
 - **WHEN** managed integration drift and user-owned workflow or infrastructure differences are found
-- **THEN** recommendations distinguish guarded managed update from separately reviewed project/remote changes
-- **AND** do not suggest force-update can overwrite project-owned files or bypass compatibility
+- **THEN** recommendations distinguish guarded core update from separately reviewed project/remote changes
+- **AND** force-update is not presented as authority over project-owned files or compatibility gates
 
 #### Scenario: Developer only requests assessment
 - **WHEN** a report identifies actionable differences
-- **THEN** no update, upgrade, activation, migration, resource provisioning, issue creation, or Git mutation occurs
-- **AND** any subsequent execution requires a separate supported plan and authorization
+- **THEN** no update, upgrade, repair, activation, migration, provisioning, issue creation, or Git mutation occurs
+- **AND** subsequent execution requires a separate supported plan and authorization
+
+#### Scenario: A repair lane exists
+- **WHEN** a local finding has a supported infrastructure or agent-integration repair candidate
+- **THEN** the recommendation identifies the real repair preview and its project context
+- **AND** it does not tell the developer to fabricate provenance or copy a freshly initialized application over the project
+
+### Requirement: Managed-core assessment shares recorded-layout expectations
+For the same installed CLI, active project identity, and captured recorded layout, assessment SHALL compare managed-core bytes against the same expectation used by update and repair. It SHALL not classify a correct legacy-layout context as outdated merely because a fresh-generation renderer would describe independent roots. Actual managed-byte differences and layout eligibility SHALL remain separately observable.
+
+#### Scenario: Update reports legacy context current
+- **WHEN** the active legacy context matches the installed recorded-layout-aware expectation
+- **THEN** assessment also reports the managed-core context as matching
+- **AND** it can still report the separate infrastructure conformance/repair gap
+
+#### Scenario: A repair establishes independent roots
+- **WHEN** a committed repair updates the active inventory and context while preserving historical flat-root records
+- **THEN** assessment uses the active independent inventory, not the historical snapshot
+- **AND** it does not attribute a layout rendering difference merely to the manifest's last-writing CLI version
+
+#### Scenario: Real context drift exists
+- **WHEN** the managed file differs from the shared expectation
+- **THEN** the report preserves the genuine mismatch and its provenance
+- **AND** renderer unification does not hide modified managed content
+
+### Requirement: Local setup completion does not establish policy alignment
+Assessment SHALL distinguish local readiness, verified state migration, deployment, and enforcement. Historical repair records alone SHALL not become current proof. Current validated migration evidence can satisfy only its declared backend/resource-binding proof, never unrelated deployment or enforcement controls. Missing declarations, unobserved facts, unsupported evaluators, and overdue lifecycle work SHALL remain explicit.
+
+#### Scenario: Local setup is complete without remote activation
+- **WHEN** local framework, agents, and baseline checks are complete but live controls remain unobserved
+- **THEN** assessment reports the applicable coverage gaps and partial outcome
+- **AND** it does not become aligned solely because setup completed
+
+#### Scenario: A repair receipt is present
+- **WHEN** repair history records a successful local infrastructure transformation
+- **THEN** it can establish historical repair provenance
+- **AND** it cannot prove deployed resources, required checks, rulesets, or Phase 0 completion
+
+### Requirement: Activated controls require current matching evidence across consumers
+Assessment SHALL consume current validated activation/migration relationships consistently with status, verification, and doctor. Actual workflow/run, artifact, environment/ref, identity, resource, ruleset, and lifecycle observations SHALL remain distinguishable. A completed journal, accepted write, or historical success SHALL not hide missing current proof.
+
+#### Scenario: Activation has fresh complete proof
+- **WHEN** every required layer for an applicable control is fresh and matches its target
+- **THEN** assessment can report that control aligned
+- **AND** overall alignment still requires complete applicable coverage
+
+#### Scenario: State moved but enforcement is unobserved
+- **WHEN** only state migration is verified
+- **THEN** unrelated deployment/enforcement controls remain unobserved or incomplete
+
+#### Scenario: Current proof is stale or partial
+- **WHEN** a recorded activation succeeded but current inputs/readback no longer establish the control
+- **THEN** the report preserves that history while identifying the current gap

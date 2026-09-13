@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare
+Mission Control Liftoff 0.12.2 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -89,7 +89,9 @@ Maintenance
 Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
 validate  Validate a generated project manifest
-update    Reconcile Liftoff-managed core files in a project
+update    Preview and explicitly approve scoped project updates
+repair    Preview and approve safe reorganization of existing OpenTofu
+          infrastructure
 upgrade   Replace the supported global npm Liftoff CLI; project templates use
           update separately
 doctor    Check local and project readiness
@@ -106,8 +108,8 @@ regions    List or search provider regions
 Operations
 ──────────
 Command     Description
-──────────  ─────────────────────────────────────────────────────────
-governance  Inspect governance activation and assess policy alignment
+──────────  ───────────────────────────────────────────────────────────────────
+governance  Plan, approve, execute, recover, and inspect scoped governance work
 dev         Print Docker Compose helper commands
 infra       Print OpenTofu helper commands
 
@@ -164,11 +166,13 @@ Option  Description
 
 exports[`complete help screens > snapshots compact governance command help 1`] = `
 "LIFTOFF / GOVERNANCE
-Inspect governance activation and assess policy alignment
+Plan, approve, execute, recover, and inspect scoped governance work
 
 Usage
 ─────
-liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
+liftoff governance
+<status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess>
+[project-path]
 
 Arguments
 ─────────
@@ -180,7 +184,10 @@ Subcommands
 ───────────
 - status
 - plan
+- approve
 - apply-next
+- credential-enroll
+- recover
 - resume
 - verify
 - assess
@@ -188,17 +195,31 @@ Subcommands
 Project options
 ───────────────
 Option            Description
-────────────────  ────────────────────
+────────────────  ──────────────────────────────────────────────────────────────
 --project <path>  Liftoff project path
+--inputs <file>   Public activation configuration JSON; never credentials or
+                  state
+
+Command options
+───────────────
+Option                   Description
+───────────────────────  ───────────────────────────────────────────────────────
+--scope <scope>          Execution/verification boundary: local, activation, or
+                         lifecycle (default: activation)
+--recover-phase <phase>  Plan explicit recovery of one failed or interrupted
+                         phase without executing it
 
 Consent options
 ───────────────
-Option     Description
-─────────  ─────────────────────────────────────────────────────────────────────
---execute  Execute the reviewed governance apply-next plan; required for any
-           mutation
---live     Assess only: request bounded read-only GitHub/Azure metadata with
-           existing permissions
+Option                Description
+────────────────────  ──────────────────────────────────────────────────────────
+--plan <fingerprint>  Exact project-bound fingerprint from governance plan
+--protected-stdin     Read credential enrollment material from explicitly
+                      protected stdin instead of a private TTY
+--execute             Execute the reviewed governance apply-next plan; required
+                      for any mutation
+--live                Assess only: request bounded read-only GitHub/Azure
+                      metadata with existing permissions
 
 Output options
 ──────────────
@@ -316,9 +337,71 @@ Option  Description
 "
 `;
 
+exports[`complete help screens > snapshots compact repair command help 1`] = `
+"LIFTOFF / REPAIR
+Preview and approve safe reorganization of existing OpenTofu infrastructure
+
+Usage
+─────
+liftoff repair [project-path]
+
+Arguments
+─────────
+Argument      Description
+────────────  ─────────────────────────────────────────────────────────────
+project-path  Existing Liftoff project; never an initialization destination
+
+Project options
+───────────────
+Option               Description
+───────────────────  ───────────────────────────────────────────────────
+--project <path>     Exact Liftoff project path
+--subscription <id>  Exact Azure subscription ID for live absence checks
+
+Command options
+───────────────
+Option     Description
+─────────  ─────────────────────────────────────────────────────────────────────
+--check    Preview without project writes or tool execution; bare repair also
+           previews
+--recover  Recover only the previously approved interrupted local repair
+           transaction
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--live                        Allow bounded Azure metadata reads with existing
+                              authentication; never read state
+--approve-plan <fingerprint>  Apply the exact unexpired external repair preview;
+                              includes isolated validation
+
+Output options
+──────────────
+Option  Description
+──────  ───────────────────────────────────────────────────────────────────
+--json  Emit one schema-1 repair result; blocked or incomplete work exits 2
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact update command help 1`] = `
 "LIFTOFF / UPDATE
-Reconcile Liftoff-managed core files in a project
+Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the
+matching effective plan (default: no). Check leaves project bytes unchanged and
+saves a project-bound receipt in user-local liftoff/update-previews storage
+outside the repository; the receipt is not approval. Apply needs the same
+checkout and receipt store. Noninteractive apply requires --approve-plan; force
+and JSON are not consent. Production files, history, and provisioning collisions
+remain protected; force cannot bypass compatibility. Exit 0: clean or approved
+scope completed; 2: drift or committed migration with incomplete revalidation;
+1: rejected or failed operation.
 
 Usage
 ─────
@@ -339,20 +422,26 @@ Option            Description
 Command options
 ───────────────
 Option   Description
-───────  ───────────────────────────────────────────
---check  Report drift without changing project files
+───────  ───────────────────────────────────────────────────────────────────────
+--check  Preview normal and eligible forced plans without project writes; save
+         an external preview receipt
 
 Consent options
 ───────────────
-Option   Description
-───────  ──────────────────────────────
---force  Replace modified managed files
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--force                       Select the separately previewed forced plan for
+                              exact owned-core conflicts and retired aliases;
+                              still requires approval
+--approve-plan <fingerprint>  Approve the exact effective plan from check using
+                              its full lowercase 64-hex SHA-256 fingerprint
 
 Output options
 ──────────────
 Option  Description
-──────  ──────────────────────────
---json  Emit machine-readable JSON
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit one schema-3 result on stdout; interactive approval uses stderr and
+        still defaults to no
 
 General options
 ───────────────
@@ -433,7 +522,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.12.2 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -449,7 +538,8 @@ Command: migrate | Description: Adopt an existing project
 
 Maintenance
 Command: validate | Description: Validate a generated project manifest
-Command: update | Description: Reconcile Liftoff-managed core files in a project
+Command: update | Description: Preview and explicitly approve scoped project updates
+Command: repair | Description: Preview and approve safe reorganization of existing OpenTofu infrastructure
 Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
 Command: doctor | Description: Check local and project readiness
 
@@ -460,7 +550,7 @@ Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
 
 Operations
-Command: governance | Description: Inspect governance activation and assess policy alignment
+Command: governance | Description: Plan, approve, execute, recover, and inspect scoped governance work
 Command: dev | Description: Print Docker Compose helper commands
 Command: infra | Description: Print OpenTofu helper commands
 
@@ -493,10 +583,10 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Inspect governance activation and assess policy alignment
+"LIFTOFF / GOVERNANCE - Plan, approve, execute, recover, and inspect scoped governance work
 
 Usage
-Usage: liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
+Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
 
 Arguments
 Argument: project-path | Description: Liftoff project to inspect
@@ -504,15 +594,25 @@ Argument: project-path | Description: Liftoff project to inspect
 Subcommands
 - status
 - plan
+- approve
 - apply-next
+- credential-enroll
+- recover
 - resume
 - verify
 - assess
 
 Project options
 Option: --project <path> | Description: Liftoff project path
+Option: --inputs <file> | Description: Public activation configuration JSON; never credentials or state
+
+Command options
+Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
+Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
 Consent options
+Option: --plan <fingerprint> | Description: Exact project-bound fingerprint from governance plan
+Option: --protected-stdin | Description: Read credential enrollment material from explicitly protected stdin instead of a private TTY
 Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
 Option: --live | Description: Assess only: request bounded read-only GitHub/Azure metadata with existing permissions
 
@@ -588,8 +688,38 @@ Option: --help | Description: Show command-specific help
 "
 `;
 
+exports[`complete help screens > snapshots plain repair command help 1`] = `
+"LIFTOFF / REPAIR - Preview and approve safe reorganization of existing OpenTofu infrastructure
+
+Usage
+Usage: liftoff repair [project-path]
+
+Arguments
+Argument: project-path | Description: Existing Liftoff project; never an initialization destination
+
+Project options
+Option: --project <path> | Description: Exact Liftoff project path
+Option: --subscription <id> | Description: Exact Azure subscription ID for live absence checks
+
+Command options
+Option: --check | Description: Preview without project writes or tool execution; bare repair also previews
+Option: --recover | Description: Recover only the previously approved interrupted local repair transaction
+
+Consent options
+Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
+Option: --approve-plan <fingerprint> | Description: Apply the exact unexpired external repair preview; includes isolated validation
+
+Output options
+Option: --json | Description: Emit one schema-1 repair result; blocked or incomplete work exits 2
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots plain update command help 1`] = `
-"LIFTOFF / UPDATE - Reconcile Liftoff-managed core files in a project
+"LIFTOFF / UPDATE - Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound receipt in user-local liftoff/update-previews storage outside the repository; the receipt is not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires --approve-plan; force and JSON are not consent. Production files, history, and provisioning collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected or failed operation.
 
 Usage
 Usage: liftoff update [project-path]
@@ -601,13 +731,14 @@ Project options
 Option: --project <path> | Description: Project path
 
 Command options
-Option: --check | Description: Report drift without changing project files
+Option: --check | Description: Preview normal and eligible forced plans without project writes; save an external preview receipt
 
 Consent options
-Option: --force | Description: Replace modified managed files
+Option: --force | Description: Select the separately previewed forced plan for exact owned-core conflicts and retired aliases; still requires approval
+Option: --approve-plan <fingerprint> | Description: Approve the exact effective plan from check using its full lowercase 64-hex SHA-256 fingerprint
 
 Output options
-Option: --json | Description: Emit machine-readable JSON
+Option: --json | Description: Emit one schema-3 result on stdout; interactive approval uses stderr and still defaults to no
 
 General options
 Option: --help | Description: Show command-specific help
@@ -693,7 +824,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.11.1 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.12.2 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -716,7 +847,8 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ Command   Description                                                                        │
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ validate  Validate a generated project manifest                                              │
-│ update    Reconcile Liftoff-managed core files in a project                                  │
+│ update    Preview and explicitly approve scoped project updates                              │
+│ repair    Preview and approve safe reorganization of existing OpenTofu infrastructure        │
 │ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
 │           separately                                                                         │
 │ doctor    Check local and project readiness                                                  │
@@ -731,8 +863,8 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command     Description                                                                      │
-│ ──────────  ─────────────────────────────────────────────────────────                        │
-│ governance  Inspect governance activation and assess policy alignment                        │
+│ ──────────  ───────────────────────────────────────────────────────────────────              │
+│ governance  Plan, approve, execute, recover, and inspect scoped governance work              │
 │ dev         Print Docker Compose helper commands                                             │
 │ infra       Print OpenTofu helper commands                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -783,10 +915,12 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
-│ Inspect governance activation and assess policy alignment                                    │
+│ Plan, approve, execute, recover, and inspect scoped governance work                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
-│ liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]              │
+│ liftoff governance                                                                           │
+│ <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess>              │
+│ [project-path]                                                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
 │ Argument      Description                                                                    │
@@ -796,22 +930,38 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 ┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
 │ • status                                                                                     │
 │ • plan                                                                                       │
+│ • approve                                                                                    │
 │ • apply-next                                                                                 │
+│ • credential-enroll                                                                          │
+│ • recover                                                                                    │
 │ • resume                                                                                     │
 │ • verify                                                                                     │
 │ • assess                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
-│ ────────────────  ────────────────────                                                       │
+│ ────────────────  ────────────────────────────────────────────────────────────────           │
 │ --project <path>  Liftoff project path                                                       │
+│ --inputs <file>   Public activation configuration JSON; never credentials or state           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                   Description                                                         │
+│ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
+│ --scope <scope>          Execution/verification boundary: local, activation, or lifecycle    │
+│                          (default: activation)                                               │
+│ --recover-phase <phase>  Plan explicit recovery of one failed or interrupted phase without   │
+│                          executing it                                                        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option     Description                                                                       │
-│ ─────────  ───────────────────────────────────────────────────────────────────────────────── │
-│ --execute  Execute the reviewed governance apply-next plan; required for any mutation        │
-│ --live     Assess only: request bounded read-only GitHub/Azure metadata with existing        │
-│            permissions                                                                       │
+│ Option                Description                                                            │
+│ ────────────────────  ────────────────────────────────────────────────────────────────────── │
+│ --plan <fingerprint>  Exact project-bound fingerprint from governance plan                   │
+│ --protected-stdin     Read credential enrollment material from explicitly protected stdin    │
+│                       instead of a private TTY                                               │
+│ --execute             Execute the reviewed governance apply-next plan; required for any      │
+│                       mutation                                                               │
+│ --live                Assess only: request bounded read-only GitHub/Azure metadata with      │
+│                       existing permissions                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
@@ -910,9 +1060,61 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 "
 `;
 
+exports[`complete help screens > snapshots rich repair command help 1`] = `
+"┌─ LIFTOFF / REPAIR ───────────────────────────────────────────────────────────────────────────┐
+│ Preview and approve safe reorganization of existing OpenTofu infrastructure                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff repair [project-path]                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ─────────────────────────────────────────────────────────────                  │
+│ project-path  Existing Liftoff project; never an initialization destination                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option               Description                                                             │
+│ ───────────────────  ───────────────────────────────────────────────────                     │
+│ --project <path>     Exact Liftoff project path                                              │
+│ --subscription <id>  Exact Azure subscription ID for live absence checks                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option     Description                                                                       │
+│ ─────────  ───────────────────────────────────────────────────────────────────────────       │
+│ --check    Preview without project writes or tool execution; bare repair also previews       │
+│ --recover  Recover only the previously approved interrupted local repair transaction         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --live                        Allow bounded Azure metadata reads with existing               │
+│                               authentication; never read state                               │
+│ --approve-plan <fingerprint>  Apply the exact unexpired external repair preview; includes    │
+│                               isolated validation                                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ───────────────────────────────────────────────────────────────────                  │
+│ --json  Emit one schema-1 repair result; blocked or incomplete work exits 2                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
 exports[`complete help screens > snapshots rich update command help 1`] = `
 "┌─ LIFTOFF / UPDATE ───────────────────────────────────────────────────────────────────────────┐
-│ Reconcile Liftoff-managed core files in a project                                            │
+│ Start with \`liftoff update --check\`, then run \`liftoff update\` to approve the matching       │
+│ effective plan (default: no). Check leaves project bytes unchanged and saves a project-bound │
+│ receipt in user-local liftoff/update-previews storage outside the repository; the receipt is │
+│ not approval. Apply needs the same checkout and receipt store. Noninteractive apply requires │
+│ --approve-plan; force and JSON are not consent. Production files, history, and provisioning  │
+│ collisions remain protected; force cannot bypass compatibility. Exit 0: clean or approved    │
+│ scope completed; 2: drift or committed migration with incomplete revalidation; 1: rejected   │
+│ or failed operation.                                                                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff update [project-path]                                                                │
@@ -929,18 +1131,24 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option   Description                                                                         │
-│ ───────  ───────────────────────────────────────────                                         │
-│ --check  Report drift without changing project files                                         │
+│ ───────  ─────────────────────────────────────────────────────────────────────────────────── │
+│ --check  Preview normal and eligible forced plans without project writes; save an external   │
+│          preview receipt                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option   Description                                                                         │
-│ ───────  ──────────────────────────────                                                      │
-│ --force  Replace modified managed files                                                      │
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --force                       Select the separately previewed forced plan for exact          │
+│                               owned-core conflicts and retired aliases; still requires       │
+│                               approval                                                       │
+│ --approve-plan <fingerprint>  Approve the exact effective plan from check using its full     │
+│                               lowercase 64-hex SHA-256 fingerprint                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
-│ ──────  ──────────────────────────                                                           │
-│ --json  Emit machine-readable JSON                                                           │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --json  Emit one schema-3 result on stdout; interactive approval uses stderr and still       │
+│         defaults to no                                                                       │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

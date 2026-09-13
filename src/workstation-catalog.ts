@@ -1,5 +1,10 @@
 import type { ExternalCommand } from './domain/project/contracts.js';
 import { packagedSupportedStack as supportedStack } from './adapters/packaged-assets/supported-stack.js';
+import type {
+  InstallationOrigin,
+  RemediationOperation,
+  RequirementReasonCode
+} from './domain/workstation/contracts.js';
 
 export type WorkstationRequirementId =
   | 'node'
@@ -13,7 +18,9 @@ export type WorkstationRequirementId =
   | 'openspec'
   | 'spec-kit'
   | 'github-copilot'
-  | 'claude';
+  | 'claude'
+  | 'codex'
+  | 'github-cli';
 
 export type RequirementSeverity = 'blocking' | 'advisory';
 export type SupportedPlatform = 'darwin' | 'win32' | 'linux';
@@ -22,6 +29,16 @@ export type LinuxFamily = 'debian' | 'fedora' | 'arch' | 'unknown';
 export interface InstallRecipe {
   command: ExternalCommand;
   manager: 'brew' | 'winget' | 'npm' | 'uv';
+  sourceUrl?: string;
+}
+
+export interface RemediationRecipe extends InstallRecipe {
+  id: string;
+  operation: RemediationOperation;
+  causes: readonly RequirementReasonCode[];
+  origins: readonly InstallationOrigin[];
+  platforms: readonly SupportedPlatform[];
+  requiresExplicitReview?: boolean;
 }
 
 export interface WorkstationRequirementDefinition {
@@ -35,6 +52,8 @@ export interface WorkstationRequirementDefinition {
   allowPrerelease?: boolean;
   missingRemedy?: string;
   install: Partial<Record<SupportedPlatform, InstallRecipe>>;
+  remedies?: readonly RemediationRecipe[];
+  packageIdentities?: Partial<Record<Exclude<InstallationOrigin, 'unknown' | 'standalone'>, string>>;
   linuxRemedies: Record<LinuxFamily, string>;
 }
 
@@ -186,6 +205,7 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'GitHub Copilot',
     severity: 'blocking',
     probes: [{ executable: 'copilot', args: ['--version'] }],
+    allowPrerelease: true,
     install: { darwin: brew('copilot-cli', true), win32: winget('GitHub.Copilot') },
     linuxRemedies: linuxRemedies('https://docs.github.com/en/copilot/how-tos/copilot-cli/set-up-copilot-cli/install-copilot-cli')
   },
@@ -194,7 +214,126 @@ export const workstationRequirementCatalog: Record<WorkstationRequirementId, Wor
     label: 'Claude Code',
     severity: 'blocking',
     probes: [{ executable: 'claude', args: ['--version'] }],
+    allowPrerelease: true,
     install: { darwin: brew('claude-code', true), win32: winget('Anthropic.ClaudeCode') },
     linuxRemedies: linuxRemedies('https://docs.anthropic.com/en/docs/claude-code/setup')
+  },
+  codex: {
+    id: 'codex',
+    label: 'OpenAI Codex',
+    severity: 'blocking',
+    probes: [{ executable: 'codex', args: ['--version'] }],
+    allowPrerelease: true,
+    install: {
+      darwin: { ...brew('codex', true), sourceUrl: 'https://github.com/openai/codex#installing-and-running-codex-cli' },
+      win32: {
+        manager: 'npm',
+        command: { executable: 'npm', args: ['install', '-g', '@openai/codex'] },
+        sourceUrl: 'https://github.com/openai/codex#installing-and-running-codex-cli'
+      },
+      linux: {
+        manager: 'npm',
+        command: { executable: 'npm', args: ['install', '-g', '@openai/codex'] },
+        sourceUrl: 'https://github.com/openai/codex#installing-and-running-codex-cli'
+      }
+    },
+    linuxRemedies: linuxRemedies('https://github.com/openai/codex#installing-and-running-codex-cli')
+  },
+  'github-cli': {
+    id: 'github-cli',
+    label: 'GitHub CLI',
+    severity: 'advisory',
+    probes: [{ executable: 'gh', args: ['--version'] }],
+    install: { darwin: brew('gh'), win32: winget('GitHub.cli') },
+    linuxRemedies: linuxRemedies('https://github.com/cli/cli#installation')
   }
 };
+
+for (const definition of Object.values(workstationRequirementCatalog)) {
+  const remedies: RemediationRecipe[] = [];
+  const identities: WorkstationRequirementDefinition['packageIdentities'] = {};
+  for (const platform of ['darwin', 'win32', 'linux'] as const) {
+    const recipe = definition.install[platform];
+    if (!recipe) continue;
+    const packageId = recipe.manager === 'winget'
+      ? recipe.command.args[recipe.command.args.indexOf('--id') + 1]
+      : recipe.command.args.at(-1)!;
+    identities[recipe.manager] = recipe.manager === 'npm'
+      ? packageId.replace(/@[^/]+$/, '')
+      : recipe.manager === 'uv' ? packageId.split('==')[0] : packageId;
+    remedies.push({
+      ...recipe,
+      id: `${definition.id}:${platform}:${recipe.manager}:install`,
+      operation: 'install',
+      causes: ['missing-executable', 'observation-unavailable'],
+      origins: ['unknown'],
+      platforms: [platform]
+    });
+    const upgrade: ExternalCommand = recipe.manager === 'brew'
+      ? { executable: 'brew', args: ['upgrade', ...(recipe.command.args.includes('--cask') ? ['--cask'] : []), packageId] }
+      : recipe.manager === 'winget'
+        ? { executable: 'winget', args: ['upgrade', ...recipe.command.args.slice(1)] }
+        : recipe.manager === 'uv'
+          ? { executable: 'uv', args: ['tool', 'install', '--upgrade', packageId] }
+          : recipe.command;
+    remedies.push({
+      ...recipe,
+      command: upgrade,
+      id: `${definition.id}:${platform}:${recipe.manager}:upgrade`,
+      operation: 'upgrade',
+      causes: [
+        'below-minimum',
+        ...(definition.exactVersion ? ['exact-version-mismatch', 'release-line-mismatch'] as const : [])
+      ],
+      origins: [recipe.manager],
+      platforms: [platform]
+    });
+    if (definition.exactVersion && (recipe.manager === 'npm' || recipe.manager === 'uv')) {
+      remedies.push({
+        ...recipe,
+        command: upgrade,
+        id: `${definition.id}:${platform}:${recipe.manager}:change-version`,
+        operation: 'change-version',
+        causes: ['exact-version-mismatch', 'release-line-mismatch'],
+        origins: [recipe.manager],
+        platforms: [platform],
+        requiresExplicitReview: true
+      }, {
+        ...recipe,
+        command: upgrade,
+        id: `${definition.id}:${platform}:${recipe.manager}:change-channel`,
+        operation: 'change-channel',
+        causes: ['incompatible-channel'],
+        origins: [recipe.manager],
+        platforms: [platform],
+        requiresExplicitReview: true
+      });
+    }
+  }
+  if (definition.id === 'github-copilot') identities.npm = '@github/copilot';
+  if (definition.id === 'claude') identities.npm = '@anthropic-ai/claude-code';
+  if (definition.id === 'npm') identities.npm = 'npm';
+  definition.remedies = remedies;
+  definition.packageIdentities = identities;
+}
+
+const codexNpm = workstationRequirementCatalog.codex.install.linux!;
+workstationRequirementCatalog.codex.remedies = [
+  ...workstationRequirementCatalog.codex.remedies!,
+  {
+    ...codexNpm,
+    id: 'codex:darwin:npm:install',
+    operation: 'install',
+    causes: ['missing-executable', 'observation-unavailable'],
+    origins: ['unknown'],
+    platforms: ['darwin']
+  },
+  {
+    ...codexNpm,
+    id: 'codex:darwin:npm:upgrade',
+    operation: 'upgrade',
+    causes: ['below-minimum'],
+    origins: ['npm'],
+    platforms: ['darwin']
+  }
+];

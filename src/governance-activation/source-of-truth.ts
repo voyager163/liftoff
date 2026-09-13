@@ -17,7 +17,8 @@ import {
   liftoffActivationPackageVersion,
   liftoffManifestArtifactVersion,
   phaseGraphSchemaVersion,
-  supersessionSchemaVersion
+  supersessionSchemaVersion,
+  isHistoricalActivationIdentity
 } from '../domain/governance/policy/identity.js';
 import { calculateGraphReconciliation } from './reconciliation.js';
 import {
@@ -30,7 +31,7 @@ import {
   selectLatestPhaseEvidence,
   type EvidenceFreshnessContext
 } from '../domain/governance/activation/evidence.js';
-import { remoteRepository } from '../domain/governance/activation/inputs.js';
+import { remoteRepository, remoteBindingDigest } from '../domain/governance/activation/inputs.js';
 import type {
   ActivationIdentity,
   GraphReconciliationRecord,
@@ -44,6 +45,10 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 import { validateSupersessionRecord } from '../domain/governance/activation/validators.js';
 import type { LiftoffManifest, SpecWorkflowId } from '../domain/project/contracts.js';
 import { toSafeProjectName } from '../domain/project/planning.js';
+import { inspectActivationMigrationHistory, type HistoricalGovernanceSource } from './migration-history.js';
+import { historicalSourceChangePathParts, parseHistoryJson, rawHistoryDigest } from './history-contracts.js';
+import { validateHistoricalGovernanceChangeMetadata, type HistoricalGovernanceChangeMetadata } from './historical-source-metadata.js';
+import { assertSafeHistoricalRecord } from './historical-safety.js';
 
 export const governanceChangeMetadataFileName = 'liftoff-governance.json' as const;
 export const governanceSupersessionPathParts = ['governance', 'supersessions'] as const;
@@ -101,6 +106,7 @@ export interface ApprovedPhase0Facts {
   approvedFacts: readonly ApprovedPhase0Fact[];
   approvedAt: string;
   approver: string;
+  successorSnapshotId?: string;
 }
 
 export interface GovernanceChangeFilePlan {
@@ -134,7 +140,21 @@ export interface ActiveGovernanceCandidate {
   issues: readonly string[];
 }
 
-export type GovernanceSourceOfTruthInspection =
+export interface HistoricalGovernanceCandidate {
+  status: 'historical';
+  changeId: string;
+  workflowKind: SpecWorkflowId;
+  pathParts: readonly string[];
+  snapshotId: string;
+  metadata?: HistoricalGovernanceChangeMetadata;
+  issues: readonly string[];
+}
+
+export type GovernanceSourceOfTruthInspection = CurrentGovernanceSourceOfTruthInspection & {
+  historicalCandidates?: readonly HistoricalGovernanceCandidate[];
+};
+
+type CurrentGovernanceSourceOfTruthInspection =
   | {
       status: 'seed-blocked';
       seedChangeId: string;
@@ -463,13 +483,20 @@ export function approvedPhase0FactDigest(facts: ApprovedPhase0Facts): string {
     evidenceIds: facts.evidenceIds,
     repositoryId: facts.repositoryId,
     repositoryName: facts.repositoryName,
-    workflowKind: facts.workflowKind
+    workflowKind: facts.workflowKind,
+    ...(facts.successorSnapshotId ? { successorSnapshotId: facts.successorSnapshotId } : {})
   });
 }
 
-export function deterministicGovernanceChangeId(facts: Pick<ApprovedPhase0Facts, 'projectName' | 'baselineSha' | 'workflowKind'>): string {
+export function deterministicGovernanceChangeId(
+  facts: Pick<ApprovedPhase0Facts, 'projectName' | 'baselineSha' | 'workflowKind' | 'successorSnapshotId'>
+): string {
   const safeProject = toSafeProjectName(facts.projectName);
-  const suffix = facts.baselineSha.slice(0, 12);
+  if (facts.successorSnapshotId !== undefined && !hex64Pattern.test(facts.successorSnapshotId)) {
+    throw new Error('A successor governance source requires the complete validated history snapshot ID.');
+  }
+  const suffix = facts.baselineSha.slice(0, 12) +
+    (facts.successorSnapshotId ? `-v${currentActivationIdentity.activationContractVersion}-${facts.successorSnapshotId.slice(0, 12)}` : '');
   return facts.workflowKind === 'openspec'
     ? `governance-${safeProject}-${suffix}`
     : `001-liftoff-governance-${safeProject}-${suffix}`;
@@ -732,6 +759,9 @@ export async function writeGovernanceChangeArtifacts(projectRoot: string, plan: 
 
 async function writeGovernanceChangeArtifactsLocked(projectRoot: string, plan: GovernanceChangeWritePlan): Promise<void> {
   const validated = validateGovernanceChangeMetadata(plan.metadata);
+  if (validateCurrentIdentity(validated.activationIdentity, 'governanceChange.activationIdentity').length) {
+    throw new Error('Only the current activation contract can create a current governance source.');
+  }
   if (validated.changeId !== plan.changeId || validated.workflowKind !== plan.workflowKind) {
     throw new Error('Governance change write plan metadata does not match plan identity.');
   }
@@ -792,10 +822,13 @@ async function readMetadataCandidate(
   workflowKind: SpecWorkflowId,
   changeId: string,
   pathParts: readonly string[],
-  requireMetadata: boolean
-): Promise<ActiveGovernanceCandidate> {
+  requireMetadata: boolean,
+  historical: readonly HistoricalGovernanceSource[] = []
+): Promise<ActiveGovernanceCandidate | HistoricalGovernanceCandidate> {
+  const retained = historical.filter((source) => source.activeChange.id === changeId && source.activeChange.kind === workflowKind);
   const metadataBytes = await readProjectFile(projectRoot, [...pathParts, governanceChangeMetadataFileName]);
   if (metadataBytes === undefined) {
+    if (retained.length) return historicalCandidate(retained[0], pathParts);
     return {
       changeId,
       workflowKind,
@@ -806,7 +839,7 @@ async function readMetadataCandidate(
   }
   let parsed: unknown;
   try {
-    parsed = JSON.parse(metadataBytes.toString('utf8')) as unknown;
+    parsed = parseHistoryJson(metadataBytes, [...pathParts, governanceChangeMetadataFileName].join('/'));
   } catch (error) {
     return {
       changeId,
@@ -817,6 +850,18 @@ async function readMetadataCandidate(
     };
   }
   try {
+    assertSafeHistoricalRecord(parsed, 'governance source metadata');
+    if (retained.length) {
+      const metadata = validateHistoricalGovernanceChangeMetadata(parsed);
+      const sameIdentity = retained.filter((entry) => canonicalSha256(entry.sourceIdentity) === canonicalSha256(metadata.activationIdentity));
+      const bound = sameIdentity.some((entry) => entry.metadataDigest !== null)
+        ? sameIdentity.filter((entry) => entry.metadataDigest !== null) : sameIdentity;
+      const source = bound.find((entry) => entry.metadataDigest === null || entry.metadataDigest === rawHistoryDigest(metadataBytes));
+      if (!source || metadata.changeId !== changeId || metadata.workflowKind !== workflowKind) {
+        throw new Error('Retained historical metadata differs from its validated source history; it cannot be retagged as current proof.');
+      }
+      return { ...historicalCandidate(source, pathParts), metadata };
+    }
     const metadata = validateGovernanceChangeMetadata(parsed);
     const issues: string[] = [];
     if (metadata.changeId !== changeId) {
@@ -848,12 +893,25 @@ async function readMetadataCandidate(
   }
 }
 
+function historicalCandidate(source: HistoricalGovernanceSource, pathParts: readonly string[]): HistoricalGovernanceCandidate {
+  return {
+    status: 'historical', changeId: source.activeChange.id, workflowKind: source.activeChange.kind,
+    pathParts, snapshotId: source.snapshotId,
+    ...(source.metadata ? { metadata: source.metadata } : {}),
+    issues: ['Retained source metadata and task checkboxes are audit history, not current execution or projection authority.']
+  };
+}
+
 async function activeGovernanceCandidates(
   projectRoot: string,
   manifest: LiftoffManifest,
-  state: UserActivationState
-): Promise<ActiveGovernanceCandidate[]> {
+  state: UserActivationState,
+  historical: readonly HistoricalGovernanceSource[]
+): Promise<{ candidates: ActiveGovernanceCandidate[]; historicalCandidates: HistoricalGovernanceCandidate[] }> {
   const candidates: ActiveGovernanceCandidate[] = [];
+  const historicalCandidates: HistoricalGovernanceCandidate[] = [];
+  const add = (candidate: ActiveGovernanceCandidate | HistoricalGovernanceCandidate) =>
+    candidate.status === 'historical' ? historicalCandidates.push(candidate) : candidates.push(candidate);
   if (manifest.project.specWorkflow === 'openspec') {
     for (const changeId of await directoryEntries(projectRoot, ['openspec', 'changes'])) {
       if (changeId === 'archive' || changeId.startsWith('bootstrap-')) {
@@ -862,12 +920,13 @@ async function activeGovernanceCandidates(
       const pathParts = ['openspec', 'changes', changeId] as const;
       const metadataBytes = await readProjectFile(projectRoot, [...pathParts, governanceChangeMetadataFileName]);
       if (metadataBytes !== undefined || state.activeChange?.id === changeId) {
-        candidates.push(await readMetadataCandidate(
+        add(await readMetadataCandidate(
           projectRoot,
           'openspec',
           changeId,
           pathParts,
-          state.activeChange?.id === changeId
+          state.activeChange?.id === changeId,
+          historical
         ));
       }
     }
@@ -876,17 +935,19 @@ async function activeGovernanceCandidates(
       const pathParts = ['specs', changeId] as const;
       const metadataBytes = await readProjectFile(projectRoot, [...pathParts, governanceChangeMetadataFileName]);
       if (metadataBytes !== undefined || state.activeChange?.id === changeId) {
-        candidates.push(await readMetadataCandidate(
+        add(await readMetadataCandidate(
           projectRoot,
           'spec-kit',
           changeId,
           pathParts,
-          state.activeChange?.id === changeId
+          state.activeChange?.id === changeId,
+          historical
         ));
       }
     }
   }
-  if (state.activeChange && !candidates.some((candidate) => candidate.changeId === state.activeChange?.id)) {
+  if (state.activeChange && !candidates.some((candidate) => candidate.changeId === state.activeChange?.id) &&
+    !historical.some((source) => source.activeChange.id === state.activeChange?.id && source.activeChange.kind === state.activeChange.kind)) {
     const pathParts = state.activeChange.kind === 'openspec'
       ? ['openspec', 'changes', state.activeChange.id]
       : ['specs', state.activeChange.id];
@@ -898,7 +959,13 @@ async function activeGovernanceCandidates(
       issues: [`Activation state activeChange ${state.activeChange.id} has no inspectable governance metadata.`]
     });
   }
-  return candidates.sort((left, right) => left.changeId.localeCompare(right.changeId, 'en'));
+  for (const source of historical) {
+    if (!historicalCandidates.some((candidate) => candidate.changeId === source.activeChange.id && candidate.workflowKind === source.activeChange.kind) &&
+      !candidates.some((candidate) => candidate.changeId === source.activeChange.id && candidate.workflowKind === source.activeChange.kind)) {
+      historicalCandidates.push(historicalCandidate(source, historicalSourceChangePathParts(source.activeChange)));
+    }
+  }
+  return { candidates: candidates.sort((left, right) => left.changeId.localeCompare(right.changeId, 'en')), historicalCandidates };
 }
 
 async function readSupersessionRecords(projectRoot: string, candidates: readonly ActiveGovernanceCandidate[]): Promise<GovernanceSupersessionInspection> {
@@ -974,6 +1041,10 @@ export function buildApprovedPhase0FactsFromState(
   context?: EvidenceFreshnessContext
 ): ApprovedPhase0Facts | undefined {
   if (!context || !state.remoteBinding) return undefined;
+  if (canonicalSha256(state.identity) !== canonicalSha256(currentActivationIdentity) ||
+    canonicalSha256(context.identity) !== canonicalSha256(state.identity) || context.repositoryId !== state.repository.id ||
+    context.remoteBindingDigest !== remoteBindingDigest(state.remoteBinding) ||
+    state.baselineAnchor !== undefined && context.baselineSha !== state.baselineAnchor) return undefined;
   const selection = selectLatestPhaseEvidence(evidence.filter((record) => record.header.phaseId === 'phase-0-complete'), context);
   const phase0 = selection.selected;
   if (!phase0 || phase0.header.result !== 'verified') return undefined;
@@ -994,7 +1065,8 @@ export function buildApprovedPhase0FactsFromState(
       { id: 'specWorkflow', value: manifest.project.specWorkflow }
     ],
     approvedAt: phase0.header.producedAt,
-    approver: phase0.header.producer
+    approver: phase0.header.producer,
+    ...(state.successorHistory ? { successorSnapshotId: state.successorHistory.snapshotId } : {})
   };
 }
 
@@ -1019,7 +1091,7 @@ function createPreview(manifest: LiftoffManifest, state: UserActivationState, ev
 }
 
 export function reconcileActiveGovernanceChange(input: {
-  metadata: GovernanceChangeMetadata;
+  metadata: GovernanceChangeMetadata | HistoricalGovernanceChangeMetadata;
   evidence: readonly PhaseEvidenceRecord[];
   fromGraph?: ManagedPhaseGraph;
   toGraph?: ManagedPhaseGraph;
@@ -1030,6 +1102,24 @@ export function reconcileActiveGovernanceChange(input: {
   const toGraph = input.toGraph ?? canonicalPhaseGraph;
   const fromGraph = input.fromGraph ?? toGraph;
   const toIdentity = input.toIdentity ?? currentActivationIdentity;
+  if (isHistoricalActivationIdentity(input.metadata.activationIdentity) || isHistoricalActivationIdentity(toIdentity)) {
+    return {
+      status: 'blocked', approvalRequired: false, preservedPhaseIds: [], invalidPhaseIds: phaseIds,
+      issues: ['Historical governance metadata cannot be retagged or preserve current proof. Use the approved successor and fresh Phase 0 to create a separately approved current source.']
+    };
+  }
+  try {
+    validateGovernanceChangeMetadata(input.metadata);
+  } catch (error) {
+    return { status: 'blocked', approvalRequired: false, preservedPhaseIds: [], invalidPhaseIds: phaseIds, issues: [errorMessage(error)] };
+  }
+  if (canonicalSha256(toGraph) !== toIdentity.phaseGraphHash ||
+    input.fromGraph && canonicalSha256(fromGraph) !== input.metadata.phaseGraphHash) {
+    return {
+      status: 'blocked', approvalRequired: false, preservedPhaseIds: [], invalidPhaseIds: phaseIds,
+      issues: ['Reconciliation must bind the actual source and target graph contents.']
+    };
+  }
   if (canonicalJson(input.metadata.activationIdentity) === canonicalJson(toIdentity)) {
     return {
       status: 'not-required',
@@ -1120,6 +1210,13 @@ export function stateWithSelectedActiveChange(
   if (selected.status !== 'compatible') {
     throw new Error(`Cannot record incompatible active change ${selected.changeId}.`);
   }
+  const metadata = validateGovernanceChangeMetadata(selected.metadata);
+  if (metadata.changeId !== selected.changeId || metadata.workflowKind !== selected.workflowKind ||
+    validateCurrentIdentity(metadata.activationIdentity, 'activationIdentity').length ||
+    state.successorHistory?.sourceActiveChange?.id === selected.changeId &&
+      state.successorHistory.sourceActiveChange.kind === selected.workflowKind) {
+    throw new Error('A retained historical source cannot be selected or relabeled as a current governance change.');
+  }
   return {
     ...state,
     activeChange: {
@@ -1129,15 +1226,33 @@ export function stateWithSelectedActiveChange(
   };
 }
 
-export async function inspectGovernanceSourceOfTruth(input: {
+export interface GovernanceSourceOfTruthInput {
   projectRoot: string;
   manifest: LiftoffManifest;
   state: UserActivationState;
   evidence: readonly PhaseEvidenceRecord[];
   contexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
-}): Promise<GovernanceSourceOfTruthInspection> {
+}
+
+export async function inspectGovernanceSourceOfTruth(input: GovernanceSourceOfTruthInput): Promise<GovernanceSourceOfTruthInspection> {
   const seedBlockers = await activeSeedBlockers(input.projectRoot, input.manifest);
-  const candidates = await activeGovernanceCandidates(input.projectRoot, input.manifest, input.state);
+  let historical: readonly HistoricalGovernanceSource[] = [];
+  if (input.state.successorHistory) {
+    const history = await inspectActivationMigrationHistory(input.projectRoot);
+    if (history.status !== 'committed' || canonicalSha256(history.state.successorHistory) !== canonicalSha256(input.state.successorHistory) ||
+      history.state.repository.id !== input.state.repository.id) {
+      throw new Error('Governance source selection requires the independently validated successor history relationship.');
+    }
+    historical = history.historicalSources;
+  }
+  const { candidates, historicalCandidates } = await activeGovernanceCandidates(input.projectRoot, input.manifest, input.state, historical);
+  const result = await inspectCurrentGovernanceSource(input, seedBlockers, candidates);
+  return historicalCandidates.length ? { ...result, historicalCandidates } : result;
+}
+
+async function inspectCurrentGovernanceSource(
+  input: GovernanceSourceOfTruthInput, seedBlockers: string[], candidates: ActiveGovernanceCandidate[]
+): Promise<GovernanceSourceOfTruthInspection> {
   if (seedBlockers.length > 0) {
     return {
       status: 'seed-blocked',

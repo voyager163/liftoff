@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
-import { isRetiredManagedCoreLogicalName, managedCoreLogicalNames } from '../../domain/project/artifact-lifecycle.js';
+import { isRetiredManagedCoreLogicalName, managedCoreLogicalNames, preCodexManagedCoreLogicalNames } from '../../domain/project/artifact-lifecycle.js';
 import { assessmentLogicalNames, preAssessmentManagedCoreLogicalNames } from '../../domain/project/manifest/governance.js';
 import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../../adapters/filesystem/project-paths.js';
@@ -78,13 +78,7 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         const compatibility = validateGovernanceCompatibilityMetadata(
           JSON.parse(bytes.toString('utf8')) as unknown
         );
-        const predatesAssessment = !currentManagedArtifacts.some((artifact) =>
-          assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
-        ) && compatibility.managedCore.logicalNameAllowlist.join('\0') ===
-          preAssessmentManagedCoreLogicalNames.join('\0');
-        const logicalNameAllowlist = predatesAssessment
-          ? preAssessmentManagedCoreLogicalNames
-          : managedCoreLogicalNames;
+        const logicalNameAllowlist = compatibility.managedCore.logicalNameAllowlist;
         validateGovernanceCompatibilityMetadata(
           compatibility,
           hasRetiredManagedArtifacts

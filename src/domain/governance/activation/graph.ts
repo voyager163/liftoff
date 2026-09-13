@@ -18,6 +18,7 @@ import type {
   LiveReadbackProvider,
   TerminalPhaseState
 } from './types.js';
+import { activationPhaseIds, lifecyclePhaseIds, localSetupPhaseIds } from './types.js';
 
 const terminalVerified = ['verified', 'failed'] as const satisfies readonly TerminalPhaseState[];
 const terminalApproved = ['approved', 'failed'] as const satisfies readonly TerminalPhaseState[];
@@ -38,7 +39,7 @@ function mutations(
   ) {
     normalizedLocal.push('write-activation-state');
   }
-  return { local: normalizedLocal, remote };
+  return { local: normalizedLocal.filter((mutation) => mutation !== 'none'), remote };
 }
 
 function evidence(
@@ -57,15 +58,16 @@ function rollback(kind: PhaseGraphNode['rollback']['kind'], target: PhaseId | nu
   return { kind, target, description };
 }
 
-export const canonicalPhaseGraph = {
-  schemaVersion: phaseGraphSchemaVersion,
-  versions: {
-    liftoffVersion: liftoffActivationPackageVersion,
-    policyVersion: governanceActivationPolicyVersion,
-    activationContractVersion,
-    phaseGraphSchemaVersion
-  },
-  phases: [
+const nonGovernanceTaskPhases = new Set<string>([
+  'seed-valid',
+  'seed-verified',
+  'seed-archived',
+  'committed',
+  'pushed',
+  'phase-0-complete'
+]);
+
+const rawPhases: readonly PhaseGraphNode[] = [
     {
       id: 'seed-valid',
       label: 'Generated bootstrap seed is strict-valid',
@@ -119,7 +121,7 @@ export const canonicalPhaseGraph = {
       label: 'Initial repository baseline is pushed',
       dependencies: [dep(['committed'], 'Commit evidence precedes initial push.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['read-worktree', 'write-evidence'], ['git-push', 'github-read']),
+      allowedMutations: mutations(['read-worktree', 'git-remote-bind', 'write-evidence'], ['git-push', 'github-read', 'github-repository-create', 'github-write']),
       evidence: evidence('pushed.v1', true, ['github']),
       approvalGate: approval('repository-publish', true),
       invalidationInputs: ['baseline-sha', 'approval-envelope'],
@@ -151,9 +153,21 @@ export const canonicalPhaseGraph = {
       terminalStates: terminalApproved
     },
     {
+      id: 'bootstrap-workflow-source-ready',
+      label: 'Scoped bootstrap verification workflows are published',
+      dependencies: [dep(['activation-approved'], 'Bootstrap workflow publication requires the reviewed activation scope.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['read-worktree', 'write-workflows', 'git-commit', 'write-evidence'], ['git-push', 'github-read', 'github-write']),
+      evidence: evidence('bootstrap-workflow-source-ready.v1', true, ['github']),
+      approvalGate: approval('repository-publish', true),
+      invalidationInputs: ['workflow-source', 'approval-envelope', 'baseline-sha'],
+      rollback: rollback('none', null, 'Preserve published history; repair only the approved workflow scope.'),
+      terminalStates: terminalVerified
+    },
+    {
       id: 'credential-ready',
       label: 'Runner preflight credential policy is ready when required',
-      dependencies: [dep(['activation-approved'], 'Credential enrollment follows approved activation scope.')],
+      dependencies: [dep(['bootstrap-workflow-source-ready'], 'Credential use is verified through the published approved bootstrap workflow.')],
       applicability: {
         kind: 'conditional',
         discriminator: 'credential-required',
@@ -161,7 +175,7 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'credentialRequired=false',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['github-secret-write', 'github-read']),
+      allowedMutations: mutations(['write-credential-policy', 'write-evidence'], ['github-secret-write', 'github-read', 'github-workflow-dispatch']),
       evidence: evidence('credential-ready.v1', true, ['github']),
       approvalGate: approval('credential-enrollment', true),
       invalidationInputs: ['credentials', 'approval-envelope', 'activation-identity'],
@@ -175,13 +189,7 @@ export const canonicalPhaseGraph = {
         dep(['activation-approved'], 'Provider readiness belongs to approved infrastructure scope.'),
         dep(['credential-ready'], 'Runner preflight credential readiness or inapplicability precedes provider work.')
       ],
-      applicability: {
-        kind: 'conditional',
-        discriminator: 'private-staging-dast',
-        when: 'privateStagingDast=true',
-        inapplicableWhen: 'privateStagingDast=false',
-        exclusiveWith: []
-      },
+      applicability: { kind: 'always' },
       allowedMutations: mutations(['write-evidence'], ['azure-read', 'azure-provider-register']),
       evidence: evidence('provider-ready.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
@@ -195,9 +203,9 @@ export const canonicalPhaseGraph = {
       dependencies: [dep(['provider-ready'], 'Provider readiness precedes private state path selection.')],
       applicability: {
         kind: 'conditional',
-        discriminator: 'private-staging-dast',
-        when: 'privateStagingDast=true',
-        inapplicableWhen: 'privateStagingDast=false',
+        discriminator: 'cloud-state-required',
+        when: 'cloudStateRequired=true',
+        inapplicableWhen: 'cloudStateRequired=false',
         exclusiveWith: []
       },
       allowedMutations: mutations(['write-activation-state', 'write-evidence'], ['azure-read']),
@@ -218,7 +226,7 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'statePath!=existing-private',
         exclusiveWith: ['bootstrap-local']
       },
-      allowedMutations: mutations(['write-evidence'], ['azure-read']),
+      allowedMutations: mutations(['write-evidence'], ['azure-read', 'github-read', 'backend-state-read']),
       evidence: evidence('existing-private-path.v1', true, ['azure']),
       approvalGate: approval('none', false),
       invalidationInputs: ['remote-state', 'live-readback'],
@@ -239,8 +247,8 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'statePath!=bootstrap-local',
         exclusiveWith: ['existing-private-path']
       },
-      allowedMutations: mutations(['write-local-state', 'write-evidence'], ['azure-network-provision', 'github-write']),
-      evidence: evidence('bootstrap-local.v1', true, ['github', 'azure']),
+      allowedMutations: mutations(['read-worktree', 'write-local-state', 'write-evidence'], ['azure-network-provision', 'azure-read']),
+      evidence: evidence('bootstrap-local.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['approval-envelope', 'provider-inventory', 'remote-state'],
       rollback: rollback('reverse-to', 'provider-ready', 'Remove only repository-owned bootstrap resources in dependency order.'),
@@ -257,7 +265,7 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'statePath!=bootstrap-local',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-write']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-write', 'github-workflow-dispatch']),
       evidence: evidence('runner-ready.v1', true, ['github']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['runner-inventory', 'approval-envelope'],
@@ -275,9 +283,9 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'statePath!=bootstrap-local',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'azure-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'backend-state-read']),
       evidence: evidence('private-backend-proof.v1', true, ['github', 'azure']),
-      approvalGate: approval('none', false),
+      approvalGate: approval('activation-plan', true),
       invalidationInputs: ['runner-inventory', 'remote-state', 'live-readback'],
       rollback: rollback('reverse-to', 'runner-ready', 'Failed proof keeps remote import blocked.'),
       terminalStates: terminalConditional
@@ -293,7 +301,7 @@ export const canonicalPhaseGraph = {
         inapplicableWhen: 'statePath!=bootstrap-local',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['azure-state-import']),
+      allowedMutations: mutations(['write-evidence'], ['azure-state-import', 'azure-read', 'backend-state-read', 'backend-state-write']),
       evidence: evidence('remote-import-verified.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['remote-state', 'approval-envelope'],
@@ -306,12 +314,12 @@ export const canonicalPhaseGraph = {
       dependencies: [dep(['existing-private-path', 'remote-import-verified'], 'Remote readiness follows either existing private path or verified remote import.')],
       applicability: {
         kind: 'conditional',
-        discriminator: 'private-staging-dast',
-        when: 'privateStagingDast=true',
-        inapplicableWhen: 'privateStagingDast=false',
+        discriminator: 'cloud-state-required',
+        when: 'cloudStateRequired=true',
+        inapplicableWhen: 'cloudStateRequired=false',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['azure-read']),
+      allowedMutations: mutations(['write-evidence'], ['azure-read', 'backend-state-read']),
       evidence: evidence('remote-ready.v1'),
       approvalGate: approval('none', false),
       invalidationInputs: ['remote-state', 'live-readback'],
@@ -319,37 +327,61 @@ export const canonicalPhaseGraph = {
       terminalStates: ['verified', 'failed', 'inapplicable', 'retained']
     },
     {
-      id: 'application-foundation',
-      label: 'Application infrastructure foundation is reconciled',
-      dependencies: [dep(['remote-ready'], 'Application resources wait for remote state readiness or inapplicability.')],
+      id: 'application-prerequisites-ready',
+      label: 'Application registry and workload identity prerequisites are ready',
+      dependencies: [dep(['remote-ready'], 'Registry and identity prerequisites require verified backend readiness.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence', 'write-openspec-governance'], ['azure-resource-provision']),
-      evidence: evidence('application-foundation.v1', true, ['azure']),
+      allowedMutations: mutations(['read-worktree', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
+      evidence: evidence('application-prerequisites-ready.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['project-files', 'remote-state', 'approval-envelope'],
-      rollback: rollback('reverse-to', 'remote-ready', 'Application resources are removed without unregistering providers.'),
+      rollback: rollback('reverse-to', 'remote-ready', 'Compensate only owned prerequisites within the approved recovery scope.'),
       terminalStates: terminalVerified
     },
     {
       id: 'workflow-source-ready',
       label: 'Workflow source and ruleset payloads are ready',
-      dependencies: [dep(['application-foundation'], 'Workflow source targets the reconciled application foundation.')],
+      dependencies: [dep(['application-prerequisites-ready'], 'Workflow source binds the verified registry and workload identities.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-workflows', 'write-ruleset-source', 'write-evidence']),
+      allowedMutations: mutations(['read-worktree', 'write-workflows', 'write-ruleset-source', 'write-evidence']),
       evidence: evidence('workflow-source-ready.v1'),
       approvalGate: approval('none', false),
       invalidationInputs: ['project-files', 'policy'],
-      rollback: rollback('reverse-to', 'application-foundation', 'Remove or repair only workflow/ruleset source changes.'),
+      rollback: rollback('reverse-to', 'application-prerequisites-ready', 'Repair only approved workflow/ruleset changes without rewriting Git history.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'application-artifact-ready',
+      label: 'Immutable application artifacts are built and published from approved source',
+      dependencies: [dep(['workflow-source-ready'], 'The reviewed build workflow must be published before artifact production.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['read-worktree', 'write-evidence'], ['github-read', 'github-workflow-dispatch', 'registry-publish', 'azure-read']),
+      evidence: evidence('application-artifact-ready.v1', true, ['github', 'azure']),
+      approvalGate: approval('infrastructure-cost', true),
+      invalidationInputs: ['project-files', 'workflow-source', 'approval-envelope'],
+      rollback: rollback('retain', null, 'Keep immutable published artifacts; never replace an existing digest.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'application-foundation',
+      label: 'Application infrastructure is deployed with the verified immutable artifact',
+      dependencies: [dep(['application-artifact-ready'], 'Deployment requires real source-bound immutable application artifacts.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['read-worktree', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
+      evidence: evidence('application-foundation.v1', true, ['azure']),
+      approvalGate: approval('infrastructure-cost', true),
+      invalidationInputs: ['project-files', 'remote-state', 'approval-envelope'],
+      rollback: rollback('reverse-to', 'application-artifact-ready', 'Recover only approved owned resources; never unregister shared providers.'),
       terminalStates: terminalVerified
     },
     {
       id: 'dev-proof',
       label: 'Development proof is green',
-      dependencies: [dep(['workflow-source-ready'], 'Workflow source must exist before proving checks.')],
+      dependencies: [dep(['application-foundation'], 'The real application deployment precedes development proof.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch']),
       evidence: evidence('dev-proof.v1', true, ['github']),
-      approvalGate: approval('none', false),
+      approvalGate: approval('activation-plan', true),
       invalidationInputs: ['workflow-source', 'project-files'],
       rollback: rollback('none', null, 'A failed check blocks descendants until fixed.'),
       terminalStates: terminalVerified
@@ -359,9 +391,9 @@ export const canonicalPhaseGraph = {
       label: 'Staging release qualification is complete',
       dependencies: [dep(['dev-proof'], 'Development proof precedes staging qualification.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'azure-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-write']),
       evidence: evidence('staging-qualified.v1', true, ['github', 'azure']),
-      approvalGate: approval('none', false),
+      approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['workflow-source', 'security-evidence', 'live-readback'],
       rollback: rollback('none', null, 'Qualification failures keep production blocked.'),
       terminalStates: terminalVerified
@@ -371,9 +403,9 @@ export const canonicalPhaseGraph = {
       label: 'Production promotion and rollback are rehearsed',
       dependencies: [dep(['staging-qualified'], 'Only a staging-qualified candidate may be rehearsed.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'azure-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-write']),
       evidence: evidence('production-rehearsed.v1', true, ['github', 'azure']),
-      approvalGate: approval('none', false),
+      approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['live-readback', 'workflow-source'],
       rollback: rollback('none', null, 'Rollback remains ungated and documented.'),
       terminalStates: terminalVerified
@@ -383,9 +415,9 @@ export const canonicalPhaseGraph = {
       label: 'Required checks are proven green and deliberately red',
       dependencies: [dep(['production-rehearsed'], 'Promotion rehearsal precedes final context proof.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch']),
       evidence: evidence('green-red-proof.v1', true, ['github']),
-      approvalGate: approval('none', false),
+      approvalGate: approval('activation-plan', true),
       invalidationInputs: ['security-evidence', 'workflow-source'],
       rollback: rollback('none', null, 'Missing red proof prevents enforcement.'),
       terminalStates: terminalVerified
@@ -444,7 +476,22 @@ export const canonicalPhaseGraph = {
       rollback: rollback('dispose', null, 'Deletion destroys only the local encryption key and records no payload.'),
       terminalStates: ['disposed', 'failed', 'inapplicable']
     }
-  ]
+  ] as const;
+
+export const canonicalPhaseGraph = {
+  schemaVersion: phaseGraphSchemaVersion,
+  versions: {
+    liftoffVersion: liftoffActivationPackageVersion,
+    policyVersion: governanceActivationPolicyVersion,
+    activationContractVersion,
+    phaseGraphSchemaVersion
+  },
+  completionGroups: {
+    local: localSetupPhaseIds,
+    activation: activationPhaseIds,
+    lifecycle: lifecyclePhaseIds
+  },
+  phases: rawPhases
 } as const satisfies ManagedPhaseGraph;
 
 export type CanonicalPhaseGraph = typeof canonicalPhaseGraph;

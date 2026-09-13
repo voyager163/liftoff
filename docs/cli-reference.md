@@ -9,6 +9,7 @@ liftoff governance --help
 liftoff governance assess --help
 liftoff upgrade --help
 liftoff update --help
+liftoff repair --help
 ```
 
 Unknown flags or commands, missing values, invalid booleans, incompatible
@@ -28,8 +29,11 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
-| `liftoff governance plan [project]` | Previews ready and blocked phase transitions, required evidence, approval gates, permitted mutations, and cost-envelope impact without writes |
+| `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
+| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations |
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
+| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Uses the approved credential plan and a private input channel; never accepts a token argument |
+| `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
@@ -38,6 +42,10 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
 | `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
+| `liftoff repair [project-path] --check` | Previews bounded existing-project infrastructure repair without cloud calls or project writes; bare repair also previews |
+| `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
+| `liftoff repair [project-path] --approve-plan <fingerprint>` | Applies only an eligible separately approved exact local repair plan |
+| `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
 | `liftoff patterns` | Lists GenAI patterns |
@@ -49,6 +57,9 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
+`/liftoff-setup` (Copilot/Claude) and `$liftoff-setup` (Codex) are native coding-agent
+invocations, not a `liftoff setup` CLI command. Init creates a scaffold; repair
+works on a supported existing Liftoff project without reinitializing it.
 
 Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
@@ -68,8 +79,8 @@ Common noninteractive inputs include:
 --frontend | --no-frontend
 --environments dev,staging,prod
 --spec openspec|spec-kit
---agents copilot,claude
---default-agent copilot|claude
+--agents copilot,claude,codex
+--default-agent copilot|claude|codex
 --governance single-maintainer-gitflow|none
 --copilot-cloud | --no-copilot-cloud
 --configure-openspec-profile
@@ -86,50 +97,95 @@ supported workloads or ordinary Git repositories.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
-local deterministic setup handoff only; `none` omits it. See
+local deterministic setup integrations; initialization does not run activation.
+The setup integration coordinates local readiness and separately approved
+publication, cloud, and governance work. `none` omits it. See
 [repository governance](repository-governance.md).
 
 ## Governance setup commands
 
 ```bash
-liftoff governance status [project] [--json]
-liftoff governance plan [project] [--json]
+liftoff governance status [project] --scope local [--json]
+liftoff governance plan [project] --scope activation [--inputs public-inputs.json] [--json]
+liftoff governance approve [project] --scope activation --plan <fingerprint> [--json]
 liftoff governance apply-next [project] [--json] [--execute]
-liftoff governance resume [project] [--json]
-liftoff governance verify [project] [--json]
+liftoff governance apply-next [project] --scope activation [--plan <fingerprint>] [--execute] [--json]
+liftoff governance credential-enroll [project] --plan <fingerprint> [--protected-stdin] [--json]
+liftoff governance plan [project] --scope activation --recover-phase <phase-id> [--json]
+liftoff governance recover [project] --scope activation --plan <fingerprint> [--execute] [--json]
+liftoff governance resume [project] --scope activation [--json]
+liftoff governance verify [project] --scope local [--json]
+liftoff governance status [project] --scope lifecycle [--json]
 ```
 
 These commands are strict and project-aware. Unknown governance subcommands,
 unknown flags, invalid `--execute` placement, or extra positionals fail before
-project discovery or mutation. `status`, `plan`, and `verify` are read-only.
+project discovery or mutation. Direct governance commands default to
+`--scope activation`; `local` and `lifecycle` are explicit independent boundaries.
+`status`, `resume`, and `verify` are read-only. `plan` changes no project or
+provider data, but discloses its external preview receipt.
 `apply-next` previews by default; `--execute` is the explicit request to save the
 reviewed plan and execute at most one phase whose dependencies, evidence, and
 approval envelope are satisfied. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
-`executedPhase` on execution (`null` on failure). For compatibility its existing
-`nextReadyPhase` field can refer to the phase just attempted, not the next
-post-transition phase. Read `nextReadyPhase` from the subsequent `status` or
-`verify` result. Status/resume preserve `storedState` and `storedBlockers` when
+`executedPhase` separately. `nextReadyPhase` is recomputed after execution;
+`nextPlannablePhase` can identify work awaiting approval. A pending external
+operation retains its provider handle and is polled, not dispatched twice.
+Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.
 
-Governance JSON uses versioned objects and includes the complete activation
-version vector: creating Liftoff version, manifest artifact version 7, policy
-version 6, activation-contract version 2, state/evidence-header/approval schema
-versions 2, graph/supersession/credential schema versions 1, and the phase-graph
-hash. Compatibility metadata is version 2. It never
+Governance command JSON uses schema 2 and includes selected `scope`, separate
+local/activation/lifecycle progress, and `nextActions`. Each action carries its
+registered executable/argument array, project working directory, scope, and
+approval requirement; integrations must use it rather than invent commands.
+The execution identity uses activation package 0.12.0, manifest artifact 7,
+policy 6, activation contract 3, graph schema 2, state/evidence/approval schemas
+3, supersession/credential-policy schemas 1, and the computed graph hash.
+Compatibility metadata is schema 4. It never
 emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
-names the exact field and required Liftoff upgrade. Known v1 history is
-diagnostic-only and byte-preserved; no automatic reconciliation command exists.
+names the exact field and required Liftoff upgrade. Known v1/v2 history is
+diagnostic-only and byte-preserved; a supported successor requires
+`liftoff update --check` and explicit approval, not automatic reconciliation.
+
+Local completion requires only `seed-valid`, `seed-verified`, and
+`seed-archived` (Spec Kit uses finalization, not an invented archive).
+It does not require Git publication, provider credentials, or a deployment.
+Activation completion requires the live deployment, qualification, and
+enforcement phases. Retained bootstrap-state disposal is separate lifecycle
+work due 30 days after verified remote import, not a delay in initial activation.
+Consistent but incomplete verification exits 0 and reports `complete: false`;
+inconsistent or uninspectable selected-scope evidence exits 1.
+
+`--inputs` selects public configuration, including exact repository, Azure
+tenant/subscription/region, bounded budget, and validated per-phase inputs.
+Never put credentials, raw state, or private plans in that file.
+Credential enrollment uses a private TTY by default; `--protected-stdin`
+explicitly selects a protected automation channel. A fingerprint is not a
+token, and approval alone neither enrolls a credential nor provisions resources.
+Interrupted writes require a fresh `plan --recover-phase` before `recover`;
+unsupported or ambiguous external outcomes remain visible blockers.
+
+Status, resume, and verify JSON include `migration` (the validated journal, or
+`null`) and `migrationSummary`. The summary separates `localCommit`, validated
+snapshot/index/successor linkage, recorded `revalidation`, `nextRecordedPhase`,
+and a project-bound fresh-preview remedy. `currentProofRequired` is always
+true: recorded completion is audit history, not current evidence or provider
+authority. Human output presents the same migration progress separately from
+readiness; stale current proof still blocks even when the journal says complete.
+These inspection commands neither advance phases nor create preview receipts.
 
 `/liftoff-setup` calls these commands instead of inferring phase completion from
 prose or task checkboxes.
 
-OpenSpec projects use all 12 OpenSpec 1.11 workflows with both skills and
-commands. `--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
+OpenSpec projects use all 12 OpenSpec 1.11 workflows. Copilot and Claude receive
+their supported skills/commands; Codex receives native skills under
+`.agents/skills`, invoked through `$skill-name` or its skill picker, not fabricated
+slash-command adapters. All seven nonempty agent subsets are supported.
+`--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
 agent definition; omission and `--no-copilot-cloud` keep it disabled.
 
 OpenSpec stores workflow profile and delivery globally. If the observed profile
@@ -228,6 +284,13 @@ Automatic replacement is refused for local dependencies, `npx` execution-cache
 copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
 unsafe paths.
 
+On macOS, a verified global installation at the standard Homebrew prefix can
+remain eligible when Homebrew Node/npm reports its versioned Cellar prefix.
+Liftoff checks the package, runtime layout, and launcher, then explicitly targets
+that existing prefix throughout the upgrade. It rejects a prefix-specific
+registry change instead of silently switching delivery policy. This fallback
+does not apply to arbitrary prefixes, Windows, or Linux.
+
 Canonical npm's stable `latest` metadata selects one exact target. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
@@ -249,23 +312,127 @@ command printed by Liftoff.
 
 JSON results use schema version 1 and expose only `mode`, `status`,
 `currentVersion`, applicable `targetVersion`, applicable `registryKind`, and a
-stable `reasonCode`. Status is one of `current`, `update-available`, `upgraded`,
+stable `reasonCode`, plus optional `installationTarget` (`homebrew-opt` or
+`homebrew-usr-local`) when the standard Homebrew fallback is verified. Arbitrary
+installation paths are not included. Status is one of `current`, `update-available`, `upgraded`,
 `blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
 object.
+
+## Repair modes
+
+```bash
+liftoff repair [project-path] --check [--json]
+liftoff repair [project-path] --check --live --subscription <UUID> [--json]
+liftoff repair [project-path] --approve-plan <fingerprint> [--json]
+liftoff repair [project-path] --recover [--json]
+```
+
+Bare repair is a preview, not execution. Use a positional project path to select
+another project, or run inside the project (including a subdirectory).
+Ordinary checks inspect bounded local configuration and state/backend metadata
+presence without reading state or contacting cloud services. Only explicit
+`--live` with a selected subscription permits bounded read-only Azure metadata
+requests using existing authentication: no login, privilege expansion, state
+reads, backend writes, or deployment.
+Metadata discovery has a 120-second overall deadline, a 30-second per-command
+deadline, and a maximum of 24 resource groups. Exceeding a bound leaves
+eligibility incomplete and blocks writes.
+
+The executable local recipe reorganizes supported recorded legacy Azure
+OpenTofu flat roots into `modules/application` and the selected independent
+`environments/<id>` roots. Semantic inspection preserves source bodies,
+compatible provider constraints and locks, variables, outputs, and environment
+values; it does not replace the application with a newer starter.
+Eligibility requires all relevant resource groups to be authoritatively absent
+in the selected subscription **and** all supported local state/backend metadata
+locations to be absent. Missing state files, a user assertion, or edited manifest
+metadata cannot prove that infrastructure is undeployed. Denied, timed-out, or
+incomplete discovery remains a blocker.
+
+Review the exact operations and expiring project-bound fingerprint stored
+outside the repository. Only `--approve-plan <fingerprint>` authorizes application;
+it cannot expand the approved subscription, commands, file scope, or recipe.
+Changed inputs need a fresh preview. Repair repeats eligibility checks before
+commit and validates an isolated candidate. Validation first checks that the
+installed OpenTofu belongs to a compatible stable release line, then runs these
+approved commands **in staging**, not against the original backend:
+
+| Staged directory | Validation command |
+| --- | --- |
+| Whole Azure root | `tofu fmt -check -recursive` |
+| Each selected environment root | `tofu init -backend=false -input=false -lockfile=readonly -no-color` |
+| Each selected environment root | `tofu validate -json` |
+
+Formatting must already pass; repair does not silently reformat the candidate
+after approval. Initialization can download providers, as disclosed in the plan,
+but preserves the lockfile and never initializes the original backend or runs
+cloud plan/apply. Committed provenance describes actual repaired bytes, while
+original provenance is preserved under `.liftoff/repair-history/<fingerprint>/`.
+
+Check and apply are separate commands, not an `&&` chain: exit 2 can mean an
+available plan or a blocked/plan-only result. Schema-1 JSON distinguishes clean,
+available, blocked, applied, failed, and recovery outcomes. Follow the reported
+status and next action, not just the exit code. Committed-but-incomplete repair
+does not mean local governance or activation succeeded.
+
+`--force`, `--yes`, and `--add-agents` are not supported. Agent installation,
+framework-default changes, and the public stateful migration coordinator are
+**not implemented**. An existing internal stateful engine does not make a public
+command executable. Deployed, unknown, ambiguous, or unsupported cases remain
+plan-only with source and state untouched. Do not edit metadata, copy a fresh
+init scaffold over the project, or use manual state moves to bypass the blocker.
+
+If writes were interrupted, use only the reported
+`liftoff repair [project-path] --recover` action. Update cannot recover repair
+authority; both lanes exclude overlapping pending transactions and preserve
+concurrent edits. After repair, run `liftoff update --check --project <project-path>`,
+review any separately approved update work, then return to native setup's
+`liftoff governance plan <project-path> --scope local --json` and ready local
+apply action.
 
 ## Update modes
 
 ```bash
+liftoff update --check
 liftoff update
 liftoff update --force
-liftoff update --json
-liftoff update --check
 liftoff update --check --json
+liftoff update --approve-plan <fingerprint> --json
 ```
 
-Plain `liftoff update` is imperative and prompt-free. It applies safe new,
-missing, untouched-upgrade, clean-move, and recorded-state changes only for
-explicit `managed-core` artifacts. For manifest v7 this includes governance
+Run update from the project root or a subdirectory: Liftoff finds the nearest
+`liftoff.manifest.json`, so `--project` is not required for that project.
+Human follow-ups omit `--project` when discovery from the invocation directory
+selects the same target, and identify the selected project separately.
+When a positional path or `--project` selects a different project, follow-ups
+keep its explicit absolute target. An inner project never substitutes for an
+explicitly selected outer project. JSON remedies remain explicitly targeted so
+they can be used outside the originating shell.
+
+After apply, the recommended validation sequence omits a directory change when
+already at the project root. From other directories, including project
+subdirectories, it retains the change to that root. Validate must succeed before
+doctor runs; Liftoff prints these instructions without executing them.
+
+`liftoff update --check` is the human-first compatibility and migration preview.
+It changes no project bytes, but saves and discloses a project-bound preview
+receipt in user-local storage outside the repository. A receipt is not approval.
+`liftoff update` requires a matching preview, recomputes its effective plan, and
+asks for explicit approval with a negative default. Missing or stale previews
+stop with instructions to rerun check. No-op inspection requires no approval.
+
+Run check and apply as separate commands; do not join check and apply with `&&`.
+Check returns exit code 2 for an actionable preview, so a success-only shell
+chain would skip apply even though the preview was created successfully.
+
+Noninteractive apply additionally requires the exact full plan fingerprint
+through `--approve-plan`. Check and apply must share the same materialized
+checkout and user-local storage; another runner, worktree, or moved project
+needs a fresh check and approval. `--force`, `--json`, and a generic yes do not
+waive these gates. The force variant has its own preview and fingerprint.
+
+Approved apply retains safe new, missing, untouched-upgrade, clean-move, and
+recorded-state changes only for explicit `managed-core` artifacts. For manifest v7 this includes governance
 policy, context, guide, phase graph, compatibility metadata, credential-policy
 schema, and selected-agent `/liftoff-setup` integrations. Core conflicts are
 skipped and core orphans are reported without deletion. During legacy governance
@@ -288,22 +455,95 @@ recreates or deletes project files.
 New environments also require recorded independent-root infrastructure and safe
 existing shared-module files. Legacy/shared or unknown layout produces a
 component-level migration-required result; other safe managed-core work may
-continue. Force cannot migrate state or rewrite shared infrastructure.
+continue. Force cannot migrate infrastructure state or rewrite shared infrastructure.
+New component provisioning is deferred during activation-v1 migration and needs
+a fresh post-migration preview.
 
 Use `--check` whenever no project bytes may change. Human check mode prints
 managed-core drift, ownership-only manifest v2-v7 migration, activation-identity
-compatibility, reconciliation-required state, and authorized provisioning. It
-recommends `--force` only for core conflicts. `--check --force` is invalid
-because check mode never authorizes writes.
+compatibility, history preservation, revalidation gaps, and authorized
+provisioning. It recommends `--force` only for eligible owned core conflicts
+and displays the additional exact changes and fingerprint separately.
+`--check --force` remains invalid because check mode never authorizes overwrites.
 
-`--json` selects output format, not safety. `liftoff update --json` applies safe
-changes and emits the versioned apply result. `liftoff update --check --json`
-is the read-only automation gate.
+`--json` selects output format, not safety or consent. Update JSON uses schema 3
+with project-update scope and separate core, provisioning, activation-migration,
+and revalidation outcomes. Prompts and progress use stderr; stdout remains one
+JSON result. Check exits 0 for no actionable work, 2 for differences, and 1 for
+errors. Apply exits 0 for completed scope, 2 when migration committed but
+revalidation is incomplete, and 1 for rejected approval or an error.
+`seed-verified` is **Local baseline verification**, not an OpenSpec feature
+change. Human and JSON output retain the actual next phase and blocker, and
+provide same-project repair/check follow-ups when recorded infrastructure needs
+reorganization. JSON includes `revalidation.nextPhaseLabel`,
+`revalidation.nextActions`, and `infrastructureRepair` separately from
+`activationMigration.status` and `committed`: a committed migration remains
+committed even when local verification is blocked. Infrastructure repair advice
+can appear even when managed core is current and no activation revalidation is
+required. An update fingerprint never authorizes infrastructure repair.
 
-Update never installs dependencies. Transaction snapshots restore a failed
-core update, but Liftoff retains no backup after a successful core overwrite.
-Force cannot bypass the ownership, project-boundary, symlink, structural,
-identity, or manifest guards.
+Update never installs dependencies. Ordinary transaction backups are for failure
+recovery; activation migration additionally retains durable original history.
+Force cannot bypass preview, approval, ownership, project-boundary, symlink,
+structural, identity, or manifest guards.
+
+### Preview receipt storage
+
+Check reports the exact native receipt path. Receipts and separate transaction
+approval records use user-local storage, never the project or its containing
+repository:
+
+| Platform | Receipt directory |
+| --- | --- |
+| Linux | `$XDG_STATE_HOME/liftoff/update-previews` when `XDG_STATE_HOME` is set to an absolute path; otherwise, when unset, `$HOME/.local/state/liftoff/update-previews` |
+| macOS | `~/Library/Application Support/liftoff/update-previews` |
+| Windows | `%LOCALAPPDATA%\liftoff\update-previews` when `LOCALAPPDATA` is set to an absolute drive or UNC path; otherwise, when unset, `%USERPROFILE%\AppData\Local\liftoff\update-previews` |
+
+An empty or relative override is an error, not a request to use the fallback.
+Unsafe paths, links/junctions, or storage inside the project or repository also
+block the update; repair the reported storage issue rather than moving a receipt
+into the project. When an explicit target is needed, commands containing spaces
+or shell metacharacters use literal native-shell quoting and retain the selected
+project path.
+
+`preview-missing` means no saved preview was found for the selected project.
+It does not mean project discovery failed or that storage is damaged. A receipt
+may have been consumed or may be absent from this user-local store; run a fresh
+check, review it, then approve the matching apply plan. `preview-mismatch` also
+requires a fresh check because the saved preview no longer matches the current
+plan. Repeating the project argument does not satisfy either prerequisite.
+
+Other preview failures retain their specific diagnosis: `preview-storage` names
+a storage operation or path to repair, `preview-invalid` identifies an invalid
+receipt, `preview-unsupported` reports a format incompatibility, and
+`preview-busy` reports concurrent access. Follow the named remedy rather than
+treating every failure as a missing preview. Do not remove an active lock or
+change project files to repair preview metadata.
+
+The immutable history snapshot travels inside the project. Preview receipts and
+approval records do not: another machine, checkout, worktree, or moved project
+needs its own fresh check and approval. A receipt stores digests, not project
+source bodies, and is never portable blanket authorization.
+
+### Reviewed activation-v1/v2 migration
+
+An exact supported v1/v2 source can be previewed with `liftoff update --check`.
+Approved update verifies an immutable in-project history snapshot before
+replacing active records, then creates a linked strict v3 activation. Historical
+state, evidence, plans, approvals, and source metadata retain their original
+bytes under the dedicated governance history directory. History is not managed
+core and is never automatically committed, pushed, or cleaned with receipts.
+
+Fresh local revalidation does not translate old success flags or approvals.
+It uses only the finite reviewed local operations and stops before provider
+access, dependency installation, publication, or other independently approved
+work. Validation commands execute project-controlled code, not a sandbox;
+unexpected protected-input edits are preserved and reported.
+
+A failed local transaction uses bounded recovery. A failure after commit keeps
+v3 blocked and resumable: repair the named cause, rerun check, then approve the
+remaining work. Do not reset state to v1, change identity fields manually, or
+recreate live resources to silence readiness diagnostics.
 
 New dependency, runtime, container, database, application, and infrastructure
 templates apply to newly generated projects. Existing
@@ -330,10 +570,10 @@ All current writes use v7. Supported historical reads are normalized through an
 explicit compatibility map; future versions, individually known but unsupported
 tuples, and unknown phase-graph hashes block and report an upgrade or
 reconciliation remedy instead of downgrading or fabricating evidence.
-Exact known activation-v1 identity is readable for diagnostics. A
-`diagnosticOnly` historical-state result can coexist with managed-core maintenance,
-which preserves the historical identity, state, and receipts and does not make
-them executable.
+Exact known activation-v1 identity remains non-executable. The explicitly
+supported reviewed successor lane preserves that original history while
+establishing new v2 state and fresh proof; merely reading a historical identity
+or updating a core file does not perform or authorize the migration.
 
 ## Development and infrastructure helpers
 
@@ -370,8 +610,9 @@ liftoff update --check --json
 ```
 
 Each JSON object has a top-level numeric `schemaVersion`. Update JSON uses
-schema version 2 and includes `scope: "managed-core"`, ownership-migration
-state, activation compatibility, and a separate provisioning collection.
+schema version 3 and `scope: "project-update"`, with separate managed-core,
+provisioning, activation-migration, and revalidation outcomes plus preview and
+approval status. A committed migration does not imply governance readiness.
 Operational warnings, such as a dirty-worktree warning before JSON apply, are
 written to stderr so stdout remains one parseable JSON object.
 
@@ -379,8 +620,9 @@ Exit codes:
 
 - `0`: success or a clean check.
 - `1`: invalid input, unsafe state, or command failure.
-- `2`: an explicit update check found core maintenance or provisioning, or upgrade check found an
-  installable CLI release.
+- `2`: update check found differences, update committed a migration but local
+  revalidation is incomplete, or upgrade check found an installable CLI release.
+  Governance assessment also uses 2 for partial or excepted results.
 
 Raw installer, framework, and dependency child stdout and stderr are forwarded
 unchanged.

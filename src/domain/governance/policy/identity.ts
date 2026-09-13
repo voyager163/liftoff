@@ -1,14 +1,14 @@
 import type { ActivationIdentity } from '../activation/types.js';
 
-export const liftoffActivationPackageVersion = '0.11.0' as const;
+export const liftoffActivationPackageVersion = '0.12.0' as const;
 export const liftoffManifestArtifactVersion = 7 as const;
 export const governanceActivationPolicyVersion = '6' as const;
-export const activationContractVersion = 2 as const;
-export const phaseGraphSchemaVersion = 1 as const;
-export const activationStateSchemaVersion = 2 as const;
-export const evidenceHeaderSchemaVersion = 2 as const;
-export const approvalEnvelopeSchemaVersion = 2 as const;
-export const compatibilityMetadataSchemaVersion = 2 as const;
+export const activationContractVersion = 3 as const;
+export const phaseGraphSchemaVersion = 2 as const;
+export const activationStateSchemaVersion = 3 as const;
+export const evidenceHeaderSchemaVersion = 3 as const;
+export const approvalEnvelopeSchemaVersion = 3 as const;
+export const compatibilityMetadataSchemaVersion = 4 as const;
 export const supersessionSchemaVersion = 1 as const;
 export const credentialPolicySchemaVersion = 1 as const;
 
@@ -66,7 +66,24 @@ export const historicalActivationIdentities = [{
   approvalEnvelopeSchemaVersion: 1,
   supersessionSchemaVersion: 1,
   credentialPolicySchemaVersion: 1
+}, {
+  liftoffVersion: '0.11.0',
+  manifestArtifactVersion: 7,
+  policyVersion: '6',
+  activationContractVersion: 2,
+  phaseGraphSchemaVersion: 1,
+  phaseGraphHash: 'ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c',
+  activationStateSchemaVersion: 2,
+  evidenceHeaderSchemaVersion: 2,
+  approvalEnvelopeSchemaVersion: 2,
+  supersessionSchemaVersion: 1,
+  credentialPolicySchemaVersion: 1
 }] as const satisfies readonly ActivationIdentity[];
+
+export const historicalV1ActivationIdentity = historicalActivationIdentities[0];
+export const historicalV2ActivationIdentity = historicalActivationIdentities[1];
+export type HistoricalV1ActivationIdentity = typeof historicalV1ActivationIdentity;
+export type HistoricalV2ActivationIdentity = typeof historicalV2ActivationIdentity;
 
 export type HistoricalActivationIdentity = typeof historicalActivationIdentities[number];
 export type ReadableActivationIdentity = CurrentActivationIdentity | HistoricalActivationIdentity;
@@ -77,6 +94,14 @@ export function isHistoricalActivationIdentity(value: unknown): value is Histori
   return Object.keys(identity).length === tupleFields.length &&
     historicalActivationIdentities.some((historical) => tupleFields.every((field) =>
       Object.hasOwn(identity, field) && identity[field] === historical[field]));
+}
+
+export function isHistoricalV1ActivationIdentity(value: unknown): value is HistoricalV1ActivationIdentity {
+  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 1;
+}
+
+export function isHistoricalV2ActivationIdentity(value: unknown): value is HistoricalV2ActivationIdentity {
+  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 2;
 }
 
 export function createActivationIdentity(phaseGraphHash: string): CurrentActivationIdentity {
@@ -118,7 +143,7 @@ export function resolveActivationCompatibility(
   compatibility: ActivationCompatibilityMap
 ): ActivationCompatibilityResult {
   if (isHistoricalActivationIdentity(identity)) {
-    return { compatible: false, reason: 'Historical activation v1 is diagnostic-only. Migration to v2 is unsupported; preserve original state and evidence bytes without reset or automatic conversion.' };
+    return { compatible: false, reason: `Historical activation v${identity.activationContractVersion} is diagnostic-only. Run liftoff update --check to inspect an explicitly supported history-preserving v3 successor; preserve original bytes without reset, retagging, or automatic conversion.` };
   }
   for (const field of Object.keys(knownActivationVersions) as (keyof typeof knownActivationVersions)[]) {
     if (!knownVersion(field, identity[field])) {

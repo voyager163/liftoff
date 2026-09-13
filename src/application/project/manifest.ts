@@ -4,6 +4,7 @@ import { createManifestReader } from '../../domain/project/manifest/reader.js';
 import { governanceArtifactPaths, governancePolicyVersion } from '../../repository-governance.js';
 import { minimumLiftoffForManifestV7 } from '../../governance-activation/compatibility.js';
 import { validateReadableActivationIdentity } from '../../domain/governance/activation/validators.js';
+import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
 
 const manifestReader = createManifestReader({
   catalog: projectCatalog,
@@ -17,10 +18,10 @@ const manifestReader = createManifestReader({
     ['repository-governance-phase-graph', governanceArtifactPaths.phaseGraph],
     ['repository-governance-compatibility', governanceArtifactPaths.compatibility],
     ['repository-governance-credential-policy-schema', governanceArtifactPaths.credentialPolicySchema],
-    ['liftoff-setup-copilot', governanceArtifactPaths.setup['github-copilot']],
-    ['liftoff-setup-claude', governanceArtifactPaths.setup.claude],
-    ['liftoff-governance-assess-copilot', governanceArtifactPaths.assessment['github-copilot']],
-    ['liftoff-governance-assess-claude', governanceArtifactPaths.assessment.claude]
+    ...Object.values(governanceAgentIntegrations).flatMap((integration): Array<[string, readonly string[]]> => [
+      [integration.setup.logicalName, integration.setup.pathParts],
+      [integration.assessment.logicalName, integration.assessment.pathParts]
+    ])
   ])
 });
 

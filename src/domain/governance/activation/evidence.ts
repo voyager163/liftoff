@@ -16,11 +16,13 @@ import type {
   PhaseGraphNode,
   PhaseId,
   EvidenceReference,
-  SavedTransitionPlan
+  SavedTransitionPlan,
+  UserActivationState
 } from './types.js';
 import { phaseIds } from './types.js';
 import { validateEvidenceHeader, validateLiveReadbackProof, validateSavedTransitionPlan } from './validators.js';
 import { assertPlanOperationsAllowed, planDigestFor } from './operations.js';
+import { savedPlanAuthorityDigest } from './approvals.js';
 
 export interface PhaseEvidenceSource {
   evidence: readonly PhaseEvidenceRecord[];
@@ -112,6 +114,22 @@ export function evidenceBodyDigest(payload: unknown, liveReadback: readonly Live
   return canonicalSha256({ payload: payload ?? null, liveReadback: normalized });
 }
 
+export function assertPhaseOutputsBound(state: UserActivationState, evidence: readonly PhaseEvidenceRecord[]): void {
+  for (const id of phaseIds) {
+    const outputs = state.phaseOutputs?.[id];
+    if (!outputs) continue;
+    const bound = evidence.find((record) => record.header.phaseId === id && record.header.result === 'verified' &&
+      state.phases[id].evidence.some((reference) => reference.evidenceId === record.evidenceId && reference.headerDigest === evidenceHeaderDigest(record.header)) &&
+      isRecord(record.payload) && canonicalSha256(record.payload.outputBindings ?? null) === canonicalSha256(outputs) &&
+      record.header.bodyDigest === evidenceBodyDigest(record.payload, record.liveReadback));
+    if (!bound || outputs.resources.some((resource) => !bound.liveReadback?.some((proof) =>
+      proof.provider === resource.provider && proof.resourceId === resource.resourceId &&
+      proof.resourceType === resource.resourceType && proof.matches))) {
+      throw new Error(`Phase output bindings for ${id} have no matching authoritative resource receipt; hand-edited state is not proof.`);
+    }
+  }
+}
+
 function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
   if (record.header.result === 'failed' || record.header.result === 'inapplicable') return [];
   const payload = record.payload;
@@ -136,6 +154,10 @@ function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
   if (['committed', 'pushed'].includes(record.header.phaseId) &&
     (typeof value.head !== 'string' || !/^[a-f0-9]{40,64}$/.test(value.head))) {
     issues.push('Publication evidence must record the actual Git HEAD separately from the SHA-256 baseline.');
+  }
+  if (['committed', 'pushed'].includes(record.header.phaseId) && record.header.inputBindings?.git &&
+    value.head !== record.header.inputBindings.git.after.head) {
+    issues.push('Publication evidence must match the independently observed resulting Git object ID.');
   }
   if (record.header.phaseId === 'runner-ready') {
     if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
@@ -256,6 +278,10 @@ export function validateEvidenceFreshness(
       issues.push(issue('payload.synchronizedSpecDigest', 'The archived seed receipt does not bind the current synchronized main capability.', undefined, undefined, record.evidenceId));
     }
   }
+  if (header.phaseId === 'pushed' && context.publicationDestination && isRecord(record.payload) &&
+    record.payload.pushUrl !== context.publicationDestination) {
+    issues.push(issue('publicationDestination', 'Publication receipt does not match the current explicit push destination.', undefined, undefined, record.evidenceId));
+  }
   if (header.remoteBindingDigest !== undefined && header.remoteBindingDigest !== context.remoteBindingDigest) {
     issues.push(issue('remoteBindingDigest', 'Evidence verified remote binding does not match the current binding.', context.remoteBindingDigest, header.remoteBindingDigest, record.evidenceId));
   }
@@ -280,10 +306,7 @@ export function validateEvidenceFreshness(
         plan = validateSavedTransitionPlan(saved);
         const phase = phaseNode(canonicalPhaseGraph, header.phaseId);
         assertPlanOperationsAllowed(plan, phase);
-        const approvalPlanDigest = canonicalSha256({
-          phaseId: phase.id, gateKind: phase.approvalGate.kind, transitionDigest: plan.transitionDigest,
-          allowedMutations: phase.allowedMutations
-        });
+        const approvalPlanDigest = savedPlanAuthorityDigest(plan, phase);
         if (plan.planDigest !== planDigestFor({ phase, transitionDigest: plan.transitionDigest, approvalPlanDigest, operations: plan.operations })) {
           throw new Error('Reviewed transition plan digest does not commit its actual operations.');
         }
@@ -291,9 +314,28 @@ export function validateEvidenceFreshness(
         return { valid: false, issues: [issue('plan', error instanceof Error ? error.message : String(error), undefined, undefined, record.evidenceId)] };
       }
       if (plan.phaseId !== header.phaseId || plan.baselineDigest !== context.baselineSha ||
-        plan.inputDigest !== context.inputDigest || plan.transitionDigest !== header.transition.transitionDigest ||
+        plan.inputDigest !== (header.inputBindings?.beforeDigest ?? context.inputDigest) || plan.transitionDigest !== header.transition.transitionDigest ||
         Date.parse(header.producedAt) < Date.parse(plan.createdAt) || Date.parse(header.producedAt) >= Date.parse(plan.expiresAt)) {
         issues.push(issue('plan', 'Evidence phase, current inputs, or timing differ from the reviewed transition plan.', undefined, undefined, record.evidenceId));
+      }
+      if (header.inputBindings && (header.inputBindings.afterDigest !== context.inputDigest ||
+        canonicalSha256(header.inputBindings.files) !== canonicalSha256(plan.fileChanges ?? []))) {
+        issues.push(issue('inputBindings', 'Observed outputs do not match the exact reviewed before/after input contract.', undefined, undefined, record.evidenceId));
+      }
+      if (header.inputBindings?.git) {
+        const { before, after } = header.inputBindings.git;
+        const effects = plan.operations.flatMap((operation) => [operation, ...(operation.effects ?? [])]);
+        if ((before.head !== after.head || before.branch !== after.branch) &&
+          !effects.some((effect) => effect.mutationClass === 'git-commit' && !effect.remote)) {
+          issues.push(issue('inputBindings.git', 'The saved plan did not authorize a Git commit or initialization.', undefined, undefined, record.evidenceId));
+        }
+        if (canonicalSha256(before.pushUrls) !== canonicalSha256(after.pushUrls)) {
+          const targets = plan.operations.filter((operation) => operation.mutationClass === 'git-remote-bind')
+            .flatMap((operation) => [operation.inputs.url, operation.inputs.pushUrl, operation.destination.identity]);
+          if (before.pushUrls.length || after.pushUrls.length !== 1 || !targets.includes(after.pushUrls[0])) {
+            issues.push(issue('inputBindings.git', 'A remote binding must name the exact approved new origin without replacing another destination.', undefined, undefined, record.evidenceId));
+          }
+        }
       }
       if (header.phaseId === 'seed-verified') {
         const expected = plan.operations.find((operation) => operation.actionId === 'openspec.seed.baseline-verify')?.inputs.checks;
@@ -308,8 +350,13 @@ export function validateEvidenceFreshness(
         if (Date.parse(proof.observedAt) < Date.parse(plan.createdAt)) {
           issues.push(issue('liveReadback.observedAt', 'Independent readback predates the reviewed transition plan.', undefined, undefined, record.evidenceId));
         }
-        const operations = plan.operations.filter((operation) => operation.remote &&
-          (proof.provider === 'github' ? operation.adapter === 'github' || operation.adapter === 'git' : operation.adapter === 'azure-opentofu'));
+        const operations = plan.operations.flatMap((operation) => [
+          operation,
+          ...(operation.effects ?? []).map((effect) => ({ ...operation, ...effect }))
+        ]).filter((operation) => operation.remote &&
+          (proof.provider === 'github'
+            ? ['repository', 'environment', 'external'].includes(operation.destination.type)
+            : operation.destination.subscriptionId !== undefined));
         if (!operations.some((operation) => {
           const destination = operation.destination;
           const scopeMatches = destination.identity === proof.resourceId ||
@@ -349,7 +396,15 @@ export function validateEvidenceFreshness(
   if (header.inputDigest !== context.inputDigest) {
     issues.push(issue('inputDigest', 'Evidence phase input digest is stale or mismatched.', context.inputDigest, header.inputDigest, record.evidenceId));
   }
-  issues.push(...compareTransition(header.transition, context.transition, 'transition', record.evidenceId));
+  const expectedTransition = header.inputBindings ? {
+    phaseId: context.phaseId,
+    baselineSha: context.baselineSha,
+    inputDigest: header.inputBindings.beforeDigest,
+    transitionDigest: canonicalSha256({
+      baselineSha: context.baselineSha, inputDigest: header.inputBindings.beforeDigest, phaseId: context.phaseId
+    })
+  } : context.transition;
+  issues.push(...compareTransition(header.transition, expectedTransition, 'transition', record.evidenceId));
 
   const producedAtEpochMs = Date.parse(header.producedAt);
   if (Number.isNaN(producedAtEpochMs)) {
@@ -380,7 +435,7 @@ export function validateEvidenceFreshness(
         issues.push(issue('liveReadback.matches', 'Readback must independently match its normalized reviewed source digest.', undefined, undefined, record.evidenceId));
       }
       if (proof.repositoryId !== header.repositoryId || proof.phaseId !== header.phaseId ||
-        proof.baselineSha !== header.baselineSha || proof.inputDigest !== header.inputDigest ||
+        proof.baselineSha !== header.baselineSha || proof.inputDigest !== header.transition.inputDigest ||
         proof.phaseGraphHash !== header.phaseGraphHash) {
         issues.push(issue('liveReadback.binding', 'Every readback must bind this repository, phase, and current inputs.', undefined, undefined, record.evidenceId));
       }
@@ -410,8 +465,8 @@ export function validateEvidenceFreshness(
     if (matchingProof.baselineSha !== header.baselineSha) {
       issues.push(issue('liveReadback.baselineSha', 'Live readback baseline must match evidence.', header.baselineSha, matchingProof.baselineSha, record.evidenceId));
     }
-    if (matchingProof.inputDigest !== header.inputDigest) {
-      issues.push(issue('liveReadback.inputDigest', 'Live readback input digest must match evidence.', header.inputDigest, matchingProof.inputDigest, record.evidenceId));
+    if (matchingProof.inputDigest !== header.transition.inputDigest) {
+      issues.push(issue('liveReadback.inputDigest', 'Live readback input digest must match the reviewed transition.', header.transition.inputDigest, matchingProof.inputDigest, record.evidenceId));
     }
     issues.push(...compareTransition(matchingProof.transition, header.transition, 'liveReadback.transition', record.evidenceId));
     if (!matchingProof.matches) {
