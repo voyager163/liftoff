@@ -26,11 +26,41 @@ npm install -g @msn-control/liftoff@latest
 
 ## CLI upgrade is blocked by installation origin
 
-Automatic replacement supports only the canonical package at npm's effective
-global package root. A local dependency, `npx` cache copy, linked checkout, or
+Automatic replacement supports the canonical package at npm's effective
+global package root or an independently verified standard Homebrew prefix on
+macOS. A local dependency, `npx` cache copy, linked checkout, or
 another package-manager installation is intentionally refused. Use the manual
 global npm command shown by Liftoff; do not try to make upgrade replace a
 different installation.
+
+### Homebrew Node and npm report a different prefix
+
+A Homebrew Node installation can report a versioned Cellar global root while
+Liftoff remains installed under `/opt/homebrew/lib/node_modules` (Apple Silicon)
+or `/usr/local/lib/node_modules` (Intel). This is an installation-prefix mismatch,
+not a project-directory or PATH-refresh problem.
+
+The patched upgrader verifies the running package, matching Homebrew Node/npm
+layout, and global launcher before targeting the existing prefix. Registry
+checks, installation, and replacement verification retain that target. It
+neither installs another copy in the Cellar nor edits `.npmrc`. If prefix-specific
+registry settings differ, `registry_prefix_mismatch` blocks the operation rather
+than silently bypassing a managed mirror.
+
+Older binaries, including 0.11.3 and 0.12.0, still need the one-time workaround.
+Only after confirming that `liftoff` resolves under `/opt/homebrew/lib/node_modules`,
+run:
+
+```bash
+npm_config_prefix=/opt/homebrew liftoff upgrade --check
+npm_config_prefix=/opt/homebrew liftoff upgrade
+liftoff --version
+```
+
+For a verified Intel Homebrew installation use `/usr/local` instead. The
+environment assignment applies only to that invocation. Do not use it to force
+replacement of a local, linked, or unrelated installation. Keep your approved
+registry policy; a blocked mirror still requires its owner's intervention.
 
 ## CLI upgrade is blocked by a stale managed registry
 

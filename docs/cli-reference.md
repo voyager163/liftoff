@@ -276,6 +276,13 @@ Automatic replacement is refused for local dependencies, `npx` execution-cache
 copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
 unsafe paths.
 
+On macOS, a verified global installation at the standard Homebrew prefix can
+remain eligible when Homebrew Node/npm reports its versioned Cellar prefix.
+Liftoff checks the package, runtime layout, and launcher, then explicitly targets
+that existing prefix throughout the upgrade. It rejects a prefix-specific
+registry change instead of silently switching delivery policy. This fallback
+does not apply to arbitrary prefixes, Windows, or Linux.
+
 Canonical npm's stable `latest` metadata selects one exact target. The effective
 configured npm registry remains the delivery path and must expose that exact
 version. Liftoff never edits `.npmrc`, embeds registry credentials, forces a
@@ -297,7 +304,9 @@ command printed by Liftoff.
 
 JSON results use schema version 1 and expose only `mode`, `status`,
 `currentVersion`, applicable `targetVersion`, applicable `registryKind`, and a
-stable `reasonCode`. Status is one of `current`, `update-available`, `upgraded`,
+stable `reasonCode`, plus optional `installationTarget` (`homebrew-opt` or
+`homebrew-usr-local`) when the standard Homebrew fallback is verified. Arbitrary
+installation paths are not included. Status is one of `current`, `update-available`, `upgraded`,
 `blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
 object.
 
