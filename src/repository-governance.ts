@@ -812,7 +812,8 @@ function renderGovernanceGuide(plan: ProjectPlan): string {
   const nextAction = primary ? `## Next action after init
 
 From this project, enter the native setup invocation in a selected coding agent,
-not in a shell. Do not reinitialize the application.
+not in a shell. There is no \`liftoff setup\` CLI command. \`liftoff init\` creates a
+new scaffold; do not reinitialize an existing Liftoff application to repair it.
 
 \`\`\`text
 ${primary.setup.invocation}
@@ -887,9 +888,34 @@ declined later authority preserves local completion without publication or
 provider effects.
 An older Spec Kit project without that bundle needs separately reviewed seed
 adoption; update, force, and assessment never create it or infer completion.
-If stateful repair is required to reach local conformance, offer its distinct
-approved migration branch. It is not local-only work and cannot run under local
-repair approval.
+If infrastructure conformance blocks \`seed-verified\`, explain that it means
+**Local baseline verification**, not an OpenSpec feature change. Before retrying
+the blocked check, run \`liftoff repair --check --json\` from this project.
+Ordinary check makes no cloud calls. Only when explicitly authorized, use
+\`liftoff repair --check --live --subscription <UUID> --json\` for bounded
+metadata discovery with existing authentication. The supported local recipe
+preserves legacy flat-root OpenTofu semantics while creating the shared
+application module and selected independent environment roots. It requires
+authoritatively absent resource groups in that subscription and absent local
+state/backend metadata; missing state files alone do not prove safety.
+Metadata discovery is bounded to 120 seconds overall, 30 seconds per command,
+and at most 24 resource groups. Approved repair checks a compatible stable
+OpenTofu release line, then runs \`tofu fmt -check -recursive\` on the whole staged
+Azure root. Each selected staged environment runs
+\`tofu init -backend=false -input=false -lockfile=readonly -no-color\`, then
+\`tofu validate -json\`. These checks never initialize the original backend.
+Only after separate developer approval of the exact eligible repair fingerprint,
+run \`liftoff repair --approve-plan <fingerprint> --json\`.
+Then run \`liftoff update --check --json\`, review any separate update plan, and
+resume \`liftoff governance plan --scope local --json\` and its ready apply action.
+Keep the same project target in every command; repair accepts a positional
+project path. Bare repair previews; it never applies implicitly.
+Interrupted repair uses \`liftoff repair --recover\` for this project, not update
+recovery. Repair does not support \`--force\`, \`--yes\`, or \`--add-agents\`.
+Agent installation and the public stateful migration coordinator are not
+implemented. An existing internal stateful engine is not an executable public
+command. Deployed, unknown, or unsupported transformations stay plan-only with
+their source and state untouched; report the limitation without inventing commands.
 
 Questions are limited to exact repair/migration plans, state-read authority,
 independent tool/dependency/global-profile permissions, repository publication,
@@ -898,6 +924,7 @@ destructive recovery/cleanup, and external blockers.
 Use the CLI-provided repair preview and eligibility actions, never a fresh
 starter copied over the project or fabricated machine metadata. Local repair
 approval does not authorize sensitive-state reads, backend writes, or resources.
+Never recommend manual state moves to bypass a repair blocker.
 Unknown or unsupported transformations stay plan-only.
 Only explicit execution retries repaired local failures; status,
 resume, and verify remain read-only. Current unchanged proof may be reused.
@@ -1035,8 +1062,9 @@ recommendations. Reports cannot complete Phase 0 or any other phase.
 For compatible older inventories, restore an already selected Liftoff integration
 through \`liftoff update --check\`, then \`liftoff update\` with explicit approval
 of the matching plan. Check discloses its external preview receipt; it is not approval.
-Adding another agent instead requires \`liftoff repair --check --add-agents codex\`
-and its own exact-plan approval; ordinary update does not install framework integrations.
+Adding another agent or changing the framework default is not implemented by the
+public repair coordinator; ordinary update does not install framework integrations.
+Report this limitation without recommending an unsupported repair command.
 Unowned collisions stay unowned even with \`--force\`; modified managed entries
 retain the existing reviewed force rules. Neither installation nor assessment
 activates governance. Unsupported mappings remain diagnostic: no migration is
@@ -1060,33 +1088,47 @@ function nativeIntegrationHeader(agent: CodingAgentId, operation: 'setup' | 'ass
 
 function renderSetupIntegration(agent: CodingAgentId): string {
   return `${nativeIntegrationHeader(agent, 'setup')}
-Use the Liftoff governance engine for the requested end-to-end journey.
-Read \`.liftoff/governance/policy.md\`, \`.liftoff/governance/context.json\`,
-and \`.liftoff/governance/README.md\`; the managed phase graph determines readiness.
+Use the Liftoff governance engine. Read \`.liftoff/governance/README.md\` and adjacent
+\`policy.md\` and \`context.json\` for full repair/safety instructions.
 
-1. Work from the current directory. Start with \`liftoff governance status --scope local --json\`.
+1. Start \`liftoff governance status --scope local --json\`;
    Unscoped governance defaults to activation: \`liftoff governance status --json\`.
-2. Follow schema-2 \`nextActions\` (\`command.executable\`, \`command.args\`, \`cwd\`, \`scope\`, \`approvalRequired\`).
-   Track post-operation readiness through \`nextReadyPhase\`; \`nextPlannablePhase\` is not execution readiness.
-   Follow the four scopes: \`localSetup\`, \`migration\`, \`activation\`, and \`lifecycle\`.
-3. Inspect \`liftoff governance plan --scope local --json\` and \`liftoff governance apply-next --scope local --json\`
-   only to preview an approval-free local action (\`selectedPhase\` is attempted; \`executedPhase\` succeeded).
-   Only for a reported ready, approval-free local action, apply with
+   Preserve schema-2 \`nextActions\`: \`command.executable\`, \`command.args\`, \`cwd\`, \`scope\`, \`approvalRequired\`.
+   \`nextReadyPhase\` is post-operation readiness, not \`nextPlannablePhase\`.
+   Scopes: \`localSetup\`, \`migration\`, \`activation\`, \`lifecycle\`.
+2. Infrastructure-blocked \`seed-verified\` means Local baseline verification,
+   not an OpenSpec feature change. Preview \`liftoff repair --check --json\`.
+   Ordinary check makes no cloud calls. Explicit live authority only:
+   \`liftoff repair --check --live --subscription <UUID> --json\` using existing authentication.
+   After separate explicit approval of the exact eligible fingerprint:
+   \`liftoff repair --approve-plan <fingerprint> --json\`.
+   Then \`liftoff update --check --json\`; update approval is separate.
+   Retain the project; repair's path is positional.
+   Repair recovery: \`liftoff repair --recover\` (not update).
+   Agent installation and the public stateful migration coordinator are not implemented.
+   Blocked cases stay plan-only.
+3. Preview \`liftoff governance plan --scope local --json\` and \`liftoff governance apply-next --scope local --json\`.
+   \`selectedPhase\` is attempted; \`executedPhase\` succeeded.
+   Only for a reported ready, approval-free local action:
    \`liftoff governance apply-next --scope local --json --execute\`.
    Plan saves a disclosed external preview, not approval.
    Apply-next without \`--execute\` is strictly read-only.
-4. Report local completion as a milestone. Respect a local-only request or declined later authority without claiming deployment.
-5. Continue with \`liftoff governance plan --scope activation --json\`.
-   If requested, use \`--inputs <public-json-file>\`.
-   Never automatically approve a plan; approval does not execute.
-   Only after explicit developer approval, use \`liftoff governance approve --plan <fingerprint>\`.
-6. For \`liftoff governance credential-enroll --plan <fingerprint>\`, automation must select
-   \`--protected-stdin\` through an operator-controlled protected channel (private operator channel).
-7. Re-inspect with \`liftoff governance verify --scope local --json\` or \`liftoff governance verify --scope activation --json\` (\`liftoff governance verify --json\`).
-   Verify exit 0 is complete; exit 2 means consistent but
+4. Respect a local-only request or declined later authority. Otherwise
+   \`liftoff governance plan --scope activation --json\`
+   with \`--inputs <public-json-file>\` if requested.
+   Never automatically approve a plan. After explicit consent:
+   \`liftoff governance approve --plan <fingerprint>\`; approval does not execute.
+5. \`liftoff governance credential-enroll --plan <fingerprint>\` requires
+   \`--protected-stdin\` for automation via an operator-controlled protected channel
+   (private operator channel), never chat.
+6. Verify \`liftoff governance verify --scope local --json\` or
+   \`liftoff governance verify --scope activation --json\` (\`liftoff governance verify --json\`).
+   Exit 0 is complete; exit 2 means consistent but
    incomplete (indeterminate readiness).
-8. Do not repeat an unchanged failure. Use \`liftoff governance recover --plan <fingerprint> --execute\` after approval.
-9. Full completion requires actual deployment, matching live enforcement, and readback; deferred retention is not failed activation (future lifecycle work remains pending until due).
+   Full completion requires actual deployment, matching live enforcement and readback;
+   deferred retention is not failed activation (future lifecycle work).
+7. Do not repeat an unchanged failure. Only approved recovery:
+   \`liftoff governance recover --plan <fingerprint> --execute\`.
 `;
 }
 

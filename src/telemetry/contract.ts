@@ -28,6 +28,7 @@ export const telemetryCommands = [
   'regions:search',
   'validate',
   'update',
+  'repair',
   'upgrade',
   'migrate',
   'doctor',

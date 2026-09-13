@@ -149,6 +149,8 @@ try {
     assertPackageContains(packResult, documentationPath);
   }
   assertPackageContains(packResult, 'dist/cli.js');
+  assertPackageContains(packResult, 'dist/application/repair/use-case.js');
+  assertPackageContains(packResult, 'dist/application/repair/infrastructure.js');
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
@@ -261,6 +263,25 @@ try {
   ) {
     throw new Error('Installed liftoff update help did not expose reviewed preview and exact-plan approval');
   }
+
+  const repairHelp = run(process.execPath, [liftoffEntrypoint, 'repair', '--help'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json']) {
+    if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
+  }
+  const noProjectRepair = runFailure(process.execPath, [liftoffEntrypoint, 'repair', '--check', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  const noProjectRepairReport = JSON.parse(noProjectRepair.stdout);
+  if (noProjectRepair.status !== 1 || noProjectRepairReport.schemaVersion !== 1 ||
+      noProjectRepairReport.committed !== false || noProjectRepairReport.status !== 'failed') {
+    throw new Error('Installed repair did not preserve the missing-project boundary.');
+  }
+  const repairForce = runFailure(process.execPath, [liftoffEntrypoint, 'repair', '--force'], {
+    cwd: outsideDirectory, env: npmEnv
+  });
+  if (!repairForce.stderr.includes('Unknown flag for repair')) throw new Error('Repair unexpectedly accepted force authority.');
 
   const upgradeHelp = run(process.execPath, [liftoffEntrypoint, 'upgrade', '--help'], {
     cwd: outsideDirectory,

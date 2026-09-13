@@ -25,11 +25,12 @@ import {
   acceptDeclaredCommandOutputs, changedRetainedProjectInputs,
   localValidationOutputPolicy, outputsForLocalCommand, type RetainedProjectInput
 } from './protected-source.js';
-import { formatUpdateCommand } from './command-guidance.js';
+import { formatRevalidationPhaseBlocker, formatUpdateCommand } from './command-guidance.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 import { captureMigrationRetainedProjectInputs } from '../../governance-activation/historical-inputs.js';
 import { historyPathParts } from '../../governance-activation/history-contracts.js';
 import { assertSafeHistoricalRecord } from '../../governance-activation/historical-safety.js';
+import { infrastructureRepairGuidance } from '../repair/guidance.js';
 
 const localPhases: readonly LocalSeedPhaseId[] = localSetupPhaseIds;
 const successfulStates = new Set(['verified', 'approved', 'inapplicable', 'retained', 'disposed']);
@@ -291,11 +292,12 @@ export async function executeLocalRevalidation(input: {
 
   function result(status: LocalRevalidationResult['status'], blockers: readonly string[] = []): LocalRevalidationResult {
     const next = current ? nextIncompletePhase(current) : null;
+    const repair = current ? infrastructureRepairGuidance(approved.projectRoot, current.manifest) : null;
     return {
       status, phaseId: status === 'blocked' ? activePhase : null, phaseResults: [...phaseResults],
       nextIncompletePhase: next, blockers,
       nextAction: status === 'blocked'
-        ? `Repair the named local prerequisite or review the separate setup transition, then run ${formatUpdateCommand(approved.projectRoot, 'check')} and approve a fresh plan.`
+        ? repair?.nextAction ?? `Resolve the named local prerequisite or review the separate native setup transition, then run ${formatUpdateCommand(approved.projectRoot, 'check')} and approve a fresh plan.`
         : next ? `Local revalidation is complete. Review ${formatShellCommand({
           executable: 'liftoff', args: ['governance', 'plan', '--project', approved.projectRoot]
         }, commandShellForPlatform(process.platform))} for ${next}; update did not execute it.` : 'Local revalidation is complete.'
@@ -361,9 +363,9 @@ export async function executeLocalRevalidation(input: {
         continue;
       }
       const next = nextIncompletePhase(current);
-      if (next !== phase.phaseId || current.readiness.nextReadyPhase !== phase.phaseId) {
-        throw new Error(`The next genuinely incomplete phase is ${next ?? 'none'}, not an executable approved ${phase.phaseId}. ${next ? current.readiness.phases[next].blockers.join(' ') : ''}`);
-      }
+      const readinessBlocker = formatRevalidationPhaseBlocker(next, current.readiness.nextReadyPhase,
+        phase.phaseId, next ? current.readiness.phases[next].blockers : []);
+      if (readinessBlocker) throw new Error(readinessBlocker);
       const fresh = await previewLocalSeedPhase(approved.projectRoot, current.manifest, phase.phaseId);
       if (canonicalSha256(fresh) !== canonicalSha256(phase)) throw new Error(`The approved ${phase.phaseId} operations or prerequisites changed; obtain a fresh preview.`);
       if (fresh.blockers.length) throw new Error(fresh.blockers.join(' '));

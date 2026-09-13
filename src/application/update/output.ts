@@ -10,6 +10,10 @@ import type { UpdateWritePlan } from './write-plan.js';
 import type { LocalRevalidationPhaseResult, LocalRevalidationPreview } from './revalidation.js';
 import { formatUpdateCommand, type UpdateGuidanceContext } from './command-guidance.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
+import { infrastructureRepairGuidance } from '../repair/guidance.js';
+import { localSeedPhaseLabel } from '../../governance-activation/seed-lifecycle.js';
+
+const localRevalidationMeaning = 'seed-verified means Local baseline verification, not an OpenSpec feature change to complete manually.';
 
 export const updateReportSchemaVersion = 3 as const;
 
@@ -95,6 +99,9 @@ export function buildUpdateReport(
     status: 'not-required' as const, sourceIdentity: null, targetIdentity: null, historyPaths: [], issues: []
   };
   const { migration: _migration, ...reportInput } = input;
+  const revalidation = input.revalidation ?? { status: 'not-required', nextPhase: null, issues: [] };
+  const infrastructureRepair = inspection
+    ? infrastructureRepairGuidance(input.projectRoot, inspection.manifest) : null;
   return {
     schemaVersion: updateReportSchemaVersion,
     scope: 'project-update',
@@ -118,7 +125,17 @@ export function buildUpdateReport(
     activationIdentity,
     activationMigration: migration,
     activationStateMigration: migration,
-    revalidation: input.revalidation ?? { status: 'not-required', nextPhase: null, issues: [] },
+    revalidation: {
+      ...revalidation,
+      description: localRevalidationMeaning,
+      nextPhaseLabel: revalidation.nextPhase ? localSeedPhaseLabel(revalidation.nextPhase) : null,
+      nextActions: revalidation.status === 'blocked' || revalidation.status === 'pending'
+        ? infrastructureRepair
+          ? [infrastructureRepair.nextAction]
+          : [`Resolve the named local prerequisite, run ${formatUpdateCommand(input.projectRoot, 'check')}, and review a fresh plan.`]
+        : []
+    },
+    infrastructureRepair,
     reconciliation: inspection?.reconciliation ?? null,
     deferredAgentRepair: inspection?.deferredAgentRepair ?? null,
     ...(input.mode === 'check' ? { projectBytesWritten: 0 } : {})
@@ -146,6 +163,7 @@ function revalidationReviewDetails(revalidation: UpdateRevalidationSummary): str
     `${formatShellCommand(entry.command, shell)} (directory: ${JSON.stringify(entry.cwdPathParts.join('/') || '.')}); environment overrides: ${JSON.stringify(entry.env)}`;
   return [
     `Status: ${revalidation.status}`,
+    localRevalidationMeaning,
     ...revalidation.issues.map((issue) => `Known revalidation gap: ${issue}`),
     ...(revalidation.issues.length ? ['Approval may commit v3 while these known revalidation gaps remain blocked; preserved v1/v2 history is not current proof.'] : []),
     ...(preview ? [
@@ -167,7 +185,7 @@ function revalidationReviewDetails(revalidation: UpdateRevalidationSummary): str
       ),
       preview.boundary
     ] : []),
-    ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : [])
+    ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase} (${localSeedPhaseLabel(revalidation.nextPhase)})`] : [])
   ];
 }
 
@@ -210,6 +228,7 @@ export function renderUpdatePreview(
   if (revalidation.status !== 'not-required') {
     presentation.bullets('Local revalidation', revalidationReviewDetails(revalidation));
   }
+  renderInfrastructureRepair(presentation, inspection, guidance);
   if (inspection.deferredAgentRepair) renderDeferredAgentRepair(presentation, inspection);
   for (const plan of plans) {
     presentation.definitions(plan.mode === 'force' ? 'Separately reviewed forced plan' : 'Reviewed update plan', [
@@ -242,8 +261,19 @@ export function renderDeferredAgentRepair(presentation: PresentationSession, ins
   const repair = inspection.deferredAgentRepair;
   if (!repair) return;
   presentation.status('pending', 'Separate agent integration repair',
-    'Update preserves the recorded integrations and the requested configuration; it does not install agents or change the framework default.');
-  presentation.command(formatShellCommand(repair.command, commandShellForPlatform(process.platform)));
+    repair.limitation);
+}
+
+export function renderInfrastructureRepair(
+  presentation: PresentationSession,
+  inspection: UpdateInspection,
+  guidance?: UpdateGuidanceContext
+): void {
+  const repair = infrastructureRepairGuidance(inspection.projectRoot, inspection.manifest, guidance);
+  if (!repair) return;
+  presentation.bullets('Local baseline verification requires separate infrastructure repair', [
+    repair.reason, localRevalidationMeaning, repair.boundary, repair.nextAction
+  ]);
 }
 
 export function renderUpdateSkipped(

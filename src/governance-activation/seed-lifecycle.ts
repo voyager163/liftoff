@@ -139,6 +139,15 @@ export type SeedPhaseArchiveResult =
 
 export type LocalSeedPhaseId = 'seed-valid' | 'seed-verified' | 'seed-archived';
 
+export function localSeedPhaseLabel(phaseId: string): string {
+  switch (phaseId) {
+    case 'seed-valid': return 'Bootstrap validation';
+    case 'seed-verified': return 'Local baseline verification';
+    case 'seed-archived': return 'Bootstrap finalization';
+    default: return phaseId;
+  }
+}
+
 export interface LocalSeedCommand {
   command: ExternalCommand;
   cwdPathParts: readonly string[];
@@ -189,8 +198,10 @@ function isWorkerWorkload(workload: ManifestWorkload): workload is Extract<Manif
 export function seedInfrastructureBaselineBlocker(manifest: LiftoffManifest): string | undefined {
   const layout = assessInfrastructureLayout(manifest);
   return layout.kind === 'independent' ? undefined :
-    `Infrastructure layout migration-required (${layout.kind}): ${layout.reason} ` +
-      'No baseline infrastructure recipe is available; existing roots and state are not moved or initialized.';
+    `Local baseline verification (seed-verified) is blocked: infrastructure layout migration-required (${layout.kind}). ${layout.reason} ` +
+      'This is a local verification prerequisite, not an OpenSpec feature change. ' +
+      'Review liftoff repair for the selected project before retrying verification; it requires separate exact-plan approval. ' +
+      'Deployed, unknown, or unsupported layouts remain plan-only; existing roots and state are not moved or initialized by verification.';
 }
 
 export function selectSeedBaselineChecks(

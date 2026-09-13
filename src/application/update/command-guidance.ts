@@ -5,6 +5,23 @@ import {
   formatShellDirectoryCommands
 } from '../../adapters/process/shell-command.js';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
+import { localSeedPhaseLabel } from '../../governance-activation/seed-lifecycle.js';
+
+export function formatRevalidationPhaseBlocker(
+  nextIncomplete: string | null,
+  nextReady: string | null,
+  approvedPhase: string,
+  blockers: readonly string[]
+): string | undefined {
+  const describe = (phase: string) => `${localSeedPhaseLabel(phase)} (${phase})`;
+  if (nextIncomplete !== approvedPhase) {
+    return `The next incomplete phase is ${nextIncomplete ? describe(nextIncomplete) : 'none'}, but the approved operation is ${describe(approvedPhase)}. Obtain a fresh preview; phase order cannot be skipped. ${blockers.join(' ')}`.trim();
+  }
+  if (nextReady !== approvedPhase) {
+    return `${describe(approvedPhase)} is the next incomplete phase but is not ready to execute. ${blockers.join(' ') || 'Its current prerequisites are not satisfied; inspect the local governance plan before retrying.'}`;
+  }
+  return undefined;
+}
 
 export type UpdateCommandMode = 'normal' | 'force' | 'check';
 

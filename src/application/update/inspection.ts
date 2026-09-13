@@ -5,7 +5,7 @@ import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { manifestHadFilteredLegacyNonDurableOwnership } from '../../domain/project/manifest/reader.js';
-import type { CodingAgentId, ExternalCommand, LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
+import type { CodingAgentId, LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
 import { activationStateFilePathParts } from '../../governance-activation/activation-state.js';
 import { planHistoricalActivationStateMigration } from '../../governance-activation/migration.js';
 import { planActivationHistoryMigration } from '../../governance-activation/migration-history.js';
@@ -70,11 +70,11 @@ export interface DeferredAgentRepair {
   recordedDefaultAgent: CodingAgentId | null;
   requestedDefaultAgent: CodingAgentId | null;
   changesDefault: boolean;
-  command: ExternalCommand;
+  executable: false;
+  limitation: string;
 }
 
 function deferredAgentRepair(
-  projectRoot: string,
   manifest: LiftoffManifest,
   plan: ProjectPlan
 ): DeferredAgentRepair | null {
@@ -89,13 +89,8 @@ function deferredAgentRepair(
     recordedDefaultAgent: manifest.project.defaultAgent ?? null,
     requestedDefaultAgent: plan.defaultAgent?.id ?? null,
     changesDefault,
-    command: {
-      executable: 'liftoff',
-      args: ['repair', '--project', projectRoot, '--check',
-        ...(add.length ? ['--add-agents', add.map((agent) => agent.inputName).join(',')] : []),
-        ...(changesDefault && plan.defaultAgent ? ['--default-agent', plan.defaultAgent.inputName] : []),
-        '--json']
-    }
+    executable: false,
+    limitation: 'Agent installation and framework default changes are not implemented by the public repair coordinator. Update preserves recorded integrations and the requested configuration.'
   };
 }
 
@@ -246,7 +241,7 @@ export async function inspectProjectUpdate(
   await assertUpdateIntent(projectRoot, manifest, plan);
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...activationStateFilePathParts]));
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...migrationStateFilePathParts]));
-  const separateAgentRepair = deferredAgentRepair(projectRoot, manifest, plan);
+  const separateAgentRepair = deferredAgentRepair(manifest, plan);
   const desiredRenderPlan = recordedAgentRenderPlan(plan, manifest);
   const stateMigration = await planHistoricalActivationStateMigration(projectRoot);
   let historyMigration = await planActivationHistoryMigration(projectRoot);

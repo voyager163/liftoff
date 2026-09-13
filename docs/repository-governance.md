@@ -232,6 +232,11 @@ remote import can satisfy `remote-ready`.
 
 ## Bootstrap seed and local baseline
 
+`seed-verified` means **Local baseline verification**, not an OpenSpec feature
+change to complete manually. `/liftoff-setup` (Copilot/Claude) or `$liftoff-setup`
+(Codex) is a native coding-agent integration, not a `liftoff setup` command.
+`liftoff init` creates a scaffold; it is not an existing-project repair operation.
+
 Before commit/push or Phase 0, OpenSpec setup completes, syncs, and archives the
 generated `bootstrap-<project>` seed. Spec Kit setup instead validates the real
 `specs/000-liftoff-bootstrap/{spec.md,plan.md,tasks.md}` bundle and official
@@ -262,11 +267,35 @@ requires cloud credentials. A failed local check remains unfinished; only
 explicit execution retries it after repair. Read-only status, resume, and
 verification do not advance tasks or rerun checks. Unchanged current proof can
 be reused; changed relevant inputs require fresh evidence.
-Recorded legacy-shared or unknown infrastructure layouts require a reviewed
-repair plan even if new-looking directories exist. Layout assessment reports
-migration-required and no commands are executed until approved. Use the setup integration's
-supported repair action; moving folders or editing manifest provenance is not
-a supported repair and does not prove that deployed state is safe to migrate.
+Recorded legacy-shared or unknown infrastructure layouts require a repair check
+even if new-looking directories exist. Before retrying blocked verification,
+native setup runs `liftoff repair --check --json`. Bare repair also previews;
+ordinary check makes no cloud calls. Only explicit authority permits
+`liftoff repair --check --live --subscription <UUID> --json` for bounded metadata
+discovery using existing authentication. The supported local recipe preserves
+legacy flat-root OpenTofu semantics in a shared application module and the
+selected independent environment roots. It requires authoritatively absent
+resource groups in that subscription and absent local state/backend metadata.
+Missing state files alone are not proof of undeployed infrastructure.
+Discovery is limited to 120 seconds overall, 30 seconds per command, and at most
+24 resource groups. See [repair modes](cli-reference.md#repair-modes) for the
+compatible stable OpenTofu check and exact staged validation sequence.
+
+Only after separate approval of the exact eligible fingerprint does setup run
+`liftoff repair --approve-plan <fingerprint> --json`. Then it runs
+`liftoff update --check --json`, reviews any separate update plan, and resumes
+`liftoff governance plan --scope local --json` and the reported ready local
+apply action. Keep the selected project in every command; repair takes a
+positional project path. Recover interrupted repair through
+`liftoff repair [project-path] --recover`, not update authority.
+
+Repair does not accept `--force`, `--yes`, or `--add-agents`. Agent installation
+and the public stateful migration coordinator are not implemented; an internal
+stateful engine does not make the public command executable. Deployed, unknown,
+ambiguous, and unsupported cases stay plan-only with their source and state
+untouched. Do not edit manifest provenance, copy a fresh init scaffold over the
+project, or recommend manual state moves. A repaired infrastructure layout does
+not establish completed local governance, deployment, or live enforcement.
 
 If the seed was already archived before setup began, it stays archived.
 Setup still runs the entire applicable local baseline, but strict OpenSpec
