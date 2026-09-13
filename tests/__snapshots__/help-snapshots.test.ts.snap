@@ -63,7 +63,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.11.3 - Initialize a governed application and prepare
+Mission Control Liftoff 0.12.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -106,8 +106,8 @@ regions    List or search provider regions
 Operations
 ──────────
 Command     Description
-──────────  ─────────────────────────────────────────────────────────
-governance  Inspect governance activation and assess policy alignment
+──────────  ───────────────────────────────────────────────────────────────────
+governance  Plan, approve, execute, recover, and inspect scoped governance work
 dev         Print Docker Compose helper commands
 infra       Print OpenTofu helper commands
 
@@ -164,11 +164,13 @@ Option  Description
 
 exports[`complete help screens > snapshots compact governance command help 1`] = `
 "LIFTOFF / GOVERNANCE
-Inspect governance activation and assess policy alignment
+Plan, approve, execute, recover, and inspect scoped governance work
 
 Usage
 ─────
-liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
+liftoff governance
+<status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess>
+[project-path]
 
 Arguments
 ─────────
@@ -180,7 +182,10 @@ Subcommands
 ───────────
 - status
 - plan
+- approve
 - apply-next
+- credential-enroll
+- recover
 - resume
 - verify
 - assess
@@ -188,17 +193,31 @@ Subcommands
 Project options
 ───────────────
 Option            Description
-────────────────  ────────────────────
+────────────────  ──────────────────────────────────────────────────────────────
 --project <path>  Liftoff project path
+--inputs <file>   Public activation configuration JSON; never credentials or
+                  state
+
+Command options
+───────────────
+Option                   Description
+───────────────────────  ───────────────────────────────────────────────────────
+--scope <scope>          Execution/verification boundary: local, activation, or
+                         lifecycle (default: activation)
+--recover-phase <phase>  Plan explicit recovery of one failed or interrupted
+                         phase without executing it
 
 Consent options
 ───────────────
-Option     Description
-─────────  ─────────────────────────────────────────────────────────────────────
---execute  Execute the reviewed governance apply-next plan; required for any
-           mutation
---live     Assess only: request bounded read-only GitHub/Azure metadata with
-           existing permissions
+Option                Description
+────────────────────  ──────────────────────────────────────────────────────────
+--plan <fingerprint>  Exact project-bound fingerprint from governance plan
+--protected-stdin     Read credential enrollment material from explicitly
+                      protected stdin instead of a private TTY
+--execute             Execute the reviewed governance apply-next plan; required
+                      for any mutation
+--live                Assess only: request bounded read-only GitHub/Azure
+                      metadata with existing permissions
 
 Output options
 ──────────────
@@ -447,7 +466,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.11.3 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.12.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -474,7 +493,7 @@ Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
 
 Operations
-Command: governance | Description: Inspect governance activation and assess policy alignment
+Command: governance | Description: Plan, approve, execute, recover, and inspect scoped governance work
 Command: dev | Description: Print Docker Compose helper commands
 Command: infra | Description: Print OpenTofu helper commands
 
@@ -507,10 +526,10 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain governance command help 1`] = `
-"LIFTOFF / GOVERNANCE - Inspect governance activation and assess policy alignment
+"LIFTOFF / GOVERNANCE - Plan, approve, execute, recover, and inspect scoped governance work
 
 Usage
-Usage: liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]
+Usage: liftoff governance <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess> [project-path]
 
 Arguments
 Argument: project-path | Description: Liftoff project to inspect
@@ -518,15 +537,25 @@ Argument: project-path | Description: Liftoff project to inspect
 Subcommands
 - status
 - plan
+- approve
 - apply-next
+- credential-enroll
+- recover
 - resume
 - verify
 - assess
 
 Project options
 Option: --project <path> | Description: Liftoff project path
+Option: --inputs <file> | Description: Public activation configuration JSON; never credentials or state
+
+Command options
+Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
+Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
 Consent options
+Option: --plan <fingerprint> | Description: Exact project-bound fingerprint from governance plan
+Option: --protected-stdin | Description: Read credential enrollment material from explicitly protected stdin instead of a private TTY
 Option: --execute | Description: Execute the reviewed governance apply-next plan; required for any mutation
 Option: --live | Description: Assess only: request bounded read-only GitHub/Azure metadata with existing permissions
 
@@ -708,7 +737,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.11.3 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.12.0 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -746,8 +775,8 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command     Description                                                                      │
-│ ──────────  ─────────────────────────────────────────────────────────                        │
-│ governance  Inspect governance activation and assess policy alignment                        │
+│ ──────────  ───────────────────────────────────────────────────────────────────              │
+│ governance  Plan, approve, execute, recover, and inspect scoped governance work              │
 │ dev         Print Docker Compose helper commands                                             │
 │ infra       Print OpenTofu helper commands                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -798,10 +827,12 @@ exports[`complete help screens > snapshots rich governance assessment help 1`] =
 
 exports[`complete help screens > snapshots rich governance command help 1`] = `
 "┌─ LIFTOFF / GOVERNANCE ───────────────────────────────────────────────────────────────────────┐
-│ Inspect governance activation and assess policy alignment                                    │
+│ Plan, approve, execute, recover, and inspect scoped governance work                          │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
-│ liftoff governance <status|plan|apply-next|resume|verify|assess> [project-path]              │
+│ liftoff governance                                                                           │
+│ <status|plan|approve|apply-next|credential-enroll|recover|resume|verify|assess>              │
+│ [project-path]                                                                               │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
 │ Argument      Description                                                                    │
@@ -811,22 +842,38 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 ┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
 │ • status                                                                                     │
 │ • plan                                                                                       │
+│ • approve                                                                                    │
 │ • apply-next                                                                                 │
+│ • credential-enroll                                                                          │
+│ • recover                                                                                    │
 │ • resume                                                                                     │
 │ • verify                                                                                     │
 │ • assess                                                                                     │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
 │ Option            Description                                                                │
-│ ────────────────  ────────────────────                                                       │
+│ ────────────────  ────────────────────────────────────────────────────────────────           │
 │ --project <path>  Liftoff project path                                                       │
+│ --inputs <file>   Public activation configuration JSON; never credentials or state           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                   Description                                                         │
+│ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
+│ --scope <scope>          Execution/verification boundary: local, activation, or lifecycle    │
+│                          (default: activation)                                               │
+│ --recover-phase <phase>  Plan explicit recovery of one failed or interrupted phase without   │
+│                          executing it                                                        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option     Description                                                                       │
-│ ─────────  ───────────────────────────────────────────────────────────────────────────────── │
-│ --execute  Execute the reviewed governance apply-next plan; required for any mutation        │
-│ --live     Assess only: request bounded read-only GitHub/Azure metadata with existing        │
-│            permissions                                                                       │
+│ Option                Description                                                            │
+│ ────────────────────  ────────────────────────────────────────────────────────────────────── │
+│ --plan <fingerprint>  Exact project-bound fingerprint from governance plan                   │
+│ --protected-stdin     Read credential enrollment material from explicitly protected stdin    │
+│                       instead of a private TTY                                               │
+│ --execute             Execute the reviewed governance apply-next plan; required for any      │
+│                       mutation                                                               │
+│ --live                Assess only: request bounded read-only GitHub/Azure metadata with      │
+│                       existing permissions                                                   │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │

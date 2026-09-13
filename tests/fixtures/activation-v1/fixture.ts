@@ -2,7 +2,7 @@ import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256 } from '../../../src/domain/governance/activation/canonical-json.js';
 import type { PhaseExecutionState, TransitionOperation } from '../../../src/domain/governance/activation/types.js';
-import { historicalActivationIdentities } from '../../../src/domain/governance/policy/identity.js';
+import { historicalActivationIdentities, historicalV2ActivationIdentity } from '../../../src/domain/governance/policy/identity.js';
 import {
   assertHistoricalPhasesComplete, historicalPhaseIds, historicalTransitionPlanPathParts,
   type HistoricalActivationState, type HistoricalApprovalEnvelope, type HistoricalEvidenceRecord,
@@ -13,6 +13,7 @@ import { buildProjectPlan } from '../../../src/application/project/planning.js';
 import { buildRepositoryGovernanceArtifacts } from '../../../src/repository-governance.js';
 import { validateGovernanceCompatibilityMetadata } from '../../../src/governance-activation/compatibility.js';
 import { historicalFixtureGraph } from './graph.js';
+import { historicalV2PhaseGraph } from '../../../src/governance-activation/historical-v2.js';
 
 export const historicalFixtureIdentity = historicalActivationIdentities[0];
 export const historicalFixtureCreatedAt = '2026-08-30T09:00:00.000Z';
@@ -259,15 +260,31 @@ export function buildPostMaintenanceHistoricalV1Fixture(compatibilitySchemaVersi
   const core = buildRepositoryGovernanceArtifacts(project);
   for (const artifact of core) {
     let content = artifact.content;
-    if (compatibilitySchemaVersion === 2 && artifact.logicalName === 'repository-governance-compatibility') {
+    if (artifact.logicalName === 'repository-governance-phase-graph') {
+      content = canonicalJson(historicalV2PhaseGraph());
+    } else if (artifact.logicalName === 'repository-governance-credential-policy-schema') {
+      const schema = JSON.parse(content);
+      schema.properties.identity.properties = Object.fromEntries(Object.entries(historicalV2ActivationIdentity)
+        .map(([key, value]) => [key, { const: value }]));
+      content = canonicalJson(schema);
+    } else if (artifact.logicalName === 'repository-governance-compatibility') {
       const value: unknown = JSON.parse(content);
       const metadata = validateGovernanceCompatibilityMetadata(value);
-      const { successorMigrations: _successors, ...activation } = metadata.activation;
       content = canonicalJson({
-        ...metadata, schemaVersion: 2,
+        ...metadata, schemaVersion: compatibilitySchemaVersion, liftoffVersion: '0.11.0',
         activation: {
-          ...activation,
-          historicalReadability: { ...activation.historicalReadability, migration: 'unsupported-preserve-bytes' }
+          currentCompatibleTuples: [historicalV2ActivationIdentity],
+          historicalReadability: {
+            tuples: [historicalFixtureIdentity], activationContractVersion: 1, activationStateSchemaVersion: 1,
+            evidenceHeaderSchemaVersion: 1, execution: 'diagnostic-only',
+            migration: compatibilitySchemaVersion === 2 ? 'unsupported-preserve-bytes' : 'explicit-successor-preserve-bytes'
+          },
+          recognizedGraphHashes: [historicalV2ActivationIdentity.phaseGraphHash],
+          graphMappings: [], historicalStateMigrations: [], unsupportedRemedy: 'Preserve unsupported activation records.',
+          ...(compatibilitySchemaVersion === 3 ? { successorMigrations: [{
+            id: 'activation-v1-to-v2', fromIdentity: historicalFixtureIdentity, toIdentity: historicalV2ActivationIdentity,
+            strategy: 'preserve-history-revalidate', historySchemaVersion: 1, journalSchemaVersion: 1
+          }] } : {})
         }
       });
     }

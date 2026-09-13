@@ -2,7 +2,8 @@
 
 **Initialize governed GenAI applications and APIs from one
 interactive CLI.** Liftoff combines reviewable starter projects with OpenSpec or
-Spec Kit and integrates GitHub Copilot, Claude Code, or both from the first commit.
+Spec Kit and integrates GitHub Copilot, Claude Code, and Codex in any selected
+combination.
 
 [![npm version](https://img.shields.io/npm/v/%40msn-control%2Fliftoff?logo=npm)](https://www.npmjs.com/package/@msn-control/liftoff)
 [![CI](https://github.com/voyager163/liftoff/actions/workflows/ci.yml/badge.svg)](https://github.com/voyager163/liftoff/actions/workflows/ci.yml)
@@ -27,16 +28,15 @@ cd my-project
 
 `liftoff init` asks for workload, spec workflow, agents, readiness, and plan
 confirmation before writing local files. Repository governance is enabled by
-default as a local deterministic handoff. For OpenSpec, `/liftoff-setup` completes,
+default as a deterministic setup handoff. For OpenSpec, `/liftoff-setup` completes,
 syncs, and archives the generated bootstrap seed. Spec Kit finalizes its one-time
 bootstrap bundle locally, without an OpenSpec archive or new Git branch.
 No model selection is required for setup; the CLI phase graph, evidence, and
-approvals are authoritative. Missing production executors, credential enrollment,
-and approval-persistence capabilities remain explicit blockers, not completed
-automation.
+approvals are authoritative. Setup coordinates reviewed repairs and local readiness,
+then separately approved publication, Azure activation, deployment, and governance.
+Local-only use remains supported. Codex invokes `$liftoff-setup` or selects the native skill.
 
-After the first self-upgrade-capable release is installed globally through npm,
-later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
+After global npm install, later releases use `liftoff upgrade --check` then `liftoff upgrade`.
 This replaces the CLI only; generated projects use `liftoff update` separately
 for reviewed project maintenance. Useful project-read-only checks:
 
@@ -52,15 +52,15 @@ matching plan. Check leaves project bytes unchanged and discloses a preview
 receipt saved outside the repository. Missing or stale previews block apply.
 Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
 
-Supported activation-v1 migration preserves original records inside the project
-and creates a linked v2 activation. Failed revalidation leaves v2 blocked and
-resumable, not reset to v1. Application source, dependencies, schemas, containers,
-environments, documentation, and infrastructure remain project-owned and outside
-template replacement, including `--force`.
+Supported activation-v1/v2 migration preserves original records inside the project
+and creates a linked v3 activation. Failed revalidation leaves v3 blocked and
+resumable, not reset to an older contract. Application source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain project-owned
+and outside template replacement, including `--force`. Topology, additive agent repairs,
+and stateful migration require their own exact preview, backups, and write authority.
 
 Older projects may display the retired `/liftoff-repository-governance` alias.
-After upgrading the CLI, review `liftoff update --check`; `liftoff update --force`
-can remove only its exact recorded aliases. Reload the coding-agent session.
+Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 
@@ -77,11 +77,11 @@ PydanticAI invocation foundation without assuming RAG, chat, agents, streaming,
 fine-tuning, or workflows.
 
 Both workloads can use **OpenSpec** or **Spec Kit** with **GitHub Copilot**,
-**Claude Code**, or both.
+**Claude Code**, **Codex**, or any combination. Official stable and preview releases
+are accepted; runtime and framework pins remain enforced.
 
-Power Apps and its Code Apps plugin integration are retired. Existing Power Apps
-projects receive an unsupported-workload error without changing their files;
-`--force` does not provide a compatibility or conversion path.
+Power Apps is retired. Existing Power Apps projects receive an unsupported-workload
+error without changing files; `--force` does not provide a conversion path.
 
 [Compare workload questions and outputs](docs/workloads.md) |
 [Choose a spec workflow and agents](docs/spec-workflows-and-agents.md)

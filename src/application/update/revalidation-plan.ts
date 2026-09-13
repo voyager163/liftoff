@@ -14,9 +14,12 @@ import type { RunCommandOptions } from '../../process-runner.js';
 import { reviewedUpdateTargetMode } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { activationHistoryIndexPathParts } from '../../governance-activation/history-contracts.js';
 import {
-  acceptDeclaredCommandOutputs, captureRetainedProjectInputs, changedRetainedProjectInputs,
-  isRetainedProjectInput, outputsForLocalCommand, type RetainedProjectInput
+  acceptDeclaredCommandOutputs, changedRetainedProjectInputs,
+  outputsForLocalCommand, type RetainedProjectInput
 } from './protected-source.js';
+import {
+  captureMigrationRetainedProjectInputs, isMigrationPublicInputPath, migrationSensitivePathExclusions
+} from '../../governance-activation/historical-inputs.js';
 import { UpdatePlanError, type UpdateInspection } from './inspection.js';
 import { previewLocalRevalidation, type LocalRevalidationPreview } from './revalidation.js';
 import type { UpdateWritePlan } from './write-plan.js';
@@ -25,6 +28,7 @@ export interface PreparedUpdateRevalidation {
   preview: LocalRevalidationPreview;
   expectedInputSnapshot: ActivationInputSnapshot;
   expectedRetainedSource: RetainedProjectInput[];
+  sensitivePathExclusions: readonly (readonly string[])[];
 }
 
 function rawDigest(content: string | Buffer): string {
@@ -33,7 +37,8 @@ function rawDigest(content: string | Buffer): string {
 
 function expectedInputSnapshot(
   source: ActivationInputSnapshot,
-  plan: UpdateWritePlan
+  plan: UpdateWritePlan,
+  retirements: readonly { pathParts: readonly string[] }[] = []
 ): ActivationInputSnapshot {
   const files = new Map(source.files.map((file) => [file.path, file.digest]));
   for (const mutation of plan.mutations) {
@@ -44,6 +49,7 @@ function expectedInputSnapshot(
       typeof mutation.content === 'string' ? mutation.content : mutation.content.toString('utf8')
     ));
   }
+  for (const retirement of retirements) files.delete(retirement.pathParts.join('/'));
   const project = {
     project: plan.nextManifest.project,
     framework: plan.nextManifest.framework,
@@ -65,10 +71,14 @@ export async function prepareUpdateRevalidation(
   options: { runner?: CommandRunner; now?: Date } = {}
 ): Promise<PreparedUpdateRevalidation | undefined> {
   if (!inspection.revalidationSource) return undefined;
-  const expected = expectedInputSnapshot(inspection.revalidationSource, writePlan);
-  const retained = new Map((inspection.retainedSource ?? []).map((entry) => [entry.pathParts.join('/'), entry]));
+  const sensitivePathExclusions = inspection.sensitivePathExclusions ?? migrationSensitivePathExclusions(inspection.historyMigration);
+  const expected = expectedInputSnapshot(inspection.revalidationSource, writePlan,
+    inspection.historyMigration.status === 'eligible' ? inspection.historyMigration.requiredRetirements : []);
+  const retained = new Map((inspection.retainedSource ?? [])
+    .filter((entry) => isMigrationPublicInputPath(entry.pathParts, sensitivePathExclusions))
+    .map((entry) => [entry.pathParts.join('/'), entry]));
   for (const mutation of writePlan.mutations) {
-    if (!isRetainedProjectInput(mutation.pathParts)) continue;
+    if (!isMigrationPublicInputPath(mutation.pathParts, sensitivePathExclusions)) continue;
     const key = mutation.pathParts.join('/');
     if (mutation.type === 'delete') retained.delete(key);
     else retained.set(key, {
@@ -81,13 +91,17 @@ export async function prepareUpdateRevalidation(
     for (const file of history.index.files) {
       retained.set(file.copyPathParts.join('/'), {
         pathParts: [...file.copyPathParts], digest: file.digest,
-        mode: reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyCopy)
+        mode: history.historyDisposition === 'reuse'
+          ? retained.get(file.copyPathParts.join('/'))?.mode ?? reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyCopy)
+          : reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyCopy)
       });
     }
     const indexPath = activationHistoryIndexPathParts(history.index.snapshotId);
     retained.set(indexPath.join('/'), {
       pathParts: indexPath, digest: history.indexDigest,
-      mode: reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyIndex)
+      mode: history.historyDisposition === 'reuse'
+        ? retained.get(indexPath.join('/'))?.mode ?? reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyIndex)
+        : reviewedUpdateTargetMode(history.semanticPlan.targetModes.historyIndex)
     });
     for (const retirement of history.requiredRetirements) retained.delete(retirement.pathParts.join('/'));
   }
@@ -96,15 +110,16 @@ export async function prepareUpdateRevalidation(
   const currentInspection = inspection.historyMigration.status === 'current' &&
     inspection.historyMigration.history.status === 'committed' &&
     writePlan.mutations.length === 0 && writePlan.skipped.length === 0
-    ? await inspectGovernanceTransition(inspection.projectRoot, options)
+    ? await inspectGovernanceTransition(inspection.projectRoot, { ...options, scope: 'local' })
     : undefined;
   const preview = await previewLocalRevalidation({
     projectRoot: inspection.projectRoot,
     targetManifest: writePlan.nextManifest,
     protectedInputBinding: canonicalSha256({ activation: expected, retained: expectedRetainedSource }),
+    sensitivePathExclusions,
     inspection: currentInspection
   });
-  return { preview, expectedInputSnapshot: expected, expectedRetainedSource };
+  return { preview, expectedInputSnapshot: expected, expectedRetainedSource, sensitivePathExclusions };
 }
 
 export function postUpdateProtectedInputs(
@@ -121,7 +136,9 @@ export function postUpdateProtectedInputs(
   return {
     binding: prepared.preview.protectedInputBinding,
     assertUnchanged: async () => {
-      const actual = await readActivationInputSnapshot(inspection.projectRoot, writePlan.nextManifest, runner);
+      const actual = await readActivationInputSnapshot(inspection.projectRoot, writePlan.nextManifest, runner, {
+        sensitivePathExclusions: prepared.sensitivePathExclusions
+      });
       if (canonicalSha256(actual) !== canonicalSha256(prepared.expectedInputSnapshot)) {
         throw new UpdatePlanError(
           'Protected application inputs changed after the reviewed update.',
@@ -129,7 +146,7 @@ export function postUpdateProtectedInputs(
           ['Preserve the edits and run ', { projectRoot: inspection.projectRoot, mode: 'check' }, ' again.']
         );
       }
-      const observed = await captureRetainedProjectInputs(inspection.projectRoot);
+      const observed = await captureMigrationRetainedProjectInputs(inspection.projectRoot, prepared.sensitivePathExclusions);
       const changed = changedRetainedProjectInputs(retained, observed);
       if (changed.length) {
         throw new UpdatePlanError(
@@ -142,7 +159,7 @@ export function postUpdateProtectedInputs(
     },
     afterCommand: async (command, options) => {
       retained = acceptDeclaredCommandOutputs(
-        retained, await captureRetainedProjectInputs(inspection.projectRoot),
+        retained, await captureMigrationRetainedProjectInputs(inspection.projectRoot, prepared.sensitivePathExclusions),
         outputsForLocalCommand(inspection.projectRoot, command, options)
       );
       return retained;

@@ -7,15 +7,15 @@ import {
 import {
   credentialPolicyPathParts
 } from './credentials.js';
-import { selectLatestPhaseEvidence, type EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
-import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
+import { assertPhaseOutputsBound, selectLatestPhaseEvidence, type EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
+import { activationEvidenceContexts, activationSensitivePathExclusions, readActivationInputSnapshot } from './inputs.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
 import {
   canonicalPhaseGraph,
   currentActivationIdentity
 } from '../domain/governance/activation/graph.js';
 import { planHistoricalActivationStateMigration } from './migration.js';
-import { planActivationHistoryMigration, readMigrationJournal } from './migration-history.js';
+import { historicalLifecyclePhaseBlockers, inspectActivationMigrationHistory, planActivationHistoryMigration } from './migration-history.js';
 import { calculatePhaseReadiness } from '../domain/governance/activation/readiness.js';
 import {
   inspectGovernanceSourceOfTruth
@@ -26,7 +26,7 @@ import type {
   PhaseState,
   UserActivationState
 } from '../domain/governance/activation/types.js';
-import { phaseIds } from '../domain/governance/activation/types.js';
+import { phaseIds, phaseScope } from '../domain/governance/activation/types.js';
 import { validateCredentialPolicy } from '../domain/governance/activation/validators.js';
 
 export interface GovernanceDoctorCheck {
@@ -79,10 +79,10 @@ function evidenceStaleCheck(
   return {
     id: 'governance-evidence-stale',
     label: 'governance evidence',
-    severity: 'fail',
+    severity: stale.some((id) => phaseScope(id as PhaseId) === 'local') ? 'fail' : 'warn',
     state: 'evidence-stale',
     detail: `stored terminal phase(s) lack current authoritative evidence: ${stale.join(', ')}`,
-    remedy: 'Rerun liftoff governance verify and provide fresh evidence or an explicit approved reconciliation mapping; do not use checkboxes, filenames, or prose as evidence.'
+    remedy: 'Run liftoff governance verify with the affected --scope, then preview a supported transition or repair. Do not hand-create evidence or use checkboxes as proof.'
   };
 }
 
@@ -142,7 +142,7 @@ function disposalPendingCheck(
       ? `retained bootstrap state reached disposal date ${state.bootstrapState.disposeAfter}`
       : `retained bootstrap state is not disposable until ${state.bootstrapState.disposeAfter}`,
     remedy: due
-      ? 'Approve destructive disposal, then run liftoff governance apply-next --execute.'
+      ? 'Run liftoff governance plan --scope lifecycle, approve its exact fingerprint, then execute the scoped destructive disposal plan.'
       : 'Leave retained local bootstrap state untouched until the disposal date.'
   };
 }
@@ -164,10 +164,10 @@ async function credentialExpiringCheck(
   return {
     id: 'governance-credential-expiring',
     label: 'governance credential',
-    severity: expired || policy.status === 'expired' ? 'fail' : 'warn',
+    severity: 'warn',
     state: 'credential-expiring',
     detail: `credential policy status ${policy.status}; rotation due ${policy.rotationDueAt}; expires ${policy.expiresAt}`,
-    remedy: 'Use an independently supported, reviewed provider rotation process. This CLI has no public credential enrollment/readback workflow; never enter credentials into task, state, or evidence files.'
+    remedy: 'Preview the credential-ready phase and use governance credential-enroll with its approved fingerprint and private input; no public credential enrollment/readback workflow is exposed without approved plan fingerprint. Expired cloud credentials do not invalidate unrelated local readiness.'
   };
 }
 
@@ -197,11 +197,11 @@ export async function governanceDoctorChecks(
       severity: 'fail',
       state: supported ? 'migration-available' : 'identity-incompatible',
       detail: supported
-        ? 'Historical activation v1 has a supported history-preserving v2 successor; existing history is not current execution proof.'
+        ? 'Historical activation v1/v2 has a supported history-preserving v3 successor; existing history is not current execution proof.'
         : history?.status === 'blocked' ? history.issues.join('; ')
           : migration.report.issues[0] ?? 'activation state is not compatible with this Liftoff version',
       remedy: 'Preserve user-owned state and evidence bytes. ' + (migration.report.diagnosticOnly === true
-        ? 'Historical activation v1 requires liftoff update --check followed by explicit approval of a supported plan; do not reset or retag history.'
+        ? 'Historical activation v1/v2 requires liftoff update --check followed by explicit approval of a supported plan; do not reset or retag history.'
         : 'The recorded activation format or identity is unsupported or invalid. Use a compatible Liftoff version or restore original state from a trusted backup; do not rewrite identity fields to bypass validation.')
     });
     return checks;
@@ -232,7 +232,9 @@ export async function governanceDoctorChecks(
     });
     return checks;
   }
-  const journal = await readMigrationJournal(projectRoot);
+  const history = await inspectActivationMigrationHistory(projectRoot);
+  const journal = history.status === 'committed' ? history.journal : null;
+  const historicalLifecycleObligations = history.status === 'committed' ? history.lifecycleObligations : [];
   if (journal) {
     const blocked = journal.revalidation.status !== 'complete';
     checks.push({
@@ -241,9 +243,19 @@ export async function governanceDoctorChecks(
       severity: blocked ? 'fail' : 'ok',
       state: blocked ? 'revalidation-blocked' : 'migration-committed',
       detail: blocked
-        ? `Local v2 migration committed; revalidation is ${journal.revalidation.status}: ${journal.revalidation.nextAction}`
-        : 'Local v2 migration and its approved local revalidation are complete; preserved v1 history is informational, not live governance proof.',
-      ...(blocked ? { remedy: 'Repair the named blocker, run liftoff update --check, and approve the remaining local work. Keep v2 and its preserved history.' } : {})
+        ? `Local v3 migration committed; revalidation is ${journal.revalidation.status}: ${journal.revalidation.nextAction}`
+        : 'Local v3 migration and its approved local revalidation are complete; preserved v1/v2 history is informational, not live governance proof.',
+      ...(blocked ? { remedy: 'Repair the named blocker, run liftoff update --check, and approve the remaining local work. Keep v3 and its preserved history.' } : {})
+    });
+  }
+  for (const obligation of historicalLifecycleObligations) {
+    checks.push({
+      id: `governance-historical-lifecycle-${obligation.snapshotId}`,
+      label: 'historical bootstrap lifecycle', severity: 'warn', state: 'current-binding-required',
+      detail: obligation.retention.status === 'disposed'
+        ? 'Historical bootstrap material was disposed; migration must not recreate it or its keys.'
+        : `Historical bootstrap retention remains due at ${obligation.retention.disposeAfter}; identity migration does not restart its clock.`,
+      remedy: 'Use separately authorized lifecycle verification and ownership binding; historical proof alone cannot authorize reuse or deletion.'
     });
   }
   let evidence: PhaseEvidenceRecord[];
@@ -313,7 +325,10 @@ export async function governanceDoctorChecks(
     return checks;
   }
 
-  const contexts = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(projectRoot, manifest), now);
+  assertPhaseOutputsBound(state, evidence);
+  const sensitivePathExclusions = activationSensitivePathExclusions(state, historicalLifecycleObligations.map((obligation) => obligation.retention));
+  const contexts = activationEvidenceContexts(canonicalPhaseGraph, state,
+    await readActivationInputSnapshot(projectRoot, manifest, undefined, { sensitivePathExclusions }), now);
   const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
   for (const phase of phaseIds) contexts[phase].reviewedPlans = reviewedPlans;
   const source = await inspectGovernanceSourceOfTruth({ projectRoot, manifest, state, evidence, contexts });
@@ -352,6 +367,9 @@ export async function governanceDoctorChecks(
     approvals: [],
     evidence,
     transitionContexts: contexts,
+    scope: 'local',
+    phaseBlockers: historicalLifecyclePhaseBlockers(historicalLifecycleObligations),
+    historicalLifecycleBlockers: historicalLifecyclePhaseBlockers(historicalLifecycleObligations)['bootstrap-state-disposed'],
     now
   });
   if (!readiness.identityCompatible) {
@@ -362,6 +380,13 @@ export async function governanceDoctorChecks(
       state: 'identity-incompatible',
       detail: readiness.identityBlocker ?? 'activation identity tuple is not compatible',
       remedy: 'Upgrade Liftoff or restore a supported tuple and recognized phase graph hash.'
+    });
+  }
+  if (readiness.completion.local) {
+    checks.push({
+      id: 'governance-local-ready', label: 'local setup', severity: 'ok', state: 'local-ready',
+      detail: 'The current local seed validation, application baseline, and workflow-specific finalization are complete.',
+      remedy: 'Use liftoff governance plan --scope activation for separately approved publication, cloud, and governance work.'
     });
   }
 

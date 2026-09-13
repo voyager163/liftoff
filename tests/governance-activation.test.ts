@@ -191,14 +191,14 @@ function credentialPolicy(): CredentialPolicy {
 
 describe('activation identity compatibility', () => {
   it('exports the target version vector and resolves only explicit tuples', () => {
-    expect(liftoffActivationPackageVersion).toBe('0.11.0');
+    expect(liftoffActivationPackageVersion).toBe('0.12.0');
     expect(liftoffManifestArtifactVersion).toBe(7);
     expect(governanceActivationPolicyVersion).toBe('6');
-    expect(activationContractVersion).toBe(2);
-    expect(phaseGraphSchemaVersion).toBe(1);
-    expect(activationStateSchemaVersion).toBe(2);
-    expect(evidenceHeaderSchemaVersion).toBe(2);
-    expect(approvalEnvelopeSchemaVersion).toBe(2);
+    expect(activationContractVersion).toBe(3);
+    expect(phaseGraphSchemaVersion).toBe(2);
+    expect(activationStateSchemaVersion).toBe(3);
+    expect(evidenceHeaderSchemaVersion).toBe(3);
+    expect(approvalEnvelopeSchemaVersion).toBe(3);
     expect(supersessionSchemaVersion).toBe(1);
     expect(credentialPolicySchemaVersion).toBe(1);
     expect(activationCompatibility.has(activationCompatibilityKey(currentActivationIdentity))).toBe(true);
@@ -260,7 +260,7 @@ describe('managed graph and artifact schemas', () => {
       .toThrow(/disposedAt is required/);
 
     const futureEvidence = clone(evidence('seed-valid')) as EvidenceHeader;
-    futureEvidence.schemaVersion = 3;
+    futureEvidence.schemaVersion = 4;
     expect(() => validateEvidenceHeader(futureEvidence)).toThrow(/schemaVersion/);
   });
 

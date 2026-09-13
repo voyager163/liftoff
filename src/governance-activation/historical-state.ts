@@ -1,4 +1,5 @@
-import { lstat, readdir, readFile, realpath } from 'node:fs/promises';
+import { constants } from 'node:fs';
+import { lstat, open, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
@@ -7,162 +8,60 @@ import type {
   EvidenceReference, LiveReadbackProof, PhaseExecutionState, SavedTransitionPlan,
   TransitionOperation, TransitionOperationDestination, TransitionRollbackPlan
 } from '../domain/governance/activation/types.js';
-import type { HistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+import {
+  historicalActivationIdentities, isHistoricalV2ActivationIdentity,
+  type HistoricalActivationIdentity
+} from '../domain/governance/policy/identity.js';
 import type { ProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
 import { errorCode } from '../adapters/filesystem/errors.js';
 import { parseManifest } from '../application/project/manifest.js';
 import type { LiftoffManifest } from '../domain/project/contracts.js';
 import {
-  ActivationHistoryError, historicalIdentity, historyArray, historyBoolean, historyCaseKey,
+  ActivationHistoryError, historicalIdentity, historicalV1Identity, historyArray, historyBoolean, historyCaseKey,
   historyDigest, historyEnum, historyExact, historyFail, historyLiteral, historyPathKey,
   historyPathParts, historyRecord, historyRecordId, historyString, historyStrings, historyTimestamp,
   historicalActivationIdentity, historicalActivationStatePathParts, historicalManifestPathParts, historicalMetadataPathParts,
-  parseHistoryJson, rawHistoryDigest, type HistoricalFileKind
+  migrationStateFilePathParts, historicalSourceChangePathParts, parseHistoryJson, rawHistoryDigest, validateHistoricalV2SourceMigrationJournal,
+  type HistoricalFileKind, type ActivationHistoryIndex, type HistoricalV2SourceMigrationJournal
 } from './history-contracts.js';
 import { FileSystemError } from '../domain/project/errors.js';
 import { validateGovernanceCompatibilityMetadata } from './compatibility.js';
+import { assertSafeHistoricalBytes, assertSafeHistoricalRecord } from './historical-safety.js';
+import { historicalV1PhaseContractDigests, historicalV1ResultAllowed } from './historical-v1-phase-contracts.js';
+import { validateHistoricalV1AuxiliaryRecord } from './historical-v1-auxiliary.js';
+import { validateHistoricalGovernanceChangeMetadata, type HistoricalGovernanceChangeMetadata } from './historical-source-metadata.js';
+import {
+  validateHistoricalV2ActivationState, validateHistoricalV2EvidenceRecord,
+  validateHistoricalV2ApprovalEnvelope, validateHistoricalV2SavedTransitionPlan,
+  validateHistoricalV2Compatibility, historicalV2ApprovalEnvelopeHash,
+  validateHistoricalV2AuxiliaryRecord,
+  type HistoricalV2ActivationState, type HistoricalV2EvidenceRecord,
+  type HistoricalV2ApprovalEnvelope, type HistoricalV2SavedTransitionPlan
+} from './historical-v2.js';
 
-// Frozen from 57eba97^:src/governance-activation/{types,validators,graph}.ts.
-// These schemas are historical readers, never current execution validators.
-export const historicalPhaseIds = [
-  'seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed', 'phase-0-complete',
-  'activation-approved', 'credential-ready', 'provider-ready', 'state-path-selected',
-  'existing-private-path', 'bootstrap-local', 'runner-ready', 'private-backend-proof',
-  'remote-import-verified', 'remote-ready', 'application-foundation', 'workflow-source-ready',
-  'dev-proof', 'staging-qualified', 'production-rehearsed', 'green-red-proof',
-  'enforcement-approved', 'rulesets-applied', 'live-readback', 'bootstrap-state-disposed'
-] as const;
-export type HistoricalPhaseId = typeof historicalPhaseIds[number];
-const historicalPhaseStates = [
-  'pending', 'blocked', 'ready', 'approved', 'running', 'verified', 'failed', 'inapplicable', 'retained', 'disposed'
-] as const;
-const historicalResults = ['verified', 'failed', 'inapplicable', 'retained', 'disposed'] as const;
-const historicalMutationClasses = [
-  'none', 'read-worktree', 'write-activation-state', 'write-evidence', 'write-openspec-seed',
-  'write-openspec-governance', 'write-local-state', 'delete-local-state', 'write-workflows',
-  'write-ruleset-source', 'git-commit', 'git-push', 'github-read', 'github-write',
-  'github-secret-write', 'azure-read', 'azure-provider-register', 'azure-network-provision',
-  'azure-state-import', 'azure-resource-provision', 'github-ruleset-write'
-] as const;
-const historicalGateKinds = [
-  'none', 'repository-publish', 'activation-plan', 'credential-enrollment', 'infrastructure-cost',
-  'enforcement', 'destructive-disposal', 'external-blocker'
-] as const;
-const historicalQuestionKinds = [
-  'repository-creation-initial-commit-push', 'credential-enrollment',
-  'billed-infrastructure-policy-exception-cost-ceiling', 'final-enforcement',
-  'destructive-operation', 'external-blocker'
-] as const;
-const destinationTypes = ['local', 'repository', 'subscription', 'environment', 'tenant', 'external'] as const;
-const adapterIds = ['local-evidence', 'selected-spec-workflow', 'git', 'github', 'azure-opentofu', 'local-state'] as const;
-const historicalPhaseGates = {
-  'seed-valid': 'none', 'seed-verified': 'none', 'seed-archived': 'none',
-  committed: 'repository-publish', pushed: 'repository-publish', 'phase-0-complete': 'none',
-  'activation-approved': 'activation-plan', 'credential-ready': 'credential-enrollment',
-  'provider-ready': 'infrastructure-cost', 'state-path-selected': 'infrastructure-cost',
-  'existing-private-path': 'none', 'bootstrap-local': 'infrastructure-cost',
-  'runner-ready': 'infrastructure-cost', 'private-backend-proof': 'none',
-  'remote-import-verified': 'infrastructure-cost', 'remote-ready': 'none',
-  'application-foundation': 'infrastructure-cost', 'workflow-source-ready': 'none',
-  'dev-proof': 'none', 'staging-qualified': 'none', 'production-rehearsed': 'none',
-  'green-red-proof': 'none', 'enforcement-approved': 'enforcement', 'rulesets-applied': 'enforcement',
-  'live-readback': 'none', 'bootstrap-state-disposed': 'destructive-disposal'
-} as const;
-
-export interface HistoricalActivationState {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-  repository: { id: string; name: string; defaultBranch: string };
-  activeChange: { id: string; kind: 'openspec' | 'spec-kit' } | null;
-  applicability: {
-    statePath: 'existing-private' | 'bootstrap-local' | 'none';
-    privateStagingDast: boolean;
-    credentialRequired: boolean;
-  };
-  bootstrapState?: BootstrapStateRetention;
-  phases: Record<HistoricalPhaseId, PhaseExecutionState>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export type HistoricalEvidenceHeader = Omit<EvidenceHeader, 'schemaVersion' | 'identity' | 'bodyDigest' | 'remoteBindingDigest'> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
-export type HistoricalLiveReadbackProof = Omit<LiveReadbackProof, 'schemaVersion' | 'identity'> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
-export interface HistoricalEvidenceRecord {
-  evidenceId: string;
-  header: HistoricalEvidenceHeader;
-  payload?: unknown;
-  liveReadback?: HistoricalLiveReadbackProof[];
-}
-export type HistoricalApprovalEnvelope = Omit<ApprovalEnvelope, 'schemaVersion' | 'identity'> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
-export type HistoricalSavedTransitionPlan = Omit<SavedTransitionPlan, 'identity'> & {
-  identity: HistoricalActivationIdentity;
-};
-
-function phaseId(value: unknown, label: string): HistoricalPhaseId {
-  return historyEnum(value, historicalPhaseIds, label);
-}
-
-export function assertHistoricalPhasesComplete<T>(
-  phases: Partial<Record<HistoricalPhaseId, T>>
-): asserts phases is Record<HistoricalPhaseId, T> {
-  for (const id of historicalPhaseIds) {
-    if (phases[id] === undefined) historyFail(`phases.${id}`, 'is required.');
-  }
-}
-
-function reference(value: unknown, label: string): EvidenceReference {
-  const item = historyExact(value, ['phaseId', 'evidenceId', 'headerDigest', 'result'], label);
-  return {
-    phaseId: phaseId(item.phaseId, `${label}.phaseId`),
-    evidenceId: historyRecordId(item.evidenceId, `${label}.evidenceId`),
-    headerDigest: historyDigest(item.headerDigest, `${label}.headerDigest`),
-    result: historyEnum(item.result, historicalResults, `${label}.result`)
-  };
-}
-
-function retention(value: unknown, label: string): BootstrapStateRetention {
-  const item = historyExact(value, [
-    'status', 'remoteImportEvidenceId', 'remoteImportEvidenceDigest', 'retainedAt', 'disposeAfter',
-    'encryptedStatePathParts', 'encryptionKeyPathParts'
-  ], label, ['disposedAt', 'deletionEvidenceId', 'incompleteCleanup']);
-  const status = historyEnum(item.status, ['retained', 'disposed'], `${label}.status`);
-  const retainedAt = historyTimestamp(item.retainedAt, `${label}.retainedAt`);
-  const disposeAfter = historyTimestamp(item.disposeAfter, `${label}.disposeAfter`);
-  if (Date.parse(disposeAfter) - Date.parse(retainedAt) !== 30 * 24 * 60 * 60 * 1000) {
-    historyFail(label, 'disposeAfter must be exactly 30 days after retainedAt.');
-  }
-  if (status === 'disposed' && !Object.hasOwn(item, 'disposedAt')) historyFail(label, 'disposedAt is required for disposed state.');
-  return {
-    status,
-    remoteImportEvidenceId: historyRecordId(item.remoteImportEvidenceId, `${label}.remoteImportEvidenceId`),
-    remoteImportEvidenceDigest: historyDigest(item.remoteImportEvidenceDigest, `${label}.remoteImportEvidenceDigest`),
-    retainedAt, disposeAfter,
-    encryptedStatePathParts: historyArray(item.encryptedStatePathParts, `${label}.encryptedStatePathParts`)
-      .map((entry) => historyPathParts(entry, `${label}.encryptedStatePathParts`)),
-    encryptionKeyPathParts: historyArray(item.encryptionKeyPathParts, `${label}.encryptionKeyPathParts`)
-      .map((entry) => historyPathParts(entry, `${label}.encryptionKeyPathParts`)),
-    ...(Object.hasOwn(item, 'disposedAt') ? { disposedAt: historyTimestamp(item.disposedAt, `${label}.disposedAt`) } : {}),
-    ...(Object.hasOwn(item, 'deletionEvidenceId') ? { deletionEvidenceId: historyRecordId(item.deletionEvidenceId, `${label}.deletionEvidenceId`) } : {}),
-    ...(Object.hasOwn(item, 'incompleteCleanup') ? { incompleteCleanup: historyStrings(item.incompleteCleanup, `${label}.incompleteCleanup`) } : {})
-  };
-}
+export * from './historical-common.js';
+import {
+  historicalPhaseIds, type HistoricalPhaseId,
+  historicalPhaseStates, historicalResults, historicalGateKinds, historicalQuestionKinds,
+  destinationTypes, adapterIds, historicalPhaseGates,
+  type HistoricalActivationState, type HistoricalEvidenceHeader,
+  type HistoricalLiveReadbackProof, type HistoricalEvidenceRecord,
+  type HistoricalApprovalEnvelope, type HistoricalSavedTransitionPlan,
+  phaseId, assertHistoricalPhasesComplete, readHistoricalEvidenceReference,
+  validateHistoricalBootstrapState, readHistoricalEvidenceTransition,
+  validateHistoricalEmbeddedPaths, uniqueSorted, nullableString,
+  readHistoricalApprovalFields, operationDestination, operation, evaluation,
+  rollbackPlan, readHistoricalSavedTransitionPlan
+} from './historical-common.js';
 
 export function validateHistoricalActivationState(value: unknown): HistoricalActivationState {
   const label = 'historicalActivationState';
+  assertSafeHistoricalRecord(value, label);
   const state = historyExact(value, [
     'schemaVersion', 'identity', 'repository', 'activeChange', 'applicability', 'phases', 'createdAt', 'updatedAt'
   ], label, ['bootstrapState']);
   historyLiteral(state.schemaVersion, 1, `${label}.schemaVersion`);
-  const identity = historicalIdentity(state.identity, `${label}.identity`);
+  const identity = historicalV1Identity(state.identity, `${label}.identity`);
   const repository = historyExact(state.repository, ['id', 'name', 'defaultBranch'], `${label}.repository`);
   const applicability = historyExact(state.applicability, ['statePath', 'privateStagingDast', 'credentialRequired'], `${label}.applicability`);
   let activeChange: HistoricalActivationState['activeChange'] = null;
@@ -178,7 +77,7 @@ export function validateHistoricalActivationState(value: unknown): HistoricalAct
   for (const id of historicalPhaseIds) {
     const at = `${label}.phases.${id}`;
     const phase = historyExact(rawPhases[id], ['state', 'updatedAt', 'evidence', 'approvals', 'blockers'], at);
-    const evidence = historyArray(phase.evidence, `${at}.evidence`).map((entry, index) => reference(entry, `${at}.evidence[${index}]`));
+    const evidence = historyArray(phase.evidence, `${at}.evidence`).map((entry, index) => readHistoricalEvidenceReference(entry, `${at}.evidence[${index}]`));
     if (evidence.some((entry) => entry.phaseId !== id)) historyFail(at, 'evidence reference names another phase.');
     const approvals = historyArray(phase.approvals, `${at}.approvals`).map((entry) => historyRecordId(entry, `${at}.approvals`));
     if (new Set(evidence.map((entry) => entry.evidenceId)).size !== evidence.length || new Set(approvals).size !== approvals.length) {
@@ -204,30 +103,20 @@ export function validateHistoricalActivationState(value: unknown): HistoricalAct
       privateStagingDast: historyBoolean(applicability.privateStagingDast, `${label}.applicability.privateStagingDast`),
       credentialRequired: historyBoolean(applicability.credentialRequired, `${label}.applicability.credentialRequired`)
     },
-    ...(Object.hasOwn(state, 'bootstrapState') ? { bootstrapState: retention(state.bootstrapState, `${label}.bootstrapState`) } : {}),
+    ...(Object.hasOwn(state, 'bootstrapState') ? { bootstrapState: validateHistoricalBootstrapState(state.bootstrapState, `${label}.bootstrapState`) } : {}),
     phases, createdAt: historyString(state.createdAt, `${label}.createdAt`),
     updatedAt: historyString(state.updatedAt, `${label}.updatedAt`)
   };
 }
 
-function transition(value: unknown, label: string): EvidenceHeader['transition'] {
-  const item = historyExact(value, ['phaseId', 'baselineSha', 'inputDigest', 'transitionDigest'], label);
-  return {
-    phaseId: phaseId(item.phaseId, `${label}.phaseId`),
-    baselineSha: historyDigest(item.baselineSha, `${label}.baselineSha`),
-    inputDigest: historyDigest(item.inputDigest, `${label}.inputDigest`),
-    transitionDigest: historyDigest(item.transitionDigest, `${label}.transitionDigest`)
-  };
-}
-
 function historicalProofIdentity(item: Record<string, unknown>, label: string) {
-  const identity = historicalIdentity(item.identity, `${label}.identity`);
+  const identity = historicalV1Identity(item.identity, `${label}.identity`);
   const graphHash = historyDigest(item.phaseGraphHash, `${label}.phaseGraphHash`);
   if (graphHash !== identity.phaseGraphHash) historyFail(label, 'graph hash contradicts the historical identity.');
   const id = phaseId(item.phaseId, `${label}.phaseId`);
   const baselineSha = historyDigest(item.baselineSha, `${label}.baselineSha`);
   const inputDigest = historyDigest(item.inputDigest, `${label}.inputDigest`);
-  const proofTransition = transition(item.transition, `${label}.transition`);
+  const proofTransition = readHistoricalEvidenceTransition(item.transition, `${label}.transition`);
   if (proofTransition.phaseId !== id || proofTransition.baselineSha !== baselineSha || proofTransition.inputDigest !== inputDigest) {
     historyFail(label, 'transition contradicts the proof phase, baseline or inputs.');
   }
@@ -240,21 +129,29 @@ function historicalProofIdentity(item: Record<string, unknown>, label: string) {
 
 export function validateHistoricalEvidenceHeader(value: unknown): HistoricalEvidenceHeader {
   const label = 'historicalEvidenceHeader';
+  assertSafeHistoricalRecord(value, label);
   const item = historyExact(value, [
     'schemaVersion', 'repositoryId', 'identity', 'phaseGraphHash', 'phaseId', 'phaseContractDigest',
     'inputDigest', 'baselineSha', 'transition', 'producedAt', 'producer', 'result'
   ], label);
+  const proof = historicalProofIdentity(item, label);
+  const phaseContractDigest = historyDigest(item.phaseContractDigest, `${label}.phaseContractDigest`);
+  if (phaseContractDigest !== historicalV1PhaseContractDigests[proof.phaseId]) {
+    historyFail(label, 'phase contract digest is not the published v1 behavior.');
+  }
+  const result = historyEnum(item.result, historicalResults, `${label}.result`);
+  if (!historicalV1ResultAllowed(proof.phaseId, result)) historyFail(label, 'terminal result is not permitted by the published v1 phase.');
   return {
-    ...historicalProofIdentity(item, label),
-    phaseContractDigest: historyDigest(item.phaseContractDigest, `${label}.phaseContractDigest`),
+    ...proof, phaseContractDigest,
     producedAt: historyTimestamp(item.producedAt, `${label}.producedAt`),
     producer: historyString(item.producer, `${label}.producer`),
-    result: historyEnum(item.result, historicalResults, `${label}.result`)
+    result
   };
 }
 
 export function validateHistoricalLiveReadback(value: unknown): HistoricalLiveReadbackProof {
   const label = 'historicalLiveReadback';
+  assertSafeHistoricalRecord(value, label);
   const item = historyExact(value, [
     'schemaVersion', 'repositoryId', 'identity', 'phaseGraphHash', 'phaseId', 'baselineSha', 'inputDigest',
     'transition', 'observedAt', 'provider', 'resourceType', 'resourceId', 'sourceDigest', 'readbackDigest', 'matches'
@@ -271,23 +168,9 @@ export function validateHistoricalLiveReadback(value: unknown): HistoricalLiveRe
   };
 }
 
-function validateEmbeddedPaths(value: unknown, label: string): void {
-  if (Array.isArray(value)) {
-    value.forEach((entry, index) => validateEmbeddedPaths(entry, `${label}[${index}]`));
-  } else if (isRecord(value)) {
-    for (const [key, entry] of Object.entries(value)) {
-      if (key === 'pathParts' || key.endsWith('PathParts')) {
-        const parts = historyArray(entry, `${label}.${key}`);
-        if (parts.length === 0 && ['cwdPathParts', 'encryptedStatePathParts', 'encryptionKeyPathParts', 'deletedPathParts'].includes(key)) continue;
-        if (parts.length > 0 && Array.isArray(parts[0])) parts.forEach((item) => historyPathParts(item, `${label}.${key}`));
-        else historyPathParts(parts, `${label}.${key}`);
-      } else validateEmbeddedPaths(entry, `${label}.${key}`);
-    }
-  }
-}
-
 export function validateHistoricalEvidenceRecord(value: unknown, headerOnlyEvidenceId?: string): HistoricalEvidenceRecord {
   const label = 'historicalEvidenceRecord';
+  assertSafeHistoricalRecord(value, label);
   const item = historyRecord(value, label);
   // Header-only JSON was an explicit v1 format in commands.ts, not an unversioned import.
   if (!Object.hasOwn(item, 'header')) {
@@ -297,7 +180,7 @@ export function validateHistoricalEvidenceRecord(value: unknown, headerOnlyEvide
     };
   }
   historyExact(item, ['evidenceId', 'header'], label, ['payload', 'liveReadback']);
-  if (Object.hasOwn(item, 'payload')) validateEmbeddedPaths(item.payload, `${label}.payload`);
+  if (Object.hasOwn(item, 'payload')) validateHistoricalEmbeddedPaths(item.payload, `${label}.payload`);
   const header = validateHistoricalEvidenceHeader(item.header);
   const liveReadback = Object.hasOwn(item, 'liveReadback')
     ? historyArray(item.liveReadback, `${label}.liveReadback`).map(validateHistoricalLiveReadback) : undefined;
@@ -313,66 +196,14 @@ export function validateHistoricalEvidenceRecord(value: unknown, headerOnlyEvide
   };
 }
 
-function uniqueSorted<T>(values: T[], key: (value: T) => string, label: string): T[] {
-  if (new Set(values.map(key)).size !== values.length) historyFail(label, 'contains duplicate scope entries.');
-  return values.sort((a, b) => key(a).localeCompare(key(b), 'en'));
-}
-
-function nullableString(value: unknown, label: string): string | null {
-  return value === null ? null : historyString(value, label);
-}
-
 export function validateHistoricalApprovalEnvelope(value: unknown): HistoricalApprovalEnvelope {
-  const label = 'historicalApprovalEnvelope';
-  const item = historyExact(value, [
-    'schemaVersion', 'id', 'phaseId', 'gateKind', 'identity', 'baselineSha', 'planDigest', 'resources',
-    'destinations', 'permissions', 'costCeiling', 'policyExceptions', 'destructiveScope', 'expiresAt', 'approvedAt', 'approver'
-  ], label);
-  const id = phaseId(item.phaseId, `${label}.phaseId`);
-  const gateKind = historyEnum(item.gateKind, historicalGateKinds, `${label}.gateKind`);
-  if (gateKind !== historicalPhaseGates[id]) historyFail(label, 'gate does not match its historical phase.');
-  const resources = historyArray(item.resources, `${label}.resources`).map((entry, index) => {
-    const at = `${label}.resources[${index}]`;
-    const resource = historyExact(entry, ['type', 'identity'], at);
-    return { type: historyString(resource.type, `${at}.type`).trim().toLowerCase(), identity: historyString(resource.identity, `${at}.identity`).trim() };
-  });
-  const destinations = historyArray(item.destinations, `${label}.destinations`).map((entry, index) => {
-    const at = `${label}.destinations[${index}]`;
-    const destination = historyExact(entry, ['type', 'identity', 'repository', 'subscriptionId'], at);
-    return {
-      type: historyEnum(destination.type, destinationTypes, `${at}.type`),
-      identity: historyString(destination.identity, `${at}.identity`).trim(),
-      repository: nullableString(destination.repository, `${at}.repository`)?.trim() ?? null,
-      subscriptionId: nullableString(destination.subscriptionId, `${at}.subscriptionId`)?.trim() ?? null
-    };
-  });
-  const cost = historyExact(item.costCeiling, ['currency', 'fixedMonthlyCents', 'usageMonthlyCents'], `${label}.costCeiling`);
-  const currency = historyString(cost.currency, `${label}.costCeiling.currency`).trim();
-  if (!/^[A-Z]{3}$/u.test(currency)) historyFail(label, 'cost currency must be a three-letter uppercase ISO currency.');
-  const cents = (value: unknown, at: string): number => {
-    if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) historyFail(at, 'must be non-negative safe integer cents.');
-    return value;
-  };
-  const scopeStrings = (value: unknown, at: string, lower = false) =>
-    uniqueSorted(historyStrings(value, at).map((entry) => lower ? entry.trim().toLowerCase() : entry.trim()), (entry) => entry, at);
+  const item = historyRecord(value, 'historicalApprovalEnvelope');
+  const fields = readHistoricalApprovalFields(value);
+  if (Date.parse(fields.approvedAt) >= Date.parse(fields.expiresAt)) historyFail('historicalApprovalEnvelope', 'requires approvedAt before expiresAt.');
   return {
-    schemaVersion: historyLiteral(item.schemaVersion, 1, `${label}.schemaVersion`),
-    id: historyRecordId(item.id, `${label}.id`), phaseId: id, gateKind,
-    identity: historicalIdentity(item.identity, `${label}.identity`),
-    baselineSha: historyDigest(item.baselineSha, `${label}.baselineSha`),
-    planDigest: historyDigest(item.planDigest, `${label}.planDigest`),
-    resources: uniqueSorted(resources, canonicalJson, `${label}.resources`),
-    destinations: uniqueSorted(destinations, canonicalJson, `${label}.destinations`),
-    permissions: scopeStrings(item.permissions, `${label}.permissions`, true),
-    costCeiling: {
-      currency, fixedMonthlyCents: cents(cost.fixedMonthlyCents, `${label}.costCeiling.fixedMonthlyCents`),
-      usageMonthlyCents: cents(cost.usageMonthlyCents, `${label}.costCeiling.usageMonthlyCents`)
-    },
-    policyExceptions: scopeStrings(item.policyExceptions, `${label}.policyExceptions`),
-    destructiveScope: scopeStrings(item.destructiveScope, `${label}.destructiveScope`),
-    expiresAt: historyTimestamp(item.expiresAt, `${label}.expiresAt`),
-    approvedAt: historyTimestamp(item.approvedAt, `${label}.approvedAt`),
-    approver: historyString(item.approver, `${label}.approver`)
+    ...fields,
+    schemaVersion: historyLiteral(item.schemaVersion, 1, 'historicalApprovalEnvelope.schemaVersion'),
+    identity: historicalV1Identity(item.identity, 'historicalApprovalEnvelope.identity')
   };
 }
 
@@ -381,103 +212,8 @@ export function historicalApprovalEnvelopeHash(envelope: HistoricalApprovalEnvel
   return canonicalSha256(scope);
 }
 
-function operationDestination(value: unknown, label: string): TransitionOperationDestination {
-  const item = historyExact(value, ['type', 'identity'], label, ['pathParts', 'repository', 'subscriptionId', 'ref']);
-  return {
-    type: historyEnum(item.type, destinationTypes, `${label}.type`),
-    identity: historyString(item.identity, `${label}.identity`),
-    ...(Object.hasOwn(item, 'pathParts') ? { pathParts: historyPathParts(item.pathParts, `${label}.pathParts`) } : {}),
-    ...(Object.hasOwn(item, 'repository') ? { repository: historyString(item.repository, `${label}.repository`) } : {}),
-    ...(Object.hasOwn(item, 'subscriptionId') ? { subscriptionId: historyString(item.subscriptionId, `${label}.subscriptionId`) } : {}),
-    ...(Object.hasOwn(item, 'ref') ? { ref: historyString(item.ref, `${label}.ref`) } : {})
-  };
-}
-
-function operation(value: unknown, label: string): TransitionOperation {
-  const item = historyExact(value, ['adapter', 'actionId', 'mutationClass', 'phaseId', 'inputs', 'destination', 'remote', 'destructive'], label);
-  const inputs = historyRecord(item.inputs, `${label}.inputs`);
-  validateEmbeddedPaths(inputs, `${label}.inputs`);
-  return {
-    adapter: historyEnum(item.adapter, adapterIds, `${label}.adapter`),
-    actionId: historyString(item.actionId, `${label}.actionId`),
-    mutationClass: historyEnum(item.mutationClass, historicalMutationClasses, `${label}.mutationClass`),
-    phaseId: phaseId(item.phaseId, `${label}.phaseId`), inputs,
-    destination: operationDestination(item.destination, `${label}.destination`),
-    remote: historyBoolean(item.remote, `${label}.remote`), destructive: historyBoolean(item.destructive, `${label}.destructive`)
-  };
-}
-
-function evaluation(value: unknown, label: string): ApprovalEvaluation {
-  const item = historyExact(value, [
-    'phaseId', 'gateKind', 'questionKind', 'approvalRequired', 'status', 'envelopeId', 'envelopeHash', 'reasons', 'expansionReasons'
-  ], label);
-  return {
-    phaseId: phaseId(item.phaseId, `${label}.phaseId`),
-    gateKind: historyEnum(item.gateKind, historicalGateKinds, `${label}.gateKind`),
-    questionKind: item.questionKind === null ? null : historyEnum(item.questionKind, historicalQuestionKinds, `${label}.questionKind`),
-    approvalRequired: historyBoolean(item.approvalRequired, `${label}.approvalRequired`),
-    status: historyEnum(item.status, ['not-required', 'approval-required', 'reused', 'expired', 'invalidated'], `${label}.status`),
-    envelopeId: item.envelopeId === null ? null : historyRecordId(item.envelopeId, `${label}.envelopeId`),
-    envelopeHash: item.envelopeHash === null ? null : historyDigest(item.envelopeHash, `${label}.envelopeHash`),
-    reasons: historyStrings(item.reasons, `${label}.reasons`), expansionReasons: historyStrings(item.expansionReasons, `${label}.expansionReasons`)
-  };
-}
-
-function rollbackPlan(value: unknown, label: string): TransitionRollbackPlan {
-  const item = historyExact(value, ['phaseId', 'strategy', 'target', 'operations', 'retained', 'cleanupWarnings'], label);
-  return {
-    phaseId: phaseId(item.phaseId, `${label}.phaseId`),
-    strategy: historyEnum(item.strategy, ['none', 'retain', 'reverse-to', 'dispose'], `${label}.strategy`),
-    target: item.target === null ? null : phaseId(item.target, `${label}.target`),
-    operations: historyArray(item.operations, `${label}.operations`).map((entry, index) => operation(entry, `${label}.operations[${index}]`)),
-    retained: historyStrings(item.retained, `${label}.retained`), cleanupWarnings: historyStrings(item.cleanupWarnings, `${label}.cleanupWarnings`)
-  };
-}
-
 export function validateHistoricalSavedTransitionPlan(value: unknown): HistoricalSavedTransitionPlan {
-  const label = 'historicalTransitionPlan';
-  const item = historyExact(value, [
-    'schemaVersion', 'phaseId', 'createdAt', 'expiresAt', 'identity', 'graphHash', 'stateHash',
-    'baselineDigest', 'inputDigest', 'transitionDigest', 'planDigest', 'mutationClasses', 'operations',
-    'approval', 'rollbackPlan', 'noSecrets'
-  ], label);
-  const identity = historicalIdentity(item.identity, `${label}.identity`);
-  const graphHash = historyDigest(item.graphHash, `${label}.graphHash`);
-  if (graphHash !== identity.phaseGraphHash) historyFail(label, 'graphHash contradicts the historical identity.');
-  const id = phaseId(item.phaseId, `${label}.phaseId`);
-  const operations = historyArray(item.operations, `${label}.operations`).map((entry, index) => operation(entry, `${label}.operations[${index}]`));
-  if (operations.some((entry) => entry.phaseId !== id)) historyFail(label, 'operation phase differs from its plan.');
-  const mutations = historyExact(item.mutationClasses, ['local', 'remote'], `${label}.mutationClasses`);
-  const approval = historyExact(item.approval, ['gateKind', 'required', 'evaluation', 'envelopeId', 'envelopeHash'], `${label}.approval`);
-  const approvalEvaluation = evaluation(approval.evaluation, `${label}.approval.evaluation`);
-  const gateKind = historyEnum(approval.gateKind, historicalGateKinds, `${label}.approval.gateKind`);
-  const required = historyBoolean(approval.required, `${label}.approval.required`);
-  const envelopeId = approval.envelopeId === null ? null : historyRecordId(approval.envelopeId, `${label}.approval.envelopeId`);
-  const envelopeHash = approval.envelopeHash === null ? null : historyDigest(approval.envelopeHash, `${label}.approval.envelopeHash`);
-  if (gateKind !== historicalPhaseGates[id] || required !== (gateKind !== 'none') ||
-    approvalEvaluation.phaseId !== id || approvalEvaluation.gateKind !== gateKind ||
-    approvalEvaluation.envelopeId !== envelopeId || approvalEvaluation.envelopeHash !== envelopeHash ||
-    (envelopeId === null) !== (envelopeHash === null)) {
-    historyFail(label, 'approval references or gate contradict the historical phase.');
-  }
-  const rollback = rollbackPlan(item.rollbackPlan, `${label}.rollbackPlan`);
-  if (rollback.phaseId !== id) historyFail(label, 'rollback names another phase.');
-  return {
-    schemaVersion: historyLiteral(item.schemaVersion, 1, `${label}.schemaVersion`), phaseId: id,
-    createdAt: historyTimestamp(item.createdAt, `${label}.createdAt`),
-    expiresAt: historyTimestamp(item.expiresAt, `${label}.expiresAt`), identity, graphHash,
-    stateHash: item.stateHash === null ? null : historyDigest(item.stateHash, `${label}.stateHash`),
-    baselineDigest: historyDigest(item.baselineDigest, `${label}.baselineDigest`),
-    inputDigest: historyDigest(item.inputDigest, `${label}.inputDigest`),
-    transitionDigest: historyDigest(item.transitionDigest, `${label}.transitionDigest`),
-    planDigest: historyDigest(item.planDigest, `${label}.planDigest`),
-    mutationClasses: {
-      local: historyArray(mutations.local, `${label}.mutationClasses.local`).map((entry) => historyEnum(entry, historicalMutationClasses, `${label}.mutationClasses.local`)),
-      remote: historyArray(mutations.remote, `${label}.mutationClasses.remote`).map((entry) => historyEnum(entry, historicalMutationClasses, `${label}.mutationClasses.remote`))
-    },
-    operations, approval: { gateKind, required, evaluation: approvalEvaluation, envelopeId, envelopeHash },
-    rollbackPlan: rollback, noSecrets: historyLiteral(item.noSecrets, true, `${label}.noSecrets`)
-  };
+  return readHistoricalSavedTransitionPlan(value, historicalV1Identity);
 }
 
 export function historicalTransitionPlanPathParts(plan: HistoricalSavedTransitionPlan): string[] {
@@ -494,9 +230,13 @@ export interface HistoricalSourceFile {
   mode: number;
 }
 
+export type ReadableHistoricalActivationState = HistoricalActivationState | HistoricalV2ActivationState;
+
 export interface HistoricalActivationInventory {
   manifest: LiftoffManifest;
-  state: HistoricalActivationState;
+  state: ReadableHistoricalActivationState;
+  sourceMigration?: HistoricalV2SourceMigrationJournal;
+  sourceChangeMetadata?: HistoricalGovernanceChangeMetadata;
   files: HistoricalSourceFile[];
   unreviewedRecords: HistoricalSourceFile[];
   preconditions: ProjectFileSnapshot[];
@@ -554,17 +294,32 @@ export async function captureHistoryFile(projectRoot: string, parts: readonly st
   if (!details.isFile() || details.isSymbolicLink() || details.nlink !== 1) {
     historyFail(historyPathKey(pathParts), 'must be a regular unlinked file.', 'unsafe-history-path');
   }
-  const content = await readFile(target);
-  const after = await lstat(target);
-  if (after.ino !== details.ino || after.dev !== details.dev || after.mode !== details.mode ||
-    after.size !== details.size || after.mtimeMs !== details.mtimeMs || after.nlink !== 1) {
-    historyFail(historyPathKey(pathParts), 'changed while being read; obtain a fresh preview.', 'historical-source-changed');
+  if (details.size > 8 * 1024 * 1024) {
+    historyFail(historyPathKey(pathParts), 'exceeds the bounded control-record size; no contents were read.', 'unsafe-historical-payload');
   }
-  return { pathParts, content, mode: details.mode & 0o7777 };
+  const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+  try {
+    const opened = await handle.stat();
+    if (!opened.isFile() || opened.ino !== details.ino || opened.dev !== details.dev || opened.nlink !== 1 ||
+      opened.mode !== details.mode || opened.size !== details.size || opened.mtimeMs !== details.mtimeMs) {
+      historyFail(historyPathKey(pathParts), 'changed before the bounded read.', 'historical-source-changed');
+    }
+    await resolveHistoryProjectPath(projectRoot, pathParts);
+    const content = await handle.readFile();
+    const after = await lstat(await resolveHistoryProjectPath(projectRoot, pathParts));
+    if (after.ino !== details.ino || after.dev !== details.dev || after.mode !== details.mode ||
+      after.size !== details.size || after.mtimeMs !== details.mtimeMs || after.nlink !== 1) {
+      historyFail(historyPathKey(pathParts), 'changed while being read; obtain a fresh preview.', 'historical-source-changed');
+    }
+    return { pathParts, content, mode: details.mode & 0o7777 };
+  } finally {
+    await handle.close();
+  }
 }
 
 export function validateHistoricalSourceManifest(value: unknown): LiftoffManifest {
   const label = 'historicalSourceManifest';
+  assertSafeHistoricalRecord(value, label);
   const raw = historyRecord(value, label);
   historyLiteral(raw.artifactVersion, 7, `${label}.artifactVersion`);
   const governance = historyRecord(raw.governance, `${label}.governance`);
@@ -596,7 +351,7 @@ function validateHistoricalCompatibility(value: unknown, label: string): void {
   ], `${label}.activation`);
   const tuples = historyArray(activation.currentCompatibleTuples, `${label}.activation.currentCompatibleTuples`);
   if (tuples.length !== 1) historyFail(label, 'requires the single registered historical activation tuple.');
-  historicalIdentity(tuples[0], `${label}.activation.currentCompatibleTuples[0]`);
+  historicalV1Identity(tuples[0], `${label}.activation.currentCompatibleTuples[0]`);
   if (canonicalJson(activation.recognizedGraphHashes) !== canonicalJson([historicalActivationIdentity.phaseGraphHash]) ||
     canonicalJson(activation.graphMappings) !== '[]\n' || canonicalJson(activation.historicalStateMigrations) !== '[]\n') {
     historyFail(label, 'contains an unknown historical graph or migration declaration.');
@@ -630,18 +385,22 @@ function validateHistoricalCompatibility(value: unknown, label: string): void {
 
 function validateHistoricalMetadata(file: HistoricalSourceFile): void {
   const label = historyPathKey(file.pathParts);
+  assertSafeHistoricalBytes(file.content, label);
   if (!label.endsWith('.json')) return;
   const value = parseHistoryJson(file.content, label);
   // Managed metadata may have been maintained after v1 execution stopped.
   // It is preserved as source bytes, never used to authorize a migration lane.
   if (label === '.liftoff/governance/phase-graph.json') {
     const digest = canonicalSha256(value);
-    if (digest !== historicalActivationIdentity.phaseGraphHash && digest !== currentActivationIdentity.phaseGraphHash) {
+    if (!historicalActivationIdentities.some((identity) => identity.phaseGraphHash === digest) &&
+      digest !== currentActivationIdentity.phaseGraphHash) {
       historyFail(label, 'is neither the registered historical nor the installed current managed graph.', 'unsupported-historical-graph');
     }
   } else if (label === '.liftoff/governance/compatibility.json') {
     if (isRecord(value) && value.schemaVersion === 1) {
       validateHistoricalCompatibility(value, label);
+    } else if (isRecord(value) && (value.schemaVersion === 2 || value.schemaVersion === 3)) {
+      validateHistoricalV2Compatibility(value, label);
     } else {
       try {
         const metadata = validateGovernanceCompatibilityMetadata(value);
@@ -664,7 +423,7 @@ function validateHistoricalMetadata(file: HistoricalSourceFile): void {
     if (Object.values(discovery).some((entry) => entry !== 'undiscovered')) historyFail(label, 'context cannot assert live discovery.');
     if (historyArray(context.commands, `${label}.commands`).length === 0) historyFail(label, 'context must declare its generated commands.');
     historyRecord(context.generatedBoundaries, `${label}.generatedBoundaries`);
-    validateEmbeddedPaths(context, label);
+    validateHistoricalEmbeddedPaths(context, label);
   } else if (label === '.liftoff/governance/credential-policy.schema.json') {
     const schema = historyRecord(value, label);
     historyString(schema.$schema, `${label}.$schema`);
@@ -676,7 +435,8 @@ function validateHistoricalMetadata(file: HistoricalSourceFile): void {
       return [key, declaration.const];
     }));
     const identityDigest = canonicalSha256(declaredIdentity);
-    if (identityDigest !== canonicalSha256(historicalActivationIdentity) && identityDigest !== canonicalSha256(currentActivationIdentity)) {
+    if (!historicalActivationIdentities.some((identity) => identityDigest === canonicalSha256(identity)) &&
+      identityDigest !== canonicalSha256(currentActivationIdentity)) {
       historyFail(label, 'credential schema must declare the exact historical or installed current activation identity.', 'invalid-managed-source-metadata');
     }
   } else {
@@ -688,6 +448,7 @@ function sourceFile(snapshot: ProjectFileSnapshot, kind: HistoricalFileKind): Hi
   if (snapshot.content === undefined || snapshot.mode === undefined) {
     historyFail(historyPathKey(snapshot.pathParts), 'required historical source is missing.', 'missing-historical-record');
   }
+  assertSafeHistoricalBytes(snapshot.content, historyPathKey(snapshot.pathParts));
   return {
     kind, pathParts: [...snapshot.pathParts], content: snapshot.content,
     digest: rawHistoryDigest(snapshot.content), mode: snapshot.mode
@@ -716,23 +477,100 @@ function validateAt<T>(file: HistoricalSourceFile, validator: (value: unknown) =
   }
 }
 
+export function validateReadableHistoricalActivationState(value: unknown): ReadableHistoricalActivationState {
+  const item = historyRecord(value, 'historicalActivationState');
+  return isHistoricalV2ActivationIdentity(item.identity)
+    ? validateHistoricalV2ActivationState(value) : validateHistoricalActivationState(value);
+}
+
 export async function readHistoricalActivationInventory(
   projectRoot: string, options: HistoricalInventoryOptions = {}
 ): Promise<HistoricalActivationInventory> {
+  return readHistoricalInventory(
+    (parts) => captureHistoryFile(projectRoot, parts),
+    (directory) => historicalActiveRecordPaths(projectRoot, directory), options
+  );
+}
+
+/** Read only the exact stored copies in an index; never substitute current active files. */
+export async function readHistoricalSnapshotInventory(
+  projectRoot: string, index: ActivationHistoryIndex
+): Promise<HistoricalActivationInventory> {
+  const byPath = new Map(index.files.map((file) => [historyPathKey(file.originalPathParts), file]));
+  const inventory = await readHistoricalInventory(async (parts) => {
+    const file = byPath.get(historyPathKey(parts));
+    if (!file) return { pathParts: [...parts] };
+    const copy = await captureHistoryFile(projectRoot, file.copyPathParts);
+    if (!copy.content || rawHistoryDigest(copy.content) !== file.digest) {
+      historyFail(historyPathKey(file.copyPathParts), 'declared copy is missing or differs from its recorded raw digest.', 'history-digest-mismatch');
+    }
+    return { pathParts: [...parts], content: copy.content, mode: file.mode };
+  }, async (directory) => index.files
+    .filter((file) => file.originalPathParts.length === 3 && file.originalPathParts[0] === 'governance' &&
+      file.originalPathParts[1] === directory).map((file) => [...file.originalPathParts]), {
+    reviewedUnreferencedPathParts: index.files
+      .filter((file) => ['evidence', 'plan', 'approval'].includes(file.kind)).map((file) => file.originalPathParts)
+  }, false);
+  if (canonicalSha256(inventory.state.identity) !== canonicalSha256(index.sourceIdentity) ||
+    canonicalSha256(inventory.files.map((file) => historyPathKey(file.pathParts)).sort()) !==
+    canonicalSha256(index.files.map((file) => historyPathKey(file.originalPathParts)).sort())) {
+    historyFail('activationHistoryIndex', 'source contract or complete record inventory contradicts its snapshot.', 'invalid-historical-reference');
+  }
+  return inventory;
+}
+
+async function readHistoricalInventory(
+  captureSource: (parts: readonly string[]) => Promise<ProjectFileSnapshot>,
+  activeRecordPaths: (directory: string) => Promise<string[][]>,
+  options: HistoricalInventoryOptions,
+  requireSourceChange = true
+): Promise<HistoricalActivationInventory> {
   const preconditions: ProjectFileSnapshot[] = [];
   const capture = async (parts: readonly string[]) => {
-    const snapshot = await captureHistoryFile(projectRoot, parts);
+    const snapshot = await captureSource(parts);
     preconditions.push(snapshot);
     return snapshot;
   };
   const manifestFile = sourceFile(await capture(historicalManifestPathParts), 'manifest');
   const stateFile = sourceFile(await capture(historicalActivationStatePathParts), 'state');
   const manifest = validateAt(manifestFile, validateHistoricalSourceManifest);
-  const state = validateAt(stateFile, validateHistoricalActivationState);
+  const state = validateAt(stateFile, validateReadableHistoricalActivationState);
+  if (!('activationIdentity' in manifest.governance) ||
+    canonicalSha256(manifest.governance.activationIdentity) !== canonicalSha256(state.identity)) {
+    historyFail(historyPathKey(stateFile.pathParts), 'active state and manifest declare different source contracts.', 'mixed-active-identity');
+  }
   if (state.activeChange !== null && state.activeChange.kind !== manifest.project.specWorkflow) {
     historyFail(historyPathKey(stateFile.pathParts), 'active change belongs to a different spec workflow.', 'historical-spec-ownership-conflict');
   }
   const files = [manifestFile, stateFile];
+  let sourceMigration: HistoricalV2SourceMigrationJournal | undefined;
+  const migrationSnapshot = await capture(migrationStateFilePathParts);
+  if (migrationSnapshot.content !== undefined) {
+    if (state.schemaVersion !== 2) historyFail(historyPathKey(migrationStateFilePathParts), 'v1 active state cannot have a committed v2 source migration.', 'mixed-active-identity');
+    const file = sourceFile(migrationSnapshot, 'migration');
+    sourceMigration = validateAt(file, validateHistoricalV2SourceMigrationJournal);
+    if (sourceMigration.successor.repositoryId !== state.repository.id || sourceMigration.successor.createdAt !== state.createdAt) {
+      historyFail(historyPathKey(file.pathParts), 'source migration does not identify this active v2 successor.', 'invalid-historical-reference');
+    }
+    files.push(file);
+  }
+  let sourceChangeMetadata: HistoricalGovernanceChangeMetadata | undefined;
+  if (state.activeChange) {
+    const base = historicalSourceChangePathParts(state.activeChange);
+    const metadataSnapshot = await capture([...base, 'liftoff-governance.json']);
+    const tasksSnapshot = await capture([...base, 'tasks.md']);
+    if (requireSourceChange || metadataSnapshot.content !== undefined || tasksSnapshot.content !== undefined) {
+      const metadataFile = sourceFile(metadataSnapshot, 'source-metadata');
+      const tasksFile = sourceFile(tasksSnapshot, 'source-tasks');
+      sourceChangeMetadata = validateAt(metadataFile, validateHistoricalGovernanceChangeMetadata);
+      if (sourceChangeMetadata.changeId !== state.activeChange.id || sourceChangeMetadata.workflowKind !== state.activeChange.kind ||
+        ![state.identity, ...(sourceMigration ? [sourceMigration.sourceIdentity] : [])].some((identity) =>
+          canonicalSha256(identity) === canonicalSha256(sourceChangeMetadata!.activationIdentity))) {
+        historyFail(historyPathKey(metadataFile.pathParts), 'metadata does not match the recorded historical source change.', 'invalid-historical-reference');
+      }
+      files.push(metadataFile, tasksFile);
+    }
+  }
   for (const parts of historicalMetadataPathParts) {
     const snapshot = await capture(parts);
     if (snapshot.content === undefined) continue;
@@ -740,34 +578,54 @@ export async function readHistoricalActivationInventory(
     validateHistoricalMetadata(file);
     files.push(file);
   }
-  const evidence = new Map<string, { file: HistoricalSourceFile; record: HistoricalEvidenceRecord }>();
-  const plans: Array<{ file: HistoricalSourceFile; record: HistoricalSavedTransitionPlan }> = [];
-  const approvals = new Map<string, { file: HistoricalSourceFile; record: HistoricalApprovalEnvelope }>();
+  const evidence = new Map<string, { file: HistoricalSourceFile; record: HistoricalEvidenceRecord | HistoricalV2EvidenceRecord }>();
+  const plans: Array<{ file: HistoricalSourceFile; record: HistoricalSavedTransitionPlan | HistoricalV2SavedTransitionPlan }> = [];
+  const approvals = new Map<string, { file: HistoricalSourceFile; record: HistoricalApprovalEnvelope | HistoricalV2ApprovalEnvelope }>();
   for (const [directory, kind] of [['evidence', 'evidence'], ['plans', 'plan'], ['approvals', 'approval']] as const) {
-    for (const parts of await historicalActiveRecordPaths(projectRoot, directory)) {
+    for (const parts of await activeRecordPaths(directory)) {
       const file = sourceFile(await capture(parts), kind);
       if (!parts[2].endsWith('.json')) historyFail(historyPathKey(parts), 'active record extension is not the registered lowercase .json layout.');
       if (kind === 'evidence') {
-        const record = validateAt(file, (value) => validateHistoricalEvidenceRecord(value, parts[2].slice(0, -5)));
+        const record = validateAt(file, (value) => state.schemaVersion === 2
+          ? validateHistoricalV2EvidenceRecord(value) : validateHistoricalEvidenceRecord(value, parts[2].slice(0, -5)));
         if (record.header.repositoryId !== state.repository.id) historyFail(historyPathKey(parts), 'historical evidence belongs to another repository.', 'invalid-historical-reference');
         if (evidence.has(record.evidenceId)) historyFail(historyPathKey(parts), 'duplicates an evidence identity.');
         evidence.set(record.evidenceId, { file, record });
       } else if (kind === 'plan') {
-        plans.push({ file, record: validateAt(file, validateHistoricalSavedTransitionPlan) });
+        plans.push({ file, record: validateAt(file, (value) => state.schemaVersion === 2
+          ? validateHistoricalV2SavedTransitionPlan(value) : validateHistoricalSavedTransitionPlan(value)) });
       } else {
-        const record = validateAt(file, validateHistoricalApprovalEnvelope);
+        const record = validateAt(file, (value) => state.schemaVersion === 2
+          ? validateHistoricalV2ApprovalEnvelope(value) : validateHistoricalApprovalEnvelope(value));
         if (approvals.has(record.id)) historyFail(historyPathKey(parts), 'duplicates an approval identity.');
         approvals.set(record.id, { file, record });
       }
     }
   }
-  for (const directory of ['supersessions', 'reconciliation']) {
-    const records = await historicalActiveRecordPaths(projectRoot, directory);
-    if (records.length > 0) historyFail(historyPathKey(records[0]), 'active historical auxiliary proof has no registered successor retirement contract; preserve it for explicit reconciliation.', 'unsupported-active-record');
+  for (const [directory, kind] of [['supersessions', 'supersession'], ['reconciliation', 'reconciliation']] as const) {
+    const records = await activeRecordPaths(directory);
+    for (const parts of records) {
+      const file = sourceFile(await capture(parts), kind);
+      try {
+        validateAt(file, (value) => state.schemaVersion === 1
+          ? validateHistoricalV1AuxiliaryRecord(value, kind) : validateHistoricalV2AuxiliaryRecord(value, kind));
+      } catch (error) {
+        if (!(error instanceof ActivationHistoryError) || error.code !== 'invalid-history-record') throw error;
+        historyFail(historyPathKey(parts), error.message, 'unsupported-active-record');
+      }
+      files.push(file);
+    }
   }
   for (const parts of [['governance', 'credentials', 'preflight-policy.json'], ['governance', 'activation-baseline.json']]) {
-    if ((await capture(parts)).content !== undefined) {
-      historyFail(historyPathKey(parts), 'active auxiliary proof has no registered v1 retirement contract; it cannot be silently carried forward.', 'unsupported-active-record');
+    const snapshot = await capture(parts);
+    if (snapshot.content !== undefined) {
+      if (parts[1] === 'activation-baseline.json') {
+        historyFail(historyPathKey(parts), 'active auxiliary proof has no registered source retirement contract; it cannot be silently carried forward.', 'unsupported-active-record');
+      }
+      const file = sourceFile(snapshot, 'credential-policy');
+      validateAt(file, (value) => state.schemaVersion === 1
+        ? validateHistoricalV1AuxiliaryRecord(value, 'credential-policy') : validateHistoricalV2AuxiliaryRecord(value, 'credential-policy'));
+      files.push(file);
     }
   }
   const selected = new Set<string>();
@@ -775,7 +633,9 @@ export async function readHistoricalActivationInventory(
   const requireApproval = (id: string, expectedPhase: string, expectedHash?: string) => {
     const found = approvals.get(id);
     if (!found) historyFail(`governance/approvals/${id}`, 'referenced historical approval is missing.', 'missing-historical-record');
-    if (found.record.phaseId !== expectedPhase || expectedHash !== undefined && historicalApprovalEnvelopeHash(found.record) !== expectedHash) {
+    const scopeHash = found.record.schemaVersion === 1
+      ? historicalApprovalEnvelopeHash(found.record) : historicalV2ApprovalEnvelopeHash(found.record);
+    if (found.record.phaseId !== expectedPhase || expectedHash !== undefined && scopeHash !== expectedHash) {
       historyFail(historyPathKey(found.file.pathParts), 'approval phase or scope hash contradicts its reference.', 'invalid-historical-reference');
     }
     select(found.file);
@@ -787,7 +647,7 @@ export async function readHistoricalActivationInventory(
       requireApproval(entry.record.approval.envelopeId, entry.record.phaseId, entry.record.approval.envelopeHash);
     }
   };
-  const selectEvidence = (entry: { file: HistoricalSourceFile; record: HistoricalEvidenceRecord }) => {
+  const selectEvidence = (entry: { file: HistoricalSourceFile; record: HistoricalEvidenceRecord | HistoricalV2EvidenceRecord }) => {
     select(entry.file);
     const { header, payload, evidenceId } = entry.record;
     const matching = plans.filter((candidate) =>
@@ -811,6 +671,10 @@ export async function readHistoricalActivationInventory(
       phase.state === 'approved' && phase.approvals.length === 0) {
       historyFail(`governance/activation-state.json#phases.${id}`, 'terminal historical state has no required record references.', 'missing-historical-record');
     }
+    if (['verified', 'inapplicable', 'retained', 'disposed'].includes(phase.state) &&
+      !phase.evidence.some((reference) => reference.result === phase.state)) {
+      historyFail(`governance/activation-state.json#phases.${id}`, 'terminal historical state has no matching result reference.', 'invalid-historical-reference');
+    }
     for (const ref of phase.evidence) {
       const found = evidence.get(ref.evidenceId);
       if (!found) historyFail(`governance/evidence/${ref.evidenceId}.json`, 'referenced historical evidence is missing.', 'missing-historical-record');
@@ -827,6 +691,19 @@ export async function readHistoricalActivationInventory(
     if (!retained || retained.record.header.phaseId !== 'remote-import-verified' ||
       canonicalSha256(retained.record.header) !== state.bootstrapState.remoteImportEvidenceDigest) {
       historyFail('governance/activation-state.json#bootstrapState', 'remote import evidence reference is missing or inconsistent.', 'invalid-historical-reference');
+    }
+    if (sourceMigration) {
+      for (const phase of sourceMigration.revalidation.phases) {
+        if (phase.status !== 'complete') continue;
+        for (const id of phase.evidenceIds) {
+          const found = evidence.get(id);
+          if (!found || found.record.header.phaseId !== phase.phaseId || found.record.header.result !== 'verified' ||
+            !state.phases[phase.phaseId].evidence.some((reference) => reference.evidenceId === id &&
+              reference.headerDigest === canonicalSha256(found.record.header))) {
+            historyFail(historyPathKey(migrationStateFilePathParts), 'completed source revalidation has a missing or contradictory historical proof link.', 'invalid-historical-reference');
+          }
+        }
+      }
     }
     selectEvidence(retained);
     if (state.bootstrapState.deletionEvidenceId !== undefined) {
@@ -857,5 +734,8 @@ export async function readHistoricalActivationInventory(
     else unreviewedRecords.push(entry.file);
   }
   files.sort((a, b) => historyPathKey(a.pathParts) < historyPathKey(b.pathParts) ? -1 : 1);
-  return { manifest, state, files, unreviewedRecords, preconditions };
+  return {
+    manifest, state, ...(sourceMigration ? { sourceMigration } : {}),
+    ...(sourceChangeMetadata ? { sourceChangeMetadata } : {}), files, unreviewedRecords, preconditions
+  };
 }

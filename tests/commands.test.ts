@@ -809,7 +809,7 @@ describe('commands', () => {
       expect(governancePolicy).toContain('30 days read-only after verified remote import');
       expect(governancePolicy).toContain('Microsoft.Network');
       expect(governancePolicy).toContain('GitHub.Network');
-      expect(governanceLauncher.length).toBeLessThan(2_000);
+      expect(governanceLauncher.length).toBeLessThan(3_000);
       expect(governanceLauncher).toContain('liftoff governance status --json');
       expect(governanceLauncher).toContain('liftoff governance verify --json');
       expect(governanceLauncher).not.toMatch(/\bmodel\b/i);

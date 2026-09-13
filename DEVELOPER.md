@@ -51,32 +51,33 @@ and successful generated-file checks must not be described as those capabilities
 
 ## Activation version vector
 
-Current deterministic setup contract, retained by the 0.11.3 CLI patch:
+Current deterministic setup contract, published by Liftoff 0.12.0:
 
 ```json
 {
-  "liftoffVersion": "0.11.0",
+  "liftoffVersion": "0.12.0",
   "manifestArtifactVersion": 7,
   "policyVersion": "6",
-  "activationContractVersion": 2,
-  "phaseGraphSchemaVersion": 1,
-  "phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
-  "activationStateSchemaVersion": 2,
-  "evidenceHeaderSchemaVersion": 2,
-  "approvalEnvelopeSchemaVersion": 2,
+  "activationContractVersion": 3,
+  "phaseGraphSchemaVersion": 2,
+  "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+  "activationStateSchemaVersion": 3,
+  "evidenceHeaderSchemaVersion": 3,
+  "approvalEnvelopeSchemaVersion": 3,
   "supersessionSchemaVersion": 1,
   "credentialPolicySchemaVersion": 1
 }
 ```
 
 `phaseGraphHash` is the lowercase SHA-256 hex digest of the canonical packaged
-phase graph bytes. When documenting unreleased work before the final graph is
+29-phase graph bytes, spanning from local readiness through `bootstrap-workflow-source-ready`
+to final lifecycle disposal. When documenting unreleased work before the final graph is
 known, use a clear placeholder such as `<sha256-of-canonical-phase-graph-json>`;
 do not fabricate a historical value.
 
 The generated `liftoff.manifest.json` records this as manifest `artifactVersion`
 7 plus the activation identity fields shown above. Compatibility metadata uses
-schema version 3 in its own document, not a new required manifest field.
+schema version 4 in its own document, not a new required manifest field.
 Assessment report/catalog, graph, supersession, and credential-policy schemas
 remain at version 1; normative policy remains 6.
 
@@ -273,7 +274,7 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.11.3 release checklist
+## 0.12.0 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
   `0.11.3`. Preparing these files is not publication or permission to create a tag.
@@ -430,17 +431,17 @@ and facade use. Packed smoke covers runtime asset lookup outside this checkout.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 26 declared phases, 10 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 14
+Of its 29 declared phases, 11 have built-in handler paths, 2 require an injected
+GitHub ruleset adapter that the public CLI does not currently supply, and 16
 fall back to an explicit missing-production-adapter blocker.
 
-The missing production phase handlers are `provider-ready`,
-`state-path-selected`, `existing-private-path`, `bootstrap-local`,
+The missing production phase handlers are `bootstrap-workflow-source-ready`,
+`provider-ready`, `state-path-selected`, `existing-private-path`, `bootstrap-local`,
 `runner-ready`, `private-backend-proof`, `remote-import-verified`,
+`application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
-`staging-qualified`, `production-rehearsed`, `green-red-proof`, and
-`enforcement-approved`. `rulesets-applied` and `live-readback` have adapter
-contracts but need production wiring.
+`staging-qualified`, `production-rehearsed`, and `green-red-proof`.
+`rulesets-applied` and `live-readback` have adapter contracts but need production wiring.
 
 Built-in handler presence does not establish a complete user journey:
 approval envelopes are read from disk but no public approval-persistence

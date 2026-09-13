@@ -5,7 +5,7 @@ import { canonicalSha256 } from '../../domain/governance/activation/canonical-js
 import { selectLatestPhaseEvidence } from '../../domain/governance/activation/evidence.js';
 import { phaseById } from '../../domain/governance/activation/operations.js';
 import { validateManifestActivationForExecution } from '../../domain/governance/activation/validators.js';
-import type { ActivationIdentity, PhaseId, SavedTransitionPlan } from '../../domain/governance/activation/types.js';
+import { localSetupPhaseIds, type ActivationIdentity, type PhaseId, type SavedTransitionPlan } from '../../domain/governance/activation/types.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
 import { inspectGovernanceTransition } from '../../governance-activation/commands.js';
 import {
@@ -22,16 +22,20 @@ import {
 } from '../../governance-activation/transitions.js';
 import { NodeCommandRunner, formatCommand, type CommandResult, type CommandRunner, type RunCommandOptions } from '../../process-runner.js';
 import {
-  acceptDeclaredCommandOutputs, captureRetainedProjectInputs, changedRetainedProjectInputs,
+  acceptDeclaredCommandOutputs, changedRetainedProjectInputs,
   localValidationOutputPolicy, outputsForLocalCommand, type RetainedProjectInput
 } from './protected-source.js';
 import { formatUpdateCommand } from './command-guidance.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
+import { captureMigrationRetainedProjectInputs } from '../../governance-activation/historical-inputs.js';
+import { historyPathParts } from '../../governance-activation/history-contracts.js';
+import { assertSafeHistoricalRecord } from '../../governance-activation/historical-safety.js';
 
-const localPhases: readonly LocalSeedPhaseId[] = ['seed-valid', 'seed-verified', 'seed-archived'];
+const localPhases: readonly LocalSeedPhaseId[] = localSetupPhaseIds;
 const successfulStates = new Set(['verified', 'approved', 'inapplicable', 'retained', 'disposed']);
 const commandTimeoutMs = 120_000;
 const commandOutputLimit = 2 * 1024 * 1024;
+const maximumMetadataCommands = 256;
 
 export interface LocalRevalidationPhaseResult {
   phaseId: LocalSeedPhaseId;
@@ -61,6 +65,7 @@ export interface LocalRevalidationPreview {
   targetIdentity: ActivationIdentity;
   targetManifestDigest: string;
   protectedInputBinding: string;
+  sensitivePathExclusions: readonly (readonly string[])[];
   phases: readonly LocalSeedPhasePreview[];
   reusedPhases: readonly { phaseId: LocalSeedPhaseId; evidenceId: string; headerDigest: string }[];
   inspectionCommands: readonly LocalSeedCommand[];
@@ -70,7 +75,7 @@ export interface LocalRevalidationPreview {
     state: 'governance/activation-state.json';
     limit: 'At most one new plan and evidence record per listed phase; existing records are never replaced.';
   };
-  commandLimits: { timeoutMs: number; maxOutputBytes: number };
+  commandLimits: { timeoutMs: number; maxOutputBytes: number; maxMetadataCommands: number };
   outputPolicy: typeof localValidationOutputPolicy;
   effects: readonly string[];
   boundary: 'Stop before Git publication, provider reads, credentials, or independently approved governance transitions.';
@@ -100,14 +105,15 @@ function executionDescription(): Pick<LocalRevalidationPreview, 'inspectionComma
       state: 'governance/activation-state.json',
       limit: 'At most one new plan and evidence record per listed phase; existing records are never replaced.'
     },
-    commandLimits: { timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit },
+    commandLimits: { timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit, maxMetadataCommands: maximumMetadataCommands },
     outputPolicy: localValidationOutputPolicy,
     effects: [
       'Local validation executes project-controlled code, not a sandbox. Exact commands and environment overrides are listed per phase.',
       'Only already available tools/dependencies are used. No dependency installation, tofu init, seed task edits, or archive replay is authorized.',
       'Checks may write tool/test/build caches and outputs; unexpected protected-input edits are preserved and block evidence.',
       'Repository scripts, tests, and existing outputs are bound before approval. Only listed command-specific generated outputs may change after that approved command executes.',
-      'Fresh phase plans, evidence, and activation state are the only engine writes. The coordinator separately records migration progress.'
+      'Fresh phase plans, evidence, and activation state are the only engine writes. The coordinator separately records migration progress.',
+      'Protected state, saved provider plans, credentials, and declared retention/key paths are excluded from engine input hashing; migration approval does not authorize their access.'
     ],
     boundary: 'Stop before Git publication, provider reads, credentials, or independently approved governance transitions.'
   };
@@ -117,10 +123,21 @@ function assertDigest(value: string, label: string): void {
   if (!/^[a-f0-9]{64}$/.test(value)) throw new Error(`${label} must be a complete lowercase SHA-256 binding.`);
 }
 
+function revalidationDiagnostic(error: unknown): string {
+  const message = error instanceof Error ? error.message : String(error);
+  try {
+    assertSafeHistoricalRecord(message, 'local revalidation diagnostic');
+    return message;
+  } catch {
+    return 'Local verification diagnostic was withheld because it contains prohibited sensitive content.';
+  }
+}
+
 export async function previewLocalRevalidation(input: {
   projectRoot: string;
   targetManifest: LiftoffManifest;
   protectedInputBinding: string;
+  sensitivePathExclusions?: readonly (readonly string[])[];
   inspection?: GovernanceTransitionInspection;
 }): Promise<LocalRevalidationPreview> {
   validateManifestActivationForExecution(input.targetManifest);
@@ -148,6 +165,7 @@ export async function previewLocalRevalidation(input: {
   const semantic: Omit<LocalRevalidationPreview, 'fingerprint'> = {
     schemaVersion: 1, scope: 'local-seed-revalidation', projectRoot, targetIdentity: identity,
     targetManifestDigest: canonicalSha256(input.targetManifest), protectedInputBinding: input.protectedInputBinding,
+    sensitivePathExclusions: (input.sensitivePathExclusions ?? []).map((parts) => historyPathParts(parts, 'migration sensitive path exclusion')),
     phases, reusedPhases, ...executionDescription()
   };
   return { ...semantic, fingerprint: canonicalSha256(semantic) };
@@ -195,13 +213,33 @@ export async function executeLocalRevalidation(input: {
   let protectedSnapshot: readonly RetainedProjectInput[] | undefined;
   let expectedCommands: readonly LocalSeedCommand[] = [];
   let commandIndex = 0;
+  let metadataCommands = 0;
+  const capturePublicInputs = () => captureMigrationRetainedProjectInputs(approved.projectRoot, approved.sensitivePathExclusions);
+
+  function safeOutcome(result: CommandResult): CommandResult {
+    try {
+      assertSafeHistoricalRecord({
+        stdout: result.stdout, stderr: result.stderr, errorMessage: result.errorMessage ?? null
+      }, 'local verification output');
+    } catch {
+      throw new Error('Local verification returned prohibited sensitive output; content was withheld and no successful proof was authorized.');
+    }
+    return result;
+  }
+
+  async function runMetadata(command: LocalSeedCommand['command'], options?: RunCommandOptions): Promise<CommandResult> {
+    if (++metadataCommands > maximumMetadataCommands) throw new Error('Local revalidation exceeded its approved finite metadata-read bound.');
+    const result = await runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
+    if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');
+    return safeOutcome(result);
+  }
 
   async function assertProtectedInputs(): Promise<void> {
     // Reuse only the inventory freshly checked by the coordinator, never one cached across boundaries.
     const observed = await input.protectedInputs.assertUnchanged();
     if (protectedSnapshot) {
       const changed = changedRetainedProjectInputs(protectedSnapshot,
-        observed ?? await captureRetainedProjectInputs(approved.projectRoot));
+        observed ?? await capturePublicInputs());
       if (changed.length) throw new Error(`Protected inputs changed during local revalidation: ${changed.join(', ')}. Edits were preserved; no stale successful evidence is authorized.`);
     }
   }
@@ -214,9 +252,7 @@ export async function executeLocalRevalidation(input: {
         throw new Error(`Operation is outside the approved local revalidation command sequence: ${formatCommand(command)}. Obtain a fresh preview.`);
       }
       if (metadata) {
-        const result = await runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
-        if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');
-        return result;
+        return runMetadata(command, options);
       }
       await assertProtectedInputs();
       let result: CommandResult;
@@ -226,7 +262,7 @@ export async function executeLocalRevalidation(input: {
         const observed = await input.protectedInputs.afterCommand?.(command, options);
         if (protectedSnapshot) {
           protectedSnapshot = acceptDeclaredCommandOutputs(
-            protectedSnapshot, observed ?? await captureRetainedProjectInputs(approved.projectRoot),
+            protectedSnapshot, observed ?? await capturePublicInputs(),
             outputsForLocalCommand(approved.projectRoot, command, options)
           );
         }
@@ -234,7 +270,7 @@ export async function executeLocalRevalidation(input: {
       }
       if (canonicalSha256(result.command) !== canonicalSha256(command)) throw new Error('The local runner returned an outcome for a different command.');
       commandIndex += 1;
-      return result;
+      return safeOutcome(result);
     }
   };
 
@@ -243,12 +279,12 @@ export async function executeLocalRevalidation(input: {
       if (!inspectionCommands().some((expected) => commandMatches(expected, approved.projectRoot, command, options))) {
         throw new Error('Revalidation inspection attempted a command outside the local Git metadata allowlist.');
       }
-      return runner.run(command, { ...options, timeoutMs: commandTimeoutMs, maxOutputBytes: commandOutputLimit });
+      return runMetadata(command, options);
     }
   };
   const reinspect = async () => {
     await assertProtectedInputs();
-    const inspection = await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock() });
+    const inspection = await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock(), scope: 'local' });
     await assertProtectedInputs();
     return resumableLocalInspection(inspection);
   };
@@ -285,6 +321,11 @@ export async function executeLocalRevalidation(input: {
         index > 0 && localPhases.indexOf(approved.phases[index - 1]!.phaseId) >= localPhases.indexOf(phase.phaseId))) {
       throw new Error('The approved local phase set is not a finite ordered seed revalidation plan.');
     }
+    const covered = [...approved.phases.map((phase) => phase.phaseId), ...approved.reusedPhases.map((phase) => phase.phaseId)];
+    if (covered.length !== localPhases.length || new Set(covered).size !== localPhases.length ||
+      covered.some((phaseId) => !isLocalPhase(phaseId)) || localPhases.some((phaseId) => !covered.includes(phaseId))) {
+      throw new Error('The approved revalidation must account for each local phase exactly once, as fresh or current reusable proof.');
+    }
     await assertProtectedInputs();
     const manifest = await loadManifest(approved.projectRoot);
     validateManifestActivationForExecution(manifest);
@@ -292,10 +333,10 @@ export async function executeLocalRevalidation(input: {
       canonicalSha256(manifest.governance.activationIdentity) !== canonicalSha256(approved.targetIdentity)) {
       throw new Error('The committed target manifest/activation differs from the approved revalidation preview.');
     }
-    protectedSnapshot = await captureRetainedProjectInputs(approved.projectRoot);
+    protectedSnapshot = await capturePublicInputs();
     current = await reinspect();
     if (!current.loadedState || current.state.repository.id === 'unbound') {
-      throw new Error('Local revalidation starts only after the anchored v2 successor is committed.');
+      throw new Error('Local revalidation starts only after the anchored v3 successor is committed.');
     }
     for (const reused of approved.reusedPhases) {
       const selected = selectLatestPhaseEvidence(current.evidence.filter((record) => record.header.phaseId === reused.phaseId), current.contexts[reused.phaseId]).selected;
@@ -343,7 +384,8 @@ export async function executeLocalRevalidation(input: {
             evidenceWriteOperation(node, evidencePathParts(`${phase.phaseId}-${safeTimestamp(plan.createdAt)}`)),
             stateWriteOperation(node)
           ];
-          if (plan.phaseId !== phase.phaseId || canonicalSha256(plan.identity) !== canonicalSha256(approved.targetIdentity) ||
+          if (plan.scope !== 'local' || plan.fileChanges?.length || plan.recovery || plan.approvalBundle?.length ||
+            plan.phaseId !== phase.phaseId || canonicalSha256(plan.identity) !== canonicalSha256(approved.targetIdentity) ||
             plan.graphHash !== approved.targetIdentity.phaseGraphHash || plan.stateHash !== current!.loadedState?.contentHash ||
             plan.baselineDigest !== context.baselineSha || plan.inputDigest !== context.inputDigest ||
             plan.transitionDigest !== context.transition.transitionDigest || canonicalSha256(plan.operations) !== canonicalSha256(expectedOperations)) {
@@ -353,7 +395,7 @@ export async function executeLocalRevalidation(input: {
       });
       phaseResults.push({
         phaseId: phase.phaseId, status: execution.applied ? 'verified' : 'blocked',
-        blockers: execution.blockers, evidence: execution.evidence, savedPlan: execution.savedPlan
+        blockers: execution.blockers.map(revalidationDiagnostic), evidence: execution.evidence, savedPlan: execution.savedPlan
       });
       if (!execution.applied) throw new Error(execution.blockers.join(' ') || execution.message);
       if (commandIndex !== expectedCommands.length) throw new Error(`The ${phase.phaseId} outcome omitted reviewed local checks.`);
@@ -372,11 +414,11 @@ export async function executeLocalRevalidation(input: {
     await input.onProgress?.(complete);
     return complete;
   } catch (error) {
-    const blocker = error instanceof Error ? error.message : String(error);
+    const blocker = revalidationDiagnostic(error);
     const blockers = [blocker];
     if (current) {
       try {
-        current = await inspectGovernanceTransition(approved.projectRoot, { runner: metadataRunner, now: clock() });
+        current = await inspectGovernanceTransition(approved.projectRoot, { runner: metadataRunner, now: clock(), scope: 'local' });
         for (const [index, phase] of phaseResults.entries()) {
           if (phase.status !== 'blocked' && current.readiness.phases[phase.phaseId].state !== 'verified') {
             phaseResults[index] = { ...phase, status: 'blocked', blockers: [
@@ -387,7 +429,7 @@ export async function executeLocalRevalidation(input: {
         }
       } catch (inspectionError) {
         current = undefined;
-        blockers.push(`Current revalidation readiness cannot be inspected: ${inspectionError instanceof Error ? inspectionError.message : String(inspectionError)}`);
+        blockers.push(`Current revalidation readiness cannot be inspected: ${revalidationDiagnostic(inspectionError)}`);
       }
     }
     if (activePhase && !phaseResults.some((phase) => phase.phaseId === activePhase && phase.status === 'blocked')) {
@@ -399,7 +441,7 @@ export async function executeLocalRevalidation(input: {
     try {
       await input.onProgress?.(blocked);
     } catch (progressError) {
-      return { ...blocked, blockers: [...blocked.blockers, `Revalidation progress could not be persisted: ${progressError instanceof Error ? progressError.message : String(progressError)}`] };
+      return { ...blocked, blockers: [...blocked.blockers, `Revalidation progress could not be persisted: ${revalidationDiagnostic(progressError)}`] };
     }
     return blocked;
   }

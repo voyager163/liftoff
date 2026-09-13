@@ -1,4 +1,5 @@
-import { access, readdir } from 'node:fs/promises';
+import { access, open, readdir } from 'node:fs/promises';
+import { constants } from 'node:fs';
 import path from 'node:path';
 import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
 import { findProjectRoot } from '../adapters/filesystem/project-discovery.js';
@@ -22,6 +23,7 @@ import {
 } from './activation-state.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import {
+  approvalRequestForSavedPlan,
   canonicalApprovalEnvelopeHash,
   evaluateApprovalForTransitionPlan,
   transitionPlanForPhase
@@ -36,6 +38,7 @@ import {
   type PatEnrollmentGuidance
 } from './credentials.js';
 import {
+  assertPhaseOutputsBound,
   selectLatestPhaseEvidence,
   type EvidenceFreshnessContext,
   type EvidenceSelectionResult
@@ -48,8 +51,8 @@ import {
 import { governanceActivationPolicyVersion } from '../domain/governance/policy/identity.js';
 import { calculatePhaseReadiness, type ReadinessResult } from '../domain/governance/activation/readiness.js';
 import {
-  projectOpenSpecTaskCheckboxes,
-  type PhaseTaskMapping
+  projectGovernanceChangeTasks,
+  projectOpenSpecTaskCheckboxes
 } from './task-projection.js';
 import {
   inspectGovernanceSourceOfTruth,
@@ -80,11 +83,17 @@ import type {
   CredentialPolicy,
   UserActivationState
 } from '../domain/governance/activation/types.js';
-import { phaseIds } from '../domain/governance/activation/types.js';
-import { activationEvidenceContexts, readActivationInputSnapshot } from './inputs.js';
+import {
+  phaseIds, phaseScope, type GovernanceScope, type ActivationConfiguration, type SavedTransitionPlan
+} from '../domain/governance/activation/types.js';
+import {
+  activationEvidenceContexts, activationSensitivePathExclusions, protectedLocalInputBlockers, readActivationInputSnapshot
+} from './inputs.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './read-only.js';
-import { inspectActivationMigrationHistory } from './migration-history.js';
+import {
+  inspectActivationMigrationHistory, historicalLifecyclePhaseBlockers, type HistoricalLifecycleObligation
+} from './migration-history.js';
 import { migrationRevalidationPhaseIds, type MigrationJournal } from './history-contracts.js';
 import {
   validateApprovalEnvelope,
@@ -92,6 +101,13 @@ import {
   validateCredentialPolicy,
   validateManifestActivationForExecution
 } from '../domain/governance/activation/validators.js';
+import { validateActivationConfiguration } from '../domain/governance/activation/validators.js';
+import { remoteRepository } from '../domain/governance/activation/inputs.js';
+import { isRecord } from '../domain/governance/activation/canonical-json.js';
+import {
+  approveGovernancePreview, assertGovernanceApprovalIssued, loadGovernancePreview, saveGovernancePreview
+} from './public-plans.js';
+import { parseArgs } from '../cli/args/parser.js';
 
 interface GovernanceCommandContext {
   cwd: string;
@@ -99,7 +115,7 @@ interface GovernanceCommandContext {
   runner?: CommandRunner;
 }
 
-type GovernanceSubcommand = 'status' | 'plan' | 'apply-next' | 'resume' | 'verify';
+type GovernanceSubcommand = 'status' | 'plan' | 'approve' | 'apply-next' | 'credential-enroll' | 'recover' | 'resume' | 'verify';
 type GraphSource = 'packaged' | 'managed';
 type CheckStatus = 'passed' | 'failed' | 'skipped';
 
@@ -137,6 +153,11 @@ interface GovernanceInspection {
   retryArchivedSeedBaseline: boolean;
   expectedActiveSeed: boolean;
   migration: MigrationJournal | null;
+  scope: GovernanceScope;
+  activationInputs?: ActivationConfiguration;
+  recoverPhase?: PhaseId;
+  sensitivePathExclusions: readonly (readonly string[])[];
+  historicalLifecycleObligations: readonly HistoricalLifecycleObligation[];
 }
 
 interface CredentialInspection {
@@ -174,7 +195,8 @@ interface GovernanceMigrationSummary {
 type SetupCompletionStatus = 'not-started' | 'in-progress' | 'complete';
 
 interface GovernanceVerificationResult {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  scope: GovernanceScope;
   command: 'governance verify';
   projectRoot: string;
   readOnly: true;
@@ -193,12 +215,19 @@ interface GovernanceVerificationResult {
   activeSourceOfTruth: GovernanceSourceOfTruthInspection;
   nextReadyPhase: PhaseId | null;
   checks: readonly VerificationCheck[];
+  progress: Record<GovernanceScope, boolean>;
+  historicalLifecycleObligations: readonly HistoricalLifecycleObligation[];
+  taskProjectionAudit: UserActivationState['taskProjection'] | null;
+  nextActions: readonly GovernanceNextAction[];
 }
 
 const governanceSubcommands = new Set<GovernanceSubcommand>([
   'status',
   'plan',
+  'approve',
   'apply-next',
+  'credential-enroll',
+  'recover',
   'resume',
   'verify'
 ]);
@@ -236,7 +265,12 @@ function errorCode(error: unknown): string | undefined {
 }
 
 function json(presentation: PresentationSession, value: unknown): void {
-  presentation.rawStdout(`${JSON.stringify(value, null, 2)}\n`);
+  const text = `${JSON.stringify(value, null, 2)}\n`;
+  const scan = detectCredentialLeaks([{ source: 'generated-artifact', label: 'governance command output', text }]);
+  if (scan.status === 'compromised') {
+    throw new Error('Governance output contained credential-shaped data and was withheld; inspect the protected execution checkpoint.');
+  }
+  presentation.rawStdout(text);
 }
 
 function parseGovernanceSubcommand(parsed: ParsedArgs): GovernanceSubcommand | undefined {
@@ -295,7 +329,9 @@ function notStartedState(manifest: LiftoffManifest): UserActivationState {
     applicability: {
       statePath: 'none',
       privateStagingDast: 'unknown',
-      credentialRequired: 'unknown'
+      credentialRequired: 'unknown',
+      cloudStateRequired: 'unknown',
+      privateRunnerRequired: 'unknown'
     },
     phases: emptyPhaseState(now),
     createdAt: now,
@@ -382,14 +418,15 @@ async function loadEvidence(projectRoot: string): Promise<PhaseEvidenceRecord[]>
 }
 
 function repositoryFromState(state: UserActivationState): ReturnType<typeof canonicalCredentialRepository> {
-  const repositoryName = state.repository.name.includes('/')
-    ? state.repository.name.split('/').at(-1)!
-    : state.repository.name;
-  const owner = state.repository.name.includes('/')
-    ? state.repository.name.split('/')[0]!
+  const remote = remoteRepository(state);
+  const repositoryName = remote.name.includes('/')
+    ? remote.name.split('/').at(-1)!
+    : remote.name;
+  const owner = remote.name.includes('/')
+    ? remote.name.split('/')[0]!
     : 'local';
   return canonicalCredentialRepository({
-    id: state.repository.id,
+    id: remote.id,
     owner,
     name: repositoryName
   });
@@ -425,7 +462,7 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
       ready: false,
       guidance,
       policy: null,
-      issues: [`${pathLabel} is missing. Public credential enrollment and independent credential readback are unavailable; do not hand-create credential proof or supply a token through setup.`]
+      issues: [`${pathLabel} is missing. Preview credential-ready and use governance credential-enroll with the approved plan and a private input channel.`]
     };
   }
   const text = bytes.toString('utf8');
@@ -476,7 +513,7 @@ async function inspectCredentialPolicy(projectRoot: string, state: UserActivatio
       ready: false,
       guidance: null,
       policy,
-      issues: [...usage.issues, 'Independent credential readback and public credential enrollment are unavailable; a policy file alone is not proof.']
+      issues: [...usage.issues]
     };
   } catch (error) {
     return {
@@ -525,14 +562,29 @@ function buildEvidenceFreshness(
   })) as Record<PhaseId, EvidenceFreshnessEntry>;
 }
 
-async function inspectGovernance(projectRoot: string, runner?: CommandRunner, now = new Date()): Promise<GovernanceInspection> {
+interface GovernanceInspectionOptions {
+  scope?: GovernanceScope;
+  command?: string;
+  activationInputs?: ActivationConfiguration;
+  recoverPhase?: PhaseId;
+}
+
+async function inspectGovernance(
+  projectRoot: string,
+  runner?: CommandRunner,
+  now = new Date(),
+  options: GovernanceInspectionOptions = {}
+): Promise<GovernanceInspection> {
   const manifest = await loadManifest(projectRoot);
   validateManifestActivationForExecution(manifest);
   const graph = await loadGovernanceGraph(projectRoot);
   await assertPolicyIdentity(projectRoot, manifest);
   const loadedState = await loadActivationState(projectRoot);
   const migration = await inspectActivationMigrationHistory(projectRoot);
-  const state = loadedState?.state ?? notStartedState(manifest);
+  const state = { ...(loadedState?.state ?? notStartedState(manifest)),
+    ...(options.activationInputs ? { activationInputs: options.activationInputs } : {}) };
+  const isStatusOrVerify = options.command === 'status' || options.command === 'verify';
+  const scope = options.scope ?? (isStatusOrVerify ? 'activation' : 'local');
   if (state.identity.phaseGraphHash !== graph.hash) {
     throw new Error(
       `Activation state graph hash ${state.identity.phaseGraphHash} does not match loaded graph hash ${graph.hash}.`
@@ -545,9 +597,20 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
   }
   const approvals = await loadApprovals(projectRoot, state.identity);
   const evidence = await loadEvidence(projectRoot);
-  const snapshot = await readActivationInputSnapshot(projectRoot, manifest, runner);
-  const contexts = activationEvidenceContexts(graph.graph, state, snapshot, now);
+  assertPhaseOutputsBound(state, evidence);
   const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
+  if (!options.activationInputs) {
+    const approvedConfiguration = reviewedPlans.filter((plan) => plan.configuration &&
+      approvals.some((approval) => approval.id === plan.approval.envelopeId &&
+        canonicalApprovalEnvelopeHash(approval) === plan.approval.envelopeHash))
+      .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0]?.configuration;
+    if (approvedConfiguration) state.activationInputs = approvedConfiguration;
+  }
+  const sensitivePathExclusions = activationSensitivePathExclusions(
+    state, migration.status === 'committed' ? migration.lifecycleObligations.map((obligation) => obligation.retention) : []
+  );
+  const snapshot = await readActivationInputSnapshot(projectRoot, manifest, runner, { sensitivePathExclusions });
+  const contexts = activationEvidenceContexts(graph.graph, state, snapshot, now);
   for (const phase of phaseIds) contexts[phase].reviewedPlans = reviewedPlans;
   const sourceOfTruth = await inspectGovernanceSourceOfTruth({
     projectRoot,
@@ -574,7 +637,18 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
     !evidence.some((record) => archiveAndLaterPhases.includes(record.header.phaseId));
   const credential = await inspectCredentialPolicy(projectRoot, state);
   const evidenceFreshness = buildEvidenceFreshness(graph.graph, evidence, contexts);
+  if (credential.policy && credential.status === 'valid') {
+    const proof = selectLatestPhaseEvidence(evidence.filter((entry) => entry.header.phaseId === 'credential-ready'), contexts['credential-ready']).selected;
+    credential.ready = !!proof && isRecord(proof.payload) && proof.payload.policyDigest === canonicalSha256(credential.policy);
+    if (!credential.ready) credential.issues = ['Independent credential readback and current verification are required; a policy file alone is not proof.'];
+  }
   const infrastructureBlocker = seedInfrastructureBaselineBlocker(manifest);
+  const localInputBlockers = [
+    ...(infrastructureBlocker ? [infrastructureBlocker] : []),
+    ...protectedLocalInputBlockers(sensitivePathExclusions)
+  ];
+  const historicalLifecycleObligations = migration.status === 'committed' ? migration.lifecycleObligations : [];
+  const historicalProtection = historicalLifecyclePhaseBlockers(historicalLifecycleObligations);
   const readiness = calculatePhaseReadiness({
     graph: graph.graph,
     state,
@@ -582,15 +656,43 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
     evidence,
     transitionContexts: contexts,
     retryArchivedSeedBaseline,
+    scope,
+    recoverPhase: options.recoverPhase,
+    historicalLifecycleBlockers: historicalProtection['bootstrap-state-disposed'],
     phaseBlockers: {
       ...Object.fromEntries(Object.entries(phaseCapabilities).filter(([, capability]) => capability.blocker)
         .map(([id, capability]) => [id, [capability.blocker!]])),
       ...(archivedSeedIntegrity.status === 'invalid' ? { 'seed-archived': archivedSeedIntegrity.issues } : {}),
       ...(seedDiscovery.state === 'blocked' ? { 'seed-valid': seedDiscovery.issues } : {}),
-      ...(infrastructureBlocker ? { 'seed-verified': [infrastructureBlocker] } : {})
+      ...(localInputBlockers.length ? { 'seed-verified': localInputBlockers } : {})
+      , ...historicalProtection
     },
     now
   });
+  let resolvedScope = options.scope ?? (isStatusOrVerify ? 'activation' : (readiness.completion.local ? 'activation' : 'local'));
+  let finalReadiness = readiness;
+  if (resolvedScope !== scope) {
+    finalReadiness = calculatePhaseReadiness({
+      graph: graph.graph,
+      state,
+      approvals,
+      evidence,
+      transitionContexts: contexts,
+      retryArchivedSeedBaseline,
+      scope: resolvedScope,
+      recoverPhase: options.recoverPhase,
+      historicalLifecycleBlockers: historicalProtection['bootstrap-state-disposed'],
+      phaseBlockers: {
+        ...Object.fromEntries(Object.entries(phaseCapabilities).filter(([, capability]) => capability.blocker)
+          .map(([id, capability]) => [id, [capability.blocker!]])),
+        ...(archivedSeedIntegrity.status === 'invalid' ? { 'seed-archived': archivedSeedIntegrity.issues } : {}),
+        ...(seedDiscovery.state === 'blocked' ? { 'seed-valid': seedDiscovery.issues } : {}),
+        ...(localInputBlockers.length ? { 'seed-verified': localInputBlockers } : {})
+        , ...historicalProtection
+      },
+      now
+    });
+  }
   return {
     projectRoot,
     manifest,
@@ -602,13 +704,18 @@ async function inspectGovernance(projectRoot: string, runner?: CommandRunner, no
     evidence,
     contexts,
     evidenceFreshness,
-    readiness,
+    readiness: finalReadiness,
     sourceOfTruth,
     credential,
     archivedSeedIntegrity,
     retryArchivedSeedBaseline,
     expectedActiveSeed,
     migration: migration.status === 'committed' ? migration.journal : null
+    , scope: resolvedScope,
+    ...(state.activationInputs ? { activationInputs: state.activationInputs } : {}),
+    ...(options.recoverPhase ? { recoverPhase: options.recoverPhase } : {})
+    , sensitivePathExclusions,
+    historicalLifecycleObligations
   };
 }
 
@@ -636,7 +743,10 @@ function approvalEvaluationForPhase(
   phase: PhaseGraphNode,
   inspection: GovernanceInspection
 ): ApprovalEvaluation {
-  const plan = transitionPlanForPhase(
+  const reviewed = inspection.contexts[phase.id].reviewedPlans?.filter((plan) => plan.phaseId === phase.id &&
+    plan.inputDigest === inspection.contexts[phase.id].inputDigest && plan.baselineDigest === inspection.contexts[phase.id].baselineSha)
+    .sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
+  const plan = reviewed ? approvalRequestForSavedPlan(reviewed, phase, inspection.state) : transitionPlanForPhase(
     phase,
     inspection.state,
     inspection.contexts[phase.id].transition,
@@ -680,7 +790,7 @@ function summarizeMigration(inspection: GovernanceInspection): GovernanceMigrati
     nextRecordedPhase: phases.find((phase) => phase.status !== 'complete')?.phaseId ?? null,
     currentProofRequired: true,
     remedy: needsRevalidation
-      ? `Keep the committed v2 successor and preserved v1 history. Repair the named blockers or stale current proof, run ${checkCommand} for a fresh preview, then explicitly approve the exact remaining local plan before retrying. Prior migration approval does not authorize new work.`
+      ? `Keep the committed v3 successor and preserved v1/v2 history. Repair the named blockers or stale current proof, run ${checkCommand} for a fresh preview, then explicitly approve the exact remaining local plan before retrying. Prior migration approval does not authorize new work.`
       : null
   };
 }
@@ -710,24 +820,37 @@ function renderMigrationHuman(
   presentation.status(
     'info',
     'Migration scope',
-    'Journal progress is audit information, not current proof, governance completion, approval, or provider authority. Current readiness is evaluated separately from v2 evidence.'
+    'Journal progress is audit information, not current proof, governance completion, approval, or provider authority. Current readiness is evaluated separately from v3 evidence.'
   );
   if (summary.remedy) presentation.remedy(summary.remedy);
 }
 
 function statusJson(inspection: GovernanceInspection, command: GovernanceSubcommand): Record<string, unknown> {
-  const blockers = phaseIds.flatMap((phaseId) =>
+  const blockers = verificationPhaseIds(inspection).flatMap((phaseId) =>
     inspection.readiness.phases[phaseId].blockers.map((message) => ({ phaseId, message }))
   );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope: inspection.scope,
     command: `governance ${command}`,
     projectRoot: inspection.projectRoot,
     readOnly: command !== 'apply-next',
     stateSource: inspection.stateSource,
+    activationDisabled: inspection.manifest.governance.profile === 'none',
+    progress: inspection.readiness.completion,
+    localComplete: inspection.readiness.completion.local,
+    activationComplete: inspection.readiness.completion.activation,
+    lifecycleComplete: inspection.readiness.completion.lifecycle,
+    nextActions: governanceNextActions(inspection),
+    blockerFingerprint: canonicalSha256({
+      scope: inspection.scope, stateHash: inspection.loadedState?.contentHash ?? null,
+      inputs: verificationPhaseIds(inspection).map((id) => [id, inspection.contexts[id].inputDigest]), blockers
+    }),
     activationIdentity: inspection.state.identity,
     migration: inspection.migration,
     migrationSummary: summarizeMigration(inspection),
+    taskProjectionAudit: inspection.state.taskProjection ?? null,
+    historicalLifecycleObligations: inspection.historicalLifecycleObligations,
     executionAnchor: inspection.state.repository.id === 'unbound' ? null : inspection.state.repository.id,
     remoteBinding: inspection.state.remoteBinding ?? null,
     graphHash: inspection.graph.hash,
@@ -744,6 +867,10 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
       label: phase.label,
       state: inspection.readiness.phases[phase.id].state,
       storedState: inspection.state.phases[phase.id].state,
+      scope: phaseScope(phase.id),
+      plannable: inspection.readiness.phases[phase.id].plannable ?? false,
+      externalOperation: inspection.state.phases[phase.id].operation ?? null,
+      executionPlanDigest: inspection.state.phases[phase.id].executionPlanDigest ?? null,
       storedBlockers: inspection.state.phases[phase.id].blockers,
       retryable: phaseCapabilities[phase.id].retry === 'explicit-local' &&
         ['failed', 'blocked'].includes(inspection.state.phases[phase.id].state),
@@ -759,6 +886,7 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
       allowedMutations: phase.allowedMutations
     })),
     nextReadyPhase: inspection.readiness.nextReadyPhase,
+    nextPlannablePhase: inspection.readiness.nextPlannablePhase,
     blockers,
     approvals: inspection.approvals.map((approval) => ({
       id: approval.id,
@@ -772,11 +900,70 @@ function statusJson(inspection: GovernanceInspection, command: GovernanceSubcomm
   };
 }
 
+interface GovernanceNextAction {
+  id: string;
+  label: string;
+  command: { executable: 'liftoff'; args: readonly string[] };
+  cwd: string;
+  scope: GovernanceScope;
+  approvalRequired: boolean;
+}
+
+function governanceAction(
+  inspection: GovernanceInspection,
+  subcommand: GovernanceSubcommand,
+  scope: GovernanceScope,
+  extras: readonly string[] = [],
+  approvalRequired = false
+): GovernanceNextAction {
+  const args = ['governance', subcommand, '--project', inspection.projectRoot, '--scope', scope, ...extras, '--json'];
+  parseArgs(args);
+  return {
+    id: `governance-${subcommand}-${scope}`, label: `${subcommand} ${scope} governance`,
+    command: { executable: 'liftoff', args }, cwd: inspection.projectRoot, scope, approvalRequired
+  };
+}
+
+function governanceNextActions(
+  inspection: GovernanceInspection,
+  preview?: { fingerprint: string; plan: SavedTransitionPlan }
+): GovernanceNextAction[] {
+  if (inspection.manifest.governance.profile === 'none' && inspection.scope === 'activation') return [];
+  if (inspection.readiness.completion[inspection.scope]) {
+    if (inspection.scope === 'local') return [governanceAction(inspection, 'plan', 'activation')];
+    if (inspection.scope === 'activation' && !inspection.readiness.completion.lifecycle) {
+      return [governanceAction(inspection, 'status', 'lifecycle')];
+    }
+    return [];
+  }
+  if (preview) {
+    const planArgs = ['--plan', preview.fingerprint];
+    if (preview.plan.approval.evaluation.approvalRequired) {
+      return [governanceAction(inspection, 'approve', preview.plan.scope, planArgs, true)];
+    }
+    const subcommand = preview.plan.recovery ? 'recover' : 'apply-next';
+    return [governanceAction(inspection, subcommand, preview.plan.scope,
+      [...(inspection.stateSource === 'not-started' ? [] : planArgs), '--execute'])];
+  }
+  const interrupted = phaseIds.find((id) => phaseScope(id) === inspection.scope && inspection.readiness.phases[id].recoveryRequired);
+  if (interrupted) return [governanceAction(inspection, 'plan', inspection.scope, ['--recover-phase', interrupted])];
+  if (inspection.scope !== 'local' && !inspection.readiness.completion.local) {
+    return [governanceAction(inspection, 'plan', 'local')];
+  }
+  return [governanceAction(inspection, 'plan', inspection.scope)];
+}
+
+function verificationPhaseIds(inspection: GovernanceInspection): readonly PhaseId[] {
+  return phaseIds.filter((id) => phaseScope(id) === inspection.scope ||
+    inspection.scope === 'activation' && phaseScope(id) === 'local');
+}
+
 function renderStatusHuman(inspection: GovernanceInspection, command: GovernanceSubcommand): void {
   const presentation = inspectionPresentation(inspection);
   presentation.commandIdentity(`governance ${command}`, 'Deterministic activation status');
   presentation.definitions('Activation identity', [
     { label: 'Project', value: inspection.projectRoot },
+    { label: 'Scope', value: inspection.scope },
     { label: 'State', value: inspection.stateSource },
     { label: 'Policy', value: inspection.state.identity.policyVersion },
     { label: 'Contract', value: String(inspection.state.identity.activationContractVersion) },
@@ -848,17 +1035,23 @@ function inspectionPresentation(inspection: GovernanceInspection): PresentationS
 }
 
 function planJson(inspection: GovernanceInspection): Record<string, unknown> {
-  const ready = inspection.graph.graph.phases
+  const scopedPhases = inspection.scope === 'local'
+    ? inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) === 'local')
+    : inspection.scope === 'lifecycle'
+      ? inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) === 'lifecycle')
+      : inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) !== 'lifecycle');
+  const ready = scopedPhases
     .filter((phase) => inspection.readiness.phases[phase.id].state === 'ready')
     .map((phase) => planPhase(phase, inspection));
-  const blocked = inspection.graph.graph.phases
+  const blocked = scopedPhases
     .filter((phase) => inspection.readiness.phases[phase.id].state === 'blocked')
     .map((phase) => ({
       ...planPhase(phase, inspection),
       blockers: inspection.readiness.phases[phase.id].blockers
     }));
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope: inspection.scope,
     command: 'governance plan',
     projectRoot: inspection.projectRoot,
     readOnly: true,
@@ -868,6 +1061,10 @@ function planJson(inspection: GovernanceInspection): Record<string, unknown> {
     activeChange: inspection.state.activeChange,
     activeSourceOfTruth: inspection.sourceOfTruth,
     credential: inspection.credential,
+    progress: inspection.readiness.completion,
+    nextReadyPhase: inspection.readiness.nextReadyPhase,
+    nextPlannablePhase: inspection.readiness.nextPlannablePhase,
+    nextActions: governanceNextActions(inspection),
     readyPhases: ready,
     blockedPhases: blocked
   };
@@ -907,10 +1104,15 @@ function costEnvelope(phase: PhaseGraphNode): Record<string, unknown> {
 }
 
 function renderPlanHuman(inspection: GovernanceInspection, presentation: PresentationSession): void {
-  presentation.commandIdentity('governance plan', 'Read-only activation transition plan');
-  const ready = inspection.graph.graph.phases.filter((phase) => inspection.readiness.phases[phase.id].state === 'ready');
-  const blocked = inspection.graph.graph.phases.filter((phase) => inspection.readiness.phases[phase.id].state === 'blocked');
-  presentation.status('info', 'Read-only', 'No files, remotes, credentials, or cloud resources are changed.');
+  presentation.commandIdentity('governance plan', `Project-read-only ${inspection.scope} transition plan`);
+  const scopedPhases = inspection.scope === 'local'
+    ? inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) === 'local')
+    : inspection.scope === 'lifecycle'
+      ? inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) === 'lifecycle')
+      : inspection.graph.graph.phases.filter((phase) => phaseScope(phase.id) !== 'lifecycle');
+  const ready = scopedPhases.filter((phase) => inspection.readiness.phases[phase.id].state === 'ready');
+  const blocked = scopedPhases.filter((phase) => inspection.readiness.phases[phase.id].state === 'blocked');
+  presentation.status('info', 'Project-read-only', 'No project or provider data is changed; any external preview receipt is disclosed separately.');
   presentation.table('Ready phases', ['Phase', 'Evidence', 'Question', 'Approval', 'Mutations'], ready.map((phase) => {
     const approval = approvalEvaluationForPhase(phase, inspection);
     return [
@@ -962,7 +1164,7 @@ function validateStateEvidence(inspection: GovernanceInspection): VerificationCh
   if (inspection.stateSource === 'not-started') {
     return { id: 'state-evidence', status: 'passed', issues };
   }
-  for (const phaseId of phaseIds) {
+  for (const phaseId of verificationPhaseIds(inspection)) {
     const stored = inspection.state.phases[phaseId];
     if (!terminalEvidenceStates.has(stored.state)) {
       continue;
@@ -978,7 +1180,7 @@ function validateStateEvidence(inspection: GovernanceInspection): VerificationCh
 
 function validatePhaseTerminalStates(inspection: GovernanceInspection): VerificationCheck {
   const issues: string[] = [];
-  for (const phase of inspection.graph.graph.phases) {
+  for (const phase of inspection.graph.graph.phases.filter((phase) => verificationPhaseIds(inspection).includes(phase.id))) {
     const allowed = phase.terminalStates as readonly string[];
     const stored = inspection.state.phases[phase.id].state;
     const selected = selectLatestPhaseEvidence(
@@ -1011,7 +1213,7 @@ function validatePhaseTerminalStates(inspection: GovernanceInspection): Verifica
 }
 
 function validateEvidenceFreshnessCheck(inspection: GovernanceInspection): VerificationCheck {
-  const issues = phaseIds.flatMap((phaseId) => {
+  const issues = verificationPhaseIds(inspection).flatMap((phaseId) => {
     const freshness = inspection.evidenceFreshness[phaseId];
     return freshness.status === 'fresh'
       ? []
@@ -1046,49 +1248,13 @@ function validateReadinessCheck(inspection: GovernanceInspection): VerificationC
   };
 }
 
-async function activeTaskProjectionCheck(inspection: GovernanceInspection): Promise<VerificationCheck> {
-  if (inspection.manifest.project.specWorkflow === 'spec-kit') {
-    const bytes = await readProjectFile(inspection.projectRoot, ['specs', '000-liftoff-bootstrap', 'tasks.md']);
-    if (!bytes) return { id: 'task-projection', status: 'failed', issues: ['Spec Kit seed-adoption-required: real bootstrap tasks are missing.'] };
-    const expected = inspection.readiness.phases['seed-verified'].state === 'verified';
-    const tasks = [...bytes.toString('utf8').matchAll(/^\s*- \[([ xX])\] (B00[1-6]) /gm)];
-    const issues = tasks.filter((match) => (match[1]!.toLowerCase() === 'x') !== expected)
-      .map((match) => `Spec Kit task ${match[2]} differs from the authoritative local baseline projection. Verification did not edit it.`);
-    return { id: 'task-projection', status: issues.length ? 'failed' : 'passed', issues };
-  }
-  const activeChange = inspection.state.activeChange;
-  if (!activeChange || activeChange.kind !== 'openspec') {
-    return { id: 'task-projection', status: 'skipped', issues: [] };
-  }
-  const pathParts = validateArtifactPathParts(
-    ['openspec', 'changes', activeChange.id, 'tasks.md'],
-    'Active OpenSpec task path'
-  );
-  const bytes = await readProjectFile(inspection.projectRoot, pathParts);
-  if (bytes === undefined) {
-    return { id: 'task-projection', status: 'skipped', issues: [] };
-  }
-  const markdown = bytes.toString('utf8');
-  const mappings = extractPhaseTaskMappings(markdown);
-  if (mappings.length === 0) {
-    return { id: 'task-projection', status: 'skipped', issues: [] };
-  }
-  const projection = projectOpenSpecTaskCheckboxes(markdown, mappings, inspection.readiness.phases);
-  const issues = projection.changes.map((change) =>
-    `Task ${change.taskId} for ${change.phaseId} is ${change.fromChecked ? 'checked' : 'unchecked'} but authoritative phase state is ${change.state}.`
-  );
-  return { id: 'task-projection', status: issues.length === 0 ? 'passed' : 'failed', issues };
-}
-
-function extractPhaseTaskMappings(markdown: string): PhaseTaskMapping[] {
+function extractPhaseTaskMappings(markdown: string): Array<{ phaseId: PhaseId; taskId: string }> {
   const phaseIdSet = new Set<string>(phaseIds);
-  const mappings: PhaseTaskMapping[] = [];
+  const mappings: Array<{ phaseId: PhaseId; taskId: string }> = [];
   const pattern = /^\s*[-*]\s+\[[ xX]\]\s+(\S+).*<!--\s*liftoff-phase:\s*([a-z0-9-]+)\s*-->/u;
   for (const line of markdown.split(/\r?\n/u)) {
     const match = line.match(pattern);
-    if (!match) {
-      continue;
-    }
+    if (!match) continue;
     const phaseId = match[2]!;
     if (!phaseIdSet.has(phaseId)) {
       throw new Error(`Task projection references unknown phase ${phaseId}.`);
@@ -1096,6 +1262,54 @@ function extractPhaseTaskMappings(markdown: string): PhaseTaskMapping[] {
     mappings.push({ phaseId: phaseId as PhaseId, taskId: match[1]! });
   }
   return mappings;
+}
+
+async function activeTaskProjectionCheck(inspection: GovernanceInspection): Promise<VerificationCheck> {
+  const issues: string[] = [];
+  let inspected = false;
+  if (inspection.scope !== 'lifecycle' && inspection.manifest.project.specWorkflow === 'spec-kit') {
+    inspected = true;
+    const bytes = await readProjectFile(inspection.projectRoot, ['specs', '000-liftoff-bootstrap', 'tasks.md']);
+    if (!bytes) return { id: 'task-projection', status: 'failed', issues: ['Spec Kit seed-adoption-required: real bootstrap tasks are missing.'] };
+    const expected = inspection.readiness.phases['seed-verified'].state === 'verified';
+    const tasks = [...bytes.toString('utf8').matchAll(/^\s*- \[([ xX])\] (B00[1-6]) /gm)];
+    issues.push(...tasks.filter((match) => (match[1]!.toLowerCase() === 'x') !== expected)
+      .map((match) => `Spec Kit task ${match[2]} differs from the authoritative local baseline projection. Verification did not edit it.`));
+  }
+  const activeChange = inspection.state.activeChange;
+  if (activeChange && activeChange.kind === 'openspec') {
+    const pathParts = validateArtifactPathParts(['openspec', 'changes', activeChange.id, 'tasks.md'], 'Active OpenSpec task path');
+    const bytes = await readProjectFile(inspection.projectRoot, pathParts);
+    if (bytes !== undefined) {
+      inspected = true;
+      const markdown = bytes.toString('utf8');
+      const mappings = extractPhaseTaskMappings(markdown);
+      if (mappings.length > 0) {
+        const projection = projectOpenSpecTaskCheckboxes(markdown, mappings, inspection.readiness.phases);
+        issues.push(...projection.changes.filter((change) => verificationPhaseIds(inspection).includes(change.phaseId)).map((change) =>
+          `Task ${change.taskId} for ${change.phaseId} is ${change.fromChecked ? 'checked' : 'unchecked'} but authoritative phase state is ${change.state}.`
+        ));
+      }
+    }
+  }
+  const source = inspection.sourceOfTruth;
+  if (inspection.scope !== 'local' && source.status === 'selected') {
+    inspected = true;
+    if (!source.selected.metadata) {
+      issues.push('The selected current governance source has no validated metadata.');
+    } else {
+      const pathParts = validateArtifactPathParts([...source.selected.pathParts, 'tasks.md'], 'Current governance task path');
+      const bytes = await readProjectFile(inspection.projectRoot, pathParts);
+      if (!bytes) issues.push(`Current governance tasks ${pathParts.join('/')} are missing.`);
+      else {
+        const projection = projectGovernanceChangeTasks(bytes.toString('utf8'), source.selected.metadata, inspection.readiness.phases);
+        issues.push(...projection.changes.filter((change) => verificationPhaseIds(inspection).includes(change.phaseId)).map((change) =>
+          `Task ${change.taskId} for ${change.phaseId} is ${change.fromChecked ? 'checked' : 'unchecked'} but current authoritative phase state is ${change.state}.`
+        ));
+      }
+    }
+  }
+  return { id: 'task-projection', status: issues.length ? 'failed' : inspected ? 'passed' : 'skipped', issues };
 }
 
 function activeChangeIdentityCheck(inspection: GovernanceInspection): VerificationCheck {
@@ -1118,7 +1332,7 @@ function activeChangeIdentityCheck(inspection: GovernanceInspection): Verificati
 }
 
 function liveReadbackCheck(inspection: GovernanceInspection): VerificationCheck {
-  const issues = inspection.graph.graph.phases.flatMap((phase) => {
+  const issues = inspection.graph.graph.phases.filter((phase) => verificationPhaseIds(inspection).includes(phase.id)).flatMap((phase) => {
     if (phase.evidence.liveReadbackProviders.length === 0) {
       return [];
     }
@@ -1131,6 +1345,7 @@ function liveReadbackCheck(inspection: GovernanceInspection): VerificationCheck 
 }
 
 function credentialPolicyCheck(inspection: GovernanceInspection): VerificationCheck {
+  if (inspection.scope !== 'activation') return { id: 'credential-policy', status: 'skipped', issues: [] };
   if (!inspection.credential.applicable) {
     return { id: 'credential-policy', status: 'skipped', issues: [] };
   }
@@ -1147,6 +1362,12 @@ function credentialPolicyCheck(inspection: GovernanceInspection): VerificationCh
 
 function activeSourceOfTruthCheck(inspection: GovernanceInspection): VerificationCheck {
   const source = inspection.sourceOfTruth;
+  if (inspection.scope === 'local') {
+    if (source.status === 'seed-blocked' && !inspection.expectedActiveSeed) {
+      return { id: 'active-source-of-truth', status: 'failed', issues: source.blockers };
+    }
+    return { id: 'active-source-of-truth', status: 'skipped', issues: [] };
+  }
   if (inspection.expectedActiveSeed) {
     return {
       id: 'active-source-of-truth',
@@ -1236,19 +1457,15 @@ function setupCompletion(inspection: GovernanceInspection): {
       summary: `Verification is consistent, but setup has not started. Next ready phase: ${inspection.readiness.nextReadyPhase ?? 'none'}.`
     };
   }
-  const terminal = inspection.readiness.phases['bootstrap-state-disposed'].state;
-  const everyPhaseComplete = inspection.graph.graph.phases.every((phase) => {
-    const phaseId = phase.id;
-    const state = inspection.readiness.phases[phaseId].state;
-    return state !== 'identity-incompatible' &&
-      successfulSetupStates.has(state) &&
-      (phase.terminalStates as readonly string[]).includes(state);
-  });
-  if (everyPhaseComplete && (terminal === 'disposed' || terminal === 'inapplicable')) {
+  if (inspection.readiness.completion[inspection.scope]) {
     return {
       status: 'complete',
       complete: true,
-      summary: 'Verification is consistent and deterministic setup is complete.'
+      summary: inspection.scope === 'local'
+        ? 'Local setup is complete. Repository publication, cloud deployment, and governance activation are separate approved work.'
+        : inspection.scope === 'activation'
+          ? 'Governance activation is complete. Delayed retained-state disposal is tracked separately.'
+          : 'Lifecycle work is complete.'
     };
   }
   return {
@@ -1271,7 +1488,8 @@ async function verifyJson(inspection: GovernanceInspection): Promise<GovernanceV
     ? completion.status
     : 'in-progress';
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope: inspection.scope,
     command: 'governance verify',
     projectRoot: inspection.projectRoot,
     readOnly: true,
@@ -1289,7 +1507,11 @@ async function verifyJson(inspection: GovernanceInspection): Promise<GovernanceV
     activeChange: inspection.state.activeChange,
     activeSourceOfTruth: inspection.sourceOfTruth,
     nextReadyPhase: inspection.readiness.nextReadyPhase,
-    checks
+    progress: inspection.readiness.completion,
+    nextActions: governanceNextActions(inspection),
+    checks,
+    historicalLifecycleObligations: inspection.historicalLifecycleObligations,
+    taskProjectionAudit: inspection.state.taskProjection ?? null
   };
 }
 
@@ -1314,14 +1536,17 @@ function renderInspectionFailure(
   projectRoot: string,
   error: unknown,
   presentation: PresentationSession,
-  jsonMode: boolean
+  jsonMode: boolean,
+  scope: GovernanceScope = 'activation'
 ): number {
   const result = {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope,
     command: `governance ${subcommand}`,
     projectRoot,
     readOnly: true,
     ok: false,
+    nextActions: [],
     ...(subcommand === 'verify'
       ? {
           consistent: false,
@@ -1357,6 +1582,11 @@ function transitionInspection(inspection: GovernanceInspection): GovernanceTrans
     manifest: inspection.manifest,
     graph: inspection.graph.graph,
     graphHash: inspection.graph.hash,
+    scope: inspection.scope,
+    ...(inspection.activationInputs ? { activationInputs: inspection.activationInputs } : {}),
+    ...(inspection.recoverPhase ? { recoverPhase: inspection.recoverPhase } : {}),
+    sensitivePathExclusions: inspection.sensitivePathExclusions,
+    historicalLifecycleObligations: inspection.historicalLifecycleObligations,
     ...(inspection.loadedState ? { loadedState: inspection.loadedState } : {}),
     state: inspection.state,
     approvals: inspection.approvals,
@@ -1369,9 +1599,9 @@ function transitionInspection(inspection: GovernanceInspection): GovernanceTrans
 
 export async function inspectGovernanceTransition(
   projectRoot: string,
-  options: { runner?: CommandRunner; now?: Date } = {}
+  options: GovernanceInspectionOptions & { runner?: CommandRunner; now?: Date } = {}
 ): Promise<GovernanceTransitionInspection> {
-  return transitionInspection(await inspectGovernance(projectRoot, options.runner, options.now));
+  return transitionInspection(await inspectGovernance(projectRoot, options.runner, options.now, options));
 }
 
 function renderApplyNextHuman(
@@ -1421,6 +1651,29 @@ function renderApplyNextHuman(
   }
 }
 
+function governanceScopeFlag(parsed: ParsedArgs): GovernanceScope {
+  const value = readStringFlag(parsed.flags, 'scope') ?? 'activation';
+  if (value !== 'local' && value !== 'activation' && value !== 'lifecycle') throw new Error('Governance scope must be local, activation, or lifecycle.');
+  return value;
+}
+
+async function publicActivationInputs(filePath: string): Promise<ActivationConfiguration> {
+  const handle = await open(filePath, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0));
+  try {
+    const stat = await handle.stat();
+    if (!stat.isFile() || stat.nlink !== 1 || stat.size > 64 * 1024) {
+      throw new Error('Activation inputs must be a singly linked regular public JSON file no larger than 64 KiB.');
+    }
+    const text = await handle.readFile('utf8');
+    let value: unknown;
+    try { value = JSON.parse(text); }
+    catch { throw new Error('Activation inputs are not valid JSON; credential or state content must not be supplied here.'); }
+    return validateActivationConfiguration(value);
+  } finally {
+    await handle.close();
+  }
+}
+
 export async function governanceCommand(parsed: ParsedArgs, context: GovernanceCommandContext): Promise<number> {
   if (parsed.subcommand === 'assess') {
     return governanceAssessmentCommand(parsed, context);
@@ -1431,16 +1684,20 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
   if (!subcommand) {
     presentation.error(
       'Missing governance subcommand.',
-      'Run `liftoff governance --help` and choose one of: status, plan, apply-next, resume, verify.'
+      'Run `liftoff governance --help` to choose a supported planning, approval, execution, or inspection command.'
     );
     return 1;
   }
+  const rawScope = readStringFlag(parsed.flags, 'scope');
+  if (rawScope && rawScope !== 'local' && rawScope !== 'activation' && rawScope !== 'lifecycle') {
+    throw new Error('Governance scope must be local, activation, or lifecycle.');
+  }
+  const scope = rawScope as GovernanceScope | undefined;
   let projectRoot: string | undefined;
   try {
     projectRoot = await resolveGovernanceProjectRoot(parsed, context);
   } catch (error) {
-    presentation.error(errorMessage(error), 'Run `liftoff governance --help` to review accepted project arguments.');
-    return 1;
+    throw new Error(`${errorMessage(error)} Run liftoff governance --help to review accepted project arguments.`);
   }
   if (!projectRoot) {
     const start = parsed.positional[0] ?? readStringFlag(parsed.flags, 'project') ?? context.cwd;
@@ -1449,12 +1706,30 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     return 1;
   }
 
+  const inputsFile = readStringFlag(parsed.flags, 'inputs');
+  const activationInputs = inputsFile ? await publicActivationInputs(path.resolve(context.cwd, inputsFile)) : undefined;
+  const fingerprint = readStringFlag(parsed.flags, 'plan');
+  const reviewed = fingerprint ? await loadGovernancePreview(projectRoot, fingerprint) : undefined;
+  if (reviewed && scope && reviewed.plan.scope !== scope) throw new Error('The selected scope does not match the reviewed plan.');
+  if (subcommand === 'recover' && !reviewed?.plan.recovery) throw new Error('Recovery requires a preview explicitly created with governance plan --recover-phase.');
+  if (subcommand === 'apply-next' && reviewed?.plan.recovery) throw new Error('A recovery preview can be executed only with governance recover.');
+  if (subcommand === 'credential-enroll' && reviewed?.plan.phaseId !== 'credential-ready') {
+    throw new Error('Credential enrollment requires a credential-ready preview, not another activation or repair plan.');
+  }
+  const requestedRecovery = readStringFlag(parsed.flags, 'recover-phase');
+  const recoverPhase = reviewed?.plan.recovery ? reviewed.plan.phaseId : phaseIds.find((id) => id === requestedRecovery);
+  const options: GovernanceInspectionOptions = {
+    ...(scope ? { scope } : {}),
+    command: subcommand,
+    ...(activationInputs ?? reviewed?.plan.configuration ? { activationInputs: activationInputs ?? reviewed?.plan.configuration } : {}),
+    ...(recoverPhase ? { recoverPhase } : {})
+  };
   let inspection: GovernanceInspection;
   try {
-    inspection = attachPresentation(await inspectGovernance(projectRoot, context.runner), presentation);
+    inspection = attachPresentation(await inspectGovernance(projectRoot, context.runner, new Date(), options), presentation);
   } catch (error) {
     if (subcommand === 'verify') {
-      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode);
+      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode, scope);
     }
     throw error;
   }
@@ -1468,11 +1743,53 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
     return 0;
   }
   if (subcommand === 'plan') {
+    let saved: Awaited<ReturnType<typeof saveGovernancePreview>>;
+    try {
+      saved = await saveGovernancePreview(transitionInspection(inspection), { runner: context.runner });
+    } catch (error) {
+      if (jsonMode) json(presentation, {
+        ...planJson(inspection), ready: false, reason: 'planning-blocked',
+        blockers: [errorMessage(error)], preview: null
+      });
+      else presentation.error(errorMessage(error), 'Supply the named supported inputs or resolve the prerequisite, then request a fresh plan.');
+      return 1;
+    }
     if (jsonMode) {
-      json(presentation, planJson(inspection));
+      json(presentation, {
+        ...planJson(inspection),
+        preview: saved ? { fingerprint: saved.preview.fingerprint, path: saved.path, expiresAt: saved.preview.plan.expiresAt } : null,
+        plan: saved?.preview.plan ?? null,
+        projectWrites: false,
+        providerWrites: false,
+        noWrites: true,
+        externalPreviewWritten: saved !== null,
+        nextActions: governanceNextActions(inspection, saved?.preview)
+      });
     } else {
       renderPlanHuman(inspection, presentation);
+      if (saved) {
+        presentation.status('info', 'External preview', `${saved.path}; fingerprint ${saved.preview.fingerprint}. This is not approval.`);
+        const next = governanceNextActions(inspection, saved.preview)[0];
+        if (next) presentation.remedy([next.command.executable, ...next.command.args.map((arg) => /\s/u.test(arg) ? JSON.stringify(arg) : arg)].join(' '));
+      }
     }
+    return 0;
+  }
+  if (subcommand === 'approve') {
+    const approved = await approveGovernancePreview({
+      projectRoot, fingerprint: fingerprint!,
+      inspect: async () => transitionInspection(await inspectGovernance(projectRoot, context.runner, new Date(), options)),
+      runner: context.runner
+    });
+    const refreshed = attachPresentation(await inspectGovernance(projectRoot, context.runner, new Date(), options), presentation);
+    const result = {
+      schemaVersion: 2, command: 'governance approve', projectRoot, scope,
+      approved: true, executed: false, envelopeId: approved.envelope.id,
+      envelopeHash: canonicalApprovalEnvelopeHash(approved.envelope), expiresAt: approved.envelope.expiresAt,
+      nextActions: governanceNextActions(refreshed, { fingerprint: fingerprint!, plan: approved.plan })
+    };
+    if (jsonMode) json(presentation, result);
+    else presentation.status('success', 'Plan approved', `Approval ${approved.envelope.id} was saved without executing its operations.`);
     return 0;
   }
   if (subcommand === 'resume') {
@@ -1499,18 +1816,23 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
       }
       return await renderVerifyHuman(inspection, presentation);
     } catch (error) {
-      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode);
+      return renderInspectionFailure(subcommand, projectRoot, error, presentation, jsonMode, scope);
     }
   }
 
-  const execute = readBooleanFlag(parsed.flags, 'execute') ?? false;
+  const execute = subcommand === 'credential-enroll' || (readBooleanFlag(parsed.flags, 'execute') ?? false);
   const transitionInput = transitionInspection(inspection);
   const result = execute
     ? await executeApplyNext({
         inspection: transitionInput,
         runner: context.runner,
+        reviewedPlan: reviewed?.plan,
+        recovery: subcommand === 'recover',
+        ...(subcommand === 'credential-enroll' ? {
+          credentialEnrollment: { protectedStdin: readBooleanFlag(parsed.flags, 'protected-stdin') ?? false }
+        } : {}),
         reinspect: async () => transitionInspection(
-          attachPresentation(await inspectGovernance(projectRoot, context.runner), presentation)
+          attachPresentation(await inspectGovernance(projectRoot, context.runner, new Date(), options), presentation)
         )
       })
     : await previewApplyNext({
@@ -1519,9 +1841,16 @@ export async function governanceCommand(parsed: ParsedArgs, context: GovernanceC
         execute: false
       });
   if (jsonMode) {
-    json(presentation, result);
+    const refreshed = execute
+      ? await inspectGovernance(projectRoot, context.runner, new Date(), { ...options, recoverPhase: undefined })
+      : inspection;
+    json(presentation, {
+      ...result, command: `governance ${subcommand}`,
+      progress: refreshed.readiness.completion,
+      nextActions: governanceNextActions(refreshed)
+    });
   } else {
     renderApplyNextHuman(result, presentation);
   }
-  return result.applied || result.reason === 'execute-required' ? 0 : 1;
+  return result.applied || ['execute-required', 'external-operation-pending'].includes(result.reason) ? 0 : 1;
 }

@@ -220,6 +220,11 @@ describe('interactive presentation', () => {
           name: 'Claude Code (detected)',
           value: 'claude',
           checked: false
+        }),
+        expect.objectContaining({
+          name: 'OpenAI Codex (detected)',
+          value: 'codex',
+          checked: false
         })
       ]);
       setTimeout(() => input.end('n\n'), 0);
@@ -248,10 +253,11 @@ describe('interactive presentation', () => {
 
       expect(options.agents).toEqual(['github-copilot', 'claude']);
       expect(checkboxPrompt).toHaveBeenCalledOnce();
-      expect(runner.calls).toHaveLength(2);
+      expect(runner.calls).toHaveLength(3);
       expect(runner.calls).toEqual(expect.arrayContaining([
         { executable: 'copilot', args: ['--version'] },
-        { executable: 'claude', args: ['--version'] }
+        { executable: 'claude', args: ['--version'] },
+        { executable: 'codex', args: ['--version'] }
       ]));
     } finally {
       prompter.close();
@@ -259,12 +265,16 @@ describe('interactive presentation', () => {
     }
   });
 
-  it('does not treat general .github or .claude directories as configured integrations', async () => {
+  it('does not treat general agent directories or neighboring skills as configured integrations', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-agent-unconfigured-'));
     await mkdir(path.join(root, '.github'), { recursive: true });
     await mkdir(path.join(root, '.claude'), { recursive: true });
     await writeFile(path.join(root, '.github', 'README.md'), 'general GitHub configuration\n');
     await writeFile(path.join(root, '.claude', 'settings.json'), '{}\n');
+    await mkdir(path.join(root, '.agents', 'skills', 'my-review'), { recursive: true });
+    await mkdir(path.join(root, '.codex'));
+    await writeFile(path.join(root, '.agents', 'skills', 'my-review', 'SKILL.md'), '# Custom\n');
+    await writeFile(path.join(root, '.codex', 'config.toml'), '# Custom preferences\n');
     const input = new PassThrough() as PassThrough & {
       isTTY: boolean;
       setRawMode: ReturnType<typeof vi.fn>;
@@ -273,7 +283,7 @@ describe('interactive presentation', () => {
     input.setRawMode = vi.fn();
     const output = new CaptureStream() as CaptureStream & { isTTY: boolean };
     output.isTTY = true;
-    const runner = new ReadyInitRunner({ missing: ['copilot', 'claude'] });
+    const runner = new ReadyInitRunner({ missing: ['copilot', 'claude', 'codex'] });
     const checkboxPrompt = vi.fn<AgentCheckboxPrompt>(async (config) => {
       expect(config.choices).toEqual([
         expect.objectContaining({
@@ -284,6 +294,11 @@ describe('interactive presentation', () => {
         expect.objectContaining({
           name: 'Claude Code (not observable)',
           value: 'claude',
+          checked: false
+        }),
+        expect.objectContaining({
+          name: 'OpenAI Codex (not observable)',
+          value: 'codex',
           checked: false
         })
       ]);
@@ -518,22 +533,26 @@ describe('interactive presentation', () => {
       ───────────────────────────────────
       ● GitHub Copilot (not observable) (github-copilot) [default]
       2. Claude Code (not observable) (claude)
+      3. OpenAI Codex (not observable) (codex)
 
       ? Select comma-separated options [1]: ",
         "noColor": "Select one or more AI coding agents
       ───────────────────────────────────
       ● GitHub Copilot (not observable) (github-copilot) [default]
       2. Claude Code (not observable) (claude)
+      3. OpenAI Codex (not observable) (codex)
 
       ? Select comma-separated options [1]: ",
         "plain": "Select one or more AI coding agents
       ● GitHub Copilot (not observable) (github-copilot) [default]
       2. Claude Code (not observable) (claude)
+      3. OpenAI Codex (not observable) (codex)
 
       ? Select comma-separated options [1]: ",
         "rich": "┌─ Select one or more AI coding agents ────────────────────────────────────────────────────────┐
       │ ● 1. GitHub Copilot (not observable) (github-copilot) [default]                              │
       │ ○ 2. Claude Code (not observable) (claude)                                                   │
+      │ ○ 3. OpenAI Codex (not observable) (codex)                                                   │
       └──────────────────────────────────────────────────────────────────────────────────────────────┘
       ? Select comma-separated options [1]: ",
       }

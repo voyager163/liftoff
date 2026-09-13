@@ -1,6 +1,7 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
 import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
 import { commandDefinitions } from './definitions.js';
+import { phaseIds } from '../../domain/governance/activation/types.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -168,15 +169,40 @@ export function parseArgs(argv: string[]): ParsedArgs {
   }
 
   if (command === 'governance') {
+    if (Object.hasOwn(flags, 'scope') && !['local', 'activation', 'lifecycle'].includes(String(flags.scope))) {
+      throw new UsageError('Flag --scope expects local, activation, or lifecycle.');
+    }
+    if (Object.hasOwn(flags, 'plan') && !isUpdatePlanFingerprint(flags.plan)) {
+      throw new UsageError('Flag --plan expects the complete 64-character lowercase SHA-256 fingerprint from governance plan.');
+    }
+    if (Object.hasOwn(flags, 'execute') && !['apply-next', 'recover'].includes(subcommand ?? '')) {
+      throw new UsageError('Flag --execute is not allowed; it is allowed only for governance apply-next or recover.');
+    }
+    if (Object.hasOwn(flags, 'plan') && !['approve', 'apply-next', 'credential-enroll', 'recover'].includes(subcommand ?? '')) {
+      throw new UsageError('Flag --plan is allowed only for governance approve, apply-next, credential-enroll, or recover.');
+    }
+    if (Object.hasOwn(flags, 'protected-stdin') && subcommand !== 'credential-enroll') {
+      throw new UsageError('Flag --protected-stdin is allowed only for governance credential-enroll.');
+    }
+    if (Object.hasOwn(flags, 'recover-phase') &&
+      (subcommand !== 'plan' || !(phaseIds as readonly string[]).includes(String(flags['recover-phase'])))) {
+      throw new UsageError('Flag --recover-phase requires governance plan and one canonical phase ID.');
+    }
+    if (flags.help !== true && ['approve', 'credential-enroll', 'recover'].includes(subcommand ?? '') && !flags.plan) {
+      throw new UsageError(`Governance ${subcommand} requires --plan with the exact reviewed preview fingerprint.`);
+    }
     if (Object.hasOwn(flags, 'live') && subcommand !== 'assess') {
       throw new UsageError('Flag --live is allowed only for `liftoff governance assess`.');
     }
+    if (positional.length > 0 && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a project path either positionally or with --project, not both.');
+    }
     if (subcommand === 'assess') {
+      if (['scope', 'inputs', 'plan', 'protected-stdin', 'recover-phase'].some((flag) => Object.hasOwn(flags, flag))) {
+        throw new UsageError('Governance assess does not accept execution, configuration, or approval flags.');
+      }
       if (Object.hasOwn(flags, 'execute')) {
         throw new UsageError('Flag --execute is not allowed for read-only `liftoff governance assess`.');
-      }
-      if (positional.length > 0 && Object.hasOwn(flags, 'project')) {
-        throw new UsageError('Provide the assessment project either positionally or with --project, not both.');
       }
     }
   }

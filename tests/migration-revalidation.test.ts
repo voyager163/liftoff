@@ -32,6 +32,7 @@ import {
   generatedSeedCapabilityId, generatedSeedChangeName, selectSeedBaselineChecks
 } from '../src/governance-activation/seed-lifecycle.js';
 import { completedSpecKitTasks, specKitBootstrapPath } from '../src/governance-activation/spec-kit-seed.js';
+import { specKitIntegrationPaths } from '../src/framework-validation.js';
 import { buildSavedTransitionPlan, executeApplyNext } from '../src/governance-activation/transitions.js';
 import { formatCommand, type CommandResult, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -105,6 +106,9 @@ async function fixture(options: {
     await writeProjectFile(root, marker, 'official initialization marker fixture\n');
   }
   if (plan.specWorkflow.id === 'spec-kit') {
+    for (const marker of specKitIntegrationPaths('github-copilot')) {
+      await writeProjectFile(root, marker, 'official initialization marker fixture\n');
+    }
     await writeProjectFile(root, ['.specify', 'integration.json'], JSON.stringify({
       default_integration: 'copilot', installed_integrations: ['copilot']
     }));
@@ -133,7 +137,7 @@ async function fixture(options: {
   }
   const createdAt = '2026-09-01T00:00:00.000Z';
   const state = validateUserActivationState({
-    schemaVersion: 2, identity: currentActivationIdentity,
+    schemaVersion: currentActivationIdentity.activationStateSchemaVersion, identity: currentActivationIdentity,
     repository: { id: `local:${randomUUID()}`, name, defaultBranch: 'develop' },
     activeChange: null,
     applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
@@ -227,8 +231,8 @@ describe('bounded migration local revalidation', {
     const records = await readActivationEvidence(root);
     expect(records).toHaveLength(3);
     for (const record of records) {
-      expect(record.header.schemaVersion).toBe(2);
-      expect(record.header.identity.activationContractVersion).toBe(2);
+      expect(record.header.schemaVersion).toBe(currentActivationIdentity.evidenceHeaderSchemaVersion);
+      expect(record.header.identity.activationContractVersion).toBe(currentActivationIdentity.activationContractVersion);
       expect(record.header.bodyDigest).toBe(evidenceBodyDigest(record.payload, record.liveReadback));
       expect(validateEvidenceFreshness(record, inspection.contexts[record.header.phaseId]).valid).toBe(true);
     }
@@ -336,7 +340,7 @@ describe('bounded migration local revalidation', {
       status: 'committed',
       journal: { transaction: { status: 'committed' }, revalidation: { status: 'blocked' } },
       state: {
-        schemaVersion: 2, repository: { id: finalized.successor.repository.id },
+        schemaVersion: currentActivationIdentity.activationStateSchemaVersion, repository: { id: finalized.successor.repository.id },
         phases: { 'seed-valid': { state: 'verified' }, committed: { state: 'pending', evidence: [], approvals: [] } }
       }
     });
@@ -435,7 +439,7 @@ describe('bounded migration local revalidation', {
     expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'blocked', nextIncompletePhase: 'seed-verified' });
     const loaded = await loadActivationState(root);
     expect(loaded?.state).toMatchObject({
-      schemaVersion: 2, repository: { id: state.repository.id },
+      schemaVersion: currentActivationIdentity.activationStateSchemaVersion, repository: { id: state.repository.id },
       phases: { 'seed-valid': { state: 'verified' }, 'seed-verified': { state: 'blocked', evidence: [] } }
     });
     expect((await readActivationEvidence(root)).map((record) => record.header.phaseId)).toEqual(['seed-valid']);

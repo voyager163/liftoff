@@ -32,6 +32,7 @@ import { liftoffVersion } from '../src/version.js';
 import { executeActivationApproval } from '../src/governance-activation/phase-governance.js';
 import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
 import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
+import { planGovernanceTaskProjection } from '../src/governance-activation/task-writes.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-source-of-truth-tests-${process.pid}`);
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
@@ -157,7 +158,7 @@ function phase0Evidence(): PhaseEvidenceRecord {
     { id: 'repository.defaultBranch', value: 'main' }
   ] };
   const liveReadback = [{
-    schemaVersion: 2, repositoryId: header.repositoryId, identity: header.identity, phaseGraphHash: header.phaseGraphHash,
+    schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion, repositoryId: header.repositoryId, identity: header.identity, phaseGraphHash: header.phaseGraphHash,
     phaseId: header.phaseId, baselineSha: header.baselineSha, inputDigest: header.inputDigest, transition: header.transition,
     observedAt: header.producedAt, provider: 'github' as const, resourceType: 'repository', resourceId: 'owner/demo',
     sourceDigest: canonicalSha256(payload.facts), readbackDigest: canonicalSha256(payload.facts), matches: true
@@ -171,7 +172,8 @@ function inspectGovernanceSourceOfTruth(input: Parameters<typeof inspectSource>[
   return inspectSource({ ...input, contexts: {
     'phase-0-complete': evidenceContextForPhase('phase-0-complete', {
       repositoryId: 'R_123', baselineSha, inputDigest: '1'.repeat(64),
-      remoteBindingDigest: remoteBindingDigest(input.state.remoteBinding)
+      remoteBindingDigest: remoteBindingDigest(input.state.remoteBinding),
+      now: new Date('2026-09-04T00:10:00.000Z')
     })
   } });
 }
@@ -364,20 +366,26 @@ describe('canonical governance change rendering and reconciliation', () => {
     const evidence = [phase0Evidence()];
     const source = await inspectGovernanceSourceOfTruth({ projectRoot: root, manifest: manifest('demo'), state: activationState, evidence });
     expect(source.status === 'none' ? source.createPlan.status : '').toBe('ready');
-    const outcome = await executeActivationApproval({
+    const execution = {
       phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved'),
       inspection: {
         projectRoot: root, manifest: manifest('demo'), state: activationState, evidence, sourceOfTruth: source,
         contexts: {
           'phase-0-complete': evidenceContextForPhase('phase-0-complete', {
             repositoryId: 'R_123', baselineSha, inputDigest: '1'.repeat(64),
-            remoteBindingDigest: remoteBindingDigest(activationState.remoteBinding)
+            remoteBindingDigest: remoteBindingDigest(activationState.remoteBinding),
+            now: new Date('2026-09-04T00:10:00.000Z')
           })
         }
       },
       plan: { operations: [{ actionId: 'openspec.governance.create-change' }] }
-    } as PhaseAdapterExecutionInput);
+    } as PhaseAdapterExecutionInput;
+    const projection = await planGovernanceTaskProjection(execution.inspection, execution.phase);
+    if (!projection) throw new Error('Expected the reviewed current-task derivation.');
+    execution.plan.operations = [...execution.plan.operations, projection];
+    const outcome = await executeActivationApproval(execution);
     expect(outcome?.status).toBe('completed');
+    expect(outcome?.fileMutations?.some((mutation) => mutation.pathParts.at(-1) === 'tasks.md')).toBe(false);
     const first = outcome!.fileMutations![0]!;
     const target = path.join(root, ...first.pathParts);
     await mkdir(path.dirname(target), { recursive: true });

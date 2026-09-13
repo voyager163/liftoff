@@ -23,7 +23,7 @@ import {
 import { resolveUpdateGuidanceContext } from './guidance-context.js';
 import { inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
 import {
-  buildUpdateReport, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
+  buildUpdateReport, renderDeferredAgentRepair, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
   type UpdateMigrationSummary, type UpdateRevalidationSummary, type UpdateReportInput
 } from './output.js';
 import { assertAuthorizedUpdateMutations, preflightUpdate } from './planning.js';
@@ -144,6 +144,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     const forced = await prepareUpdateReview(inspection, true, reviewOptions);
     const variants = [normal, forced];
     const hasWork = inspection.hasDrift || variants.some((entry) => entry.requiresApproval);
+    const agentRepairPending = inspection.deferredAgentRepair !== null;
     const plans = hasWork ? variants.map((entry) => entry.summary) : [];
     selected = force ? forced : normal;
     migration = describeUpdateMigration(inspection);
@@ -168,31 +169,38 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         : undefined;
       if (!jsonMode) {
         renderUpdatePreview(presentation, inspection, plans, migration, revalidation, stored?.location.receiptPath, guidance);
-        if (!hasWork) {
+        if (!hasWork && !agentRepairPending) {
           presentation.status('success', 'Liftoff core is current',
             `${inspection.summary.unchanged} managed-core artifacts match; project files are not compared`);
-        } else {
+        } else if (hasWork) {
           presentation.status('warning', 'Liftoff core maintenance available',
             `${inspection.summary.conflict + inspection.summary.retiredConflict} core conflict(s); review the exact plans before approval`);
         }
       }
       emit(context, jsonMode, {
         ...base,
-        status: hasWork ? 'update-available' : 'current',
-        reasonCode: hasWork ? 'review-required' : 'no-update',
+        status: hasWork ? 'update-available' : agentRepairPending ? 'partial' : 'current',
+        reasonCode: hasWork ? 'review-required' : agentRepairPending ? 'agent-repair-required' : 'no-update',
+        ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; the requested agent/default change requires its separate repair plan.' } : {}),
         receipt: stored ? { status: 'issued', path: stored.location.receiptPath } : { status: 'not-required' }
       }, inspection, selected);
-      return hasWork ? 2 : 0;
+      return hasWork || agentRepairPending ? 2 : 0;
     }
     if (!selected.requiresApproval) {
-      if (!jsonMode) renderUpdateSkipped(presentation, inspection, selected.writePlan);
+      if (!jsonMode) {
+        renderUpdateSkipped(presentation, inspection, selected.writePlan);
+        renderDeferredAgentRepair(presentation, inspection);
+      }
       emit(context, jsonMode, {
-        ...base, status: selected.writePlan.skipped.length ? 'partial' : 'current', reasonCode: 'no-update',
-        message: selected.writePlan.skipped.length
+        ...base, status: selected.writePlan.skipped.length || agentRepairPending ? 'partial' : 'current',
+        reasonCode: agentRepairPending ? 'agent-repair-required' : 'no-update',
+        message: agentRepairPending
+          ? 'Liftoff core is current; recorded integrations and requested configuration were preserved for separate agent repair.'
+          : selected.writePlan.skipped.length
           ? 'No safe update writes are required; listed conflicts remain protected.'
           : 'Liftoff core is current; project files were not changed.'
       }, inspection, selected);
-      return 0;
+      return agentRepairPending ? 2 : 0;
     }
 
     const location = await resolveUpdatePreviewLocation(projectRoot, options);
@@ -280,7 +288,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     }
     await consumeUpdatePreviewReceipt(projectRoot, stored.receipt, options);
     const revalidationBlocked = revalidation.status === 'blocked';
-    const partial = revalidationBlocked || selected.writePlan.skipped.length > 0 ||
+    const partial = revalidationBlocked || agentRepairPending || selected.writePlan.skipped.length > 0 ||
       inspection.provisioningPlans.some((group) => group.blocked);
     emit(context, jsonMode, {
       ...base, migration, revalidation,
@@ -300,11 +308,12 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
           selected.writePlan.retired.map((entry) => `removed ${manifestDisplayPath(entry.pathParts)}`));
       }
       renderUpdateSkipped(presentation, inspection, selected.writePlan);
+      renderDeferredAgentRepair(presentation, inspection);
       if (migration.status === 'committed') {
-        presentation.status('success', 'Activation migration committed', 'Original v1 history remains preserved; active v2 readiness is reported separately.');
+        presentation.status('success', 'Activation migration committed', 'Original v1/v2 history remains preserved; active v3 readiness is reported separately from OpenTofu state migration.');
       }
       if (revalidationBlocked) {
-        presentation.bullets('V2 revalidation is blocked and resumable', [
+        presentation.bullets('V3 revalidation is blocked and resumable', [
           ...revalidation.issues,
           ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : []),
           `Repair the blocker, run ${updateCommand('check')}, and approve the remaining local work.`
@@ -312,12 +321,12 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       }
       for (const failure of cleanupFailures) presentation.error(failure);
       if (!cleanupFailures.length && !revalidationBlocked) {
-        presentation.completion('Updated project',
+        presentation.completion(agentRepairPending ? 'Updated core; agent repair remains separate' : 'Updated project',
           `${selected.writePlan.written.length} core written, ${selected.writePlan.skipped.length} core skipped`,
           [], formatUpdateValidationCommands(projectRoot, process.platform, guidance));
       }
     }
-    return cleanupFailures.length ? 1 : revalidationBlocked ? 2 : 0;
+    return cleanupFailures.length ? 1 : revalidationBlocked || agentRepairPending ? 2 : 0;
   } catch (error) {
     const reasonCode = error instanceof UpdatePlanError ? error.reasonCode :
       error instanceof UpdatePreviewError ? error.code : 'update-failed';

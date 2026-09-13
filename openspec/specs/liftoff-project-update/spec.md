@@ -168,7 +168,7 @@ The system SHALL accept `--force` only for a separately previewed and approved e
 - **THEN** apply refuses the mismatched approval without writing
 
 ### Requirement: Configuration edits are a reconciled desired-state axis
-The system SHALL treat `liftoff.config.json` as developer-owned desired state that the CLI never rewrites after generation. For supported workloads with a compatible recorded generation/layout contract, newly selected environments or a newly enabled frontend MAY authorize create-only provisioning of that component when the recorded project did not previously select it; removed selections SHALL leave their project-owned files untouched. Legacy shared-state or unknown infrastructure layouts SHALL block new-environment provisioning as migration-required rather than force a shared-module rewrite or create dangling roots. No configuration edit SHALL grant update or force authority over an existing project-owned file, and a retired workload discriminator SHALL be rejected rather than reconciled.
+The system SHALL treat desired state as developer-owned and ordinary update SHALL not rewrite it after generation. A separate approved agent repair can change only its reviewed agent/default fields; an explicit activation preparation plan can change only its named target/environment fields. Other values SHALL remain unchanged. Existing compatible create-only frontend/environment provisioning SHALL retain its safety rules, while legacy/unknown layouts require supported repair. No desired-state edit SHALL grant ordinary update or force authority over existing project-owned files or live state/resources.
 
 #### Scenario: API environment added to config
 - **WHEN** a developer adds an environment not previously selected by a supported workload with a compatible independent-environment layout
@@ -182,11 +182,11 @@ The system SHALL treat `liftoff.config.json` as developer-owned desired state th
 
 #### Scenario: Frontend is enabled
 - **WHEN** a developer enables a frontend that the recorded workload did not include
-- **THEN** update may provision the frontend only when every differing destination is absent
+- **THEN** update provisions the frontend only when every destination satisfies the existing create/adopt safety rules
 - **AND** all created frontend files become project-owned
 
 #### Scenario: Power Apps plugin preference changes
-- **WHEN** update encounters a former Power Apps plugin-preference change
+- **WHEN** update encounters a former Power Apps workload or plugin-preference change
 - **THEN** it reports the retired workload or option instead of reconciling the preference
 - **AND** it does not rewrite the manifest or application files
 
@@ -195,9 +195,14 @@ The system SHALL treat `liftoff.config.json` as developer-owned desired state th
 - **THEN** update rejects the retired boundary before attempting workload-specific reconciliation
 
 #### Scenario: Retired workload configuration is rejected
-- **WHEN** a desired-state configuration is edited to use workload kind `power-apps-code-app`
+- **WHEN** desired state selects workload kind `power-apps-code-app`
 - **THEN** update exits 1 before rendering or writing
 - **AND** it does not reinterpret the configuration as a supported API or GenAI workload
+
+#### Scenario: Approved agent repair changes desired state
+- **WHEN** a separate supported repair adds an agent or explicitly changes a Spec Kit default
+- **THEN** only the approved selection fields are updated with the corresponding framework and manifest state
+- **AND** ordinary update still cannot perform that framework mutation
 
 ### Requirement: Update refuses unsafe reconciliations
 The system SHALL refuse to run when configured workload kind or immutable workload identity differs from the corresponding normalized identity recorded by the manifest, directing the developer to a reviewed migration or fresh initialization. It SHALL continue refusing API-stack or GenAI-pattern changes, SHALL reject the retired `power-apps-code-app` discriminator before deeper artifact or activation access even when governance is disabled, and SHALL refuse when the manifest's `liftoffVersion` is newer than the running CLI, using semver-aware comparison that orders prerelease versions correctly and directing the developer to upgrade the CLI.
@@ -659,3 +664,50 @@ Context-sensitive wording SHALL be presentation-only. Equivalent invocations aga
 - **WHEN** a follow-up command omits a redundant path
 - **THEN** missing or mismatched previews, absent or mismatched approval, ownership boundaries, and transaction-recovery requirements continue to block or constrain updates exactly as before
 - **AND** neither printing nor running an unapproved follow-up silently approves an update
+
+### Requirement: Update routes repairable identity changes to the supported repair flow
+Ordinary update SHALL retain its managed-core and already-declared migration boundaries. When a supported additive agent/default change or incompatible infrastructure layout requires project repair, it SHALL identify the actual repair preview and project context rather than only requesting restored configuration, manual metadata edits, or reinitialization. Unsupported workflow switches, removals, retired workloads, and unrelated migrations SHALL remain explicit limitations.
+
+#### Scenario: Desired state adds Codex
+- **WHEN** an initialized project adds Codex and ordinary update encounters that agent change
+- **THEN** update performs no framework mutation and directs the developer to a project-bound repair preview
+- **AND** it does not claim that restoring the old agent list is the only supported route
+
+#### Scenario: Core is current but infrastructure is legacy
+- **WHEN** managed-core bytes match while local baseline is blocked by legacy infrastructure
+- **THEN** update accurately reports its clean core scope and distinguishes the separate repair requirement
+- **AND** it does not claim that core currency establishes local setup completion
+
+#### Scenario: Repair would require stateful migration
+- **WHEN** an infrastructure candidate is stateful or unverified
+- **THEN** follow-up guidance distinguishes supported stateful planning/execution prerequisites from unresolved or unsupported scope
+- **AND** ordinary update approval or force cannot authorize backend or resource mutation
+
+### Requirement: Managed-context expectations use active recorded layout
+Update, repair preview, doctor, and assessment SHALL use the same installed-release expectation for a given active manifest and recorded infrastructure layout. Expected managed context SHALL not assume a fresh independent layout when the project remains legacy or unknown. Historical repair snapshots SHALL not replace the active manifest as the comparison target.
+
+#### Scenario: Legacy context matches the installed contract
+- **WHEN** a context correctly describes the active legacy layout for the installed CLI
+- **THEN** all managed-core comparisons agree that the file matches that expectation
+- **AND** the infrastructure migration requirement remains a separate finding
+
+#### Scenario: Repaired context matches independent roots
+- **WHEN** an approved repair commits an independent active inventory and corresponding context
+- **THEN** update compares against that current inventory and preserves retained legacy history
+
+#### Scenario: Context bytes are actually modified
+- **WHEN** context differs from the common expected render
+- **THEN** the existing managed-core conflict/hash rules remain enforced rather than normalizing away genuine changes
+
+### Requirement: Activation-contract upgrade is separate from infrastructure execution
+The reviewed update path SHALL identify the exact declared historical source and target activation successor and preserve original records before changing active identity. Its approval SHALL authorize only that inventoried local migration and finite revalidation, not live state movement, publication, enrollment, or deployment. Current activation and stateful execution SHALL require their separate current plans and authority.
+
+#### Scenario: A v2 project needs the revised execution contract
+- **WHEN** the exact source is supported by a declared successor lane
+- **THEN** update preview identifies the target contract, preserved history, and fresh-proof work
+- **AND** no version field is manually retagged to bypass compatibility
+
+#### Scenario: A successor has been created
+- **WHEN** the local identity migration commits
+- **THEN** the new activation can be inspected and planned under its declared contract
+- **AND** the migration result alone does not execute its cloud or stateful stages

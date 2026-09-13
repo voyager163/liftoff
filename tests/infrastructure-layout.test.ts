@@ -112,7 +112,7 @@ describe('infrastructure layout contract', () => {
     ]);
     project.liftoffVersion = '0.11.3';
     expect(assessInfrastructureLayout(project).kind).toBe('independent');
-    for (const unreviewed of ['0.10.4', '0.11.4', '0.12.0']) {
+    for (const unreviewed of ['0.10.4', '0.11.4', '0.13.0']) {
       project.projectArtifacts[0]!.generatedBy = unreviewed;
       expect(assessInfrastructureLayout(project).kind).toBe('unknown');
       expect(infrastructureProvisioningGate(project, 'staging').status).toBe('migration-required');

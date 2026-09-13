@@ -28,8 +28,11 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
 | `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
-| `liftoff governance plan [project]` | Previews ready and blocked phase transitions, required evidence, approval gates, permitted mutations, and cost-envelope impact without writes |
+| `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
+| `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations |
 | `liftoff governance apply-next [project]` | Previews the next graph-ready transition; add `--execute` to execute at most one approved mutation |
+| `liftoff governance credential-enroll [project] --plan <fingerprint>` | Uses the approved credential plan and a private input channel; never accepts a token argument |
+| `liftoff governance recover [project] --plan <fingerprint>` | Previews an explicitly planned recovery; `--execute` runs only its approved scope |
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
@@ -68,8 +71,8 @@ Common noninteractive inputs include:
 --frontend | --no-frontend
 --environments dev,staging,prod
 --spec openspec|spec-kit
---agents copilot,claude
---default-agent copilot|claude
+--agents copilot,claude,codex
+--default-agent copilot|claude|codex
 --governance single-maintainer-gitflow|none
 --copilot-cloud | --no-copilot-cloud
 --configure-openspec-profile
@@ -86,45 +89,77 @@ supported workloads or ordinary Git repositories.
 
 Consent options are documented in [safety and consent](safety-and-consent.md).
 Repository governance defaults to `single-maintainer-gitflow`. It generates a
-local deterministic setup handoff only; `none` omits it. See
+local deterministic setup integrations; initialization does not run activation.
+The setup integration coordinates local readiness and separately approved
+publication, cloud, and governance work. `none` omits it. See
 [repository governance](repository-governance.md).
 
 ## Governance setup commands
 
 ```bash
-liftoff governance status [project] [--json]
-liftoff governance plan [project] [--json]
+liftoff governance status [project] --scope local [--json]
+liftoff governance plan [project] --scope activation [--inputs public-inputs.json] [--json]
+liftoff governance approve [project] --scope activation --plan <fingerprint> [--json]
 liftoff governance apply-next [project] [--json] [--execute]
-liftoff governance resume [project] [--json]
-liftoff governance verify [project] [--json]
+liftoff governance apply-next [project] --scope activation [--plan <fingerprint>] [--execute] [--json]
+liftoff governance credential-enroll [project] --plan <fingerprint> [--protected-stdin] [--json]
+liftoff governance plan [project] --scope activation --recover-phase <phase-id> [--json]
+liftoff governance recover [project] --scope activation --plan <fingerprint> [--execute] [--json]
+liftoff governance resume [project] --scope activation [--json]
+liftoff governance verify [project] --scope local [--json]
+liftoff governance status [project] --scope lifecycle [--json]
 ```
 
 These commands are strict and project-aware. Unknown governance subcommands,
 unknown flags, invalid `--execute` placement, or extra positionals fail before
-project discovery or mutation. `status`, `plan`, and `verify` are read-only.
+project discovery or mutation. Direct governance commands default to
+`--scope activation`; `local` and `lifecycle` are explicit independent boundaries.
+`status`, `resume`, and `verify` are read-only. `plan` changes no project or
+provider data, but discloses its external preview receipt.
 `apply-next` previews by default; `--execute` is the explicit request to save the
 reviewed plan and execute at most one phase whose dependencies, evidence, and
 approval envelope are satisfied. `resume` rechecks blockers and downstream
 readiness without repeating verified operations.
 
 Apply-next JSON names the attempted phase in `selectedPhase` and reports
-`executedPhase` on execution (`null` on failure). For compatibility its existing
-`nextReadyPhase` field can refer to the phase just attempted, not the next
-post-transition phase. Read `nextReadyPhase` from the subsequent `status` or
-`verify` result. Status/resume preserve `storedState` and `storedBlockers` when
+`executedPhase` separately. `nextReadyPhase` is recomputed after execution;
+`nextPlannablePhase` can identify work awaiting approval. A pending external
+operation retains its provider handle and is polled, not dispatched twice.
+Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.
 
-Governance JSON uses versioned objects and includes the complete activation
-version vector: creating Liftoff version, manifest artifact version 7, policy
-version 6, activation-contract version 2, state/evidence-header/approval schema
-versions 2, graph/supersession/credential schema versions 1, and the phase-graph
-hash. Compatibility metadata is version 3. It never
+Governance command JSON uses schema 2 and includes selected `scope`, separate
+local/activation/lifecycle progress, and `nextActions`. Each action carries its
+registered executable/argument array, project working directory, scope, and
+approval requirement; integrations must use it rather than invent commands.
+The execution identity uses activation package 0.12.0, manifest artifact 7,
+policy 6, activation contract 3, graph schema 2, state/evidence/approval schemas
+3, supersession/credential-policy schemas 1, and the computed graph hash.
+Compatibility metadata is schema 4. It never
 emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
-names the exact field and required Liftoff upgrade. Known v1 history is
+names the exact field and required Liftoff upgrade. Known v1/v2 history is
 diagnostic-only and byte-preserved; a supported successor requires
 `liftoff update --check` and explicit approval, not automatic reconciliation.
+
+Local completion requires only `seed-valid`, `seed-verified`, and
+`seed-archived` (Spec Kit uses finalization, not an invented archive).
+It does not require Git publication, provider credentials, or a deployment.
+Activation completion requires the live deployment, qualification, and
+enforcement phases. Retained bootstrap-state disposal is separate lifecycle
+work due 30 days after verified remote import, not a delay in initial activation.
+Consistent but incomplete verification exits 0 and reports `complete: false`;
+inconsistent or uninspectable selected-scope evidence exits 1.
+
+`--inputs` selects public configuration, including exact repository, Azure
+tenant/subscription/region, bounded budget, and validated per-phase inputs.
+Never put credentials, raw state, or private plans in that file.
+Credential enrollment uses a private TTY by default; `--protected-stdin`
+explicitly selects a protected automation channel. A fingerprint is not a
+token, and approval alone neither enrolls a credential nor provisions resources.
+Interrupted writes require a fresh `plan --recover-phase` before `recover`;
+unsupported or ambiguous external outcomes remain visible blockers.
 
 Status, resume, and verify JSON include `migration` (the validated journal, or
 `null`) and `migrationSummary`. The summary separates `localCommit`, validated
@@ -138,8 +173,11 @@ These inspection commands neither advance phases nor create preview receipts.
 `/liftoff-setup` calls these commands instead of inferring phase completion from
 prose or task checkboxes.
 
-OpenSpec projects use all 12 OpenSpec 1.11 workflows with both skills and
-commands. `--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
+OpenSpec projects use all 12 OpenSpec 1.11 workflows. Copilot and Claude receive
+their supported skills/commands; Codex receives native skills under
+`.agents/skills`, invoked through `$skill-name` or its skill picker, not fabricated
+slash-command adapters. All seven nonempty agent subsets are supported.
+`--copilot-cloud` opts into the GitHub-hosted coding-agent workflow and
 agent definition; omission and `--no-copilot-cloud` keep it disabled.
 
 OpenSpec stores workflow profile and delivery globally. If the observed profile

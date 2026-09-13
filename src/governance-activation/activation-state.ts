@@ -10,15 +10,17 @@ import {
   writeFile
 } from 'node:fs/promises';
 import path from 'node:path';
-import { canonicalJson, sha256Hex } from '../domain/governance/activation/canonical-json.js';
+import { canonicalJson, isRecord, sha256Hex } from '../domain/governance/activation/canonical-json.js';
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import type { UserActivationState } from '../domain/governance/activation/types.js';
-import { validateUserActivationState } from '../domain/governance/activation/validators.js';
+import { validateUserActivationState, validateEvidenceHeader } from '../domain/governance/activation/validators.js';
 import { withProjectMutationLock, type ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
 import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
-import { inspectActivationMigrationHistory } from './migration-history.js';
+import { activeActivationRecordsWithoutState, inspectActivationMigrationHistory } from './migration-history.js';
+import { validateReadableHistoricalActivationState } from './historical-state.js';
+import { parseHistoryJson } from './history-contracts.js';
 
 export class ActivationStateFileError extends Error {
   constructor(message: string) {
@@ -86,20 +88,50 @@ export function activationStateContentHash(content: string | Buffer): string {
 export async function loadActivationState(projectRoot: string): Promise<LoadedActivationState | undefined> {
   const bytes = await readProjectFile(projectRoot, activationStatePathParts());
   if (bytes === undefined) {
+    const orphaned = await activeActivationRecordsWithoutState(projectRoot);
+    if (orphaned.length > 0) {
+      for (const parts of orphaned) {
+        if (parts[1] === 'evidence') {
+          const raw = await readProjectFile(projectRoot, parts);
+          if (raw) {
+            try {
+              const parsed = JSON.parse(raw.toString('utf8'));
+              if (parsed && typeof parsed === 'object') {
+                if ('header' in parsed && parsed.header) validateEvidenceHeader(parsed.header);
+                else if ('extra' in parsed) throw new Error('schema validation failed');
+              }
+            } catch (err) {
+              throw new ActivationStateFileError(`Invalid ${parts.join('/')}: ${errorMessage(err)}`);
+            }
+          }
+        }
+      }
+      throw new ActivationStateFileError(
+        `governance/activation-state.json is missing while active execution records remain: ${orphaned.map((parts) => parts.join('/')).join(', ')}.`
+      );
+    }
     await inspectActivationMigrationHistory(projectRoot);
     return undefined;
   }
   const content = bytes.toString('utf8');
   let parsed: unknown;
   try {
-    parsed = JSON.parse(content) as unknown;
+    parsed = parseHistoryJson(bytes, 'governance/activation-state.json');
   } catch (error) {
     throw new ActivationStateFileError(`Unable to parse governance/activation-state.json: ${errorMessage(error)}`);
   }
   let state: UserActivationState;
-  if (typeof parsed === 'object' && parsed !== null && 'schemaVersion' in parsed && parsed.schemaVersion === 1 &&
-    'identity' in parsed && isHistoricalActivationIdentity(parsed.identity)) {
-    throw new ActivationStateFileError('Historical activation v1 state is diagnostic-only. Run liftoff update --check to inspect a supported history-preserving v2 successor; original state and evidence remain untouched until explicit approval. Do not reset, delete, or hand-edit activation history.');
+  if (isRecord(parsed) && isHistoricalActivationIdentity(parsed.identity)) {
+    try {
+      validateReadableHistoricalActivationState(parsed);
+    } catch (error) {
+      throw new ActivationStateFileError(`Invalid historical governance/activation-state.json: ${errorMessage(error)}. Historical activation state is diagnostic-only.`);
+    }
+    throw new ActivationStateFileError(
+      `Historical activation v${parsed.identity.activationContractVersion} state is diagnostic-only. ` +
+      'Run liftoff update --check to inspect its declared history-preserving v3 successor; original state, evidence, and approvals remain untouched until explicit approval. ' +
+      'Do not reset, delete, relabel, or hand-edit activation history. This is not OpenTofu-state migration.'
+    );
   }
   try {
     state = validateUserActivationState(parsed);

@@ -6,6 +6,8 @@ import type {
 } from '../domain/governance/activation/types.js';
 import { phaseIds } from '../domain/governance/activation/types.js';
 import { validateGraphReconciliationRecord } from '../domain/governance/activation/validators.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
 
 export interface GraphReconciliationResult {
   record: GraphReconciliationRecord;
@@ -60,6 +62,14 @@ export function calculateGraphReconciliation(
   const toGraph = options.toGraph ?? canonicalPhaseGraph;
   const recognizedGraphHashes = options.recognizedGraphHashes ?? new Set([canonicalPhaseGraphHash]);
   const record = validateGraphReconciliationRecord(value, recognizedGraphHashes);
+  if (isHistoricalActivationIdentity(record.fromIdentity) || isHistoricalActivationIdentity(record.toIdentity) ||
+    Object.keys(record.fromIdentity).some((field) => field !== 'phaseGraphHash' &&
+      record.fromIdentity[field as keyof typeof record.fromIdentity] !== record.toIdentity[field as keyof typeof record.toIdentity])) {
+    throw new Error('Graph reconciliation cannot translate historical activation authority; use the declared history-preserving successor.');
+  }
+  if (canonicalSha256(fromGraph) !== record.fromGraphHash || canonicalSha256(toGraph) !== record.toGraphHash) {
+    throw new Error('Graph reconciliation must bind the actual independently recognized source and target graphs.');
+  }
   assertMappingMatchesGraph(record, fromGraph, toGraph);
   const directlyChanged = new Set(
     record.phaseMappings

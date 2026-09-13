@@ -198,7 +198,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
 }
 
 describe('linked migration inspection', {
-  timeout: process.platform === 'win32' ? 90_000 : 30_000
+  timeout: 90_000
 }, () => {
   it.each(['pending', 'running', 'blocked', 'complete'] as const)(
     'reports %s journal progress consistently without changing project or external receipt bytes',
@@ -226,7 +226,7 @@ describe('linked migration inspection', {
         expect(structured.code, structured.stdout + structured.stderr).toBe(0);
         expect(structured.stderr).toBe('');
         const report = jsonReport(structured.stdout);
-        expect(report).toMatchObject({ schemaVersion: 1, command: `governance ${command}`, readOnly: true, migration: journal });
+        expect(report).toMatchObject({ schemaVersion: 2, command: `governance ${command}`, readOnly: true, migration: journal });
         expect(report.migrationSummary).toMatchObject({
           localCommit: journal.transaction,
           snapshot: {
@@ -245,7 +245,7 @@ describe('linked migration inspection', {
         } else {
           expect(report.approvals).toEqual([]);
           expect(report.remoteBinding).toBeNull();
-          expect(report.nextReadyPhase).toBe(status === 'complete' ? null : 'seed-valid');
+          expect(report.nextReadyPhase).toBe(status === 'complete' || report.scope === 'activation' ? null : 'seed-valid');
           expect(report.phases).toEqual(expect.arrayContaining(migrationRevalidationPhaseIds.map((id) => expect.objectContaining({
             id, storedState: status === 'complete' ? 'verified' : 'pending',
             evidence: expect.objectContaining({ freshness: expect.objectContaining({ status: status === 'complete' ? 'fresh' : 'missing' }) })

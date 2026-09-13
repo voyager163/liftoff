@@ -10,12 +10,13 @@ import { buildRepositoryGovernanceArtifacts } from '../repository-governance.js'
 import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
 import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
-import { planActivationHistoryMigration } from '../governance-activation/migration-history.js';
+import { planActivationHistoryMigration, type HistoricalLifecycleObligation } from '../governance-activation/migration-history.js';
 import {
   validateActivationIdentity,
   validateApprovalEnvelope,
   validateReadableActivationIdentity
 } from '../domain/governance/activation/validators.js';
+import { assertGovernanceApprovalIssued } from '../governance-activation/authority-records.js';
 import type {
   ApprovalEnvelope,
   PhaseEvidenceRecord,
@@ -64,6 +65,7 @@ export interface AssessmentProject {
   evidenceContexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
   activationSelections?: Partial<Record<PhaseId, EvidenceSelectionResult>>;
   historicalActivation?: AssessmentHistoricalActivation;
+  historicalLifecycleObligations?: readonly HistoricalLifecycleObligation[];
   invalidEvidence: boolean;
   diagnostics: AssessmentDiagnostic[];
 }
@@ -260,7 +262,8 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     const value = parseAssessmentJson(text, label);
     try {
       if (containsSensitiveText(text)) throw new Error('Approval with sensitive content was withheld.');
-      input.approvals.push(validateApprovalEnvelope(value));
+      const envelope = validateApprovalEnvelope(value);
+      input.approvals.push(envelope);
     } catch (error) {
       diagnostics.push(diagnostic('unsupported-approval', error instanceof Error ? error.message : 'Approval could not be interpreted.', label));
     }

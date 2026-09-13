@@ -210,23 +210,24 @@ comparisons to infer execution safety.
 
 | Contract | Current version |
 | --- | --- |
-| CLI package version | 0.11.3 |
-| Activation package identity | 0.11.0 |
+| CLI package version | 0.12.0 |
+| Activation package identity | 0.12.0 |
 | Manifest write / supported reads | 7 / 2-7 for API and GenAI |
 | Normative policy | 6 |
-| Activation contract, state, evidence header, approval envelope | 2 |
-| Compatibility metadata / supported historical input | 3 / 2 |
+| Activation contract, state, evidence header, approval envelope | 3 |
+| Compatibility metadata / supported historical input | 4 / 2 |
 | Update report | 3 |
 | Preview receipt, transaction approval, history index, migration journal | 1 |
 | Phase graph, supersession, credential policy | 1 |
 | Assessment report and control catalog | 1 |
 
-The 0.11.3 CLI patch retains the 0.11.0 activation identity because its phase
-semantics and graph are unchanged. Independent infrastructure provenance
-explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, and 0.11.3,
+Liftoff 0.12.0 advances the activation contract, state, evidence header, and approval
+envelope to version 3, and compatibility metadata to schema version 4, covering the
+29-phase canonical phase graph. Independent infrastructure provenance
+explicitly recognizes generation versions 0.11.0, 0.11.1, 0.11.2, 0.11.3, and 0.12.0,
 including mixed component histories; unknown releases are not automatically
 trusted or treated as compatible. The mandatory preview/approval workflow and
-schema-3 update reports remain unchanged by this patch.
+schema-3 update reports remain unchanged.
 
 Known activation-v1 history remains **diagnostic-only**, not executable proof.
 Compatibility metadata v3 separately declares the exact history-preserving

@@ -1,5 +1,6 @@
 import { lstat, readdir, readFile } from 'node:fs/promises';
 import { stripVTControlCharacters } from 'node:util';
+import { containsSensitiveText } from '../domain/governance/assessment/sanitize.js';
 import { loadManifest } from '../application/project/manifest.js';
 import { readProjectFile, writeProjectFile } from '../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
@@ -729,25 +730,15 @@ export async function discoverGeneratedSeed(projectRoot: string, suppliedManifes
 }
 
 function checkFailureDetail(result: CommandResult): string {
-  if (result.command.executable === 'openspec') {
-    const condition = result.timedOut ? 'command timed out' : `exit status ${result.status ?? 'unknown'}`;
-    const output = [result.errorCode, result.errorMessage, result.stderr, result.stdout]
-      .filter(Boolean)
-      .join('\n');
-    const diagnostic = sanitizeOpenSpecDiagnostic(output);
-    return diagnostic ? `${condition}; ${diagnostic}` : condition;
-  }
-
-  if (result.timedOut) {
-    return 'command timed out';
-  }
-  if (result.aborted) return 'command was interrupted or cancelled';
-  if (result.outputLimitExceeded) return 'command output exceeded the supported limit';
-  if (result.signal) return `command terminated by ${result.signal}`;
-  if (result.errorCode || result.errorMessage) {
-    return [result.errorCode, result.errorMessage].filter(Boolean).join(': ');
-  }
-  return `exit status ${result.status ?? 'unknown'}`;
+  const condition = result.timedOut ? 'command timed out'
+    : result.aborted ? 'command was interrupted or cancelled'
+      : result.outputLimitExceeded ? 'command output exceeded the supported limit'
+        : result.signal ? `command terminated by ${result.signal}`
+          : `exit status ${result.status ?? 'unknown'}`;
+  const output = [result.errorCode, result.errorMessage, result.stderr, result.stdout].filter(Boolean).join('\n');
+  const label = result.command.executable === 'openspec' ? 'OpenSpec' : 'Local command';
+  const diagnostic = sanitizeLocalDiagnostic(output, label);
+  return diagnostic ? `${condition}; ${diagnostic}` : condition;
 }
 
 function commandSucceeded(result: CommandResult): boolean {
@@ -763,17 +754,17 @@ function localValidationObservation(result: CommandResult) {
   };
 }
 
-function sanitizeOpenSpecDiagnostic(output: string): string {
+function sanitizeLocalDiagnostic(output: string, label: string): string {
   const plain = stripVTControlCharacters(output)
     .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f]/gu, '')
     .trim();
   const scan = detectCredentialLeaks([{
     source: 'process-log',
-    label: 'OpenSpec failure diagnostic',
+    label: `${label} failure diagnostic`,
     text: plain
   }]);
-  if (scan.status === 'compromised') {
-    return `OpenSpec diagnostic withheld: credential-shaped content detected. ${scan.guidance.join(' ')}`;
+  if (scan.status === 'compromised' || containsSensitiveText(plain)) {
+    return `${label} diagnostic withheld: credential-shaped content detected. ${scan.guidance.join(' ')}`.trim();
   }
   const limit = 2048;
   const suffix = '\n[truncated]';

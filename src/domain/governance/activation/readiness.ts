@@ -7,6 +7,7 @@ import {
 } from './evidence.js';
 import { resolveActivationCompatibility } from '../policy/identity.js';
 import {
+  approvalRequestForSavedPlan,
   evaluateApprovalForTransitionPlan,
   transitionPlanForPhase
 } from './approvals.js';
@@ -21,12 +22,16 @@ import type {
   PhaseState,
   UserActivationState
 } from './types.js';
+import { type GovernanceScope, phaseScope } from './types.js';
 import { validateApprovalEnvelope } from './validators.js';
 
 export type PhaseReadiness = {
   phaseId: PhaseId;
   state: PhaseState | 'identity-incompatible';
   blockers: readonly string[];
+  plannable?: boolean;
+  approvalRequired?: boolean;
+  recoveryRequired?: boolean;
 };
 
 export interface ReadinessResult {
@@ -34,6 +39,9 @@ export interface ReadinessResult {
   identityBlocker?: string;
   phases: Record<PhaseId, PhaseReadiness>;
   nextReadyPhase: PhaseId | null;
+  nextPlannablePhase: PhaseId | null;
+  scope: GovernanceScope;
+  completion: Record<GovernanceScope, boolean>;
 }
 
 export interface ReadinessInput {
@@ -46,6 +54,9 @@ export interface ReadinessInput {
   now?: Date;
   phaseBlockers?: Partial<Record<PhaseId, readonly string[]>>;
   retryArchivedSeedBaseline?: boolean;
+  scope?: GovernanceScope;
+  recoverPhase?: PhaseId;
+  historicalLifecycleBlockers?: readonly string[];
 }
 
 const terminalStates = new Set<PhaseState>([
@@ -98,7 +109,7 @@ export function applicabilityApplies(node: PhaseGraphNode, state: UserActivation
     return true;
   }
   if (node.applicability.discriminator === 'state-path') {
-    if (state.applicability.privateStagingDast === false) return false;
+    if (state.applicability.cloudStateRequired === false) return false;
     if (state.applicability.statePath === 'none') return 'unknown';
     if (node.applicability.when === 'statePath=existing-private') {
       return state.applicability.statePath === 'existing-private';
@@ -112,6 +123,8 @@ export function applicabilityApplies(node: PhaseGraphNode, state: UserActivation
   if (node.applicability.discriminator === 'private-staging-dast') {
     return state.applicability.privateStagingDast;
   }
+  if (node.applicability.discriminator === 'cloud-state-required') return state.applicability.cloudStateRequired ?? 'unknown';
+  if (node.applicability.discriminator === 'private-runner-required') return state.applicability.privateRunnerRequired ?? 'unknown';
   return state.applicability.credentialRequired;
 }
 
@@ -122,7 +135,7 @@ function hasApplicabilityProof(
   contexts: ReadinessInput['transitionContexts']
 ): boolean {
   if (node.applicability.kind === 'always') return true;
-  const statePath = node.applicability.discriminator === 'state-path' && state.applicability.privateStagingDast !== false;
+  const statePath = node.applicability.discriminator === 'state-path' && state.applicability.cloudStateRequired !== false;
   const sourceId = statePath ? 'state-path-selected' : 'phase-0-complete';
   const context = contexts?.[sourceId];
   if (!context) return false;
@@ -132,7 +145,9 @@ function hasApplicabilityProof(
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return false;
   const value = payload as Record<string, unknown>;
   if (statePath) return value.statePath === state.applicability.statePath;
-  const factId = node.applicability.discriminator === 'credential-required' ? 'credentialRequired' : 'privateStagingDast';
+  const factId = node.applicability.discriminator === 'credential-required' ? 'credentialRequired' :
+    node.applicability.discriminator === 'private-staging-dast' ? 'privateStagingDast' :
+      node.applicability.discriminator === 'private-runner-required' ? 'privateRunnerRequired' : 'cloudStateRequired';
   return Array.isArray(value.facts) && value.facts.some((fact) => typeof fact === 'object' && fact !== null &&
     fact.id === factId && fact.value === state.applicability[factId]);
 }
@@ -174,6 +189,7 @@ export function dependencySatisfied(
 
 export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult {
   const graph = input.graph ?? canonicalPhaseGraph;
+  const scope = input.scope ?? 'activation';
   const identity = input.identity ?? input.state.identity;
   const compatibility = resolveActivationCompatibility(identity, activationCompatibility);
   const phases = {} as Record<PhaseId, PhaseReadiness>;
@@ -189,14 +205,16 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       identityCompatible: false,
       identityBlocker: compatibility.reason,
       phases,
-      nextReadyPhase: null
+      nextReadyPhase: null,
+      nextPlannablePhase: null,
+      scope,
+      completion: { local: false, activation: false, lifecycle: false }
     };
   }
 
   const now = input.now ?? new Date();
   const approvals = input.approvals.map((approval) => validateApprovalEnvelope(approval));
   const evidence = input.evidence.map((entry, index) => evidenceRecord(entry, index));
-  const byId = phaseMap(graph);
   const externalPhaseBlockers = propagatedPhaseBlockers(graph, input.phaseBlockers ?? {});
   for (const node of graph.phases) {
     const stored = input.state.phases[node.id];
@@ -234,6 +252,10 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       continue;
     }
     const applicability = applicabilityApplies(node, input.state);
+    if (node.id === 'bootstrap-state-disposed' && input.historicalLifecycleBlockers?.length) {
+      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: input.historicalLifecycleBlockers, plannable: false };
+      continue;
+    }
     if (applicability === 'unknown') {
       phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: ['Applicability is unknown; independent current facts are required before this phase can be skipped.'] };
       continue;
@@ -252,33 +274,43 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       continue;
     }
     const localRetry = ['seed-valid', 'seed-verified', 'seed-archived'].includes(node.id);
-    if (!localRetry && (selectedEvidence.selected?.header.result === 'failed' || stored.state === 'failed')) {
+    if (!localRetry && input.recoverPhase !== node.id && stored.state === 'blocked' &&
+      (stored.operation || stored.executionPlanDigest)) {
+      phases[node.id] = {
+        phaseId: node.id, state: 'blocked', recoveryRequired: true,
+        blockers: [...stored.blockers, 'An interrupted or partial external execution requires an explicitly reviewed recovery plan.']
+      };
+      continue;
+    }
+    if (!localRetry && input.recoverPhase !== node.id &&
+      (selectedEvidence.selected?.header.result === 'failed' || stored.state === 'failed' || stored.operation?.status === 'failed')) {
       phases[node.id] = {
         phaseId: node.id,
         state: 'failed',
-        blockers: selectedEvidence.selected?.header.result === 'failed' ? [] : stored.blockers
+        blockers: stored.blockers.length ? stored.blockers : ['The prior operation failed; preview and explicitly approve its recovery before retrying.'],
+        recoveryRequired: true
       };
       continue;
     }
-    if (recordsForPhase.length > 0 && selectedEvidence.issues.length > 0 &&
-      (!localRetry || selectedEvidence.issues.some((issue) => issue.field === 'producedAt'))) {
+    const staleInputFields = new Set(['baselineSha', 'inputDigest', 'transition.baselineSha', 'transition.inputDigest', 'transition.transitionDigest',
+      'payload.synchronizedSpecDigest', 'remoteBindingDigest']);
+    const integrityIssues = selectedEvidence.issues.filter((issue) =>
+      !staleInputFields.has(issue.field) && !(issue.field === 'plan' && issue.message === 'Evidence phase, current inputs, or timing differ from the reviewed transition plan.')
+    );
+    if (recordsForPhase.length > 0 && integrityIssues.length > 0) {
       phases[node.id] = {
         phaseId: node.id,
         state: 'blocked',
-        blockers: selectedEvidence.issues.map((entry) => entry.message)
+        blockers: integrityIssues.map((entry) => entry.message)
       };
       continue;
     }
-    if (stored.state === 'running') {
-      phases[node.id] = { phaseId: node.id, state: 'running', blockers: [] };
-      continue;
-    }
-    if (
-      stored.state === 'blocked' &&
-      stored.blockers.length > 0 &&
-      !localRetry
-    ) {
-      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: stored.blockers };
+    if (!localRetry && stored.state === 'running' && !stored.operation && input.recoverPhase !== node.id) {
+      phases[node.id] = {
+        phaseId: node.id, state: 'blocked',
+        blockers: ['The running phase has no external operation handle; inspect and approve recovery rather than dispatching it again.'],
+        recoveryRequired: true
+      };
       continue;
     }
     if (
@@ -294,49 +326,66 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       continue;
     }
     for (const dependency of node.dependencies) {
+      if (input.recoverPhase === node.id && (stored.executionPlanDigest || stored.operation?.planDigest)) continue;
       if (!dependencySatisfied(dependency, phases, input.state)) {
         blockers.push(dependency.description);
       }
     }
+    if (blockers.length > 0) {
+      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers, plannable: false };
+      continue;
+    }
+    if (selectedEvidence.selected && selectedEvidence.selected.header.result !== 'failed') {
+      phases[node.id] = {
+        phaseId: node.id, state: selectedEvidence.selected.header.result, blockers: [], plannable: false
+      };
+      continue;
+    }
+    let approvalRequired = false;
     if (node.approvalGate.required) {
+      const reviewed = context.reviewedPlans?.filter((plan) =>
+        plan.phaseId === node.id && plan.inputDigest === context.inputDigest && plan.baselineDigest === context.baselineSha
+      ).sort((left, right) => Date.parse(right.createdAt) - Date.parse(left.createdAt))[0];
       const approval = evaluateApprovalForTransitionPlan(
-        transitionPlanForPhase(byId[node.id], input.state, context.transition, undefined, context.publicationDestination),
+        reviewed ? approvalRequestForSavedPlan(reviewed, node, input.state) :
+          transitionPlanForPhase(node, input.state, context.transition, undefined, context.publicationDestination),
         approvals,
         { now }
       );
+      approvalRequired = approval.approvalRequired;
       if (approval.approvalRequired) {
         blockers.push(
-          `Approval gate ${node.approvalGate.kind} is not satisfied: ${approval.reasons.join('; ')}. ` +
-            'Public approval persistence is unavailable; do not hand-edit activation state or fabricate approval files.'
+          `Approval gate ${node.approvalGate.kind} is not satisfied: ${approval.reasons.join('; ')}. Preview this phase and use governance approve with its exact plan fingerprint.`
         );
       }
     }
     if (blockers.length > 0) {
-      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers };
-      continue;
-    }
-    if (selectedEvidence.selected && selectedEvidence.selected.header.result !== 'failed') {
-      const foundEvidence = selectedEvidence.selected.header;
-      phases[node.id] = {
-        phaseId: node.id,
-        state: foundEvidence.result === 'retained' ? 'retained' : foundEvidence.result,
-        blockers: []
-      };
+      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers, plannable: true, approvalRequired };
       continue;
     }
     if (stored.state === 'approved' && (node.terminalStates as readonly string[]).includes('approved')) {
       phases[node.id] = { phaseId: node.id, state: 'approved', blockers: [] };
       continue;
     }
-    if (terminalStates.has(stored.state) && !localRetry) {
-      phases[node.id] = { phaseId: node.id, state: 'blocked', blockers: ['Completed phase has no current authoritative evidence.'] };
-    } else {
-      phases[node.id] = { phaseId: node.id, state: 'ready', blockers: [] };
-    }
+    phases[node.id] = {
+      phaseId: node.id, state: stored.state === 'running' && input.recoverPhase !== node.id ? 'running' : 'ready',
+      blockers: [], plannable: true, approvalRequired: false
+    };
   }
+  const succeeded = new Set(['approved', 'verified', 'inapplicable', 'retained', 'disposed']);
+  const localComplete = graph.completionGroups.local.every((id) => succeeded.has(phases[id].state));
+  const effectiveScope = input.scope ?? (localComplete ? 'activation' : 'local');
+  const scoped = graph.phases.filter((phase) => phaseScope(phase.id) === effectiveScope);
   return {
     identityCompatible: true,
     phases,
-    nextReadyPhase: graph.phases.find((phase) => phases[phase.id].state === 'ready')?.id ?? null
+    scope: effectiveScope,
+    nextReadyPhase: scoped.find((phase) => phases[phase.id].state === 'ready')?.id ?? null,
+    nextPlannablePhase: scoped.find((phase) => phases[phase.id].plannable)?.id ?? null,
+    completion: {
+      local: localComplete,
+      activation: [...graph.completionGroups.local, ...graph.completionGroups.activation].every((id) => succeeded.has(phases[id].state)),
+      lifecycle: graph.completionGroups.lifecycle.every((id) => succeeded.has(phases[id].state))
+    }
   };
 }

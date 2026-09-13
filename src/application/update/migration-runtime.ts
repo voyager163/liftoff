@@ -8,9 +8,11 @@ import { canonicalJson } from '../../domain/governance/activation/canonical-json
 import { manifestDisplayPath } from '../../domain/project/paths.js';
 import {
   activationHistoryIndexPathParts, historicalActivationStatePathParts, migrationStateFilePathParts,
-  parseHistoryJson, rawHistoryDigest, validateMigrationJournal, type MigrationJournal
+  parseHistoryJson, validateMigrationJournal, type MigrationJournal
 } from '../../governance-activation/history-contracts.js';
-import { finalizeActivationHistoryMigration } from '../../governance-activation/migration-history.js';
+import {
+  finalizeActivationHistoryMigration, verifyActivationHistoryBeforeReplacement
+} from '../../governance-activation/migration-history.js';
 import type { ExecutionContext } from '../context.js';
 import { UpdatePlanError, type UpdateInspection } from './inspection.js';
 import type { UpdateMigrationSummary, UpdateRevalidationSummary } from './output.js';
@@ -37,7 +39,15 @@ export function describeUpdateMigration(inspection: UpdateInspection): UpdateMig
         { type: 'write', path: manifestDisplayPath([...historicalActivationStatePathParts]) },
         { type: 'write', path: manifestDisplayPath([...migrationStateFilePathParts]) }
       ],
-      issues: ['Preserve original v1 bytes, create a linked v2 successor, and establish fresh local proof.']
+      issues: [
+        `Preserve original v${history.index.sourceIdentity.activationContractVersion} bytes and approvals, create a linked v3 successor, and establish fresh local proof.`,
+        'This upgrades Liftoff control records only. It does not read, copy, or migrate OpenTofu state, contact providers, install dependencies, publish Git history, or authorize deployment.',
+        ...(history.semanticPlan.ancestorHistory.length
+          ? ['Previously preserved v1 history is verified and retained in place through its original migration link.'] : []),
+        ...history.semanticPlan.lifecycleObligations.map((obligation) => obligation.retention.status === 'disposed'
+          ? 'Historical disposal is retained; migration does not recreate state or keys. Current lifecycle verification requires separate authority.'
+          : `Original bootstrap retention remains in force from ${obligation.retention.retainedAt} through ${obligation.retention.disposeAfter}; ownership verification and disposal are separate lifecycle work.`)
+      ]
     };
   }
   if (history.status === 'blocked') {
@@ -80,6 +90,10 @@ export function materializeUpdateMutations(
   if (inspection.historyMigration.status !== 'eligible') {
     return { mutations: review.writePlan.mutations };
   }
+  if (review.writePlan.skipped.length || review.writePlan.provisioned.length) {
+    throw new UpdatePlanError('Activation identity migration requires every target managed file and cannot include component expansion.',
+      'invalid-successor-plan', 'Obtain a fresh review of required core conflicts; desired component and agent changes remain separate repair work.');
+  }
   const history = inspection.historyMigration;
   const finalized = finalizeActivationHistoryMigration(history, review.descriptor.fingerprint, now);
   const snapshotKeys = new Set([
@@ -102,13 +116,11 @@ export async function verifyHistoryBeforeReplacement(
   mutation: ProjectFileMutation
 ): Promise<void> {
   if (inspection.historyMigration.status !== 'eligible') return;
-  const original = inspection.historyMigration.index.files.find((file) =>
-    file.originalPathParts.join('\0') === mutation.pathParts.join('\0'));
-  if (!original) return;
-  const copy = await captureProjectFileSnapshot(inspection.projectRoot, original.copyPathParts);
-  if (!copy.content || rawHistoryDigest(copy.content) !== original.digest) {
+  try {
+    await verifyActivationHistoryBeforeReplacement(inspection.projectRoot, inspection.historyMigration, mutation);
+  } catch (error) {
     throw new UpdatePlanError(
-      `The original bytes were not safely preserved before replacement: ${manifestDisplayPath(mutation.pathParts)}`,
+      `The original bytes were not safely preserved before replacement: ${manifestDisplayPath(mutation.pathParts)}. ${error instanceof Error ? error.message : String(error)}`,
       'history-preservation-failed', 'Preserve the original data and review the transaction recovery report.'
     );
   }
@@ -123,12 +135,12 @@ export async function runUpdateRevalidation(
   if (!review.revalidation) return { status: 'not-required', nextPhase: null, issues: [] };
   const prepared = review.revalidation;
   const now = context.updateNow ?? (() => new Date());
-  return withProjectMutationLock(inspection.projectRoot, async () => {
+  return withProjectMutationLock(inspection.projectRoot, async (): Promise<UpdateRevalidationSummary> => {
     await validateReview?.();
     let journalSnapshot = await captureProjectFileSnapshot(inspection.projectRoot, [...migrationStateFilePathParts]);
     if (!journalSnapshot.content) {
       throw new UpdatePlanError('The committed migration journal is missing.',
-        'migration-journal-missing', 'Preserve v2 and restore the declared migration history before retrying.');
+        'migration-journal-missing', 'Preserve the v3 successor and investigate the declared migration history before retrying.');
     }
     let journal = validateMigrationJournal(parseHistoryJson(journalSnapshot.content, 'governance/migration-state.json'));
     const snapshotId = journal.snapshotId;
@@ -205,5 +217,8 @@ export async function runUpdateRevalidation(
       preview: prepared.preview,
       phaseResults: result.phaseResults
     };
-  });
+  }).catch((error: unknown): UpdateRevalidationSummary => ({
+    status: 'blocked', nextPhase: null, preview: prepared.preview,
+    issues: [`The local successor remains committed but revalidation could not complete: ${error instanceof Error ? error.message : String(error)}`]
+  }));
 }

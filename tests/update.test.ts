@@ -28,6 +28,9 @@ import { formatUpdateCommand } from '../src/application/update/command-guidance.
 import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
 import {
+  writeGovernanceApprovalAuthority
+} from '../src/governance-activation/authority-records.js';
+import {
   canonicalJson,
   canonicalPhaseGraph,
   canonicalSha256,
@@ -1743,8 +1746,10 @@ describe('core-only update command', () => {
     ];
     await writeProjectOwnedFile(root, ['governance', 'evidence', 'manual-evidence.json'],
       `${JSON.stringify(retainedCurrentEvidence('manual-evidence'), null, 4)}\n`);
+    const retainedApproval = retainedCurrentApproval();
     await writeProjectOwnedFile(root, ['governance', 'approvals', 'manual-approval.json'],
-      `${JSON.stringify(retainedCurrentApproval(), null, 4)}\n`);
+      `${JSON.stringify(retainedApproval, null, 4)}\n`);
+    await writeGovernanceApprovalAuthority(root, canonicalSha256({ test: 'retained-update-approval' }), retainedApproval);
     await writeProjectOwnedFile(root, ['governance', 'credentials', 'preflight-policy.json'], '{"user":"credential-metadata"}\n');
     await writeProjectOwnedFile(root, ['governance', 'supersessions', 'manual-supersession.json'], '{"user":"supersession"}\n');
     await writeProjectOwnedFile(root, ['governance', 'reconciliation', 'manual-reconciliation.json'], '{"user":"reconciliation"}\n');

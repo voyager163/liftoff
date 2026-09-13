@@ -1,5 +1,9 @@
 import { readFileSync } from 'node:fs';
+import { governanceAgentIntegrations } from './domain/project/catalog.js';
+import { managedCoreLogicalNames } from './domain/project/artifact-lifecycle.js';
+export { governanceAgentIntegrations };
 import type {
+  CodingAgentId,
   GeneratedArtifact,
   ProjectPlan
 } from './domain/project/contracts.js';
@@ -41,18 +45,20 @@ import {
 export const governancePolicySchemaVersion = 1 as const;
 export const governancePolicyVersion = '6' as const;
 export const governanceContextSchemaVersion = 1 as const;
-const governanceManagedCoreLogicalNames = [
-  'repository-governance-policy',
-  'repository-governance-context',
-  'repository-governance-guide',
-  'repository-governance-phase-graph',
-  'repository-governance-compatibility',
-  'repository-governance-credential-policy-schema',
-  'liftoff-setup-copilot',
-  'liftoff-setup-claude',
-  'liftoff-governance-assess-copilot',
-  'liftoff-governance-assess-claude'
-] as const;
+const governanceManagedCoreLogicalNames = managedCoreLogicalNames;
+
+export function governanceInvocationGuide(
+  plan: Pick<ProjectPlan, 'agents'>,
+  operation: 'setup' | 'assessment' = 'setup'
+): string {
+  if (plan.agents.length === 0) {
+    const name = operation === 'setup' ? 'liftoff-setup' : 'liftoff-governance-assess';
+    return `No native \`${name}\` integration is recorded.`;
+  }
+  return plan.agents.map((agent) =>
+    `${agent.label}: \`${governanceAgentIntegrations[agent.id][operation].invocation}\``
+  ).join('; ');
+}
 
 export const governanceArtifactPaths = {
   policy: ['.liftoff', 'governance', 'policy.md'],
@@ -62,12 +68,14 @@ export const governanceArtifactPaths = {
   compatibility: ['.liftoff', 'governance', 'compatibility.json'],
   credentialPolicySchema: ['.liftoff', 'governance', 'credential-policy.schema.json'],
   setup: {
-    'github-copilot': ['.github', 'prompts', 'liftoff-setup.prompt.md'],
-    claude: ['.claude', 'commands', 'liftoff-setup.md']
+    'github-copilot': governanceAgentIntegrations['github-copilot'].setup.pathParts,
+    claude: governanceAgentIntegrations.claude.setup.pathParts,
+    codex: governanceAgentIntegrations.codex.setup.pathParts
   },
   assessment: {
-    'github-copilot': ['.github', 'prompts', 'liftoff-governance-assess.prompt.md'],
-    claude: ['.claude', 'commands', 'liftoff-governance-assess.md']
+    'github-copilot': governanceAgentIntegrations['github-copilot'].assessment.pathParts,
+    claude: governanceAgentIntegrations.claude.assessment.pathParts,
+    codex: governanceAgentIntegrations.codex.assessment.pathParts
   }
 } as const;
 
@@ -797,39 +805,72 @@ export function renderGovernanceContext(plan: ProjectPlan, options: GovernanceCo
 
 function renderGovernanceGuide(plan: ProjectPlan): string {
   const launchers = plan.agents.map((agent) =>
-    agent.id === 'github-copilot'
-      ? '- GitHub Copilot: `/liftoff-setup`.'
-      : '- Claude Code: `/liftoff-setup`.'
+    `- ${agent.label}: \`${governanceAgentIntegrations[agent.id].setup.invocation}\`.`
   ).join('\n');
+  const primaryAgent = plan.agents.find((agent) => agent.id === plan.defaultAgent?.id) ?? plan.agents[0];
+  const primary = primaryAgent ? governanceAgentIntegrations[primaryAgent.id] : undefined;
+  const nextAction = primary ? `## Next action after init
+
+From this project, enter the native setup invocation in a selected coding agent,
+not in a shell. Do not reinitialize the application.
+
+\`\`\`text
+${primary.setup.invocation}
+\`\`\`
+
+Use the generated setup integration from any selected agent:
+
+${launchers}` : `## Legacy project handoff
+
+No native setup integration is recorded for this legacy project. This managed-core
+update does not initialize the framework or install coding-agent integrations.
+Inspect the current local boundary without executing setup:
+
+\`\`\`bash
+liftoff governance status --scope local --json
+\`\`\`
+
+Review the CLI's supported diagnostics and separately approved framework adoption
+requirements. The journey below applies only after the required framework and
+native integration are established; no agent or prior completion is inferred.`;
   return `# Liftoff deterministic setup
 
-State: **managed setup generated; live enforcement is not active**.
+State: **${primary ? 'managed setup generated' : 'managed handoff generated; no native integration recorded'}; live enforcement is not active**.
 
 Liftoff generated deterministic policy and workload context only. It did not
 create or change branches, commits, tags, remotes, pull requests, releases,
 rulesets, GitHub settings, security features, environments, runners, cloud
 resources, deployments, monitoring, alerts, or Slack routes.
 
-## Next command after init
-
-\`\`\`text
-liftoff init ${plan.safeProjectName}
-cd ${plan.safeProjectName}
-/liftoff-setup
-\`\`\`
-
-Use the generated setup integration from any selected agent:
-
-${launchers}
+${nextAction}
 
 ## What setup does
 
-\`/liftoff-setup\` delegates every transition to
-\`liftoff governance status|plan|apply-next|resume|verify\`. The CLI resolves
+\`liftoff-setup\` delegates every transition to the Liftoff CLI, beginning with
+\`liftoff governance status --scope local --json\`. The CLI resolves
 the project root, loads \`phase-graph.json\`, validates policy ${governancePolicyVersion},
-and records no separate setup-integration version.
+and uses activation contract ${activationContractVersion} from package
+${liftoffActivationPackageVersion}. Native integration changes use managed content
+hashes, not an independent version.
 
-Before any live governance work, setup completes the deterministic baseline seed:
+Prefer the CLI's supported \`nextActions\`: preserve each \`command.executable\`,
+argument array, \`cwd\`, \`scope\`, and \`approvalRequired\`. A
+\`nextPlannablePhase\` can be previewed before approval; execution uses only a
+currently ready action with its required authority. Never invent flags or edit
+approval/state JSON.
+Unscoped governance commands default to activation; local inspection, execution,
+and verification must retain \`--scope local\`. Supported scopes are \`local\`,
+\`activation\`, and \`lifecycle\`.
+\`governance plan\` saves a disclosed external preview, not approval, and does not
+execute its proposed effects. \`apply-next\` without \`--execute\` is strictly
+read-only. When public planning inputs are requested, follow the reported
+\`--inputs <public-json-file>\` action and its documented public schema; never
+put credentials or invented approval/state records in that file.
+${plan.agents.some((agent) => agent.id === 'codex')
+  ? 'Codex skills use their dollar-prefixed names or the `/skills` picker, not global custom prompts.\n'
+  : ''}
+
+Before publication and activation, setup verifies the deterministic baseline seed:
 \`liftoff validate\`, applicable backend tests, frontend build,
 \`docker compose config -q\`, \`tofu fmt -check -recursive\`,
 \`tofu init -backend=false\`, \`tofu validate\`, and strict ${plan.specWorkflow.label}
@@ -839,22 +880,47 @@ ${plan.specWorkflow.id === 'openspec'
     ? 'OpenSpec bootstrap seed was synchronized and archived.'
     : 'real Spec Kit bundle at `specs/000-liftoff-bootstrap/` was finalized locally, without an OpenSpec archive or new Git branch.'}
 It does not mean product behavior, infrastructure, or enforcement exists.
+Local-ready is a milestone, not the end of a requested full journey. After local
+verification, present \`liftoff governance plan --scope activation --json\` and
+continue only through separately approved actions. A local-only request or
+declined later authority preserves local completion without publication or
+provider effects.
 An older Spec Kit project without that bundle needs separately reviewed seed
 adoption; update, force, and assessment never create it or infer completion.
+If stateful repair is required to reach local conformance, offer its distinct
+approved migration branch. It is not local-only work and cannot run under local
+repair approval.
 
-Questions are limited to repository publication, credentials, billed resources
-or policy exceptions, final enforcement, destructive cleanup, and external
-blockers. Only explicit execution retries repaired local failures; status,
+Questions are limited to exact repair/migration plans, state-read authority,
+independent tool/dependency/global-profile permissions, repository publication,
+credentials, billed resources or policy exceptions, final enforcement,
+destructive recovery/cleanup, and external blockers.
+Use the CLI-provided repair preview and eligibility actions, never a fresh
+starter copied over the project or fabricated machine metadata. Local repair
+approval does not authorize sensitive-state reads, backend writes, or resources.
+Unknown or unsupported transformations stay plan-only.
+Only explicit execution retries repaired local failures; status,
 resume, and verify remain read-only. Current unchanged proof may be reused.
-Unavailable production executors and public approval/credential entry points
-remain capability blockers; the phase graph does not claim they are implemented.
+Do not repeat an unchanged failure or ineffective installer. Actual missing
+capabilities, permissions, quota, or execution paths remain resumable blockers.
+
+Schema-2 results distinguish \`scope\`, \`localSetup\`, \`activation\`,
+\`migration\`, and \`lifecycle\`. Verification exits 0 for a consistent complete
+selected scope, 2 for consistent incomplete progress, and 1 for inconsistency or
+inspection failure. Status, plan, and resume can exit 0 while work remains.
+\`selectedPhase\` identifies the attempt; \`executedPhase\` records success;
+\`nextReadyPhase\` comes from post-operation inspection. If an operation committed
+but inspection failed, retain that partial outcome and indeterminate readiness.
+Use only the reported reviewed recovery action, never a blind retry or assumed
+rollback of remote effects.
 
 For an older supported activation, use \`liftoff update --check\` to review the
 exact history-preserving migration. The check changes no project bytes but
 discloses an external preview receipt. Explicitly approved update creates a
-linked v2 successor; old state, plans, evidence, and approvals remain historical,
-not current authorization. Failed local revalidation retains blocked, resumable
-v2. Repair the named cause and approve a fresh preview rather than reset history.
+linked v${activationContractVersion} successor from a declared v1/v2 source. Old state, plans,
+evidence, and approvals remain historical, not current authorization.
+Failed local revalidation retains blocked, resumable
+v${activationContractVersion}. Repair the named cause and approve a fresh preview rather than reset history.
 Only the named local revalidation is automatic; no provider, commit, or push is
 authorized by the migration plan. \`--json\` is optional formatting, and CI
 approval uses \`--approve-plan <fingerprint>\`. Force cannot bypass these gates.
@@ -865,24 +931,41 @@ fine-grained PAT is required, use display name
 \`${runnerPreflightDisplayNameTemplate}\`, secret
 \`${runnerPreflightSecretName}\`, 30-day lifetime, current repository only,
 repository metadata read, organization hosted-runner and network-configuration
-read, no writes, and the recorded workflow/job allowlist. This is a policy
-contract, not a public enrollment command. No masked credential-input channel
-is exposed by this release. Never paste or show a credential in chat, argv,
-command arguments, logs, evidence, files, or screenshots. A leaked value must be
+read, no writes, and the recorded workflow/job allowlist.
+Use the CLI-provided \`liftoff governance approve --plan <fingerprint>\` only
+after the developer explicitly approves the exact displayed plan; never
+automatically approve it. Approval persists authority but does not execute.
+Credential enrollment uses \`liftoff governance credential-enroll --plan <fingerprint>\`
+through the private operator channel. Automation must explicitly select
+\`--protected-stdin\` and supply the value through an operator-controlled protected
+channel, never chat or argv. Observe actual permitted use/readback,
+not just a secret name. Never paste or show a credential in chat, argv,
+command arguments, logs, evidence, source files, or screenshots. A leaked value must be
 revoked and rotated through its owner-controlled system, not fabricated state.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.
+Full immediate setup is complete only when requested migration and actual
+deployment, qualification, and matching live enforcement are verified.
+Future retained-state disposal and other \`lifecycle\` obligations stay visible
+separately; activation does not wait for a retention deadline.
 
-${renderGovernanceAssessmentGuide()}
+${renderGovernanceAssessmentGuide(plan)}
 `;
 }
 
-export function renderGovernanceAssessmentGuide(): string {
+export function renderGovernanceAssessmentGuide(plan?: Pick<ProjectPlan, 'agents'>): string {
+  const setup = plan ? governanceInvocationGuide(plan) : 'Copilot/Claude: `/liftoff-setup`; Codex: `$liftoff-setup`';
+  const assessment = plan ? governanceInvocationGuide(plan, 'assessment') : 'Copilot/Claude: `/liftoff-governance-assess`; Codex: `$liftoff-governance-assess`';
+  const entryPoint = plan?.agents.length === 0
+    ? `No native setup or assessment integration is recorded for this legacy project.
+Managed-core maintenance does not initialize the framework or install integrations.
+For a read-only comparison, use the CLI directly:`
+    : `Native setup (${setup}) remains the primary post-init path. For a separate
+comparison, use ${assessment}, or run:`;
   return `## Read-only governance assessment
 
-\`/liftoff-setup\` remains the primary post-init path. For a separate comparison,
-use \`/liftoff-governance-assess\` in a selected agent or run:
+${entryPoint}
 
 \`\`\`bash
 liftoff governance assess --json
@@ -920,7 +1003,7 @@ stale evidence, and unsupported evaluators remain visible coverage gaps, not
 proof of absence or alignment.
 Azure scope and evidence-backed applicability require a current active-baseline
 and referenced, validated saved-plan/evidence receipts that bind their canonical
-payload and readback body to current inputs. Placeholder digests, historical v1
+payload and readback body to current inputs. Placeholder digests, historical v1/v2
 receipts, future-dated approvals, and inferred bindings cannot establish proof. Missing
 bindings stay \`not-observed\`; do not fabricate or hand-edit activation state,
 baselines, receipts, or evidence to make assessment pass. Collect missing proof
@@ -949,9 +1032,11 @@ Exit 2 is advisory, not permission to repair anything.
 Assessment writes reports to stdout only. It never updates or upgrades anything,
 changes project files, Git, activation state, approvals, or evidence, or runs
 recommendations. Reports cannot complete Phase 0 or any other phase.
-For compatible older inventories, install the new selected-agent integration
+For compatible older inventories, restore an already selected Liftoff integration
 through \`liftoff update --check\`, then \`liftoff update\` with explicit approval
 of the matching plan. Check discloses its external preview receipt; it is not approval.
+Adding another agent instead requires \`liftoff repair --check --add-agents codex\`
+and its own exact-plan approval; ordinary update does not install framework integrations.
 Unowned collisions stay unowned even with \`--force\`; modified managed entries
 retain the existing reviewed force rules. Neither installation nor assessment
 activates governance. Unsupported mappings remain diagnostic: no migration is
@@ -961,37 +1046,52 @@ fresh observations, its own reviewed plan, and separate approval.
 `;
 }
 
-function renderSetupIntegration(): string {
-  return `# /liftoff-setup
+function nativeIntegrationHeader(agent: CodingAgentId, operation: 'setup' | 'assessment'): string {
+  const integration = governanceAgentIntegrations[agent];
+  const skillName = operation === 'setup' ? 'liftoff-setup' : 'liftoff-governance-assess';
+  const description = operation === 'setup'
+    ? 'Guide local readiness and the separately approved Liftoff repair, migration, and activation journey.'
+    : 'Explain the Liftoff governance assessment without executing repairs, activation, or other mutations.';
+  const metadata = integration.kind === 'skill'
+    ? `---\nname: ${skillName}\ndescription: ${JSON.stringify(description)}\n---\n\n`
+    : '';
+  return `${metadata}# ${integration[operation].invocation}\n`;
+}
 
-Use the Liftoff governance engine.
+function renderSetupIntegration(agent: CodingAgentId): string {
+  return `${nativeIntegrationHeader(agent, 'setup')}
+Use the Liftoff governance engine for the requested end-to-end journey.
+Read \`.liftoff/governance/policy.md\`, \`.liftoff/governance/context.json\`,
+and \`.liftoff/governance/README.md\`; the managed phase graph determines readiness.
 
-1. Work from the current directory; the CLI resolves the root.
-2. Invoke only: \`liftoff governance status --json\`,
-   \`liftoff governance plan --json\`, \`liftoff governance apply-next --json\`,
-   \`liftoff governance apply-next --json --execute\`,
-   \`liftoff governance resume --json\`, and \`liftoff governance verify --json\`.
-3. Explain reported blockers and approvals. Inspection never executes work.
-4. Use \`liftoff governance apply-next --json\` only to preview operations.
-   If ready and its approval status is \`not-required\` or \`reused\`, run
-   \`liftoff governance apply-next --json --execute\`, then verify.
-   \`selectedPhase\` is attempted; \`executedPhase\` succeeded.
-   Reinspect: \`nextReadyPhase\` is not post-transition readiness.
-5. Stop on failure. Retry only on request after repair;
-   do not repeatedly retry an unchanged failure.
-6. For supported historical migration, propose \`liftoff update --check\`.
-   It preserves project bytes and saves an external receipt, not approval.
-   \`liftoff update\` needs explicit matching-plan approval; never run it
-   implicitly from setup.
-7. Tasks and prose are not proof. Missing executors or authorization stay blocked.
-   Never invent commands, write evidence/state manually, or collect credentials
-   in chat to bypass a gate.
+1. Work from the current directory. Start with \`liftoff governance status --scope local --json\`.
+   Unscoped governance defaults to activation: \`liftoff governance status --json\`.
+2. Follow schema-2 \`nextActions\` (\`command.executable\`, \`command.args\`, \`cwd\`, \`scope\`, \`approvalRequired\`).
+   Track post-operation readiness through \`nextReadyPhase\`; \`nextPlannablePhase\` is not execution readiness.
+   Follow the four scopes: \`localSetup\`, \`migration\`, \`activation\`, and \`lifecycle\`.
+3. Inspect \`liftoff governance plan --scope local --json\` and \`liftoff governance apply-next --scope local --json\`
+   only to preview an approval-free local action (\`selectedPhase\` is attempted; \`executedPhase\` succeeded).
+   Only for a reported ready, approval-free local action, apply with
+   \`liftoff governance apply-next --scope local --json --execute\`.
+   Plan saves a disclosed external preview, not approval.
+   Apply-next without \`--execute\` is strictly read-only.
+4. Report local completion as a milestone. Respect a local-only request or declined later authority without claiming deployment.
+5. Continue with \`liftoff governance plan --scope activation --json\`.
+   If requested, use \`--inputs <public-json-file>\`.
+   Never automatically approve a plan; approval does not execute.
+   Only after explicit developer approval, use \`liftoff governance approve --plan <fingerprint>\`.
+6. For \`liftoff governance credential-enroll --plan <fingerprint>\`, automation must select
+   \`--protected-stdin\` through an operator-controlled protected channel (private operator channel).
+7. Re-inspect with \`liftoff governance verify --scope local --json\` or \`liftoff governance verify --scope activation --json\` (\`liftoff governance verify --json\`).
+   Verify exit 0 is complete; exit 2 means consistent but
+   incomplete (indeterminate readiness).
+8. Do not repeat an unchanged failure. Use \`liftoff governance recover --plan <fingerprint> --execute\` after approval.
+9. Full completion requires actual deployment, matching live enforcement, and readback; deferred retention is not failed activation (future lifecycle work remains pending until due).
 `;
 }
 
-function renderAssessmentIntegration(): string {
-  return `# /liftoff-governance-assess
-
+function renderAssessmentIntegration(agent: CodingAgentId): string {
+  return `${nativeIntegrationHeader(agent, 'assessment')}
 Explain a read-only governance assessment, not setup or an upgrade.
 The installed CLI is the target authority. In a Liftoff project, recorded context
 also includes \`.liftoff/governance/policy.md\`,
@@ -1017,9 +1117,9 @@ Contract:
    partial coverage or differences including approved exceptions, and exit 1 as
    an error. A report is not activation evidence and does not complete any phase.
 6. Stop after explaining the report. Never execute its recommendations or shell
-   instructions, update, upgrade, activation, remediation, Git/GitHub/Azure
+   instructions, update, upgrade, repair, migration, activation, remediation, Git/GitHub/Azure
    mutations, project scripts, or writes to project files, state, or evidence.
-   Keep \`/liftoff-setup\` as the separate primary post-init setup path.
+   Keep \`${governanceAgentIntegrations[agent].setup.invocation}\` as the separate primary post-init setup path.
 `;
 }
 
@@ -1049,8 +1149,6 @@ export function buildRepositoryGovernanceArtifacts(
   const policy = renderCanonicalGovernancePolicy();
   const context = renderGovernanceContext(plan);
   const guide = `${renderGovernanceGuide(plan).trimEnd()}\n`;
-  const setupIntegration = `${renderSetupIntegration().trimEnd()}\n`;
-  const assessmentIntegration = `${renderAssessmentIntegration().trimEnd()}\n`;
   const artifacts: GeneratedArtifact[] = [
     {
       logicalName: 'repository-governance-policy',
@@ -1095,22 +1193,18 @@ export function buildRepositoryGovernanceArtifacts(
       content: renderCredentialPolicySchema()
     },
     ...plan.agents.map((agent): GeneratedArtifact => ({
-      logicalName: agent.id === 'github-copilot'
-        ? 'liftoff-setup-copilot'
-        : 'liftoff-setup-claude',
+      logicalName: governanceAgentIntegrations[agent.id].setup.logicalName,
       category: 'governance',
       lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.setup[agent.id]],
-      content: setupIntegration
+      content: `${renderSetupIntegration(agent.id).trimEnd()}\n`
     })),
     ...plan.agents.map((agent): GeneratedArtifact => ({
-      logicalName: agent.id === 'github-copilot'
-        ? 'liftoff-governance-assess-copilot'
-        : 'liftoff-governance-assess-claude',
+      logicalName: governanceAgentIntegrations[agent.id].assessment.logicalName,
       category: 'governance',
       lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.assessment[agent.id]],
-      content: assessmentIntegration
+      content: `${renderAssessmentIntegration(agent.id).trimEnd()}\n`
     }))
   ];
   const compatibility = artifacts.find((artifact) =>

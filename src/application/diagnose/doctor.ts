@@ -66,6 +66,9 @@ import {
   probeWorkstation,
   selectLiftoffRuntimeRequirements,
   selectWorkstationRequirements,
+  workstationScopeReadiness,
+  type ExecutableIdentity,
+  type RequirementReasonCode,
   type RequirementProbeResult,
   type WorkstationRequirementSelection
 } from '../../workstation.js';
@@ -79,6 +82,10 @@ interface DoctorCheck {
   requirementSeverity?: 'blocking' | 'advisory';
   detail: string;
   remedy?: string;
+  reasonCode?: RequirementReasonCode;
+  executable?: ExecutableIdentity;
+  required?: RequirementProbeResult['required'];
+  observedVersion?: string;
 }
 
 export interface DoctorLayer {
@@ -185,6 +192,10 @@ function doctorCheckFromProbe(probe: RequirementProbeResult): DoctorCheck {
     state: probe.state,
     requirementSeverity: probe.requirement.severity,
     detail: probe.detail,
+    reasonCode: probe.reasonCode,
+    executable: probe.identity,
+    required: probe.required,
+    ...(probe.detectedVersion ? { observedVersion: probe.detectedVersion } : {}),
     ...(probe.remedy ? { remedy: probe.remedy } : {})
   };
 }
@@ -217,7 +228,8 @@ function workstationSelectionFromManifest(manifest: LiftoffManifest): Workstatio
     workload: {
       kind: workload.kind,
       apiStack: { id: workload.apiStack },
-      provider: { id: workload.cloud }
+      provider: { id: workload.cloud },
+      frontend: workload.frontend
     },
     specWorkflow: { id: manifest.project.specWorkflow },
     framework: { version: framework.version },
@@ -713,10 +725,14 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
   const requirements = manifest
     ? selectWorkstationRequirements(
         workstationSelectionFromManifest(manifest),
-        { includeFramework: manifest.framework.state === 'initialized' }
-      )
+        { includeFramework: manifest.framework.state === 'initialized', scope: 'initialization' }
+      ).filter((requirement) => requirement.id !== 'docker' || ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml']
+        .some((name) => existsSync(path.join(projectRoot!, name))))
     : selectLiftoffRuntimeRequirements();
-  const probes = await probeWorkstation(requirements, runner);
+  const probes = await probeWorkstation(requirements, runner, {
+    ...context.workstationProbe, cwd: projectRoot ?? context.cwd, env: context.env ?? context.workstationProbe?.env
+  });
+  const readiness = workstationScopeReadiness(probes, manifest ? 'local' : 'initialization');
   const environment = workstationLayer(probes);
   layers.push(environment);
   const dockerAvailable = probes.some((probe) => probe.requirement.id === 'docker' && probe.state === 'ready');
@@ -760,7 +776,14 @@ export async function diagnoseProject(request: DoctorRequest, context: Execution
 
   if (jsonMode) {
     context.presentation.rawStdout(
-      `${JSON.stringify({ schemaVersion: 1, layers, summary: { failures, warnings } }, null, 2)}\n`
+      `${JSON.stringify({
+        schemaVersion: 1, layers, summary: { failures, warnings },
+        workstation: {
+          scope: readiness.scope, ready: readiness.ready,
+          blockingTools: readiness.toolFailures.map((probe) => ({ id: probe.requirement.id, reasonCode: probe.reasonCode })),
+          authenticationRequiredForLocal: false
+        }
+      }, null, 2)}\n`
     );
   } else {
     renderDoctorLayers(layers, context.presentation);

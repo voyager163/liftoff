@@ -15,6 +15,7 @@ import { validateEvidenceFreshness } from '../src/domain/governance/activation/e
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import { writeProjectFile } from '../src/adapters/filesystem/project-files.js';
+import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
 import { inspectGovernanceTransition } from '../src/governance-activation/commands.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
@@ -472,7 +473,7 @@ describe('reviewed update command integration', () => {
     const journal = await readMigrationJournal(root);
     expect(journal).toBeDefined();
     const active = JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8'));
-    expect(active.schemaVersion).toBe(2);
+    expect(active.schemaVersion).toBe(currentActivationIdentity.activationStateSchemaVersion);
     expect(active.phases.committed.state).toBe('pending');
     const history = path.join(root, 'governance', 'history');
     const { readdir } = await import('node:fs/promises');
@@ -480,7 +481,7 @@ describe('reviewed update command integration', () => {
     expect(snapshots).toHaveLength(1);
     expect(await readFile(path.join(history, snapshots[0]!, 'files', 'governance', 'activation-state.json')))
       .toEqual(originalState);
-    expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([2, 2, 2]);
+    expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([3, 3, 3]);
   }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('accepts approved command-generated outputs and completes fresh revalidation', async () => {
@@ -542,7 +543,7 @@ describe('reviewed update command integration', () => {
     const records = await readActivationEvidence(root);
     expect(records.map((record) => record.header.phaseId).sort()).toEqual(['seed-archived', 'seed-valid', 'seed-verified']);
     for (const record of records) {
-      expect(record.header.schemaVersion).toBe(2);
+      expect(record.header.schemaVersion).toBe(currentActivationIdentity.evidenceHeaderSchemaVersion);
       expect(record.header.result).toBe('verified');
       expect(validateEvidenceFreshness(record, inspection.contexts[record.header.phaseId]).valid).toBe(true);
       expect(inspection.readiness.phases[record.header.phaseId].state).toBe('verified');
@@ -737,7 +738,7 @@ describe('reviewed update command integration', () => {
     });
     expect(declined.code).toBe(1);
     for (const issue of issues) expect(approvalOutput.text()).toContain(issue);
-    expect(approvalOutput.text()).toContain('may commit v2');
+    expect(approvalOutput.text()).toContain('may commit v3');
   });
 
   it.each([

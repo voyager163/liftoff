@@ -1,12 +1,12 @@
 import { chmod, link, mkdir, readFile, readdir, rename, rm, stat, symlink, unlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { canonicalPhaseGraph, currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import { evidenceBodyDigest, validateEvidenceFreshness, type EvidenceFreshnessContext } from '../src/domain/governance/activation/evidence.js';
 import { calculatePhaseReadiness } from '../src/domain/governance/activation/readiness.js';
-import type { ApprovalEnvelope, PhaseEvidenceRecord, PhaseId } from '../src/domain/governance/activation/types.js';
+import type { ApprovalEnvelope, PhaseEvidenceRecord, PhaseId, SavedTransitionPlan, UserActivationState } from '../src/domain/governance/activation/types.js';
 import { buildActivationCompatibilityMap, resolveActivationCompatibility } from '../src/domain/governance/policy/identity.js';
 import { validateApprovalEnvelope, validateEvidenceHeader, validateSavedTransitionPlan, validateUserActivationState } from '../src/domain/governance/activation/validators.js';
 import {
@@ -28,13 +28,18 @@ import {
 } from '../src/governance-activation/migration-history.js';
 import { buildHistoricalV1Fixture, historicalFixtureArchiveParts, writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { historicalFixtureGraph } from './fixtures/activation-v1/graph.js';
-import { fixtureContext, fixtureHeader, fixturePayload, fixturePlan } from './governance-activation-fixtures.js';
+import { fixtureContext, fixturePayload } from './governance-activation-fixtures.js';
+import { planDigestFor } from '../src/domain/governance/activation/operations.js';
+import { savedPlanAuthorityDigest } from '../src/domain/governance/activation/approvals.js';
+import { evidenceWriteOperation, stateWriteOperation } from '../src/governance-activation/transition-records.js';
+import { writeGovernanceApprovalAuthority } from '../src/governance-activation/authority-records.js';
 
 const roots = new Set<string>();
 const approvedFingerprint = canonicalSha256({ reviewedEffectiveUpdatePlan: 'core-and-history' });
 const now = new Date('2026-09-09T00:00:00.000Z');
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const root of roots) await rm(root, { recursive: true, force: true });
   roots.clear();
 });
@@ -45,6 +50,17 @@ async function fixtureRoot(options: Parameters<typeof writeHistoricalV1Fixture>[
   await mkdir(root, { recursive: true });
   const fixture = await writeHistoricalV1Fixture(root, options);
   return { root, fixture };
+}
+
+function ordinaryCurrentState(): UserActivationState {
+  return validateUserActivationState({
+    schemaVersion: 3, identity: currentActivationIdentity,
+    repository: { id: `local:${randomUUID()}`, name: 'Flight Log', defaultBranch: 'develop' },
+    activeChange: null, applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
+    phases: Object.fromEntries(canonicalPhaseGraph.phases.map(({ id }) => [id, {
+      state: 'pending', updatedAt: now.toISOString(), evidence: [], approvals: [], blockers: []
+    }])), createdAt: now.toISOString(), updatedAt: now.toISOString()
+  });
 }
 
 async function readBytes(root: string): Promise<Map<string, Buffer>> {
@@ -113,12 +129,15 @@ async function completedRevalidationFixture() {
       )));
       payload.synchronizedSpecDigest = context.workflowSpecDigest;
     }
-    const plan = fixturePlan(context, state, producedAt, payload, migrated.root);
+    const plan = currentLocalPlan(context, state, producedAt, migrated.root);
     payload.planDigest = plan.planDigest;
     payload.savedPlanDigest = canonicalSha256(plan);
-    const header = fixtureHeader(phaseId, {
-      repositoryId: state.repository.id, inputDigest, baselineSha, transition: context.transition,
-      producedAt, bodyDigest: evidenceBodyDigest(payload)
+    const header = validateEvidenceHeader({
+      schemaVersion: 3, scope: 'local', repositoryId: state.repository.id, identity: currentActivationIdentity,
+      phaseGraphHash: currentActivationIdentity.phaseGraphHash, phaseId,
+      phaseContractDigest: context.phaseContractDigest, inputDigest, baselineSha, transition: context.transition,
+      producedAt, producer: 'versioned-test-fixture', result: 'verified', bodyDigest: evidenceBodyDigest(payload),
+      inputBindings: { beforeDigest: inputDigest, afterDigest: inputDigest, files: [] }
     });
     const record: PhaseEvidenceRecord = { evidenceId: `fresh-${phaseId}`, header, payload };
     state.phases[phaseId] = {
@@ -127,7 +146,8 @@ async function completedRevalidationFixture() {
     };
     context.evidenceReferences = state.phases[phaseId].evidence;
     context.reviewedPlans = [plan];
-    expect(validateEvidenceFreshness(record, context)).toMatchObject({ valid: true });
+    const freshness = validateEvidenceFreshness(record, context);
+    expect(freshness, JSON.stringify(freshness)).toMatchObject({ valid: true });
     await writeJson(migrated.root, `governance/plans/${record.evidenceId}.json`, plan);
     await writeJson(migrated.root, `governance/evidence/${record.evidenceId}.json`, record);
     contexts[phaseId] = context;
@@ -143,6 +163,41 @@ async function completedRevalidationFixture() {
   await writeJson(migrated.root, 'governance/activation-state.json', validateUserActivationState(state));
   await writeJson(migrated.root, migrationStateFilePathParts.join('/'), validateMigrationJournal(journal));
   return { ...migrated, state, journal, records, contexts, inspectedAt };
+}
+
+function currentLocalPlan(context: EvidenceFreshnessContext, state: UserActivationState, producedAt: string, root: string): SavedTransitionPlan {
+  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === context.phaseId)!;
+  const plan: SavedTransitionPlan = {
+    schemaVersion: 2, scope: 'local', phaseId: phase.id, createdAt: producedAt,
+    expiresAt: new Date(Date.parse(producedAt) + 3_600_000).toISOString(),
+    identity: currentActivationIdentity, graphHash: currentActivationIdentity.phaseGraphHash,
+    stateHash: canonicalSha256(state), baselineDigest: context.baselineSha, inputDigest: context.inputDigest,
+    transitionDigest: context.transition.transitionDigest, planDigest: '0'.repeat(64),
+    mutationClasses: phase.allowedMutations,
+    operations: [{
+      adapter: 'selected-spec-workflow', actionId: phase.id === 'seed-valid' ? 'openspec.seed.validate'
+        : phase.id === 'seed-verified' ? 'openspec.seed.baseline-verify' : 'openspec.seed.archive',
+      mutationClass: 'read-worktree', phaseId: phase.id, inputs: {
+        localRevalidation: true,
+        ...(phase.id === 'seed-verified' ? { checks: [{ id: 'backend-tests', taskId: '2.2', applicable: true }] } : {})
+      },
+      destination: { type: 'local', identity: root }, remote: false, destructive: false
+    }, evidenceWriteOperation(phase, ['governance', 'evidence', `fresh-${phase.id}.json`]), stateWriteOperation(phase)],
+    approval: {
+      gateKind: 'none', required: false, envelopeId: null, envelopeHash: null,
+      evaluation: {
+        phaseId: phase.id, gateKind: 'none', questionKind: null, approvalRequired: false, status: 'not-required',
+        envelopeId: null, envelopeHash: null, reasons: [], expansionReasons: []
+      }
+    },
+    rollbackPlan: { phaseId: phase.id, strategy: 'none', target: null, operations: [], retained: [], cleanupWarnings: [] },
+    noSecrets: true
+  };
+  plan.planDigest = planDigestFor({
+    phase, transitionDigest: plan.transitionDigest, operations: plan.operations,
+    approvalPlanDigest: savedPlanAuthorityDigest(plan, phase)
+  });
+  return validateSavedTransitionPlan(plan);
 }
 
 describe('frozen historical v1 formats', () => {
@@ -615,7 +670,7 @@ describe('portable paths and strict committed history links', () => {
     await expect(inspectActivationMigrationHistory(root)).rejects.toThrow(/declared historical copy is missing/);
     await writeFile(nativeCopy, bytes, { mode: copy.mode });
     await writeJson(root, migrationStateFilePathParts.join('/'), { ...finalized.journal, historyIndexDigest: 'a'.repeat(64) });
-    await expect(inspectActivationMigrationHistory(root)).rejects.toThrow(/index digest/);
+    await expect(inspectActivationMigrationHistory(root)).rejects.toThrow(/backlink.*journal/);
     await writeJson(root, migrationStateFilePathParts.join('/'), finalized.journal);
     await unlink(nativeCopy);
     await symlink(path.join(root, 'backend', 'src', 'index.ts'), nativeCopy);
@@ -745,17 +800,26 @@ describe('portable paths and strict committed history links', () => {
 
   it('validates all state approval references only after the complete approval map has loaded', async () => {
     const { root, finalized } = await committedFixture();
+    const home = path.resolve('tests', `.activation-history-authority-${process.pid}-${randomUUID()}`);
+    roots.add(home);
+    await mkdir(path.join(root, '.git'), { recursive: true });
+    for (const [key, value] of Object.entries({
+      HOME: home, USERPROFILE: home, XDG_STATE_HOME: path.join(home, 'state'), LOCALAPPDATA: path.join(home, 'local')
+    })) vi.stubEnv(key, value);
     const state = structuredClone(finalized.successor);
     for (const [phaseId, name] of [['committed', 'a-first'], ['pushed', 'z-later']] as const) {
       const approval: ApprovalEnvelope = {
-        schemaVersion: 2, id: name, phaseId, gateKind: 'repository-publish', identity: currentActivationIdentity,
+        schemaVersion: 3, id: name, phaseId, gateKind: 'repository-publish', identity: currentActivationIdentity,
         baselineSha: canonicalSha256({ currentFixture: root }),
         planDigest: canonicalSha256({ phaseId, scope: 'empty fixture review scope' }),
         resources: [], destinations: [], permissions: [], costCeiling: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 },
         policyExceptions: [], destructiveScope: [], approvedAt: now.toISOString(),
         expiresAt: new Date(now.getTime() + 3_600_000).toISOString(), approver: 'current-fixture-maintainer'
       };
-      await writeJson(root, `governance/approvals/${name}.json`, validateApprovalEnvelope(approval));
+      const envelope = validateApprovalEnvelope(approval);
+      await writeJson(root, `governance/approvals/${name}.json`, envelope);
+      await expect(inspectActivationMigrationHistory(root)).rejects.toThrow(/no project-bound authority/);
+      await writeGovernanceApprovalAuthority(root, canonicalSha256({ fixtureApproval: name }), envelope);
       state.phases[phaseId].approvals = [name];
     }
     await writeJson(root, 'governance/activation-state.json', state);
@@ -803,12 +867,12 @@ describe('portable paths and strict committed history links', () => {
     expect(() => validateMigrationJournal({ ...pending, inheritedApproval: true })).toThrow(/not supported/);
   });
 
-  it('recognizes an ordinary current-v2 project without making a snapshot or journal', async () => {
-    const { root, fixture } = await fixtureRoot();
-    const planned = await eligible(root);
-    const finalized = finalizeActivationHistoryMigration(planned, approvedFingerprint, now);
-    await installMutations(root, finalized.mutations.filter((mutation) => mutation.type === 'delete'));
-    await writeJson(root, 'governance/activation-state.json', finalized.successor);
+  it('recognizes an independently started current-v3 project without making a snapshot or journal', async () => {
+    const root = path.resolve('tests', `.activation-history-current-${process.pid}-${randomUUID()}`);
+    roots.add(root);
+    await mkdir(path.join(root, 'governance'), { recursive: true });
+    const fixture = buildHistoricalV1Fixture();
+    await writeJson(root, 'governance/activation-state.json', ordinaryCurrentState());
     await writeJson(root, 'liftoff.manifest.json', { ...fixture.manifest, governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity } });
     const before = await readBytes(root);
     expect(await inspectActivationMigrationHistory(root)).toEqual({ status: 'none' });
@@ -817,10 +881,9 @@ describe('portable paths and strict committed history links', () => {
     expect(await readBytes(root)).toEqual(before);
   });
 
-  it('blocks an apparent v2 state if its active collection still contains v1 records', async () => {
+  it('blocks an apparent v3 state if its active collection still contains v1 records', async () => {
     const { root, fixture } = await fixtureRoot();
-    const finalized = finalizeActivationHistoryMigration(await eligible(root), approvedFingerprint, now);
-    await writeJson(root, 'governance/activation-state.json', finalized.successor);
+    await writeJson(root, 'governance/activation-state.json', ordinaryCurrentState());
     await writeJson(root, 'liftoff.manifest.json', { ...fixture.manifest, governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity } });
     expect(await planActivationHistoryMigration(root)).toMatchObject({ status: 'blocked', reasonCode: 'invalid-current-proof' });
     expect(await readMigrationJournal(root)).toBeUndefined();

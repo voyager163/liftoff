@@ -715,3 +715,52 @@ export async function consumeUpdatePreviewReceipt(
     await io('consume receipt', storage.location.receiptPath, () => storage.fs.removeFile(storage.location.receiptPath));
   });
 }
+
+export interface ScopedUserLocalRecord {
+  projectRoot: string;
+  path: string;
+  value: unknown;
+}
+
+export function createScopedUserLocalRecordStore(
+  projectRoot: string,
+  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation',
+  options: UpdatePreviewOptions = {}
+): {
+  read(key: string): Promise<ScopedUserLocalRecord | null>;
+  write(key: string, value: unknown): Promise<ScopedUserLocalRecord>;
+} {
+  const location = async (key: string) => {
+    if (!/^[a-f0-9]{64}$/u.test(key)) throw storageError('A scoped metadata key must be a complete lowercase SHA-256 digest.');
+    const storage = await storageFor(projectRoot, options);
+    const filePath = storage.paths.join(storage.location.directory, `${namespace}-${storage.location.projectKey}-${key}.json`);
+    return { storage, filePath };
+  };
+  return {
+    read: async (key) => {
+      const { storage, filePath } = await location(key);
+      const snapshot = await directories(storage, false);
+      if (!snapshot) return null;
+      const content = await readText(storage, filePath, snapshot);
+      if (content === undefined) return null;
+      let value: unknown;
+      try { value = JSON.parse(content); }
+      catch (error) { throw storageError(`Malformed ${namespace} record at ${filePath}.`, error); }
+      return { projectRoot: storage.location.projectRoot, path: filePath, value };
+    },
+    write: async (key, value) => {
+      const { storage, filePath } = await location(key);
+      const content = canonicalJson(value);
+      const snapshot = await directories(storage, true);
+      if (!snapshot) throw storageError(`Unable to create ${namespace} storage.`);
+      return withStoreLock(storage, snapshot, async () => {
+        const before = await readText(storage, filePath, snapshot);
+        if (before !== undefined && before !== content) {
+          throw storageError(`Refusing to replace different ${namespace} metadata at ${filePath}.`);
+        }
+        if (before === undefined) await writeAtomicMetadata(storage, snapshot, filePath, content, undefined, true);
+        return { projectRoot: storage.location.projectRoot, path: filePath, value };
+      });
+    }
+  };
+}

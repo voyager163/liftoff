@@ -22,6 +22,8 @@ import {
 import type {
   ProjectOptions
 } from '../../domain/project/contracts.js';
+import { SPEC_KIT_AGENT_SURFACES, SPEC_KIT_WORKFLOW_IDS } from '../../domain/project/catalog.js';
+import { openSpecIntegrationPaths } from '../../openspec-profile.js';
 
 export async function createFixtureProject(options: ProjectOptions): Promise<string> {
   const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-'));
@@ -33,7 +35,9 @@ export async function createFixtureProject(options: ProjectOptions): Promise<str
   await writeArtifacts(target, buildArtifacts(plan));
   for (const marker of [
     ...plan.framework.baseMarkers,
-    ...plan.agents.flatMap((agent) => plan.framework.agentMarkers[agent.id])
+    ...plan.agents.flatMap((agent) => plan.specWorkflow.id === 'openspec'
+      ? openSpecIntegrationPaths(agent.id)
+      : SPEC_KIT_WORKFLOW_IDS.map((workflow) => [...SPEC_KIT_AGENT_SURFACES[agent.id].skillsRoot, `speckit-${workflow}`, 'SKILL.md']))
   ]) {
     let content = 'fixture marker\n';
     if (marker.join('/') === '.specify/integration.json') {
@@ -48,6 +52,8 @@ export async function createFixtureProject(options: ProjectOptions): Promise<str
       }, null, 2)}\n`;
     } else if (marker.join('/') === '.specify/init-options.json') {
       content = '{}\n';
+    } else if (marker.join('/') === 'openspec/config.yaml') {
+      content = 'schema: spec-driven\n';
     }
     await writeProjectFile(target, marker, content);
   }

@@ -120,6 +120,7 @@ export function buildUpdateReport(
     activationStateMigration: migration,
     revalidation: input.revalidation ?? { status: 'not-required', nextPhase: null, issues: [] },
     reconciliation: inspection?.reconciliation ?? null,
+    deferredAgentRepair: inspection?.deferredAgentRepair ?? null,
     ...(input.mode === 'check' ? { projectBytesWritten: 0 } : {})
   };
 }
@@ -146,7 +147,7 @@ function revalidationReviewDetails(revalidation: UpdateRevalidationSummary): str
   return [
     `Status: ${revalidation.status}`,
     ...revalidation.issues.map((issue) => `Known revalidation gap: ${issue}`),
-    ...(revalidation.issues.length ? ['Approval may commit v2 while these known revalidation gaps remain blocked.'] : []),
+    ...(revalidation.issues.length ? ['Approval may commit v3 while these known revalidation gaps remain blocked; preserved v1/v2 history is not current proof.'] : []),
     ...(preview ? [
       `Commands are relative to project: ${JSON.stringify(preview.projectRoot)}`,
       `Target activation identity: ${JSON.stringify(preview.targetIdentity)}`,
@@ -209,6 +210,7 @@ export function renderUpdatePreview(
   if (revalidation.status !== 'not-required') {
     presentation.bullets('Local revalidation', revalidationReviewDetails(revalidation));
   }
+  if (inspection.deferredAgentRepair) renderDeferredAgentRepair(presentation, inspection);
   for (const plan of plans) {
     presentation.definitions(plan.mode === 'force' ? 'Separately reviewed forced plan' : 'Reviewed update plan', [
       { label: 'Fingerprint', value: plan.fingerprint },
@@ -234,6 +236,14 @@ export function renderUpdatePreview(
       presentation.command(formatUpdateCommand(inspection.projectRoot, 'force', process.platform, guidance));
     }
   }
+}
+
+export function renderDeferredAgentRepair(presentation: PresentationSession, inspection: UpdateInspection): void {
+  const repair = inspection.deferredAgentRepair;
+  if (!repair) return;
+  presentation.status('pending', 'Separate agent integration repair',
+    'Update preserves the recorded integrations and the requested configuration; it does not install agents or change the framework default.');
+  presentation.command(formatShellCommand(repair.command, commandShellForPlatform(process.platform)));
 }
 
 export function renderUpdateSkipped(

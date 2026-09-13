@@ -5,6 +5,7 @@ import type { StableRelease } from '../stable-release.js';
 import type { PresentationSession, PresentationSessionOptions } from '../terminal.js';
 import type { UpdateApprovalPrompt } from './update/approval.js';
 import type { resolveUpdatePreviewLocation } from '../adapters/filesystem/update-previews.js';
+import type { WorkstationNoProgressStore, WorkstationProbeOptions } from '../workstation.js';
 
 export interface CommandContext {
   cwd: string;
@@ -19,6 +20,8 @@ export interface CommandContext {
   updatePreview?: Parameters<typeof resolveUpdatePreviewLocation>[1];
   approveUpdatePlan?: UpdateApprovalPrompt;
   updateNow?: () => Date;
+  workstationProbe?: WorkstationProbeOptions;
+  workstationNoProgressStore?: WorkstationNoProgressStore;
   terminal?: Pick<
     PresentationSessionOptions,
     'columns' | 'color' | 'snapshot' | 'env' | 'layout' | 'normalize'

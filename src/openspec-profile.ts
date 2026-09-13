@@ -1,38 +1,15 @@
 import type { RunCommandOptions, CommandRunner } from './process-runner.js';
 import type { CodingAgentId, ExternalCommand } from './domain/project/contracts.js';
+import {
+  OPEN_SPEC_AGENT_SURFACES,
+  OPEN_SPEC_SKILL_NAMES,
+  OPEN_SPEC_WORKFLOW_IDS
+} from './domain/project/catalog.js';
+
+export { OPEN_SPEC_AGENT_SURFACES, OPEN_SPEC_WORKFLOW_IDS };
 
 export const OPEN_SPEC_PROFILE = 'custom';
 export const OPEN_SPEC_DELIVERY = 'both';
-
-export const OPEN_SPEC_WORKFLOW_IDS = [
-  'propose',
-  'explore',
-  'new',
-  'continue',
-  'apply',
-  'update',
-  'ff',
-  'sync',
-  'archive',
-  'bulk-archive',
-  'verify',
-  'onboard'
-] as const;
-
-const OPEN_SPEC_SKILL_NAMES: Record<(typeof OPEN_SPEC_WORKFLOW_IDS)[number], string> = {
-  propose: 'openspec-propose',
-  explore: 'openspec-explore',
-  new: 'openspec-new-change',
-  continue: 'openspec-continue-change',
-  apply: 'openspec-apply-change',
-  update: 'openspec-update-change',
-  ff: 'openspec-ff-change',
-  sync: 'openspec-sync-specs',
-  archive: 'openspec-archive-change',
-  'bulk-archive': 'openspec-bulk-archive-change',
-  verify: 'openspec-verify-change',
-  onboard: 'openspec-onboard'
-};
 
 export const OPEN_SPEC_COPILOT_CLOUD_PATHS = [
   ['.github', 'workflows', 'copilot-setup-steps.yml'],
@@ -206,18 +183,14 @@ export async function configureOpenSpecProfile(
 }
 
 export function openSpecIntegrationPaths(agent: CodingAgentId): string[][] {
-  if (agent === 'github-copilot') {
-    return OPEN_SPEC_WORKFLOW_IDS.flatMap((workflow) => [
-      ['.github', 'skills', OPEN_SPEC_SKILL_NAMES[workflow], 'SKILL.md'],
-      ['.github', 'prompts', `opsx-${workflow}.prompt.md`]
-    ]);
+  const surface = OPEN_SPEC_AGENT_SURFACES[agent];
+  if (!surface) {
+    throw new OpenSpecProfileError(`Unsupported OpenSpec agent: ${agent}`);
   }
-  if (agent === 'claude') {
-    return OPEN_SPEC_WORKFLOW_IDS.flatMap((workflow) => [
-      ['.claude', 'skills', OPEN_SPEC_SKILL_NAMES[workflow], 'SKILL.md'],
-      ['.claude', 'commands', 'opsx', `${workflow}.md`]
-    ]);
-  }
-  const unsupported: never = agent;
-  throw new OpenSpecProfileError(`Unsupported OpenSpec agent: ${unsupported}`);
+  return OPEN_SPEC_WORKFLOW_IDS.flatMap((workflow) => [
+    [...surface.skillsRoot, OPEN_SPEC_SKILL_NAMES[workflow], 'SKILL.md'],
+    ...(surface.commands
+      ? [[...surface.commands.root, `${surface.commands.prefix}${workflow}${surface.commands.suffix}`]]
+      : [])
+  ]);
 }

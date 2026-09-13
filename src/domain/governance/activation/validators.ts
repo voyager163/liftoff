@@ -29,6 +29,7 @@ import {
   normalizeApprovalResources
 } from './approvals.js';
 import type {
+  ActivationConfiguration,
   ActivationIdentity,
   ApprovalEnvelope,
   ApprovalEvaluation,
@@ -38,6 +39,8 @@ import type {
   EvidenceTransitionIdentity,
   EvidenceReference,
   EvidenceHeader,
+  ExternalOperationState,
+  GovernanceScope,
   GraphReconciliationRecord,
   InvalidationInputKind,
   LiveReadbackProof,
@@ -47,7 +50,12 @@ import type {
   PhaseGraphNode,
   PhaseId,
   PhaseState,
+  PhaseOutputBindings,
+  PlannedFileChange,
+  InputTransitionBinding,
   SavedTransitionPlan,
+  GovernanceTaskProjectionContract,
+  GovernanceTaskProjectionRecord,
   RollbackKind,
   TransitionOperation,
   TransitionOperationDestination,
@@ -56,13 +64,17 @@ import type {
   TerminalPhaseState,
   UserActivationState
 } from './types.js';
+import { sha256Hex } from './canonical-json.js';
 import type { LiftoffManifest } from '../../project/contracts.js';
+import { validateArtifactPathParts } from '../../project/paths.js';
 import {
   approvalGateKinds,
+  governanceScopes,
   invalidationInputKinds,
   mutationClasses,
   phaseIds,
   phaseStates,
+  phaseScope,
   rollbackKinds
   ,
   runnerPreflightDisplayNameTemplate,
@@ -79,13 +91,17 @@ const resultStateSet = new Set<string>(['verified', 'failed', 'inapplicable', 'r
 const hex64Pattern = /^[a-f0-9]{64}$/;
 const isoLikePattern = /^\d{4}-\d{2}-\d{2}T/;
 const liveReadbackProviderSet = new Set<string>(['github', 'azure']);
-const githubRemoteWriteMutations = new Set<MutationClass>(['github-write', 'github-secret-write', 'github-ruleset-write']);
+const githubRemoteWriteMutations = new Set<MutationClass>([
+  'git-push', 'github-write', 'github-repository-create', 'github-workflow-dispatch',
+  'github-secret-write', 'github-ruleset-write'
+]);
 const azureRemoteWriteMutations = new Set<MutationClass>([
   'azure-provider-register',
   'azure-network-provision',
   'azure-state-import',
   'azure-resource-provision'
 ]);
+const governanceScopeSet = new Set<string>(governanceScopes);
 const transitionAdapterIds = new Set<string>([
   'local-evidence',
   'selected-spec-workflow',
@@ -191,7 +207,163 @@ function pathPartsArray(value: unknown, path: string): readonly string[][] {
   if (!Array.isArray(value)) {
     throw new Error(`${path} must be an array.`);
   }
-  return value.map((entry, index) => stringArray(entry, `${path}[${index}]`));
+  return value.map((entry, index) => safePathParts(entry, `${path}[${index}]`));
+}
+
+function safePathParts(value: unknown, path: string): string[] {
+  return validateArtifactPathParts(value, path);
+}
+
+function publicJson(value: unknown, path: string, depth = 0): unknown {
+  if (depth > 20) throw new Error(`${path} exceeds the supported JSON nesting depth.`);
+  if (value === null || typeof value === 'boolean' || (typeof value === 'number' && Number.isFinite(value))) return value;
+  if (typeof value === 'string') {
+    if (/https?:\/\/[^/\s]*@|[?&](?:token|key|secret|sig)=|(?:gh[pousr]_|github_pat_)[A-Za-z0-9_]+|-----BEGIN [A-Z ]*PRIVATE KEY-----/iu.test(value)) {
+      throw new Error(`${path} contains credential material; use protected credential enrollment instead.`);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) return value.map((entry, index) => publicJson(entry, `${path}[${index}]`, depth + 1));
+  const object = record(value, path);
+  const result: Record<string, unknown> = {};
+  for (const [key, entry] of Object.entries(object)) {
+    const tokenMetadata = key === 'token' && typeof entry === 'object' && entry !== null && !Array.isArray(entry)
+      ? record(entry, `${path}.${key}`) : null;
+    const publicAppTokenMetadata = tokenMetadata !== null &&
+      Object.keys(tokenMetadata).sort().join(',') === 'generatedBy,strategy,ttlSeconds' &&
+      tokenMetadata.generatedBy === 'github-app' && tokenMetadata.strategy === 'installation-token' &&
+      Number.isSafeInteger(tokenMetadata.ttlSeconds) && Number(tokenMetadata.ttlSeconds) > 0 && Number(tokenMetadata.ttlSeconds) <= 3600;
+    if (['__proto__', 'prototype', 'constructor'].includes(key) ||
+      /^(?:accessToken|refreshToken|token|password|secret|clientSecret|privateKey|accountKey|connectionString|sasToken)$/iu.test(key) && !publicAppTokenMetadata) {
+      throw new Error(`${path}.${key} is not permitted in public activation inputs.`);
+    }
+    result[key] = publicJson(entry, `${path}.${key}`, depth + 1);
+  }
+  return result;
+}
+
+export function validateActivationConfiguration(value: unknown): ActivationConfiguration {
+  const config = exactWithOptional(value, ['schemaVersion', 'phases'], ['repository', 'azure', 'budget'], 'activationInputs');
+  requireVersion(config.schemaVersion, 1, 'activationInputs.schemaVersion');
+  const phases: ActivationConfiguration['phases'] = {};
+  for (const [id, inputs] of Object.entries(record(config.phases, 'activationInputs.phases'))) {
+    const phaseId = enumValue<PhaseId>(id, phaseIdSet, 'activationInputs.phases');
+    phases[phaseId] = record(publicJson(inputs, `activationInputs.phases.${id}`), `activationInputs.phases.${id}`);
+  }
+  let repository: ActivationConfiguration['repository'];
+  if (config.repository !== undefined) {
+    const target = exactWithOptional(config.repository, ['name'], ['defaultBranch', 'visibility', 'create'], 'activationInputs.repository');
+    const name = stringField(target, 'name', 'activationInputs.repository');
+    if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/u.test(name)) {
+      throw new Error('activationInputs.repository.name must be owner/repository.');
+    }
+    const defaultBranch = target.defaultBranch === undefined ? undefined : stringField(target, 'defaultBranch', 'activationInputs.repository');
+    if (defaultBranch !== undefined && (!/^[A-Za-z0-9][A-Za-z0-9_./-]*$/u.test(defaultBranch) ||
+      defaultBranch.includes('..') || defaultBranch.includes('//') || defaultBranch.endsWith('/') || defaultBranch.endsWith('.lock'))) {
+      throw new Error('activationInputs.repository.defaultBranch must be a safe Git branch name.');
+    }
+    repository = {
+      name,
+      ...(defaultBranch === undefined ? {} : { defaultBranch }),
+      ...(target.visibility === undefined ? {} : { visibility: enumValue<'private' | 'public'>(target.visibility, new Set(['private', 'public']), 'activationInputs.repository.visibility') }),
+      ...(target.create === undefined ? {} : { create: booleanField(target, 'create', 'activationInputs.repository') })
+    };
+  }
+  let azure: ActivationConfiguration['azure'];
+  if (config.azure !== undefined) {
+    const target = exact(config.azure, ['subscriptionId', 'tenantId', 'region'], 'activationInputs.azure');
+    const subscriptionId = stringField(target, 'subscriptionId', 'activationInputs.azure');
+    const tenantId = stringField(target, 'tenantId', 'activationInputs.azure');
+    const region = stringField(target, 'region', 'activationInputs.azure');
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
+    if (!uuid.test(subscriptionId) || !uuid.test(tenantId) || !/^[a-z][a-z0-9]+$/u.test(region)) {
+      throw new Error('activationInputs.azure requires concrete subscription/tenant GUIDs and an Azure region name.');
+    }
+    azure = { subscriptionId, tenantId, region };
+  }
+  let budget: ActivationConfiguration['budget'];
+  if (config.budget !== undefined) {
+    const cost = exact(config.budget, ['currency', 'fixedMonthlyCents', 'usageMonthlyCents'], 'activationInputs.budget');
+    budget = normalizeApprovalCostCeiling({
+      currency: stringField(cost, 'currency', 'activationInputs.budget'),
+      fixedMonthlyCents: integerField(cost, 'fixedMonthlyCents', 'activationInputs.budget'),
+      usageMonthlyCents: integerField(cost, 'usageMonthlyCents', 'activationInputs.budget')
+    });
+  }
+  return { schemaVersion: 1, phases, ...(repository ? { repository } : {}), ...(azure ? { azure } : {}), ...(budget ? { budget } : {}) };
+}
+
+function validateExternalOperation(value: unknown, path: string): ExternalOperationState {
+  const item = exactWithOptional(value,
+    ['provider', 'actionId', 'operationId', 'resourceId', 'startedAt', 'observedAt', 'status'], ['pollUrl', 'planDigest'], path);
+  const pollUrl = item.pollUrl === undefined ? undefined : stringField(item, 'pollUrl', path);
+  if (pollUrl !== undefined) {
+    publicJson(pollUrl, `${path}.pollUrl`);
+    const url = new URL(pollUrl);
+    if (url.protocol !== 'https:' || !['api.github.com', 'management.azure.com'].includes(url.hostname) ||
+      url.username || url.password || url.port) throw new Error(`${path}.pollUrl must be a credential-free supported provider URL.`);
+  }
+  const startedAt = isoTimestamp(item.startedAt, `${path}.startedAt`);
+  const observedAt = isoTimestamp(item.observedAt, `${path}.observedAt`);
+  if (Date.parse(observedAt) < Date.parse(startedAt)) throw new Error(`${path}.observedAt must not precede startedAt.`);
+  return {
+    provider: enumValue(item.provider, liveReadbackProviderSet, `${path}.provider`),
+    actionId: stringField(item, 'actionId', path),
+    operationId: stringField(item, 'operationId', path),
+    resourceId: stringField(item, 'resourceId', path),
+    startedAt, observedAt,
+    status: enumValue(item.status, new Set(['running', 'completed', 'failed']), `${path}.status`),
+    ...(pollUrl ? { pollUrl } : {}),
+    ...(item.planDigest === undefined ? {} : { planDigest: hexDigest(item.planDigest, `${path}.planDigest`) })
+  };
+}
+
+function validateFileChanges(value: unknown, path: string): PlannedFileChange[] {
+  if (!Array.isArray(value)) throw new Error(`${path} must be an array.`);
+  const changes = value.map((entry, index): PlannedFileChange => {
+    const item = exact(entry, ['pathParts', 'beforeHash', 'afterHash'], `${path}[${index}]`);
+    return {
+      pathParts: safePathParts(item.pathParts, `${path}[${index}].pathParts`),
+      beforeHash: item.beforeHash === null ? null : hexDigest(item.beforeHash, `${path}[${index}].beforeHash`),
+      afterHash: item.afterHash === null ? null : hexDigest(item.afterHash, `${path}[${index}].afterHash`)
+    };
+  });
+  assertNoDuplicateStrings(changes.map((change) => change.pathParts.join('/')), path);
+  return changes;
+}
+
+function validateGitInput(value: unknown, path: string): NonNullable<InputTransitionBinding['git']>['before'] {
+  const git = exact(value, ['head', 'branch', 'pushUrls'], path);
+  const head = git.head === null ? null : stringField(git, 'head', path);
+  if (head !== null && !/^[a-f0-9]{40,64}$/u.test(head)) throw new Error(`${path}.head must be an actual Git object ID.`);
+  const pushUrls = stringArray(git.pushUrls, `${path}.pushUrls`);
+  if (pushUrls.some((url) => !/^(?:https:\/\/github\.com\/|git@github\.com:)[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/u.test(url))) {
+    throw new Error(`${path}.pushUrls must contain credential-free supported GitHub destinations.`);
+  }
+  return { head, branch: git.branch === null ? null : stringField(git, 'branch', path), pushUrls };
+}
+
+function validateOutputBindings(value: unknown, path: string): PhaseOutputBindings {
+  const outputs = exact(value, ['values', 'resources'], path);
+  const values: Record<string, string | number | boolean | null> = {};
+  for (const [key, item] of Object.entries(record(publicJson(outputs.values, `${path}.values`), `${path}.values`))) {
+    if (item !== null && typeof item !== 'string' && typeof item !== 'boolean' && typeof item !== 'number') {
+      throw new Error(`${path}.values.${key} must be a public primitive value.`);
+    }
+    values[key] = item;
+  }
+  if (!Array.isArray(outputs.resources)) throw new Error(`${path}.resources must be an array.`);
+  return {
+    values,
+    resources: outputs.resources.map((entry, index) => {
+      const resource = exact(entry, ['provider', 'resourceType', 'resourceId'], `${path}.resources[${index}]`);
+      return {
+        provider: enumValue<LiveReadbackProvider>(resource.provider, liveReadbackProviderSet, `${path}.resources[${index}].provider`),
+        resourceType: stringField(resource, 'resourceType', path),
+        resourceId: stringField(resource, 'resourceId', path)
+      };
+    })
+  };
 }
 
 function enumValue<T extends string>(value: unknown, allowed: ReadonlySet<string>, path: string): T {
@@ -387,9 +559,9 @@ function validateApplicability(value: unknown, path: string): PhaseGraphNode['ap
     'exclusiveWith'
   ], path);
   enumValue(applicability.kind, new Set(['conditional']), `${path}.kind`);
-  const discriminator = enumValue<'state-path' | 'private-staging-dast' | 'credential-required'>(
+  const discriminator = enumValue<Extract<PhaseGraphNode['applicability'], { kind: 'conditional' }>['discriminator']>(
     applicability.discriminator,
-    new Set(['state-path', 'private-staging-dast', 'credential-required']),
+    new Set(['state-path', 'private-staging-dast', 'credential-required', 'cloud-state-required', 'private-runner-required']),
     `${path}.discriminator`
   );
   const exclusiveWith = stringArray(applicability.exclusiveWith, `${path}.exclusiveWith`).map((id) =>
@@ -546,7 +718,7 @@ function assertReachableToFinal(nodes: readonly PhaseGraphNode[]): void {
 }
 
 export function validateManagedPhaseGraph(value: unknown): ManagedPhaseGraph {
-  const graph = exact(value, ['schemaVersion', 'versions', 'phases'], 'phaseGraph');
+  const graph = exact(value, ['schemaVersion', 'versions', 'phases', 'completionGroups'], 'phaseGraph');
   requireVersion(graph.schemaVersion, phaseGraphSchemaVersion, 'phaseGraph.schemaVersion');
   const versions = exact(graph.versions, [
     'liftoffVersion',
@@ -652,6 +824,15 @@ export function validateManagedPhaseGraph(value: unknown): ManagedPhaseGraph {
     visit(id);
   }
   assertReachableToFinal(nodes);
+  const groups = exact(graph.completionGroups, governanceScopes, 'phaseGraph.completionGroups');
+  const completionGroups = {} as ManagedPhaseGraph['completionGroups'];
+  for (const scope of governanceScopes) {
+    completionGroups[scope] = exactStringSet(
+      stringArray(groups[scope], `phaseGraph.completionGroups.${scope}`),
+      phaseIds.filter((id) => phaseScope(id) === scope),
+      `phaseGraph.completionGroups.${scope}`
+    ) as readonly PhaseId[];
+  }
   return {
     schemaVersion: phaseGraphSchemaVersion,
     versions: {
@@ -660,7 +841,8 @@ export function validateManagedPhaseGraph(value: unknown): ManagedPhaseGraph {
       activationContractVersion,
       phaseGraphSchemaVersion
     },
-    phases: nodes
+    phases: nodes,
+    completionGroups
   };
 }
 
@@ -684,6 +866,84 @@ function validateEvidenceReference(value: unknown, path: string): EvidenceRefere
   };
 }
 
+export function validateGovernanceTaskProjectionContract(value: unknown): GovernanceTaskProjectionContract {
+  const label = 'taskProjectionContract';
+  const raw = record(value, label);
+  const source = enumValue<'existing' | 'create'>(raw.source, new Set(['existing', 'create']), `${label}.source`);
+  const item = exact(value, [
+    'schemaVersion', 'derivation', 'source', 'changeId', 'workflowKind', 'taskPathParts',
+    'metadataPathParts', 'metadataHash', 'layoutHash', ...(source === 'create' ? ['template', 'metadataText'] : [])
+  ], label);
+  requireVersion(item.schemaVersion, 1, `${label}.schemaVersion`);
+  if (item.derivation !== 'validated-current-readiness') throw new Error(`${label} requires the bounded current-readiness derivation.`);
+  const changeId = stringField(item, 'changeId', label);
+  safePathParts([changeId], `${label}.changeId`);
+  const workflowKind = enumValue<'openspec' | 'spec-kit'>(item.workflowKind, new Set(['openspec', 'spec-kit']), `${label}.workflowKind`);
+  if (changeId === 'archive' || changeId.startsWith('bootstrap-') || changeId === '000-liftoff-bootstrap') {
+    throw new Error(`${label} cannot target seed tasks or an archive.`);
+  }
+  const base = workflowKind === 'openspec' ? ['openspec', 'changes', changeId] : ['specs', changeId];
+  const taskPathParts = safePathParts(item.taskPathParts, `${label}.taskPathParts`);
+  const metadataPathParts = safePathParts(item.metadataPathParts, `${label}.metadataPathParts`);
+  if (taskPathParts.join('/') !== [...base, 'tasks.md'].join('/') ||
+    metadataPathParts.join('/') !== [...base, 'liftoff-governance.json'].join('/')) {
+    throw new Error(`${label} must target the exact current governance task and metadata paths.`);
+  }
+  const common = {
+    schemaVersion: 1 as const, derivation: 'validated-current-readiness' as const,
+    changeId, workflowKind, taskPathParts, metadataPathParts,
+    metadataHash: hexDigest(item.metadataHash, `${label}.metadataHash`),
+    layoutHash: hexDigest(item.layoutHash, `${label}.layoutHash`)
+  };
+  if (source === 'existing') return { ...common, source };
+  const template = stringField(item, 'template', label);
+  const metadataText = stringField(item, 'metadataText', label);
+  if (template.length > 262_144 || metadataText.length > 262_144 || sha256Hex(metadataText) !== common.metadataHash) {
+    throw new Error(`${label} has oversized or inconsistently bound creation sources.`);
+  }
+  publicJson(template, `${label}.template`);
+  publicJson(metadataText, `${label}.metadataText`);
+  return { ...common, source, template, metadataText };
+}
+
+export function validateGovernanceTaskProjectionRecord(value: unknown): GovernanceTaskProjectionRecord {
+  const label = 'taskProjectionRecord';
+  const item = exact(value, [
+    'schemaVersion', 'purpose', 'phaseId', 'planDigest', 'contractDigest', 'taskPathParts', 'metadataHash',
+    'layoutHash', 'status', 'observedAt', 'beforeHash', 'afterHash', 'states', 'blockers'
+  ], label);
+  requireVersion(item.schemaVersion, 1, `${label}.schemaVersion`);
+  if (item.purpose !== 'projection-audit-only') throw new Error(`${label} is not execution authority.`);
+  const status = enumValue<'complete' | 'blocked'>(item.status, new Set(['complete', 'blocked']), `${label}.status`);
+  const blockers = stringArray(publicJson(item.blockers, `${label}.blockers`), `${label}.blockers`);
+  let states: GovernanceTaskProjectionRecord['states'] = null;
+  if (item.states !== null) {
+    const raw = exact(item.states, phaseIds, `${label}.states`);
+    states = Object.fromEntries(phaseIds.map((id) => [
+      id, enumValue<PhaseState | 'identity-incompatible'>(raw[id], new Set([...phaseStates, 'identity-incompatible']), `${label}.states.${id}`)
+    ])) as NonNullable<GovernanceTaskProjectionRecord['states']>;
+  }
+  const beforeHash = item.beforeHash === null ? null : hexDigest(item.beforeHash, `${label}.beforeHash`);
+  const afterHash = item.afterHash === null ? null : hexDigest(item.afterHash, `${label}.afterHash`);
+  const taskPathParts = safePathParts(item.taskPathParts, `${label}.taskPathParts`);
+  const registered = taskPathParts.length === 4 && taskPathParts[0] === 'openspec' && taskPathParts[1] === 'changes' &&
+    taskPathParts[2] !== 'archive' && !taskPathParts[2].startsWith('bootstrap-') ||
+    taskPathParts.length === 3 && taskPathParts[0] === 'specs' && taskPathParts[1] !== '000-liftoff-bootstrap';
+  if (!registered || taskPathParts.at(-1) !== 'tasks.md') throw new Error(`${label} cannot name an unregistered task destination.`);
+  if (status === 'complete' ? states === null || afterHash === null || blockers.length !== 0 :
+    states !== null || afterHash !== null || blockers.length === 0) {
+    throw new Error(`${label} must distinguish completed projection from blocked, uncommitted task output.`);
+  }
+  return {
+    schemaVersion: 1, purpose: 'projection-audit-only',
+    phaseId: enumValue<PhaseId>(item.phaseId, phaseIdSet, `${label}.phaseId`),
+    planDigest: hexDigest(item.planDigest, `${label}.planDigest`), contractDigest: hexDigest(item.contractDigest, `${label}.contractDigest`),
+    taskPathParts,
+    metadataHash: hexDigest(item.metadataHash, `${label}.metadataHash`), layoutHash: hexDigest(item.layoutHash, `${label}.layoutHash`),
+    status, observedAt: isoTimestamp(item.observedAt, `${label}.observedAt`), beforeHash, afterHash, states, blockers
+  };
+}
+
 export function validateUserActivationState(value: unknown): UserActivationState {
   const state = exactWithOptional(value, [
     'schemaVersion',
@@ -694,7 +954,7 @@ export function validateUserActivationState(value: unknown): UserActivationState
     'phases',
     'createdAt',
     'updatedAt'
-  ], ['bootstrapState', 'remoteBinding'], 'activationState');
+  ], ['bootstrapState', 'remoteBinding', 'baselineAnchor', 'activationInputs', 'phaseOutputs', 'successorHistory', 'taskProjection'], 'activationState');
   requireVersion(state.schemaVersion, activationStateSchemaVersion, 'activationState.schemaVersion');
   const identity = validateActivationIdentity(state.identity);
   if (identity.phaseGraphHash !== canonicalPhaseGraphHash) {
@@ -725,18 +985,47 @@ export function validateUserActivationState(value: unknown): UserActivationState
       kind: enumValue(change.kind, new Set(['openspec', 'spec-kit']), 'activationState.activeChange.kind')
     };
   }
-  const applicability = exact(state.applicability, [
+  let successorHistory: UserActivationState['successorHistory'];
+  if (state.successorHistory !== undefined) {
+    const history = exact(state.successorHistory, [
+      'schemaVersion', 'snapshotId', 'journalPathParts', 'historyIndexPathParts', 'historyIndexDigest', 'sourceActiveChange'
+    ], 'activationState.successorHistory');
+    requireVersion(history.schemaVersion, 1, 'activationState.successorHistory.schemaVersion');
+    const snapshotId = hexDigest(history.snapshotId, 'activationState.successorHistory.snapshotId');
+    const journalPath = safePathParts(history.journalPathParts, 'activationState.successorHistory.journalPathParts');
+    const indexPath = safePathParts(history.historyIndexPathParts, 'activationState.successorHistory.historyIndexPathParts');
+    if (journalPath.join('/') !== 'governance/migration-state.json' ||
+      indexPath.join('/') !== `governance/history/${snapshotId}/index.json`) {
+      throw new Error('activationState.successorHistory must name its exact registered migration journal and snapshot index.');
+    }
+    let sourceActiveChange: NonNullable<UserActivationState['successorHistory']>['sourceActiveChange'] = null;
+    if (history.sourceActiveChange !== null) {
+      const source = exact(history.sourceActiveChange, ['id', 'kind'], 'activationState.successorHistory.sourceActiveChange');
+      const id = stringField(source, 'id', 'activationState.successorHistory.sourceActiveChange');
+      safePathParts([id], 'activationState.successorHistory.sourceActiveChange.id');
+      sourceActiveChange = {
+        id, kind: enumValue(source.kind, new Set(['openspec', 'spec-kit']), 'activationState.successorHistory.sourceActiveChange.kind')
+      };
+    }
+    successorHistory = {
+      schemaVersion: 1, snapshotId, journalPathParts: ['governance', 'migration-state.json'],
+      historyIndexPathParts: indexPath,
+      historyIndexDigest: hexDigest(history.historyIndexDigest, 'activationState.successorHistory.historyIndexDigest'),
+      sourceActiveChange
+    };
+  }
+  const applicability = exactWithOptional(state.applicability, [
     'statePath',
     'privateStagingDast',
     'credentialRequired'
-  ], 'activationState.applicability');
+  ], ['cloudStateRequired', 'privateRunnerRequired'], 'activationState.applicability');
   const phases = record(state.phases, 'activationState.phases');
   const phaseStatesById = {} as UserActivationState['phases'];
   for (const id of phaseIds) {
     if (!Object.hasOwn(phases, id)) {
       throw new Error(`activationState.phases.${id} is required.`);
     }
-    const phase = exact(phases[id], ['state', 'updatedAt', 'evidence', 'approvals', 'blockers'], `activationState.phases.${id}`);
+    const phase = exactWithOptional(phases[id], ['state', 'updatedAt', 'evidence', 'approvals', 'blockers'], ['operation', 'executionPlanDigest'], `activationState.phases.${id}`);
     const phaseState = enumValue<PhaseState>(phase.state, new Set<string>(phaseStates), `activationState.phases.${id}.state`);
     if (!Array.isArray(phase.evidence) || !Array.isArray(phase.approvals) || !Array.isArray(phase.blockers)) {
       throw new Error(`activationState.phases.${id} evidence, approvals, and blockers must be arrays.`);
@@ -748,8 +1037,17 @@ export function validateUserActivationState(value: unknown): UserActivationState
         validateEvidenceReference(entry, `activationState.phases.${id}.evidence[${index}]`)
       ),
       approvals: stringArray(phase.approvals, `activationState.phases.${id}.approvals`),
-      blockers: stringArray(phase.blockers, `activationState.phases.${id}.blockers`)
+      blockers: stringArray(phase.blockers, `activationState.phases.${id}.blockers`),
+      ...(phase.operation === undefined ? {} : { operation: validateExternalOperation(phase.operation, `activationState.phases.${id}.operation`) }),
+      ...(phase.executionPlanDigest === undefined ? {} : { executionPlanDigest: hexDigest(phase.executionPlanDigest, `activationState.phases.${id}.executionPlanDigest`) })
     };
+  }
+  const phaseOutputs: NonNullable<UserActivationState['phaseOutputs']> = {};
+  if (state.phaseOutputs !== undefined) {
+    for (const [id, outputs] of Object.entries(record(state.phaseOutputs, 'activationState.phaseOutputs'))) {
+      phaseOutputs[enumValue<PhaseId>(id, phaseIdSet, 'activationState.phaseOutputs')] =
+        validateOutputBindings(outputs, `activationState.phaseOutputs.${id}`);
+    }
   }
   for (const key of Object.keys(phases)) {
     if (!phaseIdSet.has(key)) {
@@ -807,10 +1105,21 @@ export function validateUserActivationState(value: unknown): UserActivationState
     applicability: {
       statePath: enumValue(applicability.statePath, new Set(['existing-private', 'bootstrap-local', 'none']), 'activationState.applicability.statePath'),
       privateStagingDast: applicability.privateStagingDast === 'unknown' ? 'unknown' : booleanField(applicability, 'privateStagingDast', 'activationState.applicability'),
-      credentialRequired: applicability.credentialRequired === 'unknown' ? 'unknown' : booleanField(applicability, 'credentialRequired', 'activationState.applicability')
+      credentialRequired: applicability.credentialRequired === 'unknown' ? 'unknown' : booleanField(applicability, 'credentialRequired', 'activationState.applicability'),
+      ...(applicability.cloudStateRequired === undefined ? {} : {
+        cloudStateRequired: applicability.cloudStateRequired === 'unknown' ? 'unknown' as const : booleanField(applicability, 'cloudStateRequired', 'activationState.applicability')
+      }),
+      ...(applicability.privateRunnerRequired === undefined ? {} : {
+        privateRunnerRequired: applicability.privateRunnerRequired === 'unknown' ? 'unknown' as const : booleanField(applicability, 'privateRunnerRequired', 'activationState.applicability')
+      })
     },
     ...(remoteBinding ? { remoteBinding } : {}),
     ...(bootstrapState ? { bootstrapState } : {}),
+    ...(state.baselineAnchor === undefined ? {} : { baselineAnchor: hexDigest(state.baselineAnchor, 'activationState.baselineAnchor') }),
+    ...(successorHistory ? { successorHistory } : {}),
+    ...(state.taskProjection === undefined ? {} : { taskProjection: validateGovernanceTaskProjectionRecord(state.taskProjection) }),
+    ...(state.activationInputs === undefined ? {} : { activationInputs: validateActivationConfiguration(state.activationInputs) }),
+    ...(state.phaseOutputs === undefined ? {} : { phaseOutputs }),
     phases: phaseStatesById,
     createdAt: stringField(state, 'createdAt', 'activationState'),
     updatedAt: stringField(state, 'updatedAt', 'activationState')
@@ -832,7 +1141,7 @@ export function validateEvidenceHeader(value: unknown): EvidenceHeader {
     'producer',
     'bodyDigest',
     'result'
-  ], ['remoteBindingDigest'], 'evidenceHeader');
+  ], ['remoteBindingDigest', 'scope', 'inputBindings'], 'evidenceHeader');
   requireVersion(header.schemaVersion, evidenceHeaderSchemaVersion, 'evidenceHeader.schemaVersion');
   const identity = validateActivationIdentity(header.identity);
   const phaseGraphHash = hexDigest(header.phaseGraphHash, 'evidenceHeader.phaseGraphHash');
@@ -850,7 +1159,28 @@ export function validateEvidenceHeader(value: unknown): EvidenceHeader {
   if (transition.baselineSha !== baselineSha) {
     throw new Error('evidenceHeader.transition.baselineSha must match evidenceHeader.baselineSha.');
   }
-  if (transition.inputDigest !== inputDigest) {
+  let inputBindings: EvidenceHeader['inputBindings'];
+  if (header.inputBindings !== undefined) {
+    const bindings = exactWithOptional(header.inputBindings, ['beforeDigest', 'afterDigest', 'files'], ['git'], 'evidenceHeader.inputBindings');
+    const git = bindings.git === undefined ? undefined : exact(bindings.git, ['before', 'after'], 'evidenceHeader.inputBindings.git');
+    inputBindings = {
+      beforeDigest: hexDigest(bindings.beforeDigest, 'evidenceHeader.inputBindings.beforeDigest'),
+      afterDigest: hexDigest(bindings.afterDigest, 'evidenceHeader.inputBindings.afterDigest'),
+      files: validateFileChanges(bindings.files, 'evidenceHeader.inputBindings.files'),
+      ...(git ? { git: {
+        before: validateGitInput(git.before, 'evidenceHeader.inputBindings.git.before'),
+        after: validateGitInput(git.after, 'evidenceHeader.inputBindings.git.after')
+      } } : {})
+    };
+    if (inputBindings.beforeDigest !== transition.inputDigest || inputBindings.afterDigest !== inputDigest) {
+      throw new Error('evidenceHeader.inputBindings must bind the reviewed before-input and observed after-input.');
+    }
+    if (inputBindings.beforeDigest !== inputBindings.afterDigest && !inputBindings.git &&
+      !inputBindings.files.some((file) => file.beforeHash !== file.afterHash)) {
+      throw new Error('Changed phase inputs require a concrete reviewed file or Git transition binding.');
+    }
+  }
+  if (!inputBindings && transition.inputDigest !== inputDigest) {
     throw new Error('evidenceHeader.transition.inputDigest must match evidenceHeader.inputDigest.');
   }
   return {
@@ -869,6 +1199,10 @@ export function validateEvidenceHeader(value: unknown): EvidenceHeader {
     ...(header.remoteBindingDigest !== undefined ? {
       remoteBindingDigest: hexDigest(header.remoteBindingDigest, 'evidenceHeader.remoteBindingDigest')
     } : {}),
+    ...(header.scope === undefined ? {} : {
+      scope: enumValue<GovernanceScope>(header.scope, new Set([phaseScope(phaseId)]), 'evidenceHeader.scope')
+    }),
+    ...(inputBindings ? { inputBindings } : {}),
     result: enumValue(header.result, resultStateSet, 'evidenceHeader.result')
   };
 }
@@ -955,7 +1289,7 @@ export function validateApprovalEnvelope(
   value: unknown,
   options: { expectedIdentity?: ActivationIdentity; now?: Date; requireUnexpired?: boolean } = {}
 ): ApprovalEnvelope {
-  const envelope = exact(value, [
+  const envelope = exactWithOptional(value, [
     'schemaVersion',
     'id',
     'phaseId',
@@ -972,7 +1306,7 @@ export function validateApprovalEnvelope(
     'expiresAt',
     'approvedAt',
     'approver'
-  ], 'approvalEnvelope');
+  ], ['scope', 'coveredPhases', 'operationDigests', 'phasePlanDigests'], 'approvalEnvelope');
   requireVersion(envelope.schemaVersion, approvalEnvelopeSchemaVersion, 'approvalEnvelope.schemaVersion');
   const cost = exact(envelope.costCeiling, [
     'currency',
@@ -1019,6 +1353,28 @@ export function validateApprovalEnvelope(
   if (expectedGateKind !== gateKind) {
     throw new Error(`approvalEnvelope.gateKind ${gateKind} does not match phase ${phaseId} gate ${expectedGateKind}.`);
   }
+  const coveredPhases = envelope.coveredPhases === undefined ? undefined : stringArray(envelope.coveredPhases, 'approvalEnvelope.coveredPhases')
+    .map((id) => enumValue<PhaseId>(id, phaseIdSet, 'approvalEnvelope.coveredPhases'));
+  const operationDigests = envelope.operationDigests === undefined ? undefined : stringArray(envelope.operationDigests, 'approvalEnvelope.operationDigests')
+    .map((digest) => hexDigest(digest, 'approvalEnvelope.operationDigests'));
+  if (coveredPhases) {
+    assertNoDuplicateStrings(coveredPhases, 'approvalEnvelope.coveredPhases');
+    if (!coveredPhases.includes(phaseId) || coveredPhases.some((id) =>
+      phaseScope(id) !== phaseScope(phaseId) || canonicalPhaseGraph.phases.find((phase) => phase.id === id)?.approvalGate.kind !== gateKind)) {
+      throw new Error('An approval bundle must contain its primary phase and only phases in the same scope and authority gate.');
+    }
+  }
+  if (operationDigests) assertNoDuplicateStrings(operationDigests, 'approvalEnvelope.operationDigests');
+  const phasePlanDigests: Partial<Record<PhaseId, string>> = {};
+  if (envelope.phasePlanDigests !== undefined) {
+    for (const [id, digest] of Object.entries(record(envelope.phasePlanDigests, 'approvalEnvelope.phasePlanDigests'))) {
+      phasePlanDigests[enumValue<PhaseId>(id, phaseIdSet, 'approvalEnvelope.phasePlanDigests')] =
+        hexDigest(digest, `approvalEnvelope.phasePlanDigests.${id}`);
+    }
+    exactStringSet(Object.keys(phasePlanDigests), coveredPhases ?? [phaseId], 'approvalEnvelope.phasePlanDigests');
+  } else if ((coveredPhases?.length ?? 0) > 1) {
+    throw new Error('An approval covering multiple phases requires every exact phase plan digest.');
+  }
   return {
     schemaVersion: approvalEnvelopeSchemaVersion,
     id: stringField(envelope, 'id', 'approvalEnvelope'),
@@ -1035,7 +1391,11 @@ export function validateApprovalEnvelope(
     destructiveScope,
     expiresAt,
     approvedAt,
-    approver: stringField(envelope, 'approver', 'approvalEnvelope')
+    approver: stringField(envelope, 'approver', 'approvalEnvelope'),
+    ...(envelope.scope === undefined ? {} : { scope: enumValue<GovernanceScope>(envelope.scope, new Set([phaseScope(phaseId)]), 'approvalEnvelope.scope') }),
+    ...(coveredPhases ? { coveredPhases } : {}),
+    ...(operationDigests ? { operationDigests } : {}),
+    ...(envelope.phasePlanDigests === undefined ? {} : { phasePlanDigests })
   };
 }
 
@@ -1044,7 +1404,7 @@ function validateOperationDestination(value: unknown, path: string): TransitionO
   const normalized: TransitionOperationDestination = {
     type: enumValue(destination.type, new Set(['local', 'repository', 'subscription', 'environment', 'tenant', 'external']), `${path}.type`),
     identity: stringField(destination, 'identity', path),
-    ...(destination.pathParts !== undefined ? { pathParts: stringArray(destination.pathParts, `${path}.pathParts`) } : {}),
+    ...(destination.pathParts !== undefined ? { pathParts: safePathParts(destination.pathParts, `${path}.pathParts`) } : {}),
     ...(destination.repository !== undefined ? { repository: stringField(destination, 'repository', path) } : {}),
     ...(destination.subscriptionId !== undefined ? { subscriptionId: stringField(destination, 'subscriptionId', path) } : {}),
     ...(destination.ref !== undefined ? { ref: stringField(destination, 'ref', path) } : {})
@@ -1053,7 +1413,7 @@ function validateOperationDestination(value: unknown, path: string): TransitionO
 }
 
 function validateTransitionOperation(value: unknown, path: string): TransitionOperation {
-  const operation = exact(value, [
+  const operation = exactWithOptional(value, [
     'adapter',
     'actionId',
     'mutationClass',
@@ -1062,16 +1422,29 @@ function validateTransitionOperation(value: unknown, path: string): TransitionOp
     'destination',
     'remote',
     'destructive'
-  ], path);
+  ], ['effects'], path);
+  const effects = operation.effects === undefined ? undefined : (() => {
+    if (!Array.isArray(operation.effects)) throw new Error(`${path}.effects must be an array.`);
+    return operation.effects.map((entry, index) => {
+      const effect = exact(entry, ['mutationClass', 'destination', 'remote', 'destructive'], `${path}.effects[${index}]`);
+      return {
+        mutationClass: enumValue<MutationClass>(effect.mutationClass, new Set<string>(mutationClasses), `${path}.effects[${index}].mutationClass`),
+        destination: validateOperationDestination(effect.destination, `${path}.effects[${index}].destination`),
+        remote: booleanField(effect, 'remote', `${path}.effects[${index}]`),
+        destructive: booleanField(effect, 'destructive', `${path}.effects[${index}]`)
+      };
+    });
+  })();
   return {
     adapter: enumValue(operation.adapter, transitionAdapterIds, `${path}.adapter`) as TransitionOperation['adapter'],
     actionId: stringField(operation, 'actionId', path),
     mutationClass: enumValue<MutationClass>(operation.mutationClass, new Set<string>(mutationClasses), `${path}.mutationClass`),
     phaseId: enumValue<PhaseId>(operation.phaseId, phaseIdSet, `${path}.phaseId`),
-    inputs: record(operation.inputs, `${path}.inputs`),
+    inputs: record(publicJson(operation.inputs, `${path}.inputs`), `${path}.inputs`),
     destination: validateOperationDestination(operation.destination, `${path}.destination`),
     remote: booleanField(operation, 'remote', path),
-    destructive: booleanField(operation, 'destructive', path)
+    destructive: booleanField(operation, 'destructive', path),
+    ...(effects ? { effects } : {})
   };
 }
 
@@ -1147,8 +1520,9 @@ function validateRollbackPlan(value: unknown, path: string): TransitionRollbackP
 }
 
 export function validateSavedTransitionPlan(value: unknown): SavedTransitionPlan {
-  const plan = exact(value, [
+  const plan = exactWithOptional(value, [
     'schemaVersion',
+    'scope',
     'phaseId',
     'createdAt',
     'expiresAt',
@@ -1164,8 +1538,8 @@ export function validateSavedTransitionPlan(value: unknown): SavedTransitionPlan
     'approval',
     'rollbackPlan',
     'noSecrets'
-  ], 'transitionPlan');
-  requireVersion(plan.schemaVersion, 1, 'transitionPlan.schemaVersion');
+  ], ['configuration', 'fileChanges', 'recovery', 'approvalBundle'], 'transitionPlan');
+  requireVersion(plan.schemaVersion, 2, 'transitionPlan.schemaVersion');
   const identity = validateActivationIdentity(plan.identity);
   const graphHash = hexDigest(plan.graphHash, 'transitionPlan.graphHash');
   if (graphHash !== identity.phaseGraphHash) {
@@ -1192,8 +1566,31 @@ export function validateSavedTransitionPlan(value: unknown): SavedTransitionPlan
   const envelopeHash = approval.envelopeHash === null
     ? null
     : hexDigest(approval.envelopeHash, 'transitionPlan.approval.envelopeHash');
+  let approvalBundle: SavedTransitionPlan['approvalBundle'];
+  if (plan.approvalBundle !== undefined) {
+    if (!Array.isArray(plan.approvalBundle)) throw new Error('transitionPlan.approvalBundle must be an array.');
+    approvalBundle = plan.approvalBundle.map((entry, index) => {
+      const item = exact(entry, ['phaseId', 'inputDigest', 'transitionDigest', 'operations', 'fileChanges'], `transitionPlan.approvalBundle[${index}]`);
+      const id = enumValue<PhaseId>(item.phaseId, phaseIdSet, 'transitionPlan.approvalBundle.phaseId');
+      const node = canonicalPhaseGraph.phases.find((phase) => phase.id === id)!;
+      if (id === phaseId || phaseScope(id) !== phaseScope(phaseId) || node.approvalGate.kind !== approval.gateKind) {
+        throw new Error('A bundled phase must be distinct and share the primary phase scope and approval gate.');
+      }
+      if (!Array.isArray(item.operations)) throw new Error('Bundled operations must be an array.');
+      const operations = item.operations.map((operation, operationIndex) =>
+        validateTransitionOperation(operation, `transitionPlan.approvalBundle[${index}].operations[${operationIndex}]`));
+      if (operations.some((operation) => operation.phaseId !== id)) throw new Error('Bundled operations must match their declared phase.');
+      return {
+        phaseId: id, inputDigest: hexDigest(item.inputDigest, 'approvalBundle.inputDigest'),
+        transitionDigest: hexDigest(item.transitionDigest, 'approvalBundle.transitionDigest'),
+        operations, fileChanges: validateFileChanges(item.fileChanges, 'approvalBundle.fileChanges')
+      };
+    });
+    assertNoDuplicateStrings(approvalBundle.map((entry) => entry.phaseId), 'transitionPlan.approvalBundle');
+  }
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope: enumValue<GovernanceScope>(plan.scope, new Set([phaseScope(phaseId)]), 'transitionPlan.scope'),
     phaseId,
     createdAt: isoTimestamp(plan.createdAt, 'transitionPlan.createdAt'),
     expiresAt: isoTimestamp(plan.expiresAt, 'transitionPlan.expiresAt'),
@@ -1221,6 +1618,10 @@ export function validateSavedTransitionPlan(value: unknown): SavedTransitionPlan
       envelopeHash
     },
     rollbackPlan: validateRollbackPlan(plan.rollbackPlan, 'transitionPlan.rollbackPlan'),
+    ...(plan.configuration === undefined ? {} : { configuration: validateActivationConfiguration(plan.configuration) }),
+    ...(plan.fileChanges === undefined ? {} : { fileChanges: validateFileChanges(plan.fileChanges, 'transitionPlan.fileChanges') }),
+    ...(plan.recovery === undefined ? {} : { recovery: booleanField(plan, 'recovery', 'transitionPlan') }),
+    ...(approvalBundle ? { approvalBundle } : {}),
     noSecrets: plan.noSecrets === true ? true : (() => { throw new Error('transitionPlan.noSecrets must be true.'); })()
   };
 }

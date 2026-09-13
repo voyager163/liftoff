@@ -12,7 +12,8 @@ import { OPEN_SPEC_PROFILE } from '../../openspec-profile.js';
 import { OPEN_SPEC_WORKFLOW_IDS } from '../../openspec-profile.js';
 import type { ProjectPlan } from '../../domain/project/contracts.js';
 import { renderBackendDockerfile } from '../containers/images.js';
-import { renderGovernanceAssessmentGuide } from '../../repository-governance.js';
+import { governanceInvocationGuide, renderGovernanceAssessmentGuide } from '../../repository-governance.js';
+import { activationContractVersion } from '../../governance-activation/identity.js';
 import { renderStandardDockerfile } from '../containers/images.js';
 import { renderStandardEnv } from '../standard/configuration.js';
 import { renderDockerignore } from '../containers/context.js';
@@ -112,15 +113,34 @@ export function renderDeterministicSetupGuide(plan: ApiProjectPlan): string {
   const frontend = plan.includeFrontend
     ? '- Frontend build: `npm run build` from `frontend/` after `npm ci`.'
     : '- Frontend build: inapplicable because no frontend was generated.';
+  const hasSlashAgents = plan.agents.some((agent) => agent.id === 'github-copilot' || agent.id === 'claude');
+  const setupInvocation = hasSlashAgents ? '`/liftoff-setup`' : '`$liftoff-setup`';
   const governance = plan.governanceProfile.id === 'none'
-    ? 'Repository governance is disabled, so there is no `/liftoff-setup` integration, managed phase graph, or post-init governance activation path.'
-    : plan.specWorkflow.id === 'openspec'
-      ? 'Run `/liftoff-setup` from a selected agent. It verifies, syncs, and archives the generated OpenSpec bootstrap seed, then stops at explicit authority gates. Commit and push require separate approvals.'
-      : 'Run `/liftoff-setup` from a selected agent. It verifies the real `specs/000-liftoff-bootstrap` bundle and official Spec Kit markers, runs applicable checks, and only then finalizes the local bootstrap projection and receipt. It creates no branch or external archive.';
+    ? `Repository governance is disabled, so there is no ${setupInvocation} integration (native ${hasSlashAgents ? '`liftoff-setup`' : '`$liftoff-setup`'} integration), managed phase graph, or post-init governance activation path.`
+    : plan.agents.length === 0
+      ? `${governanceInvocationGuide(plan)} This legacy handoff does not initialize the framework or install coding-agent integrations. Review \`.liftoff/governance/README.md\` and the CLI's local diagnostics for separately approved adoption requirements.`
+      : plan.specWorkflow.id === 'openspec'
+        ? `Run ${setupInvocation} from a selected agent (${governanceInvocationGuide(plan)}). It verifies, syncs, and archives the generated OpenSpec bootstrap seed, then guides the requested activation through independent approval gates. Commit and push require separate approvals.`
+        : `Run ${setupInvocation} from a selected agent (${governanceInvocationGuide(plan)}). It verifies the real \`specs/000-liftoff-bootstrap\` bundle and official Spec Kit markers, runs applicable checks, and only then finalizes the local bootstrap projection and receipt. Local finalization creates no branch or external archive; the requested activation journey follows through independent approvals.`;
   return `## Deterministic Setup
 
 ${governance}
 
+${plan.governanceProfile.id === 'none' ? '' : `Setup begins with \`liftoff governance status --scope local --json\`.
+Local-ready is a milestone, not proof of deployment. Unless you request local-only
+operation or decline later authority, setup presents the activation plan and
+continues through approved repair/migration, publication, deployment, qualification,
+and live enforcement verification. Prefer the CLI's supported \`nextActions\`,
+including their executable, argument array, working directory, scope, and required
+approval. Never fabricate approval/state JSON or provide secrets in chat.
+Keep explicit local scope: unscoped governance defaults to activation.
+Planning saves a disclosed external preview, not approval; apply-next without
+\`--execute\` is strictly read-only. Requested \`--inputs <public-json-file>\`
+must follow the CLI's public schema and contain no credentials.
+Consistent incomplete verification exits 2; it is not a failed or completed journey.
+Future retention/disposal remains separate lifecycle work.
+
+`}
 The local baseline contains only applicable checks:
 
 - \`liftoff validate\`
@@ -166,10 +186,10 @@ export function renderAdvisoryReadinessGuide(plan: ApiProjectPlan): string {
 export function renderSpecWorkflowGuide(plan: ApiProjectPlan): string {
   const agents = plan.agents.map((agent) =>
     `${agent.label}${plan.defaultAgent?.id === agent.id ? ' (default integration)' : ''}`
-  ).join(', ');
+  ).join(', ') || 'Not recorded; legacy framework adoption requires separate review';
   const ownership = plan.specWorkflow.id === 'openspec'
     ? 'OpenSpec workflow skills, commands, configuration, and optional cloud-agent files'
-    : 'Spec Kit core files, integration state, and the selected Copilot or Claude skill integrations';
+    : 'Spec Kit core files, integration state, and the selected native skill integrations';
   const openSpecDetails = plan.specWorkflow.id === 'openspec'
     ? [
         `- OpenSpec profile: ${OPEN_SPEC_PROFILE}; delivery: ${OPEN_SPEC_DELIVERY}; workflows: ${OPEN_SPEC_WORKFLOW_IDS.join(', ')}`,
@@ -183,6 +203,9 @@ export function renderSpecWorkflowGuide(plan: ApiProjectPlan): string {
 - Workflow: ${plan.specWorkflow.label} ${plan.framework.version}
 - AI coding agents: ${agents}
 ${openSpecDetails ? `${openSpecDetails}\n` : ''}
+${plan.agents.some((agent) => agent.id === 'codex')
+  ? `- OpenAI Codex: project-local \`.agents/skills\`; invoke \`${plan.specWorkflow.id === 'openspec' ? '$openspec-propose' : '$speckit-specify'}\` or select a skill with \`/skills\`. No deprecated global custom prompts or Copilot/Claude command files are required.\n`
+  : ''}
 - Framework ownership: the official initializer owns ${ownership}. Liftoff validates these files but excludes framework-owned output and one-time seed content from managed-core hashes.
 - Deferred tools: advisory workstation checks may be deferred. Liftoff never claims they are installed and never installs them without \`--install-tools\`.
 
@@ -198,6 +221,12 @@ liftoff doctor
 \`\`\`
 
 For an existing OpenSpec project, change workflow delivery with \`openspec config profile\` and refresh framework-owned files with \`openspec update\`. Plain \`liftoff update\` does not regenerate OpenSpec integrations.
+For an additive agent change, preview \`liftoff repair --check --add-agents codex\`
+instead of reinitializing the application. Existing selections and the Spec Kit
+default remain unchanged unless an explicit reviewed default change is requested.
+Machine installation, dependency installation, and global-profile configuration
+remain independently authorized. Compatible official preview coding agents are
+usable with notices; tested runtime and framework pins still apply.
 `;
 }
 
@@ -259,28 +288,36 @@ Configure only the integrations you use:
 export function renderGeneratedUpdateGuide(plan: ProjectPlan): string {
   const governance = plan.governanceProfile.id === 'none'
     ? 'Repository governance is disabled for this project, so Liftoff does not generate setup integrations, a managed phase graph, credential-policy schema, or post-init setup command.'
-    : '`single-maintainer-gitflow` repository governance generates deterministic setup artifacts only. Review `.liftoff/governance/README.md`, then run `/liftoff-setup` from a selected agent. Live enforcement requires evidence and explicit approval; it is never inferred from generated files.';
+    : plan.agents.length === 0
+      ? `${governanceInvocationGuide(plan)} Managed-core maintenance does not initialize a legacy framework or install native integrations. Use the CLI's local diagnostics and \`.liftoff/governance/README.md\` to review supported adoption requirements.`
+      : `Initialization generates deterministic setup artifacts only. Review \`.liftoff/governance/README.md\`, then use native setup (${governanceInvocationGuide(plan)}) for local readiness and the requested separately approved activation journey. Live enforcement requires actual verification and explicit approval; it is never inferred from generated files.`;
   return `## Safe Liftoff Updates
 
 \`liftoff upgrade\` replaces a supported global Liftoff CLI installation; it does not inspect or modify this project. Check and apply CLI replacement separately with \`liftoff upgrade --check\` and \`liftoff upgrade\`.
 
 ${governance}
 
-\`liftoff update\` maintains explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent \`/liftoff-setup\` and \`/liftoff-governance-assess\` integrations. Start with \`liftoff update --check\` for the human compatibility and migration preview. Check changes no project bytes and discloses a preview receipt stored outside the repository; this receipt is not approval. Plain update requires the matching preview and explicit approval. Automation can use \`liftoff update --check --json\` and approve the exact effective fingerprint with \`liftoff update --approve-plan <fingerprint> --json\`.
+\`liftoff update\` maintains explicit Liftoff core files, currently the repository-governance policy, context, guide, phase graph, compatibility metadata, credential-policy schema, and selected-agent native \`liftoff-setup\` and \`liftoff-governance-assess\` integrations. Start with \`liftoff update --check\` for the human compatibility and migration preview. Check changes no project bytes and discloses a preview receipt stored outside the repository; this receipt is not approval. Plain update requires the matching preview and explicit approval. Automation can use \`liftoff update --check --json\` and approve the exact effective fingerprint with \`liftoff update --approve-plan <fingerprint> --json\`.
 
 Application source, tests, dependencies and locks, schemas, containers, environment files, documentation, and infrastructure become project-owned after generation. No update mode, including \`--force\`, can restore or replace them. Enabling a previously absent frontend or environment in \`liftoff.config.json\` may provision that component once at absent destinations; a collision blocks the whole component and cannot be forced.
 
 Project template modernization is a separately reviewed production change and is not performed by ordinary update or by the existing non-Liftoff \`migrate\` command. Managed-core conflicts are skipped by default; after reviewing every listed core path, \`liftoff update --force\` may replace only those core conflicts. Managed-core orphans remain on disk, and update never installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful core overwrite.
 
-Activation migration is a separate explicitly approved write set. A supported v1 source retains original state, evidence, plans, approvals, and source metadata in \`governance/history\` before a linked v2 successor is created. History never becomes managed core or current execution proof. Revalidation uses only the finite reviewed local operations and stops before provider access, publication, or independent authority gates. Failure after migration commits leaves v2 blocked and resumable; repair the named cause, run check again, and approve the remaining work. History is not automatically committed, pushed, or removed with preview receipts. Force never bypasses preview, approval, compatibility, or ownership checks.
+Activation migration is a separate explicitly approved write set. A supported v1/v2 source retains original state, evidence, plans, approvals, and source metadata in \`governance/history\` before a linked v${activationContractVersion} successor is created. History never becomes managed core or current execution proof. Revalidation uses only the finite reviewed local operations and stops before provider access, publication, or independent authority gates. Failure after migration commits leaves v${activationContractVersion} blocked and resumable; repair the named cause, run check again, and approve the remaining work. History is not automatically committed, pushed, or removed with preview receipts. Force never bypasses preview, approval, compatibility, or ownership checks.
+
+Project repair is a separate scope: use \`liftoff repair --check\` for its exact
+project-bound preview, or \`liftoff repair --check --add-agents codex\` for additive
+integration work. Apply only the current reviewed fingerprint. Sensitive-state
+inspection, backend migration, credentials, resources, and recovery retain
+independent authorities. Do not reinitialize the project or hand-edit provenance.
 
 Update JSON uses schema 3. Exit 0 means clean state or completion of the approved scope, 2 means differences or committed migration with incomplete revalidation, and 1 means a rejected or failed operation. Local migration completion does not establish live governance.
 
 Liftoff rejects malformed, traversal, absolute, drive-qualified, UNC, separator-containing, or symlink-escaping manifest paths before artifact access. If the manifest is unsafe or malformed, restore \`liftoff.manifest.json\` from version control or regenerate the project with a matching Liftoff version; do not hand-edit unsafe paths. Run \`liftoff <command> --help\` for command-specific syntax because unknown flags, subcommands, values, and extra arguments fail before any write.
 
 ${plan.governanceProfile.id === 'none'
-  ? 'No `/liftoff-governance-assess` integration is generated while governance is disabled.'
-  : renderGovernanceAssessmentGuide()}
+  ? 'No native `liftoff-governance-assess` integration is generated while governance is disabled.'
+  : renderGovernanceAssessmentGuide(plan)}
 `;
 }
 
@@ -290,10 +327,11 @@ export function renderRootInfrastructureGuide(plan: ApiProjectPlan): string {
     ? ''
     : `These commands are reference material, not the next setup action. Do not run this
 sequence until the separately approved \`application-foundation\` governance phase
-authorizes the exact infrastructure mutation. \`/liftoff-setup\` can evaluate and
-resume managed phases, but it does not imply that every managed phase has an
-executable production adapter. An unavailable production adapter remains a
-blocker; do not bypass it by running the reference commands directly.
+authorizes the exact infrastructure mutation. ${plan.agents.length === 0
+  ? `${governanceInvocationGuide(plan)} Use the CLI's local diagnostics to review the legacy framework boundary, not these deployment commands.`
+  : `Use native setup\n(${governanceInvocationGuide(plan)}) and its supported next actions.`}
+An unavailable production adapter remains a blocker; do not bypass it by running
+the reference commands directly.
 
 `;
   return `## Infrastructure
@@ -305,7 +343,9 @@ tofu plan -var-file=${environment}.tfvars
 tofu apply -var-file=${environment}.tfvars
 \`\`\`
 
-The first apply uses a public bootstrap image. Follow \`infrastructure/opentofu/azure/README.md\` to build the generated backend in ACR and apply its image.
+${plan.governanceProfile.id === 'none'
+  ? 'The first apply uses a public bootstrap image. Follow `infrastructure/opentofu/azure/README.md` to build the generated backend in ACR and apply its image.'
+  : 'Approved activation requires the real source-bound immutable application artifact before deployment. A public bootstrap image or an accepted deployment request never proves application readiness.'}
 `;
 }
 

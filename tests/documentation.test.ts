@@ -636,7 +636,7 @@ describe('public documentation', () => {
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(14);
+    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(16);
     expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(2);
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');

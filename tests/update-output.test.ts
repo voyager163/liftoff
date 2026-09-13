@@ -202,7 +202,7 @@ describe('human reviewed scope', () => {
       ),
       preview.boundary,
       'Known revalidation gap: seed-valid: A named prerequisite is missing.',
-      'Approval may commit v2 while these known revalidation gaps remain blocked.',
+      'Approval may commit v3 while these known revalidation gaps remain blocked',
       'Next incomplete phase: seed-valid'
     ];
     for (const detail of details) {

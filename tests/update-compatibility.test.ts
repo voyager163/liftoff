@@ -9,15 +9,11 @@ import { historicalActivationIdentities, resolveActivationCompatibility } from '
 describe('reviewed activation successor compatibility', () => {
   it('declares a successor lane without making historical proof executable', () => {
     const metadata = validateGovernanceCompatibilityMetadata(buildGovernanceCompatibilityMetadata([], [], []));
-    expect(metadata.schemaVersion).toBe(3);
-    expect(metadata.activation.successorMigrations).toEqual([{
-      id: 'activation-v1-to-v2',
-      fromIdentity: historicalActivationIdentities[0],
-      toIdentity: currentActivationIdentity,
-      strategy: 'preserve-history-revalidate',
-      historySchemaVersion: 1,
-      journalSchemaVersion: 1
-    }]);
+    expect(metadata.schemaVersion).toBe(4);
+    expect(metadata.activation.successorMigrations.map((entry) => entry.id)).toEqual([
+      'activation-v1-to-v3',
+      'activation-v2-to-v3'
+    ]);
     expect(metadata.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
     expect(resolveActivationCompatibility(historicalActivationIdentities[0]!, new Map()).compatible).toBe(false);
   });
@@ -31,7 +27,14 @@ describe('reviewed activation successor compatibility', () => {
       schemaVersion: 2,
       activation: {
         ...activation,
-        historicalReadability: { ...activation.historicalReadability, migration: 'unsupported-preserve-bytes' }
+        historicalReadability: {
+          tuples: metadata.activation.historicalReadability.tuples,
+          activationContractVersion: 1,
+          activationStateSchemaVersion: 1,
+          evidenceHeaderSchemaVersion: 1,
+          execution: 'diagnostic-only',
+          migration: 'unsupported-preserve-bytes'
+        }
       }
     };
     const parsed = validateGovernanceCompatibilityMetadata(legacy);
@@ -50,19 +53,19 @@ describe('reviewed activation successor compatibility', () => {
       }
     };
     expect(() => validateGovernanceCompatibilityMetadata(altered)).toThrow(/packaged/);
-    expect(() => validateGovernanceCompatibilityMetadata({ ...metadata, schemaVersion: 4 })).toThrow(/schemaVersion/);
+    expect(() => validateGovernanceCompatibilityMetadata({ ...metadata, schemaVersion: 5 })).toThrow(/schemaVersion/);
   });
 
   it('does not alter current phase graph or execution schema identities', () => {
     expect(currentActivationIdentity).toMatchObject({
-      liftoffVersion: '0.11.0',
+      liftoffVersion: '0.12.0',
       manifestArtifactVersion: 7,
       policyVersion: '6',
-      activationContractVersion: 2,
-      activationStateSchemaVersion: 2,
-      evidenceHeaderSchemaVersion: 2,
-      approvalEnvelopeSchemaVersion: 2
+      activationContractVersion: 3,
+      activationStateSchemaVersion: 3,
+      evidenceHeaderSchemaVersion: 3,
+      approvalEnvelopeSchemaVersion: 3
     });
-    expect(canonicalPhaseGraphHash).toBe('ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c');
+    expect(canonicalPhaseGraphHash).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
   });
 });

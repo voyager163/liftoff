@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import os from 'node:os';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -37,16 +36,16 @@ import type {
   UserActivationState
 } from '../src/governance-activation/index.js';
 import { CaptureStream } from './helpers.js';
-import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
 import { writeArtifacts } from '../src/adapters/filesystem/project-files.js';
 import { createManifestReader } from '../src/domain/project/manifest/reader.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { governanceArtifactPaths, governancePolicyVersion } from '../src/repository-governance.js';
 import { inspectCurrentActivationEvidence } from '../src/governance-activation/read-only.js';
 import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
+import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', 'governance-migration-tests');
-const receiptHome = path.join(os.tmpdir(), `liftoff-governance-preview-${process.pid}`);
+const receiptHome = path.join(scratchRoot, 'preview-home');
 let counter = 0;
 
 const testHistoricalPhaseGraph = {
@@ -85,6 +84,7 @@ async function fixtureProject(workload: 'standard' | 'genai' = 'standard'): Prom
     includeFrontend: false
   }, { requireProjectName: true });
   await writeArtifacts(root, buildArtifacts(plan));
+  await mkdir(path.join(root, '.git'), { recursive: true });
   return root;
 }
 
@@ -302,7 +302,7 @@ describe('governance managed migration framework', () => {
   it.each(['historical', 'future', 'mixed'] as const)('describes %s doctor incompatibility without mislabeling it as v1', async (kind) => {
     const root = await fixtureProject();
     const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-    const state = stateWithIdentity(kind === 'historical' ? historicalActivationIdentities[0] : currentActivationIdentity);
+    const state = kind === 'historical' ? buildHistoricalV1Fixture().state : stateWithIdentity(currentActivationIdentity);
     if (kind === 'future') state.schemaVersion = currentActivationIdentity.activationStateSchemaVersion + 1;
     if (kind === 'mixed') state.identity = { ...state.identity, evidenceHeaderSchemaVersion: 1 };
     await writeJson(path.join(root, ...activationStateFilePathParts), state);
@@ -327,7 +327,7 @@ describe('governance managed migration framework', () => {
       { ...historical, phaseGraphHash: '9'.repeat(64) },
       { ...historical, liftoffVersion: '0.99.0' },
       { ...historical, extra: true },
-      { ...currentActivationIdentity, activationContractVersion: 3 }
+      { ...currentActivationIdentity, activationContractVersion: currentActivationIdentity.activationContractVersion + 1 }
     ]) expect(() => validateReadableActivationIdentity(invalid)).toThrow();
   });
 
@@ -371,7 +371,7 @@ describe('governance managed migration framework', () => {
 
   it('preserves known activation v1 as diagnostic-only even when an injected mapping is offered', async () => {
     const root = await fixtureProject();
-    const historical = stateWithIdentity(historicalActivationIdentities[0]!);
+    const historical = buildHistoricalV1Fixture().state;
     const statePath = path.join(root, ...activationStateFilePathParts);
     await writeJson(statePath, historical);
     const evidencePath = path.join(root, 'governance', 'evidence', 'preserved-v1.json');
@@ -407,7 +407,7 @@ describe('governance managed migration framework', () => {
     expect(`sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`)
       .toBe(compatibilityArtifact.contentHash);
     const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibilityContent));
-    expect(compatibility.schemaVersion).toBe(3);
+    expect(compatibility.schemaVersion).toBe(4);
     expect(compatibility.activation.historicalReadability.execution).toBe('diagnostic-only');
     expect(compatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
     expect(compatibility.manifest.writeVersion).toBe(7);
@@ -429,7 +429,7 @@ describe('governance managed migration framework', () => {
       const before = await treeFingerprint(root);
 
       const check = await run(['update', '--check', '--json'], root);
-      expect([0, 2]).toContain(check.code);
+      expect([0, 2], `${check.out}${check.err}`).toContain(check.code);
       expect(await treeFingerprint(root)).toEqual(before);
 
       const preview = JSON.parse(check.out);
@@ -466,7 +466,7 @@ describe('governance managed migration framework', () => {
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
-  it('previews an injected compatible v2 graph reconciliation without changing any byte', async () => {
+  it('rejects an injected graph reconciliation without changing any byte', async () => {
     const root = await fixtureProject();
     await installHistoricalState(root);
     const before = await treeFingerprint(root);
@@ -474,31 +474,27 @@ describe('governance managed migration framework', () => {
     const plan = await planTestHistoricalMigration(root);
 
     expect(plan.report).toMatchObject({
-      status: 'migrate',
+      status: 'blocked',
       path: 'governance/activation-state.json',
       checkModeWritesBytes: 0,
       evidencePolicy: 'preserve-bytes'
     });
-    expect(plan.status).toBe('migrate');
+    expect(plan.status).toBe('blocked');
+    expect(plan.mutations).toEqual([]);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
-  it('applies an injected v2 graph reconciliation transactionally while preserving evidence bytes', async () => {
+  it('never relabels state or evidence under a project-injected mapping', async () => {
     const root = await fixtureProject();
     await installHistoricalState(root);
     const evidencePath = path.join(root, 'governance', 'evidence', 'seed-valid-historical.json');
     const evidenceBefore = await readFile(evidencePath, 'utf8');
 
     const plan = await planTestHistoricalMigration(root);
-    expect(plan.status).toBe('migrate');
-    await applyProjectFileTransaction(root, plan.mutations, { preconditions: plan.preconditions });
-
-    expect(plan.mutations.map((mutation) => mutation.pathParts.join('/'))).toEqual(expect.arrayContaining([
-      'governance/activation-state.json',
-      expect.stringMatching(/^governance\/reconciliation\//)
-    ]));
+    expect(plan.status).toBe('blocked');
+    expect(plan.mutations).toEqual([]);
     const state = JSON.parse(await readFile(path.join(root, ...activationStateFilePathParts), 'utf8'));
-    expect(state.identity).toEqual(currentActivationIdentity);
+    expect(state.identity).toEqual(testHistoricalActivationIdentity);
     expect(state.phases['seed-valid'].state).toBe('verified');
     expect(await readFile(evidencePath, 'utf8')).toBe(evidenceBefore);
     const mapping = testHistoricalStateMigration().graphMapping;
@@ -508,43 +504,18 @@ describe('governance managed migration framework', () => {
       'reconciliation',
       `${mapping.fromGraphHash.slice(0, 12)}-to-${mapping.toGraphHash.slice(0, 12)}.json`
     );
-    const reconciliation = JSON.parse(await readFile(reconciliationPath, 'utf8'));
-    expect(reconciliation).toMatchObject({
-      fromGraphHash: mapping.fromGraphHash,
-      toGraphHash: mapping.toGraphHash,
-      fromIdentity: testHistoricalActivationIdentity,
-      toIdentity: currentActivationIdentity,
-      reconciledAt: expect.any(String),
-      producer: 'liftoff-managed-update'
-    });
-    expect(reconciliation.phaseMappings.every((entry: { preserveEvidence: boolean }) =>
-      entry.preserveEvidence
-    )).toBe(true);
+    await expect(readFile(reconciliationPath, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('rolls back old state and reconciliation files when injected migration fails before every mutation', async () => {
-    const probeRoot = await fixtureProject();
-    await installHistoricalState(probeRoot);
-    const mutationCount = (await planTestHistoricalMigration(probeRoot)).mutations.length;
-    expect(mutationCount).toBeGreaterThan(1);
-
-    for (const stage of Array.from({ length: mutationCount }, (_value, index) => index)) {
-      const root = await fixtureProject();
-      await installHistoricalState(root);
-      const before = await treeFingerprint(root);
-
-      const plan = await planTestHistoricalMigration(root);
-      await expect(applyProjectFileTransaction(root, plan.mutations, {
-        preconditions: plan.preconditions,
-        onBeforeMutation: async (_mutation, index) => {
-          if (index === stage) {
-            throw new Error(`injected migration failure before mutation ${stage}`);
-          }
-        }
-      })).rejects.toThrow(`injected migration failure before mutation ${stage}`);
-
-      expect(await treeFingerprint(root)).toEqual(before);
-    }
+  it('does not let force authorize an unknown graph mapping', async () => {
+    const root = await fixtureProject();
+    await installHistoricalState(root);
+    const before = await treeFingerprint(root);
+    const plan = await planTestHistoricalMigration(root);
+    expect(plan).toMatchObject({ status: 'blocked', mutations: [] });
+    const result = await run(['update', '--json', '--force', '--approve-plan', 'a'.repeat(64)], root);
+    expect(result.code).toBe(1);
+    expect(await treeFingerprint(root)).toEqual(before);
   });
 
   it('blocks ad hoc activation state without importing checkboxes, filenames, or prose', async () => {
@@ -562,7 +533,7 @@ describe('governance managed migration framework', () => {
     const report = JSON.parse(result.out);
     expect(report.status).toBe('blocked');
     expect(report.activationMigration.reasonCode).toBe('unsupported-historical-identity');
-    expect(report.activationMigration.issues.join(' ')).toMatch(/exact versioned historical v1 representation/i);
+    expect(report.activationMigration.issues.join(' ')).toMatch(/exact versioned historical v1\/v2 representations/i);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 

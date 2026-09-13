@@ -5,16 +5,18 @@ import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { manifestHadFilteredLegacyNonDurableOwnership } from '../../domain/project/manifest/reader.js';
-import type { LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
+import type { CodingAgentId, ExternalCommand, LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
 import { activationStateFilePathParts } from '../../governance-activation/activation-state.js';
 import { planHistoricalActivationStateMigration } from '../../governance-activation/migration.js';
 import { planActivationHistoryMigration } from '../../governance-activation/migration-history.js';
 import { migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
-import { readActivationInputSnapshot } from '../../governance-activation/inputs.js';
+import {
+  activationSensitivePathExclusions, isSensitiveActivationPath, normalizeSensitivePathExclusions, readActivationInputSnapshot
+} from '../../governance-activation/inputs.js';
 import { phaseIds } from '../../domain/governance/activation/types.js';
 import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import type { CommandRunner } from '../../process-runner.js';
-import { captureRetainedProjectInputs } from './protected-source.js';
+import { captureMigrationRetainedProjectInputs, migrationSensitivePathExclusions } from '../../governance-activation/historical-inputs.js';
 import { formatUpdateGuidanceText, type UpdateGuidanceContext, type UpdateGuidanceText } from './command-guidance.js';
 import { hasDrift, reconcileProject } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
@@ -28,7 +30,8 @@ import {
   inspectProvisioningGroups,
   planWithBlockedProvisioning,
   requestedProvisioningGroups,
-  sameWorkloadIntent
+  sameWorkloadIntent,
+  type ProvisioningGroupPlan
 } from './planning.js';
 import {
   activeChangeReconciliationReport,
@@ -56,6 +59,55 @@ export class UpdatePlanError extends Error {
   formatRemedy(context?: UpdateGuidanceContext): string {
     return formatUpdateGuidanceText(this.remedyText, context);
   }
+}
+
+export interface DeferredAgentRepair {
+  kind: 'agent-integration';
+  status: 'separate-repair-required';
+  recordedAgents: readonly CodingAgentId[];
+  requestedAgents: readonly CodingAgentId[];
+  addAgents: readonly CodingAgentId[];
+  recordedDefaultAgent: CodingAgentId | null;
+  requestedDefaultAgent: CodingAgentId | null;
+  changesDefault: boolean;
+  command: ExternalCommand;
+}
+
+function deferredAgentRepair(
+  projectRoot: string,
+  manifest: LiftoffManifest,
+  plan: ProjectPlan
+): DeferredAgentRepair | null {
+  if (manifest.framework.state !== 'initialized') return null;
+  const add = plan.agents.filter((agent) => !manifest.project.agents.includes(agent.id));
+  const changesDefault = plan.defaultAgent?.id !== manifest.project.defaultAgent;
+  if (!add.length && !changesDefault) return null;
+  return {
+    kind: 'agent-integration', status: 'separate-repair-required',
+    recordedAgents: [...manifest.project.agents], requestedAgents: plan.agents.map((agent) => agent.id),
+    addAgents: add.map((agent) => agent.id),
+    recordedDefaultAgent: manifest.project.defaultAgent ?? null,
+    requestedDefaultAgent: plan.defaultAgent?.id ?? null,
+    changesDefault,
+    command: {
+      executable: 'liftoff',
+      args: ['repair', '--project', projectRoot, '--check',
+        ...(add.length ? ['--add-agents', add.map((agent) => agent.inputName).join(',')] : []),
+        ...(changesDefault && plan.defaultAgent ? ['--default-agent', plan.defaultAgent.inputName] : []),
+        '--json']
+    }
+  };
+}
+
+function recordedAgentRenderPlan(plan: ProjectPlan, manifest: LiftoffManifest): ProjectPlan {
+  if (manifest.framework.state === 'legacy') return { ...plan, agents: [], defaultAgent: undefined };
+  const agents = manifest.project.agents.map((id) => {
+    const agent = plan.agents.find((agent) => agent.id === id);
+    if (!agent) throw new Error('Update cannot remove a recorded agent integration.');
+    return agent;
+  });
+  const defaultAgent = agents.find((agent) => agent.id === manifest.project.defaultAgent);
+  return { ...plan, agents, defaultAgent };
 }
 
 export function preserveDiagnosticGovernanceIdentity(
@@ -149,15 +201,12 @@ async function assertUpdateIntent(
     );
   }
   if (
-    manifest.framework.state === 'initialized' && (
-      plan.agents.length !== manifest.project.agents.length ||
-      plan.agents.some((agent, index) => agent.id !== manifest.project.agents[index]) ||
-      plan.defaultAgent?.id !== manifest.project.defaultAgent
-    )
+    manifest.framework.state === 'initialized' &&
+    manifest.project.agents.some((id) => !plan.agents.some((agent) => agent.id === id))
   ) {
     throw new UpdatePlanError(
-      'AI agent or default-agent changes require official framework initialization and are not supported by liftoff update.',
-      'agent-change', 'Restore the integrations recorded in liftoff.manifest.json.'
+      'Removing a recorded agent is not supported by update or additive integration repair.',
+      'agent-removal', 'Preserve recorded integrations; use a separately reviewed supported integration workflow rather than editing manifest metadata.'
     );
   }
 }
@@ -197,9 +246,8 @@ export async function inspectProjectUpdate(
   await assertUpdateIntent(projectRoot, manifest, plan);
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...activationStateFilePathParts]));
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...migrationStateFilePathParts]));
-  const desiredRenderPlan: ProjectPlan = manifest.framework.state === 'legacy'
-    ? { ...plan, agents: [], defaultAgent: undefined }
-    : plan;
+  const separateAgentRepair = deferredAgentRepair(projectRoot, manifest, plan);
+  const desiredRenderPlan = recordedAgentRenderPlan(plan, manifest);
   const stateMigration = await planHistoricalActivationStateMigration(projectRoot);
   let historyMigration = await planActivationHistoryMigration(projectRoot);
   if (historyMigration.status === 'blocked' &&
@@ -208,15 +256,28 @@ export async function inspectProjectUpdate(
       reviewedUnreferencedPathParts: historyMigration.unreviewedPathParts
     });
   }
+  const sensitivePathExclusions = normalizeSensitivePathExclusions([
+    ...migrationSensitivePathExclusions(historyMigration),
+    ...(historyMigration.status === 'current' ? activationSensitivePathExclusions(historyMigration.state) : [])
+  ]);
   const desiredRender = buildUpdateArtifacts(desiredRenderPlan, manifest);
-  let provisioningPlans = await inspectProvisioningGroups(
-    projectRoot, desiredRender, requestedProvisioningGroups(manifest, desiredRenderPlan)
-  );
-  if (historyMigration.status === 'eligible' || stateMigration.report.diagnosticOnly === true) {
-    provisioningPlans = provisioningPlans.map((group) => ({
-      ...group, entries: [], blocked: true,
-      reason: 'Activation migration defers new component provisioning until a fresh post-migration preview.'
-    }));
+  const requestedGroups = requestedProvisioningGroups(manifest, desiredRenderPlan);
+  const provisioningDeferred = historyMigration.status === 'eligible' || historyMigration.status === 'blocked' || stateMigration.report.diagnosticOnly === true;
+  const provisioningPlans: ProvisioningGroupPlan[] = [];
+  for (const requested of requestedGroups) {
+    const overlapsProtectedMaterial = desiredRender.some((artifact) =>
+      artifact.lifecycle === 'project' && artifact.provisioningGroup === requested.group &&
+      isSensitiveActivationPath(artifact.pathParts, sensitivePathExclusions));
+    if (provisioningDeferred || overlapsProtectedMaterial) {
+      provisioningPlans.push({
+        group: requested.group, entries: [], blocked: true,
+        reason: overlapsProtectedMaterial
+          ? 'Protected retained material overlaps this component inventory; ordinary update cannot inspect or replace it.'
+          : 'Activation migration defers new component provisioning until a fresh post-migration preview.'
+      });
+    } else {
+      provisioningPlans.push(...await inspectProvisioningGroups(projectRoot, desiredRender, [requested]));
+    }
   }
   const renderPlan = planWithBlockedProvisioning(desiredRenderPlan, manifest.project.workload, provisioningPlans);
   const render = buildUpdateArtifacts(renderPlan, manifest);
@@ -231,12 +292,7 @@ export async function inspectProjectUpdate(
   if (historyMigration.status === 'eligible') {
     snapshots.push(...historyMigration.preconditions);
   } else if (historyMigration.status === 'current' && historyMigration.history.status === 'committed') {
-    snapshots.push(
-      await captureProjectFileSnapshot(projectRoot, historyMigration.history.journal.historyIndexPathParts),
-      ...await Promise.all(historyMigration.history.index.files.map((file) =>
-        captureProjectFileSnapshot(projectRoot, file.copyPathParts)
-      ))
-    );
+    snapshots.push(...historyMigration.history.preconditions);
   }
   const entries = await reconcileProject(manifest, render, projectRoot);
   const ownershipMigrationPending = manifest.artifactVersion !== 7 ||
@@ -262,26 +318,29 @@ export async function inspectProjectUpdate(
         to: historyMigration.semanticPlan.targetIdentity
       }],
       phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [...phaseIds] },
-      issues: ['Original v1 history will be preserved; current v2 proof must be established by approved local revalidation.'],
+      issues: ['Original v1/v2 history will be preserved; current v3 proof must be established by approved local revalidation.'],
       remedy: 'Review the history-preserving successor plan and explicitly approve the matching preview.'
     } : stateMigrationReconciliation(stateMigration);
-  const activeChangeReport = await activeChangeReconciliationReport(projectRoot,
-    historyMigration.status === 'eligible' ? historyMigration.inventory.state.activeChange : undefined);
-  if (historyMigration.status === 'eligible' && activeChangeReport.status !== 'not-required') {
-    activeChangeReport.status = 'blocked';
-  }
+  const activeChangeReport: ManagedUpdateReconciliationReport = historyMigration.status === 'eligible'
+    ? {
+      status: 'not-required', changedIdentityFields: [],
+      phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [] },
+      issues: ['The validated historical source remains preserved audit data; fresh Phase 0 and separate approval establish the current governance source.']
+    }
+    : await activeChangeReconciliationReport(projectRoot);
   const reconciliation = combineReconciliationReports([historicalReconciliation, activeChangeReport]);
   const hasMigrationHistory = historyMigration.status === 'eligible' ||
     historyMigration.status === 'current' && historyMigration.history.status === 'committed';
   const revalidationSource = hasMigrationHistory
-    ? await readActivationInputSnapshot(projectRoot, manifest, options.runner)
+    ? await readActivationInputSnapshot(projectRoot, manifest, options.runner, { sensitivePathExclusions })
     : undefined;
-  const retainedSource = hasMigrationHistory ? await captureRetainedProjectInputs(projectRoot) : undefined;
+  const retainedSource = hasMigrationHistory ? await captureMigrationRetainedProjectInputs(projectRoot, sensitivePathExclusions) : undefined;
   return {
     projectRoot,
     repositoryRoot: await findUpdateRepositoryBoundary(projectRoot),
     manifest,
     plan,
+    deferredAgentRepair: separateAgentRepair,
     renderPlan,
     render,
     entries,
@@ -292,6 +351,7 @@ export async function inspectProjectUpdate(
     historyMigration,
     revalidationSource,
     retainedSource,
+    sensitivePathExclusions,
     reconciliation,
     ownershipMigrationPending,
     workloadIntentChanged,
