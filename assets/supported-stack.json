@@ -94,7 +94,7 @@
           "@types/node": "^24.6.0",
           "typescript": "^7.0.2",
           "vite": "8.2.2",
-          "vitest": "4.1.11"
+          "vitest": "5.0.0"
         }
       },
       "resolved": {
@@ -111,7 +111,7 @@
           "@types/node": "24.13.4",
           "typescript": "7.0.2",
           "vite": "8.2.2",
-          "vitest": "4.1.11"
+          "vitest": "5.0.0"
         }
       }
     },
