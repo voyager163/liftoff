@@ -8,6 +8,7 @@ import type { InfrastructureRepairCandidate } from '../src/application/repair/in
 import { validateRepairCandidate } from '../src/application/repair/validation.js';
 import { buildRepairPreview, loadRepairPreview, repairApprovalStore } from '../src/application/repair/preview.js';
 import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
+import { parse as parseYaml } from 'yaml';
 
 const roots: string[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
@@ -34,6 +35,12 @@ class Runner implements CommandRunner {
   }
 }
 describe('isolated local repair validation', () => {
+  it.each([['ci.yml', 'test'], ['release.yml', 'publish']])('uses the native OpenTofu binary in %s/%s', async (file, job) => {
+    const workflow = parseYaml(await readFile(path.resolve('.github', 'workflows', file), 'utf8'));
+    const setup = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses?.startsWith('opentofu/setup-opentofu@'));
+    expect(setup.with.tofu_wrapper).toBe(false);
+  });
+
   it.each(['1.12.5', '1.13.0', '1.12.6-beta.1'])('rejects an incompatible OpenTofu %s without installing anything', async (version) => {
     const runner = new Runner({}, version);
     await expect(validateRepairCandidate(candidate(), ['dev'], runner)).rejects.toThrow('Prepare that executable separately');
