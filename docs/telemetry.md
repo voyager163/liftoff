@@ -142,6 +142,15 @@ tofu -chdir=infrastructure/opentofu/telemetry init -backend=false
 tofu -chdir=infrastructure/opentofu/telemetry validate
 ```
 
+The service check compiles its TypeScript and runs its own Vitest 5 suite,
+including the real local HTTP boundary. The repository-root test runner is
+separate and does not qualify the service. Vitest 5 no longer discovers config
+files in parent directories, so `services/telemetry-ingest/vitest.config.ts`
+preserves the Node environment, service-only test discovery, automatic spy
+restoration, and 30-second timeout explicitly. Its default mock-history clearing
+is compatible with the suite's per-test mocks. The pinned Vite 8.2.2 and supported
+Node.js 24.20+ satisfy Vitest 5's runtime requirements.
+
 Real environments must use access-controlled remote state and Entra
 authentication. Before apply, review the subscription, region, unique resource
 suffix, full public source revision, immutable image digest,
