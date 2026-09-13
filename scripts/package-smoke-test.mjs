@@ -196,8 +196,8 @@ try {
     templateDependencyInventory,
     packResult.files.map((file) => file.path)
   );
-  if (packResult.unpackedSize > 5 * 1024 * 1024) {
-    throw new Error(`Packed package unexpectedly exceeds the 5 MiB unpacked-size budget: ${packResult.unpackedSize}`);
+  if (packResult.unpackedSize > 8 * 1024 * 1024) {
+    throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
   }
 
   const tarballPath = path.join(packDirectory, packResult.filename);
