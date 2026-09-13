@@ -406,7 +406,10 @@ describe('interactive presentation', () => {
     eofPrompter.close();
   });
 
-  it('accepts Windows Terminal navigation, Space, and Enter through the real checkbox', async () => {
+  it.each([
+    { label: 'normal input', keys: '\u001B[B \r' },
+    { label: 'same-tick input after Enter', keys: '\u001B[B \r\u001B[B \r' }
+  ])('accepts Windows Terminal navigation, Space, and Enter through the real checkbox ($label)', async ({ keys }) => {
     const input = new PassThrough() as PassThrough & {
       isTTY: boolean;
       setRawMode: ReturnType<typeof vi.fn>;
@@ -433,7 +436,7 @@ describe('interactive presentation', () => {
         copilotCloud: false,
         governanceProfile: 'single-maintainer-gitflow'
       });
-      setTimeout(() => input.write('\u001B[B \r'), 50);
+      setTimeout(() => input.write(keys), 50);
 
       const options = await pending;
 
