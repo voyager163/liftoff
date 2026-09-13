@@ -498,7 +498,7 @@ describe('repository governance artifacts', () => {
     expect(setup).toHaveLength(2);
     expect(new Set(setup.map((artifact) => artifact.content)).size).toBe(1);
     for (const launcher of setup) {
-      expect(launcher.content.length).toBeLessThan(4_500);
+      expect(launcher.content.length).toBeLessThan(3_000);
       expect(launcher.content).toContain('liftoff governance status --scope local --json');
       expect(launcher.content).toContain('liftoff governance plan --scope local --json');
       expect(launcher.content).toContain('liftoff governance apply-next --scope local --json');
@@ -517,7 +517,7 @@ describe('repository governance artifacts', () => {
       expect(launcher.content).toContain('post-operation readiness');
       expect(launcher.content).toContain('consistent but\n   incomplete');
       expect(launcher.content).toMatch(
-        /preview[\s\S]+approval-free local action[\s\S]+`liftoff governance apply-next --scope local --json --execute`/
+        /[Pp]review[\s\S]+approval-free local action[\s\S]+`liftoff governance apply-next --scope local --json --execute`/
       );
       expect(launcher.content).toMatch(/Liftoff\s+governance engine/);
       expect(launcher.content).not.toContain('liftoff-repository-governance');
@@ -529,6 +529,39 @@ describe('repository governance artifacts', () => {
       expect(launcher.content).not.toMatch(/\baz\s+/i);
       expect(launcher.content).not.toMatch(/\bopenspec\s+(?:new|archive|sync|validate|propose)\b/i);
       expect(launcher.content).not.toBe(policy);
+    }
+  });
+
+  it.each(['openspec', 'spec-kit'] as const)('routes every native %s setup through separately approved repair before local retry', (workflow) => {
+    const artifacts = buildRepositoryGovernanceArtifacts(plan({
+      agents: ['copilot', 'claude', 'codex'], specWorkflow: workflow,
+      ...(workflow === 'spec-kit' ? { defaultAgent: 'copilot' } : {})
+    }));
+    const integrations = artifacts.filter((artifact) => artifact.logicalName.startsWith('liftoff-setup-'));
+    const guide = artifacts.find((artifact) => artifact.logicalName === 'repository-governance-guide')!.content;
+    expect(guide).toContain('120 seconds overall, 30 seconds per command');
+    expect(guide).toContain('at most 24 resource groups');
+    expect(guide).toContain('tofu init -backend=false -input=false -lockfile=readonly -no-color');
+    expect(guide).toContain('tofu validate -json');
+    expect(integrations).toHaveLength(3);
+    for (const { content } of integrations) {
+      expect(content.length).toBeLessThan(3_000);
+      const check = content.indexOf('liftoff repair --check --json');
+      const live = content.indexOf('liftoff repair --check --live --subscription <UUID> --json');
+      const apply = content.indexOf('liftoff repair --approve-plan <fingerprint> --json');
+      const update = content.indexOf('liftoff update --check --json');
+      const local = content.indexOf('liftoff governance plan --scope local --json');
+      expect(check).toBeGreaterThan(-1);
+      expect(live).toBeGreaterThan(check);
+      expect(apply).toBeGreaterThan(live);
+      expect(update).toBeGreaterThan(apply);
+      expect(local).toBeGreaterThan(update);
+      expect(content).toContain('separate explicit approval of the exact eligible fingerprint');
+      expect(content).toContain('Ordinary check makes no cloud calls');
+      expect(content).toContain('public stateful migration coordinator are not implemented');
+      expect(content).toContain('liftoff repair --recover');
+      expect(content).toContain('not an OpenSpec feature change');
+      expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
     }
   });
 

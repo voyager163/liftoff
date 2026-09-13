@@ -9,6 +9,7 @@ liftoff governance --help
 liftoff governance assess --help
 liftoff upgrade --help
 liftoff update --help
+liftoff repair --help
 ```
 
 Unknown flags or commands, missing values, invalid booleans, incompatible
@@ -41,6 +42,10 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
 | `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
+| `liftoff repair [project-path] --check` | Previews bounded existing-project infrastructure repair without cloud calls or project writes; bare repair also previews |
+| `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
+| `liftoff repair [project-path] --approve-plan <fingerprint>` | Applies only an eligible separately approved exact local repair plan |
+| `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
 | `liftoff patterns` | Lists GenAI patterns |
@@ -52,6 +57,9 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
+`/liftoff-setup` (Copilot/Claude) and `$liftoff-setup` (Codex) are native coding-agent
+invocations, not a `liftoff setup` CLI command. Init creates a scaffold; repair
+works on a supported existing Liftoff project without reinitializing it.
 
 Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
@@ -310,6 +318,78 @@ installation paths are not included. Status is one of `current`, `update-availab
 `blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
 object.
 
+## Repair modes
+
+```bash
+liftoff repair [project-path] --check [--json]
+liftoff repair [project-path] --check --live --subscription <UUID> [--json]
+liftoff repair [project-path] --approve-plan <fingerprint> [--json]
+liftoff repair [project-path] --recover [--json]
+```
+
+Bare repair is a preview, not execution. Use a positional project path to select
+another project, or run inside the project (including a subdirectory).
+Ordinary checks inspect bounded local configuration and state/backend metadata
+presence without reading state or contacting cloud services. Only explicit
+`--live` with a selected subscription permits bounded read-only Azure metadata
+requests using existing authentication: no login, privilege expansion, state
+reads, backend writes, or deployment.
+Metadata discovery has a 120-second overall deadline, a 30-second per-command
+deadline, and a maximum of 24 resource groups. Exceeding a bound leaves
+eligibility incomplete and blocks writes.
+
+The executable local recipe reorganizes supported recorded legacy Azure
+OpenTofu flat roots into `modules/application` and the selected independent
+`environments/<id>` roots. Semantic inspection preserves source bodies,
+compatible provider constraints and locks, variables, outputs, and environment
+values; it does not replace the application with a newer starter.
+Eligibility requires all relevant resource groups to be authoritatively absent
+in the selected subscription **and** all supported local state/backend metadata
+locations to be absent. Missing state files, a user assertion, or edited manifest
+metadata cannot prove that infrastructure is undeployed. Denied, timed-out, or
+incomplete discovery remains a blocker.
+
+Review the exact operations and expiring project-bound fingerprint stored
+outside the repository. Only `--approve-plan <fingerprint>` authorizes application;
+it cannot expand the approved subscription, commands, file scope, or recipe.
+Changed inputs need a fresh preview. Repair repeats eligibility checks before
+commit and validates an isolated candidate. Validation first checks that the
+installed OpenTofu belongs to a compatible stable release line, then runs these
+approved commands **in staging**, not against the original backend:
+
+| Staged directory | Validation command |
+| --- | --- |
+| Whole Azure root | `tofu fmt -check -recursive` |
+| Each selected environment root | `tofu init -backend=false -input=false -lockfile=readonly -no-color` |
+| Each selected environment root | `tofu validate -json` |
+
+Formatting must already pass; repair does not silently reformat the candidate
+after approval. Initialization can download providers, as disclosed in the plan,
+but preserves the lockfile and never initializes the original backend or runs
+cloud plan/apply. Committed provenance describes actual repaired bytes, while
+original provenance is preserved under `.liftoff/repair-history/<fingerprint>/`.
+
+Check and apply are separate commands, not an `&&` chain: exit 2 can mean an
+available plan or a blocked/plan-only result. Schema-1 JSON distinguishes clean,
+available, blocked, applied, failed, and recovery outcomes. Follow the reported
+status and next action, not just the exit code. Committed-but-incomplete repair
+does not mean local governance or activation succeeded.
+
+`--force`, `--yes`, and `--add-agents` are not supported. Agent installation,
+framework-default changes, and the public stateful migration coordinator are
+**not implemented**. An existing internal stateful engine does not make a public
+command executable. Deployed, unknown, ambiguous, or unsupported cases remain
+plan-only with source and state untouched. Do not edit metadata, copy a fresh
+init scaffold over the project, or use manual state moves to bypass the blocker.
+
+If writes were interrupted, use only the reported
+`liftoff repair [project-path] --recover` action. Update cannot recover repair
+authority; both lanes exclude overlapping pending transactions and preserve
+concurrent edits. After repair, run `liftoff update --check --project <project-path>`,
+review any separately approved update work, then return to native setup's
+`liftoff governance plan <project-path> --scope local --json` and ready local
+apply action.
+
 ## Update modes
 
 ```bash
@@ -392,6 +472,15 @@ and revalidation outcomes. Prompts and progress use stderr; stdout remains one
 JSON result. Check exits 0 for no actionable work, 2 for differences, and 1 for
 errors. Apply exits 0 for completed scope, 2 when migration committed but
 revalidation is incomplete, and 1 for rejected approval or an error.
+`seed-verified` is **Local baseline verification**, not an OpenSpec feature
+change. Human and JSON output retain the actual next phase and blocker, and
+provide same-project repair/check follow-ups when recorded infrastructure needs
+reorganization. JSON includes `revalidation.nextPhaseLabel`,
+`revalidation.nextActions`, and `infrastructureRepair` separately from
+`activationMigration.status` and `committed`: a committed migration remains
+committed even when local verification is blocked. Infrastructure repair advice
+can appear even when managed core is current and no activation revalidation is
+required. An update fingerprint never authorizes infrastructure repair.
 
 Update never installs dependencies. Ordinary transaction backups are for failure
 recovery; activation migration additionally retains durable original history.
@@ -436,11 +525,11 @@ approval records do not: another machine, checkout, worktree, or moved project
 needs its own fresh check and approval. A receipt stores digests, not project
 source bodies, and is never portable blanket authorization.
 
-### Reviewed activation-v1 migration
+### Reviewed activation-v1/v2 migration
 
-An exact supported v1 source can be previewed with `liftoff update --check`.
+An exact supported v1/v2 source can be previewed with `liftoff update --check`.
 Approved update verifies an immutable in-project history snapshot before
-replacing active records, then creates a linked strict v2 activation. Historical
+replacing active records, then creates a linked strict v3 activation. Historical
 state, evidence, plans, approvals, and source metadata retain their original
 bytes under the dedicated governance history directory. History is not managed
 core and is never automatically committed, pushed, or cleaned with receipts.
@@ -452,7 +541,7 @@ work. Validation commands execute project-controlled code, not a sandbox;
 unexpected protected-input edits are preserved and reported.
 
 A failed local transaction uses bounded recovery. A failure after commit keeps
-v2 blocked and resumable: repair the named cause, rerun check, then approve the
+v3 blocked and resumable: repair the named cause, rerun check, then approve the
 remaining work. Do not reset state to v1, change identity fields manually, or
 recreate live resources to silence readiness diagnostics.
 

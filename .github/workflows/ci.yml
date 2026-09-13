@@ -41,6 +41,7 @@ jobs:
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
         with:
           tofu_version: 1.12.6
+          tofu_wrapper: false
 
       - name: Install uv
         run: python -m pip install uv==0.12.7
@@ -79,6 +80,7 @@ jobs:
           tests/file-system.test.ts tests/project-lock.test.ts tests/filesystem-recovery.test.ts
           tests/update-preview.test.ts tests/update-approval.test.ts tests/update-inspection.test.ts tests/update-output.test.ts
           tests/update-compatibility.test.ts tests/reviewed-update-transaction.test.ts
+          tests/repair-discovery.test.ts tests/repair-infrastructure.test.ts tests/repair-transaction.test.ts tests/repair-command.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts tests/governance-assessment-history.test.ts
@@ -87,6 +89,11 @@ jobs:
           tests/project-dependencies.test.ts tests/commands.test.ts
           tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+
+      - name: Validate local repair with native OpenTofu
+        env:
+          LIFTOFF_REPAIR_NATIVE: "1"
+        run: npx vitest run tests/repair-command.test.ts -t "native backend-disabled"
 
       - name: Run package check
         run: npm run check

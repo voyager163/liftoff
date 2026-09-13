@@ -8,6 +8,9 @@ import { createUpdateTransactionApprovalStore, loadUpdatePreviewReceipt } from '
 import { applyReviewedUpdateTransaction, inspectReviewedUpdateTransaction } from '../src/adapters/filesystem/reviewed-update-transaction.js';
 import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { formatUpdateCommand, formatUpdateValidationCommands } from '../src/application/update/command-guidance.js';
+import { formatRepairCommand } from '../src/application/repair/guidance.js';
+import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
+import { reviewedRepairTransactionPathParts } from '../src/domain/project/reviewed-update-artifacts.js';
 import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
 import { UpdatePreviewError } from '../src/application/update/preview.js';
 import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
@@ -145,6 +148,89 @@ class MigrationRunner implements CommandRunner {
 }
 
 describe('reviewed update command integration', () => {
+  it.each(['check', 'apply'] as const)('blocks update %s before manifest loading when a repair journal is pending', async (mode) => {
+    const { root } = await fixture();
+    await writeProjectFile(root, [...reviewedRepairTransactionPathParts], '{}\n');
+    await writeProjectFile(root, ['liftoff.manifest.json'], 'interrupted manifest write\n');
+    const before = await fingerprintUpdateTestProject(root);
+    const args = ['update', '--project', root, ...(mode === 'check' ? ['--check'] : [])];
+    const json = await run(root, [...args, '--json']);
+    expect(json.code).toBe(1);
+    expect(json.report).toMatchObject({
+      reasonCode: 'repair-transaction-recovery-required', committed: false,
+      remedy: expect.stringContaining(formatRepairCommand(root, 'recover'))
+    });
+    const human = await runRaw(root, args);
+    expect(human.code).toBe(1);
+    expect(human.err).toContain(formatRepairCommand(root, 'recover'));
+    expect(human.err).toContain(formatUpdateCommand(root, 'check'));
+    expect(await fingerprintUpdateTestProject(root)).toEqual(before);
+  });
+
+  it.each([
+    { json: true, explicit: false }, { json: false, explicit: false },
+    { json: true, explicit: true }, { json: false, explicit: true }
+  ])('preserves same-project repair guidance in read-only preview (json=$json, explicit=$explicit)', async ({ json, explicit }) => {
+    const { root } = await fixture();
+    const manifest = await loadManifest(root);
+    manifest.projectArtifacts = [
+      ...manifest.projectArtifacts.filter((artifact) => artifact.category !== 'infrastructure'),
+      ...retiredFlatRootInfrastructureIdentities.map((identity) => ({
+        ...identity, pathParts: [...identity.pathParts], generatedBy: '0.10.0',
+        generationHash: `sha256:${'a'.repeat(64)}`
+      }))
+    ];
+    await writeProjectFile(root, ['liftoff.manifest.json'], JSON.stringify(manifest));
+    const cwd = explicit ? path.dirname(root) : root;
+    const target = explicit ? ['--project', root] : [];
+    const runner = new MigrationRunner();
+    const checked = await runRaw(root, [
+      'update', '--check', ...target, ...(json ? ['--json'] : [])
+    ], { cwd, runner });
+    expect(checked.code, checked.text + checked.err).toBe(2);
+    if (json) {
+      const report = JSON.parse(checked.text);
+      expect(report).toMatchObject({
+        committed: false, projectBytesWritten: 0,
+        revalidation: { status: 'not-required' },
+        infrastructureRepair: {
+          checkCommand: formatRepairCommand(root), resumeCommand: formatUpdateCommand(root, 'check')
+        }
+      });
+    } else {
+      const guidance = await resolveUpdateGuidanceContext(cwd, root);
+      expect(checked.text).toContain('Local baseline verification');
+      expect(checked.text).toContain(formatRepairCommand(root, 'check', process.platform, guidance));
+      expect(checked.text).toContain(formatUpdateCommand(root, 'check', process.platform, guidance));
+    }
+    expect(runner.calls.some((command) => ['az', 'gh', 'tofu'].includes(command.executable))).toBe(false);
+  });
+
+  it('reports legacy layout repair even on a current v3 project without migration revalidation', async () => {
+    const { root } = await fixture();
+    const manifest = await loadManifest(root);
+    manifest.projectArtifacts = [
+      ...manifest.projectArtifacts.filter((artifact) => artifact.category !== 'infrastructure'),
+      ...retiredFlatRootInfrastructureIdentities.map((identity) => ({
+        ...identity, pathParts: [...identity.pathParts], generatedBy: '0.10.0',
+        generationHash: `sha256:${'a'.repeat(64)}`
+      }))
+    ];
+    await writeProjectFile(root, ['liftoff.manifest.json'], JSON.stringify(manifest));
+    const fingerprint = await preview(root);
+    const applied = await run(root, ['update', '--json', '--approve-plan', fingerprint]);
+    expect(applied.code, applied.text).toBe(0);
+    const current = await run(root, ['update', '--check', '--json']);
+    expect(current.code, current.text).toBe(0);
+    expect(current.report).toMatchObject({
+      status: 'current', revalidation: { status: 'not-required' },
+      infrastructureRepair: { layout: 'legacy-shared', checkCommand: formatRepairCommand(root) }
+    });
+    const human = await runRaw(root, ['update', '--check']);
+    expect(human.text).toContain('Liftoff core is current');
+    expect(human.text).toContain('Local baseline verification requires separate infrastructure repair');
+  });
+
   it('retains the canonical explicit target when cwd is a leaf project symlink or junction', async () => {
     const { root, guide, originalGuide } = await fixture();
     const cwd = path.join(path.dirname(root), 'leaf project alias');
@@ -157,6 +243,7 @@ describe('reviewed update command integration', () => {
     const implicit = await runRaw(root, ['update'], { cwd });
     expect(implicit.code).toBe(1);
     expect(implicit.err).toContain('not a symlink or junction');
+    expect(implicit.err).not.toContain('An interrupted repair transaction');
     expect(await fingerprintUpdateTestProject(root)).toEqual(before);
 
     const stored = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
@@ -700,8 +787,11 @@ describe('reviewed update command integration', () => {
     const first = checked.report.plans.find((entry) => entry.mode === 'normal')!;
     const applied = await run(root, ['update', '--json', '--approve-plan', first.fingerprint], { runner });
     expect(applied.code, applied.text).toBe(2);
+    expect(applied.report.committed).toBe(true);
     expect(applied.report.activationMigration).toMatchObject({ status: 'committed' });
-    expect(applied.report.revalidation).toMatchObject({ status: 'blocked' });
+    expect(applied.report.revalidation).toMatchObject({
+      status: 'blocked', nextPhase: 'seed-verified', nextPhaseLabel: 'Local baseline verification'
+    });
     const initialState = JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8'));
 
     runner.failBackend = false;

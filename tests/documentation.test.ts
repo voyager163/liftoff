@@ -82,7 +82,7 @@ describe('public documentation', () => {
     const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(135);
+    expect(readme.split('\n').length).toBeLessThan(165);
     expect(readme).not.toContain('Status: implemented');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
@@ -114,6 +114,36 @@ describe('public documentation', () => {
     expect(bashExamples).not.toMatch(/liftoff init .+--/);
     expect(bashExamples).not.toContain('liftoff init\n');
     expect(bashExamples).not.toContain('liftoff create');
+  });
+
+  it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
+    const docs = await Promise.all([
+      repositoryFile('README.md'), repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/repository-governance.md')
+    ]);
+    for (const content of docs) {
+      const text = content.replace(/\s+/g, ' ');
+      expect(text).toContain('Local baseline');
+      expect(text).toContain('not an OpenSpec feature change');
+      expect(text).toContain('existing authentication');
+      expect(text).toContain('--subscription <UUID>');
+      expect(text).toContain('state/backend metadata');
+      expect(text).toContain('plan-only');
+      expect(text).toMatch(/Agent installation[\s\S]*public stateful migration coordinator[\s\S]*not implemented|public stateful migration coordinator[\s\S]*\*\*not implemented\*\*/);
+      expect(text).toContain('liftoff setup');
+      expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
+    }
+    expect(docs[1]).toContain('liftoff repair [project-path] --approve-plan <fingerprint>');
+    expect(docs[1]).toContain('liftoff repair [project-path] --recover');
+    expect(docs[1]).toContain('revalidation.nextPhaseLabel');
+    expect(docs[1]).toContain('infrastructureRepair');
+    expect(docs[1]).toContain('120-second overall deadline');
+    expect(docs[1]).toContain('30-second per-command');
+    expect(docs[1]).toContain('maximum of 24 resource groups');
+    expect(docs[1]).toContain('compatible stable release line');
+    expect(docs[1]).toContain('Whole Azure root | `tofu fmt -check -recursive`');
+    expect(docs[1]).toContain('tofu init -backend=false -input=false -lockfile=readonly -no-color');
+    expect(docs[1]).toContain('tofu validate -json');
   });
 
   it('uses factual badges and an accessible theme-independent terminal visual', async () => {
@@ -730,7 +760,8 @@ describe('public documentation', () => {
     expect(workflow).toContain('not an active governance change');
     expect(workflow).toContain('no\n`liftoff-governance.json`');
     expect(governance).toMatch(/`tofu fmt -check -recursive` at `infrastructure\/opentofu\/azure`/);
-    expect(governance).toContain('migration-required and no commands');
+    expect(governance).toContain('Before retrying blocked verification,');
+    expect(governance).toContain('native setup runs `liftoff repair --check --json`');
     for (const source of [developer, configuration]) {
       expect(source).toContain('diagnostic-only');
       expect(source).toMatch(/historical (?:identity, )?state|historical identity\/state\/evidence/);

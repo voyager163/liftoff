@@ -35,6 +35,9 @@ No model selection is required for setup; the CLI phase graph, evidence, and
 approvals are authoritative. Setup coordinates reviewed repairs and local readiness,
 then separately approved publication, Azure activation, deployment, and governance.
 Local-only use remains supported. Codex invokes `$liftoff-setup` or selects the native skill.
+These are coding-agent invocations, not a `liftoff setup` shell command.
+`liftoff init` creates a scaffold; do not reinitialize an existing Liftoff project
+to resolve a verification blocker.
 
 After global npm install, later releases use `liftoff upgrade --check` then `liftoff upgrade`.
 This replaces the CLI only; generated projects use `liftoff update` separately
@@ -56,8 +59,31 @@ Supported activation-v1/v2 migration preserves original records inside the proje
 and creates a linked v3 activation. Failed revalidation leaves v3 blocked and
 resumable, not reset to an older contract. Application source, dependencies, schemas,
 containers, environments, documentation, and infrastructure remain project-owned
-and outside template replacement, including `--force`. Topology, additive agent repairs,
-and stateful migration require their own exact preview, backups, and write authority.
+and outside template replacement, including `--force`.
+
+For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
+verification**, not an OpenSpec feature change. Start with:
+
+```bash
+liftoff repair "path/to/existing project" --check
+```
+
+Ordinary check makes no cloud calls; bare `liftoff repair` also only previews.
+The supported local recipe preserves legacy flat-root semantics while creating
+the shared application module and selected independent environment roots.
+Eligibility requires bounded, explicitly requested
+`--check --live --subscription <UUID>` metadata discovery with existing authentication,
+authoritatively absent resource groups in that subscription, and no local
+state/backend metadata. Missing state files alone never establish safety.
+Only `liftoff repair [project-path] --approve-plan <fingerprint>` applies an
+eligible, separately approved plan. Then run `liftoff update --check --project
+"path/to/existing project"` and resume native setup's local governance planning.
+Interrupted writes use `liftoff repair [project-path] --recover`, not update recovery.
+Repair accepts neither `--force`, `--yes`, nor `--add-agents`.
+Agent installation and the public stateful migration coordinator are not
+implemented; the internal stateful engine is not an executable public command.
+Deployed, unknown, or unsupported cases remain plan-only, with source and state
+untouched. See [repair modes](docs/cli-reference.md#repair-modes).
 
 Older projects may display the retired `/liftoff-repository-governance` alias.
 Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.

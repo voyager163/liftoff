@@ -6,7 +6,11 @@ import path from 'node:path';
 import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { validateArtifactPathParts } from '../../domain/project/paths.js';
-import { reviewedUpdateTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
+import {
+  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts
+} from '../../domain/project/reviewed-update-artifacts.js';
+import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
+import { commandShellForPlatform, formatShellCommand } from '../process/shell-command.js';
 import { errorCode, errorMessage } from './errors.js';
 import { withProjectMutationLock } from './project-lock.js';
 import type { ProjectMutationLease } from './project-lock.js';
@@ -14,8 +18,9 @@ import { ProjectFileTransactionError } from './project-transaction.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from './project-transaction.js';
 
 export {
-  reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion
+  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion
 } from '../../domain/project/reviewed-update-artifacts.js';
+export type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
 
 // The store is user-local, outside the repository, and keeps separate entries for each digest.
 export interface ReviewedUpdateApprovalStore {
@@ -30,6 +35,7 @@ export interface ReviewedUpdateTransactionCheckpoint {
 }
 
 export interface ReviewedUpdateTransactionOptions {
+  transactionKind?: ReviewedTransactionKind;
   planFingerprint: string;
   approvalStore: ReviewedUpdateApprovalStore;
   preconditions?: readonly ProjectFileSnapshot[];
@@ -39,6 +45,7 @@ export interface ReviewedUpdateTransactionOptions {
 }
 
 export interface ReviewedUpdateRecoveryOptions {
+  transactionKind?: ReviewedTransactionKind;
   approvalStore?: ReviewedUpdateApprovalStore;
 }
 
@@ -90,6 +97,7 @@ interface StoredMutation {
 
 interface JournalBody {
   schemaVersion: 1;
+  transactionKind?: ReviewedTransactionKind;
   projectRoot: string;
   planFingerprint: string;
   nonce: string;
@@ -120,9 +128,39 @@ const MAX_JOURNAL_BYTES = 32 * 1024 * 1024;
 const DIGEST = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const privateFileMode = process.platform === 'win32' ? 0o666 : 0o600;
+const transactionKinds = ['update', 'repair'] as const;
 
 function fail(message: string): never {
   throw new FileSystemError(`Reviewed update transaction: ${message}`);
+}
+
+function journalParts(kind: ReviewedTransactionKind = 'update'): readonly string[] {
+  if (kind === 'update') return reviewedUpdateTransactionPathParts;
+  if (kind === 'repair') return reviewedRepairTransactionPathParts;
+  return fail('unregistered transaction kind.');
+}
+
+async function assertNoPendingTransactions(root: string, kind: ReviewedTransactionKind): Promise<void> {
+  for (const pendingKind of transactionKinds) {
+    const parts = journalParts(pendingKind);
+    const recovery = formatShellCommand({
+      executable: 'liftoff',
+      args: pendingKind === 'repair' ? ['repair', root, '--recover'] : ['update', '--project', root]
+    }, commandShellForPlatform(process.platform));
+    const check = formatShellCommand({
+      executable: 'liftoff',
+      args: kind === 'repair' ? ['repair', root, '--check'] : ['update', '--check', '--project', root]
+    }, commandShellForPlatform(process.platform));
+    let snapshot: ProjectFileSnapshot;
+    try {
+      snapshot = await readSnapshot(root, parts, MAX_JOURNAL_BYTES);
+    } catch (error) {
+      fail(`${key(parts)} blocks new work: ${errorMessage(error)} Review ${recovery}, then run ${check}.`);
+    }
+    if (snapshot.content !== undefined) {
+      fail(`an existing recovery journal blocks new work: ${key(parts)}; recover it with ${recovery}, then run ${check}.`);
+    }
+  }
 }
 
 function hash(bytes: Buffer): string {
@@ -286,7 +324,7 @@ function parseSnapshot(value: unknown): StoredSnapshot {
 function validatePaths(paths: readonly string[][]): void {
   const files = new Set<string>();
   const spelling = new Map<string, string>();
-  for (const parts of [...paths, [...reviewedUpdateTransactionPathParts]]) {
+  for (const parts of [...paths, ...transactionKinds.map((kind) => journalParts(kind))]) {
     for (let count = 1; count <= parts.length; count += 1) {
       const prefix = key(parts.slice(0, count));
       const identity = folded(prefix);
@@ -316,8 +354,14 @@ function bodyOf(header: JournalHeader): JournalBody {
   return body;
 }
 
-function parseHeader(value: unknown, root: string): JournalHeader {
-  exactKeys(value, ['schemaVersion', 'projectRoot', 'planFingerprint', 'nonce', 'mutations', 'missingDirectories', 'transactionDigest']);
+function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind): JournalHeader {
+  const hasKind = isRecord(value) && Object.hasOwn(value, 'transactionKind');
+  exactKeys(value, [
+    'schemaVersion', 'projectRoot', 'planFingerprint', 'nonce', 'mutations', 'missingDirectories', 'transactionDigest',
+    ...(hasKind ? ['transactionKind'] : [])
+  ]);
+  // Schema-1 journals without a lane belong only to the original update journal path.
+  if ((hasKind ? value.transactionKind : 'update') !== kind) fail('recovery journal transaction kind does not match its registered path.');
   assertDigest(value.planFingerprint);
   assertDigest(value.transactionDigest);
   if (value.schemaVersion !== 1 || value.projectRoot !== root ||
@@ -361,6 +405,7 @@ function parseHeader(value: unknown, root: string): JournalHeader {
   }
   const header: JournalHeader = {
     schemaVersion: 1, projectRoot: root, planFingerprint: value.planFingerprint, nonce: value.nonce,
+    ...(hasKind ? { transactionKind: kind } : {}),
     mutations, missingDirectories, transactionDigest: value.transactionDigest
   };
   if (canonicalSha256(bodyOf(header)) !== header.transactionDigest) fail('transaction digest does not match the journal.');
@@ -386,8 +431,10 @@ function parseCanonicalLine(line: string): unknown {
   return value;
 }
 
-async function loadJournal(root: string, store?: ReviewedUpdateApprovalStore): Promise<LoadedJournal | undefined> {
-  const snapshot = await readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES);
+async function loadJournal(
+  root: string, kind: ReviewedTransactionKind, store?: ReviewedUpdateApprovalStore
+): Promise<LoadedJournal | undefined> {
+  const snapshot = await readSnapshot(root, journalParts(kind), MAX_JOURNAL_BYTES);
   if (!snapshot.content) return undefined;
   if (snapshot.mode !== privateFileMode) fail('recovery journal must have restrictive permissions.');
   const text = snapshot.content.toString('utf8');
@@ -395,7 +442,7 @@ async function loadJournal(root: string, store?: ReviewedUpdateApprovalStore): P
   const lines = text.split('\n');
   const tail = lines.pop()!;
   if (!lines.length) fail('incomplete recovery journal header.');
-  const header = parseHeader(parseCanonicalLine(lines[0]), root);
+  const header = parseHeader(parseCanonicalLine(lines[0]), root, kind);
   let pendingIndex = -1;
   let committed = false;
   let lastFrame: JournalFrame | undefined;
@@ -478,15 +525,16 @@ async function ensureParents(root: string, parts: readonly string[], permitted: 
 }
 
 async function assertJournalCurrent(root: string, snapshot: ProjectFileSnapshot): Promise<void> {
-  const current = await readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES);
+  const current = await readSnapshot(root, snapshot.pathParts, MAX_JOURNAL_BYTES);
   if (!current.content?.equals(snapshot.content!) || current.mode !== snapshot.mode) {
     fail('recovery journal changed; the changed file was preserved.');
   }
 }
 
 async function createJournal(root: string, header: JournalHeader, lease: ProjectMutationLease): Promise<ProjectFileSnapshot> {
-  await ensureParents(root, reviewedUpdateTransactionPathParts, header.missingDirectories);
-  const native = await safePath(root, reviewedUpdateTransactionPathParts);
+  const parts = journalParts(header.transactionKind);
+  await ensureParents(root, parts, header.missingDirectories);
+  const native = await safePath(root, parts);
   await lease.assertHeld();
   const handle = await open(native, 'wx', 0o600);
   let identity: { dev: number; ino: number } | undefined;
@@ -503,7 +551,7 @@ async function createJournal(root: string, header: JournalHeader, lease: Project
       await handle.close();
       closed = true;
       await lease.assertHeld();
-      const current = await readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES);
+      const current = await readSnapshot(root, parts, MAX_JOURNAL_BYTES);
       const details = await lstat(native);
       if (!identity || details.dev !== identity.dev || details.ino !== identity.ino ||
           current.mode !== privateFileMode || !current.content ||
@@ -516,14 +564,14 @@ async function createJournal(root: string, header: JournalHeader, lease: Project
       failures.push(errorMessage(cleanupError));
     }
     throw new FileSystemError(
-      `Unable to create ${key(reviewedUpdateTransactionPathParts)}: ${errorMessage(error)}` +
+      `Unable to create ${key(parts)}: ${errorMessage(error)}` +
       (failures.length ? ` Cleanup failed: ${failures.join('; ')}` : '')
     );
   } finally {
     if (!closed) await handle.close();
   }
   await syncDirectory(path.dirname(native));
-  return readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES);
+  return readSnapshot(root, parts, MAX_JOURNAL_BYTES);
 }
 
 async function appendFrame(
@@ -531,7 +579,7 @@ async function appendFrame(
 ): Promise<ProjectFileSnapshot> {
   await lease.assertHeld();
   await assertJournalCurrent(root, snapshot);
-  const native = await safePath(root, reviewedUpdateTransactionPathParts);
+  const native = await safePath(root, snapshot.pathParts);
   const handle = await open(native, constants.O_WRONLY | constants.O_APPEND | (constants.O_NOFOLLOW ?? 0));
   try {
     await handle.writeFile(canonicalJson(frame));
@@ -539,7 +587,7 @@ async function appendFrame(
   } finally {
     await handle.close();
   }
-  return readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES);
+  return readSnapshot(root, snapshot.pathParts, MAX_JOURNAL_BYTES);
 }
 
 async function durableMutation(
@@ -617,10 +665,10 @@ async function cleanupJournal(
   try {
     await lease.assertHeld();
     await assertJournalCurrent(root, loaded.snapshot);
-    await unlink(await safePath(root, reviewedUpdateTransactionPathParts));
+    await unlink(await safePath(root, loaded.snapshot.pathParts));
     await syncDirectory(path.join(root, '.liftoff'));
   } catch (error) {
-    return [`${key(reviewedUpdateTransactionPathParts)}: ${errorMessage(error)}`];
+    return [`${key(loaded.snapshot.pathParts)}: ${errorMessage(error)}`];
   }
   // Never discard the commit seal while an approval capable of authorizing rollback remains.
   if (loaded.committed && !await removeApproval(loaded.header.transactionDigest)) return failures;
@@ -730,10 +778,11 @@ async function withReviewedMutationLock(
 export async function inspectReviewedUpdateTransaction(
   projectRoot: string, options: ReviewedUpdateRecoveryOptions = {}
 ): Promise<ReviewedUpdateTransactionInspection> {
-  const journalPath = path.join(path.resolve(projectRoot), ...reviewedUpdateTransactionPathParts);
+  const kind = options.transactionKind ?? 'update';
+  const journalPath = path.join(path.resolve(projectRoot), ...journalParts(kind));
   try {
     const root = await canonicalRoot(projectRoot);
-    const loaded = await loadJournal(root, options.approvalStore);
+    const loaded = await loadJournal(root, kind, options.approvalStore);
     if (!loaded) return { status: 'absent', committed: false, journalPath, destinations: [] };
     return {
       status: loaded.committed ? 'committed' : 'interrupted', committed: loaded.committed, journalPath,
@@ -751,7 +800,7 @@ export async function recoverReviewedUpdateTransaction(
   return withReviewedMutationLock(projectRoot, async (lease) => {
     try {
       const root = await canonicalRoot(projectRoot);
-      const loaded = await loadJournal(root, options.approvalStore);
+      const loaded = await loadJournal(root, options.transactionKind ?? 'update', options.approvalStore);
       if (!loaded) return outcome('absent');
       return await recoverLocked(root, loaded, options.approvalStore!, lease);
     } catch (error) {
@@ -763,6 +812,8 @@ export async function recoverReviewedUpdateTransaction(
 export async function applyReviewedUpdateTransaction(
   projectRoot: string, mutations: readonly ProjectFileMutation[], options: ReviewedUpdateTransactionOptions
 ): Promise<ReviewedUpdateTransactionOutcome> {
+  const kind = options.transactionKind ?? 'update';
+  const journalPathParts = journalParts(kind);
   assertDigest(options.planFingerprint);
   const planFingerprint = options.planFingerprint;
   if (!options.approvalStore) fail('a user-local transaction approval store is required.');
@@ -791,9 +842,7 @@ export async function applyReviewedUpdateTransaction(
   }
   return withReviewedMutationLock(projectRoot, async (lease) => {
     const root = await canonicalRoot(projectRoot);
-    if ((await readSnapshot(root, reviewedUpdateTransactionPathParts, MAX_JOURNAL_BYTES)).content !== undefined) {
-      fail('an existing recovery journal blocks new work; recover it, then run liftoff update --check.');
-    }
+    await assertNoPendingTransactions(root, kind);
     await options.validatePlan?.();
     await lease.assertHeld();
     const stored: StoredMutation[] = [];
@@ -821,7 +870,7 @@ export async function applyReviewedUpdateTransaction(
     await assertConditions();
     if (!stored.length) return outcome('absent');
     for (const parts of [...stored.filter((entry) => entry.type === 'write').map((entry) => entry.pathParts),
-      [...reviewedUpdateTransactionPathParts]]) {
+      journalPathParts]) {
       for (let count = 1; count < parts.length; count += 1) {
         const parent = parts.slice(0, count);
         try {
@@ -833,7 +882,7 @@ export async function applyReviewedUpdateTransaction(
       }
     }
     const body: JournalBody = {
-      schemaVersion: 1, projectRoot: root, planFingerprint, nonce: randomUUID(),
+      schemaVersion: 1, transactionKind: kind, projectRoot: root, planFingerprint, nonce: randomUUID(),
       mutations: stored, missingDirectories: [...missing.values()]
     };
     const header: JournalHeader = { ...body, transactionDigest: canonicalSha256(body) };
@@ -856,7 +905,8 @@ export async function applyReviewedUpdateTransaction(
       }
       await lease.assertHeld();
       await assertConditions();
-      operation = `create ${key(reviewedUpdateTransactionPathParts)}`;
+      await assertNoPendingTransactions(root, kind);
+      operation = `create ${key(journalPathParts)}`;
       loaded = { header, snapshot: await createJournal(root, header, lease), pendingIndex: -1, committed: false };
       await options.onCheckpoint?.({ phase: 'prepared' });
       for (const [index, mutation] of selected.entries()) {
@@ -878,7 +928,7 @@ export async function applyReviewedUpdateTransaction(
         conditions.set(folded(key(mutation.pathParts)), { pathParts: mutation.pathParts, stored: stored[index].target });
         await options.onCheckpoint?.({ phase: 'after-mutation', index });
       }
-      operation = 'commit reviewed update';
+      operation = `commit reviewed ${kind}`;
       await options.onCheckpoint?.({ phase: 'before-commit' });
       await lease.assertHeld();
       await assertConditions();
@@ -898,7 +948,7 @@ export async function applyReviewedUpdateTransaction(
       }
       let recovered: ReviewedUpdateTransactionOutcome | undefined;
       try {
-        const current = await loadJournal(root, options.approvalStore);
+        const current = await loadJournal(root, kind, options.approvalStore);
         if (current) {
           recovered = await recoverLocked(root, current, options.approvalStore, lease);
           if (recovered.committed) {
@@ -920,13 +970,13 @@ export async function applyReviewedUpdateTransaction(
         }
       } catch (recoveryError) {
         throw new ReviewedUpdateTransactionError(
-          `Project update failed to ${operation}: ${errorMessage(error)} Recovery blocked: ${errorMessage(recoveryError)}`,
+          `Project ${kind} failed to ${operation}: ${errorMessage(error)} Recovery blocked: ${errorMessage(recoveryError)}`,
           [errorMessage(recoveryError)]
         );
       }
       const failures = [...recovered?.rollbackFailures ?? [], ...recovered?.cleanupFailures ?? []];
       throw new ReviewedUpdateTransactionError(
-        `Project update failed to ${operation}: ${errorMessage(error)} ${failures.length
+        `Project ${kind} failed to ${operation}: ${errorMessage(error)} ${failures.length
           ? `Recovery incomplete: ${failures.join('; ')}` : 'All attributable changes were rolled back.'}`,
         failures
       );

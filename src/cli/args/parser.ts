@@ -168,6 +168,30 @@ export function parseArgs(argv: string[]): ParsedArgs {
     }
   }
 
+  if (command === 'repair') {
+    if (positional.length && Object.hasOwn(flags, 'project')) {
+      throw new UsageError('Provide a project path either positionally or with --project, not both.');
+    }
+    if (Object.hasOwn(flags, 'approve-plan') && !isUpdatePlanFingerprint(flags['approve-plan'])) {
+      throw new UsageError('Flag --approve-plan expects the complete 64-character lowercase fingerprint from liftoff repair --check.');
+    }
+    if ((flags.check === true && (flags['approve-plan'] !== undefined || flags.recover === true)) ||
+        (flags['approve-plan'] !== undefined && flags.recover === true)) {
+      throw new UsageError('Repair check, plan application and recovery are separate operations.');
+    }
+    if ((flags['approve-plan'] !== undefined || flags.recover === true) &&
+        (Object.hasOwn(flags, 'live') || Object.hasOwn(flags, 'subscription'))) {
+      throw new UsageError('Apply or recover only the saved repair scope; live/subscription options belong on the check.');
+    }
+    if (flags.help !== true && (flags.live === true) !== (flags.subscription !== undefined)) {
+      throw new UsageError('Live repair discovery requires both --live and --subscription <id>.');
+    }
+    if (flags.subscription !== undefined &&
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(String(flags.subscription))) {
+      throw new UsageError('Flag --subscription requires an Azure subscription UUID, not a name or guessed default.');
+    }
+  }
+
   if (command === 'governance') {
     if (Object.hasOwn(flags, 'scope') && !['local', 'activation', 'lifecycle'].includes(String(flags.scope))) {
       throw new UsageError('Flag --scope expects local, activation, or lifecycle.');

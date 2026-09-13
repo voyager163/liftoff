@@ -724,7 +724,7 @@ export interface ScopedUserLocalRecord {
 
 export function createScopedUserLocalRecordStore(
   projectRoot: string,
-  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation',
+  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' | 'repair-preview' | 'repair-approval',
   options: UpdatePreviewOptions = {}
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;

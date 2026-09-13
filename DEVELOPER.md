@@ -274,15 +274,16 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.12.1 release checklist
+## 0.12.2 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.12.1`. Preparing these files is not publication or permission to create a tag.
+  `0.12.2`. Preparing these files is not publication or permission to create a tag.
 - Activation package identity remains `0.12.0`; no phase semantics or graph
   identity change is introduced by patch-release preparation.
-- Release notes identify the verified macOS Homebrew npm global prefix recovery
-  in `liftoff upgrade`, binding registry probes, exact installation, pre-write
-  rechecks, and replacement verification to the verified Homebrew target prefix.
+- Release notes identify reviewed `liftoff repair` for supported undeployed Azure
+  infrastructure, exact project-bound approval, preserved source/provenance,
+  recoverable transactions, and the update/native setup handoff. Deployed or
+  unknown infrastructure remains plan-only; no public stateful cutover is claimed.
 - Manifest writes use artifactVersion 7; readers accept v2-v7.
 - Policy version is `"6"`; activation contract/state/evidence-header/approval
   remain v3. Compatibility metadata is v4; preview receipts,
@@ -290,7 +291,7 @@ npm run verify:release-identity
   supersession, credential-policy, assessment report, and assessment catalog
   schemas remain v1.
 - Independent infrastructure provenance explicitly admits generation versions
-  `0.11.0`, `0.11.1`, `0.11.2`, `0.11.3`, `0.12.0`, and `0.12.1`, including mixed component histories.
+  `0.11.0`, `0.11.1`, `0.11.2`, `0.11.3`, `0.12.0`, `0.12.1`, and `0.12.2`, including mixed component histories.
   Unknown releases remain blocked rather than being accepted through a version range.
 - No setup-skill version exists in manifests, JSON status, docs, or generated
   integrations.

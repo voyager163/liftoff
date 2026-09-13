@@ -6,6 +6,7 @@ import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
+import { formatRepairCommand } from '../src/application/repair/guidance.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import {
   executeLocalRevalidation, previewLocalRevalidation,
@@ -577,6 +578,10 @@ describe('bounded migration local revalidation', {
     });
     expect(result, JSON.stringify(result)).toMatchObject({ status: 'blocked', nextIncompletePhase: 'seed-verified' });
     expect(result.blockers.join(' ')).toContain('migration-required');
+    expect(result.blockers.join(' ')).toContain('Local baseline verification');
+    expect(result.blockers.join(' ')).not.toContain('not an executable approved');
+    expect(result.nextAction).toContain(formatRepairCommand(root));
+    expect(result.nextAction).toContain(formatUpdateCommand(root, 'check'));
     expect(await tree(path.join(root, 'infrastructure'))).toEqual(priorInfrastructure);
     expect(runner.calls.some(({ command }) => command.executable === 'tofu')).toBe(false);
   });

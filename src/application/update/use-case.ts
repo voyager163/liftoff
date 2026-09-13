@@ -23,7 +23,7 @@ import {
 import { resolveUpdateGuidanceContext } from './guidance-context.js';
 import { inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
 import {
-  buildUpdateReport, renderDeferredAgentRepair, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
+  buildUpdateReport, renderDeferredAgentRepair, renderInfrastructureRepair, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
   type UpdateMigrationSummary, type UpdateRevalidationSummary, type UpdateReportInput
 } from './output.js';
 import { assertAuthorizedUpdateMutations, preflightUpdate } from './planning.js';
@@ -34,6 +34,8 @@ import {
   describeUpdateMigration, describeUpdateRevalidation, materializeUpdateMutations,
   runUpdateRevalidation, verifyHistoryBeforeReplacement
 } from './migration-runtime.js';
+import { formatRepairCommand, infrastructureRepairGuidance } from '../repair/guidance.js';
+import { localSeedPhaseLabel } from '../../governance-activation/seed-lifecycle.js';
 
 export interface UpdateRequest {
   check: boolean;
@@ -100,6 +102,18 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       );
     }
     projectRoot = discovered;
+    const repairRecovery = await inspectReviewedUpdateTransaction(projectRoot, { transactionKind: 'repair' });
+    if (repairRecovery.status !== 'absent') {
+      emit(context, jsonMode, {
+        mode: check ? 'check' : 'apply', status: 'blocked',
+        reasonCode: 'repair-transaction-recovery-required', projectRoot,
+        message: repairRecovery.status === 'blocked'
+          ? `Repair transaction inspection blocks update: ${repairRecovery.reason ?? 'A safe project boundary could not be established.'} Update authority cannot recover repair writes.`
+          : 'An interrupted repair transaction must be resolved before update. Update authority cannot recover repair writes.',
+        remedy: `Review the repair journal and run ${formatRepairCommand(projectRoot, 'recover')}; then run ${updateCommand('check')}.`
+      });
+      return 1;
+    }
     await loadManifest(projectRoot);
     if (!jsonMode) {
       guidance = await resolveUpdateGuidanceContext(context.cwd, projectRoot, request.project ? undefined : discovered);
@@ -181,7 +195,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         ...base,
         status: hasWork ? 'update-available' : agentRepairPending ? 'partial' : 'current',
         reasonCode: hasWork ? 'review-required' : agentRepairPending ? 'agent-repair-required' : 'no-update',
-        ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; the requested agent/default change requires its separate repair plan.' } : {}),
+        ...(agentRepairPending && !hasWork ? { message: 'Managed-core metadata is current; agent installation and framework default changes are not implemented by the public repair coordinator.' } : {}),
         receipt: stored ? { status: 'issued', path: stored.location.receiptPath } : { status: 'not-required' }
       }, inspection, selected);
       return hasWork || agentRepairPending ? 2 : 0;
@@ -190,12 +204,13 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       if (!jsonMode) {
         renderUpdateSkipped(presentation, inspection, selected.writePlan);
         renderDeferredAgentRepair(presentation, inspection);
+        renderInfrastructureRepair(presentation, inspection, guidance);
       }
       emit(context, jsonMode, {
         ...base, status: selected.writePlan.skipped.length || agentRepairPending ? 'partial' : 'current',
         reasonCode: agentRepairPending ? 'agent-repair-required' : 'no-update',
         message: agentRepairPending
-          ? 'Liftoff core is current; recorded integrations and requested configuration were preserved for separate agent repair.'
+          ? 'Liftoff core is current; recorded integrations and requested configuration were preserved. Agent installation and framework default changes are not implemented by the public repair coordinator.'
           : selected.writePlan.skipped.length
           ? 'No safe update writes are required; listed conflicts remain protected.'
           : 'Liftoff core is current; project files were not changed.'
@@ -309,14 +324,17 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       }
       renderUpdateSkipped(presentation, inspection, selected.writePlan);
       renderDeferredAgentRepair(presentation, inspection);
+      renderInfrastructureRepair(presentation, inspection, guidance);
       if (migration.status === 'committed') {
         presentation.status('success', 'Activation migration committed', 'Original v1/v2 history remains preserved; active v3 readiness is reported separately from OpenTofu state migration.');
       }
       if (revalidationBlocked) {
-        presentation.bullets('V3 revalidation is blocked and resumable', [
+        presentation.bullets('V3 local baseline verification is blocked and resumable', [
           ...revalidation.issues,
-          ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase}`] : []),
-          `Repair the blocker, run ${updateCommand('check')}, and approve the remaining local work.`
+          'seed-verified means Local baseline verification, not an OpenSpec feature change to complete manually.',
+          ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase} (${localSeedPhaseLabel(revalidation.nextPhase)})`] : []),
+          infrastructureRepairGuidance(projectRoot, inspection.manifest, guidance)?.nextAction ??
+            `Resolve the named prerequisite, run ${updateCommand('check')}, and approve the remaining local work.`
         ]);
       }
       for (const failure of cleanupFailures) presentation.error(failure);

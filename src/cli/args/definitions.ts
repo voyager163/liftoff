@@ -146,6 +146,23 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     arguments: [{ syntax: 'project-path', description: 'Generated project to reconcile' }],
     defaultMaxPositionals: 1
   },
+  repair: {
+    description: 'Preview and approve safe reorganization of existing OpenTofu infrastructure',
+    usage: '[project-path]',
+    group: 'Maintenance',
+    flags: {
+      project: valueFlag('Exact Liftoff project path', 'Project', 'path'),
+      check: booleanFlag('Preview without project writes or tool execution; bare repair also previews', 'Command'),
+      live: booleanFlag('Allow bounded Azure metadata reads with existing authentication; never read state', 'Consent'),
+      subscription: valueFlag('Exact Azure subscription ID for live absence checks', 'Project', 'id'),
+      'approve-plan': valueFlag('Apply the exact unexpired external repair preview; includes isolated validation', 'Consent', 'fingerprint'),
+      recover: booleanFlag('Recover only the previously approved interrupted local repair transaction', 'Command'),
+      json: booleanFlag('Emit one schema-1 repair result; blocked or incomplete work exits 2', 'Output'),
+      ...helpFlag
+    },
+    arguments: [{ syntax: 'project-path', description: 'Existing Liftoff project; never an initialization destination' }],
+    defaultMaxPositionals: 1
+  },
   upgrade: {
     description: 'Replace the supported global npm Liftoff CLI; project templates use update separately',
     usage: '',

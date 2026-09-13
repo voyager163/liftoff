@@ -104,10 +104,9 @@ describe('reviewed update activation successor integration', { timeout: 60_000 }
         requestedDefaultAgent: workflow === 'spec-kit' ? 'codex' : null
       }
     });
-    expect(checked.output.deferredAgentRepair.command.args).toEqual([
-      'repair', '--project', f.projectRoot, '--check', '--add-agents', 'codex',
-      ...(workflow === 'spec-kit' ? ['--default-agent', 'codex'] : []), '--json'
-    ]);
+    expect(checked.output.deferredAgentRepair.command).toBeUndefined();
+    expect(checked.output.deferredAgentRepair.executable).toBe(false);
+    expect(checked.output.deferredAgentRepair.limitation).toContain('not implemented');
     expect(await readFile(configPath)).toEqual(requestedBytes);
     expect(await readFile(path.join(f.projectRoot, 'governance', 'activation-state.json'))).toEqual(f.source.files.get('governance/activation-state.json'));
     expect(f.calls.every((call) => call.startsWith('git '))).toBe(true);
