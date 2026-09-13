@@ -6,7 +6,7 @@ import { buildArtifacts } from '../src/templates.js';
 import {
   activationEvidenceContexts, canonicalSha256, canonicalPhaseGraph, currentActivationIdentity,
   evidenceBodyDigest, evidenceContextForPhase, evidenceHeaderDigest, evaluateApprovalForTransitionPlan,
-  planDigestFor, readActivationInputSnapshot, remoteBindingDigest, selectSeedBaselineChecks,
+  phaseScope, planDigestFor, readActivationInputSnapshot, remoteBindingDigest, selectSeedBaselineChecks,
   transitionPlanForPhase, validateSavedTransitionPlan,
   type EvidenceFreshnessContext, type EvidenceHeader, type LiveReadbackProof, type PhaseEvidenceRecord,
   type PhaseId, type SavedTransitionPlan, type TransitionOperation, type UserActivationState
@@ -42,7 +42,7 @@ export function fixturePayload(phaseId: PhaseId): Record<string, unknown> {
 export function fixtureHeader(phaseId: PhaseId, overrides: Partial<EvidenceHeader> = {}): EvidenceHeader {
   const context = fixtureContext(phaseId);
   return {
-    schemaVersion: 2, repositoryId: context.repositoryId, identity: context.identity, phaseGraphHash: context.phaseGraphHash,
+    schemaVersion: 3, repositoryId: context.repositoryId, identity: context.identity, phaseGraphHash: context.phaseGraphHash,
     phaseId, phaseContractDigest: context.phaseContractDigest, baselineSha: context.baselineSha,
     inputDigest: context.inputDigest, transition: context.transition, producedAt: '2026-09-04T00:00:00.000Z',
     producer: 'versioned-test-fixture', result: 'verified', bodyDigest: evidenceBodyDigest(fixturePayload(phaseId)),
@@ -117,7 +117,7 @@ export function fixturePlan(context: EvidenceFreshnessContext, state: UserActiva
     case 'workflow-source-ready':
       operations.push(operation('local.workflow-source.write', 'write-workflows', 'local-state', local('.github/workflows')));
       operations.push(operation('local.ruleset-source.write', 'write-ruleset-source', 'local-state', local('.github/rulesets'))); break;
-    case 'green-red-proof': operations.push(operation('github.checks.green-red-proof', 'github-read', 'github', repository, {}, true)); break;
+    case 'green-red-proof': operations.push(operation('github.checks.green-red-proof', 'github-workflow-dispatch', 'github', repository, {}, true)); break;
     case 'rulesets-applied':
       operations.push(operation('github.ruleset.apply', 'github-ruleset-write', 'github', repository, { sourceDigest: payload.sourceDigest ?? 'b'.repeat(64) }, true));
       operations.push(operation('github.ruleset.readback', 'github-read', 'github', repository, { sourceDigest: payload.sourceDigest ?? 'b'.repeat(64) }, true)); break;
@@ -126,12 +126,12 @@ export function fixturePlan(context: EvidenceFreshnessContext, state: UserActiva
   }
   operations.push(operation('governance.evidence.write', 'write-evidence', 'local-evidence', local(`governance/evidence/${phase.id}.json`)));
   operations.push(operation('governance.activation-state.write', 'write-activation-state', 'local-evidence', local('governance/activation-state.json')));
-  const requested = transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination);
-  const envelope = { ...requested, schemaVersion: 2, id: `${phase.id}-review`, approver: 'fixture-owner',
+  const requested = transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination, { operations });
+  const envelope = { ...requested, schemaVersion: 3, id: `${phase.id}-review`, approver: 'fixture-owner',
     approvedAt: producedAt, expiresAt: new Date(Date.parse(producedAt) + 3_600_000).toISOString() };
   const evaluation = evaluateApprovalForTransitionPlan(requested, [envelope], { now: new Date(producedAt) });
   return validateSavedTransitionPlan({
-    schemaVersion: 1, phaseId: phase.id, createdAt: producedAt, expiresAt: envelope.expiresAt,
+    schemaVersion: 2, scope: phaseScope(phase.id), phaseId: phase.id, createdAt: producedAt, expiresAt: envelope.expiresAt,
     identity: context.identity, graphHash: context.phaseGraphHash, stateHash: null,
     baselineDigest: context.baselineSha, inputDigest: context.inputDigest, transitionDigest: context.transition.transitionDigest,
     planDigest: planDigestFor({ phase, transitionDigest: context.transition.transitionDigest, operations, approvalPlanDigest: requested.planDigest }),

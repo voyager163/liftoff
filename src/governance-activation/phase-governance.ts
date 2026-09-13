@@ -5,7 +5,7 @@ import { buildApprovedPhase0FactsFromState, renderGovernanceChangeWritePlan } fr
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
 import { credentialPolicyPathParts, detectCredentialLeaks } from './credentials.js';
 import type { PhaseEvidenceRecord, TransitionOperation, LiveReadbackProof } from '../domain/governance/activation/types.js';
-import { latestRecordWithPayload, rulesetSourceDigestFromEvidence } from '../domain/governance/activation/evidence.js';
+import { latestRecordWithPayload, rulesetSourceDigestFromEvidence, selectLatestPhaseEvidence } from '../domain/governance/activation/evidence.js';
 import { isRecord } from '../domain/governance/activation/canonical-json.js';
 import { errorMessage } from './transition-process.js';
 import { remoteRepository } from '../domain/governance/activation/inputs.js';
@@ -13,6 +13,10 @@ import { evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../do
 
 export async function executeActivationApproval(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   if (input.phase.id !== 'activation-approved') return null;
+  const { taskProjectionContract } = await import('../domain/governance/activation/operations.js');
+  if (!taskProjectionContract(input.plan.operations)) {
+    return { status: 'blocked', blocker: 'Activation source approval requires its exact reviewed current-task projection contract.', completedOperations: [] };
+  }
   const state = cloneState(input.inspection.state);
   const fileMutations: ProjectFileMutation[] = [];
   if (input.inspection.sourceOfTruth.status === 'none') {
@@ -23,7 +27,8 @@ export async function executeActivationApproval(input: PhaseAdapterExecutionInpu
       return { status: 'blocked', blocker: input.inspection.sourceOfTruth.createPlan.reason, completedOperations: [] };
     }
     const writePlan = renderGovernanceChangeWritePlan(facts);
-    for (const file of writePlan.files) {
+    const { governanceSourceFilesWithoutTasks } = await import('./task-writes.js');
+    for (const file of governanceSourceFilesWithoutTasks(writePlan)) {
       if (await readProjectFile(input.inspection.projectRoot, [...file.pathParts]) !== undefined) {
         return { status: 'blocked', blocker: `Refusing to overwrite existing governance artifact ${file.pathParts.join('/')}.`, completedOperations: [] };
       }
@@ -112,8 +117,13 @@ export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Pr
     return { status: 'blocked', blocker: 'The reviewed ruleset plan expired before provider access.', completedOperations: [] };
   }
   if (input.phase.approvalGate.required) {
+    const requested = transitionPlanForPhase(
+      input.phase, input.inspection.state, input.inspection.contexts[input.phase.id].transition,
+      input.inspection.projectRoot, undefined,
+      { operations: input.plan.operations, configuration: input.plan.configuration, fileChanges: input.plan.fileChanges }
+    );
     const authorization = evaluateApprovalForTransitionPlan(
-      transitionPlanForPhase(input.phase, input.inspection.state, input.inspection.contexts[input.phase.id].transition),
+      requested,
       input.inspection.approvals,
       { now: executionTime }
     );

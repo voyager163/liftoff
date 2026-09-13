@@ -1,6 +1,7 @@
 import type {
   ApiStackDefinition,
   ApiStackId,
+  AgentWorkflowSurface,
   CodingAgentDefinition,
   CodingAgentId,
   EnvironmentDefinition,
@@ -23,6 +24,102 @@ import {
 } from './inputs.js';
 
 import type { RegionResolution } from './contracts.js';
+
+export const OPEN_SPEC_WORKFLOW_IDS = [
+  'propose', 'explore', 'new', 'continue', 'apply', 'update',
+  'ff', 'sync', 'archive', 'bulk-archive', 'verify', 'onboard'
+] as const;
+
+export const OPEN_SPEC_SKILL_NAMES: Record<(typeof OPEN_SPEC_WORKFLOW_IDS)[number], string> = {
+  propose: 'openspec-propose',
+  explore: 'openspec-explore',
+  new: 'openspec-new-change',
+  continue: 'openspec-continue-change',
+  apply: 'openspec-apply-change',
+  update: 'openspec-update-change',
+  ff: 'openspec-ff-change',
+  sync: 'openspec-sync-specs',
+  archive: 'openspec-archive-change',
+  'bulk-archive': 'openspec-bulk-archive-change',
+  verify: 'openspec-verify-change',
+  onboard: 'openspec-onboard'
+};
+
+export const OPEN_SPEC_AGENT_SURFACES: Record<CodingAgentId, AgentWorkflowSurface> = {
+  'github-copilot': {
+    skillsRoot: ['.github', 'skills'],
+    commands: { root: ['.github', 'prompts'], prefix: 'opsx-', suffix: '.prompt.md' }
+  },
+  claude: {
+    skillsRoot: ['.claude', 'skills'],
+    commands: { root: ['.claude', 'commands', 'opsx'], prefix: '', suffix: '.md' }
+  },
+  codex: { skillsRoot: ['.agents', 'skills'] }
+};
+
+export function openSpecDeliveryDescription(agents: readonly { id: CodingAgentId }[]): string {
+  if (agents.length === 0) return 'no agent integrations selected';
+  const commands = agents.filter((agent) => OPEN_SPEC_AGENT_SURFACES[agent.id].commands !== undefined).length;
+  if (commands === agents.length) return 'skills and commands';
+  return commands === 0 ? 'native skills' : 'native skills; commands only for supporting agents';
+}
+
+export const SPEC_KIT_WORKFLOW_IDS = [
+  'analyze', 'clarify', 'constitution', 'implement', 'converge',
+  'plan', 'checklist', 'specify', 'tasks', 'taskstoissues'
+] as const;
+
+export const SPEC_KIT_AGENT_SURFACES: Record<CodingAgentId, AgentWorkflowSurface> = {
+  'github-copilot': { skillsRoot: ['.github', 'skills'] },
+  claude: { skillsRoot: ['.claude', 'skills'] },
+  codex: { skillsRoot: ['.agents', 'skills'] }
+};
+
+export const governanceAgentIntegrations = {
+  'github-copilot': {
+    kind: 'command',
+    setup: {
+      logicalName: 'liftoff-setup-copilot',
+      pathParts: ['.github', 'prompts', 'liftoff-setup.prompt.md'],
+      invocation: '/liftoff-setup'
+    },
+    assessment: {
+      logicalName: 'liftoff-governance-assess-copilot',
+      pathParts: ['.github', 'prompts', 'liftoff-governance-assess.prompt.md'],
+      invocation: '/liftoff-governance-assess'
+    }
+  },
+  claude: {
+    kind: 'command',
+    setup: {
+      logicalName: 'liftoff-setup-claude',
+      pathParts: ['.claude', 'commands', 'liftoff-setup.md'],
+      invocation: '/liftoff-setup'
+    },
+    assessment: {
+      logicalName: 'liftoff-governance-assess-claude',
+      pathParts: ['.claude', 'commands', 'liftoff-governance-assess.md'],
+      invocation: '/liftoff-governance-assess'
+    }
+  },
+  codex: {
+    kind: 'skill',
+    setup: {
+      logicalName: 'liftoff-setup-codex',
+      pathParts: ['.agents', 'skills', 'liftoff-setup', 'SKILL.md'],
+      invocation: '$liftoff-setup'
+    },
+    assessment: {
+      logicalName: 'liftoff-governance-assess-codex',
+      pathParts: ['.agents', 'skills', 'liftoff-governance-assess', 'SKILL.md'],
+      invocation: '$liftoff-governance-assess'
+    }
+  }
+} as const satisfies Record<CodingAgentId, {
+  kind: 'command' | 'skill';
+  setup: { logicalName: string; pathParts: readonly string[]; invocation: string };
+  assessment: { logicalName: string; pathParts: readonly string[]; invocation: string };
+}>;
 
 export interface ProjectCatalogContext {
   frameworkVersions: Record<SpecWorkflowId, string>;
@@ -340,6 +437,17 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
         openspec: 'claude',
         'spec-kit': 'claude'
       }
+    },
+    {
+      id: 'codex',
+      inputName: 'codex',
+      label: 'OpenAI Codex',
+      aliases: ['codex', 'openai-codex', 'openai codex'],
+      executable: 'codex',
+      integrationIds: {
+        openspec: 'codex',
+        'spec-kit': 'codex'
+      }
     }
   ];
 
@@ -352,11 +460,12 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
         executable: 'npm',
         args: ['install', '-g', `@fission-ai/openspec@${context.frameworkVersions.openspec}`]
       },
-      allowedRoots: ['.claude', '.github', 'openspec'],
+      allowedRoots: ['.claude', '.github', 'openspec', '.agents'],
       baseMarkers: [['openspec', 'config.yaml']],
       agentMarkers: {
         'github-copilot': [['.github', 'skills', 'openspec-apply-change', 'SKILL.md']],
-        claude: [['.claude', 'skills', 'openspec-apply-change', 'SKILL.md']]
+        claude: [['.claude', 'skills', 'openspec-apply-change', 'SKILL.md']],
+        codex: [['.agents', 'skills', 'openspec-apply-change', 'SKILL.md']]
       }
     },
     'spec-kit': {
@@ -367,14 +476,15 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
         executable: 'uv',
         args: ['tool', 'install', `specify-cli==${context.frameworkVersions['spec-kit']}`]
       },
-      allowedRoots: ['.claude', '.github', '.specify', 'specs'],
+      allowedRoots: ['.claude', '.github', '.specify', 'specs', '.agents', '.codex'],
       baseMarkers: [
         ['.specify', 'init-options.json'],
         ['.specify', 'integration.json']
       ],
       agentMarkers: {
         'github-copilot': [['.github', 'skills', 'speckit-specify', 'SKILL.md']],
-        claude: [['.claude', 'skills', 'speckit-specify', 'SKILL.md']]
+        claude: [['.claude', 'skills', 'speckit-specify', 'SKILL.md']],
+        codex: [['.agents', 'skills', 'speckit-specify', 'SKILL.md']]
       }
     }
   };

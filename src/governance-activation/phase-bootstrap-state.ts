@@ -6,6 +6,7 @@ import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
 import { stat } from 'node:fs/promises';
 import { errorMessage } from './transition-process.js';
+import { captureProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
 
 const dayMs = 24 * 60 * 60 * 1000;
 const remoteImportPayloadKind = 'remote-import-verified.v1';
@@ -113,6 +114,7 @@ export async function executeBootstrapStateDisposal(input: PhaseAdapterExecution
     ...retention, status: 'disposed', disposedAt: input.now.toISOString(),
     deletionEvidenceId: `${input.phase.id}-${safeTimestamp(input.now.toISOString())}`, incompleteCleanup
   };
+  const filePreconditions = await Promise.all(allPaths.map((parts) => captureProjectFileSnapshot(input.inspection.projectRoot, parts)));
   return {
     status: 'completed', resultState: 'disposed', stateOverride: state,
     evidencePayload: {
@@ -120,6 +122,7 @@ export async function executeBootstrapStateDisposal(input: PhaseAdapterExecution
       remoteBackendDigest, noChangePlanDigest, incompleteCleanup, payloadFree: true
     },
     fileMutations: allPaths.map((parts) => ({ type: 'delete', pathParts: parts })),
+    filePreconditions,
     completedOperations: input.plan.operations.filter((op) => op.actionId === 'local.bootstrap-state.dispose'),
     cleanupWarnings: incompleteCleanup
   };

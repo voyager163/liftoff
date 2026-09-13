@@ -96,7 +96,7 @@ describe('approval-envelope v2 validation and hashing', () => {
     expect(approvalEnvelopeV2Schema).toMatchObject({
       additionalProperties: false,
       properties: {
-        schemaVersion: { const: 2 },
+        schemaVersion: { const: 3 },
         costCeiling: {
           properties: {
             fixedMonthlyCents: { type: 'integer', minimum: 0 },

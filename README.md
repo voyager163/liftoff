@@ -2,7 +2,8 @@
 
 **Initialize governed GenAI applications and APIs from one
 interactive CLI.** Liftoff combines reviewable starter projects with OpenSpec or
-Spec Kit and integrates GitHub Copilot, Claude Code, or both from the first commit.
+Spec Kit and integrates GitHub Copilot, Claude Code, and Codex in any selected
+combination.
 
 [![npm version](https://img.shields.io/npm/v/%40msn-control%2Fliftoff?logo=npm)](https://www.npmjs.com/package/@msn-control/liftoff)
 [![CI](https://github.com/voyager163/liftoff/actions/workflows/ci.yml/badge.svg)](https://github.com/voyager163/liftoff/actions/workflows/ci.yml)
@@ -27,18 +28,20 @@ cd my-project
 
 `liftoff init` asks for workload, spec workflow, agents, readiness, and plan
 confirmation before writing local files. Repository governance is enabled by
-default as a local deterministic handoff. For OpenSpec, `/liftoff-setup` completes,
+default as a deterministic setup handoff. For OpenSpec, `/liftoff-setup` completes,
 syncs, and archives the generated bootstrap seed. Spec Kit finalizes its one-time
 bootstrap bundle locally, without an OpenSpec archive or new Git branch.
 No model selection is required for setup; the CLI phase graph, evidence, and
-approvals are authoritative. Missing production executors, credential enrollment,
-and approval-persistence capabilities remain explicit blockers, not completed
-automation.
+approvals are authoritative. Setup coordinates reviewed repairs and local readiness,
+then separately approved publication, Azure activation, deployment, and governance.
+Local-only use remains supported. Codex invokes `$liftoff-setup` or selects the native skill.
+These are coding-agent invocations, not a `liftoff setup` shell command.
+`liftoff init` creates a scaffold; do not reinitialize an existing Liftoff project
+to resolve a verification blocker.
 
-After the first self-upgrade-capable release is installed globally through npm,
-later CLI releases use `liftoff upgrade --check` followed by `liftoff upgrade`.
+After global npm install, later releases use `liftoff upgrade --check` then `liftoff upgrade`.
 This replaces the CLI only; generated projects use `liftoff update` separately
-for Liftoff-managed core files. Useful read-only checks:
+for reviewed project maintenance. Useful project-read-only checks:
 
 ```bash
 liftoff validate
@@ -47,15 +50,43 @@ liftoff upgrade --check
 liftoff update --check
 ```
 
-Plain `liftoff update` applies safe managed-core changes immediately and skips
-core conflicts. Application source, dependencies, schemas, containers,
-environments, documentation, and infrastructure are project-owned after
-generation and remain outside every update mode, including `--force`. Use
-`liftoff update --check --json` for a read-only core-maintenance gate.
+Start with `liftoff update --check`, then run `liftoff update` and approve the
+matching plan. Check leaves project bytes unchanged and discloses a preview
+receipt saved outside the repository. Missing or stale previews block apply.
+Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
+
+Supported activation-v1/v2 migration preserves original records inside the project
+and creates a linked v3 activation. Failed revalidation leaves v3 blocked and
+resumable, not reset to an older contract. Application source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain project-owned
+and outside template replacement, including `--force`.
+
+For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
+verification**, not an OpenSpec feature change. Start with:
+
+```bash
+liftoff repair "path/to/existing project" --check
+```
+
+Ordinary check makes no cloud calls; bare `liftoff repair` also only previews.
+The supported local recipe preserves legacy flat-root semantics while creating
+the shared application module and selected independent environment roots.
+Eligibility requires bounded, explicitly requested
+`--check --live --subscription <UUID>` metadata discovery with existing authentication,
+authoritatively absent resource groups in that subscription, and no local
+state/backend metadata. Missing state files alone never establish safety.
+Only `liftoff repair [project-path] --approve-plan <fingerprint>` applies an
+eligible, separately approved plan. Then run `liftoff update --check --project
+"path/to/existing project"` and resume native setup's local governance planning.
+Interrupted writes use `liftoff repair [project-path] --recover`, not update recovery.
+Repair accepts neither `--force`, `--yes`, nor `--add-agents`.
+Agent installation and the public stateful migration coordinator are not
+implemented; the internal stateful engine is not an executable public command.
+Deployed, unknown, or unsupported cases remain plan-only, with source and state
+untouched. See [repair modes](docs/cli-reference.md#repair-modes).
 
 Older projects may display the retired `/liftoff-repository-governance` alias.
-After upgrading the CLI, review `liftoff update --check`; `liftoff update --force`
-can remove only its exact recorded aliases. Reload the coding-agent session.
+Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 
@@ -72,11 +103,11 @@ PydanticAI invocation foundation without assuming RAG, chat, agents, streaming,
 fine-tuning, or workflows.
 
 Both workloads can use **OpenSpec** or **Spec Kit** with **GitHub Copilot**,
-**Claude Code**, or both.
+**Claude Code**, **Codex**, or any combination. Official stable and preview releases
+are accepted; runtime and framework pins remain enforced.
 
-Power Apps and its Code Apps plugin integration are retired. Existing Power Apps
-projects receive an unsupported-workload error without changing their files;
-`--force` does not provide a compatibility or conversion path.
+Power Apps is retired. Existing Power Apps projects receive an unsupported-workload
+error without changing files; `--force` does not provide a conversion path.
 
 [Compare workload questions and outputs](docs/workloads.md) |
 [Choose a spec workflow and agents](docs/spec-workflows-and-agents.md)

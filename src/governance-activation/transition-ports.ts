@@ -1,7 +1,8 @@
 import type { LiftoffManifest } from '../domain/project/contracts.js';
 import type {
   ManagedPhaseGraph, UserActivationState, ApprovalEnvelope, PhaseEvidenceRecord, PhaseId, EvidenceHeader,
-  LiveReadbackProof, TransitionOperation, SavedTransitionPlan, PhaseGraphNode, MutationClass, TransitionRollbackPlan
+  LiveReadbackProof, TransitionOperation, SavedTransitionPlan, PhaseGraphNode, MutationClass, TransitionRollbackPlan,
+  GovernanceScope, ActivationConfiguration, ExternalOperationState, PhaseOutputBindings
 } from '../domain/governance/activation/types.js';
 import type { LoadedActivationState } from './activation-state.js';
 import type { EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
@@ -9,12 +10,18 @@ import type { GovernanceSourceOfTruthInspection } from './source-of-truth.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
 import type { CommandRunner } from '../process-runner.js';
 import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
+import type { HistoricalLifecycleObligation } from './migration-history.js';
 
 export interface GovernanceTransitionInspection {
   projectRoot: string;
   manifest: LiftoffManifest;
   graph: ManagedPhaseGraph;
   graphHash: string;
+  scope?: GovernanceScope;
+  activationInputs?: ActivationConfiguration;
+  recoverPhase?: PhaseId;
+  sensitivePathExclusions?: readonly (readonly string[])[];
+  historicalLifecycleObligations?: readonly HistoricalLifecycleObligation[];
   loadedState?: LoadedActivationState;
   state: UserActivationState;
   approvals: readonly ApprovalEnvelope[];
@@ -22,7 +29,8 @@ export interface GovernanceTransitionInspection {
   contexts: Record<PhaseId, EvidenceFreshnessContext>;
   readiness: {
     nextReadyPhase: PhaseId | null;
-    phases: Record<PhaseId, { state: string; blockers: readonly string[] }>;
+    nextPlannablePhase?: PhaseId | null;
+    phases: Record<PhaseId, { state: string; blockers: readonly string[]; plannable?: boolean }>;
   };
   sourceOfTruth: GovernanceSourceOfTruthInspection;
 }
@@ -80,7 +88,7 @@ export interface GitHubRulesetAdapter {
 }
 
 export interface PhaseAdapterOutcome {
-  status: 'completed' | 'blocked';
+  status: 'completed' | 'blocked' | 'pending';
   resultState?: EvidenceHeader['result'] | 'approved';
   blocker?: string;
   evidencePayload?: unknown;
@@ -90,7 +98,24 @@ export interface PhaseAdapterOutcome {
   filePreconditions?: readonly ProjectFileSnapshot[];
   completedOperations?: readonly TransitionOperation[];
   cleanupWarnings?: readonly string[];
+  /** Local source finalization may already have happened; never permits forgetting remote effects. */
   retryableWithoutStateMutation?: boolean;
+  operation?: ExternalOperationState;
+  outputs?: PhaseOutputBindings;
+}
+
+export interface PhasePlanBuild {
+  operations: readonly TransitionOperation[];
+  fileMutations?: readonly ProjectFileMutation[];
+  filePreconditions?: readonly ProjectFileSnapshot[];
+  blockers?: readonly string[];
+}
+
+export interface PhasePlanningInput {
+  inspection: GovernanceTransitionInspection;
+  phase: PhaseGraphNode;
+  runner: CommandRunner;
+  now: Date;
 }
 
 export interface GovernancePhaseAdapter {
@@ -107,6 +132,8 @@ export interface PhaseAdapterExecutionInput {
   now: Date;
   clock?: () => Date;
   lease?: ProjectMutationLease;
+  recovery?: boolean;
+  credentialEnrollment?: { protectedStdin: boolean };
 }
 
 export interface GovernanceTransitionAdapters {
@@ -115,7 +142,8 @@ export interface GovernanceTransitionAdapters {
 }
 
 export interface ApplyNextPreview {
-  schemaVersion: 1;
+  schemaVersion: 2;
+  scope?: GovernanceScope;
   command: 'governance apply-next';
   projectRoot: string;
   execute: boolean;

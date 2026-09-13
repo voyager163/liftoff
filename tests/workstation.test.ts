@@ -8,13 +8,30 @@ import { buildProjectPlan } from '../src/planner.js';
 import type { ExternalCommand } from '../src/types.js';
 import {
   blockingReadinessFailures,
-  installRequirement,
+  installRequirement as executeRemediation,
   parseLinuxFamily,
-  probeRequirement,
+  probeRequirement as probeWithObservations,
   selectWorkstationRequirements,
   type RequirementProbeResult,
-  type SelectedRequirement
+  type SelectedRequirement,
+  type ExecutableObserver,
+  type InstallContext,
+  type WorkstationProbeOptions
 } from '../src/workstation.js';
+
+const executableObserver: ExecutableObserver = {
+  async resolve(executable) {
+    return { executable, resolution: 'not-observable', origin: 'unknown', evidence: 'unavailable' };
+  },
+  async inspect(executable) {
+    return { executable, resolution: 'missing', origin: 'unknown', evidence: 'documented-location' };
+  }
+};
+
+const probeRequirement = (requirement: SelectedRequirement, runner: CommandRunner, options: WorkstationProbeOptions = {}) =>
+  probeWithObservations(requirement, runner, { executableObserver, ...options });
+const installRequirement = (requirement: SelectedRequirement, probe: RequirementProbeResult, context: InstallContext) =>
+  executeRemediation(requirement, probe, { executableObserver, ...context });
 
 const result = (
   command: ExternalCommand,
@@ -56,8 +73,22 @@ function missingProbe(requirement: SelectedRequirement): RequirementProbeResult 
   return {
     requirement,
     state: 'missing',
+    reasonCode: 'missing-executable',
     detail: 'command not found',
-    notices: []
+    notices: [],
+    required: {
+      exactVersion: requirement.exactVersion,
+      minimumVersion: requirement.minimumVersion,
+      releaseLine: requirement.releaseLine,
+      allowPrerelease: requirement.allowPrerelease
+    },
+    identity: {
+      executable: requirement.definition.probes[0].executable,
+      resolution: 'missing',
+      origin: 'unknown',
+      evidence: 'unavailable'
+    },
+    observations: []
   };
 }
 
@@ -380,7 +411,7 @@ describe('workstation installation', () => {
     const requirement = openspecRequirement();
     const runner = new FakeRunner((command) => {
       if (command.executable === 'npm' && command.args[0] === '--version') {
-        return { stdout: '10.0.0' };
+        return { stdout: '12.0.2' };
       }
       if (command.executable === 'npm') {
         return { stdout: 'installed' };
@@ -404,7 +435,7 @@ describe('workstation installation', () => {
   it('surfaces installer failures and successful installs that still need PATH refresh', async () => {
     const requirement = openspecRequirement();
     const failedRunner = new FakeRunner((command) => command.args[0] === '--version'
-      ? { stdout: '10.0.0' }
+      ? { stdout: '12.0.2' }
       : { status: 1, stderr: 'registry unavailable' });
     const failed = await installRequirement(requirement, missingProbe(requirement), {
       authorized: true,
@@ -415,7 +446,10 @@ describe('workstation installation', () => {
 
     const pathRunner = new FakeRunner((command) => {
       if (command.executable === 'npm' && command.args[0] === '--version') {
-        return { stdout: '10.0.0' };
+        return { stdout: '12.0.2' };
+      }
+      if (command.executable === 'npm' && command.args[0] === 'prefix') {
+        return { stdout: '/fixture/npm' };
       }
       if (command.executable === 'npm') {
         return { stdout: 'installed' };
@@ -425,11 +459,21 @@ describe('workstation installation', () => {
     const restart = await installRequirement(requirement, missingProbe(requirement), {
       authorized: true,
       host: { platform: 'darwin', linuxFamily: 'unknown' },
-      runner: pathRunner
+      runner: pathRunner,
+      executableObserver: {
+        ...executableObserver,
+        async inspect(candidate) {
+          return {
+            executable: 'openspec', resolution: 'resolved', origin: 'npm',
+            evidence: 'documented-location', kind: 'executable', resolvedPath: candidate
+          };
+        }
+      }
     });
     expect(restart.state).toBe('restart-required');
     expect(restart.remedy).toContain('npm prefix -g');
-    expect(restart.detail).toContain('after checking its documented install location');
+    expect(restart.detail).toContain('/fixture/npm/bin/openspec');
+    expect(restart.detail).toContain('does not prove the installer wrote them');
     expect(pathRunner.calls.some(({ command }) =>
       command.executable === 'npm' &&
       command.args.join(' ') === 'prefix -g'

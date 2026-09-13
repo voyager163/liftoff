@@ -1,20 +1,29 @@
-import type { GovernanceTransitionInspection, ApplyNextPreview } from './transition-ports.js';
-import type { PhaseGraphNode, TransitionOperation, MutationClass, SavedTransitionPlan } from '../domain/governance/activation/types.js';
+import type { GovernanceTransitionInspection, ApplyNextPreview, PhasePlanBuild } from './transition-ports.js';
+import { phaseScope, type PhaseId, type PhaseGraphNode, type TransitionOperation, type MutationClass, type SavedTransitionPlan } from '../domain/governance/activation/types.js';
 import { type CommandRunner, NodeCommandRunner } from '../process-runner.js';
 import { evidencePathParts, safeTimestamp, evidenceWriteOperation, stateWriteOperation, assertNoSecrets } from './transition-records.js';
 import { remoteRepository, githubRepositoryFromPushUrl } from '../domain/governance/activation/inputs.js';
 import {
-  operation, transitionDestination, phaseById, planDigestFor, rollbackPlanForPhase, assertPlanOperationsAllowed
+  operation, transitionDestination, phaseById, phaseUsesProvider, planDigestFor, rollbackPlanForPhase, assertPlanOperationsAllowed
 } from '../domain/governance/activation/operations.js';
-import { generatedSeedChangeName, selectSeedBaselineChecks } from './seed-lifecycle.js';
+import { generatedSeedChangeName, previewLocalSeedPhase, selectSeedBaselineChecks } from './seed-lifecycle.js';
 import { gitCommitOperations, gitPushOperations, reviewedPushUrl, inspectGitRepository } from './phase-publication.js';
 import { credentialPolicyPathParts } from './credentials.js';
 import { latestRecordWithPayload, rulesetSourceDigestFromEvidence } from '../domain/governance/activation/evidence.js';
 import { validateManifestActivationForExecution, validateSavedTransitionPlan } from '../domain/governance/activation/validators.js';
-import { transitionPlanForPhase, evaluateApprovalForTransitionPlan } from '../domain/governance/activation/approvals.js';
+import { transitionPlanForPhase, evaluateApprovalForTransitionPlan, combineApprovalRequests } from '../domain/governance/activation/approvals.js';
 import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
 import { errorMessage } from './transition-process.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { planAzurePhase } from './phase-azure.js';
+import { planGitHubPhase } from './phase-github.js';
+import { plannedFileChanges } from './transition-files.js';
+import { completedSpecKitTasks, inspectSpecKitBootstrap, specKitBootstrapPath } from './spec-kit-seed.js';
+import { captureProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
+import { buildApprovedPhase0FactsFromState, renderGovernanceChangeWritePlan } from './source-of-truth.js';
+import { protectedLocalInputBlockers } from './inputs.js';
+import { planGovernanceTaskProjection, withoutDerivedTaskWrites } from './task-writes.js';
+import { taskProjectionContract } from '../domain/governance/activation/operations.js';
 
 const planLifetimeMs = 15 * 60 * 1000;
 
@@ -22,7 +31,8 @@ async function phaseOperations(
   inspection: GovernanceTransitionInspection,
   phase: PhaseGraphNode,
   runner: CommandRunner,
-  createdAt: string
+  createdAt: string,
+  localRevalidation = false
 ): Promise<TransitionOperation[]> {
   const repositoryName = remoteRepository(inspection.state).name;
   const baseEvidencePath = evidencePathParts(`${phase.id}-${safeTimestamp(createdAt)}`);
@@ -37,10 +47,10 @@ async function phaseOperations(
     actionId: string,
     mutationClass: MutationClass,
     inputs: Record<string, unknown>,
-    subscriptionId = 'phase-0-discovered-subscription'
+    subscriptionId = inspection.activationInputs?.azure?.subscriptionId ?? inspection.state.activationInputs?.azure?.subscriptionId
   ) => operation({
     adapter: 'azure-opentofu', actionId, mutationClass, phaseId: phase.id, inputs,
-    destination: transitionDestination('subscription', subscriptionId, { subscriptionId }),
+    destination: transitionDestination('subscription', subscriptionId ?? 'unresolved', { ...(subscriptionId ? { subscriptionId } : {}) }),
     remote: true, destructive: false
   });
   const localStep = (
@@ -51,6 +61,15 @@ async function phaseOperations(
     adapter: TransitionOperation['adapter'] = 'selected-spec-workflow',
     destructive = false
   ) => operation({ adapter, actionId, mutationClass, phaseId: phase.id, inputs, destination, remote: false, destructive });
+
+  if (localRevalidation) {
+    if (phase.id !== 'seed-valid' && phase.id !== 'seed-verified' && phase.id !== 'seed-archived') {
+      throw new Error(`Local revalidation stops before ${phase.id}; review its separate governance transition.`);
+    }
+    const preview = await previewLocalSeedPhase(inspection.projectRoot, inspection.manifest, phase.id);
+    if (preview.blockers.length) throw new Error(preview.blockers.join(' '));
+    return [preview.operation, ...writeOps()];
+  }
 
   switch (phase.id) {
     case 'seed-valid':
@@ -102,6 +121,10 @@ async function phaseOperations(
         stateWriteOperation(phase)
       ];
     }
+    case 'bootstrap-workflow-source-ready':
+    case 'application-prerequisites-ready':
+    case 'application-artifact-ready':
+      throw new Error(`Phase ${phase.id} requires its concrete production planner.`);
     case 'credential-ready':
       return [repositoryStep('github.credential.verify-policy', 'github-read', { policyPathParts: credentialPolicyPathParts }), ...writeOps()];
     case 'provider-ready':
@@ -113,7 +136,6 @@ async function phaseOperations(
     case 'bootstrap-local':
       return [
         subscriptionStep('azure.bootstrap-local.apply', 'azure-network-provision', { boundedLocalBootstrap: true }),
-        repositoryStep('github.bootstrap-local.configure', 'github-write', { repository: repositoryName }),
         ...writeOps()
       ];
     case 'runner-ready':
@@ -176,28 +198,155 @@ async function phaseOperations(
   }
 }
 
+async function buildBasePhaseOperations(
+  inspection: GovernanceTransitionInspection,
+  phase: PhaseGraphNode,
+  runner: CommandRunner,
+  createdAt: string,
+  localRevalidation: boolean
+): Promise<PhasePlanBuild> {
+  if (!localRevalidation && phaseScope(phase.id) !== 'local') {
+    const input = { inspection, phase, runner, now: new Date(createdAt) };
+    const planned: Array<PhasePlanBuild | null> = await Promise.all([
+      phaseUsesProvider(phase, 'azure') ? planAzurePhase(input) : null,
+      phaseUsesProvider(phase, 'github') ? planGitHubPhase(input) : null
+    ]);
+    const providers = planned.filter((build): build is PhasePlanBuild => build !== null);
+    if (providers.length > 0) {
+      const blockers = providers.flatMap((build) => build.blockers ?? []);
+      if (blockers.length) throw new Error(blockers.join(' '));
+      return {
+        operations: [
+          ...providers.flatMap((build) => build.operations),
+          evidenceWriteOperation(phase, evidencePathParts(`${phase.id}-${safeTimestamp(createdAt)}`)),
+          stateWriteOperation(phase)
+        ],
+        fileMutations: providers.flatMap((build) => build.fileMutations ?? []),
+        filePreconditions: providers.flatMap((build) => build.filePreconditions ?? [])
+      };
+    }
+  }
+  const operations = await phaseOperations(inspection, phase, runner, createdAt, localRevalidation);
+  if (phase.id === 'activation-approved' && inspection.sourceOfTruth.status === 'none') {
+    const facts = buildApprovedPhase0FactsFromState(
+      inspection.manifest, inspection.state, inspection.evidence, inspection.contexts['phase-0-complete']
+    );
+    if (!facts) throw new Error('Current verified Phase 0 facts are required to preview governance change creation.');
+    const write = renderGovernanceChangeWritePlan(facts);
+    return {
+      operations,
+      fileMutations: write.files.map((file) => ({ type: 'write', pathParts: [...file.pathParts], content: file.content })),
+      filePreconditions: write.files.map((file) => ({ pathParts: [...file.pathParts] }))
+    };
+  }
+  if (!localRevalidation && phase.id === 'seed-verified' && inspection.manifest.project.specWorkflow === 'spec-kit') {
+    const bundle = await inspectSpecKitBootstrap(inspection.projectRoot, inspection.manifest);
+    if (bundle.issues.length || bundle.tasks === undefined) {
+      throw new Error(`Spec Kit bootstrap tasks must be valid before planning their verified projection: ${bundle.issues.join(' ')}`);
+    }
+    const pathParts = [...specKitBootstrapPath, 'tasks.md'];
+    return {
+      operations,
+      fileMutations: [{ type: 'write', pathParts, content: completedSpecKitTasks(bundle.tasks) }],
+      filePreconditions: [await captureProjectFileSnapshot(inspection.projectRoot, pathParts)]
+    };
+  }
+  if (!localRevalidation && phase.id === 'bootstrap-state-disposed' && inspection.state.bootstrapState) {
+    const paths = [
+      ...inspection.state.bootstrapState.encryptedStatePathParts,
+      ...inspection.state.bootstrapState.encryptionKeyPathParts
+    ];
+    return {
+      operations,
+      fileMutations: paths.map((pathParts) => ({ type: 'delete', pathParts: [...pathParts] })),
+      filePreconditions: await Promise.all(paths.map((pathParts) => captureProjectFileSnapshot(inspection.projectRoot, [...pathParts])))
+    };
+  }
+  return { operations };
+}
+
+async function buildPhaseOperations(
+  inspection: GovernanceTransitionInspection, phase: PhaseGraphNode, runner: CommandRunner,
+  createdAt: string, localRevalidation: boolean
+): Promise<PhasePlanBuild> {
+  const build = await buildBasePhaseOperations(inspection, phase, runner, createdAt, localRevalidation);
+  if (localRevalidation) return build;
+  const projection = await planGovernanceTaskProjection(inspection, phase);
+  const contract = projection && taskProjectionContract([projection]);
+  return {
+    ...build, operations: [...build.operations, ...(projection ? [projection] : [])],
+    fileMutations: withoutDerivedTaskWrites(build.fileMutations ?? [], projection),
+    filePreconditions: build.filePreconditions?.filter((entry) => entry.pathParts.join('/') !== contract?.taskPathParts.join('/'))
+  };
+}
+
 export async function buildSavedTransitionPlan(input: {
   inspection: GovernanceTransitionInspection;
   runner?: CommandRunner;
   now?: Date;
+  localRevalidation?: boolean;
+  phaseId?: PhaseId;
+  createdAt?: string;
 }): Promise<SavedTransitionPlan | null> {
   validateManifestActivationForExecution(input.inspection.manifest);
-  const phaseId = input.inspection.readiness.nextReadyPhase;
+  const phaseId = input.phaseId ?? input.inspection.recoverPhase ?? input.inspection.readiness.nextPlannablePhase ?? input.inspection.readiness.nextReadyPhase;
   if (!phaseId) return null;
+  if (input.inspection.manifest.governance.profile === 'none' && phaseScope(phaseId) === 'activation') {
+    throw new Error('Governance activation is explicitly disabled. A local repair, JSON flag, or existing approval cannot enable the profile.');
+  }
+  if (input.inspection.scope === 'local' && phaseScope(phaseId) !== 'local') {
+    throw new Error(`The local scope cannot plan or execute ${phaseId}.`);
+  }
+  if (input.inspection.scope === 'lifecycle' && phaseScope(phaseId) !== 'lifecycle') {
+    throw new Error(`The lifecycle scope cannot plan or execute ${phaseId}.`);
+  }
+  if (input.inspection.scope === 'activation' && phaseScope(phaseId) === 'lifecycle') {
+    throw new Error(`The activation scope cannot plan or execute ${phaseId}.`);
+  }
+  if (phaseId === 'seed-verified') {
+    const blockers = protectedLocalInputBlockers(input.inspection.sensitivePathExclusions ?? []);
+    if (blockers.length) throw new Error(blockers.join(' '));
+  }
+  if (input.inspection.recoverPhase && !input.inspection.readiness.phases[phaseId]?.plannable &&
+    !['ready', 'running'].includes(input.inspection.readiness.phases[phaseId]?.state ?? '')) {
+    throw new Error(`Recovery of ${phaseId} is not plannable: ${input.inspection.readiness.phases[phaseId]?.blockers?.join(' ') ?? ''}`);
+  }
   const runner = input.runner ?? new NodeCommandRunner();
   const phase = phaseById(input.inspection.graph, phaseId);
-  const createdAt = (input.now ?? new Date()).toISOString();
+  const createdAt = input.createdAt ?? (input.now ?? new Date()).toISOString();
   const expiresAt = new Date(Date.parse(createdAt) + planLifetimeMs).toISOString();
   const context = input.inspection.contexts[phaseId];
-  const operations = await phaseOperations(input.inspection, phase, runner, createdAt);
-  const approvalPlan = transitionPlanForPhase(
+  const build = await buildPhaseOperations(input.inspection, phase, runner, createdAt, input.localRevalidation ?? false);
+  const operations = build.operations;
+  const configuration = input.inspection.activationInputs ?? input.inspection.state.activationInputs;
+  const recovery = input.inspection.recoverPhase === phaseId;
+  const fileChanges = await plannedFileChanges(input.inspection.projectRoot, build.fileMutations ?? [], build.filePreconditions);
+  const primaryApproval = transitionPlanForPhase(
     phase, input.inspection.state, context.transition, input.inspection.projectRoot,
-    phase.id === 'pushed' ? operations.find((operation) => operation.adapter === 'git')?.destination.identity : undefined
+    phase.id === 'pushed' ? operations.find((operation) => operation.adapter === 'git')?.destination.identity : undefined,
+    { operations, configuration, fileChanges, recovery }
   );
+  const approvalBundle: NonNullable<SavedTransitionPlan['approvalBundle']>[number][] = [];
+  const approvalRequests = [primaryApproval];
+  if (phase.id === 'enforcement-approved' && !recovery) {
+    const rulesets = phaseById(input.inspection.graph, 'rulesets-applied');
+    const sourceDigest = rulesetSourceDigestFromEvidence(input.inspection);
+    if (!sourceDigest) throw new Error('Final enforcement approval requires a current reviewed ruleset source digest.');
+    const child = await buildPhaseOperations(input.inspection, rulesets, runner, createdAt, false);
+    const childChanges = await plannedFileChanges(input.inspection.projectRoot, child.fileMutations ?? [], child.filePreconditions);
+    const childContext = input.inspection.contexts[rulesets.id];
+    approvalBundle.push({
+      phaseId: rulesets.id, inputDigest: childContext.inputDigest, transitionDigest: childContext.transition.transitionDigest,
+      operations: child.operations, fileChanges: childChanges
+    });
+    approvalRequests.push(transitionPlanForPhase(rulesets, input.inspection.state, childContext.transition,
+      input.inspection.projectRoot, undefined, { operations: child.operations, configuration, fileChanges: childChanges }));
+  }
+  const approvalPlan = approvalRequests.length > 1 ? combineApprovalRequests(approvalRequests) : primaryApproval;
   const evaluation = evaluateApprovalForTransitionPlan(approvalPlan, input.inspection.approvals, { now: input.now });
   const digest = planDigestFor({ phase, transitionDigest: context.transition.transitionDigest, operations, approvalPlanDigest: approvalPlan.planDigest });
   const plan = validateSavedTransitionPlan({
-    schemaVersion: 1, phaseId, createdAt, expiresAt,
+    schemaVersion: 2, scope: phaseScope(phaseId), phaseId, createdAt, expiresAt,
     identity: input.inspection.state.identity,
     graphHash: input.inspection.graphHash,
     stateHash: input.inspection.loadedState?.contentHash ?? null,
@@ -209,6 +358,10 @@ export async function buildSavedTransitionPlan(input: {
       envelopeId: evaluation.envelopeId, envelopeHash: evaluation.envelopeHash
     },
     rollbackPlan: rollbackPlanForPhase(phase),
+    ...(configuration ? { configuration } : {}),
+    fileChanges,
+    recovery,
+    ...(approvalBundle.length ? { approvalBundle } : {}),
     noSecrets: true
   });
   assertPlanOperationsAllowed(plan, phase);
@@ -221,6 +374,7 @@ export async function previewApplyNext(input: {
   runner?: CommandRunner;
   now?: Date;
   execute: boolean;
+  localRevalidation?: boolean;
 }): Promise<ApplyNextPreview> {
   let plan: SavedTransitionPlan | null = null;
   const blockers: string[] = [];
@@ -231,15 +385,18 @@ export async function previewApplyNext(input: {
     blockers.push(errorMessage(error));
   }
   const nextReadyPhase = input.inspection.readiness.nextReadyPhase;
-  if (!nextReadyPhase && blockers.length === 0) {
-    const first = input.inspection.graph.phases.find((phase) => input.inspection.readiness.phases[phase.id].blockers.length > 0);
-    if (first) blockers.push(...input.inspection.readiness.phases[first.id].blockers);
+  const selectedPhase = plan?.phaseId ?? input.inspection.readiness.nextPlannablePhase ?? nextReadyPhase;
+  if (!selectedPhase && blockers.length === 0) {
+    const first = input.inspection.graph.phases.find((phase) =>
+      (!input.inspection.scope || phaseScope(phase.id) === input.inspection.scope) &&
+      (input.inspection.readiness.phases[phase.id]?.blockers.length ?? 0) > 0);
+    if (first) blockers.push(...(input.inspection.readiness.phases[first.id]?.blockers ?? []));
   }
-  if (!nextReadyPhase || blockers.length > 0 || !plan) {
+  if (!selectedPhase || blockers.length > 0 || !plan) {
     return {
-      schemaVersion: 1, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
+      schemaVersion: 2, scope: input.inspection.scope, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
       execute: input.execute, applied: false, authorized: false, reason: 'blocked',
-      message: blockers[0] ?? 'No phase is ready for execution.', selectedPhase: nextReadyPhase, nextReadyPhase,
+      message: blockers[0] ?? 'No phase is ready for execution.', selectedPhase, nextReadyPhase,
       approval: plan?.approval ?? null,
       proposedMutations: {
         local: plan?.mutationClasses.local ?? ['none'], remote: plan?.mutationClasses.remote ?? ['none'], operations: plan?.operations ?? []
@@ -250,21 +407,21 @@ export async function previewApplyNext(input: {
   }
   if (plan.approval.evaluation.approvalRequired) {
     return {
-      schemaVersion: 1, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
+      schemaVersion: 2, scope: input.inspection.scope, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
       execute: input.execute, applied: false, authorized: false, reason: 'approval-required',
-      message: plan.approval.evaluation.reasons.join('; '), selectedPhase: nextReadyPhase, nextReadyPhase, approval: plan.approval,
+      message: plan.approval.evaluation.reasons.join('; '), selectedPhase, nextReadyPhase, approval: plan.approval,
       proposedMutations: { local: plan.mutationClasses.local, remote: plan.mutationClasses.remote, operations: plan.operations },
       savedPlan: null, noWrites: true, blockers: plan.approval.evaluation.reasons
     };
   }
   return {
-    schemaVersion: 1, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
+    schemaVersion: 2, scope: input.inspection.scope, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
     execute: input.execute, applied: false, authorized: true,
     reason: input.execute ? 'execute-requested' : 'execute-required',
     message: input.execute
       ? 'Execution requested; the plan must be saved and revalidated before any mutation.'
       : 'Preview only. Rerun with --execute to save this plan and execute at most one phase.',
-    selectedPhase: nextReadyPhase, nextReadyPhase, approval: plan.approval,
+    selectedPhase, nextReadyPhase, approval: plan.approval,
     proposedMutations: { local: plan.mutationClasses.local, remote: plan.mutationClasses.remote, operations: plan.operations },
     savedPlan: null, noWrites: true, blockers: []
   };
@@ -278,6 +435,11 @@ export function comparePlanFreshness(saved: SavedTransitionPlan, fresh: SavedTra
     if (saved[field] !== fresh[field]) issues.push(`${field} changed after plan save.`);
   }
   if (canonicalSha256(saved.operations) !== canonicalSha256(fresh.operations)) issues.push('Proposed operations changed after plan save.');
+  if (saved.scope !== fresh.scope || canonicalSha256(saved.configuration ?? null) !== canonicalSha256(fresh.configuration ?? null) ||
+    canonicalSha256(saved.fileChanges ?? []) !== canonicalSha256(fresh.fileChanges ?? []) ||
+    canonicalSha256(saved.approvalBundle ?? []) !== canonicalSha256(fresh.approvalBundle ?? [])) {
+    issues.push('Selected scope, configuration, or reviewed file outputs changed after plan save.');
+  }
   if (saved.approval.evaluation.approvalRequired || fresh.approval.evaluation.approvalRequired) {
     issues.push('Approval was not valid immediately before execution.');
   }

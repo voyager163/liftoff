@@ -14,17 +14,20 @@ cd my-project
 /liftoff-setup
 ```
 
-`/liftoff-setup` uses the deterministic Liftoff governance engine to complete
-the workflow-specific local bootstrap, then encounters the separately authorized
-publication and read-only Phase 0 boundaries. The user-owned activation state records
+The native setup integration uses the deterministic Liftoff governance engine to
+complete the workflow-specific local bootstrap and reviewed repairs, then
+coordinates separately authorized publication, cloud deployment, qualification,
+and enforcement. Codex invokes its native setup skill through the skill picker
+or `$skill-name`; it does not receive a fabricated slash-command adapter.
+The user-owned activation state records
 execution, not an agent's claim of completion.
 
-**Current activation limits:** local bootstrap is implemented, but the CLI does
-not yet wire every production phase executor or expose approval persistence
-and secure credential enrollment through the command-only setup flow. Missing
-capabilities stop with a blocker; they are not completed by assessment or by
-hand-editing evidence. See the [developer follow-up plan](../DEVELOPER.md#activation-completeness-and-separate-follow-up-plan)
-for the remaining activation work.
+**Independent milestones:** local readiness does not imply publication or
+deployment. Explicit local-only use and declining a later approval remain
+supported. Activation requires real source-matching provider evidence;
+unsupported account capabilities, unverified private access, and incomplete
+observations remain explicit blockers. Retained-state disposal is separate
+lifecycle work, not a 30-day delay before initial activation can complete.
 
 ## Managed files and user-owned state
 
@@ -39,8 +42,10 @@ Enabled governance adds managed-core files:
 .liftoff/governance/credential-policy.schema.json
 .github/prompts/liftoff-setup.prompt.md                # Copilot selected
 .claude/commands/liftoff-setup.md                      # Claude selected
+.agents/skills/liftoff-setup/SKILL.md                  # Codex selected
 .github/prompts/liftoff-governance-assess.prompt.md    # Copilot selected
 .claude/commands/liftoff-governance-assess.md           # Claude selected
+.agents/skills/liftoff-governance-assess/SKILL.md       # Codex selected
 ```
 
 Older generated setup aliases are retired. Use `liftoff update --force` after
@@ -167,7 +172,7 @@ normally return partial coverage. Exit 2 is advisory, not proof that governance
 is broken or permission to remediate.
 
 Reports go to stdout only, never activation state or evidence. Assessment cannot
-complete Phase 0, satisfy an approval gate, or advance any phase. The wrapper
+complete read-only Phase 0, satisfy an approval gate, or advance any phase. The wrapper
 explains the CLI's classifications without inventing findings or executing
 recommendations. Neither installing the integration nor running it activates,
 updates, upgrades, or migrates the project.
@@ -196,6 +201,7 @@ seed-valid
   -> pushed
   -> phase-0-complete
   -> activation-approved
+  -> bootstrap-workflow-source-ready
   -> credential-ready
   -> provider-ready
   -> state-path-selected
@@ -204,8 +210,10 @@ seed-valid
                             -> private-backend-proof    |
                             -> remote-import-verified --|
   -> remote-ready
-  -> application-foundation
+  -> application-prerequisites-ready
   -> workflow-source-ready
+  -> application-artifact-ready
+  -> application-foundation
   -> dev-proof
   -> staging-qualified
   -> production-rehearsed
@@ -213,7 +221,7 @@ seed-valid
   -> enforcement-approved
   -> rulesets-applied
   -> live-readback
-  -> bootstrap-state-disposed
+  ... separate lifecycle: bootstrap-state-disposed when due
 ```
 
 If policy prose, generated tasks, or an agent response orders a transition
@@ -223,6 +231,11 @@ precedes declarative remote import; and only an existing private path or verifie
 remote import can satisfy `remote-ready`.
 
 ## Bootstrap seed and local baseline
+
+`seed-verified` means **Local baseline verification**, not an OpenSpec feature
+change to complete manually. `/liftoff-setup` (Copilot/Claude) or `$liftoff-setup`
+(Codex) is a native coding-agent integration, not a `liftoff setup` command.
+`liftoff init` creates a scaffold; it is not an existing-project repair operation.
 
 Before commit/push or Phase 0, OpenSpec setup completes, syncs, and archives the
 generated `bootstrap-<project>` seed. Spec Kit setup instead validates the real
@@ -254,8 +267,35 @@ requires cloud credentials. A failed local check remains unfinished; only
 explicit execution retries it after repair. Read-only status, resume, and
 verification do not advance tasks or rerun checks. Unchanged current proof can
 be reused; changed relevant inputs require fresh evidence.
-Recorded legacy-shared or unknown infrastructure layouts block this baseline
-with migration-required and no commands, even if new-looking directories exist.
+Recorded legacy-shared or unknown infrastructure layouts require a repair check
+even if new-looking directories exist. Before retrying blocked verification,
+native setup runs `liftoff repair --check --json`. Bare repair also previews;
+ordinary check makes no cloud calls. Only explicit authority permits
+`liftoff repair --check --live --subscription <UUID> --json` for bounded metadata
+discovery using existing authentication. The supported local recipe preserves
+legacy flat-root OpenTofu semantics in a shared application module and the
+selected independent environment roots. It requires authoritatively absent
+resource groups in that subscription and absent local state/backend metadata.
+Missing state files alone are not proof of undeployed infrastructure.
+Discovery is limited to 120 seconds overall, 30 seconds per command, and at most
+24 resource groups. See [repair modes](cli-reference.md#repair-modes) for the
+compatible stable OpenTofu check and exact staged validation sequence.
+
+Only after separate approval of the exact eligible fingerprint does setup run
+`liftoff repair --approve-plan <fingerprint> --json`. Then it runs
+`liftoff update --check --json`, reviews any separate update plan, and resumes
+`liftoff governance plan --scope local --json` and the reported ready local
+apply action. Keep the selected project in every command; repair takes a
+positional project path. Recover interrupted repair through
+`liftoff repair [project-path] --recover`, not update authority.
+
+Repair does not accept `--force`, `--yes`, or `--add-agents`. Agent installation
+and the public stateful migration coordinator are not implemented; an internal
+stateful engine does not make the public command executable. Deployed, unknown,
+ambiguous, and unsupported cases stay plan-only with their source and state
+untouched. Do not edit manifest provenance, copy a fresh init scaffold over the
+project, or recommend manual state moves. A repaired infrastructure layout does
+not establish completed local governance, deployment, or live enforcement.
 
 If the seed was already archived before setup began, it stays archived.
 Setup still runs the entire applicable local baseline, but strict OpenSpec
@@ -284,8 +324,11 @@ ask again; expanded resources, destinations, permissions, cost, exceptions, or
 destructive effects require a new approval.
 Its time window must satisfy `approvedAt <= now < expiresAt` and have a valid
 start/end interval. A future, reversed, or expired envelope cannot authorize
-execution. The contract does not imply a public approval-persistence workflow
-exists; an unavailable entry capability remains a blocker.
+execution. `governance plan` can preview dependency-ready work before approval.
+`governance approve --plan <fingerprint>` persists only the exact reviewed
+authority, with a separate project-bound user-local issue record. Imported
+project JSON is not permission. Final enforcement can bind both its approval
+and subsequent exact ruleset operations without granting other phase authority.
 
 ## Credentials for runner preflight
 
@@ -293,8 +336,7 @@ When `GITHUB_TOKEN` cannot read required hosted-runner metadata, setup first
 prefers an existing verified selected-repository GitHub App installation with the
 required read permissions. Liftoff does not install or broaden an App.
 
-If no approved App is available, the normative policy describes this
-fine-grained PAT fallback, not an implemented enrollment command:
+If no approved App is available, the narrowly scoped fallback is:
 
 | Field | Value |
 | --- | --- |
@@ -307,9 +349,11 @@ fine-grained PAT fallback, not an implemented enrollment command:
 | Writes | none |
 | Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
 
-This release has no public masked credential-enrollment channel. Stop at the
-reported capability blocker rather than creating a credential or hand-writing
-state to make the phase pass.
+After reviewing and approving the credential-ready plan, use
+`liftoff governance credential-enroll --plan <fingerprint>`. The default input
+channel is a private TTY; `--protected-stdin` explicitly selects a protected
+automation channel. The published allowlisted workflow must prove actual
+credential use; the secret name or a policy file alone cannot establish readiness.
 Never paste or show the value in chat, argv, command arguments,
 logs, evidence, files, or screenshots. A disclosed value is
 compromised and must be revoked and rotated through its owner-controlled system.
@@ -323,7 +367,8 @@ secret value.
 
 Task checkboxes are a projection of phase state, not authority. Evidence
 documents carry repository identity, activation version vector, graph hash, phase
-contract digest, real input/baseline digests, body commitment, phase ID, timestamp,
+contract digest, scope, real input/baseline digests, reviewed before/after
+file and Git bindings, body commitment, phase ID, timestamp,
 producer, and result. The local execution anchor is separate from a verified
 remote repository binding; Phase 0 does not replace the anchor beneath earlier
 local receipts. Digests prove consistency, not an independent signature or
@@ -335,30 +380,38 @@ binds the full saved plan, including clocks. `bodyDigest` covers the payload and
 normalized readbacks. Consumers use the validated selected payload, not another
 raw record that happens to reuse an ID. Repository publication binds the actual
 reviewed push destination; Phase 0 cannot invalidate earlier local/publication
-receipts by replacing the local anchor.
+receipts by replacing the local anchor. Scoped projections keep later approved
+workflow publication from invalidating unrelated local application checks,
+while unplanned source, destination, and output changes still invalidate the
+affected proof. External operation handles and pre-write checkpoints prevent
+an interrupted workflow from being dispatched twice.
 
 There may be only one active governance source of truth. An unfinished bootstrap
 seed blocks Phase 0. Exactly one compatible active governance change is resumed.
 Multiple overlapping changes require a schema-valid supersession or archive
 record before any phase advances.
 
-Managed updates install new policy, graph, schema, compatibility metadata, and
-setup and assessment integrations without touching user-owned state. Forced update can remove
+Reviewed managed updates install new policy, graph, schema, compatibility metadata,
+and setup/assessment integrations without acquiring general state ownership.
+Forced update can remove
 exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
 reports `reconciliation-required` and identifies affected descendants. Historical
-activation-v1 state and evidence stay byte-preserved and diagnostic-only under
-activation v2. This release has no automatic historical-state reconciliation,
-reset, or conversion workflow; do not acknowledge a new identity by editing JSON.
+activation-v1/v2 state and evidence remain byte-preserved and non-executable.
+`liftoff update --check` can preview an exact supported successor migration;
+explicitly approved apply preserves original history and creates linked v3 state.
+Fresh local revalidation stops at unsupported or independently authorized work.
+Failure after commit leaves v3 blocked/resumable, not reset to older authority. Never
+acknowledge an identity by editing JSON or treat old approvals as current consent.
 
 ## Private staging and bootstrap retention
 
-These are policy requirements for separately implemented production adapters,
-not a claim that this CLI can provision the complete platform.
 Private Staging DAST uses an ephemeral GitHub-hosted larger runner with Azure
 VNet injection only when genuinely applicable. Phase 0 discovers repository,
 subscription, authority, billing, network, DNS, cost, teardown, and capability
-facts read-only. If DAST is inapplicable, no runner networking is provisioned.
+facts read-only. DAST inapplicability does not bypass provider registration or
+the private execution path required for state operations. Existing suitable
+private paths are reused rather than replaced with public access.
 
 When a private ZRS backend cannot be reached and no existing private management
 path is approved, the bounded `bootstrap-local` branch may create only the
@@ -378,29 +431,37 @@ teardown.
 The generated setup integrations call only strict, project-aware CLI commands:
 
 ```bash
-liftoff governance status --json
-liftoff governance plan --json
-liftoff governance apply-next --json
-liftoff governance apply-next --json --execute
-liftoff governance resume --json
-liftoff governance verify --json
+liftoff governance status --scope local --json
+liftoff governance plan --scope local --json
+liftoff governance apply-next --scope local --json --execute
+liftoff governance verify --scope local --json
+liftoff governance plan --scope activation --inputs public-inputs.json --json
+liftoff governance approve --scope activation --plan <fingerprint> --json
+liftoff governance apply-next --scope activation --plan <fingerprint> --execute --json
+liftoff governance resume --scope activation --json
+liftoff governance status --scope lifecycle --json
 ```
 
-`status`, `plan`, and `verify` are read-only. `apply-next` previews mutations
+Direct commands default to activation scope. `status`, `resume`, and `verify`
+are read-only; `plan` saves a disclosed preview outside the repository without
+changing project/provider data. `apply-next` previews mutations
 unless `--execute` is supplied, and even then executes at most one graph-ready,
 evidence-ready, approved phase. Here, approved means its approval status is
 `not-required` or `reused`. Unknown subcommands, flags, or extra positionals
 fail before project discovery or mutation. Verification reports consistency
-separately from setup completion: a valid not-started or in-progress state may
+separately from selected-scope completion: a valid not-started or in-progress state may
 have `ok: true` and `verificationStatus: "consistent"` while `complete` remains
 false. An intact bootstrap seed awaiting baseline verification or archive is
 also incomplete rather than inconsistent. Missing or overlapping seeds, or an
 active seed contradicting recorded archive completion, still fail verification.
 
 Apply-next reports `selectedPhase` for the attempted transition and
-`executedPhase` only when execution succeeds (otherwise `null`). Its legacy
-`nextReadyPhase` field is not post-transition readiness; use the subsequent
-status or verify response for the next phase. OpenSpec failures include bounded
+`executedPhase` separately from recomputed post-transition `nextReadyPhase`.
+Schema-2 results also identify `nextPlannablePhase`, separate milestone progress,
+and structured registered `nextActions`. A pending external operation is not
+completed evidence. For failed or interrupted work, obtain a fresh
+`governance plan --recover-phase <phase>` and explicitly execute its reviewed
+`governance recover --plan <fingerprint> --execute` action. OpenSpec failures include bounded
 diagnostics with terminal controls removed; credential-shaped output is
 withheld rather than copied into state or command output.
 

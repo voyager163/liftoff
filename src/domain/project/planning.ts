@@ -5,6 +5,7 @@ import type {
   WorkloadPlan
 } from './contracts.js';
 import type { ProjectCatalog } from './catalog.js';
+import { governanceAgentIntegrations, openSpecDeliveryDescription } from './catalog.js';
 import {
   isRetiredPowerAppsWorkload,
   retiredPowerAppsMessage
@@ -356,7 +357,7 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
     { label: 'Coding agents', value: plan.agents.map((agent) => agent.label).join(', ') },
     ...(plan.defaultAgent ? [{ label: 'Default agent', value: plan.defaultAgent.label }] : []),
     ...(plan.specWorkflow.id === 'openspec'
-      ? [{ label: 'OpenSpec workflows', value: '12 workflows; skills and commands' }]
+      ? [{ label: 'OpenSpec workflows', value: `12 workflows; ${openSpecDeliveryDescription(plan.agents)}` }]
       : []),
     ...(plan.specWorkflow.id === 'openspec' &&
       plan.agents.some((agent) => agent.id === 'github-copilot')
@@ -383,14 +384,12 @@ export function projectPlanEntries(plan: ProjectPlan): ProjectPlanEntry[] {
         {
           label: 'Governance setup integrations',
           value: plan.agents.map((agent) =>
-            agent.id === 'github-copilot'
-              ? '.github/prompts/liftoff-setup.prompt.md'
-              : '.claude/commands/liftoff-setup.md'
+            governanceAgentIntegrations[agent.id].setup.pathParts.join('/')
           ).join(', ')
         },
         {
           label: 'Governance activation',
-          value: 'Deferred until commit, push, read-only Phase 0, and explicit plan approval'
+          value: 'Setup coordinates local readiness, then separately approved publication, cloud, and governance activation'
         }
       ];
   const frontendLine = plan.includeFrontend

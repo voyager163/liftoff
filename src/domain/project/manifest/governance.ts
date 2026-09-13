@@ -1,14 +1,16 @@
 import type { LiftoffManifest } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
-import { isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName, managedCoreLogicalNames } from '../artifact-lifecycle.js';
+import { isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName, preCodexManagedCoreLogicalNames } from '../artifact-lifecycle.js';
+import { governanceAgentIntegrations } from '../catalog.js';
 import type { ManifestContractContext } from './context.js';
 import { assertOnlyFields, isRecord, requiredString } from './fields.js';
 
 export const assessmentLogicalNames = [
   'liftoff-governance-assess-copilot',
-  'liftoff-governance-assess-claude'
+  'liftoff-governance-assess-claude',
+  governanceAgentIntegrations.codex.assessment.logicalName
 ] as const;
-export const preAssessmentManagedCoreLogicalNames = managedCoreLogicalNames.filter((logicalName) =>
+export const preAssessmentManagedCoreLogicalNames = preCodexManagedCoreLogicalNames.filter((logicalName) =>
   !assessmentLogicalNames.some((assessment) => assessment === logicalName)
 );
 
@@ -139,9 +141,7 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       }
     }
     const applicableAssessment: string[] = manifest.project.agents.map((agent) =>
-      agent === 'github-copilot'
-        ? 'liftoff-governance-assess-copilot'
-        : 'liftoff-governance-assess-claude'
+      governanceAgentIntegrations[agent].assessment.logicalName
     );
     for (const artifact of governanceArtifacts.filter((entry) =>
       assessmentLogicalNames.some((logicalName) => entry.logicalName === logicalName)
@@ -179,9 +179,7 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       'repository-governance-compatibility',
       'repository-governance-credential-policy-schema',
       ...manifest.project.agents.map((agent) =>
-        agent === 'github-copilot'
-          ? 'liftoff-setup-copilot'
-          : 'liftoff-setup-claude'
+        governanceAgentIntegrations[agent].setup.logicalName
       )
     ];
     const applicable = [...required, ...applicableAssessment];
@@ -212,7 +210,8 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     }
     // Supported older complete inventories predate assessment integrations.
     const missingRequired = missing.filter((logicalName) =>
-      hasAssessmentInventory || required.includes(logicalName)
+      hasAssessmentInventory || required.includes(logicalName) ||
+      logicalName === governanceAgentIntegrations.codex.assessment.logicalName
     );
     if (manifest.governance.state === 'handoff-generated' && missingRequired.length > 0) {
       throw new FileSystemError(

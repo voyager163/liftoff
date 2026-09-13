@@ -437,7 +437,7 @@ The system SHALL treat the GitHub-hosted Copilot coding-agent integration as a d
 - **THEN** it retains the resolved cloud-agent preference instead of replacing it with a config that omits or changes the preference
 
 ### Requirement: Projects support GitHub Copilot and Claude Code together
-The system SHALL configure the selected spec workflow for GitHub Copilot, Claude Code, or both. It SHALL map Liftoff's normalized agent identifiers to framework-owned integration identifiers and SHALL preserve the selected Spec Kit default while adding secondary integrations.
+The system SHALL configure either selected spec workflow for GitHub Copilot, Claude Code, Codex, or any nonempty combination of those agents. It SHALL map normalized IDs to official framework integration IDs, preserve canonical order, and preserve the selected Spec Kit default while adding secondary integrations. Codex SHALL use its native skills-based surface rather than Claude or Copilot command paths.
 
 #### Scenario: Configure both agents for OpenSpec
 - **WHEN** OpenSpec is selected with Copilot and Claude Code
@@ -451,7 +451,17 @@ The system SHALL configure the selected spec workflow for GitHub Copilot, Claude
 
 #### Scenario: Configure Copilot as a secondary Spec Kit integration
 - **WHEN** Spec Kit is selected with Claude Code as default and Copilot as secondary
-- **THEN** the Copilot integration is installed using the tested skills option rather than deprecated agent-file output
+- **THEN** Copilot is installed using the tested skills option rather than deprecated agent-file output
+
+#### Scenario: Configure Codex alone
+- **WHEN** either workflow is selected with Codex alone
+- **THEN** its official Codex integration is installed and validated
+- **AND** no Copilot or Claude integration is required
+
+#### Scenario: Configure all three agents
+- **WHEN** Copilot, Claude, and Codex are selected
+- **THEN** the complete official integration set is present without path or logical-name collisions
+- **AND** each selected agent can be the Spec Kit default when explicitly chosen
 
 ### Requirement: Generated output has an explicit ownership boundary
 The system SHALL distinguish Liftoff managed-core artifacts, project-owned scaffold artifacts, developer-owned desired state, framework-owned output, and write-once seed or overlay content. Initial generation SHALL write the complete resolved scaffold transactionally, but only exact managed-core logical artifacts SHALL retain post-generation hash authority. Project artifacts SHALL retain generation provenance without becoming update-managed. Liftoff SHALL validate declared framework markers without adopting all framework files and SHALL never infer ownership from directory patterns.
@@ -524,58 +534,60 @@ The system SHALL render each Dockerfile base and Docker Compose service image fr
 - **THEN** baseline verification fails before the image reference can be packaged
 
 ### Requirement: Governed projects include one deterministic setup entry point
-When repository governance is enabled, the system SHALL generate
-`/liftoff-setup` integrations for every selected agent and a managed
-machine-readable phase definition. The integrations SHALL contain no model
-selection, SHALL delegate state transitions to the Liftoff CLI, and SHALL NOT
-generate any alternate visible setup command or alias. They SHALL authorize the
-read-only `apply-next --json` preview and the explicit
-`apply-next --json --execute` transition form, and SHALL use the executable form
-only when readiness is reported and approval status is `not-required` or
-`reused`.
+When governance is enabled, Liftoff SHALL generate one native `liftoff-setup` journey for each selected agent. Copilot/Claude SHALL retain `/liftoff-setup`; Codex SHALL use its native `$liftoff-setup` skill. The integration SHALL drive local readiness and the requested approved migration/activation journey through explicit CLI scopes, without model selection or invented aliases. It SHALL obtain required authority before effects, support local-only operation, and verify actual deployment/enforcement rather than stop unconditionally after local preparation.
 
 #### Scenario: Generate Copilot setup
 - **WHEN** GitHub Copilot is selected
-- **THEN** the project includes a `/liftoff-setup` skill or prompt that invokes the deterministic governance commands
+- **THEN** the project includes its native `/liftoff-setup` integration beginning with local scope and continuing through the requested approved activation journey
 
 #### Scenario: Generate Claude setup
 - **WHEN** Claude Code is selected
-- **THEN** the project includes an equivalent `/liftoff-setup` skill or command with the same behavioral contract
+- **THEN** the project includes the equivalent native command with the same end-to-end scope and approval contract
 
 #### Scenario: Generate both agents
-- **WHEN** both agents are selected
-- **THEN** their setup integrations reference the same managed phase graph and user-owned activation state
-- **AND** neither integration declares or asks for a model
+- **WHEN** Copilot and Claude are selected
+- **THEN** their setup integrations reference the same graph and user-owned state
+- **AND** neither declares or asks for a model
 
 #### Scenario: Execute a ready approval-free phase
-- **WHEN** the generated setup integration observes a ready phase whose approval is not required
-- **THEN** it invokes `liftoff governance apply-next --json --execute`
-- **AND** the transition writes authoritative evidence and activation state before verification runs
+- **WHEN** setup observes a ready local phase with no required approval
+- **THEN** it uses explicit local-scoped apply-next execution and verifies the actual outcome
+- **AND** incomplete but consistent local verification does not cause a false failure or automatic activation
+
+#### Scenario: Generate Codex setup
+- **WHEN** Codex is selected
+- **THEN** `.agents/skills/liftoff-setup/SKILL.md` has valid native skill metadata and the same approved repair/activation/resume contract
+- **AND** guidance does not invent a Codex slash-command file or global custom prompt
+
+#### Scenario: Local setup finishes
+- **WHEN** the selected-scope CLI reports local completion
+- **THEN** the integration reports the local milestone and presents the next activation plan for the requested full journey
+- **AND** it performs no publication or provider effect without the required explicit authority
+
+#### Scenario: Full activation finishes
+- **WHEN** required current deployment, qualification, and enforcement readback are verified
+- **THEN** the native setup integration reports the requested immediate journey complete
+- **AND** future lifecycle work is shown separately
 
 ### Requirement: Generated manifests identify the activation contract
-Governed projects SHALL use `liftoff.manifest.json` artifact version 7. Its activation vector SHALL identify the creating Liftoff semantic version, policy version 6, activation-contract version 2, phase-graph schema version 1 and its computed content hash, activation-state schema version 2, evidence-header schema version 2, approval-envelope schema version 2, and supersession and credential-policy schema versions 1. The separate compatibility document SHALL identify compatibility-metadata schema version 2 without adding an unversioned required manifest field. Managed setup integrations SHALL retain normal content hashes instead of introducing an independent skill version, and planning artifacts SHALL NOT invent future graph hashes or contract digests.
+Governed projects SHALL retain manifest artifact 7 and distinguish the writing CLI version from target activation package `0.12.0`. The executable vector SHALL identify policy 6, activation contract 3, graph schema 2 with its computed hash, state/evidence/approval schemas 3, compatibility metadata 4, and unchanged supersession/credential-policy schemas 1. Command output schema 2 and repair schema 1 SHALL remain separate identities. Existing v1/v2 proof SHALL require the declared successor/revalidation path, not retagging. Integrations SHALL use content hashes without independent skill versions or invented graph digests.
 
 #### Scenario: Generate a governed project
-- **WHEN** initialization writes the version 7 manifest and governance artifacts
-- **THEN** every activation identity matches the generated policy, phase graph, schemas, and supported engine constants
+- **WHEN** initialization writes the v7 manifest and governance artifacts
+- **THEN** every activation identity matches the actual packaged policy, graph, schemas, and engine constants
+- **AND** CLI and command-output versions remain separate identities
 
 #### Scenario: Setup integration wording changes
-- **WHEN** only the thin setup integration bytes change
-- **THEN** its managed content hash changes
-- **AND** no setup-skill version changes or is introduced
+- **WHEN** thin setup integration bytes change
+- **THEN** their managed content hashes change without retagging existing activation proof or introducing a setup-skill version
 
 ### Requirement: Governed projects include a distinct read-only assessment integration
-When repository governance is enabled, Liftoff SHALL generate
-`/liftoff-governance-assess` for every selected supported agent. This integration
-SHALL be separate from the sole setup entry point `/liftoff-setup`, SHALL not
-require a model or independent skill version, and SHALL delegate observations
-and classifications to the assessment CLI. It SHALL not run automatically
-during initialization or replace the primary post-init setup recommendation.
+When governance is enabled, Liftoff SHALL generate the distinct logical `liftoff-governance-assess` integration for every selected supported agent. Copilot and Claude SHALL retain their native slash entry points; Codex SHALL use a native skill invoked through `$liftoff-governance-assess` or its skill picker. Assessment SHALL remain separate from setup, require no model or independent skill version, and delegate classifications to the CLI. It SHALL not run automatically during initialization or replace the primary local setup recommendation.
 
 #### Scenario: Generate both supported agents
 - **WHEN** GitHub Copilot and Claude Code are selected with governance enabled
 - **THEN** the project contains `.github/prompts/liftoff-governance-assess.prompt.md` and `.claude/commands/liftoff-governance-assess.md`
-- **AND** both reference the same CLI report contract and canonical governance context
+- **AND** both reference the same assessment contract and governance context
 
 #### Scenario: Generate one selected agent
 - **WHEN** only one supported coding agent is selected
@@ -588,19 +600,23 @@ during initialization or replace the primary post-init setup recommendation.
 - **AND** initialization performs no assessment or live collection
 
 #### Scenario: Invoke assessment through an agent
-- **WHEN** a developer invokes `/liftoff-governance-assess`
-- **THEN** the integration calls `liftoff governance assess --json` and explains its output
-- **AND** it does not invent findings or invoke update, upgrade, activation, mutation commands, or remediation scripts
+- **WHEN** a developer invokes the selected agent's native assessment integration
+- **THEN** it calls `liftoff governance assess --json` and explains the report
+- **AND** it does not invent findings or execute update, upgrade, repair, activation, or project scripts
 
 #### Scenario: Developer explicitly requests live reads
 - **WHEN** the developer requests live comparison through the assessment integration
-- **THEN** it may invoke `liftoff governance assess --live --json`
-- **AND** lack of that request leaves the assessment local-only
+- **THEN** it can use the supported explicit live assessment command
+- **AND** otherwise assessment remains local-only
 
 #### Scenario: Generate across frameworks and operating systems
-- **WHEN** identical selected-agent plans use OpenSpec or Spec Kit on Windows, macOS, or Linux
-- **THEN** the assessment integration contract remains equivalent
-- **AND** logical names and content are deterministic with portable path parts
+- **WHEN** selected-agent plans use OpenSpec or Spec Kit on Windows, macOS, or Linux
+- **THEN** the behavioral contract remains equivalent with deterministic content and portable path parts
+
+#### Scenario: Generate Codex assessment
+- **WHEN** Codex is selected with governance enabled
+- **THEN** `.agents/skills/liftoff-governance-assess/SKILL.md` has valid skill metadata and its own managed identity
+- **AND** it is not generated under a Claude logical name
 
 ### Requirement: Spec Kit projects receive an explicit project-owned bootstrap bundle
 New supported Spec Kit projects SHALL include `spec.md`, `plan.md`, and `tasks.md` under the explicit `specs/000-liftoff-bootstrap` path. The files SHALL use the logical identities `spec-kit-bootstrap-spec`, `spec-kit-bootstrap-plan`, and `spec-kit-bootstrap-tasks` and the one-time project-owned seed lifecycle. They SHALL describe generated-project baseline preparation and local checks without claiming completed product behavior, creating Git branches, or invoking an archive. Official framework initialization markers SHALL remain separate from these seed files.
@@ -641,3 +657,21 @@ The system SHALL generate explicit container-context exclusions for backend, fro
 - **WHEN** container-context exclusion artifacts are generated or resolved on Windows
 - **THEN** the exclusions cover `.venv`, `node_modules`, build outputs, `.git`, local state, and secret-bearing files using platform-correct path handling
 - **AND** no exclusion depends on a hardcoded POSIX-only separator
+
+### Requirement: Codex uses official project-local skill inventories
+Codex SHALL use the pinned frameworks' native project-local skills: the complete declared OpenSpec workflow inventory under `.agents/skills` and the official Spec Kit skill inventory under the same native root. Required files SHALL be selected by explicit framework/agent inventories, not directory ownership patterns. OpenSpec's `both` delivery SHALL not require Codex command files that its official surface does not support.
+
+#### Scenario: OpenSpec generates all Codex workflows
+- **WHEN** Codex is selected under the required complete OpenSpec profile
+- **THEN** all 12 declared OpenSpec skills are present
+- **AND** missing deprecated custom prompt files are not reported as failed initialization
+
+#### Scenario: Codex staging encounters user-global prompts
+- **WHEN** an official initializer could inspect or clean legacy user-global Codex prompts
+- **THEN** Liftoff isolates its staging environment and preserves the real user's global files
+- **AND** selecting Codex is not treated as global cleanup consent
+
+#### Scenario: Shared skills exist on Windows
+- **WHEN** framework output is staged on Windows beside existing custom `.agents` content
+- **THEN** portable inventories and native path validation preserve unlisted files and reject unsafe collisions
+- **AND** only validated, explicitly reviewed output is committed

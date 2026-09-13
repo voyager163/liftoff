@@ -12,11 +12,15 @@ framework such as Spec Kit can require Python for its own tooling.
 - Go projects: stable Go 1.27.x.
 - Generated Azure infrastructure: stable OpenTofu 1.12.x at version 1.12.6 or newer.
 - Selected framework: OpenSpec 1.11.0 or Spec Kit 1.0.1 exactly.
-- Selected agents: GitHub Copilot, Claude Code, or both.
+- Selected agents: GitHub Copilot, Claude Code, OpenAI Codex, or any nonempty
+  combination of the three.
 
 Minimum versions do not authorize a different, untested release line. Release
-candidates and other prereleases do not satisfy stable floors or exact framework
-pins. A working Node.js executable does not establish npm readiness: when npm is
+candidates and other prereleases do not satisfy stable runtime/package-manager
+floors or exact framework pins. Coding agents have a separate policy: compatible
+official stable and preview releases are ready, with previews reported as
+notices. An available newer release is advisory, not evidence that a compatible
+installed version is outdated. A working Node.js executable does not establish npm readiness: when npm is
 required, it is probed separately before destination writes. A missing npm
 executable requires a separately reviewed machine-level repair; Liftoff does not
 try to run the missing executable or reinstall Node.js on its behalf.
@@ -41,14 +45,27 @@ Blocking checks must be ready before initialization can safely complete:
 - Every selected coding agent.
 - For OpenSpec, global profile `custom`, delivery `both`, and all 12 workflows.
 
-Advisory checks describe useful but deferrable capabilities:
+During initialization, advisory checks describe useful but deferrable capabilities:
 
 - Docker CLI and daemon health for API workloads.
 - OpenTofu for generated Azure infrastructure.
 - Azure CLI and observable authentication health.
 
-Authentication checks are read-only. Liftoff never stores credentials or signs
-in to a cloud or agent on your behalf.
+Local setup has a stronger baseline than file generation: Docker's CLI for
+`docker compose config` and compatible OpenTofu for backend-disabled validation
+are required when those checks apply. A missing executable does not make its
+check optional. Docker daemon availability is a separate notice; configuration
+validation does not require starting containers.
+
+Local scope does not require Azure or GitHub authentication. Activation and
+stateful operations select their own required tools and authentication checks;
+private access, protected state storage, backend locking, and provider
+permissions must still be verified by the operation that needs them. A failed
+activation prerequisite does not erase completed local work.
+
+Workstation authentication checks are read-only. Tool installation never grants
+authentication or credential-enrollment authority; agent sign-in stays
+agent-owned.
 
 The default repository-governance handoff has no additional initialization
 prerequisite. `gh`, a remote, licensed GitHub security features, private runners,
@@ -77,24 +94,58 @@ liftoff plan --type standard --api node --spec openspec --agents copilot,claude
 
 ## Tool installation consent
 
-Liftoff prints allowlisted commands before running them. Machine-level
-installation requires `--install-tools` or separate interactive approval.
+Liftoff prints allowlisted executable/argument commands before running them.
+Machine-level remediation requires `--install-tools` or separate per-tool
+interactive approval. Project repair approval, `--yes`, and dependency/profile
+permissions do not substitute for tool consent.
 
 - macOS recipes use Homebrew, npm, or `uv`.
 - Windows recipes use WinGet, npm, or `uv`.
 - Linux system packages are never installed with automatic elevation. Liftoff
   prints distribution-appropriate official guidance; npm and `uv` framework
-  recipes remain separately consented.
+  recipes remain separately consented, as does Codex's official npm recipe.
+  Required package managers must already be compatible and usable; Liftoff does
+  not bootstrap them through a missing or incompatible executable.
 
-An install that changes `PATH` is re-probed when possible and may require a new
-terminal. Do not treat installer success as readiness until the corresponding
-probe passes.
+Remedies are selected by the observed cause and installation origin. A missing
+tool can use its registered installer; an older known package-manager
+installation can use a registered upgrade. Unknown origins and unsupported
+release-line/channel changes produce a concrete limitation rather than a
+guessed reinstall. Replacing a newer pinned framework version or changing its
+channel needs review of the exact corrective recipe; generic installation
+consent does not authorize an automatic downgrade or uninstall.
+
+Every successful installer exit is followed by a version probe. Exit zero does
+not prove files were written, a version changed, or the tool became compatible.
+The same executable/version and unsatisfied constraint is reported as **no
+progress**, and an identical unchanged remedy is not automatically repeated.
+Review changed observations or a different supported recipe instead.
+
+A private immutable no-progress receipt can preserve that guard across CLI
+processes for the same existing invocation root. Receipts contain only the
+registered recipe and hashed before/after observations, never raw paths,
+environment values, credentials, or probe output. An incidental staging working
+directory does not reset the guard; actual executable, constraint, and relevant
+tool-location environment changes do. Corrupt or inaccessible history is an
+explicit remediation error, including a failed receipt write after a verified
+no-op; it is never silently ignored or replaced.
+
+Terminal/PATH guidance requires an actual executable-discovery failure and an
+observed executable candidate at a documented install location. Merely completing
+a search without finding an executable leaves the requirement unchanged or
+unresolved, not restart-required. A resolved incompatible executable, a failed
+version probe, or an unreadable location is not a generic restart problem.
+Finding an existing executable at an install location is not proof the installer
+wrote it. Windows shim paths and paths containing spaces are observed using
+native paths, not shell interpolation.
 
 ## OpenSpec global profile consent
 
 OpenSpec 1.11 stores workflow selection and delivery globally rather than in a
-project. Liftoff requires all workflows with both skills and commands so a fresh
-project does not immediately drift when OpenSpec is rerun.
+project. Liftoff requires all workflows with delivery `both` so a fresh project
+does not immediately drift when OpenSpec is rerun. Copilot and Claude receive
+their supported skills and commands; Codex receives all 12 native project-local
+skills without unsupported command files or global prompts.
 
 Profile inspection is read-only. When the profile differs, interactive runs
 show the observed values, required values, and exact `openspec config set`
@@ -144,9 +195,33 @@ open-ended manifest ranges.
 
 ## Agent detection
 
-Copilot can be detected through its CLI or supported VS Code extensions.
-Claude Code is checked with its version and doctor commands. When both are
-selected, both must be ready.
+Copilot can be detected through `copilot --version` or the supported VS Code
+extensions `GitHub.copilot` and `GitHub.copilot-chat`. Claude Code is checked with
+`claude --version`; `claude doctor` findings remain separate health/authentication
+notices. Codex is checked with `codex --version`. Every selected agent must be
+compatible; Codex-only projects do not require Copilot or Claude.
+
+Version observations preserve preview/build identifiers and exclude
+presentation punctuation: `GitHub Copilot CLI 1.0.83.` is stable `1.0.83`,
+while `GitHub Copilot CLI 1.0.84-5.` remains preview `1.0.84-5`. Compatible
+previews satisfy agent readiness. Numeric framework prereleases such as
+`1.11.0-1` and Python release candidates remain subject to their strict stable
+constraints. Reports distinguish actual executable observations, observed
+versions, required constraints, and the reason a requirement is unresolved.
+
+Codex's [official installation instructions](https://github.com/openai/codex#installing-and-running-codex-cli)
+support `brew install --cask codex` on macOS and
+`npm install -g @openai/codex` on supported platforms. Liftoff uses the Homebrew
+recipe by default on macOS and the separately consented npm recipe on Windows
+and Linux. A reviewed npm alternative is available on macOS. No downloaded
+shell/PowerShell installer, elevation, account changes, or unselected agent
+installation is implied.
+
+Codex invokes project-local OpenSpec, Spec Kit, and Liftoff skills through its
+native skill picker or `$<skill-name>` (for example, `$liftoff-setup`).
+Adding Codex to an existing project uses reviewed additive integration repair,
+not application reinitialization; the tool, existing integrations, and optional
+Spec Kit default retain their independent approval boundaries.
 
 Power Apps and Code Apps plugin preparation are retired. Their inputs are
 rejected before selecting or installing a former workload-specific tool set.

@@ -5,7 +5,10 @@ import { spawnSync } from 'node:child_process';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import { writeGovernanceApprovalAuthority } from '../src/governance-activation/authority-records.js';
+import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import {
+  approvalRequestForSavedPlan,
   buildSavedTransitionPlan,
   buildFineGrainedPatCredentialPolicy,
   canonicalCredentialRepository,
@@ -224,11 +227,31 @@ async function writeEvidence(root: string, record: PhaseEvidenceRecord): Promise
   await writeState(root, state);
 }
 
-async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId): Promise<ApprovalEnvelope> {
+function defaultTestRunner(): CommandRunner {
+  const native = new NodeCommandRunner();
+  return {
+    async run(command, options) {
+      if (['gh', 'az'].includes(command.executable) ||
+        command.executable === 'git' && ['push', 'ls-remote', 'fetch', 'pull', 'clone'].includes(command.args[0]!)) {
+        throw new Error('External provider access requires an explicit local fixture transport.');
+      }
+      return native.run(command, {
+        ...options,
+        ...(command.executable === 'git' ? { env: { ...options?.env, ...isolatedGitEnvironment } } : {})
+      });
+    }
+  };
+}
+
+async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId, runner?: CommandRunner): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
   const manifest = await loadManifest(root);
+  const inspection = await inspectionFor({ root, phaseId, state });
+  const planned = await buildSavedTransitionPlan({ inspection, runner: runner ?? defaultTestRunner(), now });
   const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest), now)[phaseId];
-  const plan = transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination);
+  const plan = planned
+    ? approvalRequestForSavedPlan(planned, phase, state)
+    : transitionPlanForPhase(phase, state, context.transition, root, context.publicationDestination);
   const approval: ApprovalEnvelope = {
     schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion,
     id: `${phaseId}-approval`,
@@ -239,6 +262,7 @@ async function writeApproval(root: string, state: UserActivationState, phaseId: 
   };
   await mkdir(path.join(root, 'governance', 'approvals'), { recursive: true });
   await writeFile(path.join(root, 'governance', 'approvals', `${approval.id}.json`), `${JSON.stringify(approval, null, 2)}\n`, 'utf8');
+  await writeGovernanceApprovalAuthority(root, canonicalSha256({ testApproval: approval.id }), approval);
   return approval;
 }
 
@@ -273,19 +297,7 @@ async function exists(filePath: string): Promise<boolean> {
 async function run(args: string[], cwd: string, runner?: CommandRunner): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const native = new NodeCommandRunner();
-  const localOnlyRunner: CommandRunner = runner ?? {
-    async run(command, options) {
-      if (['gh', 'az'].includes(command.executable) ||
-        command.executable === 'git' && ['push', 'ls-remote', 'fetch', 'pull', 'clone'].includes(command.args[0]!)) {
-        throw new Error('External provider access requires an explicit local fixture transport.');
-      }
-      return native.run(command, {
-        ...options,
-        ...(command.executable === 'git' ? { env: { ...options?.env, ...isolatedGitEnvironment } } : {})
-      });
-    }
-  };
+  const localOnlyRunner: CommandRunner = runner ?? defaultTestRunner();
   const code = await runCommand(parseArgs(args), {
     cwd,
     stdout,
@@ -476,12 +488,12 @@ describe('controlled governance apply-next transitions', () => {
       applied: true,
       selectedPhase: 'seed-valid',
       executedPhase: 'seed-valid',
-      nextReadyPhase: 'seed-valid',
+      nextReadyPhase: 'seed-verified',
       evidence: { result: 'verified' }
     });
     const planPath = path.join(root, ...body.savedPlan.pathParts);
     expect(validateSavedTransitionPlan(JSON.parse(await readFile(planPath, 'utf8')))).toMatchObject({
-      schemaVersion: 1,
+      schemaVersion: 2,
       phaseId: 'seed-valid',
       noSecrets: true
     });
@@ -659,7 +671,6 @@ describe('initial Git adapters', () => {
     git(scratchRoot, ['init', '--bare', remote]);
     const reviewedUrl = 'https://github.com/owner/repo.git';
     git(root, ['remote', 'add', 'origin', reviewedUrl]);
-    await writeApproval(root, (await loadActivationState(root))!.state, 'pushed');
     const transport = new NodeCommandRunner();
     const localGitTransport: CommandRunner = {
       async run(command, options) {
@@ -680,6 +691,7 @@ describe('initial Git adapters', () => {
         return { ...result, command, displayCommand: formatCommand(command) };
       }
     };
+    await writeApproval(root, (await loadActivationState(root))!.state, 'pushed', localGitTransport);
     const pushed = await run(['governance', 'apply-next', '--json', '--execute'], root, localGitTransport);
     expect(pushed.code, pushed.out + pushed.err).toBe(0);
     const pushedBody = JSON.parse(pushed.out);

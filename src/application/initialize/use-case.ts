@@ -63,14 +63,18 @@ import type {
   ProjectPlan
 } from '../../domain/project/contracts.js';
 import {
-  blockingReadinessFailures,
   detectHostEnvironment,
   installRequirement,
   probeWorkstation,
+  selectRemediation,
   selectWorkstationRequirements,
-  type RequirementProbeResult
+  workstationScopeReadiness,
+  type RequirementProbeResult,
+  type InstallResult
 } from '../../workstation.js';
 import { assertSupportedProjectOptions, hasMissingInitInputs } from './inputs.js';
+import { governanceAgentIntegrations, openSpecDeliveryDescription } from '../../domain/project/catalog.js';
+import { createWorkstationNoProgressStore } from '../../adapters/filesystem/workstation-attempts.js';
 
 export async function initializeProject(input: ProjectOptions, context: ExecutionContext): Promise<number> {
   const { presentation } = context;
@@ -220,6 +224,7 @@ export async function initializeProject(input: ProjectOptions, context: Executio
         return 1;
       }
 
+      const setupInvocations = [...new Set(plan.agents.map((agent) => governanceAgentIntegrations[agent.id].setup.invocation))];
       presentation.bullets('Configured integrations', [
         `${plan.specWorkflow.label} ${plan.framework.version}`,
         ...plan.agents.map((agent) =>
@@ -228,7 +233,7 @@ export async function initializeProject(input: ProjectOptions, context: Executio
         ...(plan.specWorkflow.id === 'openspec'
           ? [
               `OpenSpec global profile: ${profileReadiness.changed ? 'configured' : 'verified'}; ` +
-                `${OPEN_SPEC_WORKFLOW_IDS.length} workflows; skills and commands`,
+                `${OPEN_SPEC_WORKFLOW_IDS.length} workflows; ${openSpecDeliveryDescription(plan.agents)}`,
               ...(plan.agents.some((agent) => agent.id === 'github-copilot')
                 ? [`GitHub Copilot cloud agent: ${plan.copilotCloud ? 'enabled' : 'disabled'}`]
                 : [])
@@ -236,7 +241,10 @@ export async function initializeProject(input: ProjectOptions, context: Executio
           : []),
         plan.governanceProfile.id === 'none'
           ? 'Repository governance: disabled'
-          : `Repository governance: ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}; local handoff generated, live activation deferred`
+          : `Repository governance: ${plan.governanceProfile.label} policy ${plan.governanceProfile.policyVersion}; local handoff generated, live activation deferred`,
+        ...(plan.governanceProfile.id !== 'none' && setupInvocations.length > 1
+          ? plan.agents.map((agent) => `${agent.label} setup: ${governanceAgentIntegrations[agent.id].setup.invocation}`)
+          : [])
       ]);
       if (readiness.deferred.length > 0) {
         presentation.bullets('Deferred advisory checks', readiness.deferred);
@@ -244,6 +252,9 @@ export async function initializeProject(input: ProjectOptions, context: Executio
       if (dependencyPhase.deferred.length > 0) {
         presentation.bullets('Deferred project dependencies', dependencyPhase.deferred);
       }
+      const setupInvocation = setupInvocations.length === 1
+        ? setupInvocations[0]!
+        : 'Use the setup invocation shown above for your selected agent';
       presentation.completion(
         `Initialized ${plan.projectName}`,
         target.root,
@@ -255,12 +266,14 @@ export async function initializeProject(input: ProjectOptions, context: Executio
             label: 'Repository governance',
             value: plan.governanceProfile.id === 'none'
               ? 'Disabled'
-              : 'Deterministic setup generated; run /liftoff-setup next'
+              : setupInvocations.length === 1
+                ? `Deterministic setup generated; run ${setupInvocation} next`
+                : 'Deterministic setup generated; use the agent-specific invocation shown above'
           }
         ],
         plan.governanceProfile.id === 'none'
           ? `liftoff validate ${JSON.stringify(target.root)}`
-          : '/liftoff-setup'
+          : setupInvocation
       );
       return 0;
     });
@@ -291,35 +304,32 @@ export async function ensureWorkstationReady(
   resumeInvocation = 'liftoff init',
   commandCwd?: string
 ): Promise<WorkstationReadinessResult> {
-  const requirements = selectWorkstationRequirements(plan);
-  const initialProbes = await probeWorkstation(requirements, runner, { cwd: commandCwd });
+  const requirements = selectWorkstationRequirements(plan, { scope: 'initialization' });
+  const probeOptions = { ...context.workstationProbe, cwd: commandCwd ?? context.cwd, env: context.env ?? context.workstationProbe?.env };
+  const initialProbes = await probeWorkstation(requirements, runner, probeOptions);
   let probes = initialProbes;
   presentation.table(
     'Workstation readiness',
-    ['Requirement', 'Level', 'State', 'Detail'],
+    ['Requirement', 'Level', 'State', 'Cause', 'Executable', 'Detail'],
     probes.map((probe) => [
       probe.requirement.definition.label,
       probe.requirement.severity,
       probe.state,
+      probe.reasonCode,
+      probe.identity.resolvedPath ?? probe.identity.executable,
       probe.detail
     ])
   );
-  const actionable = probes.filter((probe) => probe.state !== 'ready');
-  const host = await detectHostEnvironment();
+  const actionable = probes.filter((probe) => probe.state !== 'ready' || probe.reasonCode !== 'compatible');
+  const host = context.workstationProbe?.host ?? await detectHostEnvironment();
   const installInstruction = (probe: RequirementProbeResult): string => {
-    const recipe = probe.requirement.definition.install[host.platform];
-    const automatic = recipe && (
-      host.platform !== 'linux' || recipe.manager === 'npm' || recipe.manager === 'uv'
-    );
-    if (automatic) {
-      return formatCommand(recipe.command);
-    }
-    if (host.platform === 'linux') {
-      return probe.requirement.definition.linuxRemedies[host.linuxFamily];
-    }
-    return `Install ${probe.requirement.definition.label} manually, then retry.`;
+    const selected = selectRemediation(probe.requirement, probe, host);
+    return selected.recipe ? formatCommand(selected.recipe.command) :
+      selected.remedy ?? probe.remedy ?? selected.detail;
   };
   const authorizedInstallations = new Set<string>();
+  const reviewedRemedies = new Map<string, string>();
+  const installationResults = new Map<string, InstallResult>();
   if (options.installTools === true) {
     for (const probe of actionable) {
       authorizedInstallations.add(probe.requirement.id);
@@ -328,54 +338,69 @@ export async function ensureWorkstationReady(
   if (
     options.installTools === undefined &&
     options.yes !== true &&
-    actionable.length > 0
+    actionable.length > 0 &&
+    prompter !== undefined
   ) {
     for (const probe of actionable) {
-      const recipe = probe.requirement.definition.install[host.platform];
-      const automatic = recipe && (
-        host.platform !== 'linux' || recipe.manager === 'npm' || recipe.manager === 'uv'
-      );
+      const selection = selectRemediation(probe.requirement, probe, host);
+      const recipe = selection.recipe;
+      if (!recipe) continue;
       const constraint = probe.requirement.exactVersion || probe.requirement.minimumVersion
         ? `required ${formatRequirementVersion(probe.requirement)}`
         : 'required to be available';
-      if (await prompter!.confirmToolInstallation({
+      if (await prompter.confirmToolInstallation({
         label: probe.requirement.definition.label,
         severity: probe.requirement.severity,
         purpose: probe.requirement.reasons.join('; '),
         requirement: constraint,
         observed: `${probe.state} - ${probe.detail}`,
-        ...(automatic
-          ? { command: formatCommand(recipe.command) }
-          : { remedy: installInstruction(probe) })
+        command: formatCommand(recipe.command)
       })) {
         authorizedInstallations.add(probe.requirement.id);
+        reviewedRemedies.set(probe.requirement.id, recipe.id);
       }
     }
   }
 
   if (authorizedInstallations.size > 0) {
+    const noProgressStore = context.workstationNoProgressStore ?? createWorkstationNoProgressStore(context.cwd, {
+      ...context.updatePreview,
+      env: context.env ?? context.updatePreview?.env
+    });
     const updates = new Map<string, RequirementProbeResult>();
     for (const probe of actionable) {
       if (!authorizedInstallations.has(probe.requirement.id)) {
         continue;
       }
-      presentation.stage(
-        `Install ${probe.requirement.definition.label}`,
-        `${probe.state} - ${probe.detail}`
-      );
-      const recipe = probe.requirement.definition.install[host.platform];
-      if (recipe && (host.platform !== 'linux' || recipe.manager === 'npm' || recipe.manager === 'uv')) {
+      const selection = selectRemediation(probe.requirement, probe, host);
+      const recipe = selection.recipe;
+      if (recipe?.requiresExplicitReview && !reviewedRemedies.has(probe.requirement.id) &&
+        prompter && options.yes !== true) {
+        if (await prompter.confirmToolInstallation({
+          label: probe.requirement.definition.label,
+          severity: probe.requirement.severity,
+          purpose: `Separate review of ${recipe.operation}; generic tool-install consent does not authorize version or channel replacement.`,
+          requirement: formatRequirementVersion(probe.requirement),
+          observed: `${probe.reasonCode} - ${probe.detail}`,
+          command: formatCommand(recipe.command)
+        })) reviewedRemedies.set(probe.requirement.id, recipe.id);
+      }
+      presentation.stage(`Remediate ${probe.requirement.definition.label}`, `${probe.reasonCode} - ${probe.detail}`);
+      if (recipe && (!recipe.requiresExplicitReview || reviewedRemedies.has(probe.requirement.id))) {
         presentation.command(formatCommand(recipe.command));
       }
       const installation = await installRequirement(probe.requirement, probe, {
+        ...probeOptions,
         authorized: true,
         host,
         runner,
-        cwd: commandCwd,
+        approvedRemediationId: reviewedRemedies.get(probe.requirement.id),
+        noProgressStore,
         streamOptions: presentation.childStreams()
       });
+      installationResults.set(probe.requirement.id, installation);
       updates.set(probe.requirement.id, installation.probe);
-      const kind = installation.state === 'installed'
+      const kind = installation.state === 'installed' || installation.state === 'not-needed'
         ? 'success'
         : probe.requirement.severity === 'blocking'
           ? 'error'
@@ -388,19 +413,21 @@ export async function ensureWorkstationReady(
     probes = probes.map((probe) => updates.get(probe.requirement.id) ?? probe);
   }
 
-  const blockers = blockingReadinessFailures(probes);
+  const blockers = workstationScopeReadiness(probes, 'initialization').toolFailures;
   if (blockers.length > 0) {
     for (const blocker of blockers) {
       presentation.error(
         `${blocker.requirement.definition.label}: ${blocker.detail}`,
-        installInstruction(blocker)
+        installationResults.get(blocker.requirement.id)?.remedy ?? installInstruction(blocker)
       );
     }
     presentation.error(
       'Workstation readiness is incomplete.',
-      options.installTools
-        ? `Open a new terminal if PATH changed, then rerun \`${resumeInvocation}\` with the same project options.`
-        : `Resume with \`${resumeInvocation} --install-tools\` plus the same project options after reviewing the commands.`
+      [...installationResults.values()].some((result) => result.state === 'restart-required')
+        ? `Follow the named executable-discovery remedy, then rerun \`${resumeInvocation}\` with the same project options.`
+        : options.installTools
+          ? `Resolve the named compatibility or installation cause before retrying \`${resumeInvocation}\`. Use --install-tools only for a reviewed registered remedy; unchanged attempts will not be repeated.`
+          : `Resume with \`${resumeInvocation} --install-tools\` plus the same project options after reviewing the commands.`
     );
     return { ready: false, deferred: [], probes };
   }
@@ -409,7 +436,7 @@ export async function ensureWorkstationReady(
     ...probes
       .filter((probe) => probe.requirement.severity === 'advisory' && probe.state !== 'ready')
       .map((probe) =>
-        `${probe.requirement.definition.label}: ${probe.detail} Remedy: ${installInstruction(probe)}`
+        `${probe.requirement.definition.label}: ${probe.detail} Remedy: ${installationResults.get(probe.requirement.id)?.remedy ?? installInstruction(probe)}`
       ),
     ...probes.flatMap((probe) => probe.notices
       .filter((notice) => notice.state !== 'ready')

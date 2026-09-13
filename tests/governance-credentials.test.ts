@@ -21,7 +21,8 @@ import {
   type DiscoveredGitHubAppInstallation,
   type GitHubCredentialAdapter,
   type RepositorySecretReadback,
-  currentActivationIdentity
+  currentActivationIdentity,
+  phaseIds
 } from '../src/governance-activation/index.js';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -381,34 +382,7 @@ describe('credential leak detection and fixtures', () => {
       'utf8'
     );
     await mkdir(path.join(root, 'governance'), { recursive: true });
-    const phases = Object.fromEntries([
-      'seed-valid',
-      'seed-verified',
-      'seed-archived',
-      'committed',
-      'pushed',
-      'phase-0-complete',
-      'activation-approved',
-      'credential-ready',
-      'provider-ready',
-      'state-path-selected',
-      'existing-private-path',
-      'bootstrap-local',
-      'runner-ready',
-      'private-backend-proof',
-      'remote-import-verified',
-      'remote-ready',
-      'application-foundation',
-      'workflow-source-ready',
-      'dev-proof',
-      'staging-qualified',
-      'production-rehearsed',
-      'green-red-proof',
-      'enforcement-approved',
-      'rulesets-applied',
-      'live-readback',
-      'bootstrap-state-disposed'
-    ].map((id) => [id, { state: 'pending', updatedAt: now.toISOString(), evidence: [], approvals: [], blockers: [] }]));
+    const phases = Object.fromEntries(phaseIds.map((id) => [id, { state: 'pending', updatedAt: now.toISOString(), evidence: [], approvals: [], blockers: [] }]));
     await writeFile(path.join(root, 'governance', 'activation-state.json'), `${JSON.stringify({
       schemaVersion: currentActivationIdentity.activationStateSchemaVersion,
       identity: currentActivationIdentity,

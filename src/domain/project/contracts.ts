@@ -14,7 +14,7 @@ export type PatternId =
 export type ProviderId = 'azure' | 'aws' | 'gcp';
 export type ProviderStatus = 'available' | 'planned';
 export type SpecWorkflowId = 'openspec' | 'spec-kit';
-export type CodingAgentId = 'github-copilot' | 'claude';
+export type CodingAgentId = 'github-copilot' | 'claude' | 'codex';
 export type EnvironmentId = 'dev' | 'staging' | 'prod';
 export type ScaffoldStatus = 'full' | 'foundation' | 'integration-shell';
 export type ProjectTypeId = 'genai' | 'standard';
@@ -114,6 +114,15 @@ export interface FrameworkDefinition {
   allowedRoots: string[];
   baseMarkers: string[][];
   agentMarkers: Record<CodingAgentId, string[][]>;
+}
+
+export interface AgentWorkflowSurface {
+  skillsRoot: readonly string[];
+  commands?: {
+    root: readonly string[];
+    prefix: string;
+    suffix: string;
+  };
 }
 
 export interface ProjectOptions {

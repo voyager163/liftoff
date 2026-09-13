@@ -12,7 +12,7 @@ import {
   canonicalPhaseGraph, canonicalSha256, currentActivationIdentity, evidenceBodyDigest,
   evidenceContextForPhase, phaseCapabilities, readActivationInputSnapshot, selectLatestPhaseEvidence,
   validateEvidenceFreshness, type EvidenceHeader, type PhaseEvidenceRecord,
-  evaluateApprovalForTransitionPlan, transitionPlanForPhase, phaseIds, type UserActivationState,
+  evaluateApprovalForTransitionPlan, transitionPlanForPhase, approvalRequestForSavedPlan, phaseIds, type UserActivationState,
   executeApplyNext, buildSavedTransitionPlan, loadActivationState, activationEvidenceContexts,
   type GovernanceTransitionInspection,
   historicalActivationIdentities,
@@ -25,6 +25,8 @@ import { ignoredByRules, parseGitIgnore } from '../src/governance-activation/git
 import { dependencySatisfied } from '../src/domain/governance/activation/readiness.js';
 import { projectMutationLockPath, withProjectMutationLock } from '../src/adapters/filesystem/project-lock.js';
 import { assessInfrastructureLayout, retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
+import { specKitIntegrationPaths } from '../src/framework-validation.js';
+import { writeGovernanceApprovalAuthority } from '../src/governance-activation/authority-records.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 
 const roots: string[] = [];
@@ -42,7 +44,7 @@ async function fixture() {
   const root = path.join(process.cwd(), '.cache', `activation-v2-${process.pid}-${counter}`);
   roots.push(root);
   await writeArtifacts(root, buildArtifacts(plan));
-  for (const marker of [...plan.framework.baseMarkers, ...plan.framework.agentMarkers['github-copilot']]) {
+  for (const marker of [...plan.framework.baseMarkers, ...plan.framework.agentMarkers['github-copilot'], ...specKitIntegrationPaths('github-copilot')]) {
     await writeProjectFile(root, marker, 'official marker fixture\n');
   }
   await writeProjectFile(root, ['.specify', 'integration.json'], JSON.stringify({
@@ -80,7 +82,7 @@ function record(result: EvidenceHeader['result'] = 'verified', producedAt = '202
   return {
     evidenceId: `seed-${producedAt}-${result}`, payload,
     header: {
-      schemaVersion: 2, repositoryId: context.repositoryId, identity: currentActivationIdentity,
+      schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion, repositoryId: context.repositoryId, identity: currentActivationIdentity,
       phaseGraphHash: context.phaseGraphHash, phaseId: 'seed-valid', phaseContractDigest: context.phaseContractDigest,
       baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
       producedAt, producer: 'fixture', result, bodyDigest: evidenceBodyDigest(payload)
@@ -115,10 +117,10 @@ describe('activation-v2 authoritative contracts', () => {
   });
 
   it('declares the 26-phase production capability inventory honestly', () => {
-    expect(Object.keys(phaseCapabilities)).toHaveLength(26);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(10);
+    expect(Object.keys(phaseCapabilities)).toHaveLength(29);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(11);
     expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(2);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(14);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(16);
     expect(canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved')!.allowedMutations.local)
       .toContain('write-openspec-governance');
     const dependency = canonicalPhaseGraph.phases.find((phase) => phase.id === 'remote-ready')!.dependencies[0]!;
@@ -150,7 +152,7 @@ describe('activation-v2 authoritative contracts', () => {
     const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'committed')!;
     const plan = transitionPlanForPhase(phase, state, record().header.transition);
     const now = new Date('2026-09-08T12:00:00.000Z');
-    const envelope = { ...plan, schemaVersion: 2, id: 'approval-fixture', approver: 'owner',
+    const envelope = { ...plan, schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion, id: 'approval-fixture', approver: 'owner',
       approvedAt: '2026-09-08T11:00:00.000Z', expiresAt: '2026-09-08T13:00:00.000Z' };
     expect(evaluateApprovalForTransitionPlan({ ...plan, permissions: plan.permissions.slice(0, 1) }, [envelope], { now }).status).toBe('reused');
     for (const interval of [
@@ -427,12 +429,17 @@ describe('activation-v2 local production adapter', () => {
     for (const phaseId of ['committed', 'pushed'] as const) {
       const current = await inspection();
       const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-      const requested = transitionPlanForPhase(phase, current.state, current.contexts[phaseId].transition, root,
-        current.contexts[phaseId].publicationDestination);
-      await writeProjectFile(root, ['governance', 'approvals', `${phaseId}.json`], JSON.stringify({
-        ...requested, schemaVersion: 2, id: `${phaseId}-fixture-approval`, approver: 'fixture-owner',
+      const planned = await buildSavedTransitionPlan({ inspection: current, runner, now: new Date(), phaseId });
+      const requested = planned
+        ? approvalRequestForSavedPlan(planned, phase, current.state)
+        : transitionPlanForPhase(phase, current.state, current.contexts[phaseId].transition, root,
+            current.contexts[phaseId].publicationDestination);
+      const approvalEnvelope = {
+        ...requested, schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion, id: `${phaseId}-fixture-approval`, approver: 'fixture-owner',
         approvedAt: new Date(Date.now() - 60_000).toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString()
-      }));
+      };
+      await writeProjectFile(root, ['governance', 'approvals', `${phaseId}.json`], JSON.stringify(approvalEnvelope));
+      await writeGovernanceApprovalAuthority(root, canonicalSha256({ testApproval: approvalEnvelope.id }), approvalEnvelope);
       const published = await cli(root, ['apply-next', '--execute'], runner);
       expect(published.code, published.output).toBe(0);
       expect(published.json.executedPhase).toBe(phaseId);

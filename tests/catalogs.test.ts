@@ -12,6 +12,7 @@ import {
   getApiStack,
   getDefaultRegion,
   getEnvironment,
+  getCodingAgent,
   patterns,
   projectTypes,
   providers,
@@ -85,9 +86,24 @@ describe('catalogs', () => {
   });
 
   it('canonicalizes multi-agent aliases in stable catalog order', () => {
-    expect(codingAgents.map((agent) => agent.id)).toEqual(['github-copilot', 'claude']);
-    expect(canonicalizeCodingAgents(['claude-code', 'copilot', 'claude']).agents.map((agent) => agent.id))
+    expect(codingAgents.map((agent) => agent.id)).toEqual(['github-copilot', 'claude', 'codex']);
+    expect(canonicalizeCodingAgents(['codex', 'claude-code', 'copilot', 'OpenAI Codex', 'claude']).agents.map((agent) => agent.id))
+      .toEqual(['github-copilot', 'claude', 'codex']);
+    expect(canonicalizeCodingAgents().agents.map((agent) => agent.id)).toEqual(['github-copilot']);
+    expect(canonicalizeCodingAgents(['claude', 'copilot']).agents.map((agent) => agent.id))
       .toEqual(['github-copilot', 'claude']);
+    expect(canonicalizeCodingAgents(['codex', 'unknown']).unknown).toEqual(['unknown']);
+    expect(canonicalizeCodingAgents([]).agents).toEqual([]);
+  });
+
+  it('registers canonical Codex identity and both official integration IDs', () => {
+    expect(getCodingAgent(' CODEX ')).toMatchObject({
+      id: 'codex',
+      inputName: 'codex',
+      label: 'OpenAI Codex',
+      executable: 'codex',
+      integrationIds: { openspec: 'codex', 'spec-kit': 'codex' }
+    });
   });
 
   it('keeps append-only repository governance profiles with the enabled default', () => {
@@ -111,6 +127,12 @@ describe('catalogs', () => {
       '.claude', 'skills', 'openspec-apply-change', 'SKILL.md'
     ]);
     expect(frameworkDefinitions['spec-kit'].baseMarkers).toContainEqual(['.specify', 'integration.json']);
+    expect(frameworkDefinitions.openspec.agentMarkers.codex).toContainEqual([
+      '.agents', 'skills', 'openspec-apply-change', 'SKILL.md'
+    ]);
+    expect(frameworkDefinitions['spec-kit'].agentMarkers.codex).toContainEqual([
+      '.agents', 'skills', 'speckit-specify', 'SKILL.md'
+    ]);
   });
 
   it('centralizes platform installers and runtime floors', () => {

@@ -15,6 +15,7 @@ import {
 } from '../src/domain/governance/activation/graph.js';
 import {
   phaseIds,
+  phaseScope,
   type PhaseEvidenceRecord,
   type SavedTransitionPlan,
   type UserActivationState
@@ -87,12 +88,13 @@ function savedAssessmentPlan(
   operations: SavedTransitionPlan['operations'] = []
 ): SavedTransitionPlan {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
-  const authority = transitionPlanForPhase(phase, current, context.transition);
+  const authority = transitionPlanForPhase(phase, current, context.transition, undefined, undefined, { operations });
   const evaluation = evaluateApprovalForTransitionPlan(authority, approvals, {
     now: now()
   });
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
+    scope: phaseScope(phaseId),
     phaseId,
     createdAt: now().toISOString(),
     expiresAt: '2026-09-05T00:15:00.000Z',
@@ -1481,8 +1483,22 @@ describe('read-only assessment command', () => {
         now: now()
       })
     ])) as Record<(typeof phaseIds)[number], EvidenceFreshnessContext>;
-    const authority = transitionPlanForPhase(phase, current, contexts[phaseId].transition);
     const subscriptionId = '00000000-0000-0000-0000-000000000001';
+    const operations: SavedTransitionPlan['operations'] = [{
+      adapter: 'azure-opentofu',
+      actionId: 'azure.provider.ensure-ready',
+      mutationClass: 'azure-provider-register',
+      phaseId,
+      inputs: { sourceDigest: 'c'.repeat(64) },
+      destination: {
+        type: 'subscription',
+        identity: subscriptionId,
+        subscriptionId
+      },
+      remote: true,
+      destructive: false
+    }];
+    const authority = transitionPlanForPhase(phase, current, contexts[phaseId].transition, undefined, undefined, { operations });
     const resourceId = `/subscriptions/${subscriptionId}/resourceGroups/app/providers/Microsoft.Storage/storageAccounts/app`;
     const approval = {
       schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion,
@@ -1496,20 +1512,7 @@ describe('read-only assessment command', () => {
         { type: 'subscription' as const, identity: subscriptionId, repository: 'owner/repo', subscriptionId }
       ]
     };
-    const plan = savedAssessmentPlan(phaseId, current, contexts[phaseId], [approval], [{
-      adapter: 'azure-opentofu',
-      actionId: 'azure.provider.ensure-ready',
-      mutationClass: 'azure-provider-register',
-      phaseId,
-      inputs: { sourceDigest: 'c'.repeat(64) },
-      destination: {
-        type: 'subscription',
-        identity: subscriptionId,
-        subscriptionId
-      },
-      remote: true,
-      destructive: false
-    }]);
+    const plan = savedAssessmentPlan(phaseId, current, contexts[phaseId], [approval], operations);
     expect(plan?.approval.evaluation.status).toBe('reused');
     expect(plan?.planDigest).not.toBe(approval.planDigest);
     current.phases[phaseId].approvals = [approval.id];

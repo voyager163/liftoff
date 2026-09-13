@@ -1,6 +1,7 @@
 import { canonicalJson, canonicalSha256, sha256Hex } from '../domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity, canonicalPhaseGraph } from '../domain/governance/activation/graph.js';
-import { canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../domain/governance/activation/approvals.js';
+import { approvalRequestForSavedPlan, canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan } from '../domain/governance/activation/approvals.js';
+import { formatUpdateCommand } from '../application/update/command-guidance.js';
 import { inspectCurrentActivationEvidence } from '../governance-activation/read-only.js';
 import { governanceChangeMetadataFileName, validateGovernanceChangeMetadata } from '../governance-activation/source-of-truth.js';
 import {
@@ -10,6 +11,7 @@ import {
 import type { CommandRunner } from '../process-runner.js';
 import { loadAssessmentCatalog } from './catalog.js';
 import {
+  inspectAssessmentHistoricalActivation,
   inspectAssessmentProject,
   ordinaryGitAssessmentProject,
   type AssessmentProject
@@ -57,6 +59,8 @@ function activationAuthorityFingerprint(
     status: inspection.status,
     state: inspection.state,
     snapshot: inspection.snapshot,
+    migration: inspection.migration,
+    historicalLifecycleObligations: inspection.historicalLifecycleObligations,
     records: inspection.records,
     reviewedPlans: firstContext.reviewedPlans ?? [],
     selections: inspection.selections
@@ -127,12 +131,12 @@ async function localFacts(files: AssessmentFiles, project: AssessmentProject, ca
           throw new Error('Active governance metadata does not match the recorded change and identity.');
         }
         baseline = metadata.baselineSha === '0'.repeat(64) ? null : metadata.baselineSha;
-        if (baseline && project.inputSnapshot && baseline !== project.inputSnapshot.baselineSha) {
+        if (baseline && project.inputSnapshot && baseline !== (project.state.baselineAnchor ?? project.inputSnapshot.baselineSha)) {
           project.diagnostics.push({
             code: 'current-input-mismatch',
             severity: 'warning',
             source: parts.join('/'),
-            message: 'The recorded governance baseline does not match the independently recomputed current input snapshot; evidence-backed scope is withheld.'
+            message: 'The recorded governance baseline does not match the current execution anchor; evidence-backed scope is withheld.'
           });
           baseline = null;
         }
@@ -178,8 +182,8 @@ function boundPlan(project: AssessmentProject, phaseId: ControlDefinition['phase
   const plan = candidates[0];
   if (!plan || plan.baselineDigest === '0'.repeat(64) || plan.inputDigest === '1'.repeat(64) ||
       plan.baselineDigest !== currentContext.baselineSha ||
-      plan.inputDigest !== currentContext.inputDigest ||
-      plan.transitionDigest !== currentContext.transition.transitionDigest ||
+      plan.inputDigest !== (selected.header.inputBindings?.beforeDigest ?? currentContext.inputDigest) ||
+      plan.transitionDigest !== selected.header.transition.transitionDigest ||
       candidates.some((candidate) => candidate.createdAt === plan.createdAt && candidate.planDigest !== plan.planDigest)) return null;
   return plan;
 }
@@ -196,6 +200,7 @@ export function selectBoundAssessmentEvidence(project: AssessmentProject, phaseI
 function applicability(control: ControlDefinition, project: AssessmentProject, now: Date): AssessmentFinding['applicability'] {
   if (control.applicability === 'always') return 'applicable';
   if (control.applicability === 'api') return project.kind === 'liftoff' ? 'applicable' : 'unknown';
+  if (control.applicability === 'state-path' && project.historicalLifecycleObligations?.length) return 'applicable';
   const discovery = selectBoundAssessmentEvidence(project, 'phase-0-complete', now);
   if (!project.state || discovery?.header.result !== 'verified') return 'unknown';
   return (control.applicability === 'private-dast'
@@ -209,24 +214,18 @@ function approvalBindsRepository(
   repository: string,
   now: Date
 ): boolean {
-  const currentBaseline = project.inputSnapshot?.baselineSha ??
+  const currentBaseline = project.state?.baselineAnchor ?? project.inputSnapshot?.baselineSha ??
     project.bindingBaseline;
   if (!project.state || !currentBaseline) return false;
   const plan = boundPlan(project, approval.phaseId, now);
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === approval.phaseId);
-  const authority = plan && phase ? transitionPlanForPhase(phase, project.state, {
-    phaseId: phase.id,
-    baselineSha: plan.baselineDigest,
-    inputDigest: plan.inputDigest,
-    transitionDigest: plan.transitionDigest
-  }) : null;
+  const authority = plan && phase ? approvalRequestForSavedPlan(plan, phase, project.state) : null;
   return approval.baselineSha === currentBaseline &&
     project.identity.availability === 'known' &&
     Date.parse(approval.approvedAt) <= now.getTime() &&
     Date.parse(approval.expiresAt) > now.getTime() &&
     project.state.phases[approval.phaseId].approvals.includes(approval.id) &&
     Boolean(plan && authority && phase?.approvalGate.required) &&
-    authority?.planDigest === approval.planDigest &&
     !evaluateApprovalForTransitionPlan(authority!, [approval], { now }).approvalRequired &&
     plan!.approval.envelopeId === approval.id &&
     plan!.approval.envelopeHash === canonicalApprovalEnvelopeHash(approval) &&
@@ -908,7 +907,7 @@ export async function assessGovernance(
       }
       project = ordinaryGitAssessmentProject();
     }
-    if (project.manifest) {
+    if (project.manifest && project.identity.availability === 'known') {
       try {
         const activation = await inspectCurrentActivationEvidence(
           projectRoot,
@@ -931,6 +930,27 @@ export async function assessGovernance(
             ? [...activation.contexts[phaseIds[0]].reviewedPlans!]
             : [];
           project.activationSelections = activation.selections;
+          project.historicalLifecycleObligations = activation.historicalLifecycleObligations;
+          for (const obligation of activation.historicalLifecycleObligations) {
+            project.diagnostics.push({
+              code: 'historical-lifecycle-verification-required', severity: 'warning',
+              source: `governance/history/${obligation.snapshotId}/index.json`,
+              message: obligation.retention.status === 'disposed'
+                ? 'Historical bootstrap material was disposed. Its keys must not be recreated, and historical disposition is not current ownership or absence proof.'
+                : `Historical bootstrap retention remains due at ${obligation.retention.disposeAfter}. Identity migration does not restart that clock or authorize reuse or disposal; separately approved current lifecycle verification is required.`
+            });
+          }
+          if (activation.migration) {
+            const complete = activation.migration.revalidation.status === 'complete';
+            project.diagnostics.push({
+              code: complete ? 'activation-migration-committed' : 'activation-revalidation-blocked',
+              severity: complete ? 'info' : 'warning',
+              source: 'governance/migration-state.json',
+              message: sanitizeAssessmentText(complete
+                ? 'Local v3 migration and approved local revalidation are complete. Preserved v1/v2 history is informational, not live enforcement proof.'
+                : `Local v3 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run ${formatUpdateCommand(projectRoot, 'check')} after repairing the named blocker.`)
+            });
+          }
           for (const [phaseId, selection] of Object.entries(activation.selections)) {
             if (selection.selected && selection.historicalIssues?.length) {
               project.diagnostics.push({
@@ -1009,10 +1029,24 @@ export async function assessGovernance(
         activationStable = false;
       }
     }
+    let historicalActivationStable = true;
+    if (project.historicalActivation) {
+      const finalHistorical = await inspectAssessmentHistoricalActivation(projectRoot);
+      historicalActivationStable = finalHistorical.fingerprint === project.historicalActivation.fingerprint;
+      if (!historicalActivationStable) {
+        project.diagnostics = project.diagnostics.filter((entry) => entry !== project.historicalActivation?.diagnostic);
+        project.diagnostics.push({
+          code: 'activation-history-changed',
+          severity: 'warning',
+          source: 'activation read-only inspection',
+          message: sanitizeAssessmentText(`Historical activation inputs changed during collection; migration eligibility was withheld. Rerun assessment, then use ${formatUpdateCommand(projectRoot, 'check')} to review a stable source.`)
+        });
+      }
+    }
     const finalGit = await inspectAssessmentGit(projectRoot, options.runner);
     const filesStable = await files.stable();
     const gitStable = canonicalJson(git) === canonicalJson(finalGit);
-    const inputsStable = filesStable && gitStable && activationStable;
+    const inputsStable = filesStable && gitStable && activationStable && historicalActivationStable;
     if (!filesStable) {
       invalidateUnstableObservations(
         findings,

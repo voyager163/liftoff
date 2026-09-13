@@ -18,15 +18,63 @@ import {
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { evidenceContextForPhase, type EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
 import { phaseContractDigests } from '../domain/governance/activation/graph.js';
-import type { ManagedPhaseGraph, PhaseId, UserActivationState } from '../domain/governance/activation/types.js';
+import type { BootstrapStateRetention, ManagedPhaseGraph, PhaseId, UserActivationState } from '../domain/governance/activation/types.js';
 import { toSafeProjectName } from '../domain/project/planning.js';
+import { validateArtifactPathParts } from '../domain/project/paths.js';
 
 export * from '../domain/governance/activation/inputs.js';
 
 const sourceRoots = ['backend', 'frontend', 'functions', 'src', 'database', 'infrastructure', '.github/workflows', '.github/actions', '.github/rulesets', 'governance/rulesets', '.specify'] as const;
-const publicFiles = ['.gitignore', '.dockerignore', '.env.example', 'runtime.config.example.json', 'Dockerfile', 'compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml', 'package.json', 'package-lock.json', 'pyproject.toml', 'uv.lock', 'go.mod', 'go.sum', '.liftoff/governance/policy.md', '.liftoff/governance/context.json', '.liftoff/governance/phase-graph.json'] as const;
+const publicFiles = ['.gitignore', '.dockerignore', '.env.example', 'runtime.config.example.json', 'Dockerfile', 'compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml', 'package.json', 'package-lock.json', 'pyproject.toml', 'uv.lock', 'go.mod', 'go.sum', '.liftoff/governance/policy.md', '.liftoff/governance/context.json', '.liftoff/governance/phase-graph.json', 'governance/credentials/preflight-policy.json'] as const;
 const excludedDirectories = new Set(['node_modules', '.venv', 'venv', '.terraform', '.git', 'dist', 'build', 'out', '.next', 'coverage', '__pycache__', '.pytest_cache', '.mypy_cache', '.ruff_cache', '.cache']);
 const excludedFile = /(?:^\.env(?:\.|$)(?!example$|sample$)|\.tfstate(?:\.|$)|\.tfplan$|\.pem$|\.key$|\.pfx$|\.p12$|\.pyc$|\.log$|^\.liftoff.*(?:tmp|bak)$|^\.npmrc$|^terraform\.rc$|^credentials(?:\.|$)|^local\.settings\.json$)/i;
+
+function exclusionKey(parts: readonly string[]): string {
+  return parts.map((part) => part.normalize('NFC').toLowerCase()).join('/');
+}
+
+export function normalizeSensitivePathExclusions(paths: readonly (readonly string[])[]): string[][] {
+  return [...new Map(paths.map((parts) => {
+    const safe = validateArtifactPathParts(parts, 'Protected activation material reference');
+    return [exclusionKey(safe), safe] as const;
+  })).entries()].sort(([left], [right]) => left.localeCompare(right, 'en')).map(([, parts]) => parts);
+}
+
+export function activationSensitivePathExclusions(
+  state: Pick<UserActivationState, 'bootstrapState'>,
+  historicalRetentions: readonly BootstrapStateRetention[] = []
+): string[][] {
+  return normalizeSensitivePathExclusions([
+    ...historicalRetentions,
+    ...(state.bootstrapState ? [state.bootstrapState] : [])
+  ].flatMap((retention) => [...retention.encryptedStatePathParts, ...retention.encryptionKeyPathParts]));
+}
+
+export function isSensitiveActivationPath(parts: readonly string[], exclusions: readonly (readonly string[])[]): boolean {
+  const key = exclusionKey(parts);
+  return exclusions.some((excluded) => key === exclusionKey(excluded) || key.startsWith(`${exclusionKey(excluded)}/`));
+}
+
+export function activationInputPathIsObserved(parts: readonly string[]): boolean {
+  const relative = parts.join('/');
+  if ((publicFiles as readonly string[]).includes(relative)) return true;
+  const root = sourceRoots.find((candidate) => relative.startsWith(`${candidate}/`));
+  if (!root) return false;
+  return parts.slice(root.split('/').length).every((part) =>
+    !isProjectMutationReservationName(part) && !excludedDirectories.has(part) && !excludedFile.test(part)
+  );
+}
+
+export function protectedLocalInputBlockers(exclusions: readonly (readonly string[])[]): string[] {
+  return exclusions.filter((parts) => activationInputPathIsObserved(parts)).map((parts) =>
+    `Protected retained material overlaps public verification input ${parts.join('/')}. ` +
+    'Local checks cannot consume it; use separately approved lifecycle or state repair to establish a safe private location first.'
+  );
+}
+
+export function activationInputTextDigest(text: string): string {
+  return canonicalSha256(text.replace(/\r\n/g, '\n'));
+}
 
 function code(error: unknown): unknown {
   return typeof error === 'object' && error !== null && 'code' in error ? error.code : undefined;
@@ -35,19 +83,23 @@ function code(error: unknown): unknown {
 export async function readActivationInputSnapshot(
   projectRoot: string,
   manifest: LiftoffManifest,
-  runner: CommandRunner = new NodeCommandRunner()
+  runner: CommandRunner = new NodeCommandRunner(),
+  options: { sensitivePathExclusions?: readonly (readonly string[])[] } = {}
 ): Promise<ActivationInputSnapshot> {
+  const sensitivePathExclusions = normalizeSensitivePathExclusions(options.sensitivePathExclusions ?? []);
   const files = new Map<string, string>();
   async function include(parts: readonly string[], logicalPath = parts.join('/'), seed = false): Promise<void> {
+    if (isSensitiveActivationPath(parts, sensitivePathExclusions)) return;
     const bytes = await readProjectFile(projectRoot, [...parts]);
     if (bytes === undefined) return;
     const text = bytes.toString('utf8');
-    const digest = canonicalSha256(seed ? normalizedSeedInput(text) : text.replace(/\r\n/g, '\n'));
+    const digest = seed ? canonicalSha256(normalizedSeedInput(text)) : activationInputTextDigest(text);
     const prior = files.get(logicalPath);
     if (prior !== undefined && prior !== digest) throw new Error(`Conflicting activation input copies for ${logicalPath}.`);
     files.set(logicalPath, digest);
   }
   async function walk(parts: readonly string[], logicalRoot = parts.join('/'), seed = false): Promise<void> {
+    if (isSensitiveActivationPath(parts, sensitivePathExclusions)) return;
     const root = await resolveProjectPath(projectRoot, [...parts]);
     let entries: Dirent[];
     try { entries = await readdir(root, { withFileTypes: true }); }
@@ -55,6 +107,7 @@ export async function readActivationInputSnapshot(
     for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
       if (isProjectMutationReservationName(entry.name) || excludedDirectories.has(entry.name) || excludedFile.test(entry.name)) continue;
       const child = [...parts, entry.name];
+      if (isSensitiveActivationPath(child, sensitivePathExclusions)) continue;
       const logical = `${logicalRoot}/${entry.name}`;
       if (entry.isDirectory()) await walk(child, logical, seed);
       else if (entry.isFile()) await include(child, logical, seed);
@@ -63,7 +116,8 @@ export async function readActivationInputSnapshot(
   }
   for (const root of sourceRoots) await walk(root.split('/'));
   for (const file of publicFiles) await include(file.split('/'));
-  const localEnvironment = await readProjectFile(projectRoot, ['.env']);
+  const localEnvironment = isSensitiveActivationPath(['.env'], sensitivePathExclusions)
+    ? undefined : await readProjectFile(projectRoot, ['.env']);
   if (localEnvironment) {
     const values = normalizedPublicEnvironment(localEnvironment.toString('utf8'));
     if (Object.keys(values).length > 0) files.set('public-local-environment', canonicalSha256(values));
@@ -86,7 +140,9 @@ export async function readActivationInputSnapshot(
     await include(['openspec', 'config.yaml']);
     const workload = manifest.project.workload;
     const capability = `${workload.kind === 'standard' ? workload.apiStack : workload.pattern}-application-baseline`;
-    const mainSpec = await readProjectFile(projectRoot, ['openspec', 'specs', capability, 'spec.md']);
+    const mainSpecParts = ['openspec', 'specs', capability, 'spec.md'];
+    const mainSpec = isSensitiveActivationPath(mainSpecParts, sensitivePathExclusions)
+      ? undefined : await readProjectFile(projectRoot, mainSpecParts);
     if (mainSpec !== undefined) workflowSpecDigest = canonicalSha256(mainSpec.toString('utf8').replace(/\r\n/g, '\n'));
   }
   async function git(args: string[], allowedMissing = false): Promise<string | null> {
@@ -113,6 +169,7 @@ export async function readActivationInputSnapshot(
   const project = { project: manifest.project, framework: manifest.framework, governance: manifest.governance.profile };
   const inventory: ActivationInputFile[] = [...files].sort(([a], [b]) => a.localeCompare(b, 'en')).map(([path, digest]) => ({ path, digest }));
   return { schemaVersion: 2, project, files: inventory, git: { head, branch, pushUrls }, baselineSha: activationBaselineDigest(project, inventory),
+    ...(sensitivePathExclusions.length ? { sensitivePathExclusions } : {}),
     ...(workflowSpecDigest ? { workflowSpecDigest } : {}) };
 }
 
@@ -128,8 +185,8 @@ export function activationEvidenceContexts(
       repositoryId: state.repository.id,
       identity: state.identity,
       phaseGraphHash: state.identity.phaseGraphHash,
-      baselineSha: snapshot.baselineSha,
-      inputDigest: phaseInputDigest(phase.id, snapshot),
+      baselineSha: state.baselineAnchor ?? snapshot.baselineSha,
+      inputDigest: phaseInputDigest(phase.id, snapshot, state),
       liveReadbackProviders: phase.evidence.liveReadbackProviders,
       remoteBindingDigest: remoteBindingDigest(state.remoteBinding),
       now

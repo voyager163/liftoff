@@ -565,7 +565,7 @@ describe('migrate command', () => {
     const result = await run(['migrate', source, '--region', 'eastus', '--yes'], parent, runner);
 
     expect(result.code).toBe(1);
-    expect(result.err).toContain('OpenSpec: command not found');
+    expect(result.err).toContain('OpenSpec: openspec not found');
     expect(result.err).toContain('liftoff migrate');
     await expect(access(path.join(parent, 'legacy-app-liftoff'))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await hashTree(source)).toEqual(before);

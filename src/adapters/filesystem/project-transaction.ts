@@ -6,7 +6,7 @@ import { withProjectMutationLock } from './project-lock.js';
 import { errorCode, errorMessage } from './errors.js';
 
 export type ProjectFileMutation =
-  | { type: 'write'; pathParts: string[]; content: string }
+  | { type: 'write'; pathParts: string[]; content: string | Buffer; mode?: number }
   | { type: 'delete'; pathParts: string[] };
 
 export class ProjectFileTransactionError extends FileSystemError {
@@ -69,7 +69,7 @@ async function assertProjectFileSnapshot(
 async function assertAppliedMutationCurrent(
   projectRoot: string,
   mutation: ProjectFileMutation,
-  original: ProjectFileSnapshot
+  expectedMode: number | undefined
 ): Promise<void> {
   const current = await captureProjectFileSnapshot(projectRoot, mutation.pathParts);
   if (mutation.type === 'delete') {
@@ -82,8 +82,10 @@ async function assertAppliedMutationCurrent(
   }
   if (
     current.content === undefined ||
-    !current.content.equals(Buffer.from(mutation.content, 'utf8')) ||
-    original.mode !== undefined && current.mode !== original.mode
+    !current.content.equals(
+      typeof mutation.content === 'string' ? Buffer.from(mutation.content, 'utf8') : mutation.content
+    ) ||
+    expectedMode !== undefined && current.mode !== expectedMode
   ) {
     throw new FileSystemError(
       `Project update target changed before rollback: ${mutation.pathParts.join('/')}`
@@ -139,6 +141,10 @@ export async function applyProjectFileTransaction(
       preconditions.set(key, snapshot);
     }
     for (const mutation of mutations) {
+      if (mutation.type === 'write' && mutation.mode !== undefined &&
+          (!Number.isInteger(mutation.mode) || mutation.mode < 0 || mutation.mode > 0o7777)) {
+        throw new FileSystemError(`Invalid project update mode for ${mutation.pathParts.join('/')}.`);
+      }
       const key = mutation.pathParts.join('\0');
       if (snapshots.has(key)) {
         throw new FileSystemError(
@@ -160,7 +166,7 @@ export async function applyProjectFileTransaction(
       await assertProjectFileSnapshot(projectRoot, snapshot);
     }
 
-    const applied: ProjectFileMutation[] = [];
+    const applied: { mutation: ProjectFileMutation; mode?: number }[] = [];
     try {
       for (const [index, mutation] of mutations.entries()) {
         await options.onBeforeMutation?.(mutation, index);
@@ -170,18 +176,33 @@ export async function applyProjectFileTransaction(
           snapshots.get(mutation.pathParts.join('\0'))!
         );
         if (mutation.type === 'write') {
+          const originalMode = snapshots.get(mutation.pathParts.join('\0'))!.mode;
+          const createdMode = 0o666 & ~process.umask();
+          const appliedMutation = {
+            mutation,
+            mode: originalMode ?? (mutation.mode === undefined ? undefined
+              : process.platform === 'win32' ? (createdMode & 0o200 ? 0o666 : 0o444) : createdMode)
+          };
           await writeProjectFile(projectRoot, mutation.pathParts, mutation.content);
+          applied.push(appliedMutation);
+          if (mutation.mode !== undefined) {
+            await lease.assertHeld();
+            await assertAppliedMutationCurrent(projectRoot, mutation, appliedMutation.mode);
+            await chmod(await resolveProjectPath(projectRoot, mutation.pathParts), mutation.mode);
+            appliedMutation.mode = process.platform === 'win32'
+              ? (mutation.mode & 0o200 ? 0o666 : 0o444) : mutation.mode;
+          }
         } else {
           await deleteProjectFile(projectRoot, mutation.pathParts);
+          applied.push({ mutation });
         }
-        applied.push(mutation);
       }
     } catch (error) {
       const rollbackFailures: string[] = [];
-      for (const mutation of [...applied].reverse()) {
+      for (const { mutation, mode } of [...applied].reverse()) {
         const snapshot = snapshots.get(mutation.pathParts.join('\0'))!;
         try {
-          await assertAppliedMutationCurrent(projectRoot, mutation, snapshot);
+          await assertAppliedMutationCurrent(projectRoot, mutation, mode);
           if (snapshot.content === undefined) {
             await deleteProjectFile(projectRoot, mutation.pathParts);
           } else {
