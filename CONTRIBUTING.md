@@ -28,12 +28,17 @@ npx vitest run tests/<focused-file>.test.ts
 npm run check
 ```
 
-The root Vitest configuration limits Windows to two concurrent file workers to
-reduce contention between filesystem-heavy migration and evidence checks.
-Other platforms retain Vitest's worker default. Test discovery, isolation,
-assertions, and timeouts are unchanged, including the migration inspection
-suite's 90-second limit; use these defaults for CI qualification rather than
-increasing timeouts or excluding slow cases.
+The root Vitest configuration limits Windows to two concurrent file workers.
+Within the same test invocation, ordered projects run the other root files first,
+then the intact `tests/migration-inspection.test.ts` file without competing
+filesystem-heavy suites or native builds. Each file belongs to exactly one
+group; targeted file selectors still run the selected file. Real revalidation
+and fixture construction remain inside the original timed test bodies.
+Other platforms retain their existing single-project configuration and Vitest's
+worker default. Discovery remains complete, and isolation, assertions, and
+timeouts are unchanged, including the migration inspection suite's 90-second
+limit. Use these defaults for CI qualification rather than increasing timeouts
+or excluding slow cases.
 
 Before a change is release-ready, also verify the packed artifact:
 
