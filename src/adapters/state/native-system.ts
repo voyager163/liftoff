@@ -21,7 +21,7 @@ export const nativeLocalStateProtocol = Object.freeze({
 });
 
 export function nativeStateHostId(): string {
-  return `native-host:${stateObjectDigest({ platform: process.platform, host: hostname(), uid: process.getuid?.() })}`;
+  return `native-host:${stateObjectDigest({ platform: process.platform, host: hostname(), uid: process.getuid?.() ?? null })}`;
 }
 
 export async function captureStateExecutable(filename: string): Promise<StateRegisteredExecutable> {

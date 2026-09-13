@@ -1,5 +1,6 @@
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { hostname } from 'node:os';
 import { afterAll, describe, expect, it, vi } from 'vitest';
 import {
   DarwinFileVaultVolumeAttestor, DarwinKeychainStateKeyProvider, observeDarwinStateVolume
@@ -8,9 +9,28 @@ import { DarwinKeychainAzureReader, assertEnvironmentOnlyProviders } from '../sr
 import { nativeStateHostId } from '../src/adapters/state/native-system.js';
 import type { DarwinAzureReaderReference, DarwinStateSystemBridge } from '../src/domain/repair/stateful.js';
 import { context } from './fixtures/state-migration/fakes.js';
+import { stateObjectDigest } from '../src/domain/repair/stateful-invariants.js';
 
 const scratch = path.join(process.cwd(), '.cache', `state-darwin-capability-tests-${process.pid}`);
 afterAll(async () => { await rm(scratch, { recursive: true, force: true }); });
+
+describe('portable native state host identity', () => {
+  it.each([undefined, 0, 501])('represents UID %s without changing supported POSIX identities', (uid) => {
+    const original = Object.getOwnPropertyDescriptor(process, 'getuid');
+    Object.defineProperty(process, 'getuid', {
+      configurable: true, value: uid === undefined ? undefined : () => uid
+    });
+    try {
+      expect(nativeStateHostId()).toBe(`native-host:${stateObjectDigest({
+        platform: process.platform, host: hostname(), uid: uid ?? null
+      })}`);
+      expect(nativeStateHostId()).toMatch(/^native-host:[a-f0-9]{64}$/);
+    } finally {
+      if (original) Object.defineProperty(process, 'getuid', original);
+      else Reflect.deleteProperty(process, 'getuid');
+    }
+  });
+});
 
 describe('independently observed Darwin capabilities', () => {
   it('requires encrypted APFS/FileVault, current owner-only access, the actual host, and the bound volume', async () => {
