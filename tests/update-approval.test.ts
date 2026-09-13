@@ -222,8 +222,14 @@ describe('update approval helper', () => {
 
   it.each([
     { answer: '\r', status: 'declined', reason: 'declined' },
+    { answer: ' \r', status: 'declined', reason: 'declined' },
+    { answer: 'n\r', status: 'declined', reason: 'declined' },
+    { answer: ' n \r', status: 'declined', reason: 'declined' },
     { answer: 'y\r', status: 'approved', method: 'interactive' },
-    { answer: '\u0003', status: 'declined', reason: 'cancelled' }
+    { answer: ' y \r', status: 'approved', method: 'interactive' },
+    { answer: 'y\rn\r', status: 'approved', method: 'interactive' },
+    { answer: '\u0003', status: 'declined', reason: 'cancelled' },
+    { answer: '\u0003y\r', status: 'declined', reason: 'cancelled' }
   ])('uses Inquirer on injected streams for $status ($answer)', async ({ answer, ...outcome }) => {
     const stdin = Object.assign(new PassThrough(), {
       isTTY: true,
@@ -239,6 +245,7 @@ describe('update approval helper', () => {
       await expect(result).resolves.toEqual({ fingerprint, ...outcome });
       expect(stderr.text()).toContain('(y/N)');
       expect(stdout.text()).toBe('');
+      expect(stdin.setRawMode).toHaveBeenLastCalledWith(false);
     } finally {
       stdin.write('\u0003');
       await result.catch(() => undefined);
