@@ -30,8 +30,8 @@ async function toolFile(
   }
   const before = await lstat(target, { bigint: true });
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(applicationPreparationBounds.toolFileBytes) ||
-      before.size === 0n || process.platform !== 'win32' && (before.mode & 0o002n) !== 0n) {
-    throw new ApplicationInspectionError('[untrusted-tool] A resolved tool is not a bounded, non-world-writable installed regular file.');
+      before.size === 0n) {
+    throw new ApplicationInspectionError('[untrusted-tool] A resolved tool is not a bounded installed regular file.');
   }
   const stamp = [
     target, binary, before.dev, before.ino, before.size, before.mode, before.mtimeNs, before.ctimeNs
