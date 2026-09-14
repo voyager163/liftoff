@@ -121,7 +121,7 @@ it('preserves the existing customer-specific price rule', async () => {
   const preparation: ApplicationPreparationRequest[] = [{
     provider: stack === 'node-fastify' ? 'npm-ci' : stack === 'python-fastapi' ? 'uv-locked-sync' : 'go-mod-download',
     version: 1, cwdPathParts: ['backend'],
-    packageSource: stack === 'node-fastify' ? options.npmSource ?? 'microsoft-npm' : stack === 'python-fastapi' ? 'pypi' : 'go-proxy',
+    packageSource: stack === 'node-fastify' ? options.npmSource ?? 'npmjs' : stack === 'python-fastapi' ? 'pypi' : 'go-proxy',
     network, lifecycle: 'disabled'
   }];
   const command = (executable: string, args: string[], cwdPathParts: string[]): ApplicationVerificationCommand => ({
@@ -132,7 +132,7 @@ it('preserves the existing customer-specific price rule', async () => {
     : stack === 'python-fastapi' ? [command('python', ['-m', 'pytest', '-q', 'backend/tests'], [])]
       : [command('go', ['test', './...'], ['backend'])];
   if (options.frontend) {
-    preparation.push({ provider: 'npm-ci', version: 1, cwdPathParts: ['frontend'], packageSource: options.npmSource ?? 'microsoft-npm', network, lifecycle: 'disabled' });
+    preparation.push({ provider: 'npm-ci', version: 1, cwdPathParts: ['frontend'], packageSource: options.npmSource ?? 'npmjs', network, lifecycle: 'disabled' });
     commands.push(command('npm', ['run', 'build', '--ignore-scripts'], ['frontend']));
   }
   const document: ApplicationPatchDocument = {

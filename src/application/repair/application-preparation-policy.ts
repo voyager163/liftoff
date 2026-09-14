@@ -34,7 +34,7 @@ export const applicationPackageSources = {
   },
   'microsoft-npm': {
     family: 'npm', registry: 'https://packagefeedproxy.microsoft.io/npm/',
-    artifactOrigins: ['https://packagefeedproxy.microsoft.io', 'https://pkgs.dev.azure.com'],
+    artifactOrigins: ['https://packagefeedproxy.microsoft.io', 'https://pkgs.dev.azure.com', 'https://registry.npmjs.org'],
     remoteProxyOptIn: true
   },
   pypi: {
@@ -43,7 +43,7 @@ export const applicationPackageSources = {
   },
   'microsoft-pypi': {
     family: 'python', registry: 'https://packagefeedproxy.microsoft.io/pypi/simple',
-    artifactOrigins: ['https://packagefeedproxy.microsoft.io', 'https://pkgs.dev.azure.com'],
+    artifactOrigins: ['https://packagefeedproxy.microsoft.io', 'https://pkgs.dev.azure.com', 'https://files.pythonhosted.org', 'https://pypi.org'],
     remoteProxyOptIn: false
   },
   'go-proxy': {
