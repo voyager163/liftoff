@@ -704,4 +704,23 @@ exec node "${mockPs}" "$@"
     expect(result.errorCode).toBe('ENOENT');
     expect(result.errorMessage).toContain('could not be resolved against the admitted target environment PATH');
   });
+
+  it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {
+    const { environmentValue } = await import('../src/domain/workstation/executables.js');
+
+    // 1. Undefined Path must not shadow valid PATH
+    const envWithUndefinedPath = { Path: undefined, PATH: 'C:\\valid\\node' };
+    expect(environmentValue(envWithUndefinedPath, 'PATH', 'win32')).toBe('C:\\valid\\node');
+    expect(environmentValue(envWithUndefinedPath, 'Path', 'win32')).toBe('C:\\valid\\node');
+
+    // 2. Conflicting defined aliases must be rejected
+    const conflictingEnv = { Path: 'C:\\first', PATH: 'C:\\second' };
+    expect(() => environmentValue(conflictingEnv, 'PATH', 'win32')).toThrow(
+      /Conflicting case-insensitive environment aliases detected/
+    );
+
+    // 3. Deliberately scrubbed PATH (only undefined) must not resurrect ambient PATH
+    const scrubbedEnv = { Path: undefined };
+    expect(environmentValue(scrubbedEnv, 'PATH', 'win32')).toBeUndefined();
+  });
 });

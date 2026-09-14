@@ -229,9 +229,15 @@ export class NodeCommandRunner implements CommandRunner {
             const pgid = child.pid;
             const settledGroup = await waitForProcessGroupSettlement(pgid, options.settlementWaitMs ?? 500);
             if (!settledGroup) {
+              const terminated = await terminateProcessTree(child, ownsProcessGroup);
               processTreeSettled = false;
-              errorCode ??= 'DESCENDANT_PROCESSES_ACTIVE';
-              errorMessage ??= 'Descendant processes in the command process tree remained active after the root process completed.';
+              if (!terminated) {
+                errorCode ??= 'PROCESS_TREE_TERMINATION_FAILED';
+                errorMessage ??= 'Descendant processes in the command process tree remained active after the root process completed and could not be terminated.';
+              } else {
+                errorCode ??= 'DESCENDANT_PROCESSES_ACTIVE';
+                errorMessage ??= 'Descendant processes in the command process tree remained active after the root process completed and were terminated.';
+              }
             } else {
               processTreeSettled = true;
             }

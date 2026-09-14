@@ -14,11 +14,18 @@ export function applicationSearchEnvironment(
     const value = inherited[name] ?? process.env[name];
     if (value) environment[name] = value;
   }
-  const search = inherited.PATH ?? inherited.Path ?? process.env.PATH ?? '';
+  const search = inherited.PATH ?? inherited.Path ?? process.env.PATH ?? process.env.Path ?? '';
   environment.PATH = search.slice(0, 32_768).split(path.delimiter).slice(0, 256).filter((entry) =>
     path.isAbsolute(entry) && ![projectRoot, stagingRoot, cwd].some((root) => applicationWithin(root, path.resolve(entry)))
   ).join(path.delimiter);
-  if (process.platform === 'win32') environment.PATHEXT = '.COM;.EXE;.BAT;.CMD';
+  if (process.platform === 'win32') {
+    environment.PATHEXT = '.COM;.EXE;.BAT;.CMD';
+    for (const key of Object.keys(environment)) {
+      if (key.toLowerCase() === 'path' && key !== 'PATH') {
+        delete environment[key];
+      }
+    }
+  }
   return environment;
 }
 

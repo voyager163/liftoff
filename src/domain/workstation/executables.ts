@@ -28,10 +28,35 @@ export function hostPath(platform: SupportedPlatform): typeof path.win32 {
 }
 
 export function environmentValue(env: NodeJS.ProcessEnv, name: string, platform: SupportedPlatform): string | undefined {
-  const key = platform === 'win32'
-    ? Object.keys(env).find((entry) => entry.toLowerCase() === name.toLowerCase())
-    : name;
-  return key === undefined ? undefined : env[key];
+  if (platform !== 'win32') {
+    return env[name];
+  }
+  const targetLower = name.toLowerCase();
+  const definedMatches: Array<{ key: string; value: string }> = [];
+
+  for (const key of Object.keys(env)) {
+    if (key.toLowerCase() === targetLower) {
+      const val = env[key];
+      if (val !== undefined) {
+        definedMatches.push({ key, value: val });
+      }
+    }
+  }
+
+  if (definedMatches.length === 0) {
+    return undefined;
+  }
+
+  const firstValue = definedMatches[0].value;
+  for (let i = 1; i < definedMatches.length; i++) {
+    if (definedMatches[i].value !== firstValue) {
+      throw new Error(
+        `Conflicting case-insensitive environment aliases detected for "${name}": "${definedMatches[0].key}" and "${definedMatches[i].key}".`
+      );
+    }
+  }
+
+  return firstValue;
 }
 
 export function executableCandidates(executable: string, context: ExecutableObservationContext): string[] {

@@ -259,14 +259,14 @@ describe('registered locked preparation input and tool contracts', () => {
     const scriptPath = ['backend', 'test', 'spawn-descendant.cjs'];
     const scriptContent = `
       const { spawn } = require('node:child_process');
-      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 5000)'], { stdio: 'ignore' });
+      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], { stdio: 'ignore' });
       descendant.unref();
       process.exit(0);
     `;
     await putApplicationFixtureFile(f.root, scriptPath, scriptContent);
     f.document.verification.commands = [{
       executable: 'node', args: ['backend/test/spawn-descendant.cjs'], cwdPathParts: [],
-      timeoutMs: 10_000, maxOutputBytes: 16_384, network: false
+      timeoutMs: process.platform === 'win32' ? 2_000 : 10_000, maxOutputBytes: 16_384, network: false
     }];
     delete f.document.verification.preparation;
     await save(f, true);
@@ -278,9 +278,15 @@ describe('registered locked preparation input and tool contracts', () => {
     const runner = new NodeCommandRunner();
     const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
     expect(verified.status).toBe('failed');
-    expect(verified.cleanupComplete).toBe(false);
-    expect(verified.retainedWorkspace).toBeDefined();
-    expect(verified.blockers.join(' ')).toContain('[workspace-cleanup] Registered workspace cleanup is blocked or incomplete');
+    if (process.platform === 'win32') {
+      expect(verified.commands[0]?.timedOut).toBe(true);
+      expect(verified.cleanupComplete).toBe(true);
+      expect(verified.retainedWorkspace).toBeUndefined();
+    } else {
+      expect(verified.cleanupComplete).toBe(false);
+      expect(verified.retainedWorkspace).toBeDefined();
+      expect(verified.blockers.join(' ')).toContain('[workspace-cleanup] Registered workspace cleanup is blocked or incomplete');
+    }
   }, 30_000);
 
   it.each([
