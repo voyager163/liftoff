@@ -185,7 +185,7 @@ describe('selected native repair contracts', () => {
   });
 
   it('appends exact ownership and history paths without changing release, activation or repair identities', () => {
-    expect(liftoffVersion).toBe('0.12.2');
+    expect(liftoffVersion).toBe('0.12.3');
     expect(currentActivationIdentity).toMatchObject({
       liftoffVersion: '0.12.0', manifestArtifactVersion: 7, policyVersion: '6',
       activationContractVersion: 3, phaseGraphSchemaVersion: 2, activationStateSchemaVersion: 3,

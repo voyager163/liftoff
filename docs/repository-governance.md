@@ -213,7 +213,7 @@ new history and repair journals use schema 2. Missing capability support stops
 the operation with `liftoff upgrade --check --json`, not direct project edits.
 Upgrading the CLI is a separate decision. Require advertised `interactive-repair`
 support before using the normal interactive journey. Repair identity does not change
-package 0.12.2 or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
+package 0.12.3 or activation 0.12.0 / manifest 7 / policy 6 / activation contract 3 /
 graph 2 / state, evidence and approval 3 / compatibility 4.
 
 The normal human entry point is `liftoff repair` in an interactive terminal.

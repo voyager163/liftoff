@@ -86,7 +86,7 @@ implemented; the internal stateful engine is not an executable public command.
 Deployed, unknown, or unsupported cases remain plan-only, with source and state
 untouched. Use native `/liftoff-repair` (Codex: `$liftoff-repair`) for reviewed
 [application patches](docs/application-repair.md); see [repair modes](docs/cli-reference.md#repair-modes).
-Repair contract 1 is unreleased in published 0.12.2 (no released minimum yet);
+Repair contract 1 is available in 0.12.3;
 negotiate capabilities directly with `liftoff repair --capabilities --json`.
 
 Older projects may display the retired `/liftoff-repository-governance` alias.

@@ -471,10 +471,10 @@ receipts and repair journals use schema 2. Application inventory, patch document
 and nested reports, verification results/receipts and private backup indexes
 use their own schema-1 formats. Update's journal remains schema 1.
 
-**Repair and preparation capabilities are unreleased**: The package version remains
-at 0.12.2; new application repair and locked preparation capabilities are unreleased
-and have no released minimum version yet. Do not infer capability support from
-package SemVer. Native integrations and tooling must query `liftoff repair --capabilities --json`
+**Repair and preparation capabilities**: The package version is
+0.12.3; application repair and locked preparation capabilities require
+`repairContractVersion` 1. Do not infer capability support from
+package SemVer alone. Native integrations and tooling must query `liftoff repair --capabilities --json`
 directly to verify `repairContractVersion`, supported schemas, registered recipes,
 and the preparation matrix.
 

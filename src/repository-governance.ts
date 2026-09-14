@@ -1143,7 +1143,7 @@ installation. Managed hashes identify the integration; no separate version.
    \`${repairRecipes['azure-local-layout'].id}\` v${repairRecipes['azure-local-layout'].version} or
    \`${repairRecipes['application-layout-patch'].id}\` v${repairRecipes['application-layout-patch'].version}
    \`modes\` must support the action, including \`interactive-repair\`.
-   New repair/preparation capabilities remain unreleased; do not assume published CLI 0.12.2 contains them.
+   Require the actual capability contract and matrix; do not assume prior CLI releases contain them.
    There is no released minimum CLI version yet: require the actual capability contract and matrix.
    Missing support: STOP; offer \`liftoff upgrade --check --json\`. Upgrade needs separate
    permission; recheck afterwards. Never emulate missing features with direct edits,
