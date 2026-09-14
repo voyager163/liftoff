@@ -642,7 +642,7 @@ export async function runWindowsJobCommand(
 
       const hostEnv = buildWindowsControllerHostEnvironment();
       psProcess = spawn(powershellPath, psArgs, {
-        cwd: options.cwd ?? process.cwd(),
+        cwd: process.cwd(),
         env: hostEnv,
         shell: false,
         windowsHide: true,
