@@ -147,17 +147,23 @@ export const commandDefinitions: Readonly<Record<string, CommandDefinition>> = {
     defaultMaxPositionals: 1
   },
   repair: {
-    description: 'Preview and approve safe reorganization of existing OpenTofu infrastructure',
+    description: 'Review and repair supported project files with separate default-No approval',
     usage: '[project-path]',
     group: 'Maintenance',
     flags: {
       project: valueFlag('Exact Liftoff project path', 'Project', 'path'),
-      check: booleanFlag('Preview without project writes or tool execution; bare repair also previews', 'Command'),
+      check: booleanFlag('Preview only; explicit dependency preparation previews include bounded installed-tool identity probes, never project scripts or installs', 'Command'),
+      capabilities: booleanFlag('List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes', 'Command'),
+      'inspect-layout': booleanFlag('Inventory actual application paths and current targets without scripts or writes', 'Command'),
+      'application-patch': valueFlag('Review an exact application patch authored in external staging, not a starter replacement', 'Project', 'patch.json'),
       live: booleanFlag('Allow bounded Azure metadata reads with existing authentication; never read state', 'Consent'),
       subscription: valueFlag('Exact Azure subscription ID for live absence checks', 'Project', 'id'),
-      'approve-plan': valueFlag('Apply the exact unexpired external repair preview; includes isolated validation', 'Consent', 'fingerprint'),
-      recover: booleanFlag('Recover only the previously approved interrupted local repair transaction', 'Command'),
-      json: booleanFlag('Emit one schema-1 repair result; blocked or incomplete work exits 2', 'Output'),
+      'approve-plan': valueFlag('Optional automation: approve the exact saved plan; ordinary TTY repair asks instead', 'Consent', 'fingerprint'),
+      'verify-plan': valueFlag('Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit', 'Consent', 'fingerprint'),
+      'allow-dependency-preparation': booleanFlag('Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes', 'Consent'),
+      'allow-network': booleanFlag('Additionally authorize declared network effects for exact --verify-plan checks', 'Consent'),
+      recover: booleanFlag('Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked', 'Command'),
+      json: booleanFlag('Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute', 'Output'),
       ...helpFlag
     },
     arguments: [{ syntax: 'project-path', description: 'Existing Liftoff project; never an initialization destination' }],

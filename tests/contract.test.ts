@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import { patterns } from '../src/catalogs.js';
-import { managedCoreLogicalNames } from '../src/artifact-lifecycle.js';
+import { managedCoreLogicalNames, repairManagedCoreLogicalNames } from '../src/artifact-lifecycle.js';
 import { loadManifest, validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -114,19 +114,18 @@ describe('manifest contract', () => {
         'liftoff-governance-assess-copilot',
         'liftoff-governance-assess-claude',
         'liftoff-setup-codex',
-        'liftoff-governance-assess-codex'
+        'liftoff-governance-assess-codex',
+        ...repairManagedCoreLogicalNames
       ]);
-      const assessmentPaths = new Set(Object.values(governanceArtifactPaths.assessment)
-        .map((parts) => parts.join('\0')));
       const metadata = JSON.parse(current.find((artifact) =>
         artifact.logicalName === 'repository-governance-compatibility'
       )!.content);
       metadata.managedCore.logicalNameAllowlist = metadata.managedCore.logicalNameAllowlist
         .filter((name: string) => !names.has(name));
-      metadata.managedCore.pathAllowlist = metadata.managedCore.pathAllowlist
-        .filter((parts: string[]) => !assessmentPaths.has(parts.join('\0')));
       metadata.managedCore.updateInventory = metadata.managedCore.updateInventory
         .filter((entry: { logicalName: string }) => !names.has(entry.logicalName));
+      metadata.managedCore.pathAllowlist = metadata.managedCore.updateInventory
+        .map((entry: { pathParts: string[] }) => entry.pathParts);
       const compatibilityContent = `${JSON.stringify(metadata, null, 2)}\n`;
       const previous = JSON.parse(current.find((artifact) => artifact.logicalName === 'manifest')!.content);
       previous.managedArtifacts = previous.managedArtifacts
@@ -296,7 +295,7 @@ describe('manifest contract', () => {
       state: 'handoff-generated'
     });
     expect((manifest as unknown as { managedArtifacts: unknown[] }).managedArtifacts)
-      .toHaveLength(10);
+      .toHaveLength(12);
     expect((manifest as unknown as { projectArtifacts: unknown[] }).projectArtifacts.length)
       .toBeGreaterThan(0);
   });

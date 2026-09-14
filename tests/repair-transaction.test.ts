@@ -21,6 +21,8 @@ import type { ProjectFileMutation } from '../src/adapters/filesystem/project-tra
 import { projectMutationLockPath, withProjectMutationLock } from '../src/adapters/filesystem/project-lock.js';
 import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
 import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
+import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
+import { liftoffVersion } from '../src/version.js';
 
 const roots: string[] = [];
 const fingerprint = 'b'.repeat(64);
@@ -32,6 +34,8 @@ const target = ['infra', 'opentofu', 'modules', 'application', 'main.tf'];
 const history = ['.liftoff', 'repair-history', fingerprint, 'main.tf'];
 const historyManifest = ['.liftoff', 'repair-history', fingerprint, 'liftoff.manifest.json'];
 const kinds = ['update', 'repair'] as const;
+const repairIdentity = repairExecutionIdentity(liftoffVersion, 'azure-local-layout');
+const identityFor = (kind: ReviewedTransactionKind) => kind === 'repair' ? { repairIdentity } : {};
 const partsFor = (kind: ReviewedTransactionKind) =>
   kind === 'repair' ? reviewedRepairTransactionPathParts : reviewedUpdateTransactionPathParts;
 
@@ -152,6 +156,7 @@ async function interrupted(
     const mutations = ${JSON.stringify(serialized)}.map(entry => entry.type === 'write'
       ? { ...entry, content: Buffer.from(entry.content, 'base64') } : entry);
     await applyReviewedUpdateTransaction(${JSON.stringify(context.root)}, mutations, {
+      ...${JSON.stringify(identityFor(kind))},
       transactionKind: ${JSON.stringify(kind)}, planFingerprint: ${JSON.stringify(fingerprint)}, approvalStore,
       onCheckpoint: async checkpoint => {
         if (checkpoint.phase === ${JSON.stringify(phase)} && checkpoint.index === ${JSON.stringify(index)}) process.exit(73);
@@ -175,7 +180,7 @@ describe('registered reviewed repair transaction', () => {
     const { root, stores, mutations } = await fixture();
     const preconditions = await Promise.all(mutations.map((mutation) => captureProjectFileSnapshot(root, mutation.pathParts)));
     const result = await applyReviewedUpdateTransaction(root, mutations, {
-      transactionKind: 'repair', planFingerprint: fingerprint, approvalStore: stores.repair, preconditions,
+      transactionKind: 'repair', repairIdentity, planFingerprint: fingerprint, approvalStore: stores.repair, preconditions,
       onBeforeMutation: async (_mutation, index) => {
         if (index === 2) {
           expect(await readFile(path.join(root, ...history))).toEqual(raw);
@@ -186,6 +191,8 @@ describe('registered reviewed repair transaction', () => {
         if (phase === 'prepared') {
           const journal = JSON.parse((await readFile(path.join(root, ...reviewedRepairTransactionPathParts), 'utf8')).trimEnd());
           expect(journal.transactionKind).toBe('repair');
+          expect(journal.schemaVersion).toBe(2);
+          expect(journal.repairIdentity).toEqual(repairIdentity);
           const { transactionDigest, ...body } = journal;
           expect(transactionDigest).toBe(canonicalSha256(body));
           expect(canonicalSha256({ ...body, transactionKind: 'update' })).not.toBe(transactionDigest);
@@ -208,7 +215,7 @@ describe('registered reviewed repair transaction', () => {
   it('rolls back retirement and provenance bytes after an injected later failure', async () => {
     const { root, stores, mutations, before } = await fixture();
     await expect(applyReviewedUpdateTransaction(root, mutations, {
-      transactionKind: 'repair', planFingerprint: fingerprint, approvalStore: stores.repair,
+      transactionKind: 'repair', repairIdentity, planFingerprint: fingerprint, approvalStore: stores.repair,
       onBeforeMutation: async (_mutation, index) => { if (index === 4) throw new Error('injected manifest failure'); }
     })).rejects.toThrow('All attributable changes were rolled back');
     expect(await tree(root)).toEqual(before);
@@ -221,7 +228,7 @@ describe('registered reviewed repair transaction', () => {
     await put(root, source, 'developer edit');
     const before = await tree(root);
     await expect(applyReviewedUpdateTransaction(root, mutations, {
-      transactionKind: 'repair', planFingerprint: fingerprint, approvalStore: stores.repair, preconditions
+      transactionKind: 'repair', repairIdentity, planFingerprint: fingerprint, approvalStore: stores.repair, preconditions
     })).rejects.toThrow('target changed after review');
     expect(await tree(root)).toEqual(before);
     expect(stores.repair.write).not.toHaveBeenCalled();
@@ -280,7 +287,7 @@ describe('registered reviewed repair transaction', () => {
     expect(await readFile(path.join(context.root, 'liftoff.manifest.json'), 'utf8')).toBe('concurrent manifest');
     expect(await readFile(path.join(context.root, ...source))).toEqual(raw);
     await expect(applyReviewedUpdateTransaction(context.root, context.mutations, {
-      ...options, planFingerprint: fingerprint
+      ...options, repairIdentity, planFingerprint: fingerprint
     })).rejects.toThrow('existing recovery journal blocks new work');
     await put(context.root, ['liftoff.manifest.json'], originalManifest);
     expect(await recoverReviewedUpdateTransaction(context.root, options)).toMatchObject({ status: 'rolled-back' });
@@ -302,6 +309,7 @@ describe('update and repair isolation', () => {
     for (const kind of kinds) {
       const validatePlan = vi.fn();
       await expect(applyReviewedUpdateTransaction(context.root, context.mutations, {
+        ...identityFor(kind),
         transactionKind: kind, planFingerprint: fingerprint, approvalStore: context.stores[kind], validatePlan
       })).rejects.toThrow(command);
       expect(validatePlan).not.toHaveBeenCalled();
@@ -315,6 +323,7 @@ describe('update and repair isolation', () => {
     const entered = Promise.withResolvers<void>();
     const release = Promise.withResolvers<void>();
     const holder = applyReviewedUpdateTransaction(root, mutations, {
+      ...identityFor(kind),
       transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind],
       validatePlan: async () => { entered.resolve(); await release.promise; }
     });
@@ -322,6 +331,7 @@ describe('update and repair isolation', () => {
     const otherKind = kind === 'repair' ? 'update' : 'repair';
     try {
       await expect(applyReviewedUpdateTransaction(root, mutations, {
+        ...identityFor(otherKind),
         transactionKind: otherKind, planFingerprint: fingerprint, approvalStore: stores[otherKind]
       })).rejects.toThrow('Another cooperating Liftoff mutation');
       expect(stores[otherKind].write).not.toHaveBeenCalled();
@@ -337,10 +347,12 @@ describe('update and repair isolation', () => {
     const otherKind = kind === 'repair' ? 'update' : 'repair';
     await withProjectMutationLock(root, async () => {
       expect(await applyReviewedUpdateTransaction(root, mutations, {
+        ...identityFor(kind),
         transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind],
         onCheckpoint: async ({ phase }) => {
           if (phase === 'prepared') {
             await expect(applyReviewedUpdateTransaction(root, [{ type: 'write', pathParts: ['other'], content: 'blocked' }], {
+              ...identityFor(otherKind),
               transactionKind: otherKind, planFingerprint: fingerprint, approvalStore: stores[otherKind]
             })).rejects.toThrow('existing recovery journal blocks new work');
           }
@@ -389,7 +401,7 @@ describe('update and repair isolation', () => {
     await put(context.root, reviewedUpdateTransactionPathParts, canonicalJson({ ...body, transactionDigest: canonicalSha256(body) }));
     const before = await tree(context.parent);
     expect(await recoverReviewedUpdateTransaction(context.root, { approvalStore: context.stores.repair }))
-      .toMatchObject({ status: 'blocked', rollbackFailures: [expect.stringContaining('missing or invalid user-local')] });
+      .toMatchObject({ status: 'blocked', rollbackFailures: [expect.stringContaining('unsupported update journal')] });
     expect(await tree(context.parent)).toEqual(before);
   });
 
@@ -410,6 +422,43 @@ describe('update and repair isolation', () => {
     expect(await recoverReviewedUpdateTransaction(context.root, { approvalStore: context.stores.update }))
       .toMatchObject({ status: 'rolled-back', cleanupFailures: [] });
     expect(await tree(context.root)).toEqual(context.before);
+  });
+
+  it('recovers sealed legacy schema-1 repair without retagging its original authority', async () => {
+    const context = await interrupted('repair', 'prepared');
+    await unlink(context.lock);
+    const { transactionDigest: _digest, repairIdentity: _identity, ...body } =
+      JSON.parse((await readFile(context.journal, 'utf8')).trimEnd());
+    body.schemaVersion = 1;
+    const legacyDigest = canonicalSha256(body);
+    await context.stores.repair.write(fingerprint, legacyDigest);
+    const legacy = canonicalJson({ ...body, transactionDigest: legacyDigest });
+    await writeFile(context.journal, legacy);
+    const options = { transactionKind: 'repair' as const, approvalStore: context.stores.repair };
+    const inspected = await inspectReviewedUpdateTransaction(context.root, options);
+    expect(inspected).toMatchObject({ status: 'interrupted', schemaVersion: 1, transactionDigest: legacyDigest });
+    expect(inspected).not.toHaveProperty('repairIdentity');
+    expect(await readFile(context.journal, 'utf8')).toBe(legacy);
+    expect(await recoverReviewedUpdateTransaction(context.root, options)).toMatchObject({ status: 'rolled-back' });
+    expect(await tree(context.root)).toEqual(context.before);
+  });
+
+  it.each(['schema', 'contract', 'recipe', 'layout'] as const)('blocks an unknown repair %s without rewriting the journal', async (field) => {
+    const context = await interrupted('repair', 'prepared');
+    await unlink(context.lock);
+    const { transactionDigest: _digest, ...body } = JSON.parse((await readFile(context.journal, 'utf8')).trimEnd());
+    if (field === 'schema') body.schemaVersion = 99;
+    if (field === 'contract') body.repairIdentity.repairContractVersion = 99;
+    if (field === 'recipe') body.repairIdentity.recipe.version = 99;
+    if (field === 'layout') body.repairIdentity.recipe.targetLayout = 'future-layout';
+    const digest = canonicalSha256(body);
+    await context.stores.repair.write(fingerprint, digest);
+    await writeFile(context.journal, canonicalJson({ ...body, transactionDigest: digest }));
+    const before = await tree(context.parent);
+    const options = { transactionKind: 'repair' as const, approvalStore: context.stores.repair };
+    expect(await inspectReviewedUpdateTransaction(context.root, options)).toMatchObject({ status: 'blocked' });
+    expect(await recoverReviewedUpdateTransaction(context.root, options)).toMatchObject({ status: 'blocked' });
+    expect(await tree(context.parent)).toEqual(before);
   });
 
   it('keeps scoped repair previews, repair approvals, and governance approvals separate and immutable', async () => {
@@ -448,7 +497,7 @@ describe('repair path confinement', () => {
       await expect(applyReviewedUpdateTransaction(root, [
         { type: 'write', pathParts: ['first'], content: 'never written' },
         { type: 'write', pathParts: parts, content: 'never written' }
-      ], { transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind] })).rejects.toThrow();
+      ], { ...identityFor(kind), transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind] })).rejects.toThrow();
     }
     expect(await tree(root)).toEqual(before);
     expect(stores[kind].write).not.toHaveBeenCalled();
@@ -475,6 +524,7 @@ describe('repair path confinement', () => {
     await symlink(outside, path.join(root, '.liftoff'), process.platform === 'win32' ? 'junction' : 'dir');
     const before = await tree(outside);
     await expect(applyReviewedUpdateTransaction(root, mutations, {
+      ...identityFor(kind),
       transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind]
     })).rejects.toThrow('symlink or junction');
     expect(await inspectReviewedUpdateTransaction(root, { transactionKind: kind, approvalStore: stores[kind] }))
@@ -494,6 +544,7 @@ describe('repair path confinement', () => {
     await symlink(outside, journal);
     for (const kind of kinds) {
       await expect(applyReviewedUpdateTransaction(root, mutations, {
+        ...identityFor(kind),
         transactionKind: kind, planFingerprint: fingerprint, approvalStore: stores[kind]
       })).rejects.toThrow('symlink or junction');
     }
@@ -509,7 +560,7 @@ describe('repair path confinement', () => {
     await mkdir(outside);
     await symlink(outside, path.join(root, 'infra', 'opentofu', 'modules'), process.platform === 'win32' ? 'junction' : 'dir');
     await expect(applyReviewedUpdateTransaction(root, mutations, {
-      transactionKind: 'repair', planFingerprint: fingerprint, approvalStore: stores.repair
+      transactionKind: 'repair', repairIdentity, planFingerprint: fingerprint, approvalStore: stores.repair
     })).rejects.toThrow('symlink or junction');
     expect(await readdir(outside)).toEqual([]);
     expect(await readFile(path.join(root, ...source))).toEqual(raw);

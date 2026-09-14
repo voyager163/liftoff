@@ -90,8 +90,8 @@ Command   Description
 ────────  ──────────────────────────────────────────────────────────────────────
 validate  Validate a generated project manifest
 update    Preview and explicitly approve scoped project updates
-repair    Preview and approve safe reorganization of existing OpenTofu
-          infrastructure
+repair    Review and repair supported project files with separate default-No
+          approval
 upgrade   Replace the supported global npm Liftoff CLI; project templates use
           update separately
 doctor    Check local and project readiness
@@ -339,7 +339,7 @@ Option  Description
 
 exports[`complete help screens > snapshots compact repair command help 1`] = `
 "LIFTOFF / REPAIR
-Preview and approve safe reorganization of existing OpenTofu infrastructure
+Review and repair supported project files with separate default-No approval
 
 Usage
 ─────
@@ -353,40 +353,83 @@ project-path  Existing Liftoff project; never an initialization destination
 
 Project options
 ───────────────
-Option               Description
-───────────────────  ───────────────────────────────────────────────────
---project <path>     Exact Liftoff project path
---subscription <id>  Exact Azure subscription ID for live absence checks
+Option                            Description
+────────────────────────────────  ──────────────────────────────────────────────
+--project <path>                  Exact Liftoff project path
+--application-patch <patch.json>  Review an exact application patch authored in
+                                  external staging, not a starter replacement
+--subscription <id>               Exact Azure subscription ID for live absence
+                                  checks
 
 Command options
 ───────────────
-Option     Description
-─────────  ─────────────────────────────────────────────────────────────────────
---check    Preview without project writes or tool execution; bare repair also
-           previews
---recover  Recover only the previously approved interrupted local repair
-           transaction
+Option            Description
+────────────────  ──────────────────────────────────────────────────────────────
+--check           Preview only; explicit dependency preparation previews include
+                  bounded installed-tool identity probes, never project scripts
+                  or installs
+--capabilities    List repair contracts, recipes, preparation support, schemas
+                  and modes without a project or tool probes
+--inspect-layout  Inventory actual application paths and current targets without
+                  scripts or writes
+--recover         Recover only eligible recorded repair effects; live, uncertain
+                  or changed private workspace identities stay blocked
 
 Consent options
 ───────────────
-Option                        Description
-────────────────────────────  ──────────────────────────────────────────────────
---live                        Allow bounded Azure metadata reads with existing
-                              authentication; never read state
---approve-plan <fingerprint>  Apply the exact unexpired external repair preview;
-                              includes isolated validation
+Option                          Description
+──────────────────────────────  ────────────────────────────────────────────────
+--live                          Allow bounded Azure metadata reads with existing
+                                authentication; never read state
+--approve-plan <fingerprint>    Optional automation: approve the exact saved
+                                plan; ordinary TTY repair asks instead
+--verify-plan <fingerprint>     Optional automation: run exact staged checks;
+                                declared preparation/network require separate
+                                permissions, never file commit
+--allow-dependency-preparation  Separately permit only declared locked private
+                                preparation with --verify-plan; not global tools
+                                or file writes
+--allow-network                 Additionally authorize declared network effects
+                                for exact --verify-plan checks
 
 Output options
 ──────────────
 Option  Description
-──────  ───────────────────────────────────────────────────────────────────
---json  Emit one schema-1 repair result; blocked or incomplete work exits 2
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit one schema-2 result (capabilities schema 1); never prompt or
+        implicitly execute
 
 General options
 ───────────────
 Option  Description
 ──────  ──────────────────────────
 --help  Show command-specific help
+
+Repair approval and native help
+───────────────────────────────
+- Ordinary liftoff repair displays exact proposed effects, then asks Yes/No with
+default No on genuine interactive terminals. No fingerprint entry is needed.
+- --check only previews. Bare JSON/non-TTY repair never prompts or executes.
+Exact execution flags are optional automation interfaces; --yes and --force
+cannot authorize repair.
+- Application patches separately request consent for exact project checks,
+locked private dependency preparation, declared network effects, and file
+commit. Lifecycle hooks stay suppressed; unsupported enabling blocks. Staging is
+not an OS or network sandbox.
+- Preparation uses existing compatible tools and exact candidate locks, never
+global installation/configuration or live dependency trees. Only explicit
+preparation previews probe installed tool identities; capabilities and layout
+inventory do not.
+- Recovery cleans only authenticated CLI-created disposable workspace identities
+with safely established ownership; never patch staging, live projects, global
+caches or original-byte backups. Earlier approved effects remain visible after
+later cancellation.
+- Open the selected project in Copilot or Claude and invoke /liftoff-repair; in
+Codex use $liftoff-repair or its skill picker. These are coding-agent
+integrations, not shell commands.
+- If the native integration is missing, run liftoff update --check for that
+project and review its separate managed update. See
+docs/cli-reference.md#repair-modes.
 
 "
 `;
@@ -539,7 +582,7 @@ Command: migrate | Description: Adopt an existing project
 Maintenance
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Preview and explicitly approve scoped project updates
-Command: repair | Description: Preview and approve safe reorganization of existing OpenTofu infrastructure
+Command: repair | Description: Review and repair supported project files with separate default-No approval
 Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
 Command: doctor | Description: Check local and project readiness
 
@@ -689,7 +732,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain repair command help 1`] = `
-"LIFTOFF / REPAIR - Preview and approve safe reorganization of existing OpenTofu infrastructure
+"LIFTOFF / REPAIR - Review and repair supported project files with separate default-No approval
 
 Usage
 Usage: liftoff repair [project-path]
@@ -699,21 +742,36 @@ Argument: project-path | Description: Existing Liftoff project; never an initial
 
 Project options
 Option: --project <path> | Description: Exact Liftoff project path
+Option: --application-patch <patch.json> | Description: Review an exact application patch authored in external staging, not a starter replacement
 Option: --subscription <id> | Description: Exact Azure subscription ID for live absence checks
 
 Command options
-Option: --check | Description: Preview without project writes or tool execution; bare repair also previews
-Option: --recover | Description: Recover only the previously approved interrupted local repair transaction
+Option: --check | Description: Preview only; explicit dependency preparation previews include bounded installed-tool identity probes, never project scripts or installs
+Option: --capabilities | Description: List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes
+Option: --inspect-layout | Description: Inventory actual application paths and current targets without scripts or writes
+Option: --recover | Description: Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked
 
 Consent options
 Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
-Option: --approve-plan <fingerprint> | Description: Apply the exact unexpired external repair preview; includes isolated validation
+Option: --approve-plan <fingerprint> | Description: Optional automation: approve the exact saved plan; ordinary TTY repair asks instead
+Option: --verify-plan <fingerprint> | Description: Optional automation: run exact staged checks; declared preparation/network require separate permissions, never file commit
+Option: --allow-dependency-preparation | Description: Separately permit only declared locked private preparation with --verify-plan; not global tools or file writes
+Option: --allow-network | Description: Additionally authorize declared network effects for exact --verify-plan checks
 
 Output options
-Option: --json | Description: Emit one schema-1 repair result; blocked or incomplete work exits 2
+Option: --json | Description: Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute
 
 General options
 Option: --help | Description: Show command-specific help
+
+Repair approval and native help
+- Ordinary liftoff repair displays exact proposed effects, then asks Yes/No with default No on genuine interactive terminals. No fingerprint entry is needed.
+- --check only previews. Bare JSON/non-TTY repair never prompts or executes. Exact execution flags are optional automation interfaces; --yes and --force cannot authorize repair.
+- Application patches separately request consent for exact project checks, locked private dependency preparation, declared network effects, and file commit. Lifecycle hooks stay suppressed; unsupported enabling blocks. Staging is not an OS or network sandbox.
+- Preparation uses existing compatible tools and exact candidate locks, never global installation/configuration or live dependency trees. Only explicit preparation previews probe installed tool identities; capabilities and layout inventory do not.
+- Recovery cleans only authenticated CLI-created disposable workspace identities with safely established ownership; never patch staging, live projects, global caches or original-byte backups. Earlier approved effects remain visible after later cancellation.
+- Open the selected project in Copilot or Claude and invoke /liftoff-repair; in Codex use $liftoff-repair or its skill picker. These are coding-agent integrations, not shell commands.
+- If the native integration is missing, run liftoff update --check for that project and review its separate managed update. See docs/cli-reference.md#repair-modes.
 
 "
 `;
@@ -848,7 +906,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ────────  ────────────────────────────────────────────────────────────────────────────────── │
 │ validate  Validate a generated project manifest                                              │
 │ update    Preview and explicitly approve scoped project updates                              │
-│ repair    Preview and approve safe reorganization of existing OpenTofu infrastructure        │
+│ repair    Review and repair supported project files with separate default-No approval        │
 │ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
 │           separately                                                                         │
 │ doctor    Check local and project readiness                                                  │
@@ -1062,7 +1120,7 @@ exports[`complete help screens > snapshots rich regions command help 1`] = `
 
 exports[`complete help screens > snapshots rich repair command help 1`] = `
 "┌─ LIFTOFF / REPAIR ───────────────────────────────────────────────────────────────────────────┐
-│ Preview and approve safe reorganization of existing OpenTofu infrastructure                  │
+│ Review and repair supported project files with separate default-No approval                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff repair [project-path]                                                                │
@@ -1073,34 +1131,69 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ project-path  Existing Liftoff project; never an initialization destination                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
-│ Option               Description                                                             │
-│ ───────────────────  ───────────────────────────────────────────────────                     │
-│ --project <path>     Exact Liftoff project path                                              │
-│ --subscription <id>  Exact Azure subscription ID for live absence checks                     │
+│ Option                            Description                                                │
+│ ────────────────────────────────  ────────────────────────────────────────────────────────── │
+│ --project <path>                  Exact Liftoff project path                                 │
+│ --application-patch <patch.json>  Review an exact application patch authored in external     │
+│                                   staging, not a starter replacement                         │
+│ --subscription <id>               Exact Azure subscription ID for live absence checks        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
-│ Option     Description                                                                       │
-│ ─────────  ───────────────────────────────────────────────────────────────────────────       │
-│ --check    Preview without project writes or tool execution; bare repair also previews       │
-│ --recover  Recover only the previously approved interrupted local repair transaction         │
+│ Option            Description                                                                │
+│ ────────────────  ────────────────────────────────────────────────────────────────────────── │
+│ --check           Preview only; explicit dependency preparation previews include bounded     │
+│                   installed-tool identity probes, never project scripts or installs          │
+│ --capabilities    List repair contracts, recipes, preparation support, schemas and modes     │
+│                   without a project or tool probes                                           │
+│ --inspect-layout  Inventory actual application paths and current targets without scripts or  │
+│                   writes                                                                     │
+│ --recover         Recover only eligible recorded repair effects; live, uncertain or changed  │
+│                   private workspace identities stay blocked                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
-│ Option                        Description                                                    │
-│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
-│ --live                        Allow bounded Azure metadata reads with existing               │
-│                               authentication; never read state                               │
-│ --approve-plan <fingerprint>  Apply the exact unexpired external repair preview; includes    │
-│                               isolated validation                                            │
+│ Option                          Description                                                  │
+│ ──────────────────────────────  ──────────────────────────────────────────────────────────── │
+│ --live                          Allow bounded Azure metadata reads with existing             │
+│                                 authentication; never read state                             │
+│ --approve-plan <fingerprint>    Optional automation: approve the exact saved plan; ordinary  │
+│                                 TTY repair asks instead                                      │
+│ --verify-plan <fingerprint>     Optional automation: run exact staged checks; declared       │
+│                                 preparation/network require separate permissions, never file │
+│                                 commit                                                       │
+│ --allow-dependency-preparation  Separately permit only declared locked private preparation   │
+│                                 with --verify-plan; not global tools or file writes          │
+│ --allow-network                 Additionally authorize declared network effects for exact    │
+│                                 --verify-plan checks                                         │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
-│ ──────  ───────────────────────────────────────────────────────────────────                  │
-│ --json  Emit one schema-1 repair result; blocked or incomplete work exits 2                  │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --json  Emit one schema-2 result (capabilities schema 1); never prompt or implicitly execute │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ General options ────────────────────────────────────────────────────────────────────────────┐
 │ Option  Description                                                                          │
 │ ──────  ──────────────────────────                                                           │
 │ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Repair approval and native help ────────────────────────────────────────────────────────────┐
+│ • Ordinary liftoff repair displays exact proposed effects, then asks Yes/No with default No  │
+│ on genuine interactive terminals. No fingerprint entry is needed.                            │
+│ • --check only previews. Bare JSON/non-TTY repair never prompts or executes. Exact execution │
+│ flags are optional automation interfaces; --yes and --force cannot authorize repair.         │
+│ • Application patches separately request consent for exact project checks, locked private    │
+│ dependency preparation, declared network effects, and file commit. Lifecycle hooks stay      │
+│ suppressed; unsupported enabling blocks. Staging is not an OS or network sandbox.            │
+│ • Preparation uses existing compatible tools and exact candidate locks, never global         │
+│ installation/configuration or live dependency trees. Only explicit preparation previews      │
+│ probe installed tool identities; capabilities and layout inventory do not.                   │
+│ • Recovery cleans only authenticated CLI-created disposable workspace identities with safely │
+│ established ownership; never patch staging, live projects, global caches or original-byte    │
+│ backups. Earlier approved effects remain visible after later cancellation.                   │
+│ • Open the selected project in Copilot or Claude and invoke /liftoff-repair; in Codex use    │
+│ $liftoff-repair or its skill picker. These are coding-agent integrations, not shell          │
+│ commands.                                                                                    │
+│ • If the native integration is missing, run liftoff update --check for that project and      │
+│ review its separate managed update. See docs/cli-reference.md#repair-modes.                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;

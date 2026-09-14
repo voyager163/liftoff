@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile, stat, realpath } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile, stat, realpath } from 'node:fs/promises';
+import { Readable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
 import { runCommand } from '../src/commands.js';
@@ -16,7 +17,8 @@ import { captureProjectFileSnapshot } from '../src/adapters/filesystem/project-t
 import type { ProjectFileMutation } from '../src/adapters/filesystem/project-transaction.js';
 import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
-import { CaptureStream } from './helpers.js';
+import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
+import { repairCommandAction } from '../src/application/repair/guidance.js';
 import { createLegacyInfrastructureFixture, repairRoot } from './fixtures/repair-infrastructure.js';
 import { renderOpenTofuProviderLock, renderOpenTofuVersions } from '../src/opentofu-template-assets.js';
 
@@ -182,6 +184,9 @@ describe('reviewed repair command coordinator', () => {
     expect(applied.exitCode).toBe(0);
     expect(assessInfrastructureLayout(await loadManifest(project.root)).kind).toBe('independent');
     expect(await readFile(path.join(applied.report.historyPath, 'manifest.json'))).toEqual(project.before);
+    expect(JSON.parse(await readFile(path.join(applied.report.historyPath, 'receipt.json'), 'utf8'))).toMatchObject({
+      schemaVersion: 2, repairContractVersion: 1, recipe: { id: 'azure-local-layout', version: 1 }, activationEvidence: 'not-issued'
+    });
     await expect(stat(path.join(project.root, ...oldMain))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(path.join(project.root, 'developer-notes.txt'), 'utf8')).toBe('preserve business customizations');
     expect(runner.calls.filter((entry) => entry.command.executable === 'az' && entry.command.args[0] === 'group')).toHaveLength(3);
@@ -247,5 +252,135 @@ describe('reviewed repair command coordinator', () => {
     expect(result.exitCode).toBe(1);
     expect(result.report.committed).toBe(false);
     await expect(stat(path.join(root, 'liftoff.manifest.json'))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+});
+
+describe('interactive repair and truthful command surfaces', () => {
+  it('reports capabilities outside a project without probing tools or creating receipts', async () => {
+    const root = await folder('liftoff-repair-capabilities-'), home = await folder('liftoff-repair-capabilities-home-');
+    const stdout = new CaptureStream(), stderr = new CaptureStream(), runner = new Runner();
+    const code = await runCommand(parseArgs(['repair', '--capabilities', '--json']), {
+      cwd: root, stdout, stderr, runner, updatePreview: { homedir: home, env: {} }
+    });
+    expect(code).toBe(0);
+    expect(JSON.parse(stdout.text())).toMatchObject({
+      schemaVersion: 1, kind: 'liftoff-repair-capabilities', repairContractVersion: 1,
+      schemas: { report: 2, preview: 2, journal: 2 },
+      modes: expect.arrayContaining(['interactive-repair', 'inspect-layout', 'application-patch'])
+    });
+    expect(runner.calls).toEqual([]);
+    expect(await readdir(root)).toEqual([]);
+    expect(await readdir(home)).toEqual([]);
+  });
+
+  it('reports absent or incompatible recovery journals without parsing or rewriting the active manifest', async () => {
+    const project = await fixture();
+    await writeFile(path.join(project.root, 'liftoff.manifest.json'), 'interrupted invalid manifest');
+    const absent = await command(project, ['--recover']);
+    expect(absent.exitCode).toBe(0);
+    expect(absent.report).toMatchObject({ schemaVersion: 2, operationKind: 'recover', requestedScope: 'repair-recovery', committed: false });
+    const journal = path.join(project.root, '.liftoff', 'reviewed-repair-transaction.json');
+    await mkdir(path.dirname(journal), { recursive: true });
+    const bytes = '{"schemaVersion":99,"untrusted":true}\n';
+    await writeFile(journal, bytes, { mode: 0o600 });
+    const blocked = await command(project, ['--check']);
+    expect(blocked.exitCode).toBe(2);
+    expect(blocked.report.status).toBe('blocked');
+    expect(blocked.report.nextActions[0]).toMatchObject({
+      command: { executable: 'liftoff', args: ['repair', project.root, '--recover'] }, cwd: project.root
+    });
+    expect((await command(project, ['--recover'])).report.status).toBe('blocked');
+    expect(await readFile(journal, 'utf8')).toBe(bytes);
+    expect(await readFile(path.join(project.root, 'liftoff.manifest.json'), 'utf8')).toBe('interrupted invalid manifest');
+  });
+
+  it.each([false, true])('binds a default-No TTY answer %s to the displayed infrastructure plan', async (answer) => {
+    const project = await fixture(), runner = new Runner(), stdout = new CaptureStream(), stderr = ttyCaptureStream();
+    const approveRepairPlan = vi.fn(async (config: { message: string; default: false }) => {
+      expect(config.default).toBe(false);
+      expect(config.message).not.toMatch(/[a-f0-9]{64}/u);
+      expect(stdout.text()).toContain('Exact project file changes');
+      expect(runner.calls.some((entry) => entry.command.executable === 'tofu')).toBe(false);
+      return answer;
+    });
+    const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription]), {
+      cwd: project.root, stdin: scriptedTtyInput(''), stdout, stderr, runner, approveRepairPlan,
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+    });
+    expect(approveRepairPlan).toHaveBeenCalledTimes(1);
+    expect(code).toBe(answer ? 0 : 2);
+    if (answer) expect(assessInfrastructureLayout(await loadManifest(project.root)).kind).toBe('independent');
+    else {
+      expect(await readFile(path.join(project.root, 'liftoff.manifest.json'))).toEqual(project.before);
+      expect(runner.calls.some((entry) => entry.command.executable === 'tofu')).toBe(false);
+    }
+  });
+
+  it('rejects source changes during TTY approval before running validation or starting the transaction', async () => {
+    const project = await fixture(), runner = new Runner(), stdout = new CaptureStream(), stderr = ttyCaptureStream();
+    const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription]), {
+      cwd: project.root, stdin: scriptedTtyInput(''), stdout, stderr, runner,
+      approveRepairPlan: async () => { await writeFile(path.join(project.root, ...oldMain), 'concurrent developer edit'); return true; },
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+    });
+    expect(code).toBe(1);
+    expect(stdout.text()).toContain('changed after preview');
+    expect(runner.calls.some((entry) => entry.command.executable === 'tofu')).toBe(false);
+    expect(await readFile(path.join(project.root, ...oldMain), 'utf8')).toBe('concurrent developer edit');
+    expect(await readFile(path.join(project.root, 'liftoff.manifest.json'))).toEqual(project.before);
+  });
+
+  it.each(['cancel', 'eof', 'pipe', 'json'] as const)('does not turn %s input into repair consent', async (mode) => {
+    const project = await fixture(), runner = new Runner(), stdout = new CaptureStream(), stderr = ttyCaptureStream();
+    const stdin = mode === 'pipe' ? Readable.from(['yes\n']) : scriptedTtyInput('');
+    if (mode === 'eof') for await (const _chunk of stdin) { /* Terminal EOF. */ }
+    const approveRepairPlan = vi.fn(async () => {
+      if (mode === 'cancel') throw Object.assign(new Error('cancelled'), { name: 'ExitPromptError' });
+      return true;
+    });
+    const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription, ...(mode === 'json' ? ['--json'] : [])]), {
+      cwd: project.root, stdin, stdout, stderr, runner, approveRepairPlan,
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+    });
+    expect(code).toBe(2);
+    expect(approveRepairPlan).toHaveBeenCalledTimes(mode === 'cancel' ? 1 : 0);
+    if (mode === 'json') expect(JSON.parse(stdout.text())).toMatchObject({ schemaVersion: 2, status: 'available', committed: false });
+    expect(runner.calls.some((entry) => entry.command.executable === 'tofu')).toBe(false);
+    expect(await readFile(path.join(project.root, 'liftoff.manifest.json'))).toEqual(project.before);
+  });
+
+  it('formats every repair action as exact native arguments with safe Windows and POSIX quoting', () => {
+    const project = path.win32.join('C:\\', 'Projects', "O'Brien & $build");
+    const action = repairCommandAction(project, ['--approve-plan', 'a'.repeat(64)], {
+      id: 'approve', label: 'Optional automation', description: 'Separate approval', approvalRequired: true
+    }, 'win32');
+    expect(action).toMatchObject({
+      cwd: project, command: { executable: 'liftoff', args: ['repair', project, '--approve-plan', 'a'.repeat(64)] },
+      displayCommand: `& 'liftoff' 'repair' 'C:\\Projects\\O''Brien & $build' '--approve-plan' '${'a'.repeat(64)}'`
+    });
+    const posixRoot = path.posix.join('/tmp', "O'Brien & $build");
+    const posix = repairCommandAction(posixRoot, ['--recover'], { id: 'recover', label: 'Recover', description: 'Recorded scope' }, 'linux');
+    expect(posix).toMatchObject({
+      command: { executable: 'liftoff', args: ['repair', posixRoot, '--recover'] },
+      displayCommand: `liftoff repair '/tmp/O'"'"'Brien & $build' --recover`
+    });
+  });
+
+  it.each([
+    ['--check', '--approve-plan', 'a'.repeat(64)],
+    ['--verify-plan', 'a'.repeat(64), '--approve-plan', 'a'.repeat(64)],
+    ['--capabilities', '--project', 'project'],
+    ['--capabilities', '--check'],
+    ['--inspect-layout', '--live', '--subscription', subscription],
+    ['--application-patch', 'patch.json', '--recover'],
+    ['--application-patch', 'patch.json', '--approve-plan', 'a'.repeat(64)],
+    ['--check', '--allow-network'],
+    ['--check', '--allow-dependency-preparation'],
+    ['--check', '--allow-dependency-preparation=false'],
+    ['--application-patch', 'patch.json', '--allow-dependency-preparation'],
+    ['--approve-plan', 'a'.repeat(64), '--allow-dependency-preparation'],
+    ['--yes'], ['--force']
+  ])('rejects expanded or ambiguous authority %j', (flags) => {
+    expect(() => parseArgs(['repair', ...flags])).toThrow();
   });
 });

@@ -7,6 +7,7 @@ import { runCommand } from '../src/commands.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { repairManagedCoreLogicalNames } from '../src/domain/project/artifact-lifecycle.js';
 import { writeArtifacts } from '../src/adapters/filesystem/project-files.js';
 import {
   canonicalPhaseGraph,
@@ -713,7 +714,9 @@ describe('read-only assessment command', () => {
     const manifest = await loadManifest(root);
     if (manifest.project.workload.kind === 'power-apps-code-app' || manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') throw new Error('Wrong legacy fixture.');
     const workload = manifest.project.workload;
-    const historicalManaged = manifest.managedArtifacts.filter((entry) => !entry.logicalName.startsWith('liftoff-governance-assess-'));
+    const historicalManaged = manifest.managedArtifacts.filter((entry) =>
+      !entry.logicalName.startsWith('liftoff-governance-assess-') &&
+      !repairManagedCoreLogicalNames.some((name) => name === entry.logicalName));
     const artifacts = [...historicalManaged, ...manifest.projectArtifacts.map((entry) => ({
       logicalName: entry.logicalName, category: entry.category, pathParts: entry.pathParts, contentHash: entry.generationHash
     }))];

@@ -366,7 +366,9 @@ describe('repository governance artifacts', () => {
       'liftoff-setup-copilot',
       'liftoff-setup-claude',
       'liftoff-governance-assess-copilot',
-      'liftoff-governance-assess-claude'
+      'liftoff-governance-assess-claude',
+      'liftoff-repair-copilot',
+      'liftoff-repair-claude'
     ]);
     expect(all.map((artifact) => artifact.pathParts)).toEqual([
       [...governanceArtifactPaths.policy],
@@ -378,7 +380,9 @@ describe('repository governance artifacts', () => {
       [...governanceArtifactPaths.setup['github-copilot']],
       [...governanceArtifactPaths.setup.claude],
       [...governanceArtifactPaths.assessment['github-copilot']],
-      [...governanceArtifactPaths.assessment.claude]
+      [...governanceArtifactPaths.assessment.claude],
+      [...governanceArtifactPaths.repair['github-copilot']],
+      [...governanceArtifactPaths.repair.claude]
     ]);
     for (const artifact of all) {
       expect(artifact.category).toBe('governance');
@@ -484,7 +488,9 @@ describe('repository governance artifacts', () => {
           agents,
           governanceProfile: 'none',
           ...(specWorkflow === 'spec-kit' && agents.length > 1 ? { defaultAgent: 'copilot' } : {})
-        }))).toEqual([]);
+        })).filter((artifact) =>
+          artifact.logicalName.startsWith('liftoff-governance-assess-')
+        )).toEqual([]);
       });
     }
   }
@@ -548,15 +554,19 @@ describe('repository governance artifacts', () => {
       expect(content.length).toBeLessThan(3_000);
       const check = content.indexOf('liftoff repair --check --json');
       const live = content.indexOf('liftoff repair --check --live --subscription <UUID> --json');
-      const apply = content.indexOf('liftoff repair --approve-plan <fingerprint> --json');
+      const interactive = content.indexOf('Normally use `liftoff repair`');
       const update = content.indexOf('liftoff update --check --json');
       const local = content.indexOf('liftoff governance plan --scope local --json');
       expect(check).toBeGreaterThan(-1);
       expect(live).toBeGreaterThan(check);
-      expect(apply).toBeGreaterThan(live);
-      expect(update).toBeGreaterThan(apply);
+      expect(interactive).toBeGreaterThan(live);
+      expect(update).toBeGreaterThan(interactive);
       expect(local).toBeGreaterThan(update);
-      expect(content).toContain('separate explicit approval of the exact eligible fingerprint');
+      expect(content).toContain('exact immutable plan, then Yes/No, default No');
+      expect(content).toContain('No/Ctrl-C/EOF blocks unapproved writes; report prior verification effects');
+      expect(content).toContain('JSON/nonTTY bare previews only');
+      expect(content).not.toContain('liftoff repair --approve-plan');
+      expect(content).not.toContain('liftoff repair --verify-plan');
       expect(content).toContain('Ordinary check makes no cloud calls');
       expect(content).toContain('public stateful migration coordinator are not implemented');
       expect(content).toContain('liftoff repair --recover');
@@ -581,12 +591,13 @@ describe('repository governance artifacts', () => {
     expect(guide).not.toContain('Enter the value only through the masked input');
   });
 
-  it('omits every handoff artifact for the none profile', () => {
+  it('omits governance handoffs but retains selected repair integrations for the none profile', () => {
     const disabled = plan({ governanceProfile: 'none' });
-    expect(buildRepositoryGovernanceArtifacts(disabled)).toEqual([]);
+    expect(buildRepositoryGovernanceArtifacts(disabled).map((artifact) => artifact.logicalName))
+      .toEqual(['liftoff-repair-copilot', 'liftoff-repair-claude']);
     const artifacts = buildArtifacts(disabled);
-    expect(artifacts.some((artifact) => artifact.category === 'governance'))
-      .toBe(false);
+    expect(artifacts.filter((artifact) => artifact.category === 'governance')
+      .map((artifact) => artifact.logicalName)).toEqual(['liftoff-repair-copilot', 'liftoff-repair-claude']);
     const manifest = JSON.parse(
       artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
     );
@@ -636,7 +647,9 @@ describe('repository governance artifacts', () => {
       governanceArtifactPaths.setup['github-copilot'],
       governanceArtifactPaths.setup.claude,
       governanceArtifactPaths.assessment['github-copilot'],
-      governanceArtifactPaths.assessment.claude
+      governanceArtifactPaths.assessment.claude,
+      governanceArtifactPaths.repair['github-copilot'],
+      governanceArtifactPaths.repair.claude
     ];
     for (const parts of pathPartArrays) {
       expect(path.posix.join('/repo', ...parts)).toContain('/repo/');
@@ -670,7 +683,7 @@ describe('repository governance artifacts', () => {
     });
     expect(manifest.managedArtifacts.filter((artifact: { category: string }) =>
       artifact.category === 'governance'
-    )).toHaveLength(10);
+    )).toHaveLength(12);
     expect(manifest.liftoffVersion).toBe(liftoffVersion);
     expect(manifest.governance.activationIdentity.liftoffVersion).toBe(liftoffActivationPackageVersion);
     expect(manifest.governance.activationIdentity.activationContractVersion).toBe(activationContractVersion);

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { governanceAgentIntegrations } from './domain/project/catalog.js';
+import { governanceAgentIntegrations, governanceArtifactPaths } from './domain/project/catalog.js';
 import { managedCoreLogicalNames } from './domain/project/artifact-lifecycle.js';
-export { governanceAgentIntegrations };
+import { repairContractVersion, repairRecipes, repairSchemaVersions } from './domain/repair/identity.js';
+export { governanceAgentIntegrations, governanceArtifactPaths };
 import type {
   CodingAgentId,
   GeneratedArtifact,
@@ -49,35 +50,16 @@ const governanceManagedCoreLogicalNames = managedCoreLogicalNames;
 
 export function governanceInvocationGuide(
   plan: Pick<ProjectPlan, 'agents'>,
-  operation: 'setup' | 'assessment' = 'setup'
+  operation: 'setup' | 'assessment' | 'repair' = 'setup'
 ): string {
   if (plan.agents.length === 0) {
-    const name = operation === 'setup' ? 'liftoff-setup' : 'liftoff-governance-assess';
+    const name = operation === 'assessment' ? 'liftoff-governance-assess' : `liftoff-${operation}`;
     return `No native \`${name}\` integration is recorded.`;
   }
   return plan.agents.map((agent) =>
     `${agent.label}: \`${governanceAgentIntegrations[agent.id][operation].invocation}\``
   ).join('; ');
 }
-
-export const governanceArtifactPaths = {
-  policy: ['.liftoff', 'governance', 'policy.md'],
-  context: ['.liftoff', 'governance', 'context.json'],
-  guide: ['.liftoff', 'governance', 'README.md'],
-  phaseGraph: ['.liftoff', 'governance', 'phase-graph.json'],
-  compatibility: ['.liftoff', 'governance', 'compatibility.json'],
-  credentialPolicySchema: ['.liftoff', 'governance', 'credential-policy.schema.json'],
-  setup: {
-    'github-copilot': governanceAgentIntegrations['github-copilot'].setup.pathParts,
-    claude: governanceAgentIntegrations.claude.setup.pathParts,
-    codex: governanceAgentIntegrations.codex.setup.pathParts
-  },
-  assessment: {
-    'github-copilot': governanceAgentIntegrations['github-copilot'].assessment.pathParts,
-    claude: governanceAgentIntegrations.claude.assessment.pathParts,
-    codex: governanceAgentIntegrations.codex.assessment.pathParts
-  }
-} as const;
 
 const suppliedPolicy = readFileSync(
   resolvePackageFileUrl('assets', 'governance', 'single-maintainer-gitflow', 'policy.md'),
@@ -845,6 +827,37 @@ resources, deployments, monitoring, alerts, or Slack routes.
 
 ${nextAction}
 
+## Separate native repair
+
+${governanceInvocationGuide(plan, 'repair')}
+
+Use the repair integration for actual application-layout review, not setup or
+assessment as an alias. It negotiates \`liftoff repair --capabilities --json\`
+before project access. Missing contract/recipe/mode support requires an explicit
+\`liftoff upgrade --check --json\` remedy, not agent-emulated project writes.
+The integration inventories actual custom source and current target artifact
+identities, imports/module paths, build/tests, Docker/Compose contexts, scripts,
+CI and documentation. Exact replacements and the strict patch document stay in
+external staging until CLI preview, independently approved staged verification
+(network separately authorized), and separate exact file approval. Staging is
+not an OS or network sandbox: trusted project code can affect the host and access
+the network. Declaring \`network: false\` is not proof scripts cannot access the
+network. Review those effects before consent. Unknown mappings stay plan-only.
+Unsupported mandatory isolation blocks verification; trust is not a substitute
+for required OS or network isolation.
+The application-patch transaction preserves private rollback material, original
+manifest/provenance, activation proof and immutable history.
+That restriction does not remove the deterministic Azure recipe's separately
+registered, reviewed manifest/history writes.
+Missing verification tools or dependencies are explicit blockers. Repair does not
+supply npm ci/install or Python environment preparation. Go test/vet may download
+modules; declare and separately approve those network effects. Never infer install,
+live dependency-tree copying or lock-regeneration authority.
+Generic repair requests, unrelated approval,
+autopilot and agent-generated Yes do not supply action consent.
+Repair works with governance disabled without creating governance artifacts or
+activation state; its managed hash is not a separate release identity.
+
 ## What setup does
 
 \`liftoff-setup\` delegates every transition to the Liftoff CLI, beginning with
@@ -888,9 +901,10 @@ declined later authority preserves local completion without publication or
 provider effects.
 An older Spec Kit project without that bundle needs separately reviewed seed
 adoption; update, force, and assessment never create it or infer completion.
-If infrastructure conformance blocks \`seed-verified\`, explain that it means
-**Local baseline verification**, not an OpenSpec feature change. Before retrying
-the blocked check, run \`liftoff repair --check --json\` from this project.
+If infrastructure conformance blocks **Local baseline verification**, this is
+not an OpenSpec feature change. Before retrying the blocked check, negotiate
+\`liftoff repair --capabilities --json\`, then run \`liftoff repair --check --json\`
+from this project.
 Ordinary check makes no cloud calls. Only when explicitly authorized, use
 \`liftoff repair --check --live --subscription <UUID> --json\` for bounded
 metadata discovery with existing authentication. The supported local recipe
@@ -904,12 +918,33 @@ OpenTofu release line, then runs \`tofu fmt -check -recursive\` on the whole sta
 Azure root. Each selected staged environment runs
 \`tofu init -backend=false -input=false -lockfile=readonly -no-color\`, then
 \`tofu validate -json\`. These checks never initialize the original backend.
-Only after separate developer approval of the exact eligible repair fingerprint,
-run \`liftoff repair --approve-plan <fingerprint> --json\`.
+For normal human execution, use \`liftoff repair\` with genuine input and stderr TTYs.
+It displays the exact immutable plan, then asks action-specific Yes/No with
+default No. Explicit Yes authorizes only that displayed plan's internal
+fingerprint; humans do not copy or enter approval hashes.
+Retain separately approved \`--live --subscription <UUID>\` options in the
+interactive infrastructure invocation when metadata discovery is needed.
+For an externally staged application patch, use
+\`liftoff repair --application-patch <external-patch.json>\`: verification,
+declared network effects, and exact local file writes have separate prompts.
+No/Ctrl-C/EOF declines the current action without unapproved project writes.
+Previously approved verification may already have caused its disclosed host
+effects. If verification ran before file-prompt cancellation, report those
+executed checks and observed effects separately from no file transaction committed;
+never say nothing happened. Changed inputs after a prompt still refuse stale
+approval and require fresh review. Never use generic yes flags or piped answers as authority.
+Agents using optional JSON automation must obtain independent user approval for
+each displayed scope before using returned \`--verify-plan\` or \`--approve-plan\`
+fingerprints internally; this is not the primary human path.
 Then run \`liftoff update --check --json\`, review any separate update plan, and
-resume \`liftoff governance plan --scope local --json\` and its ready apply action.
+inspect \`liftoff governance status --scope local --json\`,
+\`liftoff governance verify --scope local --json\`, and
+\`liftoff governance resume --scope local --json\` before the next local plan
+and its ready apply action. These reads do not run project scripts or advance proof.
 Keep the same project target in every command; repair accepts a positional
-project path. Bare repair previews; it never applies implicitly.
+project path. \`--check\` stays read-only. JSON/nonTTY bare repair previews only,
+never prompts, consumes piped approval, or hangs waiting for input. Execution in
+JSON/nonTTY requires exact explicit execution flags and their independent consent.
 Interrupted repair uses \`liftoff repair --recover\` for this project, not update
 recovery. Repair does not support \`--force\`, \`--yes\`, or \`--add-agents\`.
 Agent installation and the public stateful migration coordinator are not
@@ -984,6 +1019,7 @@ ${renderGovernanceAssessmentGuide(plan)}
 export function renderGovernanceAssessmentGuide(plan?: Pick<ProjectPlan, 'agents'>): string {
   const setup = plan ? governanceInvocationGuide(plan) : 'Copilot/Claude: `/liftoff-setup`; Codex: `$liftoff-setup`';
   const assessment = plan ? governanceInvocationGuide(plan, 'assessment') : 'Copilot/Claude: `/liftoff-governance-assess`; Codex: `$liftoff-governance-assess`';
+  const repair = plan ? governanceInvocationGuide(plan, 'repair') : 'Copilot/Claude: `/liftoff-repair`; Codex: `$liftoff-repair`';
   const entryPoint = plan?.agents.length === 0
     ? `No native setup or assessment integration is recorded for this legacy project.
 Managed-core maintenance does not initialize the framework or install integrations.
@@ -1059,6 +1095,10 @@ Exit 2 is advisory, not permission to repair anything.
 Assessment writes reports to stdout only. It never updates or upgrades anything,
 changes project files, Git, activation state, approvals, or evidence, or runs
 recommendations. Reports cannot complete Phase 0 or any other phase.
+For layout concerns, explain the separate native repair journey (${repair}).
+Do not invoke it from assessment. Actual application inventory, external staged
+patches, independent verification consent and separate exact file approval belong
+to that journey; an assessment recommendation authorizes none of them.
 For compatible older inventories, restore an already selected Liftoff integration
 through \`liftoff update --check\`, then \`liftoff update\` with explicit approval
 of the matching plan. Check discloses its external preview receipt; it is not approval.
@@ -1074,60 +1114,172 @@ fresh observations, its own reviewed plan, and separate approval.
 `;
 }
 
-function nativeIntegrationHeader(agent: CodingAgentId, operation: 'setup' | 'assessment'): string {
+function nativeIntegrationHeader(agent: CodingAgentId, operation: 'setup' | 'assessment' | 'repair'): string {
   const integration = governanceAgentIntegrations[agent];
-  const skillName = operation === 'setup' ? 'liftoff-setup' : 'liftoff-governance-assess';
+  const skillName = operation === 'assessment' ? 'liftoff-governance-assess' : `liftoff-${operation}`;
   const description = operation === 'setup'
-    ? 'Guide local readiness and the separately approved Liftoff repair, migration, and activation journey.'
-    : 'Explain the Liftoff governance assessment without executing repairs, activation, or other mutations.';
+    ? 'Guide local readiness and separately approved repair, migration and activation.'
+    : operation === 'assessment'
+      ? 'Explain the Liftoff governance assessment without executing repairs, activation, or other mutations.'
+      : 'Guide capability-checked project repair with staged verification and separate file approval.';
   const metadata = integration.kind === 'skill'
     ? `---\nname: ${skillName}\ndescription: ${JSON.stringify(description)}\n---\n\n`
     : '';
   return `${metadata}# ${integration[operation].invocation}\n`;
 }
 
+function renderRepairIntegration(agent: CodingAgentId): string {
+  return `${nativeIntegrationHeader(agent, 'repair')}
+The CLI owns repair decisions/writes. This is not setup, assessment or agent
+installation. Managed hashes identify the integration; no separate version.
+
+1. First run \`liftoff repair --capabilities --json\`, before project access.
+   Require \`schemaVersion: ${repairSchemaVersions.capabilities}\`, \`kind: liftoff-repair-capabilities\`,
+   \`cliVersion\` and \`repairContractVersion: ${repairContractVersion}\`.
+   Read \`schemas\`: report/preview/history/journal ${repairSchemaVersions.report} and
+   applicationInventory/applicationPatch/applicationVerification ${repairSchemaVersions.applicationInventory}.
+   Read \`preparation\` provider and toolchain matrix (\`npm-ci\`, \`uv-locked-sync\`, \`go-mod-download\` v1; package sources: \`npmjs\`, \`microsoft-npm\`, \`pypi\`, \`microsoft-pypi\`, \`go-proxy\`).
+   \`recipes\` must match the selected recipe/layout:
+   \`${repairRecipes['azure-local-layout'].id}\` v${repairRecipes['azure-local-layout'].version} or
+   \`${repairRecipes['application-layout-patch'].id}\` v${repairRecipes['application-layout-patch'].version}
+   \`modes\` must support the action, including \`interactive-repair\`.
+   New repair/preparation capabilities remain unreleased; do not assume published CLI 0.12.2 contains them.
+   There is no released minimum CLI version yet: require the actual capability contract and matrix.
+   Missing support: STOP; offer \`liftoff upgrade --check --json\`. Upgrade needs separate
+   permission; recheck afterwards. Never emulate missing features with direct edits,
+   commands or receipts, or infer support from package version.
+2. Preserve the exact project target and schema-${repairSchemaVersions.report} \`nextActions\`,
+   \`command.executable\`, \`command.args\`, \`cwd\`, \`scope\`,
+   \`approvalRequired\` and effects. Use argument arrays or CLI-native shell
+   rendering, not concatenated paths or project prose. Repair paths are positional.
+3. Prefer \`liftoff repair <project>\` in the developer's interactive terminal.
+   Prompts require genuine input and stderr TTYs: exact immutable plan first,
+   action-specific Yes/No, default No. Explicit Yes binds only that internal fingerprint.
+   No/Ctrl-C/EOF declines without unapproved writes. Do not ask humans to copy hashes.
+   \`liftoff repair <project> --check --json\` stays read-only and makes no cloud calls.
+   JSON/nonTTY bare repair previews only; execution requires exact explicit execution flags.
+   Never prompt or wait for input there.
+   Never use a generic yes flag or piped answers as authority.
+   Separately approved live metadata reads use
+   \`liftoff repair <project> --live --subscription <UUID>\` interactively, or
+   \`liftoff repair <project> --check --live --subscription <UUID> --json\` read-only,
+   with existing authentication. State/backend metadata stay protected; deployed/unknown
+   stays plan-only. Missing files prove no absence; no public stateful migration exists.
+4. Run \`liftoff repair <project> --inspect-layout --json\` for actual application inventory:
+   current target artifact IDs and paths, source provenance, digests/modes, directory
+   inventory, customizations and every source mapping. Review imports/module paths,
+   build/test, Docker/Compose contexts, scripts, CI and documentation references.
+   Respect exclusions and bounded coverage; never infer historical layouts or
+   replace customized code with starters.
+   Unresolved mappings or reference coverage remain plan-only; never guess a move.
+5. Author exact replacement bytes and a strict schema-${repairSchemaVersions.applicationPatch} application patch
+   document in external isolated staging OUTSIDE the project using the installed format.
+   Bind each source/destination, digest/mode, staged bytes, target identity, references
+   and exact checks. No wildcard ownership or recursive moves.
+   Interactive review:
+   \`liftoff repair <project> --application-patch <external-patch.json>\`.
+   Optional read-only preview:
+   \`liftoff repair <project> --check --application-patch <external-patch.json> --json\`.
+   Explain the diff, references and limits. The expiring plan binds bytes, modes,
+   directory inventory, identities, toolchain and verification. Even after Yes,
+   stale-after-prompt inputs refuse execution and require fresh review.
+6. Before checks, obtain independent consent for locked dependency preparation (when declared),
+   exact project-code execution, and separately for declared network effects: Yes/No, default No.
+   Registered providers (npm-ci v1, uv-locked-sync v1, go-mod-download v1) restore locked
+   dependencies into private environments with lifecycle scripts suppressed (lifecycle: disabled);
+   no arbitrary installer, global installs, live dependency reuse, credential inheritance, or lock upgrades.
+   Missing tools, locks, or unsupported hooks/sources are explicit blockers.
+   Staging is NOT an OS or network sandbox: trusted dependency/project code
+   can affect the host and access the network. Declaring \`network: false\` is not proof
+   scripts cannot access the network.
+   Mandatory isolation unsupported by this executor blocks verification.
+   Preparation and network approval imply no file approval. Failed checks apply no patch.
+7. After fresh matching successful verification, let the CLI ask SEPARATELY about
+   exact file writes; explicit Yes binds only those effects. If a later No/Ctrl-C/EOF
+   follows approved verification, report earlier commands and observed effects
+   separately from no file transaction committed. Never report "nothing happened":
+   cancellation cannot undo prior host/network effects.
+   The confined transaction alone applies the patch, never direct edits followed
+   by retrospective approval. No force/yes bypass.
+   Never edit manifest/provenance, desired state, framework or managed integrations,
+   activation proof, history, state or secrets through an application patch.
+   This does not prohibit the Azure recipe's registered reviewed manifest/history writes.
+   Never fabricate evidence or retag old records.
+   Optional agent automation: use fingerprints internally only for the same immutable
+   plan and action scopes the actual user separately approved. Generic repair requests,
+   unrelated approval, autopilot, agent-generated Yes and piped input grant no consent.
+   \`liftoff repair <project> --verify-plan <fingerprint> --json\`, adding
+   \`--allow-dependency-preparation\` and/or \`--allow-network\` only for their
+   independently approved declared effects;
+   After fresh successful verification and separate file approval:
+   \`liftoff repair <project> --approve-plan <fingerprint> --json\`.
+   Optional automation/backward compatibility only; no human hash entry.
+8. Distinguish inventory, proposed, verified and committed scope, including cleanup
+   limitations. Report only declared checks actually executed and their results.
+   Declared checks are not full application/cloud conformance or activation.
+   Build-only evidence is not tests. Preserve private rollback material and immutable history.
+   \`liftoff repair <project> --recover --json\` is only for the CLI's reported interrupted
+   repair scope, not generic cleanup or rollback. Never delete user staging, backups or
+   history, guess cleanup paths, or rerun verification through recovery.
+   Post-commit fixes need a new reviewed patch or user-controlled version-history recovery,
+   never blind rollback. Retain partial outcomes and prior effects.
+9. Resume with \`liftoff update --project <project> --check --json\`; approval is
+   separate. For enabled governance, follow returned
+   \`liftoff governance status --scope local --json\`,
+   \`liftoff governance verify --scope local --json\` and
+   \`liftoff governance resume --scope local --json\` actions with the same project
+   target, then native setup. Explain Local baseline verification, not raw phase IDs.
+   Deployment/activation consent stays separate.
+   Governance none stays disabled: do not create policy, setup, assessment, state
+   or evidence to use repair. Never invent agent installation, shell setup or
+   state-migration commands. Missing selected integrations need reviewed additive
+   update; unowned collisions and neighboring skills stay protected.
+`;
+}
+
 function renderSetupIntegration(agent: CodingAgentId): string {
   return `${nativeIntegrationHeader(agent, 'setup')}
-Use the Liftoff governance engine. Read \`.liftoff/governance/README.md\` and adjacent
-\`policy.md\` and \`context.json\` for full repair/safety instructions.
+Use the Liftoff governance engine; read \`.liftoff/governance/README.md\`, \`policy.md\`, \`context.json\`.
 
 1. Start \`liftoff governance status --scope local --json\`;
    Unscoped governance defaults to activation: \`liftoff governance status --json\`.
    Preserve schema-2 \`nextActions\`: \`command.executable\`, \`command.args\`, \`cwd\`, \`scope\`, \`approvalRequired\`.
    \`nextReadyPhase\` is post-operation readiness, not \`nextPlannablePhase\`.
    Scopes: \`localSetup\`, \`migration\`, \`activation\`, \`lifecycle\`.
-2. Infrastructure-blocked \`seed-verified\` means Local baseline verification,
-   not an OpenSpec feature change. Preview \`liftoff repair --check --json\`.
-   Ordinary check makes no cloud calls. Explicit live authority only:
-   \`liftoff repair --check --live --subscription <UUID> --json\` using existing authentication.
-   After separate explicit approval of the exact eligible fingerprint:
-   \`liftoff repair --approve-plan <fingerprint> --json\`.
+2. Local baseline verification is not an OpenSpec feature change.
+   Use separate native repair (liftoff-repair); no direct edits.
+   Preview \`liftoff repair --check --json\`.
+   Ordinary check makes no cloud calls. Explicit live:
+   \`liftoff repair --check --live --subscription <UUID> --json\`.
+   Normally use \`liftoff repair\`: exact immutable plan, then Yes/No, default No.
+   No/Ctrl-C/EOF blocks unapproved writes; report prior verification effects.
+   JSON/nonTTY bare previews only. No copied hashes or piped approval.
+   Verification/network/file consent stays separate.
    Then \`liftoff update --check --json\`; update approval is separate.
-   Retain the project; repair's path is positional.
-   Repair recovery: \`liftoff repair --recover\` (not update).
+   Resume: \`liftoff governance resume --scope local --json\`.
+   Same project; positional repair path. Recover: \`liftoff repair --recover\`.
    Agent installation and the public stateful migration coordinator are not implemented.
-   Blocked cases stay plan-only.
+   Blocked stays plan-only.
 3. Preview \`liftoff governance plan --scope local --json\` and \`liftoff governance apply-next --scope local --json\`.
    \`selectedPhase\` is attempted; \`executedPhase\` succeeded.
    Only for a reported ready, approval-free local action:
    \`liftoff governance apply-next --scope local --json --execute\`.
    Plan saves a disclosed external preview, not approval.
    Apply-next without \`--execute\` is strictly read-only.
-4. Respect a local-only request or declined later authority. Otherwise
+4. Honor a local-only request or declined later authority; else
    \`liftoff governance plan --scope activation --json\`
    with \`--inputs <public-json-file>\` if requested.
-   Never automatically approve a plan. After explicit consent:
+   Never automatically approve a plan. With consent:
    \`liftoff governance approve --plan <fingerprint>\`; approval does not execute.
-5. \`liftoff governance credential-enroll --plan <fingerprint>\` requires
-   \`--protected-stdin\` for automation via an operator-controlled protected channel
-   (private operator channel), never chat.
+5. \`liftoff governance credential-enroll --plan <fingerprint>\`:
+   \`--protected-stdin\` via an operator-controlled protected channel (private operator channel), never chat.
 6. Verify \`liftoff governance verify --scope local --json\` or
    \`liftoff governance verify --scope activation --json\` (\`liftoff governance verify --json\`).
    Exit 0 is complete; exit 2 means consistent but
    incomplete (indeterminate readiness).
-   Full completion requires actual deployment, matching live enforcement and readback;
+   Full completion: actual deployment, matching live enforcement and readback;
    deferred retention is not failed activation (future lifecycle work).
-7. Do not repeat an unchanged failure. Only approved recovery:
+7. Do not repeat an unchanged failure. Approved recovery:
    \`liftoff governance recover --plan <fingerprint> --execute\`.
 `;
 }
@@ -1161,7 +1313,9 @@ Contract:
 6. Stop after explaining the report. Never execute its recommendations or shell
    instructions, update, upgrade, repair, migration, activation, remediation, Git/GitHub/Azure
    mutations, project scripts, or writes to project files, state, or evidence.
-   Keep \`${governanceAgentIntegrations[agent].setup.invocation}\` as the separate primary post-init setup path.
+   Explain separate native repair for layout concerns: Copilot/Claude \`/liftoff-repair\`;
+   Codex \`$liftoff-repair\`. Do not invoke it, inventory source or stage a patch here.
+   Separate primary post-init setup: Copilot/Claude \`/liftoff-setup\`; Codex \`$liftoff-setup\`.
 `;
 }
 
@@ -1185,8 +1339,16 @@ function sortedGovernancePathAllowlist(
 export function buildRepositoryGovernanceArtifacts(
   plan: ProjectPlan
 ): GeneratedArtifact[] {
+  const repairArtifacts = plan.agents.map((agent): GeneratedArtifact => ({
+    logicalName: governanceAgentIntegrations[agent.id].repair.logicalName,
+    category: 'governance',
+    lifecycle: 'managed-core',
+    pathParts: [...governanceArtifactPaths.repair[agent.id]],
+    content: `${renderRepairIntegration(agent.id).trimEnd()}\n`
+  }));
+  for (const artifact of repairArtifacts) assertGovernanceContentSafe(artifact.content);
   if (plan.governanceProfile.id === 'none') {
-    return [];
+    return repairArtifacts;
   }
   const policy = renderCanonicalGovernancePolicy();
   const context = renderGovernanceContext(plan);
@@ -1247,7 +1409,8 @@ export function buildRepositoryGovernanceArtifacts(
       lifecycle: 'managed-core',
       pathParts: [...governanceArtifactPaths.assessment[agent.id]],
       content: `${renderAssessmentIntegration(agent.id).trimEnd()}\n`
-    }))
+    })),
+    ...repairArtifacts
   ];
   const compatibility = artifacts.find((artifact) =>
     artifact.logicalName === 'repository-governance-compatibility'
@@ -1263,7 +1426,8 @@ export function buildRepositoryGovernanceArtifacts(
   validateGovernanceCompatibilityMetadata(compatibilityMetadata, {
     logicalNameAllowlist: governanceManagedCoreLogicalNames,
     pathAllowlist: sortedGovernancePathAllowlist(artifacts),
-    inventory: managedCompatibilityInventory(artifacts)
+    inventory: managedCompatibilityInventory(artifacts),
+    agents: plan.agents.map((agent) => agent.id)
   });
   compatibility.content = `${canonicalJson(compatibilityMetadata)}\n`;
   for (const artifact of artifacts) {

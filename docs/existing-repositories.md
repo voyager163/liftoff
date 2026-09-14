@@ -70,6 +70,17 @@ liftoff update --check
 liftoff update
 ```
 
+For project-file layout repair, use `liftoff repair --check` for inspection or
+`liftoff repair` in a genuine terminal to review an eligible exact plan and
+answer Yes/No (default No), without copying a fingerprint. Unknown/deployed
+infrastructure remains protected. For broader application paths, the selected
+native `/liftoff-repair` integration (Codex: `$liftoff-repair`) inventories the
+real project and stages a reviewed patch outside it. Verification/project-code,
+declared network and file-transaction permissions are separate; see
+[repair modes](cli-reference.md#repair-modes) and
+[application repair](application-repair.md). This is not a fresh scaffold over
+the application, and `liftoff migrate` remains a separate adoption workflow.
+
 Always run `--check` before a write-capable update. Check leaves project bytes
 unchanged and discloses a user-local preview receipt outside the repository.
 Plain update requires a matching preview and explicit approval of the exact
@@ -93,6 +104,11 @@ Select both delivery modes and every workflow in the profile picker. Plain
 `liftoff update` does not regenerate OpenSpec integrations. To change the
 hosted Copilot agent later, update `githubCopilot.cloudAgent` through OpenSpec
 and run `openspec update`.
+
+Liftoff's own repair integrations instead use exact managed-core update
+identities. A supported older manifest can acquire the selected-agent repair
+files through the reviewed update above, including when governance is disabled.
+Unowned custom integrations and neighboring skills are not overwritten by force.
 
 Projects created before manifest artifact version 7 automatically preview the
 default deterministic setup handoff as new named drift. After a matching check

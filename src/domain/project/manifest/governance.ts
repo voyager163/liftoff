@@ -1,6 +1,9 @@
 import type { LiftoffManifest } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
-import { isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName, preCodexManagedCoreLogicalNames } from '../artifact-lifecycle.js';
+import {
+  isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName,
+  managedCoreArtifactPaths, repairManagedCoreLogicalNames
+} from '../artifact-lifecycle.js';
 import { governanceAgentIntegrations } from '../catalog.js';
 import type { ManifestContractContext } from './context.js';
 import { assertOnlyFields, isRecord, requiredString } from './fields.js';
@@ -10,14 +13,12 @@ export const assessmentLogicalNames = [
   'liftoff-governance-assess-claude',
   governanceAgentIntegrations.codex.assessment.logicalName
 ] as const;
-export const preAssessmentManagedCoreLogicalNames = preCodexManagedCoreLogicalNames.filter((logicalName) =>
-  !assessmentLogicalNames.some((assessment) => assessment === logicalName)
-);
+export { preAssessmentManagedCoreLogicalNames } from '../artifact-lifecycle.js';
 
 export function createManifestGovernanceReader(context: ManifestContractContext) {
   const { getGovernanceProfile } = context.catalog;
-  const { validateActivationIdentity, policyVersion: governancePolicyVersion,
-    governanceArtifactPaths: governanceLogicalPaths } = context;
+  const { validateActivationIdentity, policyVersion: governancePolicyVersion } = context;
+  const governanceLogicalPaths = new Map([...context.governanceArtifactPaths, ...managedCoreArtifactPaths]);
 
   function normalizeManifestGovernance(
     value: unknown,
@@ -143,12 +144,19 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     const applicableAssessment: string[] = manifest.project.agents.map((agent) =>
       governanceAgentIntegrations[agent].assessment.logicalName
     );
+    const applicableRepair: string[] = manifest.project.agents.map((agent) =>
+      governanceAgentIntegrations[agent].repair.logicalName
+    );
+    const isRepair = (logicalName: string) =>
+      repairManagedCoreLogicalNames.some((name) => name === logicalName);
     for (const artifact of governanceArtifacts.filter((entry) =>
-      assessmentLogicalNames.some((logicalName) => entry.logicalName === logicalName)
+      assessmentLogicalNames.some((logicalName) => entry.logicalName === logicalName) ||
+      isRepair(entry.logicalName)
     )) {
-      if (!applicableAssessment.includes(artifact.logicalName)) {
+      const repair = isRepair(artifact.logicalName);
+      if (!(repair ? applicableRepair : applicableAssessment).includes(artifact.logicalName)) {
         throw new FileSystemError(
-          `Manifest governance contains inapplicable assessment integration ${artifact.logicalName}.`
+          `Manifest governance contains inapplicable ${repair ? 'repair' : 'assessment'} integration ${artifact.logicalName}.`
         );
       }
       if (
@@ -164,7 +172,8 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       return;
     }
     if (manifest.governance.profile === 'none') {
-      if (governanceArtifacts.length > 0 || retiredGovernanceArtifacts.length > 0) {
+      if (governanceArtifacts.some((artifact) => !isRepair(artifact.logicalName)) ||
+        retiredGovernanceArtifacts.length > 0) {
         throw new FileSystemError(
           'Disabled manifest governance cannot own governance handoff artifacts.'
         );
@@ -182,10 +191,11 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         governanceAgentIntegrations[agent].setup.logicalName
       )
     ];
-    const applicable = [...required, ...applicableAssessment];
+    const applicable = [...required, ...applicableAssessment, ...applicableRepair];
     const hasAssessmentInventory = governanceArtifacts.some((artifact) =>
       applicableAssessment.includes(artifact.logicalName)
     );
+    const hasRepairInventory = governanceArtifacts.some((artifact) => isRepair(artifact.logicalName));
     const missing: string[] = [];
     for (const logicalName of applicable) {
       const artifact = manifest.managedArtifacts.find((entry) =>
@@ -208,10 +218,12 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         );
       }
     }
-    // Supported older complete inventories predate assessment integrations.
+    // Complete historical inventories can predate either additive integration.
     const missingRequired = missing.filter((logicalName) =>
-      hasAssessmentInventory || required.includes(logicalName) ||
-      logicalName === governanceAgentIntegrations.codex.assessment.logicalName
+      required.includes(logicalName) ||
+      (applicableAssessment.includes(logicalName) && (hasAssessmentInventory ||
+        logicalName === governanceAgentIntegrations.codex.assessment.logicalName)) ||
+      (isRepair(logicalName) && hasRepairInventory)
     );
     if (manifest.governance.state === 'handoff-generated' && missingRequired.length > 0) {
       throw new FileSystemError(
@@ -229,9 +241,10 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     }
     for (const artifact of governanceArtifacts) {
       if (!applicable.includes(artifact.logicalName)) {
-        const integration = assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
-          ? 'assessment'
-          : 'setup';
+        const integration = isRepair(artifact.logicalName) ? 'repair' :
+          assessmentLogicalNames.some((logicalName) => artifact.logicalName === logicalName)
+            ? 'assessment'
+            : 'setup';
         throw new FileSystemError(
           `Manifest governance contains inapplicable ${integration} integration ${artifact.logicalName}.`
         );

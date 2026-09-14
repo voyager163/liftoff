@@ -13,6 +13,18 @@ function telemetryHooks(): CliTelemetryHooks & {
 }
 
 describe('CLI telemetry integration', () => {
+  it.each(['--capabilities', '--inspect-layout'])('keeps repair %s free of telemetry and disclosure effects', async (flag) => {
+    const hooks = telemetryHooks();
+    const code = await runCli({
+      argv: ['repair', flag, '--json'],
+      stdout: new CaptureStream(), stderr: new CaptureStream(), telemetry: hooks,
+      execute: async () => 0
+    });
+    expect(code).toBe(0);
+    expect(hooks.beforeCommand).not.toHaveBeenCalled();
+    expect(hooks.afterCommand).not.toHaveBeenCalled();
+  });
+
   it.for([[], ['--live'], ['--help']])('does not run telemetry or disclosure for assessment %s', async (flags) => {
     const hooks = telemetryHooks();
     const code = await runCli({

@@ -10,6 +10,7 @@ import {
 } from '../domain/governance/policy/identity.js';
 import type { ActivationSuccessorMigrationId } from './compatibility.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
+import { governanceArtifactPaths } from '../domain/project/catalog.js';
 export {
   reviewedUpdateTransactionPathParts, reviewedUpdateTransactionSchemaVersion
 } from '../domain/project/reviewed-update-artifacts.js';
@@ -42,7 +43,10 @@ export const historicalMetadataPathParts = [
   ['.claude', 'commands', 'liftoff-setup.md'],
   ['.claude', 'commands', 'liftoff-governance-assess.md'],
   ['.agents', 'skills', 'liftoff-setup', 'SKILL.md'],
-  ['.agents', 'skills', 'liftoff-governance-assess', 'SKILL.md']
+  ['.agents', 'skills', 'liftoff-governance-assess', 'SKILL.md'],
+  governanceArtifactPaths.repair['github-copilot'],
+  governanceArtifactPaths.repair.claude,
+  governanceArtifactPaths.repair.codex
 ] as const;
 
 export { ActivationHistoryError, historyFail } from './historical-safety.js';

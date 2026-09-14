@@ -3,6 +3,7 @@ import type { Readable } from 'node:stream';
 export interface UpdateApprovalRequest {
   fingerprint: string;
   approvePlan?: string;
+  message?: string;
 }
 
 export type UpdateApprovalPrompt = (
@@ -46,7 +47,7 @@ function isPromptCancellation(error: unknown): boolean {
 
 // Consent only: the caller must match a preview first and recheck the plan under the project lock before writes.
 export async function requestUpdateApproval(
-  { fingerprint, approvePlan }: UpdateApprovalRequest,
+  { fingerprint, approvePlan, message }: UpdateApprovalRequest,
   context: UpdateApprovalContext
 ): Promise<UpdateApprovalResult> {
   if (!isUpdatePlanFingerprint(fingerprint)) {
@@ -77,7 +78,7 @@ export async function requestUpdateApproval(
   try {
     const prompt = context.approveUpdatePlan ?? (await import('@inquirer/prompts')).confirm;
     const approved = await prompt({
-      message: `Apply this exact update plan (${fingerprint})?`,
+      message: message ?? `Apply this exact update plan (${fingerprint})?`,
       default: false
     }, { input, output });
     return approved === true

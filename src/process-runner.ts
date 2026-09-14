@@ -16,6 +16,8 @@ export interface RunCommandOptions {
   stderr?: NodeJS.WritableStream;
   redactArgIndices?: number[];
   redactValues?: readonly string[];
+  ensureProcessTreeSettled?: boolean;
+  settlementWaitMs?: number;
 }
 
 export interface CommandResult {
@@ -30,6 +32,8 @@ export interface CommandResult {
   aborted?: boolean;
   errorCode?: string;
   errorMessage?: string;
+  processTreeSettled?: boolean;
+  processSpawned?: boolean;
 }
 
 export interface CommandRunner {
@@ -79,6 +83,26 @@ function createStreamRedactor(sensitiveValues: readonly string[]) {
   };
 }
 
+function isProcessGroupAlive(pgid: number): boolean {
+  if (process.platform === 'win32') return false;
+  try {
+    process.kill(-pgid, 0);
+    return true;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ESRCH') return false;
+    return true;
+  }
+}
+
+async function waitForProcessGroupSettlement(pgid: number, maxWaitMs = 500): Promise<boolean> {
+  const start = Date.now();
+  while (Date.now() - start < maxWaitMs) {
+    if (!isProcessGroupAlive(pgid)) return true;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  return !isProcessGroupAlive(pgid);
+}
+
 function terminateProcessTree(child: ChildProcess, ownsProcessGroup: boolean): Promise<boolean> {
   if (child.pid === undefined) return Promise.resolve(true);
   if (process.platform !== 'win32') {
@@ -126,6 +150,10 @@ export class NodeCommandRunner implements CommandRunner {
       throw new RangeError('maxOutputBytes must be a positive safe integer.');
     }
     const displayCommand = formatCommand(command, options.redactArgIndices);
+    if (options.ensureProcessTreeSettled && process.platform === 'win32') {
+      const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
+      return runWindowsJobCommand(command, options);
+    }
     if (options.signal?.aborted) {
       return {
         command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
@@ -153,7 +181,7 @@ export class NodeCommandRunner implements CommandRunner {
       const bounded = Boolean(options.timeoutMs && options.timeoutMs > 0) ||
         options.maxOutputBytes !== undefined || options.signal !== undefined;
       // A dedicated POSIX group contains inherited-pipe descendants without detaching their lifetime.
-      const ownsProcessGroup = bounded && process.platform !== 'win32';
+      const ownsProcessGroup = (bounded || options.ensureProcessTreeSettled === true) && process.platform !== 'win32';
       const child = spawn(command.executable, command.args, {
         cwd: options.cwd,
         env: options.env ? { ...process.env, ...options.env } : process.env,
@@ -162,7 +190,7 @@ export class NodeCommandRunner implements CommandRunner {
         stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
         windowsHide: true
       });
-      const finish = (status: number | null, signal: NodeJS.Signals | null) => {
+      const finish = async (status: number | null, signal: NodeJS.Signals | null) => {
         if (settled) {
           return;
         }
@@ -185,6 +213,32 @@ export class NodeCommandRunner implements CommandRunner {
             (options.stderr ?? process.stderr).write(stderrTail);
           }
         }
+        const definitiveSpawnFailure = child.pid === undefined &&
+          Boolean(errorCode && ['ENOENT', 'EACCES', 'ENOEXEC'].includes(errorCode));
+        const processSpawned = !definitiveSpawnFailure;
+
+        let processTreeSettled: boolean | undefined;
+        if (options.ensureProcessTreeSettled) {
+          if (process.platform === 'win32') {
+            processTreeSettled = false;
+            errorCode ??= 'UNSUPPORTED_PROCESS_SETTLEMENT';
+            errorMessage ??= 'Process-tree settlement verification is unsupported on Windows.';
+          } else if (definitiveSpawnFailure) {
+            processTreeSettled = true;
+          } else if (child.pid !== undefined && ownsProcessGroup) {
+            const pgid = child.pid;
+            const settledGroup = await waitForProcessGroupSettlement(pgid, options.settlementWaitMs ?? 500);
+            if (!settledGroup) {
+              processTreeSettled = false;
+              errorCode ??= 'DESCENDANT_PROCESSES_ACTIVE';
+              errorMessage ??= 'Descendant processes in the command process tree remained active after the root process completed.';
+            } else {
+              processTreeSettled = true;
+            }
+          } else {
+            processTreeSettled = false;
+          }
+        }
         resolve({
           command,
           displayCommand,
@@ -195,6 +249,8 @@ export class NodeCommandRunner implements CommandRunner {
           timedOut,
           ...(options.maxOutputBytes === undefined ? {} : { outputLimitExceeded }),
           ...(options.signal === undefined ? {} : { aborted }),
+          ...(options.ensureProcessTreeSettled === undefined ? {} : { processTreeSettled }),
+          processSpawned,
           ...(errorCode ? { errorCode } : {}),
           ...(errorMessage ? { errorMessage: redactSensitiveText(errorMessage, options.redactValues) } : {})
         });
@@ -289,7 +345,7 @@ export class NodeCommandRunner implements CommandRunner {
         errorMessage = error.message;
       });
       child.on('close', (status, signal) => {
-        if (!stopping) finish(status, signal);
+        if (!stopping) void finish(status, signal);
       });
 
       timer = options.timeoutMs && options.timeoutMs > 0

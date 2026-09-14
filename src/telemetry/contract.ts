@@ -94,6 +94,8 @@ export function isTelemetryCliVersion(value: unknown): value is string {
 }
 
 export function isTelemetryExcludedCommand(input: TelemetryCommandInput): boolean {
+  if (input.command === 'repair' &&
+      ['capabilities', 'inspect-layout'].some((flag) => input.flags[flag] === true)) return true;
   const candidate = input.subcommand ? `${input.command}:${input.subcommand}` : input.command;
   return telemetryExcludedCommands.some((command) => command === candidate);
 }

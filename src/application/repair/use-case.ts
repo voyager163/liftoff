@@ -13,25 +13,26 @@ import {
   assessInfrastructureLayout, retiredFlatRootInfrastructureIdentities
 } from '../../domain/project/infrastructure-layout.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
-import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 import { NodeCommandRunner } from '../../process-runner.js';
+import { repairExecutionIdentity, repairSchemaVersions } from '../../domain/repair/identity.js';
+import { liftoffVersion } from '../../version.js';
+import type { UpdateApprovalResult } from '../update/approval.js';
 import { inspectInfrastructureRepair, type InfrastructureRepairCandidate } from './infrastructure.js';
 import { discoverRepairEligibility, repairCommandLimits, repairDiscoveryLimits, type RepairDiscovery } from './discovery.js';
 import {
-  buildRepairPreview, byteDigest, loadRepairPreview, mutationDescriptors, repairApprovalStore,
-  repairHistoryFiles, repairHistoryRoot, repairRecipeVersion, snapshotDescriptors, type RepairPreview
+  buildRepairPreview, loadRepairPreview, mutationDescriptors, repairApprovalStore,
+  repairHistoryFiles, repairHistoryRoot, type RepairPreview
 } from './preview.js';
 import { repairValidationPolicy, validateRepairCandidate } from './validation.js';
-
-export interface RepairRequest {
-  project?: string;
-  check: boolean;
-  live: boolean;
-  subscription?: string;
-  approvePlan?: string;
-  recover: boolean;
-  json: boolean;
-}
+import { repairCapabilities } from './capabilities.js';
+import { emitRepairReport, type RepairReport } from './report.js';
+import { repairRequestIssue, type RepairRequest } from './request.js';
+import { requestRepairApproval } from './approval.js';
+import { repairAgentActions, repairCheckAction, repairCommandAction, repairResumeActions } from './guidance.js';
+import { repairHistoryMutations } from './history.js';
+import { assertRepairReadback } from './readback.js';
+import { inspectRepairVerificationWorkspaces, recoverRepairVerificationWorkspaces } from './workspaces.js';
+export type { RepairRequest } from './request.js';
 
 interface RepairInspection {
   manifest: LiftoffManifest;
@@ -41,61 +42,6 @@ interface RepairInspection {
   discovery: RepairDiscovery;
   blockers: string[];
   sourceManifest: Buffer;
-}
-
-interface RepairReport {
-  schemaVersion: 1;
-  operationKind: 'check' | 'apply' | 'recover';
-  requestedScope: 'local-infrastructure';
-  projectRoot: string;
-  status: 'current' | 'available' | 'blocked' | 'applied' | 'failed' | 'recovered' | 'partial';
-  committed: boolean;
-  repairScopeComplete: boolean;
-  verification: 'not-run' | 'not-required' | 'passed' | 'incomplete';
-  message: string;
-  blockers: string[];
-  nextActions: string[];
-  layout?: string;
-  eligibility?: RepairDiscovery;
-  fingerprint?: string;
-  expiresAt?: string;
-  receiptPath?: string;
-  historyPath?: string;
-  operations?: ReturnType<typeof mutationDescriptors>;
-  validationPolicy?: typeof repairValidationPolicy;
-}
-
-const projectCommand = (root: string, command: string, args: string[] = []) =>
-  formatShellCommand({ executable: 'liftoff', args: [command, '--project', root, ...args] }, commandShellForPlatform(process.platform));
-
-function emit(context: ExecutionContext, request: RepairRequest, report: RepairReport): void {
-  if (request.json) {
-    context.presentation.rawStdout(`${JSON.stringify(report, null, 2)}\n`);
-    return;
-  }
-  context.presentation.status(
-    report.status === 'failed' ? 'error' :
-      ['blocked', 'partial', 'available'].includes(report.status) ? 'warning' : 'success',
-    'Project infrastructure repair', report.message
-  );
-  context.presentation.definitions('Selected repair scope', [
-    { label: 'Project', value: report.projectRoot },
-    { label: 'Layout', value: report.layout ?? 'not inspected' },
-    { label: 'Eligibility', value: report.eligibility?.status ?? 'not inspected' },
-    ...(report.fingerprint ? [{ label: 'Plan fingerprint', value: report.fingerprint }] : []),
-    ...(report.expiresAt ? [{ label: 'Expires', value: report.expiresAt }] : []),
-    ...(report.receiptPath ? [{ label: 'External receipt', value: report.receiptPath }] : [])
-  ]);
-  if (report.operations?.length) context.presentation.bullets('Exact project file changes',
-    report.operations.map((entry) => `${entry.type} ${entry.pathParts.join('/')}${entry.digest ? ` (SHA-256 ${entry.digest})` : ''}`));
-  if (report.validationPolicy) context.presentation.bullets('Approved validation scope', [
-    report.validationPolicy.effects,
-    `tofu ${report.validationPolicy.formatCommand.join(' ')} in the isolated infrastructure root`,
-    ...report.validationPolicy.commands.map((args) => `tofu ${args.join(' ')} in each isolated environment root`),
-    `Each command is bounded to ${report.validationPolicy.timeoutMs / 1000} seconds.`
-  ]);
-  if (report.blockers.length) context.presentation.bullets('Blockers', report.blockers);
-  context.presentation.bullets('Next steps', report.nextActions);
 }
 
 function repairedManifest(manifest: LiftoffManifest, original: Buffer, candidate: InfrastructureRepairCandidate): string {
@@ -148,6 +94,7 @@ function previewFor(root: string, inspection: RepairInspection, scope: Pick<Repa
   return buildRepairPreview({
     projectRoot: root, snapshots: inspection.snapshots, mutations: inspection.mutations,
     scope: {
+      layout: inspection.candidate.layout,
       environments: inspection.manifest.project.workload.environments,
       resourceGroups: inspection.candidate.resourceGroups, statePaths: inspection.candidate.statePaths,
       directoryInventory: inspection.candidate.directoryInventory,
@@ -167,112 +114,212 @@ function assertSamePreview(current: RepairPreview, saved: RepairPreview): void {
 export async function repairProject(request: RepairRequest, context: ExecutionContext): Promise<number> {
   let root = request.project ? path.resolve(context.cwd, request.project) : context.cwd;
   let committed = false;
+  let selectedManifest: LiftoffManifest | undefined;
+  let approval: UpdateApprovalResult | undefined;
+  let validationAttempted = false;
   const now = () => context.updateNow?.() ?? new Date();
   const storage = { ...context.updatePreview, env: context.updatePreview?.env ?? context.env };
   const base = (): RepairReport => ({
-    schemaVersion: 1, operationKind: request.recover ? 'recover' : request.approvePlan ? 'apply' : 'check',
-    requestedScope: 'local-infrastructure', projectRoot: root, status: 'blocked', committed,
-    repairScopeComplete: false, verification: 'not-run', message: '', blockers: [], nextActions: []
+    schemaVersion: repairSchemaVersions.report,
+    operationKind: request.recover ? 'recover' : request.verifyPlan ? 'verify' : request.inspectLayout ? 'inspect-layout' : request.approvePlan ? 'apply' : 'check',
+    requestedScope: request.recover ? 'repair-recovery' :
+      request.inspectLayout || request.applicationPatch || request.verifyPlan ? 'application-layout' : 'local-infrastructure',
+    projectRoot: root, status: 'blocked', committed, capabilities: repairCapabilities,
+    repairScopeComplete: false, verification: 'not-run', message: '', blockers: [], nextActions: [],
+    ...(approval ? { approval } : {})
   });
-  context.presentation.commandIdentity('repair', 'Reviewed local infrastructure reorganization');
+  const emit = (report: RepairReport) => emitRepairReport(context, request.json, report);
+  const recoverAction = () => repairCommandAction(root, ['--recover'], {
+    id: 'repair-recover', label: 'Recover the recorded transaction', scope: 'repair-recovery', approvalRequired: true,
+    description: 'This handles only the previously approved interrupted repair; it does not start a new transformation.'
+  });
+  context.presentation.commandIdentity('repair', 'Reviewed project repair with separate action-specific approval');
   try {
-    if ((request.check && (request.approvePlan || request.recover)) || (request.recover && request.approvePlan) ||
-        ((request.approvePlan || request.recover) && (request.live || request.subscription)) ||
-        request.live !== Boolean(request.subscription) ||
-        request.subscription !== undefined && !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu.test(request.subscription)) {
-      throw new Error('Invalid repair authority: check/live/subscription, exact-plan application and recovery are separate scopes.');
+    const issue = repairRequestIssue(request);
+    if (issue) throw new Error(issue);
+    if (request.capabilities) {
+      if (request.json) context.presentation.rawStdout(`${JSON.stringify(repairCapabilities, null, 2)}\n`);
+      else {
+        context.presentation.definitions('Packaged repair capabilities', [
+          { label: 'CLI', value: repairCapabilities.cliVersion },
+          { label: 'Repair contract', value: String(repairCapabilities.repairContractVersion) },
+          { label: 'Recipes', value: repairCapabilities.recipes.map((entry) => `${entry.id} v${entry.version}`).join(', ') }
+        ]);
+        context.presentation.bullets('Approval boundaries', Object.values(repairCapabilities.approval)
+          .flatMap((entry) => typeof entry === 'string' ? [entry] : [...entry]));
+        context.presentation.bullets('Limitations', [
+          repairCapabilities.boundaries.applicationPatch, repairCapabilities.boundaries.verificationIsolation,
+          repairCapabilities.boundaries.statefulMigration, repairCapabilities.boundaries.agentInstallation
+        ]);
+      }
+      return 0;
     }
     const discovered = request.project ? root : await findProjectRoot(context.cwd);
-    if (!discovered) throw new Error('No Liftoff project was found. Select an existing project with --project; repair never initializes a directory.');
+    if (!discovered) throw new Error('No Liftoff project was found. Select an existing project with liftoff repair <project-path>; repair never initializes a directory.');
     const details = await lstat(discovered);
     if (!details.isDirectory() || details.isSymbolicLink()) throw new Error('Repair project root must be a regular directory, not a link.');
     root = await realpath(discovered);
-    await loadManifest(root);
     const approvalStore = repairApprovalStore(root, storage);
     const pendingUpdate = await inspectReviewedUpdateTransaction(root);
     if (pendingUpdate.status !== 'absent') {
-      emit(context, request, { ...base(), message: 'An unfinished update must be recovered before repair.',
-        nextActions: [projectCommand(root, 'update'), projectCommand(root, 'repair', ['--check'])] });
+      const command = { executable: 'liftoff', args: ['update', '--project', root] };
+      const { commandShellForPlatform, formatShellCommand } = await import('../../adapters/process/shell-command.js');
+      emit({ ...base(), message: 'An unfinished update must be recovered before repair.',
+        blockers: pendingUpdate.reason ? [pendingUpdate.reason] : [],
+        nextActions: [
+          { kind: 'command', id: 'update-recovery', label: 'Recover the unfinished update', description: 'Update owns its recorded transaction, not repair.',
+            command, displayCommand: formatShellCommand(command, commandShellForPlatform(process.platform)),
+            cwd: root, scope: 'managed-update', approvalRequired: true },
+          repairCheckAction(root)
+        ] });
       return 2;
     }
     const pending = await inspectReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
+    const pendingWorkspaces = await inspectRepairVerificationWorkspaces(root, storage);
     if (request.recover) {
       const result = await recoverReviewedUpdateTransaction(root, { transactionKind: 'repair', approvalStore });
+      const workspaceRecovery = await recoverRepairVerificationWorkspaces(root, storage);
       committed = result.committed;
-      emit(context, request, {
-        ...base(), status: result.status === 'blocked' ? 'blocked' : 'recovered',
-        message: result.status === 'absent' ? 'No interrupted local repair transaction exists.' :
-          result.status === 'blocked' ? 'Repair recovery is blocked; concurrent project changes were preserved.' :
-            'Recovered the previously approved local repair. No new transformation was started.',
-        blockers: [...result.rollbackFailures, ...result.cleanupFailures],
-        nextActions: [projectCommand(root, 'repair', ['--check'])]
+      const allAbsent = result.status === 'absent' && workspaceRecovery.status === 'absent';
+      const isBlocked = result.status === 'blocked' || workspaceRecovery.status === 'blocked' || workspaceRecovery.status === 'partial';
+      const blockers = [
+        ...result.rollbackFailures,
+        ...result.cleanupFailures,
+        ...workspaceRecovery.issues.map((entry) => entry.message),
+        ...workspaceRecovery.results.flatMap((entry) => entry.issues.map((i) => i.message))
+      ];
+      emit({
+        ...base(), status: isBlocked ? 'blocked' : 'recovered',
+        repairScopeComplete: allAbsent,
+        recovery: { schemaVersion: pending.schemaVersion, identity: pending.repairIdentity },
+        privateWorkspaceRecovery: workspaceRecovery,
+        message: allAbsent ? 'No interrupted local repair transaction exists.' :
+          isBlocked ? 'Repair recovery is blocked; concurrent project changes or uncertain private workspaces were preserved.' :
+            'Recovered recorded repair material. No new transformation was started.',
+        blockers,
+        nextActions: [repairCheckAction(root)]
       });
-      return result.status === 'absent' ? 0 : 2;
+      return allAbsent ? 0 : 2;
     }
-    if (pending.status !== 'absent') {
+    if (pending.status !== 'absent' || pendingWorkspaces.status !== 'absent') {
       committed = pending.committed;
-      emit(context, request, { ...base(), message: 'An interrupted local repair requires explicit recovery.',
-        blockers: pending.reason ? [pending.reason] : [],
-        nextActions: [projectCommand(root, 'repair', ['--recover'])] });
+      const blockers = [
+        ...(pending.reason ? [pending.reason] : []),
+        ...pendingWorkspaces.issues.map((entry) => entry.message),
+        ...pendingWorkspaces.workspaces.flatMap((w) => w.issues.map((i) => i.message))
+      ];
+      emit({
+        ...base(),
+        message: pending.status !== 'absent'
+          ? 'An interrupted local repair requires explicit recovery.'
+          : 'Retained private verification workspaces require explicit recovery.',
+        recovery: { schemaVersion: pending.schemaVersion, identity: pending.repairIdentity },
+        privateWorkspaces: pendingWorkspaces,
+        blockers,
+        nextActions: [recoverAction()]
+      });
       return 2;
     }
-    const saved = request.approvePlan ? await loadRepairPreview(root, request.approvePlan, now(), storage) : undefined;
+    selectedManifest = await loadManifest(root);
+    const fingerprint = request.approvePlan ?? request.verifyPlan;
+    let saved = fingerprint ? await loadRepairPreview(root, fingerprint, now(), storage) : undefined;
+    if (request.inspectLayout || request.applicationPatch || request.verifyPlan || saved?.recipe.id === 'application-layout-patch') {
+      const { repairApplicationProject } = await import('./patch-flow.js');
+      return await repairApplicationProject({ root, manifest: selectedManifest, request, context, storage, saved });
+    }
     const scope = saved
       ? { live: saved.live, subscription: saved.subscription ?? undefined }
       : { live: request.live, subscription: request.subscription?.toLowerCase() };
-    const inspection = await inspect(root, scope, context);
-    const report = { ...base(), layout: inspection.candidate.layout, eligibility: inspection.discovery };
-    const resume = [projectCommand(root, 'update', ['--check']), formatShellCommand({
-      executable: 'liftoff', args: ['governance', 'status', '--project', root, '--scope', 'local']
-    }, commandShellForPlatform(process.platform))];
+    let inspection = await inspect(root, scope, context);
+    const identity = repairExecutionIdentity(liftoffVersion, 'azure-local-layout');
+    const report = { ...base(), identity, layout: inspection.candidate.layout, eligibility: inspection.discovery };
+    const broader = [
+      repairCommandAction(root, ['--inspect-layout'], {
+        id: 'application-inventory', label: 'Inspect broader application layout', scope: 'application-layout',
+        description: 'Read-only actual-file inventory and target identities; no automatic folder moves or starter replacement.'
+      }),
+      ...repairAgentActions(root, selectedManifest),
+      ...repairResumeActions(root, selectedManifest)
+    ];
     if (inspection.blockers.length) {
-      const nextActions = [projectCommand(root, 'repair', ['--check'])];
+      const nextActions = [repairCheckAction(root), ...broader];
       if (!scope.live && !inspection.candidate.blockers.length && inspection.discovery.status === 'unknown') {
-        nextActions.unshift(`Confirm the deployment subscription, then run ${projectCommand(root, 'repair',
-          ['--check', '--live', '--subscription', '<subscription-id>'])}. This only reads metadata with your existing authentication.`);
+        nextActions.unshift(repairCommandAction(root, ['--check', '--live', '--subscription', '<subscription-id>'], {
+          id: 'repair-live-check', label: 'Confirm subscription and check absence', scope: 'live-metadata',
+          description: 'Only bounded metadata reads with existing authentication; confirm and substitute the actual subscription UUID first.',
+          approvalRequired: true, requiresInput: ['subscription-id']
+        }));
       } else if (inspection.discovery.status === 'stateful' || inspection.discovery.observations.some((entry) => entry.status === 'present')) {
-        nextActions.unshift('Keep the original roots and state unchanged. This CLI local lane does not execute deployed-state cutover; a separately qualified protected migration is required.');
+        nextActions.unshift({
+          kind: 'guidance', id: 'preserve-state', label: 'Keep original infrastructure and state unchanged',
+          description: 'This public local lane does not execute deployed-state cutover. A separately qualified protected migration is required.',
+          cwd: root, scope: 'stateful-migration', approvalRequired: false
+        });
       }
-      emit(context, request, { ...report, message: 'Infrastructure repair is plan-only; no project or state files were changed.',
+      emit({ ...report, message: 'Infrastructure repair is plan-only; no project or state files were changed.',
         blockers: inspection.blockers, operations: mutationDescriptors(inspection.mutations), nextActions });
       return 2;
     }
     if (inspection.candidate.layout === 'independent') {
-      emit(context, request, { ...report, status: 'current', repairScopeComplete: true, verification: 'not-required',
+      emit({ ...report, status: 'current', repairScopeComplete: true, verification: 'not-required',
         message: 'No layout reorganization is required. Local baseline verification and cloud activation remain separate.',
-        nextActions: resume });
+        nextActions: broader });
       return 0;
     }
     const preview = previewFor(root, inspection, scope, saved ? new Date(saved.createdAt) : now());
     if (!saved) {
       const receipt = await createScopedUserLocalRecordStore(root, 'repair-preview', storage).write(preview.fingerprint, preview);
-      emit(context, request, {
-        ...report, status: 'available', message: 'Supported local reorganization is ready for exact-plan approval. No project files were changed.',
+      emit({
+        ...report, status: 'available', message: 'Review the exact local reorganization below. No project files have been changed.',
         fingerprint: preview.fingerprint, expiresAt: preview.expiresAt, receiptPath: receipt.path,
         operations: mutationDescriptors(inspection.mutations), validationPolicy: repairValidationPolicy,
+        validationSummary: [
+          repairValidationPolicy.effects,
+          `tofu ${repairValidationPolicy.formatCommand.join(' ')} in the isolated infrastructure root`,
+          ...repairValidationPolicy.commands.map((args) => `tofu ${args.join(' ')} in each isolated environment root`),
+          'Approval includes only this isolated OpenTofu validation, the listed infrastructure/manifest files and immutable history; not application scripts, state migration or deployment.'
+        ],
         historyPath: path.join(root, ...repairHistoryRoot, preview.fingerprint),
-        nextActions: [projectCommand(root, 'repair', ['--approve-plan', preview.fingerprint]),
-          'Approval covers only the listed infrastructure and manifest changes, immutable provenance history, and isolated validation; not deployment or state migration.']
+        nextActions: [
+          repairCommandAction(root, scope.live ? ['--live', '--subscription', scope.subscription!] : [], {
+            id: 'repair-interactive', label: 'Review and approve interactively', approvalRequired: true,
+            description: 'A genuine terminal asks Yes/No with default No. No fingerprint entry is needed.'
+          }),
+          repairCommandAction(root, ['--approve-plan', preview.fingerprint], {
+            id: 'repair-automation-apply', label: 'Optional exact-plan automation', approvalRequired: true,
+            description: 'Use only after explicit approval of the displayed scope; the same eligibility and stale-plan checks apply.'
+          }),
+          ...repairAgentActions(root, selectedManifest)
+        ]
       });
-      return 2;
+      approval = await requestRepairApproval(request, preview.fingerprint,
+        'Run the displayed isolated OpenTofu validation and apply these exact infrastructure, manifest and history changes?', context);
+      if (approval.status !== 'approved') {
+        if (approval.status !== 'required') emit({
+          ...report, approval, message: 'Repair approval was declined or cancelled; no validation or project file transaction ran.',
+          nextActions: [repairCheckAction(root), ...broader]
+        });
+        return 2;
+      }
+      saved = await loadRepairPreview(root, preview.fingerprint, now(), storage);
+      inspection = await inspect(root, scope, context);
+      if (inspection.blockers.length) throw new Error(`Repair eligibility changed while approval was open: ${inspection.blockers.join(' ')}`);
+      assertSamePreview(previewFor(root, inspection, scope, new Date(saved.createdAt)), saved);
     }
     assertSamePreview(preview, saved);
+    approval ??= { status: 'approved', fingerprint: saved.fingerprint, method: 'fingerprint' };
+    validationAttempted = true;
     await validateRepairCandidate(inspection.candidate, inspection.manifest.project.workload.environments,
       context.runner ?? new NodeCommandRunner(), context.env);
     const history = [...repairHistoryRoot, saved.fingerprint];
-    const historyMutations: ProjectFileMutation[] = [
-      { type: 'write', pathParts: [...history, 'manifest.json'], content: inspection.sourceManifest, mode: 0o600 },
-      { type: 'write', pathParts: [...history, 'receipt.json'], content: `${JSON.stringify({
-        schemaVersion: 1, kind: 'liftoff-local-infrastructure-repair', recipe: repairRecipeVersion,
-        fingerprint: saved.fingerprint, projectRoot: root, reviewedAt: saved.createdAt,
-        source: snapshotDescriptors(inspection.snapshots), target: mutationDescriptors(inspection.mutations),
-        verification: repairValidationPolicy, activationEvidence: 'not-issued'
-      }, null, 2)}\n`, mode: 0o600 }
-    ];
+    const historyMutations = repairHistoryMutations({
+      preview: saved, sourceManifest: inspection.sourceManifest, snapshots: inspection.snapshots,
+      mutations: inspection.mutations, verificationPolicy: repairValidationPolicy
+    });
     const historySnapshots = await Promise.all(historyMutations.map((entry) => captureProjectFileSnapshot(root, entry.pathParts)));
     if (historySnapshots.some((entry) => entry.content !== undefined)) throw new Error('Repair history already exists. It is immutable; request a fresh check rather than overwriting it.');
     const outcome = await applyReviewedUpdateTransaction(root, [...historyMutations, ...inspection.mutations], {
-      transactionKind: 'repair', planFingerprint: saved.fingerprint, approvalStore,
+      transactionKind: 'repair', repairIdentity: identity, planFingerprint: saved.fingerprint, approvalStore,
       preconditions: [...inspection.snapshots, ...historySnapshots],
       validatePlan: async () => {
         await loadRepairPreview(root, saved.fingerprint, now(), storage);
@@ -283,36 +330,30 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
     });
     committed = outcome.committed;
     if (!committed) {
-      emit(context, request, { ...report, committed, status: 'failed',
+      emit({ ...report, approval, committed, status: 'failed',
         message: 'The approved local repair did not commit.', blockers: [...outcome.rollbackFailures, ...outcome.cleanupFailures],
-        nextActions: [projectCommand(root, 'repair', ['--recover'])] });
+        nextActions: [recoverAction()] });
       return 1;
     }
     const post = await loadManifest(root);
     if (assessInfrastructureLayout(post).kind !== 'independent') throw new Error('Repair committed, but current independent layout could not be verified.');
-    for (const mutation of inspection.mutations) {
-      const actual = await captureProjectFileSnapshot(root, mutation.pathParts);
-      if (mutation.type === 'write'
-        ? actual.content === undefined || byteDigest(actual.content) !== byteDigest(mutation.content)
-        : actual.content !== undefined) {
-        throw new Error(`Repair committed, but ${mutation.pathParts.join('/')} changed before final readback.`);
-      }
-    }
-    emit(context, request, {
-      ...report, status: outcome.cleanupFailures.length ? 'partial' : 'applied', committed,
+    await assertRepairReadback(root, [...historyMutations, ...inspection.mutations], [...inspection.snapshots, ...historySnapshots]);
+    emit({
+      ...report, approval, operationKind: 'apply', status: outcome.cleanupFailures.length ? 'partial' : 'applied', committed,
       repairScopeComplete: outcome.cleanupFailures.length === 0, verification: 'passed',
       fingerprint: saved.fingerprint, historyPath: path.join(root, ...history),
       message: 'Infrastructure files and actual provenance were repaired; original manifest history was preserved. Governance activation is not claimed.',
       blockers: outcome.cleanupFailures,
-      nextActions: outcome.cleanupFailures.length ? [projectCommand(root, 'repair', ['--recover'])] : resume
+      nextActions: outcome.cleanupFailures.length ? [recoverAction()] : broader
     });
     return outcome.cleanupFailures.length ? 2 : 0;
   } catch (error) {
-    emit(context, request, {
+    emit({
       ...base(), status: committed ? 'partial' : 'failed', verification: committed ? 'incomplete' : 'not-run',
       message: committed ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.' : 'Local repair stopped; no successful commit was reported.',
       blockers: [error instanceof Error ? error.message : 'Unexpected repair failure.'],
-      nextActions: [projectCommand(root, 'repair', ['--check'])]
+      ...(validationAttempted ? { validationSummary: ['Previously approved isolated OpenTofu validation was attempted; no application-script, state or deployment authority was granted.'] } : {}),
+      nextActions: [repairCheckAction(root), ...(selectedManifest ? repairAgentActions(root, selectedManifest) : [])]
     });
     return committed ? 2 : 1;
   }

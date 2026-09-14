@@ -32,6 +32,7 @@
     "dist",
     "assets/locks",
     "assets/governance",
+    "assets/repair",
     "assets/supported-stack.json",
     "docs",
     "README.md",

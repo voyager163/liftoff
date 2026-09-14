@@ -68,22 +68,26 @@ verification**, not an OpenSpec feature change. Start with:
 liftoff repair "path/to/existing project" --check
 ```
 
-Ordinary check makes no cloud calls; bare `liftoff repair` also only previews.
+Ordinary check makes no cloud calls. Bare interactive `liftoff repair` shows the
+exact plan and asks Yes/No, default No; no fingerprint copying is needed.
 The supported local recipe preserves legacy flat-root semantics while creating
 the shared application module and selected independent environment roots.
 Eligibility requires bounded, explicitly requested
 `--check --live --subscription <UUID>` metadata discovery with existing authentication,
 authoritatively absent resource groups in that subscription, and no local
 state/backend metadata. Missing state files alone never establish safety.
-Only `liftoff repair [project-path] --approve-plan <fingerprint>` applies an
-eligible, separately approved plan. Then run `liftoff update --check --project
+JSON/non-TTY repair only previews unless exact automation flags are supplied.
+After an eligible, separately approved repair, run `liftoff update --check --project
 "path/to/existing project"` and resume native setup's local governance planning.
 Interrupted writes use `liftoff repair [project-path] --recover`, not update recovery.
 Repair accepts neither `--force`, `--yes`, nor `--add-agents`.
 Agent installation and the public stateful migration coordinator are not
 implemented; the internal stateful engine is not an executable public command.
 Deployed, unknown, or unsupported cases remain plan-only, with source and state
-untouched. See [repair modes](docs/cli-reference.md#repair-modes).
+untouched. Use native `/liftoff-repair` (Codex: `$liftoff-repair`) for reviewed
+[application patches](docs/application-repair.md); see [repair modes](docs/cli-reference.md#repair-modes).
+Repair contract 1 is unreleased in published 0.12.2 (no released minimum yet);
+negotiate capabilities directly with `liftoff repair --capabilities --json`.
 
 Older projects may display the retired `/liftoff-repository-governance` alias.
 Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.

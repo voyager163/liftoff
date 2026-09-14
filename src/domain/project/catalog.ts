@@ -87,6 +87,11 @@ export const governanceAgentIntegrations = {
       logicalName: 'liftoff-governance-assess-copilot',
       pathParts: ['.github', 'prompts', 'liftoff-governance-assess.prompt.md'],
       invocation: '/liftoff-governance-assess'
+    },
+    repair: {
+      logicalName: 'liftoff-repair-copilot',
+      pathParts: ['.github', 'prompts', 'liftoff-repair.prompt.md'],
+      invocation: '/liftoff-repair'
     }
   },
   claude: {
@@ -100,6 +105,11 @@ export const governanceAgentIntegrations = {
       logicalName: 'liftoff-governance-assess-claude',
       pathParts: ['.claude', 'commands', 'liftoff-governance-assess.md'],
       invocation: '/liftoff-governance-assess'
+    },
+    repair: {
+      logicalName: 'liftoff-repair-claude',
+      pathParts: ['.claude', 'commands', 'liftoff-repair.md'],
+      invocation: '/liftoff-repair'
     }
   },
   codex: {
@@ -113,13 +123,43 @@ export const governanceAgentIntegrations = {
       logicalName: 'liftoff-governance-assess-codex',
       pathParts: ['.agents', 'skills', 'liftoff-governance-assess', 'SKILL.md'],
       invocation: '$liftoff-governance-assess'
+    },
+    repair: {
+      logicalName: 'liftoff-repair-codex',
+      pathParts: ['.agents', 'skills', 'liftoff-repair', 'SKILL.md'],
+      invocation: '$liftoff-repair'
     }
   }
 } as const satisfies Record<CodingAgentId, {
   kind: 'command' | 'skill';
   setup: { logicalName: string; pathParts: readonly string[]; invocation: string };
   assessment: { logicalName: string; pathParts: readonly string[]; invocation: string };
+  repair: { logicalName: string; pathParts: readonly string[]; invocation: string };
 }>;
+
+export const governanceArtifactPaths = {
+  policy: ['.liftoff', 'governance', 'policy.md'],
+  context: ['.liftoff', 'governance', 'context.json'],
+  guide: ['.liftoff', 'governance', 'README.md'],
+  phaseGraph: ['.liftoff', 'governance', 'phase-graph.json'],
+  compatibility: ['.liftoff', 'governance', 'compatibility.json'],
+  credentialPolicySchema: ['.liftoff', 'governance', 'credential-policy.schema.json'],
+  setup: {
+    'github-copilot': governanceAgentIntegrations['github-copilot'].setup.pathParts,
+    claude: governanceAgentIntegrations.claude.setup.pathParts,
+    codex: governanceAgentIntegrations.codex.setup.pathParts
+  },
+  assessment: {
+    'github-copilot': governanceAgentIntegrations['github-copilot'].assessment.pathParts,
+    claude: governanceAgentIntegrations.claude.assessment.pathParts,
+    codex: governanceAgentIntegrations.codex.assessment.pathParts
+  },
+  repair: {
+    'github-copilot': governanceAgentIntegrations['github-copilot'].repair.pathParts,
+    claude: governanceAgentIntegrations.claude.repair.pathParts,
+    codex: governanceAgentIntegrations.codex.repair.pathParts
+  }
+} as const;
 
 export interface ProjectCatalogContext {
   frameworkVersions: Record<SpecWorkflowId, string>;

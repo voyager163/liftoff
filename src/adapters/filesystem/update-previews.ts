@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import type { Stats } from 'node:fs';
 import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
@@ -724,7 +724,9 @@ export interface ScopedUserLocalRecord {
 
 export function createScopedUserLocalRecordStore(
   projectRoot: string,
-  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' | 'repair-preview' | 'repair-approval',
+  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' |
+    'repair-preview' | 'repair-approval' | 'repair-verification' | 'repair-backup' |
+    'repair-workspace-authority',
   options: UpdatePreviewOptions = {}
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;
@@ -760,6 +762,65 @@ export function createScopedUserLocalRecordStore(
         }
         if (before === undefined) await writeAtomicMetadata(storage, snapshot, filePath, content, undefined, true);
         return { projectRoot: storage.location.projectRoot, path: filePath, value };
+      });
+    }
+  };
+}
+
+export interface RepairWorkspaceRegistryValue extends ScopedUserLocalRecord {
+  digest: string;
+}
+
+/** Only the private workspace registry is mutable; preview/approval stores remain immutable. */
+export function createRepairWorkspaceRegistryStore(
+  projectRoot: string,
+  options: UpdatePreviewOptions = {}
+): {
+  read(key: string): Promise<RepairWorkspaceRegistryValue | null>;
+  compareExchange(key: string, expectedDigest: string | null, value: unknown): Promise<RepairWorkspaceRegistryValue>;
+} {
+  const digest = (content: string) => createHash('sha256').update(content).digest('hex');
+  const location = async (key: string) => {
+    if (!/^[a-f0-9]{64}$/u.test(key)) throw storageError('A workspace registry key must be a complete lowercase SHA-256 digest.');
+    const storage = await storageFor(projectRoot, options);
+    const filePath = storage.paths.join(storage.location.directory,
+      `repair-workspace-registry-${storage.location.projectKey}-${key}.json`);
+    return { storage, filePath };
+  };
+  const parse = (content: string): unknown => {
+    let value: unknown;
+    try { value = JSON.parse(content); }
+    catch (error) { throw storageError('Malformed private workspace registry JSON.', error); }
+    if (canonicalJson(value) !== content) throw storageError('Private workspace registry must retain its canonical bytes.');
+    return value;
+  };
+  return {
+    read: async (key) => {
+      const { storage, filePath } = await location(key);
+      const snapshot = await directories(storage, false);
+      if (!snapshot) return null;
+      const content = await readText(storage, filePath, snapshot);
+      return content === undefined ? null : {
+        projectRoot: storage.location.projectRoot, path: filePath, value: parse(content), digest: digest(content)
+      };
+    },
+    compareExchange: async (key, expectedDigest, value) => {
+      if (expectedDigest !== null && !/^[a-f0-9]{64}$/u.test(expectedDigest)) {
+        throw storageError('A workspace registry precondition must be a complete digest or absence.');
+      }
+      const { storage, filePath } = await location(key);
+      const content = canonicalJson(value);
+      if (Buffer.byteLength(content) > maximumReceiptBytes) throw storageError('Private workspace registry exceeds its size limit.');
+      const snapshot = await directories(storage, true);
+      if (!snapshot) throw storageError('Unable to create private workspace registry storage.');
+      return withStoreLock(storage, snapshot, async () => {
+        const before = await readText(storage, filePath, snapshot);
+        if (before !== undefined) parse(before);
+        if ((before === undefined ? null : digest(before)) !== expectedDigest) {
+          throw storageError('Private workspace registry changed; compare-and-exchange refused.');
+        }
+        await writeAtomicMetadata(storage, snapshot, filePath, content, before, true);
+        return { projectRoot: storage.location.projectRoot, path: filePath, value, digest: digest(content) };
       });
     }
   };

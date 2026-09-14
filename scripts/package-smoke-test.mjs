@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { mkdtemp, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import os from 'node:os';
@@ -140,6 +140,7 @@ try {
     'docs/safety-and-consent.md',
     'docs/telemetry.md',
     'docs/cli-reference.md',
+    'docs/application-repair.md',
     'docs/project-structure.md',
     'docs/configuration-and-manifests.md',
     'docs/azure-deployment.md',
@@ -151,6 +152,9 @@ try {
   assertPackageContains(packResult, 'dist/cli.js');
   assertPackageContains(packResult, 'dist/application/repair/use-case.js');
   assertPackageContains(packResult, 'dist/application/repair/infrastructure.js');
+  assertPackageContains(packResult, 'dist/application/repair/patch-flow.js');
+  assertPackageContains(packResult, 'dist/application/repair/application-inventory.js');
+  assertPackageContains(packResult, 'dist/domain/repair/identity.js');
   assertPackageContains(packResult, 'dist/commands.js');
   assertPackageContains(packResult, 'dist/package-identity.js');
   assertPackageContains(packResult, 'dist/self-upgrade.js');
@@ -167,6 +171,7 @@ try {
   assertPackageContains(packResult, 'dist/governance-assessment/catalog.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
   assertPackageContains(packResult, 'assets/supported-stack.json');
+  assertPackageContains(packResult, 'assets/repair/windows-job-controller.ps1');
   assertPackageContains(
     packResult,
     'assets/governance/single-maintainer-gitflow/policy.md'
@@ -267,14 +272,15 @@ try {
   const repairHelp = run(process.execPath, [liftoffEntrypoint, 'repair', '--help'], {
     cwd: outsideDirectory, env: npmEnv
   });
-  for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json']) {
+  for (const flag of ['--check', '--live', '--subscription', '--approve-plan', '--recover', '--json',
+    '--capabilities', '--inspect-layout', '--application-patch', '--verify-plan', '--allow-network', '--allow-dependency-preparation']) {
     if (!repairHelp.stdout.includes(flag)) throw new Error(`Installed repair help is missing ${flag}.`);
   }
   const noProjectRepair = runFailure(process.execPath, [liftoffEntrypoint, 'repair', '--check', '--json'], {
     cwd: outsideDirectory, env: npmEnv
   });
   const noProjectRepairReport = JSON.parse(noProjectRepair.stdout);
-  if (noProjectRepair.status !== 1 || noProjectRepairReport.schemaVersion !== 1 ||
+  if (noProjectRepair.status !== 1 || noProjectRepairReport.schemaVersion !== 2 ||
       noProjectRepairReport.committed !== false || noProjectRepairReport.status !== 'failed') {
     throw new Error('Installed repair did not preserve the missing-project boundary.');
   }
@@ -282,6 +288,22 @@ try {
     cwd: outsideDirectory, env: npmEnv
   });
   if (!repairForce.stderr.includes('Unknown flag for repair')) throw new Error('Repair unexpectedly accepted force authority.');
+  const repairCapabilities = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'repair', '--capabilities', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  }).stdout);
+  if (repairCapabilities.schemaVersion !== 1 || repairCapabilities.repairContractVersion !== 1 ||
+      repairCapabilities.schemas?.preview !== 2 || repairCapabilities.schemas?.journal !== 2 ||
+      !repairCapabilities.recipes?.some((recipe) => recipe.id === 'application-layout-patch' && recipe.version === 1)) {
+    throw new Error('Installed repair capabilities did not expose the actual versioned application lane.');
+  }
+
+  const { verifyWindowsJobControllerAsset: installedVerifyAsset } = await import(
+    pathToFileURL(path.join(installedPackageRoot, 'dist', 'adapters', 'process', 'windows-job-runner.js')).href
+  );
+  const installedControllerAsset = await installedVerifyAsset();
+  if (!existsSync(installedControllerAsset)) {
+    throw new Error('Installed package did not include verified windows-job-controller.ps1 asset.');
+  }
 
   const upgradeHelp = run(process.execPath, [liftoffEntrypoint, 'upgrade', '--help'], {
     cwd: outsideDirectory,
@@ -502,6 +524,88 @@ try {
   const { buildProjectPlan: installedPlan } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'planner.js')).href);
   const { buildArtifacts: installedArtifacts } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'templates.js')).href);
   const { writeArtifacts: installedWrite } = await import(pathToFileURL(path.join(installedPackageRoot, 'dist', 'file-system.js')).href);
+  const repairProject = path.join(tempRoot, 'guided repair project');
+  const repairArtifacts = installedArtifacts(installedPlan({
+    projectName: 'Repair Smoke', projectType: 'standard', apiStack: 'node',
+    cloud: 'azure', region: 'eastus', specWorkflow: 'openspec', agents: ['copilot', 'claude', 'codex'],
+    includeFrontend: false, governanceProfile: 'none', environments: ['dev']
+  }, { requireProjectName: true }));
+  const nativeRepairPaths = [
+    ['liftoff-repair-copilot', '.github', 'prompts', 'liftoff-repair.prompt.md'],
+    ['liftoff-repair-claude', '.claude', 'commands', 'liftoff-repair.md'],
+    ['liftoff-repair-codex', '.agents', 'skills', 'liftoff-repair', 'SKILL.md']
+  ];
+  for (const [logicalName, ...parts] of nativeRepairPaths) {
+    const artifact = repairArtifacts.find((entry) => entry.logicalName === logicalName);
+    if (!artifact || artifact.lifecycle !== 'managed-core' || artifact.pathParts.join('/') !== parts.join('/') ||
+        !artifact.content.includes('liftoff repair --capabilities --json')) {
+      throw new Error(`Installed package failed to render the exact native repair integration ${logicalName}.`);
+    }
+  }
+  await installedWrite(repairProject, repairArtifacts);
+  await mkdir(path.join(repairProject, 'legacy-code'));
+  await mkdir(path.join(repairProject, 'checks'));
+  const customSource = 'export const calculate = value => value * 4 + 5;\n';
+  const testSource = "import { test } from 'node:test';\nimport assert from 'node:assert/strict';\nimport { calculate } from '../legacy-code/custom.mjs';\ntest('retains customized behavior', () => assert.equal(calculate(7), 33));\n";
+  await writeFile(path.join(repairProject, 'legacy-code', 'custom.mjs'), customSource);
+  await writeFile(path.join(repairProject, 'checks', 'custom.test.mjs'), testSource);
+  const beforeApplication = await treeDigest(repairProject);
+  const inventory = JSON.parse(run(process.execPath, [liftoffEntrypoint, 'repair', repairProject, '--inspect-layout', '--json'], {
+    cwd: outsideDirectory, env: npmEnv
+  }).stdout);
+  if (inventory.schemaVersion !== 2 || inventory.status !== 'inspected' || inventory.application?.complete !== true ||
+      await treeDigest(repairProject) !== beforeApplication) throw new Error('Installed application inventory was incomplete or changed the project.');
+  const actualInventory = inventory.application;
+  const anchor = actualInventory.target.artifacts.find((entry) => entry.component === 'backend');
+  const applicationStage = path.join(tempRoot, 'application staging');
+  await mkdir(applicationStage);
+  const pairs = [
+    { source: ['legacy-code', 'custom.mjs'], target: ['backend', 'src', 'custom.mjs'], content: customSource, role: 'application', customization: 'preserved' },
+    { source: ['checks', 'custom.test.mjs'], target: ['checks', 'custom.test.mjs'], content: testSource.replace('../legacy-code/custom.mjs', '../backend/src/custom.mjs'), role: 'reference', customization: 'reviewed-edit' }
+  ];
+  const mappings = [];
+  for (const [index, pair] of pairs.entries()) {
+    const observed = actualInventory.files.find((entry) => entry.pathParts.join('/') === pair.source.join('/'));
+    const stagedPathParts = [`replacement-${index}.mjs`];
+    await writeFile(path.join(applicationStage, ...stagedPathParts), pair.content);
+    mappings.push({
+      sourcePathParts: pair.source, targetPathParts: pair.target, stagedPathParts,
+      expectedSourceDigest: observed.digest, expectedSourceMode: observed.mode, targetMode: observed.mode,
+      role: pair.role, targetIdentity: { kind: 'custom-component', logicalName: anchor.logicalName }, customization: pair.customization,
+      references: actualInventory.references.filter((entry) => entry.sourcePathParts.join('/') === pair.source.join('/')).map((entry) => {
+        const moved = pairs.find((mapping) => mapping.source.join('/') === entry.targetPathParts.join('/'));
+        return { referenceId: entry.id, disposition: moved ? 'updated' : 'unchanged-reviewed', afterTargetPathParts: moved?.target ?? entry.targetPathParts };
+      })
+    });
+  }
+  const patchFile = path.join(applicationStage, 'patch.json');
+  await writeFile(patchFile, JSON.stringify({
+    schemaVersion: 1, kind: 'liftoff-application-patch', projectRoot: actualInventory.projectRoot,
+    inspectionDigest: actualInventory.inspectionDigest, targetLayoutDigest: actualInventory.target.digest,
+    dynamicReferencesReviewed: true, unresolvedMappings: [], mappings,
+    verification: { commands: [{ executable: 'node', args: ['--test', 'checks/custom.test.mjs'], cwdPathParts: [],
+      timeoutMs: 30_000, maxOutputBytes: 16_384, network: false }] }
+  }));
+  const applicationPreview = runFailure(process.execPath,
+    [liftoffEntrypoint, 'repair', repairProject, '--check', '--application-patch', await realpath(patchFile), '--json'],
+    { cwd: outsideDirectory, env: npmEnv });
+  const applicationPlan = JSON.parse(applicationPreview.stdout);
+  if (applicationPreview.status !== 2 || applicationPlan.status !== 'available' || await treeDigest(repairProject) !== beforeApplication) {
+    throw new Error(`Installed application preview failed or changed project bytes: ${applicationPreview.stdout}`);
+  }
+  const applicationVerification = JSON.parse(run(process.execPath,
+    [liftoffEntrypoint, 'repair', repairProject, '--verify-plan', applicationPlan.fingerprint, '--json'],
+    { cwd: outsideDirectory, env: npmEnv }).stdout);
+  if (applicationVerification.status !== 'verified' || applicationVerification.committed !== false ||
+      await treeDigest(repairProject) !== beforeApplication) throw new Error('Installed staged application verification violated its scope.');
+  const applicationApplied = JSON.parse(run(process.execPath,
+    [liftoffEntrypoint, 'repair', repairProject, '--approve-plan', applicationPlan.fingerprint, '--json'],
+    { cwd: outsideDirectory, env: npmEnv }).stdout);
+  if (applicationApplied.status !== 'applied' || applicationApplied.committed !== true ||
+      await readFile(path.join(repairProject, 'backend', 'src', 'custom.mjs'), 'utf8') !== customSource ||
+      existsSync(path.join(repairProject, 'legacy-code', 'custom.mjs'))) {
+    throw new Error('Installed application transaction did not preserve and move the exact customized source.');
+  }
   const assessmentProject = path.join(tempRoot, 'assessment project');
   await installedWrite(assessmentProject, installedArtifacts(installedPlan({
     projectName: 'Assessment Smoke', projectType: 'standard', apiStack: 'go',

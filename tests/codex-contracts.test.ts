@@ -167,7 +167,8 @@ describe('native Codex governance integrations', () => {
     const manifest = parseManifest(JSON.parse(artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content));
     const wrappers = artifacts.filter((artifact) => artifact.logicalName.startsWith('liftoff-'));
     const expected = selection.agents.flatMap((agent) => [
-      governanceAgentIntegrations[agent].setup, governanceAgentIntegrations[agent].assessment
+      governanceAgentIntegrations[agent].setup, governanceAgentIntegrations[agent].assessment,
+      governanceAgentIntegrations[agent].repair
     ]);
     expect(wrappers.filter((artifact) => artifact.category === 'governance')).toHaveLength(expected.length);
     for (const identity of expected) {
@@ -248,7 +249,13 @@ describe('native Codex governance integrations', () => {
     }
   });
 
-  it('never generates governance wrappers for an opted-out Codex project', () => {
-    expect(buildRepositoryGovernanceArtifacts(project({ governanceProfile: 'none' }))).toEqual([]);
+  it('generates only independent repair for an opted-out Codex project', () => {
+    const artifacts = buildRepositoryGovernanceArtifacts(project({ governanceProfile: 'none' }));
+    expect(artifacts).toHaveLength(1);
+    expect(artifacts[0]).toMatchObject({
+      logicalName: 'liftoff-repair-codex', lifecycle: 'managed-core',
+      pathParts: [...governanceAgentIntegrations.codex.repair.pathParts]
+    });
+    expect(artifacts.some((artifact) => artifact.logicalName.startsWith('repository-governance-'))).toBe(false);
   });
 });

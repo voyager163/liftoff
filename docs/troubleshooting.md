@@ -310,6 +310,24 @@ or allow TCP and UDP 53 to exact custom resolver addresses.
 
 ## Governance doctor reports a blocked state
 
+If **Local baseline verification** reports a layout blocker, it is not an
+OpenSpec feature change and does not justify reinitializing the application.
+Run `liftoff repair "path/to/project" --check` for the actual scope and blockers.
+Bare `liftoff repair "path/to/project"` on a genuine terminal previews and asks
+default-No approval; no hash copying is needed. Explicit live metadata still
+requires its selected subscription and existing authentication.
+
+Use `/liftoff-repair` in the selected Copilot/Claude project, or
+`$liftoff-repair` in Codex, for application inventory and externally staged
+per-file patches. The skill must not edit the real project before review.
+Stale source/staging/reference/verification bindings require a new review;
+never edit a manifest or receipt to make one current. If checks ran but later
+file approval was cancelled, only the planned file transaction was prevented:
+staging is not a sandbox and prior verifier effects are not automatically undone.
+An interrupted approved transaction uses `liftoff repair "path/to/project" --recover`;
+a committed patch with a later problem requires a new reviewed correction or
+user-controlled history recovery. See [repair modes](cli-reference.md#repair-modes).
+
 `liftoff doctor` and `liftoff governance status --json` use precise states:
 
 | State | Remedy |

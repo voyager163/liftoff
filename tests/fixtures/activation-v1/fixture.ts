@@ -257,7 +257,10 @@ export function buildPostMaintenanceHistoricalV1Fixture(compatibilitySchemaVersi
     cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'], includeFrontend: false,
     specWorkflow: 'openspec', agents: ['github-copilot', 'claude'], governanceProfile: 'single-maintainer-gitflow'
   }, { requireProjectName: true });
-  const core = buildRepositoryGovernanceArtifacts(project);
+  // The maintained 0.11.1 fixture predates Codex and repair integrations.
+  const core = buildRepositoryGovernanceArtifacts(project).filter((artifact) =>
+    historicalCoreLogicalNames.some((name) => name === artifact.logicalName)
+  );
   for (const artifact of core) {
     let content = artifact.content;
     if (artifact.logicalName === 'repository-governance-phase-graph') {
@@ -272,6 +275,14 @@ export function buildPostMaintenanceHistoricalV1Fixture(compatibilitySchemaVersi
       const metadata = validateGovernanceCompatibilityMetadata(value);
       content = canonicalJson({
         ...metadata, schemaVersion: compatibilitySchemaVersion, liftoffVersion: '0.11.0',
+        managedCore: {
+          ...metadata.managedCore,
+          logicalNameAllowlist: [...historicalCoreLogicalNames],
+          pathAllowlist: core.map((entry) => entry.pathParts),
+          updateInventory: metadata.managedCore.updateInventory.filter((entry) =>
+            historicalCoreLogicalNames.some((name) => name === entry.logicalName)
+          )
+        },
         activation: {
           currentCompatibleTuples: [historicalV2ActivationIdentity],
           historicalReadability: {

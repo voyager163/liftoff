@@ -1,5 +1,5 @@
 import type { ProjectProvisioningGroup } from './contracts.js';
-import { governanceAgentIntegrations } from './catalog.js';
+import { governanceAgentIntegrations, governanceArtifactPaths } from './catalog.js';
 
 export const explicitArtifactLifecycleIdentities = [
   {
@@ -89,11 +89,46 @@ export const preCodexManagedCoreLogicalNames = [
   'liftoff-governance-assess-claude'
 ] as const;
 
-export const managedCoreLogicalNames = [
+export const preAssessmentManagedCoreLogicalNames = preCodexManagedCoreLogicalNames.filter((logicalName) =>
+  logicalName !== governanceAgentIntegrations['github-copilot'].assessment.logicalName &&
+  logicalName !== governanceAgentIntegrations.claude.assessment.logicalName
+);
+
+export const preRepairManagedCoreLogicalNames = [
   ...preCodexManagedCoreLogicalNames,
   governanceAgentIntegrations.codex.setup.logicalName,
   governanceAgentIntegrations.codex.assessment.logicalName
 ] as const;
+
+export const repairManagedCoreLogicalNames = [
+  governanceAgentIntegrations['github-copilot'].repair.logicalName,
+  governanceAgentIntegrations.claude.repair.logicalName,
+  governanceAgentIntegrations.codex.repair.logicalName
+] as const;
+
+export const managedCoreLogicalNames = [
+  ...preRepairManagedCoreLogicalNames,
+  ...repairManagedCoreLogicalNames
+] as const;
+
+export const managedCoreLogicalNameInventories: readonly (readonly string[])[] = [
+  preAssessmentManagedCoreLogicalNames,
+  preCodexManagedCoreLogicalNames,
+  preRepairManagedCoreLogicalNames,
+  managedCoreLogicalNames
+];
+
+export const managedCoreArtifactPaths: ReadonlyMap<string, readonly string[]> = new Map([
+  ['repository-governance-policy', governanceArtifactPaths.policy],
+  ['repository-governance-context', governanceArtifactPaths.context],
+  ['repository-governance-guide', governanceArtifactPaths.guide],
+  ['repository-governance-phase-graph', governanceArtifactPaths.phaseGraph],
+  ['repository-governance-compatibility', governanceArtifactPaths.compatibility],
+  ['repository-governance-credential-policy-schema', governanceArtifactPaths.credentialPolicySchema],
+  ...Object.values(governanceAgentIntegrations).flatMap((integration): Array<[string, readonly string[]]> =>
+    [integration.setup, integration.assessment, integration.repair].map((entry) => [entry.logicalName, entry.pathParts])
+  )
+]);
 
 const managedCoreLogicalNameSet = new Set<string>(managedCoreLogicalNames);
 

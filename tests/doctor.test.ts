@@ -11,6 +11,7 @@ import {
 } from '../src/commands.js';
 import { liftoffVersion } from '../src/version.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
+import { repairManagedCoreLogicalNames } from '../src/domain/project/artifact-lifecycle.js';
 import {
   buildFineGrainedPatCredentialPolicy,
   canonicalJson,
@@ -582,7 +583,8 @@ describe('doctor command', () => {
     manifest.artifacts = [
       ...manifest.managedArtifacts.filter((artifact: { logicalName: string }) =>
         artifact.logicalName !== 'liftoff-governance-assess-copilot' &&
-        artifact.logicalName !== 'liftoff-governance-assess-claude'
+        artifact.logicalName !== 'liftoff-governance-assess-claude' &&
+        !repairManagedCoreLogicalNames.some((name) => name === artifact.logicalName)
       ),
       ...manifest.projectArtifacts.map((artifact: Record<string, unknown>) => ({
         logicalName: artifact.logicalName,

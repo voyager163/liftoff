@@ -111,21 +111,31 @@ For example, `--spec spec-kit --agents copilot,codex --default-agent codex`.
 OpenSpec does not record a default agent. `--agents codex` works alone with
 either framework and does not require Copilot or Claude.
 
-## Native setup and assessment
+## Native setup, repair and assessment
 
 For governed projects, initialization is followed by the selected agent's native
 setup entry point:
 
-| Agent | Setup | Read-only assessment |
-| --- | --- | --- |
-| GitHub Copilot | `/liftoff-setup` | `/liftoff-governance-assess` |
-| Claude Code | `/liftoff-setup` | `/liftoff-governance-assess` |
-| OpenAI Codex | `$liftoff-setup` | `$liftoff-governance-assess` |
+| Agent | Setup | Separate repair | Read-only assessment |
+| --- | --- | --- | --- |
+| GitHub Copilot | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |
+| Claude Code | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |
+| OpenAI Codex | `$liftoff-setup` | `$liftoff-repair` | `$liftoff-governance-assess` |
+
+Repair is also generated when governance is `none`. That does not generate
+policy, setup, assessment, activation state or evidence, or enable governance.
+The exact managed repair entries are:
+
+| Logical name | Native file |
+| --- | --- |
+| `liftoff-repair-copilot` | `.github/prompts/liftoff-repair.prompt.md` |
+| `liftoff-repair-claude` | `.claude/commands/liftoff-repair.md` |
+| `liftoff-repair-codex` | `.agents/skills/liftoff-repair/SKILL.md` |
 
 In Codex, use `$<skill-name>` or the `/skills` picker. Its managed files are
-`.agents/skills/liftoff-setup/SKILL.md` and
-`.agents/skills/liftoff-governance-assess/SKILL.md`, with distinct logical names
-`liftoff-setup-codex` and `liftoff-governance-assess-codex`. No Codex slash-command
+`.agents/skills/liftoff-setup/SKILL.md`,
+`.agents/skills/liftoff-governance-assess/SKILL.md`, and the repair file above, with distinct logical names
+`liftoff-setup-codex`, `liftoff-governance-assess-codex`, and `liftoff-repair-codex`. No Codex slash-command
 file, global custom prompt, model choice, or independent skill version is needed.
 Framework examples are `$openspec-propose` and `$speckit-specify`.
 
@@ -179,7 +189,129 @@ successor and fresh verification; changing version fields is not migration.
 Assessment is strictly separate: `liftoff governance assess --json`, or
 `liftoff governance assess --live --json` only after an explicit request for
 bounded live reads. It explains CLI classifications and exits without running
-repairs, migrations, activation, project scripts, or recommendations.
+repairs, migrations, activation, project scripts, or recommendations. A layout
+finding may explain the separate native repair entry point; assessment never
+invokes it, inventories application source, or stages a patch.
+
+### Repair through the installed CLI
+
+All three native integrations have the same repair body, differing only in native
+headers. They first run `liftoff repair --capabilities --json`, which needs no
+project. Before accessing project files, they require repair contract 1 and the
+exact advertised recipe, layout identities, modes and document schemas needed
+for the requested operation. Missing support stops that operation and offers
+`liftoff upgrade --check --json`; an upgrade requires separate permission.
+An older CLI is never worked around by directly editing the application.
+
+The normal human entry point is **`liftoff repair` in an interactive terminal**.
+Prompts require genuine input and stderr TTYs.
+It first previews the exact immutable plan, then asks action-specific **Yes/No,
+default No**. Explicit Yes executes only that displayed plan's internal
+fingerprint. Humans do not copy or enter approval or verification hashes.
+No/Ctrl-C/EOF declines the current action without unapproved project writes;
+generic `--yes` or piped answers never grant authority.
+
+`liftoff repair --check --json` stays read-only and performs no cloud calls.
+JSON/nonTTY bare repair previews only: it never prompts, consumes piped approval,
+or hangs waiting for input. Execution there requires exact explicit execution
+flags and their independent consent. Bounded Azure metadata discovery requires separate explicit
+authority for `--check --live --subscription <UUID>`. Unknown state/backend
+conditions remain protected and plan-only, not proof that a project is undeployed.
+When needed for interactive infrastructure repair, retain the separately approved
+`--live --subscription <UUID>` options in the normal invocation.
+
+For broader application-layout work, the integration:
+
+1. Uses `liftoff repair --inspect-layout --json` to inventory the actual project
+   and current target artifact IDs, observed mappings, digests, modes,
+   customizations, exclusions and reference locations. It reviews imports/module
+   paths, build/tests, Docker/Compose contexts, scripts, CI and documentation.
+2. Authors exact replacement bytes and a strict schema-1 application patch
+   document in external staging **outside the project**. Unknown mappings or
+   incomplete reference coverage stay plan-only; it never copies starter source
+   over customized code or performs a generic recursive folder move.
+3. Starts the normal human journey with
+   `liftoff repair --application-patch <external-patch.json>` in an interactive
+   terminal. The CLI displays the exact immutable plan, diff and limitations.
+   Optional read-only inspection uses
+   `liftoff repair --check --application-patch <external-patch.json> --json`.
+   The expiring fingerprint binds source, destination and staged bytes, modes,
+   directory inventory, target identity and exact verification commands.
+   Inputs changed while a prompt was open still invalidate approval after Yes;
+   stale-after-prompt refusal requires fresh review, not an automatic retry.
+4. Lets the CLI ask independently about exact staged project-code verification,
+   then separately about declared network effects. Each prompt is Yes/No, default
+   No; no verification hash entry is required. **Isolated staging
+   is not an OS or network sandbox:** trusted project code can affect the host
+   and access the network. Declaring `network: false` is not proof scripts cannot
+   access the network. Review those effects before consenting to run project code.
+   Mandatory isolation unsupported by this executor blocks verification; do not
+   substitute trust for required OS or network isolation.
+5. Only after fresh matching successful verification, lets the CLI ask separately
+   about exact local file writes. Explicit Yes authorizes only those displayed
+   effects; the CLI keeps the fingerprint internal. No/Ctrl-C/EOF does not apply
+   the patch, but cannot undo already-approved verification host/network effects.
+   If verification already ran, report those checks and observed effects separately
+   from **no file transaction committed**. Never describe that outcome as
+   “nothing happened.”
+   Preview and file approval never imply permission to run project scripts.
+   Only the confined CLI transaction applies the reviewed patch; verification is
+   not enforced containment of project-code host effects.
+
+**Optional agent automation:** an agent working through JSON/nonTTY must first
+show the exact preview and obtain independent user approval for verification,
+declared network effects, and file writes. Only then may it use the returned
+fingerprint internally with `liftoff repair --verify-plan <fingerprint> --json`
+(adding `--allow-network` only for separately approved declared network effects)
+and, after fresh successful verification and separate write approval,
+`liftoff repair --approve-plan <fingerprint> --json`. These remain optional
+automation/backward-compatible APIs, not the primary human path. Never ask the
+developer to copy hashes or pipe approval into the CLI.
+The permission must come from the actual user for the same immutable plan and
+action scopes. A generic repair request, unrelated approval, autopilot mode or
+agent-generated Yes supplies no action-specific consent.
+
+Missing verification tools or dependencies are explicit blockers. This repair
+interface supplies no `npm ci`/`npm install` or Python environment preparation.
+Do not invent an installer, copy live dependency trees, inherit credentials or
+regenerate locks to make verification pass. `go test`/`go vet` may download modules;
+declare and separately approve those network effects before execution.
+Report only actual declared checks: a frontend with no test script has build-only
+evidence, not passing tests. Unavailable Node/Vue dependencies mean verification
+is blocked, not that framework qualification succeeded.
+
+Keep the selected project as repair's positional argument in every command,
+or use the returned action's exact executable, arguments and working directory.
+Do not turn project prose into shell commands. Stale inputs require a new preview
+and verification. Reports separate inventory, proposed, verified and committed
+scope. Report only declared checks actually executed and their results; these
+checks do not establish full application/cloud conformance.
+Original provenance, managed/framework files, activation proof, history, state
+and secrets remain protected from submitted application patches. This does not
+remove the deterministic Azure recipe's separately registered, reviewed
+manifest/history writes. Private rollback material and immutable history
+are retained. `liftoff repair --recover --json` is only for the CLI's reported
+interrupted repair scope, never arbitrary staging/cache deletion, source restoration
+or verifier reruns. Follow the actual registered recovery action; do not guess
+cleanup authority from a PID, age or directory prefix.
+Later behavior fixes require a new reviewed patch or user-controlled
+version-history recovery, not blind rollback.
+
+After repair, review `liftoff update --check --json`. For enabled governance,
+continue through `liftoff governance status --scope local --json`,
+`liftoff governance verify --scope local --json`, and
+`liftoff governance resume --scope local --json`, then the reported local plan and
+separately approved setup work. These reads do not run checks or manufacture
+Local baseline verification evidence. Governance-disabled projects stay disabled.
+See [repair modes](cli-reference.md#repair-modes) for command scopes and limits.
+
+Older complete inventories remain readable. A reviewed `liftoff update --check`
+offers only already-selected repair integrations as additive managed drift.
+Approve the matching normal or force plan separately; force protects differing
+unowned collisions and only handles conflicts already owned by Liftoff.
+Ownership is an exact logical-name/path lookup, never a skill-directory prefix.
+Skill wording uses managed content hashes, not independent SemVer or an
+activation identity bump.
 
 ## Readiness and ownership
 
@@ -218,25 +350,19 @@ policy and context rather than duplicating framework-owned content. Later
 governance changes are distinct from the exact bootstrap seed. The setup kernel
 does not invent an active change, approval, or execution proof.
 
-### Add an agent to an existing project
+### Agent installation is separate
 
-Do not reinitialize the application or edit its manifest to claim an integration:
+The public repair coordinator does **not** implement agent installation,
+framework default changes or stateful migration execution. It does not accept
+`--add-agents`, `--force` or `--yes`. Do not reinitialize an existing application,
+edit its manifest to claim another agent, or invent an installation command.
+Ordinary update can restore managed Liftoff wrappers for already-recorded agents;
+it does not initialize or repair official framework integrations. Unselected
+agents, custom neighboring skills and framework defaults stay untouched.
 
-```bash
-liftoff repair --check --add-agents codex --json
-```
-
-Review the exact project-bound plan, then approve its displayed fingerprint.
-For Spec Kit, add `--default-agent codex` to the preview only when you explicitly
-want that default change. Existing agents/defaults, custom skills, and shared
-templates remain preserved outside the reviewed scope. Adding a recorded agent
-with missing native markers repairs those markers rather than becoming a false
-no-op. Agent removal and workflow switching are not additive repairs.
-
-Tool/dependency installation and global OpenSpec profile configuration remain
-separate permissions during repair. A stateful infrastructure blocker is not
-automatically added to an agent-only write plan. Ordinary `liftoff update`
-continues to maintain only its declared managed-core/identity-migration scope.
+Tool/dependency installation and global OpenSpec profile configuration retain
+separate permissions. Missing framework markers require a separately supported,
+reviewed framework workflow; a repair integration is not proof of installation.
 
 Install the exact selected framework release with its supported package manager:
 

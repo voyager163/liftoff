@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
-import { isRetiredManagedCoreLogicalName, managedCoreLogicalNames, preCodexManagedCoreLogicalNames } from '../../domain/project/artifact-lifecycle.js';
-import { assessmentLogicalNames, preAssessmentManagedCoreLogicalNames } from '../../domain/project/manifest/governance.js';
+import { isRetiredManagedCoreLogicalName } from '../../domain/project/artifact-lifecycle.js';
 import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../../adapters/filesystem/project-paths.js';
 import { errorCode, errorMessage } from '../../adapters/filesystem/errors.js';
@@ -82,14 +81,16 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         validateGovernanceCompatibilityMetadata(
           compatibility,
           hasRetiredManagedArtifacts
-            ? undefined
+            ? { agents: manifest.project.agents }
             : manifest.governance.state === 'handoff-generated'
             ? {
+                agents: manifest.project.agents,
                 logicalNameAllowlist,
                 pathAllowlist: currentManagedArtifacts.map((artifact) => artifact.pathParts),
                 inventory: expectedInventory
               }
             : {
+                agents: manifest.project.agents,
                 logicalNameAllowlist
               }
         );

@@ -102,14 +102,64 @@ The same rule applies to `/liftoff-governance-assess`: it has no independent
 assessment-skill version. Report schema v1 and the packaged assessment catalog
 schema identify read-only data contracts, not a new policy or activation identity.
 
+## Repair identity and compatibility
+
+Repair has an independent authority in `src/domain/repair/identity.ts`, exposed
+by `liftoff repair --capabilities --json`. Repair contract 1 records eligibility,
+interactive/exact approval, validation, completion and recovery guarantees.
+It is not part of the activation version vector above. The package remains at 0.12.2;
+new application repair and locked preparation capabilities are unreleased. There is
+no released minimum version yet: tools and integrations must negotiate the actual
+capability contract and preparation matrix directly rather than fabricating a release version.
+
+| Document or behavior | Current identity |
+| --- | --- |
+| Repair capabilities | schema 1 |
+| Repair result, expiring approval preview, new history receipt, repair transaction journal | independent schemas 2 |
+| Application inventory, patch input/nested report, verification result/receipt, private backup index/chunks | independent schemas 1 |
+| Azure local transformation | recipe `azure-local-layout`, version 1; sources `azure-flat-root-v1` / `azure-partial-independent-v1`, target `azure-independent-roots-v1` |
+| Reviewed application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
+| Shared update transaction | schema 1, unchanged |
+
+The application target is derived from current explicit generator declarations,
+not an invented legacy version. Source provenance remains historical.
+Generation hashes do not authorize moving or replacing application files.
+The thin native `/liftoff-repair`/`$liftoff-repair` integrations use managed
+content hashes, not a separate skill SemVer or activation/policy bump.
+
+Preview fingerprints bind exact CLI/contract/recipe/layout identity, project,
+bytes/modes, directory inventory, external staging, reference dispositions,
+validation and expiry. Default-No interactive approval binds the displayed
+immutable fingerprint internally; optional exact flags retain the same gates.
+Check/JSON/non-TTY never implicitly execute or consume piped consent. Preserve
+update's original prompt wording and JSON stdout/stderr behavior when extending
+the shared approval helper.
+
+Application verification is independently authorized and occurs in a bounded
+copy, **not a security sandbox**. Obtain script and any declared network consent
+before checks; show their result before distinct file approval. A later No must
+report earlier verifier effects. Exit zero proves only the declared checks.
+Application patches cannot mutate provenance/control/state/secret files; the
+Azure recipe still performs its explicitly registered manifest/history writes.
+
+Schema-1 previews are historical and non-executable. Preserve schema-1 history
+without normalization. Explicit recovery compatibility admits only sealed
+legacy repair schema 1 or exact registered repair schema-2 contract/recipe/layout
+combinations; original CLI/identity fields stay unchanged. Recovery replays only
+recorded effects and does not authorize a fresh recipe. Unknown identities or
+concurrent edits block recovery. Update's schema-1 format and authority remain
+separate, including old journals without a lane field.
+
 ## Bump rules
 
 | Change | Required bump |
 | --- | --- |
 | Normative governance rule, fixed GitFlow decision, approval policy, or credential policy meaning changes | `policyVersion` |
 | Phase dependency, applicability, gate, mutation, evidence semantics, invalidation, rollback, or terminal-state behavior changes | `activationContractVersion` |
+| Repair eligibility, approval, validation, completion or recovery guarantees change | `repairContractVersion`, with explicit old/new execution and recovery compatibility |
+| Repair transformation, supported source/target identities or preservation semantics change | affected recipe version and layout identity; also review repair-contract implications |
 | JSON shape or strict validation changes incompatibly | the affected schema version |
-| Managed setup or alias wording changes with no behavior change | managed content hash only |
+| Managed setup, assessment, repair or alias wording changes with no behavior change | managed content hash only |
 | CLI-only bug fix with no policy, contract, schema, or managed graph change | CLI SemVer only |
 
 One source change may bump multiple axes. Never advance one axis to hide required

@@ -1,4 +1,7 @@
 import { exactGlobalInstallCommand } from '../package-identity.js';
+import { managedCoreArtifactPaths, managedCoreLogicalNameInventories } from '../domain/project/artifact-lifecycle.js';
+import { governanceAgentIntegrations } from '../domain/project/catalog.js';
+import type { CodingAgentId } from '../domain/project/contracts.js';
 import {
   canonicalPhaseContractDigests,
   canonicalPhaseGraphHash,
@@ -447,6 +450,7 @@ export function validateGovernanceCompatibilityMetadata(
     logicalNameAllowlist?: readonly string[];
     pathAllowlist?: readonly (readonly string[])[];
     inventory?: readonly ManagedCompatibilityInventoryEntry[];
+    agents?: readonly CodingAgentId[];
   }
 ): GovernanceCompatibilityMetadata {
   const item = exact(value, [
@@ -628,6 +632,37 @@ export function validateGovernanceCompatibilityMetadata(
     if (actual !== expectedInventory) {
       throw new Error('compatibility.managedCore.updateInventory does not match the expected managed update inventory.');
     }
+  }
+  const emptyInventory = logicalNameAllowlist.length === 0 && pathAllowlist.length === 0 && updateInventory.length === 0;
+  if (!emptyInventory && !managedCoreLogicalNameInventories.some((names) =>
+    logicalNameAllowlist.join('\0') === names.join('\0')
+  )) {
+    throw new Error('compatibility.managedCore.logicalNameAllowlist is not an exact supported current or historical managed-core inventory.');
+  }
+  const applicableIntegrations = expected?.agents === undefined ? undefined :
+    new Set<string>(expected.agents.flatMap((agent) => {
+      const integration = governanceAgentIntegrations[agent];
+      return [integration.setup.logicalName, integration.assessment.logicalName, integration.repair.logicalName];
+    }));
+  const integrationNames = new Set<string>(Object.values(governanceAgentIntegrations).flatMap((integration) =>
+    [integration.setup.logicalName, integration.assessment.logicalName, integration.repair.logicalName]
+  ));
+  for (const entry of updateInventory) {
+    const expectedPath = managedCoreArtifactPaths.get(entry.logicalName);
+    if (!logicalNameAllowlist.includes(entry.logicalName) || !expectedPath ||
+      expectedPath.join('\0') !== entry.pathParts.join('\0')) {
+      throw new Error(`compatibility.managedCore.updateInventory has invalid exact managed identity ${entry.logicalName}.`);
+    }
+    if (applicableIntegrations && integrationNames.has(entry.logicalName) &&
+      !applicableIntegrations.has(entry.logicalName)) {
+      throw new Error(`compatibility.managedCore.updateInventory contains inapplicable integration ${entry.logicalName}.`);
+    }
+  }
+  if (new Set(updateInventory.map((entry) => entry.logicalName)).size !== updateInventory.length ||
+    new Set(pathAllowlist.map((parts) => parts.join('\0'))).size !== pathAllowlist.length ||
+    pathAllowlist.length !== updateInventory.length ||
+    pathAllowlist.some((parts, index) => parts.join('\0') !== updateInventory[index]!.pathParts.join('\0'))) {
+    throw new Error('compatibility.managedCore.pathAllowlist and updateInventory must contain the same exact unique path inventory.');
   }
   const validation = exact(managedCore.validation, [
     'strictJson',

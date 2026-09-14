@@ -2,6 +2,8 @@ import type { ParsedArgs } from '../../domain/project/contracts.js';
 import { isUpdatePlanFingerprint } from '../../application/update/approval.js';
 import { commandDefinitions } from './definitions.js';
 import { phaseIds } from '../../domain/governance/activation/types.js';
+import { repairRequestIssue } from '../../application/repair/request.js';
+import { readStringFlag } from './readers.js';
 
 export class UsageError extends Error {
   constructor(message: string) {
@@ -172,24 +174,23 @@ export function parseArgs(argv: string[]): ParsedArgs {
     if (positional.length && Object.hasOwn(flags, 'project')) {
       throw new UsageError('Provide a project path either positionally or with --project, not both.');
     }
-    if (Object.hasOwn(flags, 'approve-plan') && !isUpdatePlanFingerprint(flags['approve-plan'])) {
-      throw new UsageError('Flag --approve-plan expects the complete 64-character lowercase fingerprint from liftoff repair --check.');
-    }
-    if ((flags.check === true && (flags['approve-plan'] !== undefined || flags.recover === true)) ||
-        (flags['approve-plan'] !== undefined && flags.recover === true)) {
-      throw new UsageError('Repair check, plan application and recovery are separate operations.');
-    }
-    if ((flags['approve-plan'] !== undefined || flags.recover === true) &&
+    if ((flags['approve-plan'] !== undefined || flags['verify-plan'] !== undefined || flags.recover === true) &&
         (Object.hasOwn(flags, 'live') || Object.hasOwn(flags, 'subscription'))) {
       throw new UsageError('Apply or recover only the saved repair scope; live/subscription options belong on the check.');
     }
-    if (flags.help !== true && (flags.live === true) !== (flags.subscription !== undefined)) {
-      throw new UsageError('Live repair discovery requires both --live and --subscription <id>.');
+    if (Object.hasOwn(flags, 'allow-dependency-preparation') && !Object.hasOwn(flags, 'verify-plan')) {
+      throw new UsageError('Flag --allow-dependency-preparation is permitted only alongside an exact --verify-plan request.');
     }
-    if (flags.subscription !== undefined &&
-        !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/iu.test(String(flags.subscription))) {
-      throw new UsageError('Flag --subscription requires an Azure subscription UUID, not a name or guessed default.');
-    }
+    const issue = repairRequestIssue({
+      project: readStringFlag(flags, 'project') ?? positional[0],
+      check: flags.check === true, live: flags.live === true, recover: flags.recover === true, json: flags.json === true,
+      subscription: readStringFlag(flags, 'subscription'), approvePlan: readStringFlag(flags, 'approve-plan'),
+      capabilities: flags.capabilities === true, inspectLayout: flags['inspect-layout'] === true,
+      applicationPatch: readStringFlag(flags, 'application-patch'), verifyPlan: readStringFlag(flags, 'verify-plan'),
+      allowNetwork: flags['allow-network'] === true,
+      allowDependencyPreparation: flags['allow-dependency-preparation'] === true
+    }, flags.help === true);
+    if (issue) throw new UsageError(issue);
   }
 
   if (command === 'governance') {

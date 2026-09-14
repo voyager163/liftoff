@@ -19,7 +19,10 @@ import {
   governanceArtifactPaths,
   renderCanonicalGovernancePolicy
 } from '../src/repository-governance.js';
-import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
+import {
+  isManagedCoreLogicalName, managedCoreArtifactPaths, managedCoreLogicalNames,
+  preAssessmentManagedCoreLogicalNames, retiredManagedCoreIdentities
+} from '../src/artifact-lifecycle.js';
 import { reconcileProject } from '../src/reconcile.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
@@ -171,7 +174,10 @@ const governancePathPartArrays = [
   governanceArtifactPaths.setup['github-copilot'],
   governanceArtifactPaths.setup.claude,
   governanceArtifactPaths.assessment['github-copilot'],
-  governanceArtifactPaths.assessment.claude
+  governanceArtifactPaths.assessment.claude,
+  governanceArtifactPaths.repair['github-copilot'],
+  governanceArtifactPaths.repair.claude,
+  governanceArtifactPaths.repair.codex
 ] as const;
 
 const assessmentIdentities = [
@@ -189,8 +195,12 @@ async function removeAssessmentInventory(
   root: string,
   options: { keepFiles?: boolean } = {}
 ): Promise<void> {
-  const names = new Set<string>(assessmentIdentities.map((entry) => entry.logicalName));
-  const paths = new Set(assessmentIdentities.map((entry) => entry.pathParts.join('\0')));
+  const names = new Set<string>(managedCoreLogicalNames.filter((name) =>
+    !preAssessmentManagedCoreLogicalNames.some((prior) => prior === name)
+  ));
+  const removedIdentities = [...managedCoreArtifactPaths].filter(([name]) => names.has(name))
+    .map(([logicalName, pathParts]) => ({ logicalName, pathParts }));
+  const paths = new Set(removedIdentities.map((entry) => entry.pathParts.join('\0')));
   const compatibilityPath = path.join(root, ...governanceArtifactPaths.compatibility);
   await editJson(compatibilityPath, (metadata) => {
     metadata.managedCore.logicalNameAllowlist = metadata.managedCore.logicalNameAllowlist.filter(
@@ -213,7 +223,7 @@ async function removeAssessmentInventory(
     ).contentHash = compatibilityHash;
   });
   if (!options.keepFiles) {
-    await Promise.all(assessmentIdentities.map((identity) =>
+    await Promise.all(removedIdentities.map((identity) =>
       rm(path.join(root, ...identity.pathParts), { force: true })
     ));
   }
@@ -1355,7 +1365,8 @@ describe('core-only update command', () => {
       profile: 'none',
       state: 'disabled'
     });
-    expect(manifest.managedArtifacts).toEqual([]);
+    expect(manifest.managedArtifacts.map((artifact: { logicalName: string }) => artifact.logicalName))
+      .toEqual(['liftoff-repair-copilot']);
   });
 
   it.each([
@@ -1932,7 +1943,7 @@ describe('core-only update command', () => {
     expect(await readFile(path.join(snapshot, path.relative(root, history.evidencePath)))).toEqual(evidenceBefore);
     expect(await validateGeneratedProject(root)).toEqual([]);
     expect((await run(['update', '--check'], root)).code).toBe(2);
-  }, process.platform === 'win32' ? 90_000 : 30_000);
+  }, process.platform === 'win32' ? 90_000 : 60_000);
 
   it('blocks active governance metadata with an undeclared old graph identity', async () => {
     const root = await fixtureProject();

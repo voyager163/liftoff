@@ -81,6 +81,10 @@ jobs:
           tests/update-preview.test.ts tests/update-approval.test.ts tests/update-inspection.test.ts tests/update-output.test.ts
           tests/update-compatibility.test.ts tests/reviewed-update-transaction.test.ts
           tests/repair-discovery.test.ts tests/repair-infrastructure.test.ts tests/repair-transaction.test.ts tests/repair-command.test.ts
+          tests/repair-identity.test.ts tests/repair-approval.test.ts tests/repair-application-command.test.ts
+          tests/repair-application.test.ts tests/repair-integrations.test.ts
+          tests/repair-workspaces.test.ts tests/repair-framework.test.ts
+          tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts tests/governance-assessment-history.test.ts
@@ -94,6 +98,12 @@ jobs:
         env:
           LIFTOFF_REPAIR_NATIVE: "1"
         run: npx vitest run tests/repair-command.test.ts -t "native backend-disabled"
+
+      - name: Validate locked preparation and framework qualification with native toolchains
+        if: runner.os != 'Windows'
+        env:
+          LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
+        run: npx vitest run tests/repair-preparation-native.test.ts tests/repair-framework.test.ts
 
       - name: Run package check
         run: npm run check

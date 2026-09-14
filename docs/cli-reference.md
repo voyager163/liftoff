@@ -42,9 +42,14 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
 | `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
-| `liftoff repair [project-path] --check` | Previews bounded existing-project infrastructure repair without cloud calls or project writes; bare repair also previews |
+| `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
+| `liftoff repair [project-path] --check` | Checks/previews bounded infrastructure repair without cloud calls, application scripts or project writes |
+| `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
+| `liftoff repair [project-path] --inspect-layout` | Inventories actual application paths, target identities, references and unresolved mappings without execution |
+| `liftoff repair [project-path] --application-patch <patch.json>` | Reviews external staged application mappings; interactive verification/network/file consents remain separate |
 | `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
-| `liftoff repair [project-path] --approve-plan <fingerprint>` | Applies only an eligible separately approved exact local repair plan |
+| `liftoff repair [project-path] --verify-plan <fingerprint>` | Optional automation for exact staged application checks; declared preparation requires `--allow-dependency-preparation` and declared network requires `--allow-network` |
+| `liftoff repair [project-path] --approve-plan <fingerprint>` | Optional automation for an eligible separately approved exact file plan; application patches need fresh verified checks |
 | `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
@@ -57,8 +62,9 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 
 The former `liftoff create` command is intentionally rejected with guidance to
 use `liftoff init`; there is no compatibility alias.
-`/liftoff-setup` (Copilot/Claude) and `$liftoff-setup` (Codex) are native coding-agent
-invocations, not a `liftoff setup` CLI command. Init creates a scaffold; repair
+`/liftoff-setup` and `/liftoff-repair` (Copilot/Claude), and `$liftoff-setup` and
+`$liftoff-repair` (Codex), are native coding-agent invocations, not a `liftoff setup`
+command or `liftoff -repair` flag. Init creates a scaffold; repair
 works on a supported existing Liftoff project without reinitializing it.
 
 Generation, validation, doctor, governance, and update consume the packaged
@@ -321,14 +327,28 @@ object.
 ## Repair modes
 
 ```bash
+liftoff repair [project-path]
 liftoff repair [project-path] --check [--json]
 liftoff repair [project-path] --check --live --subscription <UUID> [--json]
-liftoff repair [project-path] --approve-plan <fingerprint> [--json]
+liftoff repair --capabilities --json
+liftoff repair [project-path] --inspect-layout [--json]
+liftoff repair [project-path] --application-patch <external-patch.json>
+liftoff repair [project-path] --check --application-patch <external-patch.json> [--json]
 liftoff repair [project-path] --recover [--json]
 ```
 
-Bare repair is a preview, not execution. Use a positional project path to select
-another project, or run inside the project (including a subdirectory).
+**Normal terminal use does not require copying a fingerprint.** Bare repair
+shows the exact immutable plan and its effects, then asks Yes/No with default
+No on usable input/stderr TTYs. Only Yes authorizes that displayed plan.
+`--check` never executes the proposed repair. JSON and non-TTY invocations never
+prompt or execute implicitly; piped yes, autopilot and generic confirmation are
+not consent. No, cancellation or EOF before any effect approval leaves the
+project unchanged. A later cancelled file approval prevents the file transaction,
+but reports any earlier separately authorized verifier effects.
+
+Use a positional project path to select another project, or run inside the
+project (including a subdirectory). Commands in structured `nextActions` retain
+separate executable/argument/cwd fields and native POSIX/PowerShell quoting.
 Ordinary checks inspect bounded local configuration and state/backend metadata
 presence without reading state or contacting cloud services. Only explicit
 `--live` with a selected subscription permits bounded read-only Azure metadata
@@ -338,7 +358,7 @@ Metadata discovery has a 120-second overall deadline, a 30-second per-command
 deadline, and a maximum of 24 resource groups. Exceeding a bound leaves
 eligibility incomplete and blocks writes.
 
-The executable local recipe reorganizes supported recorded legacy Azure
+The `azure-local-layout` recipe, version 1, reorganizes supported recorded legacy Azure
 OpenTofu flat roots into `modules/application` and the selected independent
 `environments/<id>` roots. Semantic inspection preserves source bodies,
 compatible provider constraints and locks, variables, outputs, and environment
@@ -349,10 +369,12 @@ locations to be absent. Missing state files, a user assertion, or edited manifes
 metadata cannot prove that infrastructure is undeployed. Denied, timed-out, or
 incomplete discovery remains a blocker.
 
-Review the exact operations and expiring project-bound fingerprint stored
-outside the repository. Only `--approve-plan <fingerprint>` authorizes application;
-it cannot expand the approved subscription, commands, file scope, or recipe.
-Changed inputs need a fresh preview. Repair repeats eligibility checks before
+Review the exact operations and external receipt. The CLI retains the expiring
+project-bound fingerprint internally; interactive approval cannot expand the
+subscription, commands, file scope or recipe. For eligible infrastructure with
+explicit discovery scope, run `liftoff repair [project-path] --live --subscription
+<UUID>` to review and approve without hash entry. Changed inputs after a prompt
+need a fresh preview, never an automatically substituted plan. Repair repeats eligibility checks before
 commit and validates an isolated candidate. Validation first checks that the
 installed OpenTofu belongs to a compatible stable release line, then runs these
 approved commands **in staging**, not against the original backend:
@@ -369,11 +391,99 @@ but preserves the lockfile and never initializes the original backend or runs
 cloud plan/apply. Committed provenance describes actual repaired bytes, while
 original provenance is preserved under `.liftoff/repair-history/<fingerprint>/`.
 
-Check and apply are separate commands, not an `&&` chain: exit 2 can mean an
-available plan or a blocked/plan-only result. Schema-1 JSON distinguishes clean,
-available, blocked, applied, failed, and recovery outcomes. Follow the reported
-status and next action, not just the exit code. Committed-but-incomplete repair
-does not mean local governance or activation succeeded.
+### Reviewed application files
+
+For broader application folder arrangements, open the same project in a selected
+coding agent and use `/liftoff-repair` in Copilot/Claude or `$liftoff-repair` in
+Codex's skill picker. Missing native integration is managed drift: review
+`liftoff update --check --project <project-path>`, then approve the matching update.
+An unowned custom file at the native path remains protected, even under force.
+The repair integration is also generated for governance `none`, without enabling
+policy, setup, assessment or activation.
+
+Start with `--inspect-layout`. Inventory covers observed project files, current
+generated artifact identities, modes/digests, reference locations and exclusions;
+it does not infer an old layout version or offer automatic folder moves. The
+agent resolves imports, customizations, build/tests, Docker/Compose, scripts,
+CI and docs, and authors exact mappings/replacement bytes **outside the project**.
+Unresolved mappings, occupied destinations, protected files or unsafe paths block
+the `application-layout-patch` version-1 recipe.
+
+Normal `--application-patch <external-patch.json>` displays the actual patch and
+asks independently about exact staged project-code verification, any declared
+network effects, then the file transaction after the verification result is
+visible. All script/network consents precede the checks. Staging and a sanitized
+environment are **not an OS or network sandbox**: trusted project code can affect
+the host or network, and unsupported mandatory-isolation requirements block.
+Dependency/tool installation is not supplied by this recipe. Missing validation
+dependencies or unsupported commands remain blockers, not skipped checks.
+Only the declared checks are verified, not application-wide or live conformance.
+
+The real application is changed only by the confined transaction after separate
+file approval, with fresh source/stage/mode/directory/reference/verification
+binding. Application patches cannot edit the manifest, desired state, managed or
+framework control files, activation proof, history, infrastructure, state or
+secrets. The Azure recipe retains its own registered manifest/history authority.
+See the [application patch format and review example](application-repair.md).
+
+### Optional exact automation
+
+These remain supported for coding agents and automation with explicit prior
+approval of the exact displayed scope; they are not the normal human workflow:
+
+```bash
+liftoff repair [project-path] --verify-plan <fingerprint> [--allow-dependency-preparation] [--allow-network] [--json]
+liftoff repair [project-path] --approve-plan <fingerprint> [--json]
+```
+
+The application verifier flag authorizes only exact staged checks, not file
+writes. Explicit `--allow-dependency-preparation` permits only declared locked
+private preparation in a fresh disposable environment for exact candidate
+manifests and locks (`npm-ci` v1, `uv-locked-sync` v1, `go-mod-download` v1);
+it never installs global tools, mutates live dependency trees, inherits ambient
+credentials, upgrades locks or commits dependencies/build outputs. Declared
+network needs additional `--allow-network` permission. The file-approval flag
+never runs application verification on the caller's behalf: a fresh matching
+successful receipt is required first. Flags cannot select a different patch,
+discovery subscription, command set or recipe. Repeated matching verification
+can reuse its recorded result without claiming another command ran.
+
+Do not chain check and apply with `&&`: exit 2 can mean an available plan or a
+blocked/plan-only result. Schema-2 results distinguish `inspected`, `current`,
+`available`, `blocked`, `verified`, `applied`, `failed`, `partial` and `recovered`.
+They contain `identity`, `capabilities`, `requestedScope`, `committed`,
+`repairScopeComplete`, verification/effects, and typed `nextActions` (`command`,
+`agent` or `guidance`). Fingerprints, receipts and exact operation digests remain
+machine-readable audit data. A command action includes `command.executable`,
+`command.args`, `cwd`, `scope`, `approvalRequired`, and native `displayCommand`;
+`requiresInput` means substitute confirmed values before executing it.
+Exit 0 denotes completed inspection/verification, current scope or verified
+commit; 2 denotes differences, blockers or partial effects; 1 denotes a rejected
+or failed operation before a successful repair. Neither a verified staged
+candidate nor a committed repair completes setup or activation.
+
+### Repair records and recovery
+
+`repair --capabilities --json` is a schema-1 capabilities document, not a project
+repair report. Repair contract 1 is separate from CLI SemVer and from recipe
+versions/layout identities. Current approval previews, reports, new historical
+receipts and repair journals use schema 2. Application inventory, patch documents
+and nested reports, verification results/receipts and private backup indexes
+use their own schema-1 formats. Update's journal remains schema 1.
+
+**Repair and preparation capabilities are unreleased**: The package version remains
+at 0.12.2; new application repair and locked preparation capabilities are unreleased
+and have no released minimum version yet. Do not infer capability support from
+package SemVer. Native integrations and tooling must query `liftoff repair --capabilities --json`
+directly to verify `repairContractVersion`, supported schemas, registered recipes,
+and the preparation matrix.
+
+Changed CLI/contract/recipe/layout/verification or source/staged input invalidates
+approval. Old schema-1 previews cannot authorize either current lane. Old
+historical receipts remain byte-identical and do not become current proof.
+Recovery accepts only externally sealed legacy schema-1 repair journals or
+schema-2 journals with exact supported contract/recipe/layout identities.
+Unknown future identities block without rewriting the journal.
 
 `--force`, `--yes`, and `--add-agents` are not supported. Agent installation,
 framework-default changes, and the public stateful migration coordinator are
@@ -386,9 +496,16 @@ If writes were interrupted, use only the reported
 `liftoff repair [project-path] --recover` action. Update cannot recover repair
 authority; both lanes exclude overlapping pending transactions and preserve
 concurrent edits. After repair, run `liftoff update --check --project <project-path>`,
-review any separately approved update work, then return to native setup's
-`liftoff governance plan <project-path> --scope local --json` and ready local
-apply action.
+review any separately approved update work, then inspect
+`liftoff governance status <project-path> --scope local --json` and
+`liftoff governance resume <project-path> --scope local --json` for governed
+projects. Native setup handles remaining separately approved execution.
+Application original-byte backups are private user-local records; the reported
+index identifies immutable digest-bound chunks and original modes. In-project
+history contains descriptors and the original manifest, not application/state
+payloads. After commit, corrections require a new reviewed patch or user-controlled
+version-history recovery. `--recover` does not blindly restore a completed patch
+or undo verifier/host effects.
 
 ## Update modes
 

@@ -10,6 +10,9 @@ import {
   reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts
 } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
+import {
+  repairSchemaVersions, validateRepairExecutionIdentity, type RepairExecutionIdentity
+} from '../../domain/repair/identity.js';
 import { commandShellForPlatform, formatShellCommand } from '../process/shell-command.js';
 import { errorCode, errorMessage } from './errors.js';
 import { withProjectMutationLock } from './project-lock.js';
@@ -36,6 +39,7 @@ export interface ReviewedUpdateTransactionCheckpoint {
 
 export interface ReviewedUpdateTransactionOptions {
   transactionKind?: ReviewedTransactionKind;
+  repairIdentity?: RepairExecutionIdentity;
   planFingerprint: string;
   approvalStore: ReviewedUpdateApprovalStore;
   preconditions?: readonly ProjectFileSnapshot[];
@@ -61,6 +65,8 @@ export interface ReviewedUpdateTransactionInspection {
   journalPath: string;
   planFingerprint?: string;
   transactionDigest?: string;
+  schemaVersion?: number;
+  repairIdentity?: RepairExecutionIdentity;
   reason?: string;
   destinations: ReviewedUpdateTransactionDestination[];
 }
@@ -96,8 +102,9 @@ interface StoredMutation {
 }
 
 interface JournalBody {
-  schemaVersion: 1;
+  schemaVersion: 1 | 2;
   transactionKind?: ReviewedTransactionKind;
+  repairIdentity?: RepairExecutionIdentity;
   projectRoot: string;
   planFingerprint: string;
   nonce: string;
@@ -356,15 +363,22 @@ function bodyOf(header: JournalHeader): JournalBody {
 
 function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind): JournalHeader {
   const hasKind = isRecord(value) && Object.hasOwn(value, 'transactionKind');
+  const hasRepairIdentity = isRecord(value) && Object.hasOwn(value, 'repairIdentity');
   exactKeys(value, [
     'schemaVersion', 'projectRoot', 'planFingerprint', 'nonce', 'mutations', 'missingDirectories', 'transactionDigest',
-    ...(hasKind ? ['transactionKind'] : [])
+    ...(hasKind ? ['transactionKind'] : []), ...(hasRepairIdentity ? ['repairIdentity'] : [])
   ]);
   // Schema-1 journals without a lane belong only to the original update journal path.
   if ((hasKind ? value.transactionKind : 'update') !== kind) fail('recovery journal transaction kind does not match its registered path.');
   assertDigest(value.planFingerprint);
   assertDigest(value.transactionDigest);
-  if (value.schemaVersion !== 1 || value.projectRoot !== root ||
+  let repairIdentity: RepairExecutionIdentity | undefined;
+  if (kind === 'repair' && value.schemaVersion === repairSchemaVersions.journal) {
+    repairIdentity = validateRepairExecutionIdentity(value.repairIdentity);
+  } else if (value.schemaVersion !== 1 || hasRepairIdentity) {
+    fail(`unsupported ${kind} journal schema/identity; supported ${kind === 'repair' ? 'sealed legacy schema 1 or repair schema 2 with contract 1 and a registered recipe' : 'update schema 1 without repair identity'}. Use a CLI supporting the original record; do not rewrite it.`);
+  }
+  if (value.projectRoot !== root ||
       typeof value.nonce !== 'string' || !UUID.test(value.nonce) ||
       !Array.isArray(value.mutations) || value.mutations.length === 0 || value.mutations.length > MAX_MUTATIONS ||
       !Array.isArray(value.missingDirectories) || value.missingDirectories.length > MAX_MUTATIONS * 64 + 1) {
@@ -404,8 +418,10 @@ function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind
     seen.add(folded(name));
   }
   const header: JournalHeader = {
-    schemaVersion: 1, projectRoot: root, planFingerprint: value.planFingerprint, nonce: value.nonce,
+    schemaVersion: repairIdentity ? repairSchemaVersions.journal : 1,
+    projectRoot: root, planFingerprint: value.planFingerprint, nonce: value.nonce,
     ...(hasKind ? { transactionKind: kind } : {}),
+    ...(repairIdentity ? { repairIdentity } : {}),
     mutations, missingDirectories, transactionDigest: value.transactionDigest
   };
   if (canonicalSha256(bodyOf(header)) !== header.transactionDigest) fail('transaction digest does not match the journal.');
@@ -787,6 +803,8 @@ export async function inspectReviewedUpdateTransaction(
     return {
       status: loaded.committed ? 'committed' : 'interrupted', committed: loaded.committed, journalPath,
       planFingerprint: loaded.header.planFingerprint, transactionDigest: loaded.header.transactionDigest,
+      schemaVersion: loaded.header.schemaVersion,
+      ...(loaded.header.repairIdentity ? { repairIdentity: loaded.header.repairIdentity } : {}),
       destinations: loaded.committed ? [] : await destinations(root, loaded)
     };
   } catch (error) {
@@ -814,6 +832,8 @@ export async function applyReviewedUpdateTransaction(
 ): Promise<ReviewedUpdateTransactionOutcome> {
   const kind = options.transactionKind ?? 'update';
   const journalPathParts = journalParts(kind);
+  const repairIdentity = kind === 'repair' ? validateRepairExecutionIdentity(options.repairIdentity) : undefined;
+  if (kind === 'update' && options.repairIdentity !== undefined) fail('update cannot acquire repair identity or authority.');
   assertDigest(options.planFingerprint);
   const planFingerprint = options.planFingerprint;
   if (!options.approvalStore) fail('a user-local transaction approval store is required.');
@@ -882,7 +902,9 @@ export async function applyReviewedUpdateTransaction(
       }
     }
     const body: JournalBody = {
-      schemaVersion: 1, transactionKind: kind, projectRoot: root, planFingerprint, nonce: randomUUID(),
+      schemaVersion: repairIdentity ? repairSchemaVersions.journal : 1,
+      transactionKind: kind, ...(repairIdentity ? { repairIdentity } : {}),
+      projectRoot: root, planFingerprint, nonce: randomUUID(),
       mutations: stored, missingDirectories: [...missing.values()]
     };
     const header: JournalHeader = { ...body, transactionDigest: canonicalSha256(body) };

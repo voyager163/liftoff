@@ -30,6 +30,11 @@ and writes no disclosure state, regardless of the default telemetry setting.
 Opting into live assessment authorizes only its scoped read-only observations,
 not telemetry delivery.
 
+The read-only `liftoff repair --capabilities` and `liftoff repair --inspect-layout`
+modes also bypass telemetry and disclosure, including their help/JSON forms.
+Capability negotiation and application inventory therefore introduce no
+telemetry network request or disclosure-state write.
+
 `upgrade` is recorded only as the aggregate command value. Check/apply mode,
 target or configured-registry details, installation origin, paths, npm output,
 reason codes, and errors are not added. The replacement binary's verification

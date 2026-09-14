@@ -335,7 +335,7 @@ Compose, OpenTofu
 Local development Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure            OpenTofu for Azure
 
-Artifacts (50)
+Artifacts (51)
 ──────────────
 Artifact                   Lifecycle                  Path
 ─────────────────────────  ─────────────────────────  ──────────────────────────
@@ -440,6 +440,8 @@ liftoff-setup-copilot      managed-core               .github/prompts/liftoff-se
                                                       tup.prompt.md
 liftoff-governance-assess  managed-core               .github/prompts/liftoff-go
 -copilot                                              vernance-assess.prompt.md
+liftoff-repair-copilot     managed-core               .github/prompts/liftoff-re
+                                                      pair.prompt.md
 manifest                   manifest                   liftoff.manifest.json
 
 Workstation requirements
@@ -732,7 +734,7 @@ Approved stack: Huma v2, Chi, pgx, Goose, go test, Scalar, PostgreSQL, Redis, Az
 Local development: Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit
 Infrastructure: OpenTofu for Azure
 
-Artifacts (50)
+Artifacts (51)
 Artifact: root-readme | Lifecycle: project (base) | Path: README.md
 Artifact: root-gitignore | Lifecycle: project (base) | Path: .gitignore
 Artifact: root-dockerignore | Lifecycle: project (base) | Path: .dockerignore
@@ -782,6 +784,7 @@ Artifact: repository-governance-compatibility | Lifecycle: managed-core | Path: 
 Artifact: repository-governance-credential-policy-schema | Lifecycle: managed-core | Path: .liftoff/governance/credential-policy.schema.json
 Artifact: liftoff-setup-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-setup.prompt.md
 Artifact: liftoff-governance-assess-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-governance-assess.prompt.md
+Artifact: liftoff-repair-copilot | Lifecycle: managed-core | Path: .github/prompts/liftoff-repair.prompt.md
 Artifact: manifest | Lifecycle: manifest | Path: liftoff.manifest.json
 
 Workstation requirements
@@ -1144,7 +1147,7 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │ Local development         Docker Compose with PostgreSQL, Redis, Azurite, and Mailpit        │
 │ Infrastructure            OpenTofu for Azure                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
-┌─ Artifacts (50) ─────────────────────────────────────────────────────────────────────────────┐
+┌─ Artifacts (51) ─────────────────────────────────────────────────────────────────────────────┐
 │ Artifact                         Lifecycle                  Path                             │
 │ ───────────────────────────────  ─────────────────────────  ──────────────────────────────── │
 │ root-readme                      project (base)             README.md                        │
@@ -1226,6 +1229,8 @@ exports[`complete onboarding screens > snapshots the rich plan screen 1`] = `
 │                                                             ompt.md                          │
 │ liftoff-governance-assess-copil  managed-core               .github/prompts/liftoff-governan │
 │ ot                                                          ce-assess.prompt.md              │
+│ liftoff-repair-copilot           managed-core               .github/prompts/liftoff-repair.p │
+│                                                             rompt.md                         │
 │ manifest                         manifest                   liftoff.manifest.json            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Workstation requirements ───────────────────────────────────────────────────────────────────┐

@@ -19,7 +19,7 @@ import {
 } from '../src/file-system.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
-import { retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
+import { repairManagedCoreLogicalNames, retiredManagedCoreIdentities } from '../src/artifact-lifecycle.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import {
   currentActivationIdentity,
@@ -412,9 +412,8 @@ describe('manifest validation', () => {
       profile: 'none',
       state: 'disabled'
     });
-    expect(disabled.managedArtifacts.some((artifact) =>
-      artifact.category === 'governance'
-    )).toBe(false);
+    expect(disabled.managedArtifacts.map((artifact) => artifact.logicalName))
+      .toEqual(['liftoff-repair-copilot']);
 
     const partial = await loadManifest(await v5ManifestRoot({}, (manifest) => {
       (manifest.governance as Record<string, unknown>).state = 'handoff-partial';
@@ -655,7 +654,7 @@ describe('manifest validation', () => {
     expect(governed.governance.activationIdentity).toEqual(currentActivationIdentity);
     expect(governed.managedArtifacts.filter((artifact) =>
       artifact.category === 'governance'
-    )).toHaveLength(8);
+    )).toHaveLength(9);
     expect(governed.managedArtifacts.some((artifact) =>
       artifact.logicalName === retiredAlias.logicalName ||
       artifact.pathParts.join('/').includes('liftoff-repository-governance')
@@ -670,7 +669,8 @@ describe('manifest validation', () => {
     const root = await v7ManifestRoot({ agents: ['copilot', 'claude'] }, (manifest) => {
       manifest.artifactVersion = version;
       const prior = (manifest.managedArtifacts as Array<Record<string, unknown>>)
-        .filter((artifact) => !String(artifact.logicalName).startsWith('liftoff-governance-assess-'));
+        .filter((artifact) => !String(artifact.logicalName).startsWith('liftoff-governance-assess-') &&
+          !repairManagedCoreLogicalNames.some((name) => name === artifact.logicalName));
       if (version < 7) {
         delete (manifest.governance as Record<string, unknown>).activationIdentity;
       }

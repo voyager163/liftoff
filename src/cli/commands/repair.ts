@@ -10,6 +10,12 @@ export async function repairCommand(parsed: ParsedArgs, context: ExecutionContex
     live: readBooleanFlag(parsed.flags, 'live') === true,
     subscription: readStringFlag(parsed.flags, 'subscription'),
     approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
+    capabilities: readBooleanFlag(parsed.flags, 'capabilities') === true,
+    inspectLayout: readBooleanFlag(parsed.flags, 'inspect-layout') === true,
+    applicationPatch: readStringFlag(parsed.flags, 'application-patch'),
+    verifyPlan: readStringFlag(parsed.flags, 'verify-plan'),
+    allowNetwork: readBooleanFlag(parsed.flags, 'allow-network') === true,
+    allowDependencyPreparation: readBooleanFlag(parsed.flags, 'allow-dependency-preparation') === true,
     recover: readBooleanFlag(parsed.flags, 'recover') === true,
     json: readBooleanFlag(parsed.flags, 'json') === true
   }, context);

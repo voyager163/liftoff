@@ -19,6 +19,7 @@ export interface CommandContext {
   configuredRegistryTargetLookup?: ConfiguredRegistryTargetLookup;
   updatePreview?: Parameters<typeof resolveUpdatePreviewLocation>[1];
   approveUpdatePlan?: UpdateApprovalPrompt;
+  approveRepairPlan?: UpdateApprovalPrompt;
   updateNow?: () => Date;
   workstationProbe?: WorkstationProbeOptions;
   workstationNoProgressStore?: WorkstationNoProgressStore;
