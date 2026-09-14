@@ -99,6 +99,12 @@ jobs:
           LIFTOFF_REPAIR_NATIVE: "1"
         run: npx vitest run tests/repair-command.test.ts -t "native backend-disabled"
 
+      - name: Harden tool permissions
+        if: runner.os == 'Linux'
+        run: |
+          sudo chmod -R o-w /opt/hostedtoolcache 2>/dev/null || true
+          chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
+
       - name: Validate locked preparation and framework qualification with native toolchains
         if: runner.os != 'Windows'
         env:

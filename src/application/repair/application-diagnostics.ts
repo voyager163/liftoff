@@ -86,7 +86,9 @@ export function applicationCommandFailure(
   }
   if (result.errorCode === 'POWERSHELL_SPAWN_FAILED') {
     return failure('execution-failed',
-      'Failed to launch Windows PowerShell 5.1. Ensure Windows PowerShell 5.1 is installed and available in SystemRoot System32.');
+      result.errorMessage
+        ? `Failed to launch Windows PowerShell 5.1: ${result.errorMessage}`
+        : 'Failed to launch Windows PowerShell 5.1. Ensure Windows PowerShell 5.1 is installed and available in SystemRoot System32.');
   }
   if (result.errorCode === 'EACCES' || result.errorCode === 'EPERM' || result.status === 126) {
     return failure('execution-failed',

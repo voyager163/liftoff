@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { open, readFile, unlink } from 'node:fs/promises';
@@ -5,8 +6,6 @@ import net from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
-import spawn from 'cross-spawn';
-import type { ChildProcess } from 'node:child_process';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
 import { resolvePackageFile } from '../packaged-assets/package-root.js';
@@ -136,10 +135,30 @@ export function resolveTargetExecutableCommand(
 }
 
 export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
+  const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows';
+  const windir = process.env.WINDIR ?? process.env.windir ?? systemRoot;
+  const systemDrive = process.env.SystemDrive ?? process.env.SYSTEMDRIVE ?? 'C:';
+  const comspec = process.env.COMSPEC ?? process.env.ComSpec ?? path.join(systemRoot, 'System32', 'cmd.exe');
+  const controllerPathDirs = [
+    path.dirname(process.execPath),
+    path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0'),
+    path.join(systemRoot, 'System32'),
+    systemRoot,
+    '/bin',
+    '/usr/bin'
+  ];
+  const controllerPath = controllerPathDirs.join(path.delimiter);
+
   const env: NodeJS.ProcessEnv = {
-    SystemRoot: process.env.SystemRoot ?? 'C:\\Windows',
-    WINDIR: process.env.WINDIR ?? 'C:\\Windows',
-    PATH: process.env.PATH ?? 'C:\\Windows\\System32;C:\\Windows',
+    SystemRoot: systemRoot,
+    SYSTEMROOT: systemRoot,
+    WINDIR: windir,
+    windir: windir,
+    SystemDrive: systemDrive,
+    COMSPEC: comspec,
+    ComSpec: comspec,
+    PATH: controllerPath,
+    Path: controllerPath,
     PATHEXT: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS'
   };
   const tempDir = process.env.TEMP ?? process.env.TMP ?? tmpdir();
