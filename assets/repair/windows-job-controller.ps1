@@ -255,6 +255,60 @@ public static class Win32JobNative {
         info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
         return info;
     }
+
+    public static int LaunchInJobAndResume(
+        string appPath,
+        string commandLine,
+        IntPtr pEnv,
+        string targetDir,
+        ref STARTUPINFOEX siex,
+        bool hasStdHandles,
+        IntPtr hJob,
+        out IntPtr hProcess,
+        out uint processId,
+        out string errorMessage)
+    {
+        uint creationFlags = EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT;
+        PROCESS_INFORMATION pi = new PROCESS_INFORMATION();
+        bool created = CreateProcess(
+            appPath,
+            commandLine,
+            IntPtr.Zero,
+            IntPtr.Zero,
+            hasStdHandles,
+            creationFlags,
+            pEnv,
+            targetDir,
+            ref siex,
+            out pi);
+
+        if (!created) {
+            int err = Marshal.GetLastWin32Error();
+            hProcess = IntPtr.Zero;
+            processId = 0;
+            errorMessage = "CreateProcessW failed with Win32 error " + err;
+            return 1;
+        }
+
+        bool inJob = false;
+        if (!IsProcessInJob(pi.hProcess, hJob, out inJob) || !inJob) {
+            TerminateProcess(pi.hProcess, 1);
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+            hProcess = IntPtr.Zero;
+            processId = 0;
+            errorMessage = "Process was not successfully admitted into the Job Object.";
+            return 2;
+        }
+
+        ResumeThread(pi.hThread);
+        CloseHandle(pi.hThread);
+
+        hProcess = pi.hProcess;
+        processId = pi.dwProcessId;
+        errorMessage = "";
+        return 0;
+    }
 }
 "@
 
@@ -312,6 +366,7 @@ function Read-ControlFrame($stream) {
 }
 
 $hJob = [IntPtr]::Zero
+$hProcess = [IntPtr]::Zero
 $pi = New-Object Win32JobNative+PROCESS_INFORMATION
 $attributeList = [IntPtr]::Zero
 $pJobHandle = [IntPtr]::Zero
@@ -573,21 +628,23 @@ try {
     }
     $appPath = $req.executable
 
-    $created = [Win32JobNative]::CreateProcess(
+    $hProcess = [IntPtr]::Zero
+    $processId = [uint32]0
+    $launchError = ""
+    $launchRes = [Win32JobNative]::LaunchInJobAndResume(
         $appPath,
         $req.commandLine,
-        [IntPtr]::Zero,
-        [IntPtr]::Zero,
-        $hasStdHandles, # Inherit only the explicit handles in HANDLE_LIST
-        $creationFlags,
         $pEnv,
         $targetDir,
         [ref]$siex,
-        [ref]$pi
+        $hasStdHandles,
+        $hJob,
+        [ref]$hProcess,
+        [ref]$processId,
+        [ref]$launchError
     )
 
-    if (-not $created) {
-        $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if ($launchRes -ne 0) {
         Send-ControlFrame $pipe @{
             schemaVersion = 1
             kind = 'ack'
@@ -597,26 +654,7 @@ try {
             nonce = $ExpectedNonce
             sequence = 1
             admitted = $false
-            error = "CreateProcessW failed with Win32 error $err"
-        }
-        exit 1
-    }
-
-    # Verify atomic job membership before resuming thread
-    $inJob = $false
-    if (-not [Win32JobNative]::IsProcessInJob($pi.hProcess, $hJob, [ref]$inJob) -or -not $inJob) {
-        # Unwind suspended process: terminate immediately
-        [Win32JobNative]::TerminateProcess($pi.hProcess, 1) | Out-Null
-        Send-ControlFrame $pipe @{
-            schemaVersion = 1
-            kind = 'ack'
-            controllerId = 'liftoff-windows-job-controller-v1'
-            workspaceId = $WorkspaceId
-            invocationId = $InvocationId
-            nonce = $ExpectedNonce
-            sequence = 1
-            admitted = $false
-            error = "Process was not successfully admitted into the Job Object."
+            error = $launchError
         }
         exit 1
     }
@@ -636,11 +674,6 @@ try {
     # Begin asynchronous read on control pipe to detect parent disconnect or abort
     $pipeBuffer = New-Object byte[] 1
     $pipeAsync = $pipe.BeginRead($pipeBuffer, 0, 1, $null, $null)
-
-    # Resume the root thread
-    [Win32JobNative]::ResumeThread($pi.hThread) | Out-Null
-    [Win32JobNative]::CloseHandle($pi.hThread) | Out-Null
-    $pi.hThread = [IntPtr]::Zero
 
     # Monitor root process and Job accounting
     $timeoutMs = if ($req.timeoutMs -gt 0) { [int]$req.timeoutMs } else { 120000 }
@@ -677,10 +710,10 @@ try {
 
         # Check if root process exited
         if ($null -eq $rootExitCode) {
-            $wait = [Win32JobNative]::WaitForSingleObject($pi.hProcess, 50)
+            $wait = [Win32JobNative]::WaitForSingleObject($hProcess, 50)
             if ($wait -eq [Win32JobNative]::WAIT_OBJECT_0) {
                 $code = [uint32]0
-                if ([Win32JobNative]::GetExitCodeProcess($pi.hProcess, [ref]$code)) {
+                if ([Win32JobNative]::GetExitCodeProcess($hProcess, [ref]$code)) {
                     $rootExitCode = [int]$code
                 } else {
                     $rootExitCode = 1
@@ -843,6 +876,7 @@ try {
     }
     if ($pi.hThread -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hThread) | Out-Null }
     if ($pi.hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($pi.hProcess) | Out-Null }
+    if ($hProcess -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hProcess) | Out-Null }
     if ($hJob -ne [IntPtr]::Zero) { [Win32JobNative]::CloseHandle($hJob) | Out-Null }
     if ($null -ne $pipe) { $pipe.Dispose() }
 }

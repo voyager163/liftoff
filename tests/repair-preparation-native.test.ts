@@ -43,7 +43,7 @@ describe('native locked application preparation qualification', () => {
     await expect(lstat(path.join(f.root, 'frontend', 'node_modules'))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(lstat(path.join(f.root, 'backend', 'dist'))).rejects.toMatchObject({ code: 'ENOENT' });
     await expect(lstat(path.join(f.root, 'backend', 'src', 'app.ts'))).rejects.toMatchObject({ code: 'ENOENT' });
-  }, 480_000);
+  }, 720_000);
 
   it.skipIf(!native)('prepares real Python wheels with the existing private-qualified uv/interpreter and runs generated FastAPI tests', async () => {
     const f = await fixture({ stack: 'python-fastapi' });

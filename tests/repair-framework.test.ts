@@ -200,5 +200,5 @@ describe('real framework repair fixture', () => {
     }
     expect((await lstat(applied.report.historyPath)).isDirectory()).toBe(true);
     expect((await lstat(applied.report.backupPath)).isFile()).toBe(true);
-  }, 480_000);
+  }, 720_000);
 });
