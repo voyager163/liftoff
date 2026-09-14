@@ -72,6 +72,22 @@ export function applicationCommandFailure(
   if (typeof result.stdout !== 'string' || typeof result.stderr !== 'string') return executionFailure();
   if (result.status === 0 && !result.signal && !result.errorCode && !result.errorMessage) return null;
   if (result.errorCode === 'ENOENT') return missingExecutable();
+  if (result.errorCode === 'RESTRICTED_EXECUTION_POLICY') {
+    return failure('execution-failed',
+      'Windows PowerShell execution policy (Restricted or AllSigned) prevents running the controller script. Adjust execution policy (e.g. Set-ExecutionPolicy RemoteSigned -Scope CurrentUser) to permit script execution; Liftoff does not bypass execution policies.');
+  }
+  if (result.errorCode === 'CONSTRAINED_LANGUAGE_MODE') {
+    return failure('execution-failed',
+      'Windows PowerShell is in ConstrainedLanguage mode or restricted by AppLocker/WDAC. Win32 Job Object creation requires FullLanguage mode.');
+  }
+  if (result.errorCode === 'CORRUPTED_CONTROLLER_ASSET') {
+    return failure('execution-failed',
+      'The packaged Windows Job Object controller asset failed integrity verification. Reinstall or verify the Liftoff package installation.');
+  }
+  if (result.errorCode === 'POWERSHELL_SPAWN_FAILED') {
+    return failure('execution-failed',
+      'Failed to launch Windows PowerShell 5.1. Ensure Windows PowerShell 5.1 is installed and available in SystemRoot System32.');
+  }
   if (result.errorCode === 'EACCES' || result.errorCode === 'EPERM' || result.status === 126) {
     return failure('execution-failed',
       'Execution permission was denied for a required tool or launch path. Review executable access and workstation prerequisites separately; repair does not change host permissions to bypass the failure.');

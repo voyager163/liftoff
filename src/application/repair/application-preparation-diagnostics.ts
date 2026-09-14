@@ -10,7 +10,10 @@ export function applicationPreparationFailure(
 ): ApplicationCommandFailure | null {
   const ordinary = applicationCommandFailure(command, result);
   if (!ordinary) return null;
-  if (['timed-out', 'output-limit', 'interrupted', 'termination-unconfirmed', 'missing-executable'].includes(ordinary.kind)) return ordinary;
+  if (['timed-out', 'output-limit', 'interrupted', 'termination-unconfirmed', 'missing-executable'].includes(ordinary.kind) ||
+      ['RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED'].includes(result.errorCode ?? '')) {
+    return ordinary;
+  }
   const matches = (pattern: RegExp) => applicationDiagnosticMatches(result, command.maxOutputBytes, pattern);
   const message = (text: string): ApplicationCommandFailure => ({ kind: 'missing-dependencies', cleanupUnsafe: false, message: text });
   if (matches(/\b(?:ENOTCACHED|only-if-cached|not found in (?:the )?cache|Network connectivity is disabled|module lookup disabled by GOPROXY)\b/iu)) {

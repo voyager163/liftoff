@@ -4,11 +4,18 @@ import type { ExternalCommand } from '../../domain/project/contracts.js';
 export const windowsJobProtocolVersion = 1 as const;
 export const defaultWindowsJobControllerId = 'liftoff-windows-job-controller-v1' as const;
 export const maximumEnvironmentBlockBytes = 64 * 1024;
-export const maximumControlMessageBytes = 64 * 1024;
+export const maximumControlMessageBytes = 256 * 1024;
 export const maximumWindowsCommandLineLength = 32_767;
 export const maximumWindowsCommandLineStringLength = maximumWindowsCommandLineLength - 1;
 
 const hex64Regex = /^[a-f0-9]{64}$/u;
+
+export class WindowsJobAdmissionDeniedError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'WindowsJobAdmissionDeniedError';
+  }
+}
 
 /**
  * Standard Win32 CommandLineToArgvW argument escaping for CreateProcessW.
@@ -183,6 +190,9 @@ export interface WindowsJobAdmittedInvocation {
   envDigest: string;
   timeoutMs: number;
   maxOutputBytes: number;
+  envBlockBase64?: string;
+  stdoutFile?: string;
+  stderrFile?: string;
 }
 
 export function deriveInvocationDigest(invocation: WindowsJobAdmittedInvocation): string {
@@ -213,6 +223,9 @@ export interface WindowsJobControlSpawnRequest {
   envDigest: string;
   timeoutMs: number;
   maxOutputBytes: number;
+  envBlockBase64?: string;
+  stdoutFile?: string;
+  stderrFile?: string;
 }
 
 export interface WindowsJobControlAck {
@@ -235,6 +248,15 @@ export interface WindowsJobControlExpectedContext {
   controllerId?: string;
 }
 
+export interface WindowsJobControlReady {
+  schemaVersion: 1;
+  kind: 'ready';
+  controllerId: string;
+  workspaceId: string;
+  invocationId: string;
+  nonce: string;
+}
+
 export interface WindowsJobControlResponse {
   schemaVersion: 1;
   kind: 'response';
@@ -249,13 +271,14 @@ export interface WindowsJobControlResponse {
   activeProcesses: number;
   jobTerminated: boolean;
   settled: boolean;
+  outputLimitExceeded?: boolean;
   error?: string;
 }
 
 const recognizedResponseKeys = new Set([
   'schemaVersion', 'kind', 'controllerId', 'workspaceId', 'invocationId',
   'nonce', 'sequence', 'phase', 'status', 'signal',
-  'activeProcesses', 'jobTerminated', 'settled', 'error'
+  'activeProcesses', 'jobTerminated', 'settled', 'outputLimitExceeded', 'error'
 ]);
 
 /**
@@ -344,6 +367,10 @@ export function validateWindowsJobControlResponse(
   }
   const signal = r.signal as string | null;
 
+  if (r.outputLimitExceeded !== undefined && typeof r.outputLimitExceeded !== 'boolean') {
+    throw new Error('Invalid outputLimitExceeded in control response; must be a boolean when provided.');
+  }
+
   if (r.error !== undefined && (typeof r.error !== 'string' || r.error.length === 0)) {
     throw new Error('Invalid error in control response; must be a non-empty string when provided.');
   }
@@ -393,6 +420,7 @@ export function validateWindowsJobControlResponse(
     activeProcesses,
     jobTerminated: r.jobTerminated,
     settled,
+    ...(r.outputLimitExceeded !== undefined ? { outputLimitExceeded: Boolean(r.outputLimitExceeded) } : {}),
     ...(error ? { error } : {})
   };
 }
@@ -486,13 +514,47 @@ export class WindowsJobExecutionSession {
       cwd: invocation.cwd,
       envDigest: invocation.envDigest,
       timeoutMs: invocation.timeoutMs,
-      maxOutputBytes: invocation.maxOutputBytes
+      maxOutputBytes: invocation.maxOutputBytes,
+      ...(invocation.envBlockBase64 ? { envBlockBase64: invocation.envBlockBase64 } : {}),
+      ...(invocation.stdoutFile ? { stdoutFile: invocation.stdoutFile } : {}),
+      ...(invocation.stderrFile ? { stderrFile: invocation.stderrFile } : {})
     });
     this.invocationId = deriveInvocationDigest(this.admittedInvocation);
     this.nonce = nonce;
     this.currentSequence = 0;
     this.state = 'scope-admitted';
     return this.invocationId;
+  }
+
+  authenticateControllerReady(rawReady: unknown): void {
+    if (this.state !== 'scope-admitted' || !this.admittedInvocation || !this.invocationId || !this.nonce) {
+      throw new Error(`Cannot authenticate controller ready in session state "${this.state}"; scope must be admitted first.`);
+    }
+    if (typeof rawReady !== 'object' || rawReady === null || Array.isArray(rawReady)) {
+      this.state = 'failed';
+      throw new Error('Invalid controller ready frame; authentication denied.');
+    }
+    const ready = rawReady as Record<string, unknown>;
+    if (ready.schemaVersion !== 1 || ready.kind !== 'ready') {
+      this.state = 'failed';
+      throw new Error('Unsupported controller ready schema or kind; authentication denied.');
+    }
+    if (ready.controllerId !== this.admittedInvocation.controllerId) {
+      this.state = 'failed';
+      throw new Error(`Mismatched controller identity in ready frame "${String(ready.controllerId)}"; authentication denied.`);
+    }
+    if (ready.workspaceId !== this.admittedInvocation.workspaceId) {
+      this.state = 'failed';
+      throw new Error('Mismatched workspaceId in controller ready frame; authentication denied.');
+    }
+    if (ready.invocationId !== this.invocationId) {
+      this.state = 'failed';
+      throw new Error('Mismatched invocationId in controller ready frame; authentication denied.');
+    }
+    if (ready.nonce !== this.nonce) {
+      this.state = 'failed';
+      throw new Error('Mismatched cryptographic nonce in controller ready frame; authentication denied.');
+    }
   }
 
   requestRootStart(): WindowsJobControlSpawnRequest {
@@ -518,7 +580,10 @@ export class WindowsJobExecutionSession {
       cwd: this.admittedInvocation.cwd,
       envDigest: this.admittedInvocation.envDigest,
       timeoutMs: this.admittedInvocation.timeoutMs,
-      maxOutputBytes: this.admittedInvocation.maxOutputBytes
+      maxOutputBytes: this.admittedInvocation.maxOutputBytes,
+      ...(this.admittedInvocation.envBlockBase64 ? { envBlockBase64: this.admittedInvocation.envBlockBase64 } : {}),
+      ...(this.admittedInvocation.stdoutFile ? { stdoutFile: this.admittedInvocation.stdoutFile } : {}),
+      ...(this.admittedInvocation.stderrFile ? { stderrFile: this.admittedInvocation.stderrFile } : {})
     };
   }
 
@@ -551,9 +616,13 @@ export class WindowsJobExecutionSession {
       this.state = 'failed';
       throw new Error('Contradictory acknowledgement frame: admitted is true but error is present.');
     }
-    if (ack.admitted !== true) {
+    if (typeof ack.admitted !== 'boolean') {
       this.state = 'failed';
-      throw new Error(`Root process admission was denied by controller: ${String(ack.error ?? 'unknown error')}.`);
+      throw new Error('Invalid or missing admitted flag in control acknowledgement frame; must be a boolean.');
+    }
+    if (ack.admitted === false) {
+      this.state = 'failed';
+      throw new WindowsJobAdmissionDeniedError(`Root process admission was denied by controller: ${String(ack.error ?? 'unknown error')}.`);
     }
     this.state = 'root-started';
   }

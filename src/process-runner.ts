@@ -150,16 +150,16 @@ export class NodeCommandRunner implements CommandRunner {
       throw new RangeError('maxOutputBytes must be a positive safe integer.');
     }
     const displayCommand = formatCommand(command, options.redactArgIndices);
-    if (options.ensureProcessTreeSettled && process.platform === 'win32') {
-      const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
-      return runWindowsJobCommand(command, options);
-    }
     if (options.signal?.aborted) {
       return {
         command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
         aborted: true, errorCode: 'ABORT_ERR', errorMessage: 'Command was cancelled before it started.',
         ...(options.maxOutputBytes === undefined ? {} : { outputLimitExceeded: false })
       };
+    }
+    if (options.ensureProcessTreeSettled && process.platform === 'win32') {
+      const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
+      return runWindowsJobCommand(command, options);
     }
     return new Promise((resolve) => {
       let settled = false;

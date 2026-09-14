@@ -9,6 +9,7 @@ import {
   quoteWindowsArgvArgument,
   unframeControlMessages,
   validateWindowsJobControlResponse,
+  WindowsJobAdmissionDeniedError,
   WindowsJobExecutionSession,
   type WindowsJobAdmittedInvocation,
   type WindowsJobControlAck,
@@ -236,6 +237,39 @@ describe('Windows Job control message protocol and framing', () => {
     expect(() => validateWindowsJobControlResponse({}, { ...validExpected, sequence: -1 })).toThrow(/sequence/);
   });
 
+  it('transports messages containing valid 50 KiB environment blocks exceeding 64 KiB JSON frame size', () => {
+    const largeEnvBase64 = Buffer.alloc(50_000, 0x61).toString('base64'); // ~66.6 KiB base64
+    const largeMessage = {
+      schemaVersion: 1,
+      kind: 'spawn',
+      controllerId: defaultWindowsJobControllerId,
+      workspaceId: 'b'.repeat(64),
+      invocationId: 'c'.repeat(64),
+      nonce: 'a'.repeat(64),
+      sequence: 1,
+      executable: 'C:\\node.exe',
+      commandLine: 'C:\\node.exe',
+      cwd: 'C:\\Project',
+      envDigest: 'd'.repeat(64),
+      timeoutMs: 30000,
+      maxOutputBytes: 65536,
+      envBlockBase64: largeEnvBase64
+    };
+    const framed = frameControlMessage(largeMessage);
+    expect(framed.length).toBeGreaterThan(64 * 1024);
+    expect(framed.length).toBeLessThan(256 * 1024);
+
+    const { messages, remainder } = unframeControlMessages(framed);
+    expect(remainder.length).toBe(0);
+    expect(messages).toHaveLength(1);
+    expect((messages[0] as Record<string, unknown>).envBlockBase64).toBe(largeEnvBase64);
+  });
+
+  it('rejects control message exceeding 256 KiB transport limit', () => {
+    const hugePayload = { large: 'x'.repeat(260 * 1024) };
+    expect(() => frameControlMessage(hugePayload)).toThrow(/exceeds maximum size/);
+  });
+
   it('rejects unknown fields in control response to prevent schema smuggling', () => {
     const smudged = {
       schemaVersion: 1, kind: 'response', controllerId: defaultWindowsJobControllerId,
@@ -309,23 +343,32 @@ describe('Windows Job control message protocol and framing', () => {
 });
 
 describe('Fail-before-target-spawn admission guard on Windows', () => {
-  it('blocks in NodeCommandRunner immediately without spawning when ensureProcessTreeSettled is requested on Windows', async () => {
+  it('blocks in NodeCommandRunner immediately without spawning when PowerShell 5.1 is missing on Windows', async () => {
     const originalPlatform = process.platform;
+    const originalSystemRoot = process.env.SystemRoot;
     try {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      process.env.SystemRoot = 'C:\\NonExistentSystemRoot';
       const runner = new NodeCommandRunner();
       const command = { executable: 'node.exe', args: ['--test', 'test.js'] };
       const result = await runner.run(command, { ensureProcessTreeSettled: true });
       expect(result.status).toBeNull();
+      expect(result.processSpawned).toBe(false);
       expect(result.processTreeSettled).toBe(false);
       expect(result.errorCode).toBe('UNSUPPORTED_PROCESS_SETTLEMENT');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      if (originalSystemRoot !== undefined) {
+        process.env.SystemRoot = originalSystemRoot;
+      } else {
+        delete process.env.SystemRoot;
+      }
     }
   });
 
-  it('fails closed in assertAdmission before creating a workspace or running commands when platform is win32', async () => {
+  it('fails closed in assertAdmission before creating a workspace or running commands when PowerShell 5.1 is missing on Windows', async () => {
     const originalPlatform = process.platform;
+    const originalSystemRoot = process.env.SystemRoot;
     const rootDir = path.resolve(`.test-win-admission-${randomUUID()}`);
     try {
       const f = await createPreparationFixture(rootDir, { frontend: false });
@@ -340,6 +383,7 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
       });
 
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
+      process.env.SystemRoot = 'C:\\NonExistentSystemRoot';
 
       const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
       expect(verified.status).toBe('blocked');
@@ -349,6 +393,11 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
       expect(verified.workspaceId).toBeUndefined();
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
+      if (originalSystemRoot !== undefined) {
+        process.env.SystemRoot = originalSystemRoot;
+      } else {
+        delete process.env.SystemRoot;
+      }
       await rm(rootDir, { recursive: true, force: true });
     }
   });
@@ -627,5 +676,132 @@ describe('Windows Job execution session state machine', () => {
       workspaceId: invocation.workspaceId, invocationId: '0'.repeat(64), nonce, sequence: 1, admitted: true
     })).toThrow(/Mismatched scope binding or sequence in root start acknowledgement/);
     expect(session.getState()).toBe('failed');
+  });
+
+  it('authenticates controller ready handshake before spawn request can be generated', () => {
+    const session = new WindowsJobExecutionSession();
+    session.onControllerReady();
+    const invId = session.admitScope(invocation, nonce);
+
+    // Mismatched nonce:
+    expect(() => session.authenticateControllerReady({
+      schemaVersion: 1, kind: 'ready', controllerId: defaultWindowsJobControllerId,
+      workspaceId: invocation.workspaceId, invocationId: invId, nonce: 'wrong-nonce'
+    })).toThrow(/Mismatched cryptographic nonce/);
+    expect(session.getState()).toBe('failed');
+
+    // Fresh session with valid ready frame succeeds
+    const session2 = new WindowsJobExecutionSession();
+    session2.onControllerReady();
+    const invId2 = session2.admitScope(invocation, nonce);
+    expect(() => session2.authenticateControllerReady({
+      schemaVersion: 1, kind: 'ready', controllerId: defaultWindowsJobControllerId,
+      workspaceId: invocation.workspaceId, invocationId: invId2, nonce
+    })).not.toThrow();
+
+    const spawnReq = session2.requestRootStart();
+    expect(spawnReq.invocationId).toBe(invId2);
+  });
+
+  it('preserves envBlockBase64, stdoutFile, and stderrFile in admitted scope and spawn request', () => {
+    const session = new WindowsJobExecutionSession();
+    session.onControllerReady();
+    const richInvocation: WindowsJobAdmittedInvocation = {
+      ...invocation,
+      envBlockBase64: 'ZW52LWJsb2NrLWJhc2U2NA==',
+      stdoutFile: 'C:\\Temp\\stdout.log',
+      stderrFile: 'C:\\Temp\\stderr.log'
+    };
+    session.admitScope(richInvocation, nonce);
+    session.authenticateControllerReady({
+      schemaVersion: 1, kind: 'ready', controllerId: defaultWindowsJobControllerId,
+      workspaceId: richInvocation.workspaceId, invocationId: session.getInvocationId()!, nonce
+    });
+    const spawnReq = session.requestRootStart();
+    expect(spawnReq.envBlockBase64).toBe('ZW52LWJsb2NrLWJhc2U2NA==');
+    expect(spawnReq.stdoutFile).toBe('C:\\Temp\\stdout.log');
+    expect(spawnReq.stderrFile).toBe('C:\\Temp\\stderr.log');
+  });
+
+  it('validates outputLimitExceeded in control responses', () => {
+    const base = {
+      schemaVersion: 1, kind: 'response', controllerId: defaultWindowsJobControllerId,
+      workspaceId: 'b'.repeat(64), invocationId: 'c'.repeat(64), nonce: 'a'.repeat(64), sequence: 5,
+      phase: 'terminated', status: null, signal: 'SIGKILL', activeProcesses: 0, jobTerminated: true, settled: true,
+      outputLimitExceeded: true
+    };
+    const validated = validateWindowsJobControlResponse(base, {
+      controllerId: defaultWindowsJobControllerId,
+      workspaceId: 'b'.repeat(64),
+      invocationId: 'c'.repeat(64),
+      nonce: 'a'.repeat(64),
+      sequence: 5
+    });
+    expect(validated.outputLimitExceeded).toBe(true);
+    expect(validated.settled).toBe(true);
+
+    expect(() => validateWindowsJobControlResponse({ ...base, outputLimitExceeded: 'invalid' as unknown as boolean }, {
+      controllerId: defaultWindowsJobControllerId,
+      workspaceId: 'b'.repeat(64),
+      invocationId: 'c'.repeat(64),
+      nonce: 'a'.repeat(64),
+      sequence: 5
+    })).toThrow(/Invalid outputLimitExceeded in control response/);
+  });
+
+  it('strictly distinguishes boolean false admission from malformed or missing admitted flags in ACK', () => {
+    const makeStartedSession = () => {
+      const s = new WindowsJobExecutionSession();
+      s.onControllerReady();
+      const id = s.admitScope(invocation, nonce);
+      s.requestRootStart();
+      return { session: s, invId: id };
+    };
+
+    const { session: s1, invId: id1 } = makeStartedSession();
+    const baseAck1 = {
+      schemaVersion: 1, kind: 'ack', controllerId: defaultWindowsJobControllerId,
+      workspaceId: invocation.workspaceId, invocationId: id1, nonce, sequence: 1
+    };
+    expect(() => s1.onRootStartAcknowledged({ ...baseAck1, admitted: 'false' as unknown as boolean })).toThrow(
+      /must be a boolean/
+    );
+
+    const { session: s2, invId: id2 } = makeStartedSession();
+    const baseAck2 = { ...baseAck1, invocationId: id2 };
+    expect(() => s2.onRootStartAcknowledged({ ...baseAck2, admitted: null as unknown as boolean })).toThrow(
+      /must be a boolean/
+    );
+
+    const { session: s3, invId: id3 } = makeStartedSession();
+    const baseAck3 = { ...baseAck1, invocationId: id3 };
+    expect(() => s3.onRootStartAcknowledged({ ...baseAck3 })).toThrow(
+      /must be a boolean/
+    );
+
+    // Fresh session with boolean admitted: false throws WindowsJobAdmissionDeniedError
+    const { session: s4, invId: id4 } = makeStartedSession();
+    const baseAck4 = { ...baseAck1, invocationId: id4 };
+    expect(() => s4.onRootStartAcknowledged({
+      ...baseAck4, admitted: false, error: 'Denied by policy'
+    })).toThrowError(WindowsJobAdmissionDeniedError);
+  });
+
+  it('canonicalizes SystemRoot and WINDIR aliases without duplicate-key encoding failure', async () => {
+    const { applicationSearchEnvironment } = await import('../src/application/repair/application-environment.js');
+    const searchEnv = applicationSearchEnvironment({
+      SystemRoot: 'C:\\Windows',
+      SYSTEMROOT: 'C:\\Windows',
+      WINDIR: 'C:\\Windows',
+      windir: 'C:\\Windows'
+    }, '/project', '/staging', '/cwd');
+
+    expect(searchEnv.SystemRoot).toBe('C:\\Windows');
+    expect(searchEnv.SYSTEMROOT).toBeUndefined();
+    expect(searchEnv.WINDIR).toBe('C:\\Windows');
+    expect(searchEnv.windir).toBeUndefined();
+
+    // Verify it encodes cleanly into a Windows environment block without throwing duplicate key errors
+    expect(() => encodeWindowsEnvironmentBlock(searchEnv)).not.toThrow();
   });
 });

@@ -6,7 +6,11 @@ export function applicationSearchEnvironment(
   inherited: NodeJS.ProcessEnv, projectRoot: string, stagingRoot: string, cwd: string
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = Object.fromEntries(Object.keys({ ...process.env, ...inherited }).map((key) => [key, undefined]));
-  for (const name of ['SystemRoot', 'SYSTEMROOT', 'WINDIR', 'LANG', 'LC_ALL', 'LC_CTYPE', 'TZ']) {
+  const systemRoot = inherited.SystemRoot ?? inherited.SYSTEMROOT ?? inherited.systemroot ?? process.env.SystemRoot ?? process.env.SYSTEMROOT ?? process.env.systemroot;
+  if (systemRoot) environment.SystemRoot = systemRoot;
+  const windir = inherited.WINDIR ?? inherited.windir ?? process.env.WINDIR ?? process.env.windir;
+  if (windir) environment.WINDIR = windir;
+  for (const name of ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ']) {
     const value = inherited[name] ?? process.env[name];
     if (value) environment[name] = value;
   }

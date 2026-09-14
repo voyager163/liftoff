@@ -113,7 +113,17 @@ export async function verifyApplicationPatch(
   let uncertain = false;
   const assertAdmission = async () => {
     if (process.platform === 'win32') {
-      throw new ApplicationInspectionError('[unsupported-platform-settlement] Bounded application verification requires process-tree group settlement proof, which is unsupported on Windows without native job-object controls. Project-code and preparation effects were not executed.');
+      const { resolveWindowsPowerShellPath, verifyWindowsJobControllerAsset } = await import('../../adapters/process/windows-job-runner.js');
+      const powershellPath = resolveWindowsPowerShellPath();
+      const { existsSync } = await import('node:fs');
+      if (!existsSync(powershellPath)) {
+        throw new ApplicationInspectionError('[unsupported-platform-settlement] Windows PowerShell 5.1 is required for Windows process-tree settlement verification. Project-code and preparation effects were not executed.');
+      }
+      try {
+        await verifyWindowsJobControllerAsset();
+      } catch (err) {
+        throw new ApplicationInspectionError(`[corrupted-controller-asset] ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
     if (!options || typeof options.assertCurrent !== 'function' || !options.preview ||
         options.allowProjectCode !== true || typeof options.allowDependencyPreparation !== 'boolean' ||
@@ -155,8 +165,17 @@ export async function verifyApplicationPatch(
             ensureProcessTreeSettled: true
           });
           captured = { result: actualResult };
-          const settled = knownSettlement(runner, actualResult);
-          uncertain ||= !settled;
+          const definitivePreExecutionFailure = actualResult.processSpawned === false &&
+            actualResult.processTreeSettled === false &&
+            actualResult.signal === null &&
+            Boolean(actualResult.errorCode && [
+              'RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'UNSUPPORTED_PROCESS_SETTLEMENT',
+              'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED', 'CONTROLLER_LAUNCH_FAILED',
+              'AUTHENTICATION_FAILED', 'SPAWN_REQUEST_FAILED',
+              'ENOENT', 'EACCES', 'ENOEXEC'
+            ].includes(actualResult.errorCode));
+          const settled = knownSettlement(runner, actualResult) || definitivePreExecutionFailure;
+          uncertain ||= (!settled && !definitivePreExecutionFailure);
           return { value: captured, allKnownCommandsSettled: settled };
         } catch (error) {
           captured = { error };

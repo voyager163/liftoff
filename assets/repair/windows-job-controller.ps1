@@ -209,6 +209,52 @@ public static class Win32JobNative {
     [DllImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool DeleteProcThreadAttributeList(IntPtr lpAttributeList);
+
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    public static extern IntPtr CreateFile(
+        string lpFileName,
+        uint dwDesiredAccess,
+        uint dwShareMode,
+        IntPtr lpSecurityAttributes,
+        uint dwCreationDisposition,
+        uint dwFlagsAndAttributes,
+        IntPtr hTemplateFile);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetHandleInformation(IntPtr hObject, uint dwMask, uint dwFlags);
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool CancelIoEx(IntPtr hFile, IntPtr lpOverlapped);
+
+    public const uint STARTF_USESTDHANDLES = 0x00000100;
+    public const uint GENERIC_WRITE = 0x40000000;
+    public const uint FILE_SHARE_READ = 0x00000001;
+    public const uint FILE_SHARE_WRITE = 0x00000002;
+    public const uint FILE_SHARE_DELETE = 0x00000004;
+    public const uint CREATE_ALWAYS = 2;
+    public const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
+    public const uint HANDLE_FLAG_INHERIT = 0x00000001;
+
+    public static STARTUPINFOEX CreateStartupInfoEx(IntPtr lpAttributeList, IntPtr hStdOut, IntPtr hStdErr) {
+        STARTUPINFOEX siex = new STARTUPINFOEX();
+        siex.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
+        siex.lpAttributeList = lpAttributeList;
+        if (hStdOut != IntPtr.Zero && hStdErr != IntPtr.Zero && hStdOut.ToInt64() != -1 && hStdErr.ToInt64() != -1) {
+            siex.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            siex.StartupInfo.hStdOutput = hStdOut;
+            siex.StartupInfo.hStdError = hStdErr;
+            siex.StartupInfo.hStdInput = IntPtr.Zero;
+        }
+        return siex;
+    }
+
+    public static JOBOBJECT_EXTENDED_LIMIT_INFORMATION CreateKillOnJobCloseExtendedInfo() {
+        JOBOBJECT_EXTENDED_LIMIT_INFORMATION info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        return info;
+    }
 }
 "@
 
@@ -220,7 +266,7 @@ try {
 }
 
 # Connect to the private control pipe
-$pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::None)
+$pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
 try {
     $pipe.Connect(30000)
 } catch {
@@ -250,8 +296,8 @@ function Read-ControlFrame($stream) {
         if ($n -le 0) { return $null }
         $read += $n
     }
-    $len = ($header[0] -shl 24) -bor ($header[1] -shl 16) -bor ($header[2] -shl 8) -bor $header[3]
-    if ($len -le 0 -or $len -gt 65536) {
+    $len = ([int]$header[0] -shl 24) -bor ([int]$header[1] -shl 16) -bor ([int]$header[2] -shl 8) -bor [int]$header[3]
+    if ($len -le 0 -or $len -gt 262144) {
         throw "Invalid control frame length: $len"
     }
     $payload = New-Object byte[] $len
@@ -271,8 +317,22 @@ $attributeList = [IntPtr]::Zero
 $pJobHandle = [IntPtr]::Zero
 $pExtendedInfo = [IntPtr]::Zero
 $pAccounting = [IntPtr]::Zero
+$pEnv = [IntPtr]::Zero
+$pHandleList = [IntPtr]::Zero
+$hStdOut = [IntPtr]::Zero
+$hStdErr = [IntPtr]::Zero
 
 try {
+    # Send ready authentication frame to parent control pipe
+    Send-ControlFrame $pipe @{
+        schemaVersion = 1
+        kind = 'ready'
+        controllerId = 'liftoff-windows-job-controller-v1'
+        workspaceId = $WorkspaceId
+        invocationId = $InvocationId
+        nonce = $ExpectedNonce
+    }
+
     # Read the spawn request from the parent
     $req = Read-ControlFrame $pipe
     if ($null -eq $req) {
@@ -300,6 +360,29 @@ try {
         exit 1
     }
 
+    # Validate and allocate environment block if provided
+    if (-not [string]::IsNullOrEmpty($req.envBlockBase64)) {
+        $envBytes = [System.Convert]::FromBase64String($req.envBlockBase64)
+        $sha = [System.Security.Cryptography.SHA256]::Create()
+        $computedEnv = -join ($sha.ComputeHash($envBytes) | ForEach-Object { '{0:x2}' -f $_ })
+        if ($computedEnv -ne $req.envDigest) {
+            Send-ControlFrame $pipe @{
+                schemaVersion = 1
+                kind = 'ack'
+                controllerId = 'liftoff-windows-job-controller-v1'
+                workspaceId = $WorkspaceId
+                invocationId = $InvocationId
+                nonce = $ExpectedNonce
+                sequence = 1
+                admitted = $false
+                error = "Target environment block digest mismatch."
+            }
+            exit 1
+        }
+        $pEnv = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($envBytes.Length)
+        [System.Runtime.InteropServices.Marshal]::Copy($envBytes, 0, $pEnv, $envBytes.Length)
+    }
+
     # Create unnamed non-inheritable Job Object
     $hJob = [Win32JobNative]::CreateJobObject([IntPtr]::Zero, $null)
     if ($hJob -eq [IntPtr]::Zero) {
@@ -319,8 +402,7 @@ try {
     }
 
     # Set JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE on the Job
-    $extendedInfo = New-Object Win32JobNative+JOBOBJECT_EXTENDED_LIMIT_INFORMATION
-    $extendedInfo.BasicLimitInformation.LimitFlags = [Win32JobNative]::JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE
+    $extendedInfo = [Win32JobNative]::CreateKillOnJobCloseExtendedInfo()
     $sizeExtended = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32JobNative+JOBOBJECT_EXTENDED_LIMIT_INFORMATION])
     $pExtendedInfo = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($sizeExtended)
     [System.Runtime.InteropServices.Marshal]::StructureToPtr($extendedInfo, $pExtendedInfo, $false)
@@ -341,11 +423,57 @@ try {
         exit 1
     }
 
+    # Prepare stdio file handles if specified
+    $hasStdHandles = $false
+    if (-not [string]::IsNullOrEmpty($req.stdoutFile) -and -not [string]::IsNullOrEmpty($req.stderrFile)) {
+        $hStdOut = [Win32JobNative]::CreateFile(
+            $req.stdoutFile,
+            [Win32JobNative]::GENERIC_WRITE,
+            [Win32JobNative]::FILE_SHARE_READ -bor [Win32JobNative]::FILE_SHARE_WRITE -bor [Win32JobNative]::FILE_SHARE_DELETE,
+            [IntPtr]::Zero,
+            [Win32JobNative]::CREATE_ALWAYS,
+            [Win32JobNative]::FILE_ATTRIBUTE_NORMAL,
+            [IntPtr]::Zero)
+        $hStdErr = [Win32JobNative]::CreateFile(
+            $req.stderrFile,
+            [Win32JobNative]::GENERIC_WRITE,
+            [Win32JobNative]::FILE_SHARE_READ -bor [Win32JobNative]::FILE_SHARE_WRITE -bor [Win32JobNative]::FILE_SHARE_DELETE,
+            [IntPtr]::Zero,
+            [Win32JobNative]::CREATE_ALWAYS,
+            [Win32JobNative]::FILE_ATTRIBUTE_NORMAL,
+            [IntPtr]::Zero)
+
+        if ($hStdOut -eq [IntPtr]::Zero -or $hStdOut.ToInt64() -eq -1 -or
+            $hStdErr -eq [IntPtr]::Zero -or $hStdErr.ToInt64() -eq -1 -or
+            -not [Win32JobNative]::SetHandleInformation($hStdOut, [Win32JobNative]::HANDLE_FLAG_INHERIT, [Win32JobNative]::HANDLE_FLAG_INHERIT) -or
+            -not [Win32JobNative]::SetHandleInformation($hStdErr, [Win32JobNative]::HANDLE_FLAG_INHERIT, [Win32JobNative]::HANDLE_FLAG_INHERIT)) {
+
+            $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdOut) | Out-Null; $hStdOut = [IntPtr]::Zero }
+            if ($hStdErr -ne [IntPtr]::Zero -and $hStdErr.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdErr) | Out-Null; $hStdErr = [IntPtr]::Zero }
+
+            Send-ControlFrame $pipe @{
+                schemaVersion = 1
+                kind = 'ack'
+                controllerId = 'liftoff-windows-job-controller-v1'
+                workspaceId = $WorkspaceId
+                invocationId = $InvocationId
+                nonce = $ExpectedNonce
+                sequence = 1
+                admitted = $false
+                error = "Failed to create or configure inheritable stdio capture file handles (Win32 error $err)."
+            }
+            exit 1
+        }
+        $hasStdHandles = $true
+    }
+
     # Initialize Attribute List for STARTUPINFOEX
+    $attributeCount = if ($hasStdHandles) { 2 } else { 1 }
     $attrSize = [IntPtr]::Zero
-    [Win32JobNative]::InitializeProcThreadAttributeList([IntPtr]::Zero, 1, 0, [ref]$attrSize) | Out-Null
+    [Win32JobNative]::InitializeProcThreadAttributeList([IntPtr]::Zero, $attributeCount, 0, [ref]$attrSize) | Out-Null
     $attributeList = [System.Runtime.InteropServices.Marshal]::AllocHGlobal($attrSize)
-    if (-not [Win32JobNative]::InitializeProcThreadAttributeList($attributeList, 1, 0, [ref]$attrSize)) {
+    if (-not [Win32JobNative]::InitializeProcThreadAttributeList($attributeList, $attributeCount, 0, [ref]$attrSize)) {
         $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
         Send-ControlFrame $pipe @{
             schemaVersion = 1
@@ -389,10 +517,39 @@ try {
         exit 1
     }
 
-    # Prepare STARTUPINFOEX
-    $siex = New-Object Win32JobNative+STARTUPINFOEX
-    $siex.StartupInfo.cb = [uint32][System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32JobNative+STARTUPINFOEX])
-    $siex.lpAttributeList = $attributeList
+    # Update Attribute List with PROC_THREAD_ATTRIBUTE_HANDLE_LIST if stdio handles exist
+    if ($hasStdHandles) {
+        $pHandleList = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]::Size * 2)
+        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, 0, $hStdOut)
+        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, [IntPtr]::Size, $hStdErr)
+
+        if (-not [Win32JobNative]::UpdateProcThreadAttribute(
+            $attributeList,
+            0,
+            [IntPtr][Win32JobNative]::PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+            $pHandleList,
+            [IntPtr]([IntPtr]::Size * 2),
+            [IntPtr]::Zero,
+            [IntPtr]::Zero)) {
+
+            $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            Send-ControlFrame $pipe @{
+                schemaVersion = 1
+                kind = 'ack'
+                controllerId = 'liftoff-windows-job-controller-v1'
+                workspaceId = $WorkspaceId
+                invocationId = $InvocationId
+                nonce = $ExpectedNonce
+                sequence = 1
+                admitted = $false
+                error = "UpdateProcThreadAttribute (HANDLE_LIST) failed with Win32 error $err"
+            }
+            exit 1
+        }
+    }
+
+    # Prepare STARTUPINFOEX via C# helper to guarantee native struct field initialization
+    $siex = [Win32JobNative]::CreateStartupInfoEx($attributeList, $hStdOut, $hStdErr)
 
     # Launch root process suspended inside the Job Object
     $creationFlags = [Win32JobNative]::EXTENDED_STARTUPINFO_PRESENT -bor
@@ -400,15 +557,30 @@ try {
                      [Win32JobNative]::CREATE_UNICODE_ENVIRONMENT
 
     $targetDir = if ([string]::IsNullOrEmpty($req.cwd)) { $null } else { $req.cwd }
+    if ([string]::IsNullOrEmpty($req.executable) -or -not [System.IO.Path]::IsPathRooted($req.executable) -or -not [System.IO.File]::Exists($req.executable)) {
+        Send-ControlFrame $pipe @{
+            schemaVersion = 1
+            kind = 'ack'
+            controllerId = 'liftoff-windows-job-controller-v1'
+            workspaceId = $WorkspaceId
+            invocationId = $InvocationId
+            nonce = $ExpectedNonce
+            sequence = 1
+            admitted = $false
+            error = "Admitted executable must be an existing rooted file path: $($req.executable)"
+        }
+        exit 1
+    }
+    $appPath = $req.executable
 
     $created = [Win32JobNative]::CreateProcess(
-        $null,
+        $appPath,
         $req.commandLine,
         [IntPtr]::Zero,
         [IntPtr]::Zero,
-        $false, # Do NOT inherit handles
+        $hasStdHandles, # Inherit only the explicit handles in HANDLE_LIST
         $creationFlags,
-        [IntPtr]::Zero,
+        $pEnv,
         $targetDir,
         [ref]$siex,
         [ref]$pi
@@ -461,6 +633,10 @@ try {
         admitted = $true
     }
 
+    # Begin asynchronous read on control pipe to detect parent disconnect or abort
+    $pipeBuffer = New-Object byte[] 1
+    $pipeAsync = $pipe.BeginRead($pipeBuffer, 0, 1, $null, $null)
+
     # Resume the root thread
     [Win32JobNative]::ResumeThread($pi.hThread) | Out-Null
     [Win32JobNative]::CloseHandle($pi.hThread) | Out-Null
@@ -468,6 +644,7 @@ try {
 
     # Monitor root process and Job accounting
     $timeoutMs = if ($req.timeoutMs -gt 0) { [int]$req.timeoutMs } else { 120000 }
+    $maxBytes = if ($req.maxOutputBytes -gt 0) { [int]$req.maxOutputBytes } else { 65536 }
     $startTime = [System.Diagnostics.Stopwatch]::StartNew()
 
     $sizeAccounting = [System.Runtime.InteropServices.Marshal]::SizeOf([type][Win32JobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION])
@@ -475,6 +652,7 @@ try {
 
     $rootExitCode = $null
     $terminated = $false
+    $outputLimitExceeded = $false
 
     while ($true) {
         if ($startTime.ElapsedMilliseconds -ge $timeoutMs) {
@@ -482,6 +660,19 @@ try {
             [Win32JobNative]::TerminateJobObject($hJob, 1) | Out-Null
             $terminated = $true
             break
+        }
+
+        # Check output limits if files are present
+        if ($hasStdHandles) {
+            $currentBytes = 0
+            if ([System.IO.File]::Exists($req.stdoutFile)) { $currentBytes += (New-Object System.IO.FileInfo($req.stdoutFile)).Length }
+            if ([System.IO.File]::Exists($req.stderrFile)) { $currentBytes += (New-Object System.IO.FileInfo($req.stderrFile)).Length }
+            if ($currentBytes -gt $maxBytes) {
+                $outputLimitExceeded = $true
+                [Win32JobNative]::TerminateJobObject($hJob, 1) | Out-Null
+                $terminated = $true
+                break
+            }
         }
 
         # Check if root process exited
@@ -502,13 +693,23 @@ try {
         if ([Win32JobNative]::QueryInformationJobObject($hJob, [Win32JobNative]::JobObjectBasicAccountingInformation, $pAccounting, [uint32]$sizeAccounting, [ref]$retLen)) {
             $acct = [System.Runtime.InteropServices.Marshal]::PtrToStructure($pAccounting, [type][Win32JobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION])
             if ($null -ne $rootExitCode -and $acct.ActiveProcesses -eq 0) {
-                # Clean natural settlement
+                # Recheck output limit before declaring clean natural settlement
+                if ($hasStdHandles) {
+                    $finalBytes = 0
+                    if ([System.IO.File]::Exists($req.stdoutFile)) { $finalBytes += (New-Object System.IO.FileInfo($req.stdoutFile)).Length }
+                    if ([System.IO.File]::Exists($req.stderrFile)) { $finalBytes += (New-Object System.IO.FileInfo($req.stderrFile)).Length }
+                    if ($finalBytes -gt $maxBytes) {
+                        $outputLimitExceeded = $true
+                        $terminated = $true
+                    }
+                }
                 break
             }
         }
 
-        # Check if parent aborted or closed control pipe
-        if (-not $pipe.IsConnected) {
+        # Check if parent aborted or closed control pipe via completed asynchronous read or connection state
+        if ($pipeAsync.IsCompleted -or -not $pipe.IsConnected) {
+            try { [void]$pipe.EndRead($pipeAsync) } catch {}
             [Win32JobNative]::TerminateJobObject($hJob, 1) | Out-Null
             $terminated = $true
             break
@@ -529,14 +730,50 @@ try {
     }
 
     # Query final active processes
-    $finalActive = 0
+    $finalActive = -1
+    $accountingOk = $false
     $retLen = [uint32]0
     if ([Win32JobNative]::QueryInformationJobObject($hJob, [Win32JobNative]::JobObjectBasicAccountingInformation, $pAccounting, [uint32]$sizeAccounting, [ref]$retLen)) {
         $acct = [System.Runtime.InteropServices.Marshal]::PtrToStructure($pAccounting, [type][Win32JobNative+JOBOBJECT_BASIC_ACCOUNTING_INFORMATION])
         $finalActive = [int]$acct.ActiveProcesses
+        $accountingOk = $true
     }
 
-    # Send final response
+    if ($null -ne $pipeAsync -and -not $pipeAsync.IsCompleted) {
+        [Win32JobNative]::CancelIoEx($pipe.SafePipeHandle.DangerousGetHandle(), [IntPtr]::Zero) | Out-Null
+        try { [void]$pipe.EndRead($pipeAsync) } catch {}
+    }
+
+    if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) {
+        [Win32JobNative]::CloseHandle($hStdOut) | Out-Null
+        $hStdOut = [IntPtr]::Zero
+    }
+    if ($hStdErr -ne [IntPtr]::Zero -and $hStdErr.ToInt64() -ne -1) {
+        [Win32JobNative]::CloseHandle($hStdErr) | Out-Null
+        $hStdErr = [IntPtr]::Zero
+    }
+
+    if (-not $accountingOk -or $finalActive -lt 0) {
+        Send-ControlFrame $pipe @{
+            schemaVersion = 1
+            kind = 'response'
+            controllerId = 'liftoff-windows-job-controller-v1'
+            workspaceId = $WorkspaceId
+            invocationId = $InvocationId
+            nonce = $ExpectedNonce
+            sequence = 1
+            phase = 'failed'
+            status = $rootExitCode
+            signal = $null
+            activeProcesses = -1
+            jobTerminated = $terminated
+            settled = $false
+            error = "QueryInformationJobObject failed to retrieve kernel basic accounting information; settlement cannot be proven."
+        }
+        exit 1
+    }
+
+    $isSettled = ($finalActive -eq 0)
     if ($terminated) {
         Send-ControlFrame $pipe @{
             schemaVersion = 1
@@ -551,7 +788,8 @@ try {
             signal = 'SIGKILL'
             activeProcesses = $finalActive
             jobTerminated = $true
-            settled = ($finalActive -eq 0)
+            settled = $isSettled
+            outputLimitExceeded = $outputLimitExceeded
         }
     } else {
         Send-ControlFrame $pipe @{
@@ -567,7 +805,8 @@ try {
             signal = $null
             activeProcesses = $finalActive
             jobTerminated = $false
-            settled = ($finalActive -eq 0)
+            settled = $isSettled
+            outputLimitExceeded = $outputLimitExceeded
         }
     }
 } catch {
@@ -591,6 +830,10 @@ try {
         }
     } catch { }
 } finally {
+    if ($pEnv -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pEnv) }
+    if ($pHandleList -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pHandleList) }
+    if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdOut) | Out-Null }
+    if ($hStdErr -ne [IntPtr]::Zero -and $hStdErr.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdErr) | Out-Null }
     if ($pAccounting -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pAccounting) }
     if ($pExtendedInfo -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pExtendedInfo) }
     if ($pJobHandle -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pJobHandle) }

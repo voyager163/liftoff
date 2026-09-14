@@ -1,4 +1,5 @@
 # Preserve release-owned asset bytes on every host.
 /assets/governance/** text eol=lf
 /assets/locks/** text eol=lf
+/assets/repair/** text eol=lf
 /assets/supported-stack.json text eol=lf
