@@ -20,9 +20,9 @@
     "@azure/monitor-ingestion": "1.2.0"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
+    "@types/node": "^24.13.4",
     "typescript": "^7.0.2",
-    "vite": "8.2.2",
+    "vite": "8.3.0",
     "vitest": "5.0.0"
   }
 }
