@@ -302,6 +302,17 @@ synthetic qualification passed; Linux x64/arm64 native execution remains
 pending. These primitives do not supply encrypted-storage/key custody, enable
 producer writers or close tasks 11.17/11.18.
 
+Task 11.22 has a strict, effect-free controlled-GNOME launch specification with
+exact source/dependency binding, literal private paths, bounded Unix socket
+identities, isolated environment and explicit before-dispatch/readiness gates.
+Source inspection confirmed that `--unlock` can create missing storage and
+initialize other native slots, while failed unlock can leave the daemon alive
+and invalid control paths can fall back. Restart therefore requires enforced
+persisted-store write denial and actual readback, not chmod/existence or
+startup-status assertions. The specification neither starts a daemon nor
+authorizes input, and tasks 11.22-11.24 remain open for the native mechanisms,
+production coordination and independently authorized qualification.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;

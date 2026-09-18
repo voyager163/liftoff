@@ -71,6 +71,26 @@ or enrollment/restart-recovery design would require separate review and effect
 authorization. No daemon launch, password change, unlock or key enrollment
 follows from this audit.
 
+The controlled launch specification is now modeled separately in
+`src/domain/repair/controlled-keystore.ts`. It binds exact foreground
+`secrets`-only arguments, isolated HOME/XDG locations, a private session-bus
+address, a disabled ordinary system-bus address, bounded protected stdin and
+non-inherited environment. It is explicitly **not execution authority or
+observed custody**, and does not launch a daemon or request a password.
+
+The pinned [daemon entrypoint](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/daemon/gkd-main.c)
+and [login implementation](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/daemon/login/gkd-login.c)
+make several admission requirements essential: `--unlock` can create a missing
+login collection, can initialize other uninitialized native slots, and may fail
+to unlock while the daemon continues running. The
+[control-directory implementation](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/daemon/gkd-util.c)
+can fall back to another location after an invalid requested directory.
+Consequently, startup/exit status is never readiness, all slot storage needs
+confinement, actual control-location readback is required, and restart must
+enforce persisted-store write denial rather than rely on an existence check
+or ordinary file modes. These execution and persistence gates remain
+unimplemented/unqualified until their native mechanisms pass.
+
 For Windows, use the documented [BitLocker provider security requirements](https://learn.microsoft.com/en-us/windows/win32/secprov/win32-encryptablevolume#security-considerations)
 and [CredReadW semantics](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw).
 `CRED_PERSIST_LOCAL_MACHINE` means the same user's later logons on that machine,
