@@ -8,7 +8,7 @@ export const REQUIRED_METRICS = ['lines', 'branches', 'functions', 'statements']
 export const THRESHOLD_PERCENT = 80n;
 export const THRESHOLD_MULTIPLIER = 100n;
 
-export const WINDOWS_JOB_CONTROLLER_DIGEST = '0aba9a520caab631aa12235900673720d6e208b96ee546c55b02f7bc34f52e6b';
+export const WINDOWS_JOB_CONTROLLER_DIGEST = 'a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909';
 
 export const NATIVE_HELPER_INVENTORY = [
   {

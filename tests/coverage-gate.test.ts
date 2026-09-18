@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { windowsJobControllerAssetDigest } from '../src/adapters/process/windows-job-runner.js';
 import {
   canonicalizeRepoPath,
   checkStrictThreshold,
@@ -427,6 +428,12 @@ describe('coverage gate - package evaluation and masking', () => {
 });
 
 describe('coverage gate - native helper disclosure and qualification', () => {
+  it('pins the same exact controller bytes as runtime admission', () => {
+    expect(WINDOWS_JOB_CONTROLLER_DIGEST).toBe(windowsJobControllerAssetDigest);
+    expect(getWindowsJobControllerDigest()).toBe(WINDOWS_JOB_CONTROLLER_DIGEST);
+    expect(NATIVE_HELPER_INVENTORY[0].expectedDigest).toBe(WINDOWS_JOB_CONTROLLER_DIGEST);
+  });
+
   it('discloses all shipped native helpers and launchers without claiming V8 coverage', () => {
     expect(NATIVE_HELPER_INVENTORY).toHaveLength(3);
     const ids = NATIVE_HELPER_INVENTORY.map((h) => h.id);
