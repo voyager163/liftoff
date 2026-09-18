@@ -11,6 +11,8 @@ import { OwnedPrivateStateProcessRunner, spawnOwnedStateProcess } from './owned-
 
 export { nativeLocalStateProtocol };
 
+export const nativeStatePythonVersionProbe = 'import json,platform,sys; print(json.dumps({"implementation":platform.python_implementation(),"version":".".join(map(str,sys.version_info[:3]))}))';
+
 export function nativeStateHostId(): string {
   return `native-host:${stateObjectDigest({ platform: process.platform, host: hostname(), uid: process.getuid?.() ?? null })}`;
 }
@@ -92,7 +94,7 @@ async function inspectPosixLocalStateTools(
   const python = await captureStateExecutable(request.pythonPath);
   const tofu = await captureStateExecutable(request.tofuPath);
   const py = await runPrivateStateProcess({
-    executable: python, args: ['-I', '-S', '-B', '-c', 'import json,platform,sys; print(json.dumps({"implementation":platform.python_implementation(),"version":".".join(map(str,sys.version_info[:3]))}))'],
+    executable: python, args: ['-I', '-S', '-B', '-c', nativeStatePythonVersionProbe],
     cwd: request.workingDirectory, signal: request.signal
   });
   let pythonVersion: string;

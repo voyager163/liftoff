@@ -206,8 +206,12 @@ async function evaluate(evidence, options, fixture) {
           verifyChecks(native.checks, NATIVE_CHECKS, `Native ${target}`);
           exactIds(native.helpers?.map((helper) => helper.id), targets[target].helpers.map((helper) => helper.id), `Installed ${target} helper evidence`);
           for (const helper of native.helpers) {
-            exactKeys(helper, ['id', 'sha256', 'activeProcesses', 'checks'], `Native ${target} helper`);
-            requireValue(helper.sha256 === targets[target].helpers.find((entry) => entry.id === helper.id)?.sha256 && helper.activeProcesses === 0, `Missing helper byte/settlement evidence: ${target}/${helper.id}`);
+            const expected = targets[target].helpers.find((entry) => entry.id === helper.id);
+            exactKeys(helper, ['id', 'sha256', 'activeProcesses', 'checks',
+              ...(expected.programExport ? ['programExport', 'programSha256'] : [])], `Native ${target} helper`);
+            requireValue(helper.sha256 === expected.sha256 && helper.activeProcesses === 0, `Missing helper byte/settlement evidence: ${target}/${helper.id}`);
+            if (expected.programExport) requireValue(helper.programExport === expected.programExport &&
+              helper.programSha256 === expected.programSha256, `Missing installed embedded-program identity: ${target}/${helper.id}`);
             verifyChecks(helper.checks, HELPER_CHECKS, `Helper ${target}/${helper.id}`);
           }
           if (payload.os === 'win32') {

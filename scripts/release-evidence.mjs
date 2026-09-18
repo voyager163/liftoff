@@ -5,6 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { exactKeys, object, requireValue } from './release-evidence-github.mjs';
 import { loadTelemetryReleaseContract, TELEMETRY_BASELINE_FIXTURE, TELEMETRY_CONTRACT_PATH } from './release-telemetry-gateway.mjs';
+import { EMBEDDED_NATIVE_HELPERS, nativeHelpersForPlatform } from './native-helper-inventory.mjs';
 import {
   DocumentationClosureError, isPublicDocumentationFile, MAX_MARKDOWN_BYTES, MAX_MARKDOWN_TOTAL_BYTES,
   REQUIRED_PUBLIC_DOCUMENTS, validateDocumentShippingEntries, verifyPublicMarkdownLinks
@@ -234,6 +235,13 @@ export function verifySourceWorktree(projectRoot, sourceCommit) {
 
 export async function loadReleaseContracts(projectRoot, sourceCommit) {
   verifySourceWorktree(projectRoot, sourceCommit);
+  const nativeHelperPrograms = Object.fromEntries(await Promise.all(EMBEDDED_NATIVE_HELPERS.map(async (helper) => {
+    const compiled = inspectFile(projectRoot, helper.compiledPath, undefined, 4 * 1024 * 1024);
+    // Only the reviewed local build is imported; archive members are never executed.
+    const module = await import(`${pathToFileURL(compiled.absolutePath).href}?sha256=${compiled.sha256}`);
+    inspectFile(projectRoot, helper.compiledPath, compiled.sha256, 4 * 1024 * 1024);
+    return [helper.id, { program: module[helper.programExport], compiledSha256: compiled.sha256 }];
+  })));
   const load = (relative) => import(pathToFileURL(path.join(projectRoot, 'dist', relative)).href);
   const [identity, native, graph, phases, registry, profiles, resources, telemetry, buildInfo, packagedResources,
     activationTypes, activationJson, publicProtocol, skillAssets, skillContracts, skillValidation, projections,
@@ -252,6 +260,7 @@ export async function loadReleaseContracts(projectRoot, sourceCommit) {
     load('domain/repair/identity.js'), load('application/repair/capabilities.js')
   ]);
   return {
+    nativeHelperPrograms,
     verifyReleaseIdentity: identity.verifyReleaseIdentity,
     native,
     graph: graph.canonicalPhaseGraph,
@@ -424,6 +433,24 @@ export async function loadReleaseContext(projectRoot, sourceCommit, contracts) {
     'assets/repair/windows-job-controller.ps1', 'infrastructure/opentofu/telemetry/dashboard.json',
     TELEMETRY_CONTRACT_PATH, TELEMETRY_BASELINE_FIXTURE
   ]) sourceFiles[file] = inspectFile(projectRoot, file).sha256;
+  exactIds(Object.keys(object(contracts.nativeHelperPrograms, 'Native helper program bindings')),
+    EMBEDDED_NATIVE_HELPERS.map((helper) => helper.id), 'Embedded native helper source');
+  const nativeHelpers = Object.fromEntries(EMBEDDED_NATIVE_HELPERS.map((helper) => {
+    const definition = contracts.nativeHelperPrograms[helper.id];
+    exactKeys(definition, ['program', 'compiledSha256'], `Native helper ${helper.id} compiled source`);
+    requireValue(typeof definition.compiledSha256 === 'string' && /^[a-f0-9]{64}$/.test(definition.compiledSha256),
+      `Missing compiled native helper digest: ${helper.id}`);
+    requireValue(typeof definition.program === 'string' && Buffer.byteLength(definition.program) > 0 &&
+      Buffer.byteLength(definition.program) <= 1024 * 1024, `Missing or oversized embedded helper program: ${helper.id}`);
+    const compiled = inspectFile(projectRoot, helper.compiledPath, definition.compiledSha256, 4 * 1024 * 1024);
+    sourceFiles[helper.path] = inspectFile(projectRoot, helper.path, undefined, 4 * 1024 * 1024).sha256;
+    sourceFiles[helper.compiledPath] = compiled.sha256;
+    return [helper.id, {
+      id: helper.id, path: helper.compiledPath, sha256: compiled.sha256,
+      sourcePath: helper.path, sourceSha256: sourceFiles[helper.path],
+      programExport: helper.programExport, programSha256: sha256(Buffer.from(definition.program, 'utf8'))
+    }];
+  }));
   const documentationFiles = collectPublicDocumentInventory(projectRoot, packageJson.files);
   for (const [name, file] of Object.entries(documentationFiles)) sourceFiles[name] = file.sha256;
   const dashboard = readJsonFile(projectRoot, 'infrastructure/opentofu/telemetry/dashboard.json').value;
@@ -456,7 +483,7 @@ export async function loadReleaseContext(projectRoot, sourceCommit, contracts) {
     repair: contracts.repair, cases
   };
   return {
-    projectRoot, sourceCommit, scope, contracts, sourceFiles, documentationFiles, resourceFiles, resourceInventory, profiles, resources, skills, cases, implementationBlockers, telemetry,
+    projectRoot, sourceCommit, scope, contracts, sourceFiles, nativeHelpers, documentationFiles, resourceFiles, resourceInventory, profiles, resources, skills, cases, implementationBlockers, telemetry,
     dashboard: { id: dashboard.uid, sha256: sourceFiles['infrastructure/opentofu/telemetry/dashboard.json'], resourceType: scope.operatorDashboard.resourceType, apiVersion: scope.operatorDashboard.apiVersion },
     registryBindings, registrySha256: contracts.canonicalSha256(registryBindings)
   };
@@ -562,6 +589,14 @@ export function verifyNativeArchiveContents(archive, payload, target, context) {
     requireValue(files.get(helperPath)?.sha256 === context.sourceFiles[helperPath], `Windows controller bytes differ from reviewed source: ${target}`);
     helpers.push({ id: 'windows-job-controller', path: helperPath, sha256: files.get(helperPath).sha256 });
   }
+  const requiredHelpers = nativeHelpersForPlatform(payload.os);
+  for (const helper of requiredHelpers.filter((entry) => entry.programExport)) {
+    const expected = context.nativeHelpers[helper.id];
+    requireValue(expected && files.get(helper.compiledPath)?.sha256 === expected.sha256,
+      `Packaged embedded helper bytes differ from reviewed build: ${target}/${helper.id}`);
+    helpers.push(expected);
+  }
+  exactIds(helpers.map((helper) => helper.id), requiredHelpers.map((helper) => helper.id), `Final ${target} native helper`);
   return {
     artifactSha256: payload.checksumSha256, archiveRoot: archive.archiveRoot,
     runtime: { ...payload.runtime, path: runtimePath, sha256: runtime.sha256 },

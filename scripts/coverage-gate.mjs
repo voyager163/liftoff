@@ -3,41 +3,13 @@ import path from 'node:path';
 import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { readJsonFile } from './release-evidence.mjs';
+import { NATIVE_HELPER_INVENTORY, WINDOWS_JOB_CONTROLLER_DIGEST } from './native-helper-inventory.mjs';
+
+export { NATIVE_HELPER_INVENTORY, WINDOWS_JOB_CONTROLLER_DIGEST };
 
 export const REQUIRED_METRICS = ['lines', 'branches', 'functions', 'statements'];
 export const THRESHOLD_PERCENT = 80n;
 export const THRESHOLD_MULTIPLIER = 100n;
-
-export const WINDOWS_JOB_CONTROLLER_DIGEST = 'a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909';
-
-export const NATIVE_HELPER_INVENTORY = [
-  {
-    id: 'windows-job-controller',
-    path: 'assets/repair/windows-job-controller.ps1',
-    description: 'Win32 Job Object process-tree execution supervisor on Windows',
-    measurement: 'native-powershell-process-controller',
-    v8Measured: false,
-    requiredPlatform: 'win32',
-    expectedDigest: WINDOWS_JOB_CONTROLLER_DIGEST
-  },
-  {
-    id: 'windows-launcher',
-    path: 'scripts/distribution/windows-launcher.go',
-    finalBinary: 'bin/liftoff.exe',
-    description: 'Win32 Go PE native launcher executable (x64 and arm64)',
-    measurement: 'native-go-pe-binary',
-    v8Measured: false,
-    requiredPlatform: 'win32'
-  },
-  {
-    id: 'posix-launcher',
-    path: 'bin/liftoff',
-    description: 'Relocatable POSIX shell launcher for macOS and Linux',
-    measurement: 'native-shell-launcher',
-    v8Measured: false,
-    requiredPlatform: 'posix'
-  }
-];
 
 export const CONTRIBUTOR_TOOLING_JUSTIFICATION = {
   'scripts/clean-build.mjs': 'Build artifact cleanup before compilation (contributor/CI tooling)',
@@ -55,6 +27,7 @@ export const CONTRIBUTOR_TOOLING_JUSTIFICATION = {
   'scripts/generate-catalogs.mjs': 'Packaged template and profile resource digest generator (contributor tooling)',
   'scripts/qualify-docs-routing.mjs': 'API documentation routing qualification verifier (contributor tooling)',
   'scripts/coverage-gate.mjs': 'Strict coverage qualification gate (qualification tooling)',
+  'scripts/native-helper-inventory.mjs': 'Shared non-V8 native helper source and final-artifact inventory (qualification tooling)',
   'scripts/release-gate.mjs': 'Coordinated publication release gate (qualification tooling)',
   'scripts/release-evidence.mjs': 'Release evidence validation and integrity engine (qualification tooling)',
   'scripts/release-evidence-github.mjs': 'GitHub release artifact and provenance verifier (qualification tooling)',

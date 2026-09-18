@@ -4,6 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync, randomUUID, sign, verify } from 'node:crypto';
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { parse as parseYaml } from 'yaml';
+import { transformSync } from 'rolldown/utils';
 import { verifyReleaseIdentity } from '../src/release-identity.js';
 import * as nativeContracts from '../src/domain/distribution/index.js';
 import * as telemetryContract from '../src/telemetry/contract.js';
@@ -29,6 +30,11 @@ import { validateNativeBuildInfo } from '../src/adapters/packaged-assets/build-i
 import { nativeBuildInfoDocument } from '../scripts/distribution/assemble-native-bundle.mjs';
 import { computeResourceInventorySummary } from '../src/adapters/packaged-assets/resource-catalog.js';
 import { observeNativeHost } from '../src/adapters/distribution/native-admission.js';
+import { darwinStateSystemProgram } from '../src/adapters/state/darwin-system-program.js';
+import { posixStateLockProgram, linuxPosixStateLockProgram } from '../src/adapters/state/posix-lock-program.js';
+import { linuxReadonlyProcessProgram } from '../src/adapters/state/linux-readonly-process-program.js';
+import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
+import { EMBEDDED_NATIVE_HELPERS, nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
   evaluateReleaseGate, evaluateReleaseGateFixture, formatReleaseGateReport, REQUIRED_REPORT_IDS
 } from '../scripts/release-gate.mjs';
@@ -276,6 +282,9 @@ function makeArchive(target: string, destination: string, mutate?: (bundle: stri
   nativeWrite(target.startsWith('win32') ? 'runtime/node.exe' : 'runtime/node', runtime);
   nativeWrite(target.startsWith('win32') ? 'bin/liftoff.exe' : 'bin/liftoff', target.startsWith('win32') ? runtime : 'fixture launcher; never executed\n');
   nativeWrite('dist/cli.js', '/* controlled archive fixture, not an executable qualification */\n');
+  for (const compiledPath of new Set(EMBEDDED_NATIVE_HELPERS.map((helper) => helper.compiledPath))) {
+    nativeWrite(compiledPath, fs.readFileSync(path.join(root, compiledPath)));
+  }
   nativeWrite('build-info.json', JSON.stringify(nativeBuildInfoDocument({
     version: '0.13.0', sourceCommit: SOURCE, target, nodeVersion: '24.20.0', builtAt: START,
     resourcesDigest: JSON.parse(fs.readFileSync(path.join(bundle, 'assets/templates/catalog.json'), 'utf8')).digest,
@@ -325,8 +334,12 @@ beforeAll(async () => {
   const catalog = JSON.parse(fs.readFileSync('assets/templates/catalog.json', 'utf8'));
   const sourcePackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   definitions.push(...Object.keys(collectPublicDocumentInventory(process.cwd(), sourcePackage.files)));
+  definitions.push(...EMBEDDED_NATIVE_HELPERS.map((helper) => helper.path));
   for (const resource of Object.values(catalog.resources) as any[]) definitions.push(resource.path);
   for (const relative of new Set(definitions)) write(relative, fs.readFileSync(relative));
+  for (const helper of EMBEDDED_NATIVE_HELPERS) {
+    write(helper.compiledPath, transformSync(helper.path, fs.readFileSync(helper.path, 'utf8'), { lang: 'ts' }).code);
+  }
   for (const resource of Object.values(catalog.resources) as any[]) {
     const bytes = fs.readFileSync(path.join(root, resource.path));
     resource.digest = `sha256:${sha256(bytes)}`; resource.size = bytes.length;
@@ -479,7 +492,15 @@ beforeAll(async () => {
   apiResponses.set(`repos/${REPO}/commits/${SOURCE}`, { sha: SOURCE, html_url: `https://github.com/${REPO}/commit/${SOURCE}` });
   writeJson('assets/qualification/release-scope.json', scope);
   const publicCapabilities = buildPublicCapabilitiesEnvelope();
+  const nativePrograms: Record<string, string> = {
+    darwinStateSystemProgram, posixStateLockProgram, linuxPosixStateLockProgram,
+    linuxReadonlyProcessProgram, nativeStatePythonVersionProbe
+  };
   contracts = {
+    nativeHelperPrograms: Object.fromEntries(EMBEDDED_NATIVE_HELPERS.map((helper) => [helper.id, {
+      program: nativePrograms[helper.programExport],
+      compiledSha256: sha256(fs.readFileSync(path.join(root, helper.compiledPath)))
+    }])),
     verifyReleaseIdentity, native: nativeContracts, graph: canonicalPhaseGraph, phaseGraphHash: canonicalPhaseGraphHash,
     phaseDigests: canonicalPhaseContractDigests,
     phaseIds, computePhaseDigests: phaseContractDigests, canonicalSha256,
@@ -554,7 +575,11 @@ beforeAll(async () => {
       jobId: String(job.id), observedAt: '2026-09-14T19:20:00.000Z',
       installedVersionOutput: 'Liftoff 0.13.0', identity: identities[target],
       signatureIdentity: scope.verification.nativeSigning.identities[target], checks: checks(NATIVE_CHECKS),
-      helpers: identities[target].helpers.map((helper: any) => ({ id: helper.id, sha256: helper.sha256, activeProcesses: 0, checks: checks(HELPER_CHECKS) })),
+      helpers: identities[target].helpers.map((helper: any) => ({
+        id: helper.id, sha256: helper.sha256,
+        ...(helper.programExport ? { programExport: helper.programExport, programSha256: helper.programSha256 } : {}),
+        activeProcesses: 0, checks: checks(HELPER_CHECKS)
+      })),
       ...(payload.os === 'win32' ? { windowsRegression: { baselineCommit: scope.baseline.sourceCommit, checks: checks(scope.historicalWindowsFailure.observations.map((entry: any) => entry.id)) } } : {})
     };
   }
@@ -632,6 +657,18 @@ afterEach(() => {
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('authoritative source registry bindings', () => {
+  it.each(['missing-helper', 'empty-program', 'missing-compiled-digest', 'changed-compiled-digest'])(
+    'requires complete independently bound embedded-helper source: %s', async (failure) => {
+      const nativeHelperPrograms = structuredClone(contracts.nativeHelperPrograms);
+      const id = 'linux-readonly-process';
+      if (failure === 'missing-helper') delete nativeHelperPrograms[id];
+      if (failure === 'empty-program') nativeHelperPrograms[id].program = '';
+      if (failure === 'missing-compiled-digest') delete nativeHelperPrograms[id].compiledSha256;
+      if (failure === 'changed-compiled-digest') nativeHelperPrograms[id].compiledSha256 = '0'.repeat(64);
+      await expect(loadReleaseContext(root, SOURCE, { ...contracts, nativeHelperPrograms })).rejects.toThrow();
+    }
+  );
+
   it('never loads executable contracts after reviewed source admission fails', async () => {
     const dependencies = fixture();
     dependencies.verifySource = () => { throw new Error('Controlled unreviewed source'); };
@@ -811,6 +848,21 @@ describe('versioned release admission and local identity', () => {
     expect(result.productionQualified).toBe(false);
     expect(result.status).toBe('FIXTURE_VALIDATED_NOT_QUALIFIED');
     expect(result.subject.targets['win32-arm64'].helpers).toHaveLength(2);
+    for (const target of REQUIRED_NATIVE_TARGETS) {
+      expect(result.subject.targets[target].helpers.map((helper: any) => helper.id).sort())
+        .toEqual(nativeHelpersForPlatform(target.split('-')[0]).map((helper) => helper.id).sort());
+      for (const helper of result.subject.targets[target].helpers.filter((entry: any) => entry.programExport)) {
+        expect(helper).toEqual(context.nativeHelpers[helper.id]);
+        expect(helper.sha256).toBe(context.sourceFiles[helper.path]);
+        expect(helper.sourceSha256).toBe(context.sourceFiles[helper.sourcePath]);
+      }
+    }
+    expect(context.nativeHelpers['darwin-posix-state-lock'].programSha256)
+      .toBe('203c5f253fc9aada9b72f8a363c193d6b783060e330426fea2bcfba7c5569a5c');
+    expect(context.nativeHelpers['linux-posix-state-lock'].programSha256)
+      .not.toBe(context.nativeHelpers['darwin-posix-state-lock'].programSha256);
+    expect(context.nativeHelpers['linux-posix-state-lock'].sha256)
+      .toBe(context.nativeHelpers['darwin-posix-state-lock'].sha256);
     expect(formatReleaseGateReport(result)).not.toContain('QUALIFIED_FOR_PUBLICATION');
   });
 
@@ -1054,6 +1106,33 @@ describe('authenticated report binding and adversarial measurements', () => {
     expect((await evaluate(evidence)).gateDetails['native:win32-x64'].ok).toBe(false);
   });
 
+  it.each(['native', 'native-minimum'])('requires every embedded helper in authenticated %s Linux execution evidence', async (lane) => {
+    const evidence = structuredClone(base);
+    updateReport(evidence, `${lane}-linux-x64`, (report) => {
+      report.data.helpers = report.data.helpers.filter((helper: any) => helper.id !== 'linux-readonly-process');
+    });
+    const result = await evaluate(evidence);
+    expect(result.gateDetails[`${lane === 'native' ? 'native' : 'nativeMinimum'}:linux-x64`].ok).toBe(false);
+  });
+
+  it.each(['missing-program-digest', 'wrong-program-digest', 'wrong-export', 'source-only', 'missing-execution-case', 'unsettled'])(
+    'rejects embedded helper evidence with %s despite authenticated module bytes', async (failure) => {
+      const evidence = structuredClone(base);
+      updateReport(evidence, 'native-linux-arm64', (report) => {
+        const helper = report.data.helpers.find((entry: any) => entry.id === 'linux-posix-state-lock');
+        if (failure === 'missing-program-digest') delete helper.programSha256;
+        if (failure === 'wrong-program-digest') helper.programSha256 = context.nativeHelpers['darwin-posix-state-lock'].programSha256;
+        if (failure === 'wrong-export') helper.programExport = 'posixStateLockProgram';
+        if (failure === 'source-only') report.data.execution = 'source-only-tests';
+        if (failure === 'missing-execution-case') helper.checks.pop();
+        if (failure === 'unsettled') helper.activeProcesses = 1;
+      });
+      const result = await evaluate(evidence);
+      expect(result.gateDetails['native:linux-arm64'].ok).toBe(false);
+      expect(result.productionQualified).toBe(false);
+    }
+  );
+
   it('derives dashboard and controller digests from actual source rather than stale constants', async () => {
     fs.appendFileSync(path.join(root, 'infrastructure/opentofu/telemetry/dashboard.json'), '\n');
     fs.appendFileSync(path.join(root, 'assets/repair/windows-job-controller.ps1'), '\n');
@@ -1081,6 +1160,30 @@ describe('authenticated report binding and adversarial measurements', () => {
 });
 
 describe('real local final-byte and archive integrity', () => {
+  it.each(EMBEDDED_NATIVE_HELPERS.map((helper) => [helper.id, helper.requiredPlatform === 'posix' ? 'linux' : helper.requiredPlatform, helper.compiledPath]))(
+    'rejects final archives omitting the compiled %s helper', async (_id, platform, compiledPath) => {
+      const evidence = structuredClone(base);
+      const target = `${platform}-x64`;
+      updateArchive(evidence, target, (bundle) => fs.unlinkSync(path.join(bundle, compiledPath)));
+      const result = await evaluate(evidence);
+      expect(result.gateDetails[`artifact:${target}`].ok).toBe(false);
+      expect(result.blockers.join(' ')).toContain('Packaged embedded helper bytes differ');
+    }
+  );
+
+  it('does not execute an authenticated but changed archive module to discover its helper export', async () => {
+    const evidence = structuredClone(base);
+    const marker = path.join(root, 'untrusted-helper-executed');
+    updateArchive(evidence, 'darwin-arm64', (bundle) => {
+      fs.appendFileSync(path.join(bundle, 'dist/adapters/state/darwin-system-program.js'),
+        `\nimport { writeFileSync as writeUntrustedMarker } from 'node:fs';\nwriteUntrustedMarker(${JSON.stringify(marker)}, 'must never execute');\n`);
+    });
+    const result = await evaluate(evidence);
+    expect(result.gateDetails['artifact:darwin-arm64'].ok).toBe(false);
+    expect(result.blockers.join(' ')).toContain('Packaged embedded helper bytes differ');
+    expect(fs.existsSync(marker)).toBe(false);
+  });
+
   it.each(['CONTRIBUTING.md', 'SECURITY.md',
     'infrastructure/opentofu/bootstrap/README.md', 'infrastructure/opentofu/telemetry/README.md'
   ])('rejects a re-signed archive missing linked public document %s', async (name) => {

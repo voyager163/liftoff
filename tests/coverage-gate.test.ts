@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { windowsJobControllerAssetDigest } from '../src/adapters/process/windows-job-runner.js';
+import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
+import { nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
   canonicalizeRepoPath,
   checkStrictThreshold,
@@ -435,9 +437,13 @@ describe('coverage gate - native helper disclosure and qualification', () => {
   });
 
   it('discloses all shipped native helpers and launchers without claiming V8 coverage', () => {
-    expect(NATIVE_HELPER_INVENTORY).toHaveLength(3);
+    expect(NATIVE_HELPER_INVENTORY).toHaveLength(8);
     const ids = NATIVE_HELPER_INVENTORY.map((h) => h.id);
-    expect(ids).toEqual(['windows-job-controller', 'windows-launcher', 'posix-launcher']);
+    expect(ids).toEqual([
+      'windows-job-controller', 'windows-launcher', 'posix-launcher',
+      'darwin-state-system', 'darwin-posix-state-lock', 'linux-posix-state-lock', 'linux-readonly-process',
+      'posix-state-python-probe'
+    ]);
     expect(NATIVE_HELPER_INVENTORY.find((helper) => helper.id === 'windows-launcher')).toMatchObject({
       path: 'scripts/distribution/windows-launcher.go', finalBinary: 'bin/liftoff.exe', measurement: 'native-go-pe-binary'
     });
@@ -445,6 +451,53 @@ describe('coverage gate - native helper disclosure and qualification', () => {
     for (const helper of NATIVE_HELPER_INVENTORY) {
       expect(helper.v8Measured).toBe(false);
     }
+  });
+
+  it('discloses embedded Python execution separately from its measured TypeScript wrapper', () => {
+    const helpers = NATIVE_HELPER_INVENTORY.filter((helper) => helper.programExport);
+    expect(helpers.map((helper) => [helper.id, helper.programExport, helper.requiredPlatform])).toEqual([
+      ['darwin-state-system', 'darwinStateSystemProgram', 'darwin'],
+      ['darwin-posix-state-lock', 'posixStateLockProgram', 'darwin'],
+      ['linux-posix-state-lock', 'linuxPosixStateLockProgram', 'linux'],
+      ['linux-readonly-process', 'linuxReadonlyProcessProgram', 'linux'],
+      ['posix-state-python-probe', 'nativeStatePythonVersionProbe', 'posix']
+    ]);
+    for (const helper of helpers) {
+      expect(helper.v8Measured).toBe(false);
+      expect(fs.readFileSync(helper.path, 'utf8')).toContain(`export const ${helper.programExport}`);
+      const report = evaluateNativeHelperQualification([helper], {
+        [helper.id]: { platform: helper.requiredPlatform, passed: true, processTreeSettled: true,
+          activeProcesses: 0, nativeRunId: 'asserted-only' }
+      });
+      expect(report.ok).toBe(false);
+      expect(report.helpers[0].evidenceType).toBe('unverified-native-report');
+    }
+    const linux = helpers.find((helper) => helper.id === 'linux-readonly-process')!;
+    expect(evaluateNativeHelperQualification([linux], {
+      [linux.id]: { platform: 'darwin', passed: true, processTreeSettled: true, activeProcesses: 0, nativeRunId: 'wrong-host' }
+    }).helpers[0].evidenceType).toBe('wrong-platform');
+  });
+
+  it('keeps all embedded-helper wrappers in the V8 denominator without changing the Python inspection bytes', () => {
+    const inventory = getCanonicalProductionInventory();
+    for (const helper of NATIVE_HELPER_INVENTORY.filter((helper) => helper.programExport)) {
+      expect(inventory.cli).toContain(helper.path);
+      expect(helper.compiledPath).toBe(helper.path.replace(/^src\//, 'dist/').replace(/\.ts$/, '.js'));
+    }
+    expect(nativeStatePythonVersionProbe).toBe(
+      'import json,platform,sys; print(json.dumps({"implementation":platform.python_implementation(),"version":".".join(map(str,sys.version_info[:3]))}))'
+    );
+  });
+
+  it('requires distinct exact host-helper inventories rather than qualifying every wrapper on any host', () => {
+    expect(nativeHelpersForPlatform('darwin').map((helper) => helper.id)).toEqual([
+      'posix-launcher', 'darwin-state-system', 'darwin-posix-state-lock', 'posix-state-python-probe'
+    ]);
+    expect(nativeHelpersForPlatform('linux').map((helper) => helper.id)).toEqual([
+      'posix-launcher', 'linux-posix-state-lock', 'linux-readonly-process', 'posix-state-python-probe'
+    ]);
+    expect(nativeHelpersForPlatform('win32').map((helper) => helper.id)).toEqual(['windows-job-controller', 'windows-launcher']);
+    expect(() => nativeHelpersForPlatform('freebsd')).toThrow(/Unsupported/);
   });
 
   it('fails when native helper qualification evidence is absent', () => {
