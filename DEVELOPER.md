@@ -467,6 +467,16 @@ For a workflow rerun, rerun all jobs: successful blobs from an earlier attempt
 are deliberately not accepted. The retained `source-coverage` artifact is
 source-only evidence, not native, live-provider or publication qualification.
 
+The optional `diagnostic_native_posix_locks_only` dispatch exercises only native
+Linux x64/arm64 POSIX locking on synthetic local state with explicitly selected
+Python/OpenTofu binaries. Actual host architecture metadata accompanies each
+test report; configured runner labels alone are not execution evidence, and an
+unavailable arm64 result remains pending. This lane does not establish encrypted
+storage, key-store custody, enrollment or release readiness. It may combine with
+the Windows and native Go diagnostic flags, but any diagnostic selection omits
+the full source matrix and coverage gate. Default, push and PR coverage stays
+unchanged; see the [diagnostic routing table](CONTRIBUTING.md#validate-a-change).
+
 The standalone gate reads only the two canonical coverage-summary paths through
 bounded, identity-checked reads. Its `ok` covers **TypeScript/JavaScript
 measurements only**, not native helpers or release readiness. Missing reports,

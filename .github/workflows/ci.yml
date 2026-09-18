@@ -13,6 +13,11 @@ on:
         type: boolean
         required: false
         default: false
+      diagnostic_native_posix_locks_only:
+        description: Run Linux POSIX lock source diagnostics (not custody or release qualification)
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -23,7 +28,7 @@ permissions:
 jobs:
   test:
     name: Source integrations (${{ matrix.os }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -157,7 +162,7 @@ jobs:
 
   test-shards:
     name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -244,7 +249,7 @@ jobs:
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -290,7 +295,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -324,7 +329,7 @@ jobs:
 
   coverage-qualification:
     name: Source coverage gate (not native qualification)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
     needs: test-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -497,5 +502,108 @@ jobs:
         with:
           name: native-go-source-diagnostics-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
           path: diagnostics/native-go-tests.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native-posix-lock-diagnostics:
+    name: Linux POSIX lock source diagnostics (${{ matrix.arch }}, not custody or release qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Record and verify actual diagnostic host
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          const host = {
+            schemaVersion: 1,
+            scope: 'synthetic-local-state-locks-only',
+            platform: process.platform,
+            architecture: process.arch,
+            runnerOS: process.env.RUNNER_OS,
+            runnerArchitecture: process.env.RUNNER_ARCH,
+            expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            encryptedCustodyQualification: 'not-performed',
+            releaseQualification: 'not-performed'
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          writeFileSync('diagnostics/native-posix-lock-host.json', JSON.stringify(host, null, 2) + '\n');
+          console.log(JSON.stringify(host));
+          assert.equal(host.platform, 'linux', 'Native Linux is required; no platform emulation');
+          assert.equal(host.architecture, host.expectedArchitecture, 'Actual architecture must match the selected lane');
+          assert.equal(host.runnerArchitecture?.toLowerCase(), host.architecture, 'Runner and Node architectures must agree');
+          NODE
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        id: python
+        with:
+          python-version: "3.14.7"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Resolve selected native tools
+        env:
+          SELECTED_PYTHON: ${{ steps.python.outputs.python-path }}
+        shell: bash
+        run: |
+          python_path="$(realpath -- "$SELECTED_PYTHON")"
+          tofu_path="$(realpath -- "$(command -v tofu)")"
+          test -x "$python_path"
+          test -x "$tofu_path"
+          printf 'LIFTOFF_STATE_PYTHON=%s\nLIFTOFF_TOFU_EXECUTABLE=%s\n' "$python_path" "$tofu_path" >> "$GITHUB_ENV"
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run native POSIX lock source diagnostics (not custody or release qualification)
+        env:
+          LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: "1"
+        run: >-
+          npx vitest run tests/state-posix-platform.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/native-posix-lock-tests.json
+
+      - name: Retain actual-host POSIX lock source diagnostics (not custody or release qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-posix-lock-source-diagnostics-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/native-posix-lock-host.json
+            diagnostics/native-posix-lock-tests.json
           if-no-files-found: error
           retention-days: 7

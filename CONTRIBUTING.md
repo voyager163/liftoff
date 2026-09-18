@@ -68,17 +68,42 @@ Node 24.20.0, npm 12.0.2, Go 1.27.0, one worker and a 20-minute job limit.
 The existing test deadline remains unchanged. Each host retains its diagnostic
 JSON artifact under its OS, source SHA and run attempt, including on test failure.
 
-Both inputs default to `false`. Manual dispatch routing is explicit:
+For real cross-process POSIX locking against synthetic `terraform_data` local
+state, set `diagnostic_native_posix_locks_only` to `true`. The two Linux lanes use
+the [documented public GitHub-hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
+`ubuntu-24.04` (x64) and `ubuntu-24.04-arm` (arm64), with Node 24.20.0, npm 12.0.2,
+Python 3.14.7 and OpenTofu 1.12.6 without its wrapper. Each lane resolves only
+the selected Python and OpenTofu executables to canonical absolute paths, enables
+`LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION=1`, and runs
+`tests/state-posix-platform.test.ts` with one worker and a 20-minute job budget.
+Existing test and production deadlines are unchanged.
 
-| `diagnostic_windows_only` | `diagnostic_native_go_only` | Jobs executed |
-| --- | --- | --- |
-| `false` | `false` | Complete 16-job source validation, including coverage |
-| `true` | `false` | Windows diagnostics only |
-| `false` | `true` | Ubuntu and macOS native Go diagnostics only |
-| `true` | `true` | Both diagnostic lanes; no full-validation jobs or gates |
+Host metadata records the actual Node and runner architectures and rejects a
+platform/architecture mismatch before testing. Both that record and the test
+JSON report are retained under the runner label, actual runner architecture,
+source SHA and run attempt, including on test failure. These are synthetic
+local-state lock source runs, not encryption, key-store custody or release
+qualification. The native exercise uses no credentials, external providers,
+provider downloads or privileged host changes. If the arm64 runner is
+unavailable, its result remains pending or missing; an x64 success is not a
+substitute and no emulation/fallback is selected.
+
+All three inputs default to `false`. Manual dispatch routing is explicit:
+
+| `diagnostic_windows_only` | `diagnostic_native_go_only` | `diagnostic_native_posix_locks_only` | Jobs executed |
+| --- | --- | --- | --- |
+| `false` | `false` | `false` | Complete 16-job source validation, including coverage |
+| `true` | `false` | `false` | Windows diagnostics |
+| `false` | `true` | `false` | Ubuntu and macOS native Go diagnostics |
+| `true` | `true` | `false` | Windows and native Go diagnostics |
+| `false` | `false` | `true` | Linux x64 and arm64 POSIX lock diagnostics |
+| `true` | `false` | `true` | Windows and POSIX lock diagnostics |
+| `false` | `true` | `true` | Native Go and POSIX lock diagnostics |
+| `true` | `true` | `true` | All three diagnostic lanes |
 
 A diagnostic-only dispatch **does not qualify the source or release**, even if
-it is green. Selecting both flags runs both diagnostics rather than skipping
+it is green. Any selected diagnostic flag excludes all full-validation jobs and
+gates; multiple flags run all selected diagnostics rather than skipping
 everything or enabling qualification gates. Push and pull-request events always
 retain the complete source workflow regardless of diagnostic input values.
 

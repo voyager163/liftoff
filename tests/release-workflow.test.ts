@@ -9,7 +9,7 @@ import { createRootTestConfig } from '../vitest.config.js';
 
 const execFileAsync = promisify(execFile);
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
-const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)";
+const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)";
 const fullValidationJobs = ['test', 'test-shards', 'telemetry-infrastructure', 'standard-node-templates', 'coverage-qualification'];
 
 async function scratchDirectory() {
@@ -32,7 +32,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -137,9 +137,13 @@ describe('read-only coordinated release evidence workflow', () => {
       description: 'Run native Go source diagnostics (not qualification)',
       type: 'boolean', required: false, default: false
     });
+    expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_posix_locks_only).toEqual({
+      description: 'Run Linux POSIX lock source diagnostics (not custody or release qualification)',
+      type: 'boolean', required: false, default: false
+    });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...fullValidationJobs, 'windows-diagnostics', 'native-go-diagnostics'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...fullValidationJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
@@ -162,17 +166,22 @@ describe('read-only coordinated release evidence workflow', () => {
   });
 
   it.each([
-    { windows: false, go: false, manualJobs: fullValidationJobs },
-    { windows: true, go: false, manualJobs: ['windows-diagnostics'] },
-    { windows: false, go: true, manualJobs: ['native-go-diagnostics'] },
-    { windows: true, go: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics'] }
-  ])('routes Windows=$windows and Go=$go without a diagnostic-only success pretending to be full validation', async ({ windows, go, manualJobs }) => {
+    { windows: false, go: false, posix: false, manualJobs: fullValidationJobs },
+    { windows: true, go: false, posix: false, manualJobs: ['windows-diagnostics'] },
+    { windows: false, go: true, posix: false, manualJobs: ['native-go-diagnostics'] },
+    { windows: true, go: true, posix: false, manualJobs: ['windows-diagnostics', 'native-go-diagnostics'] },
+    { windows: false, go: false, posix: true, manualJobs: ['native-posix-lock-diagnostics'] },
+    { windows: true, go: false, posix: true, manualJobs: ['windows-diagnostics', 'native-posix-lock-diagnostics'] },
+    { windows: false, go: true, posix: true, manualJobs: ['native-go-diagnostics', 'native-posix-lock-diagnostics'] },
+    { windows: true, go: true, posix: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'] }
+  ])('routes Windows=$windows, Go=$go and POSIX=$posix without a diagnostic-only success pretending to be full validation', async ({ windows, go, posix, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
       const conditions: Record<string, boolean> = {
-        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go),
+        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix),
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only": event === 'workflow_dispatch' && windows,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix
       };
       const selected = Object.entries(workflow.jobs).filter(([, job]: [string, any]) => {
         expect(Object.hasOwn(conditions, job.if)).toBe(true);
@@ -180,6 +189,91 @@ describe('read-only coordinated release evidence workflow', () => {
       }).map(([id]) => id);
       expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : fullValidationJobs)].sort());
       expect(selected.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('runs POSIX lock source diagnostics on explicit Linux x64 and arm64 hosts without custody or privileged host changes', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['native-posix-lock-diagnostics'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only");
+    expect(job.name).toContain('not custody or release qualification');
+    expect(job['runs-on']).toBe('${{ matrix.os }}');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.needs).toBeUndefined();
+    expect(job.strategy).toEqual({
+      'fail-fast': false,
+      'max-parallel': 2,
+      matrix: { include: [{ os: 'ubuntu-24.04', arch: 'x64' }, { os: 'ubuntu-24.04-arm', arch: 'arm64' }] }
+    });
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe('24.20.0');
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-python@'))).toMatchObject({
+      id: 'python', with: { 'python-version': '3.14.7' }
+    });
+    expect(job.steps.find((step: any) => step.uses?.startsWith('opentofu/setup-opentofu@')).with)
+      .toEqual({ tofu_version: '1.12.6', tofu_wrapper: false });
+    const resolved = job.steps.find((step: any) => step.name === 'Resolve selected native tools');
+    expect(resolved.env).toEqual({ SELECTED_PYTHON: '${{ steps.python.outputs.python-path }}' });
+    expect(resolved.shell).toBe('bash');
+    expect(resolved.run).toBe([
+      'python_path="$(realpath -- "$SELECTED_PYTHON")"',
+      'tofu_path="$(realpath -- "$(command -v tofu)")"',
+      'test -x "$python_path"',
+      'test -x "$tofu_path"',
+      'printf \'LIFTOFF_STATE_PYTHON=%s\\nLIFTOFF_TOFU_EXECUTABLE=%s\\n\' "$python_path" "$tofu_path" >> "$GITHUB_ENV"',
+      ''
+    ].join('\n'));
+    for (const command of ['npm install --global "npm@12.0.2"', 'npm ci', 'npm run build']) {
+      expect(job.steps.slice(0, -2).some((step: any) => step.run === command)).toBe(true);
+    }
+    expect(job.steps.at(-2)).toEqual({
+      name: 'Run native POSIX lock source diagnostics (not custody or release qualification)',
+      env: { LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: '1' },
+      run: 'npx vitest run tests/state-posix-platform.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+        '--outputFile.json=diagnostics/native-posix-lock-tests.json'
+    });
+    expect(job.steps.at(-1).if).toBe('always()');
+    expect(job.steps.at(-1).uses).toMatch(/^actions\/upload-artifact@[a-f0-9]{40}$/);
+    expect(job.steps.at(-1).with).toEqual({
+      name: 'native-posix-lock-source-diagnostics-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}',
+      path: 'diagnostics/native-posix-lock-host.json\ndiagnostics/native-posix-lock-tests.json\n',
+      'if-no-files-found': 'error', 'retention-days': 7
+    });
+    const commands = job.steps.map((step: any) => step.run ?? '').join('\n');
+    expect(commands).not.toMatch(/\bsudo\b|\bchmod\b|\bmount\b|\bfscrypt\b|\bsecret-tool\b|gate:coverage|gate:release/);
+  });
+
+  it('records actual POSIX diagnostic host facts and rejects an unsupported or mismatched architecture', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['native-posix-lock-diagnostics'];
+    const step = job.steps.find((entry: any) => entry.name === 'Record and verify actual diagnostic host');
+    expect(step.env).toEqual({ EXPECTED_ARCH: '${{ matrix.arch }}' });
+    expect(step.shell).toBe('bash');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await scratchDirectory();
+    try {
+      const run = (expected: string, runner: string) => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root,
+        env: {
+          ...process.env, EXPECTED_ARCH: expected, RUNNER_OS: process.platform === 'linux' ? 'Linux' : 'NonLinux',
+          RUNNER_ARCH: runner, GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2'
+        }
+      });
+      const observed = run(process.arch, process.arch.toUpperCase());
+      if (process.platform === 'linux') await observed;
+      else await expect(observed).rejects.toThrow('Native Linux is required');
+      const report = JSON.parse(await readFile(path.join(root, 'diagnostics/native-posix-lock-host.json'), 'utf8'));
+      expect(report).toMatchObject({
+        scope: 'synthetic-local-state-locks-only', platform: process.platform, architecture: process.arch,
+        runnerArchitecture: process.arch.toUpperCase(), expectedArchitecture: process.arch,
+        sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        encryptedCustodyQualification: 'not-performed', releaseQualification: 'not-performed'
+      });
+      const other = process.arch === 'arm64' ? 'x64' : 'arm64';
+      await expect(run(other, process.arch.toUpperCase())).rejects.toThrow();
+      await expect(run(process.arch, other.toUpperCase())).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 
