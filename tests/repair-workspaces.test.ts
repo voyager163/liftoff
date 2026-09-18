@@ -150,7 +150,7 @@ describe('private repair workspace registration', () => {
       });
     } catch (error) {
       if (commandResult?.processTreeSettled !== true) retained.add(f.directory);
-      throw new Error(`Native workspace execution failed; cwd length=${handle.roles.project.length}, code=${commandResult?.errorCode ?? 'no-result'}, retained=${retained.has(f.directory)}.`, { cause: error });
+      throw new Error(`Native workspace execution failed; cwd length=${handle.roles.project.length}, code=${commandResult?.errorCode ?? 'no-result'}, retained=${retained.has(f.directory)}; ${commandResult?.errorMessage ?? 'No runner diagnostic.'}`, { cause: error });
     }
     expect(commandResult?.status, `${commandResult?.errorCode ?? ''}: ${commandResult?.errorMessage ?? ''}; cwd length=${handle.roles.project.length}`).toBe(0);
     expect(await readFile(path.join(handle.roles.project, 'effect.txt'), 'utf8')).toBe('approved private effect\n');

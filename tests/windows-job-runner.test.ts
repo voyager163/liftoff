@@ -19,10 +19,41 @@ import {
 } from '../src/adapters/process/windows-job-protocol.js';
 
 const tempDirs: string[] = [];
+const retainedDirs = new Set<string>();
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) {
-    await rm(dir, { recursive: true, force: true });
+    if (!retainedDirs.has(dir)) await rm(dir, { recursive: true, force: true });
   }
+});
+
+describe.runIf(process.platform === 'win32')('native Windows working-directory admission', () => {
+  it.each([180, 320])('executes in an exact literal cwd of at least %i characters', async (minimumLength) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-cwd-'));
+    tempDirs.push(root);
+    let cwd = path.join(root, "project's $literal [directory]");
+    while (cwd.length < minimumLength) cwd = path.join(cwd, 'nested-segment');
+    await mkdir(cwd, { recursive: true });
+
+    const observations = [];
+    retainedDirs.add(root);
+    for (const [kind, target] of [['canonical', cwd], ['internal-namespace', path.toNamespacedPath(cwd)]] as const) {
+      const result = await runWindowsJobCommand({
+        executable: process.execPath,
+        args: ['-e', "require('node:fs').writeFileSync(process.argv[1], 'exact owned effect\\n'); console.log(process.cwd());", `${kind}.txt`]
+      }, { cwd: target, timeoutMs: 5_000, maxOutputBytes: 2048 });
+      observations.push({ kind, status: result.status, settled: result.processTreeSettled,
+        code: result.errorCode, detail: result.errorMessage, cwdLength: target.length });
+      if (result.status === 0 && result.processTreeSettled === true) {
+        expect(await readFile(path.join(cwd, `${kind}.txt`), 'utf8')).toBe('exact owned effect\n');
+        expect(path.toNamespacedPath(result.stdout.trim())).toBe(path.toNamespacedPath(cwd));
+      }
+    }
+    if (observations.every((result) => result.settled === true)) retainedDirs.delete(root);
+    expect(observations, JSON.stringify(observations)).toEqual([
+      expect.objectContaining({ kind: 'canonical', status: 0, settled: true }),
+      expect.objectContaining({ kind: 'internal-namespace', status: 0, settled: true })
+    ]);
+  }, 30_000);
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {

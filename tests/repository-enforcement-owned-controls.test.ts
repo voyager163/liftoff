@@ -80,9 +80,9 @@ it.each = <T extends string>(values: readonly T[]) =>
   };
 
 async function fixtureDirectoryIdentity(directory: string) {
-  const stat = await lstat(directory);
+  const stat = await lstat(directory, { bigint: true });
   if (!stat.isDirectory() || stat.isSymbolicLink()) throw new Error(`Preserving fixture scope with changed directory type: ${directory}`);
-  return { path: await realpath(directory), device: stat.dev, inode: stat.ino, birthtime: stat.birthtimeMs, user: stat.uid };
+  return { path: await realpath(directory), device: stat.dev, inode: stat.ino, birthtime: stat.birthtimeNs, user: stat.uid };
 }
 
 function assertFixtureDirectoryIdentity(
@@ -719,7 +719,7 @@ describe('owned repository enforcement with released private approval and checkp
   it('refuses changed fixture creation identities without deleting any path', async () => {
     const f = await fixture();
     const current = await fixtureDirectoryIdentity(f.root);
-    expect(() => assertFixtureDirectoryIdentity(f.creationIdentity, { ...current, inode: current.inode + 1 }))
+    expect(() => assertFixtureDirectoryIdentity(f.creationIdentity, { ...current, inode: current.inode + 1n }))
       .toThrow(/creation identity changed/u);
     expect((await lstat(f.root)).isDirectory()).toBe(true);
   });

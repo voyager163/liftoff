@@ -79,7 +79,7 @@ export function formatUpdateCommand(
 export function formatUpdateGuidanceText(
   text: UpdateGuidanceText,
   context?: UpdateGuidanceContext,
-  platform: NodeJS.Platform = process.platform
+  platform?: NodeJS.Platform
 ): string {
   return typeof text === 'string' ? text : text.map((part) =>
     typeof part === 'string' ? part : formatUpdateCommand(part.projectRoot, part.mode, platform, context)

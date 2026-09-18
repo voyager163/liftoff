@@ -54,6 +54,19 @@ execution evidence remains separate and unperformed.
 - [ ] 3.7 Verify native helper assets and required host contracts from the installed artifact, not the checkout; verify supported relocation, read-only installation and argument/path handling on all required platforms.
 - [ ] 3.8 Run the complete Windows repair/process boundary lane after the established fixes; verify prior failure cases pass without removing tests, manufacturing proof or merely increasing timeouts.
 
+Authorized source CI runs `35331613734` and `35334575245` exercised the
+validation branch without deployment, signing or publication. Full Git history
+is required for immutable historical readers, and packaged asset checkout bytes
+are now LF-stable on Windows rather than normalized after integrity checks.
+Windows boundary failures fell from 484 to 38; the second run still failed and
+the aggregate coverage/macOS/Linux jobs exhausted their existing job budgets.
+Neither run qualifies the release. Remaining investigation includes native
+long-working-directory admission and Windows inspection/repair timeouts.
+Renderer regressions now cover native paths independently of the inspecting
+host, and repair test cleanup uses exact bigint filesystem identities instead
+of rounded Windows inode numbers. These corrections do not close native
+qualification tasks or authorize cleanup after uncertain process settlement.
+
 ## 4. Six-engine module boundaries
 
 - [x] 4.1 Introduce the six application ownership modules and explicit composition root while keeping CLI parsing/presentation thin; verify public help, dispatch and capability ownership remain coherent.

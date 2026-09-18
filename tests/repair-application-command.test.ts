@@ -18,10 +18,10 @@ import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js'
 
 interface OwnedFixtureRoot {
   path: string;
-  device: number;
-  inode: number;
-  birthtimeMs: number;
-  mode: number;
+  device: bigint;
+  inode: bigint;
+  birthtimeNs: bigint;
+  mode: bigint;
 }
 
 const roots: OwnedFixtureRoot[] = [];
@@ -36,10 +36,10 @@ async function cleanupOwnedFixtures(
     throw new Error(`Retaining exact application-repair fixtures with active or uncertain owned work: ${current.map((root) => root.path).join(', ')}`);
   }
   for (const root of current) {
-    const identity = await lstat(root.path);
+    const identity = await lstat(root.path, { bigint: true });
     if (!identity.isDirectory() || identity.isSymbolicLink() || await realpath(root.path) !== root.path ||
         identity.dev !== root.device || identity.ino !== root.inode ||
-        identity.birthtimeMs !== root.birthtimeMs || identity.mode !== root.mode) {
+        identity.birthtimeNs !== root.birthtimeNs || identity.mode !== root.mode) {
       throw new Error(`Application-repair fixture creation identity changed; preserving ${root.path}`);
     }
     await rm(root.path, { recursive: true });
@@ -56,8 +56,8 @@ afterEach(async () => {
 
 async function createOwnedFixture(): Promise<OwnedFixtureRoot> {
   const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "liftoff-guided repair's-")));
-  const identity = await lstat(parent);
-  const owner = { path: parent, device: identity.dev, inode: identity.ino, birthtimeMs: identity.birthtimeMs, mode: identity.mode };
+  const identity = await lstat(parent, { bigint: true });
+  const owner = { path: parent, device: identity.dev, inode: identity.ino, birthtimeNs: identity.birthtimeNs, mode: identity.mode };
   roots.push(owner);
   return owner;
 }
@@ -173,7 +173,7 @@ describe('application-repair fixture cleanup ownership', () => {
 
   it('does not remove a path using mismatching creation identity', async () => {
     const owner = await createOwnedFixture();
-    await expect(cleanupOwnedFixtures([{ ...owner, inode: owner.inode + 1 }], [], 0)).rejects.toThrow(/creation identity changed/);
+    await expect(cleanupOwnedFixtures([{ ...owner, inode: owner.inode + 1n }], [], 0)).rejects.toThrow(/creation identity changed/);
     expect((await lstat(owner.path)).isDirectory()).toBe(true);
   });
 });

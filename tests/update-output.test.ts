@@ -6,6 +6,7 @@ import {
 } from '../src/adapters/process/shell-command.js';
 import {
   formatUpdateCommand,
+  formatUpdateGuidanceText,
   formatRevalidationPhaseBlocker,
   formatUpdateValidationCommands,
   type ResolvedUpdateGuidanceContext
@@ -141,6 +142,33 @@ describe('project-bound update command guidance', () => {
     expect(formatUpdateValidationCommands(entry.root, entry.platform, {
       state: 'unresolved', detail: 'No trustworthy invocation context'
     })).toBe(entry.validation);
+  });
+
+  it.each([
+    ['/projects/Preview with spaces', 'linux'],
+    ["C:\\Projects\\Preview's $literal [path]", 'win32'],
+    ['\\\\server\\share\\Preview with spaces', 'win32']
+  ] as const)('renders lower-layer errors for %s independently of the current host', (root, platform) => {
+    const check = formatUpdateCommand(root, 'check', platform);
+    const apply = formatUpdateCommand(root, 'normal', platform);
+    const remedy = ['Run ', { projectRoot: root, mode: 'check' as const }, ' again.'];
+    expect(formatUpdateGuidanceText(remedy)).toBe(`Run ${check} again.`);
+    expect(new UpdatePlanError('Inputs changed.', 'inputs-changed', remedy).remedy)
+      .toBe(`Run ${check} again.`);
+    for (const code of ['preview-missing', 'preview-mismatch', 'preview-storage',
+      'preview-invalid', 'preview-unsupported', 'preview-busy'] as const) {
+      const error = new UpdatePreviewError(code, 'Original failure.', { projectRoot: root });
+      expect(error.code).toBe(code);
+      expect(error.detail).toBe('Original failure.');
+      expect(error.message).toContain(check);
+      if (code === 'preview-missing' || code === 'preview-mismatch') expect(error.message).toContain(apply);
+    }
+    const wrongPlatform = platform === 'win32' ? 'linux' : 'win32';
+    expect(() => formatUpdateGuidanceText(remedy, undefined, wrongPlatform))
+      .toThrow(/different hosts/);
+    expect(() => new UpdatePreviewError('preview-mismatch', 'Original failure.', {
+      projectRoot: root, platform: wrongPlatform
+    })).toThrow(/different hosts/);
   });
 
   it('renders structured lower-layer remedies without altering standalone guidance', () => {
