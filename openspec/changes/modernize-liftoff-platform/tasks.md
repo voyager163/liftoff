@@ -308,7 +308,7 @@ native-lock qualification entrypoint are implemented as groundwork. Existing
 Darwin script bytes, protocol/qualification digests and actual-qualification
 authority remain preserved. Focused local regressions and the actual Darwin
 synthetic qualification passed; Linux x64/arm64 native execution remains
-pending. These primitives do not supply encrypted-storage/key custody, enable
+separate from that local result. These primitives do not supply encrypted-storage/key custody, enable
 producer writers or close tasks 11.17/11.18.
 
 Task 11.22 has a strict, effect-free controlled-GNOME launch specification with
@@ -326,11 +326,23 @@ The Linux read-only process primitive now requires Landlock ABI >= 3 and
 handles content/entry mutations with exact fresh private writable subtrees.
 It preserves owned-group supervision/private stdin and explicitly excludes
 metadata, IPC/received descriptors and external writers from its guarantee.
-Native x64/arm64 tests are separate from portable contract/refusal tests and
-remain pending. Initial POSIX diagnostic run `35380872753` failed during Python
+Native x64/arm64 tests are separate from portable contract/refusal tests.
+Initial POSIX diagnostic run `35380872753` failed during Python
 executable admission on both architectures, before native locking; the
 production tool-permission checks remain unchanged while exact source-runner
 tool preparation is corrected.
+
+Run `35382671458` at `5cc876221581bfc433480af545b2121f61fa96b9`
+then passed on actual Linux x64 and arm64: 27 cases passed on each host, with
+only two non-Linux refusal cases unselected. Exact runner-owned executable
+identity/bytes were preserved while group/other write bits were removed;
+production admission remained unchanged. The run exercised native OpenTofu
+contention, same-inode publication, lock-loss/stale refusal, Landlock content
+and entry denial, inherited restrictions, replacement refusal and owned
+cancellation. Its reports explicitly state encrypted custody was not performed.
+Tasks 11.17/11.18 and 11.22-11.24 remain open for the storage/key/daemon and
+end-to-end enrollment contracts rather than treating these primitives as a
+completed keystore or release.
 
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted

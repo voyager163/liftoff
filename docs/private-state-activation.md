@@ -102,9 +102,12 @@ outside its guarantee.
 The complete restart coordinator must establish its bus/control/scratch state
 inside that admitted process boundary, with correct daemon environment and
 fresh identity checks. Passing an existing unqualified IPC endpoint or writable
-descriptor to a guarded child is not a supported shortcut. Native x64/arm64
-write-denial and cancellation cases remain separately required; macOS source
-tests do not establish Linux enforcement.
+descriptor to a guarded child is not a supported shortcut.
+[Native source run 35382671458](https://github.com/voyager163/liftoff/actions/runs/35382671458)
+passed the actual POSIX/OpenTofu locking and Landlock write-denial/cancellation
+cases on Linux x64 and arm64 using nonsecret disposable fixtures. This proves
+the exercised primitives, not encrypted custody, GNOME enrollment, minimum-host
+coverage or final installed-artifact qualification.
 
 For Windows, use the documented [BitLocker provider security requirements](https://learn.microsoft.com/en-us/windows/win32/secprov/win32-encryptablevolume#security-considerations)
 and [CredReadW semantics](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw).
