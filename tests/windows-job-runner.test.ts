@@ -93,6 +93,39 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     expect(await readdir(cwd)).toEqual([]);
   });
 
+  it('rejects a real controller with the wrong authentication nonce before target dispatch', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-auth-'));
+    tempDirs.push(root);
+    const result = await runWindowsJobCommand({
+      executable: process.execPath, args: ['-e', "require('node:fs').writeFileSync('unapproved.txt', 'unapproved')"]
+    }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000 }, {
+      spawnController: (executable, args, options) => {
+        const overridden = [...args];
+        const nonceIndex = overridden.indexOf('-ExpectedNonce') + 1;
+        expect(nonceIndex).toBeGreaterThan(0);
+        overridden[nonceIndex] = '0'.repeat(64);
+        return spawn(executable, overridden, options);
+      }
+    });
+    expect(result).toMatchObject({
+      status: null, errorCode: 'AUTHENTICATION_FAILED', timedOut: false, processSpawned: false
+    });
+    expect(await readdir(root)).toEqual([]);
+  }, 90_000);
+
+  it('reports real missing-directory admission without executing in a substitute cwd', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-absent-'));
+    tempDirs.push(root);
+    retainedDirs.add(root);
+    const result = await runWindowsJobCommand({
+      executable: process.execPath, args: ['-e', "require('node:fs').writeFileSync('unapproved.txt', 'unapproved')"]
+    }, { cwd: path.join(root, 'absent'), env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000 });
+    if (result.processTreeSettled === true) retainedDirs.delete(root);
+    expect(result).toMatchObject({ status: null, errorCode: 'ADMISSION_DENIED', timedOut: false });
+    expect(result.errorMessage).toContain('CreateProcessW failed with Win32 error 267');
+    expect(await readdir(root)).toEqual([]);
+  }, 90_000);
+
   it('records built-in module admission and interop startup separately', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-startup-'));
     tempDirs.push(root);
