@@ -504,6 +504,15 @@ per-host coverprofiles. The local source run measures 62.2% of statements; it
 does not run a signed PE or measure the PowerShell/POSIX helpers. Native helper
 execution, cancellation, settlement and recovery qualification remain open.
 
+Task 15.3 now also inventories eight helper identities, including embedded
+Python bodies and the tool-inspection probe, separately from their V8-measured
+TypeScript wrappers. The authentic release path binds applicable source,
+compiled-module, export and program identities to final artifacts and native/
+minimum-host evidence without executing archive code. Missing helper bindings
+and unauthenticated assertions still fail. Required actual helper/custody and
+signed installed-artifact qualification remain open; the inventory change does
+not claim that those outcomes were performed.
+
 The separately enabled local darwin-arm64 lane also passes five real Node/Vue,
 Go, fresh-private-cache-negative and backend-disabled OpenTofu cases, preserving
 the fixture applications and their business behavior. This does not qualify

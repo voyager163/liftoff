@@ -195,6 +195,25 @@ npm, and do not put the private runtime on project-tool PATH. Windows compilatio
 checks PE architecture, not just a filename; cross-compilation is still not
 native Windows execution or host-floor qualification.
 
+## Native-helper evidence
+
+`scripts/native-helper-inventory.mjs` is the shared helper inventory for source
+coverage disclosure and release admission. It includes the launchers, Windows
+controller, and embedded Python state-system, tool-inspection, locking and
+read-only-process programs. A TypeScript wrapper stays in the V8 production
+denominator; executing its string factory does not measure the embedded program.
+
+Applicable helper identities bind their source, compiled module, selected
+export and program bytes to the final artifact and authenticated native and
+minimum-host reports. Artifact inspection does not execute downloaded archive
+code to obtain those identities. Missing or changed helper bindings block
+qualification rather than disappearing behind passing JavaScript percentages.
+
+Bare run labels, matching digests and success flags remain unauthenticated
+assertions. Native locking or process tests also do not prove encrypted custody,
+real key access, provider outcomes or final signed installed-byte behavior.
+Unmeasured or unqualified helper scope remains a release blocker.
+
 ## Real outside-checkout closure proof
 
 Use the exact emitted build status. The verifier independently checks the
