@@ -122,6 +122,9 @@ The controller loads Windows PowerShell's built-in Utility module from its own
 `PSHOME` and disables unrelated module auto-discovery in that controller
 process. It does not import user-installed modules, change execution policy,
 download a helper, or treat faster startup as process-settlement proof.
+Startup/authentication and supervisory admission/settlement deadline failures
+are reported separately from a declared project-command timeout; none
+authorizes an automatic retry or a larger timeout.
 
 ## What inventory means
 

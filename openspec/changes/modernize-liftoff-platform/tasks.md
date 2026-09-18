@@ -78,6 +78,26 @@ diagnosis. The approved refinement is explicit over-limit admission and shorter
 storage guidance, not a new workspace format or a claim of native success.
 Tasks 3.1-3.8 remain open.
 
+The approved cwd limit now rejects over-limit execution before controller or
+target dispatch, preserves cancellation precedence and uses fixed safe remedies
+for verification and preparation. Real Windows runs `35351663348` and
+`35352074826` passed the focused source lane, including 180/258-code-unit literal
+cwd execution, 259/320-code-unit refusal, unchanged original workspace records
+and original-storage recovery, and native nonce/missing-directory rejection.
+The short-path fixture needed the Windows `SystemRoot` prerequisite rather than
+an empty target environment; target credentials and unrelated ambient variables
+are still not inherited.
+
+Instrumentation separated approximately 22 seconds of `Add-Type` command
+discovery from approximately 0.1 seconds of compilation. Loading the stock
+Utility module by its exact `PSHOME` path and disabling unrelated controller
+module auto-discovery reduced the measured ready frame to approximately 0.5
+seconds; actual short/boundary command cases completed in approximately 0.8
+seconds. The pinned controller and resource catalog digests were regenerated.
+No production deadline, execution policy, Job Object requirement or workspace
+format was relaxed. Full source matrix run `35352071630` is separate and still
+pending; these focused results do not qualify installed artifacts or all hosts.
+
 ## 4. Six-engine module boundaries
 
 - [x] 4.1 Introduce the six application ownership modules and explicit composition root while keeping CLI parsing/presentation thin; verify public help, dispatch and capability ownership remain coherent.

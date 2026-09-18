@@ -786,6 +786,16 @@ describe('bounded application inventory and executable staged patch', () => {
         remedy: '10000 ms'
       },
       {
+        name: 'controller startup timeout', executable: 'node', kind: 'execution-failed',
+        output: { status: null, timedOut: true, errorCode: 'CONTROLLER_STARTUP_TIMEOUT', stderr: 'PRIVATE_OUTPUT' },
+        remedy: 'startup/authentication deadline before target dispatch'
+      },
+      {
+        name: 'controller supervisory deadline', executable: 'node', kind: 'termination-unconfirmed',
+        output: { status: null, timedOut: true, errorCode: 'SUPERVISOR_TIMEOUT', errorMessage: 'PRIVATE_OUTPUT' },
+        remedy: 'did not confirm target admission or process-tree settlement'
+      },
+      {
         name: 'output limit before dependency classification', executable: 'node', kind: 'output-limit',
         output: { status: null, outputLimitExceeded: true, stderr: 'ERR_MODULE_NOT_FOUND PRIVATE_OUTPUT' },
         remedy: '16384 bytes'

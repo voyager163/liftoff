@@ -229,14 +229,6 @@ export async function runWindowsJobCommand(
   const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
   const effectiveCwd = path.resolve(options.cwd ?? process.cwd());
 
-  if (process.platform === 'win32' && !windowsWorkingDirectoryFits(effectiveCwd)) {
-    return {
-      command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
-      processTreeSettled: true, processSpawned: false,
-      errorCode: windowsWorkingDirectoryErrorCode, errorMessage: windowsWorkingDirectoryRemedy
-    };
-  }
-
   if (options.signal?.aborted) {
     return {
       command,
@@ -250,6 +242,14 @@ export async function runWindowsJobCommand(
       processSpawned: false,
       errorCode: 'ABORTED',
       errorMessage: 'Command was aborted before execution.'
+    };
+  }
+
+  if (process.platform === 'win32' && !windowsWorkingDirectoryFits(effectiveCwd)) {
+    return {
+      command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+      processTreeSettled: true, processSpawned: false,
+      errorCode: windowsWorkingDirectoryErrorCode, errorMessage: windowsWorkingDirectoryRemedy
     };
   }
 

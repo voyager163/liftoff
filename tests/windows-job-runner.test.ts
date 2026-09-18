@@ -91,6 +91,11 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     }
     expect(spawnController).not.toHaveBeenCalled();
     expect(await readdir(cwd)).toEqual([]);
+    const aborted = await runWindowsJobCommand({ executable: process.execPath, args: [] }, {
+      cwd, signal: AbortSignal.abort()
+    }, { spawnController });
+    expect(aborted).toMatchObject({ errorCode: 'ABORTED', processSpawned: false });
+    expect(spawnController).not.toHaveBeenCalled();
   });
 
   it('rejects a real controller with the wrong authentication nonce before target dispatch', async () => {

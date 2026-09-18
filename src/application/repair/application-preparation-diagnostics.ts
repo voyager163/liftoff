@@ -13,7 +13,7 @@ export function applicationPreparationFailure(
   if (!ordinary) return null;
   if (['timed-out', 'output-limit', 'interrupted', 'termination-unconfirmed', 'missing-executable'].includes(ordinary.kind) ||
       ['RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED',
-        windowsWorkingDirectoryErrorCode].includes(result.errorCode ?? '')) {
+        'CONTROLLER_STARTUP_TIMEOUT', windowsWorkingDirectoryErrorCode].includes(result.errorCode ?? '')) {
     return ordinary;
   }
   const matches = (pattern: RegExp) => applicationDiagnosticMatches(result, command.maxOutputBytes, pattern);
