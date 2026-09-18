@@ -121,6 +121,20 @@ not private-state transport. Protected pipes/handles, bounded I/O, key snapshots
 actual native contention/cancellation and separately authorized host fixtures
 must be implemented and qualified before either new writer is enabled.
 
+The Linux key-client decoder consumes a bounded `LKC1` stream and clears its
+input. It accepts only the registered metadata fields and creation sequence,
+retains bounded returned identities through partial/error output, and releases
+an opaque one-use key snapshot only after complete output and settled process
+success. Returned paths are observations, not ownership, retry or deletion
+authority. Key snapshots reject JSON serialization and clear owned bytes after
+use or release.
+
+Owned private-process supervision can feed a bounded private stdout observer
+before discarding output on interruption. This preserves already decoded
+nonsecret effect metadata without publishing raw stdout, stderr or key bytes.
+It does not authenticate the helper or establish encrypted persistence or
+readiness; those remain separate coordinator and native qualification gates.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

@@ -344,6 +344,15 @@ Tasks 11.17/11.18 and 11.22-11.24 remain open for the storage/key/daemon and
 end-to-end enrollment contracts rather than treating these primitives as a
 completed keystore or release.
 
+The source key-client protocol decoder now enforces bounded framing, exact
+metadata, monotonic creation uncertainty and process settlement before
+releasing an opaque one-use key snapshot. Private streaming observation retains
+already decoded returned identities when supervision discards raw output on
+timeout, without forwarding observer/provider diagnostics or key bytes.
+Native client compilation, authenticated invocation, persistence and enrollment
+coordination remain separate outstanding work; this decoder is not readiness
+or execution authority.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;

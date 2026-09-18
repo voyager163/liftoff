@@ -171,6 +171,8 @@ export class OwnedPrivateStateProcessRunner {
     maximumBytes: number;
     signal?: AbortSignal;
     captureStderr?: boolean;
+    /** Private adapter only: synchronous bounded observation, never a public log callback. */
+    observePrivateStdout?(bytes: Uint8Array): void;
   }): Promise<{ exitCode: number; stdout: Uint8Array; stderr: Uint8Array }> {
     stateAssert(Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 300_000
       && Number.isSafeInteger(request.maximumBytes) && request.maximumBytes > 0, 'invalid-binding');
@@ -226,14 +228,20 @@ export class OwnedPrivateStateProcessRunner {
       };
       const abort = (): void => stop('cancelled');
       const timer = setTimeout(() => stop('timeout'), request.timeoutMs);
-      const collect = (buffers: Uint8Array[], chunk: Buffer, keep: boolean): void => {
+      const collect = (buffers: Uint8Array[], chunk: Buffer, keep: boolean, observe = false): void => {
         bytes += chunk.length;
         if (discarded || failure || finishing && !owned.has(child)) { chunk.fill(0); return; }
         if (bytes > request.maximumBytes) { chunk.fill(0); stop('storage-limit'); return; }
+        if (observe && request.observePrivateStdout) {
+          const copy = Buffer.from(chunk);
+          try { request.observePrivateStdout(copy); }
+          catch { chunk.fill(0); stop('operation-failed'); return; }
+          finally { copy.fill(0); }
+        }
         if (keep) buffers.push(chunk);
         else chunk.fill(0);
       };
-      child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk, true));
+      child.stdout.on('data', (chunk: Buffer) => collect(stdout, chunk, true, true));
       child.stderr.on('data', (chunk: Buffer) => collect(stderr, chunk, request.captureStderr !== false));
       child.once('error', () => stop('native-command-failed'));
       child.once('exit', (code) => { exitCode = code; void finish(false); });
