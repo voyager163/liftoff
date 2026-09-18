@@ -50,7 +50,7 @@ execution evidence remains separate and unperformed.
 - [x] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; preserve the existing workspace layout and recovery records, admit the resolved Windows cwd against the Win32 length bound before controller dispatch, and document explicit shorter storage selection for new work without relocation or approval reuse; verify real native startup, supported-length literal paths and bounded over-limit/pre-execution failures under stock supported PowerShell/.NET conditions without extending production deadlines.
 - [x] 3.4 Qualify actual Win32 Job Object assignment, root exit, descendant accounting and cancellation; verify uncertain settlement never issues success or cleans a potentially active workspace.
 - [ ] 3.5 Qualify restricted-host, AppLocker/WDAC, corrupted-asset and unsupported-controller failures; verify no policy bypass, undeclared helper download or fallback kill of unrelated processes occurs.
-- [ ] 3.6 Preserve POSIX owned-group settlement and private workspace recovery during the Windows correction; verify equivalent macOS/Linux success, timeout, interrupted-output and uncertain-owner cases.
+- [x] 3.6 Preserve POSIX owned-group settlement and private workspace recovery during the Windows correction; verify equivalent macOS/Linux success, timeout, interrupted-output and uncertain-owner cases.
 - [ ] 3.7 Verify native helper assets and required host contracts from the installed artifact, not the checkout; verify supported relocation, read-only installation and argument/path handling on all required platforms.
 - [ ] 3.8 Run the complete Windows repair/process boundary lane after the established fixes; verify prior failure cases pass without removing tests, manufacturing proof or merely increasing timeouts.
 
@@ -116,6 +116,15 @@ root-exit fixture was corrected because Node's own child-job teardown
 terminated that child first; no controller guarantee was weakened to pass it.
 This completes the exercised native Job Object behavior, not minimum-host,
 architecture-wide or installed-artifact qualification.
+
+Task 3.6 has passing native POSIX source-host evidence from run `35352071630`
+at `d9783d087a905ccdb361b6b7bbb5d6f69ac48bcf`. Both Ubuntu and macOS passed
+all applicable `process-runner`, `state-migration-process` and
+`repair-workspaces` cases: 83 passed per host, with only the two Windows-specific
+cases unselected. They cover actual owned groups, bounded interruption/output,
+settlement and guarded workspace recovery. The overall source run still failed
+in other suites; these scoped passes do not close the full-matrix, encrypted
+custody or installed-artifact gates.
 
 ## 4. Six-engine module boundaries
 
