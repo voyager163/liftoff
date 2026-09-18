@@ -363,6 +363,13 @@ session admission and non-replacing exact-item operations, with creation
 uncertainty preserved. Runtime loader/dependency admission, real service
 behavior, custody and enrollment/restart readiness remain separate open gates.
 
+The pinned single-key GNOME persisted-format inspector now bounds and validates
+the binary layout, withheld metadata and complete byte digest. Synthetic cases
+exercise every truncation boundary and malformed counts/fields. It neither
+decrypts nor promotes a format header or the provider's MD5 content checksum to
+authenticated key, durable-save or readiness evidence. Native persisted-key
+and restart binding remains outstanding under 11.22-11.24.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;

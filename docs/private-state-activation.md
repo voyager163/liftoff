@@ -145,6 +145,16 @@ service/store. Runtime dependency admission, synthetic private-service behavior,
 authenticated invocation and actual controlled-store persistence/recovery remain
 unqualified; compilation does not enable enrollment.
 
+`inspectControlledGnomeBinary` provides bounded structural inspection for the
+pinned writer's single-key binary format, rejecting plaintext, unknown headers,
+truncation, excessive counts/lengths, duplicate attributes and trailing data.
+Its output binds the complete byte digest without publishing collection labels
+or attribute values. The underlying format uses AES-128-CBC and an MD5 content
+checksum, not authenticated encryption; the returned result explicitly grants
+no authentication, durability or readiness proof. Pairing a persisted generation
+with the actual application key still requires private readback and fresh-process
+verification, not a matching header.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:
