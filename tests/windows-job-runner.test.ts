@@ -200,7 +200,7 @@ describe.runIf(process.platform === 'win32')('native Win32 Job Object settlement
       executable: process.execPath,
       args: ['-e', `
         const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}],
-          { stdio: ['ignore', 'inherit', 'inherit'] });
+          { detached: true, stdio: ['ignore', 'inherit', 'inherit'] });
         child.once('spawn', () => {
           require('node:fs').writeFileSync('root.txt', 'exited');
           child.unref();
