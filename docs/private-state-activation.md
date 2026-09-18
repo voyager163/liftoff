@@ -145,6 +145,15 @@ service/store. Runtime dependency admission, synthetic private-service behavior,
 authenticated invocation and actual controlled-store persistence/recovery remain
 unqualified; compilation does not enable enrollment.
 
+Follow-up [run 35390417800](https://github.com/voyager163/liftoff/actions/runs/35390417800)
+passed all 84 cases on each native Linux architecture, including 13 compiled-
+client behavior cases against a fresh private in-memory synthetic service.
+Actual loader/dependency identities, encrypted-session negotiation, prompt/plain
+refusal, owner/PID/GUID binding, exact item validation and post-write identity
+retention were exercised. This was not a real GNOME daemon or persistent
+keystore; it does not qualify password-protected persistence, encrypted host
+storage, enrollment or restart recovery.
+
 `inspectControlledGnomeBinary` provides bounded structural inspection for the
 pinned writer's single-key binary format, rejecting plaintext, unknown headers,
 truncation, excessive counts/lengths, duplicate attributes and trailing data.
