@@ -198,9 +198,11 @@ export async function applicationVerificationFixtureContext(
   permissions: { projectCode: boolean; dependencyPreparation: boolean; network: boolean },
   options: { env?: NodeJS.ProcessEnv; includeRawControls?: boolean } = {}
 ): Promise<ApplicationVerificationOptions> {
-  const homedir = path.join(path.dirname(root), 'verification-records-home');
+  const homedir = path.join(path.dirname(root), process.platform === 'win32' ? 'state' : 'verification-records-home');
   await mkdir(homedir, { recursive: true, mode: 0o700 });
-  const storage = { homedir, env: {}, repositoryRoot: root };
+  const storage = {
+    homedir, env: process.platform === 'win32' ? { LOCALAPPDATA: homedir } : {}, repositoryRoot: root
+  };
   const controls = options.includeRawControls === false ? [] : await Promise.all([
     captureProjectFileSnapshot(root, ['liftoff.manifest.json']),
     captureProjectFileSnapshot(root, ['liftoff.config.json'])

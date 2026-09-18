@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, currentApplicationTargets } from '../src/application/repair/application-inventory.js';
@@ -27,7 +27,7 @@ vi.mock('node:fs/promises', async (original) => {
 
 const directories: string[] = [];
 async function fixture() {
-  const directory = path.resolve(`.repair application ${randomUUID()}`);
+  const directory = await mkdtemp(path.resolve('.repair application '));
   directories.push(directory);
   return { directory, ...await createApplicationRepairFixture(directory) };
 }

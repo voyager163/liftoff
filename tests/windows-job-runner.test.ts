@@ -93,7 +93,7 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     expect(await readdir(cwd)).toEqual([]);
   });
 
-  it('records native controller startup stages without extending execution deadlines', async () => {
+  it('measures native interop lookup and compilation with explicit runtime references', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-startup-'));
     tempDirs.push(root);
     let source = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
@@ -107,6 +107,9 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
       expect(source.split(anchor)).toHaveLength(2);
       source = source.replace(anchor, `${anchor}\n[Console]::Error.WriteLine('liftoff-startup:${label}')`);
     }
+    source = source.replace('Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop',
+      "[void](Get-Command Add-Type -ErrorAction Stop)\n[Console]::Error.WriteLine('liftoff-startup:interop-resolved')\n" +
+      'Add-Type -TypeDefinition $win32TypeDef -ReferencedAssemblies @([object].Assembly.Location) -ErrorAction Stop');
     const assetPath = path.join(root, 'instrumented-controller.ps1');
     await writeFile(assetPath, source);
     const stages: Array<{ stage: string; elapsedMs: number }> = [];
@@ -132,12 +135,12 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
       }
     });
     if (result.processTreeSettled === true) retainedDirs.delete(root);
-    console.info('Native controller startup stages (instrumented diagnostic, not qualification):', JSON.stringify(stages));
+    console.info('Native controller explicit-reference startup stages (instrumented diagnostic, not qualification):', JSON.stringify(stages));
     expect(result.status, JSON.stringify({ code: result.errorCode, detail: result.errorMessage, stderr: result.stderr, stages })).toBe(0);
     expect(result.processTreeSettled).toBe(true);
     expect(result.stdout.trim()).toBe('native-startup-probe');
     expect(stages.map((entry) => entry.stage)).toEqual([
-      'script-entered', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
+      'script-entered', 'interop-resolved', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
     ]);
   }, 90_000);
 });

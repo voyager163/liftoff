@@ -81,7 +81,7 @@ async function runCommand(...args: Parameters<typeof runProjectCommand>): Promis
 
 const hash = (bytes: string | Buffer) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 async function folder(prefix: string) {
-  const value = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
+  const value = await realpath(await mkdtemp(path.join(process.platform === 'win32' ? process.cwd() : os.tmpdir(), prefix)));
   const identity = await lstat(value, { bigint: true });
   roots.push({ path: value, device: identity.dev, inode: identity.ino, birthtimeNs: identity.birthtimeNs, mode: identity.mode });
   return value;

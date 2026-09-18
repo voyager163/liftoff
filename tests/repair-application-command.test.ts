@@ -55,7 +55,9 @@ afterEach(async () => {
 });
 
 async function createOwnedFixture(): Promise<OwnedFixtureRoot> {
-  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "liftoff-guided repair's-")));
+  const parent = await realpath(await mkdtemp(path.join(
+    process.platform === 'win32' ? process.cwd() : os.tmpdir(), "liftoff-guided repair's-"
+  )));
   const identity = await lstat(parent, { bigint: true });
   const owner = { path: parent, device: identity.dev, inode: identity.ino, birthtimeNs: identity.birthtimeNs, mode: identity.mode };
   roots.push(owner);

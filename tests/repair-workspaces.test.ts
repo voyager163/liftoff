@@ -186,6 +186,33 @@ describe('private repair workspace registration', () => {
     expect(await tree(f.directory)).toEqual(before);
   });
 
+  it.runIf(process.platform === 'win32')('preserves over-limit workspace records and recovers only through their original storage', async () => {
+    const f = await fixture();
+    const originalStorage = {
+      ...f.storage, env: { LOCALAPPDATA: path.join(f.home, 'long-state-location-'.repeat(3)) }
+    };
+    const handle = await createRepairVerificationWorkspace(f.project, f.request, originalStorage);
+    expect(handle.roles.project.length).toBeGreaterThan(258);
+    const originalBytes = await tree(f.home);
+    const result = await new NodeCommandRunner().run({
+      executable: process.execPath,
+      args: ['-e', "require('node:fs').writeFileSync('must-not-exist.txt', 'unapproved')"]
+    }, { cwd: handle.roles.project, ensureProcessTreeSettled: true, timeoutMs: 5_000 });
+    expect(result).toMatchObject({
+      status: null, errorCode: 'WINDOWS_CWD_TOO_LONG', processSpawned: false, processTreeSettled: true
+    });
+    expect(await tree(f.home)).toEqual(originalBytes);
+    const shorterStorage = { ...f.storage, env: { LOCALAPPDATA: path.join(f.home, 'state') } };
+    expect((await inspectRepairVerificationWorkspaces(f.project, shorterStorage)).status).toBe('absent');
+    expect((await recoverRepairVerificationWorkspaces(f.project, shorterStorage)).status).toBe('absent');
+    expect(await tree(f.home)).toEqual(originalBytes);
+    expect((await inspectRepairVerificationWorkspaces(f.project, originalStorage)).workspaces[0])
+      .toMatchObject({ workspaceId: handle.workspaceId, owner: 'active', commandsStarted: 0 });
+    await handle.releaseOwner();
+    expect((await recoverRepairVerificationWorkspaces(f.project, originalStorage)).cleanupComplete).toBe(true);
+    await expect(lstat(handle.directory)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it.each(['project', 'staging'])('rejects storage overlapping %s before private metadata writes', async (which) => {
     const f = await fixture();
     const before = await tree(f.directory);
