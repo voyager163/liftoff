@@ -42,6 +42,35 @@ availability does not prove backend encryption or access controls, and ordinary
 kernel keyrings do not supply reboot-durable custody. They are not admitted as
 a plaintext or ephemeral fallback. See the [fscrypt API and protection limits](https://www.kernel.org/doc/html/latest/filesystems/fscrypt.html).
 
+The specific GNOME Keyring audit also leaves existing-daemon admission blocked.
+It examined GNOME Keyring commit
+`da00f9621eaf263d5ed4236df9c22798ea8021d2` (four commits after release 51.0)
+and libsecret commit `a5cd57f103038c06b64d5f6ebfd0e627bb40af4e` (one commit
+after release 0.21.8.2), not those release tags themselves. Targeted, nonmutating
+reads over an explicitly encrypted session are possible, but do not establish
+the selected key's durable encrypted persistence:
+
+- Secret Service exposes no authoritative backing filename or saved-generation
+  binding. Reconstructing a filename from an item path or the caller's
+  `XDG_DATA_HOME` is not evidence of the daemon's actual storage.
+- GNOME's PKCS#11 `CKA_TRUSTED` predicate observes a nonempty currently loaded
+  master password. It is not a Secret Service property or proof of a particular
+  saved encrypted generation. The save implementation can choose plaintext
+  persistence for an empty master password.
+- A unique D-Bus owner and exact item lookup do not prevent same-owner key
+  mutation. A read gives one key snapshot, not an immutable version.
+  libsecret's plaintext session fallback must be rejected before secret loading.
+
+See the pinned [collection password predicate and persistence implementation](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/pkcs11/secret-store/gkm-secret-collection.c),
+[public collection interface](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/daemon/dbus/org.freedesktop.Secrets.xml),
+and [session fallback](https://github.com/GNOME/libsecret/blob/a5cd57f103038c06b64d5f6ebfd0e627bb40af4e/libsecret/secret-session.c).
+The audit blockers are `gnome_collection_persistence_binding_unavailable` and
+`gnome_encrypted_saved_generation_unverifiable`; these are descriptive audit
+labels, not new executable provider registrations. A controlled-store admission
+or enrollment/restart-recovery design would require separate review and effect
+authorization. No daemon launch, password change, unlock or key enrollment
+follows from this audit.
+
 For Windows, use the documented [BitLocker provider security requirements](https://learn.microsoft.com/en-us/windows/win32/secprov/win32-encryptablevolume#security-considerations)
 and [CredReadW semantics](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw).
 `CRED_PERSIST_LOCAL_MACHINE` means the same user's later logons on that machine,

@@ -279,6 +279,17 @@ resolved without plaintext fallback, inferred authorization or mocked native
 qualification. No new platform writer, key access or privileged host effect
 has been enabled.
 
+The user-requested password-protected GNOME Keyring audit is complete but does
+not close Linux key custody. Its supported read-only interfaces cannot bind an
+exact live key to a durably saved encrypted collection. The GNOME-specific
+`CKA_TRUSTED` attribute observes a nonempty loaded password, not the backing
+file or persisted generation; encrypted Secret Service transport does not fill
+that gap. Pinned source identities, evidence and the two persistence-proof
+blockers are recorded in `docs/private-state-activation.md`. Controlled store
+admission/enrollment remains an unapproved design/effect boundary. Task 11.17
+and the dependent Linux writer remain open; independent POSIX lock work may
+proceed without accessing keys or enabling that writer.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;
