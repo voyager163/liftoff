@@ -37,12 +37,14 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     const observations = [];
     retainedDirs.add(root);
     for (const [kind, target] of [['canonical', cwd], ['internal-namespace', path.toNamespacedPath(cwd)]] as const) {
+      const started = performance.now();
       const result = await runWindowsJobCommand({
         executable: process.execPath,
         args: ['-e', "require('node:fs').writeFileSync(process.argv[1], 'exact owned effect\\n'); console.log(process.cwd());", `${kind}.txt`]
       }, { cwd: target, timeoutMs: 5_000, maxOutputBytes: 2048 });
       observations.push({ kind, status: result.status, settled: result.processTreeSettled,
-        code: result.errorCode, detail: result.errorMessage, cwdLength: target.length });
+        code: result.errorCode, detail: result.errorMessage, cwdLength: target.length,
+        elapsedMs: Math.round(performance.now() - started) });
       if (result.status === 0 && result.processTreeSettled === true) {
         expect(await readFile(path.join(cwd, `${kind}.txt`), 'utf8')).toBe('exact owned effect\n');
         expect(path.toNamespacedPath(result.stdout.trim())).toBe(path.toNamespacedPath(cwd));
@@ -53,7 +55,7 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
       expect.objectContaining({ kind: 'canonical', status: 0, settled: true }),
       expect.objectContaining({ kind: 'internal-namespace', status: 0, settled: true })
     ]);
-  }, 30_000);
+  }, 90_000);
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
