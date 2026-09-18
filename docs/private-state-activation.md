@@ -135,6 +135,16 @@ nonsecret effect metadata without publishing raw stdout, stderr or key bytes.
 It does not authenticate the helper or establish encrypted persistence or
 readiness; those remain separate coordinator and native qualification gates.
 
+The native C client in `native/linux-keystore-client` now compiles on Linux x64
+and arm64 against the exact pinned crypto-enabled libsecret source and an
+explicit private prefix.
+[Run 35388541555](https://github.com/voyager163/liftoff/actions/runs/35388541555)
+also passed all 70 parser/framing/source-interface cases per architecture.
+That run deliberately did not execute the production helper or contact a
+service/store. Runtime dependency admission, synthetic private-service behavior,
+authenticated invocation and actual controlled-store persistence/recovery remain
+unqualified; compilation does not enable enrollment.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

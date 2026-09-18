@@ -353,6 +353,16 @@ Native client compilation, authenticated invocation, persistence and enrollment
 coordination remain separate outstanding work; this decoder is not readiness
 or execution authority.
 
+The native libsecret client source and parent decoder now interoperate through
+the bounded `LKC1` protocol. Compile-only run `35388541555` at
+`fd5b8de3e329cfc2f02e8ca712c0edd97db485c5` built actual Linux x64/arm64 helpers
+against the exact clean private libsecret source/prefix and passed 70 interface
+and C framing/parser cases per host. The production helper was not executed.
+Source behavior uses explicit private owner binding, prompt refusal, encrypted
+session admission and non-replacing exact-item operations, with creation
+uncertainty preserved. Runtime loader/dependency admission, real service
+behavior, custody and enrollment/restart readiness remain separate open gates.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;
