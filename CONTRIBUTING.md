@@ -74,14 +74,30 @@ the [documented public GitHub-hosted runner labels](https://docs.github.com/en/a
 `ubuntu-24.04` (x64) and `ubuntu-24.04-arm` (arm64), with Node 24.20.0, npm 12.0.2,
 Python 3.14.7 and OpenTofu 1.12.6 without its wrapper. Each lane resolves only
 the selected Python and OpenTofu executables to canonical absolute paths, enables
-`LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION=1`, and runs
-`tests/state-posix-platform.test.ts` with one worker and a 20-minute job budget.
-Existing test and production deadlines are unchanged.
+`LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION=1` and
+`LIFTOFF_LINUX_READONLY_PROCESS_TEST=1`, and runs
+`tests/state-posix-platform.test.ts` alongside
+`tests/state-linux-readonly-process.test.ts` with one worker and a 20-minute job
+budget. Existing test and production deadlines are unchanged. The read-only
+guard exercises nonsecret fixtures with per-process Landlock restrictions;
+its actual assertion outcomes remain in the same retained test JSON report.
+
+Before testing, the lane records each selected regular executable's UID, GID,
+mode, device/inode identity and SHA-256 digest. Only when the runner owns the
+selected executable and can modify its mode does preparation remove that file's
+group/other write bits through its open descriptor. It verifies unchanged
+identity, ownership and bytes afterward, preserving all other mode bits.
+Already admitted executables are left unchanged. Ownership or permission
+denial, changed bytes/identity, links and non-executable inputs produce an
+explicit fixture-preparation blocker with retained metadata. This correction
+is limited to those ephemeral source-test tools: no sudo, recursive permission
+changes, broad toolcache edits, copied Python binary or relaxed production
+admission is permitted.
 
 Host metadata records the actual Node and runner architectures and rejects a
-platform/architecture mismatch before testing. Both that record and the test
-JSON report are retained under the runner label, actual runner architecture,
-source SHA and run attempt, including on test failure. These are synthetic
+platform/architecture mismatch before testing. The host record, tool-preparation
+metadata and test JSON report are retained under the runner label, actual
+runner architecture, source SHA and run attempt, including on test failure. These are synthetic
 local-state lock source runs, not encryption, key-store custody or release
 qualification. The native exercise uses no credentials, external providers,
 provider downloads or privileged host changes. If the arm64 runner is

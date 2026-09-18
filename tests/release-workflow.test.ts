@@ -1,5 +1,6 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFile, execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
@@ -226,16 +227,16 @@ describe('read-only coordinated release evidence workflow', () => {
       expect(job.steps.slice(0, -2).some((step: any) => step.run === command)).toBe(true);
     }
     expect(job.steps.at(-2)).toEqual({
-      name: 'Run native POSIX lock source diagnostics (not custody or release qualification)',
-      env: { LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: '1' },
-      run: 'npx vitest run tests/state-posix-platform.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+      name: 'Run native POSIX lock and readonly guard source diagnostics (not custody or release qualification)',
+      env: { LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: '1', LIFTOFF_LINUX_READONLY_PROCESS_TEST: '1' },
+      run: 'npx vitest run tests/state-posix-platform.test.ts tests/state-linux-readonly-process.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
         '--outputFile.json=diagnostics/native-posix-lock-tests.json'
     });
     expect(job.steps.at(-1).if).toBe('always()');
     expect(job.steps.at(-1).uses).toMatch(/^actions\/upload-artifact@[a-f0-9]{40}$/);
     expect(job.steps.at(-1).with).toEqual({
       name: 'native-posix-lock-source-diagnostics-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}',
-      path: 'diagnostics/native-posix-lock-host.json\ndiagnostics/native-posix-lock-tests.json\n',
+      path: 'diagnostics/native-posix-lock-host.json\ndiagnostics/native-posix-tool-preparation.json\ndiagnostics/native-posix-lock-tests.json\n',
       'if-no-files-found': 'error', 'retention-days': 7
     });
     const commands = job.steps.map((step: any) => step.run ?? '').join('\n');
@@ -264,7 +265,7 @@ describe('read-only coordinated release evidence workflow', () => {
       else await expect(observed).rejects.toThrow('Native Linux is required');
       const report = JSON.parse(await readFile(path.join(root, 'diagnostics/native-posix-lock-host.json'), 'utf8'));
       expect(report).toMatchObject({
-        scope: 'synthetic-local-state-locks-only', platform: process.platform, architecture: process.arch,
+        scope: 'synthetic-local-state-locks-and-nonsecret-readonly-guard-only', platform: process.platform, architecture: process.arch,
         runnerArchitecture: process.arch.toUpperCase(), expectedArchitecture: process.arch,
         sourceCommit: 'a'.repeat(40), runAttempt: '2',
         encryptedCustodyQualification: 'not-performed', releaseQualification: 'not-performed'
@@ -272,6 +273,122 @@ describe('read-only coordinated release evidence workflow', () => {
       const other = process.arch === 'arm64' ? 'x64' : 'arm64';
       await expect(run(other, process.arch.toUpperCase())).rejects.toThrow();
       await expect(run(process.arch, other.toUpperCase())).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32')('prepares only runner-owned selected tool modes without replacing or changing executable bytes', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['native-posix-lock-diagnostics'];
+    const prepareIndex = job.steps.findIndex((step: any) => step.name === 'Prepare only selected native executable permissions');
+    expect(prepareIndex).toBeGreaterThan(job.steps.findIndex((step: any) => step.name === 'Resolve selected native tools'));
+    expect(prepareIndex).toBeLessThan(job.steps.length - 2);
+    const step = job.steps[prepareIndex];
+    expect(step.shell).toBe('bash');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await realpath(await scratchDirectory());
+    try {
+      const python = path.join(root, 'python');
+      const tofu = path.join(root, 'tofu');
+      const unrelated = path.join(root, 'unrelated');
+      const bytes = '#!/bin/sh\nexit 0\n';
+      for (const file of [python, tofu, unrelated]) await writeFile(file, bytes);
+      await chmod(python, 0o777);
+      await chmod(tofu, 0o755);
+      await chmod(unrelated, 0o777);
+      const original = await lstat(python, { bigint: true });
+      const run = () => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root, env: { ...process.env, LIFTOFF_STATE_PYTHON: python, LIFTOFF_TOFU_EXECUTABLE: tofu }
+      });
+      await run();
+      const report = JSON.parse(await readFile(path.join(root, 'diagnostics/native-posix-tool-preparation.json'), 'utf8'));
+      const digest = createHash('sha256').update(bytes).digest('hex');
+      expect(report).toMatchObject({
+        status: 'prepared', scope: 'ephemeral-selected-source-test-tools-only',
+        platform: process.platform, architecture: process.arch, runnerUid: process.getuid!()
+      });
+      expect(report.tools[0]).toMatchObject({
+        id: 'python', path: python, status: 'prepared', permissionsChanged: true,
+        before: { uid: String(original.uid), gid: String(original.gid), mode: '0777', sha256: digest },
+        after: { uid: String(original.uid), gid: String(original.gid), mode: '0755', sha256: digest }
+      });
+      expect(report.tools[1]).toMatchObject({ id: 'tofu', status: 'prepared', permissionsChanged: false });
+      for (const key of ['dev', 'ino', 'uid', 'gid', 'size', 'mtimeNs', 'sha256']) {
+        expect(report.tools[0].after[key]).toBe(report.tools[0].before[key]);
+      }
+      expect((await lstat(python, { bigint: true })).ino).toBe(original.ino);
+      expect(await readFile(python, 'utf8')).toBe(bytes);
+      expect((await lstat(unrelated)).mode & 0o777).toBe(0o777);
+      await run();
+      const repeated = JSON.parse(await readFile(path.join(root, 'diagnostics/native-posix-tool-preparation.json'), 'utf8'));
+      expect(repeated.tools.every((tool: any) => tool.status === 'prepared' && tool.permissionsChanged === false)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32').each([
+    'non-owner', 'not-executable', 'directory', 'symlink', 'chmod-denied', 'changed-bytes', 'replaced-path'
+  ])('retains a fixture-preparation blocker for %s without a broader permission fallback', async (scenario) => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const step = workflow.jobs['native-posix-lock-diagnostics'].steps.find((entry: any) =>
+      entry.name === 'Prepare only selected native executable permissions');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await realpath(await scratchDirectory());
+    try {
+      const python = path.join(root, 'python');
+      const tofu = path.join(root, 'tofu');
+      const other = path.join(root, 'unrelated');
+      const bytes = '#!/bin/sh\nexit 0\n';
+      for (const file of [python, tofu, other]) {
+        await writeFile(file, bytes);
+        await chmod(file, 0o777);
+      }
+      let prefix = '';
+      if (scenario === 'non-owner') prefix = `process.getuid = () => ${process.getuid!() + 1};\n`;
+      if (scenario === 'not-executable') await chmod(python, 0o666);
+      if (scenario === 'directory' || scenario === 'symlink') {
+        await rm(python);
+        if (scenario === 'directory') await mkdir(python);
+        else await symlink(other, python);
+      }
+      if (['chmod-denied', 'changed-bytes', 'replaced-path'].includes(scenario)) {
+        const hook = scenario === 'chmod-denied'
+          ? "throw Object.assign(new Error('fixture chmod denied'), { code: 'EPERM' });"
+          : scenario === 'changed-bytes'
+            ? "originalChmod(fd, mode); fs.writeFileSync(process.env.LIFTOFF_STATE_PYTHON, 'changed bytes');"
+            : `originalChmod(fd, mode);
+               const file = process.env.LIFTOFF_STATE_PYTHON;
+               const bytes = fs.readFileSync(file);
+               fs.renameSync(file, file + '.original');
+               fs.writeFileSync(file, bytes, { mode: 0o755 });`;
+        prefix = `import fs from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+const originalChmod = fs.fchmodSync;
+fs.fchmodSync = (fd, mode) => { ${hook} };
+syncBuiltinESMExports();
+`;
+      }
+      await expect(execFileAsync(process.execPath, ['--input-type=module', '-e', prefix + program], {
+        cwd: root, env: { ...process.env, LIFTOFF_STATE_PYTHON: python, LIFTOFF_TOFU_EXECUTABLE: tofu }
+      })).rejects.toThrow('Fixture-preparation blocker (python)');
+      const report = JSON.parse(await readFile(path.join(root, 'diagnostics/native-posix-tool-preparation.json'), 'utf8'));
+      expect(report.status).toBe('blocked');
+      expect(report.tools[0]).toMatchObject({ status: 'blocked', blocker: expect.stringContaining('Fixture-preparation blocker (python)') });
+      expect(report.tools[1]).toMatchObject({ id: 'tofu', status: 'not-inspected', permissionsChanged: false });
+      expect((await lstat(tofu)).mode & 0o777).toBe(0o777);
+      expect((await lstat(other)).mode & 0o777).toBe(0o777);
+      expect(await readFile(other, 'utf8')).toBe(bytes);
+      if (scenario === 'non-owner' || scenario === 'chmod-denied') {
+        expect(report.tools[0].permissionsChanged).toBe(false);
+        expect((await lstat(python)).mode & 0o777).toBe(0o777);
+        expect(await readFile(python, 'utf8')).toBe(bytes);
+      }
+      if (scenario === 'changed-bytes') expect(report.tools[0].after.sha256).not.toBe(report.tools[0].before.sha256);
+      if (scenario === 'replaced-path') expect(report.tools[0].blocker).toContain('path inode changed');
     } finally {
       await rm(root, { recursive: true, force: true });
     }

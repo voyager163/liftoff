@@ -540,7 +540,7 @@ jobs:
           import { mkdirSync, writeFileSync } from 'node:fs';
           const host = {
             schemaVersion: 1,
-            scope: 'synthetic-local-state-locks-only',
+            scope: 'synthetic-local-state-locks-and-nonsecret-readonly-guard-only',
             platform: process.platform,
             architecture: process.arch,
             runnerOS: process.env.RUNNER_OS,
@@ -580,6 +580,99 @@ jobs:
           test -x "$tofu_path"
           printf 'LIFTOFF_STATE_PYTHON=%s\nLIFTOFF_TOFU_EXECUTABLE=%s\n' "$python_path" "$tofu_path" >> "$GITHUB_ENV"
 
+      - name: Prepare only selected native executable permissions
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { accessSync, closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+          import { isAbsolute } from 'node:path';
+          const report = {
+            schemaVersion: 1, scope: 'ephemeral-selected-source-test-tools-only',
+            platform: process.platform, architecture: process.arch, runnerUid: process.getuid(),
+            status: 'blocked',
+            tools: [
+              { id: 'python', path: process.env.LIFTOFF_STATE_PYTHON, status: 'not-inspected', permissionsChanged: false },
+              { id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }
+            ]
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          const persist = () => writeFileSync('diagnostics/native-posix-tool-preparation.json', JSON.stringify(report, null, 2) + '\n');
+          const metadata = (stat) => ({
+            dev: String(stat.dev), ino: String(stat.ino), uid: String(stat.uid), gid: String(stat.gid),
+            size: String(stat.size), mtimeNs: String(stat.mtimeNs), ctimeNs: String(stat.ctimeNs),
+            mode: (Number(stat.mode) & 0o7777).toString(8).padStart(4, '0'), regular: stat.isFile()
+          });
+          const snapshot = (fd) => {
+            const before = fstatSync(fd, { bigint: true });
+            assert.ok(before.isFile(), 'Selected executable is not a regular file');
+            assert.ok(before.size <= BigInt(Number.MAX_SAFE_INTEGER), 'Selected executable size is not safely measurable');
+            const digest = createHash('sha256');
+            const buffer = Buffer.alloc(1024 * 1024);
+            for (let offset = 0; offset < Number(before.size);) {
+              const count = readSync(fd, buffer, 0, Math.min(buffer.length, Number(before.size) - offset), offset);
+              assert.ok(count > 0, 'Selected executable changed while reading');
+              digest.update(buffer.subarray(0, count));
+              offset += count;
+            }
+            const after = fstatSync(fd, { bigint: true });
+            assert.deepEqual(metadata(after), metadata(before), 'Selected executable changed while hashing');
+            return { ...metadata(after), sha256: digest.digest('hex') };
+          };
+          persist();
+          for (const tool of report.tools) {
+            let fd;
+            try {
+              assert.ok(tool.path && isAbsolute(tool.path), 'Explicit absolute executable path is required');
+              tool.observed = metadata(lstatSync(tool.path, { bigint: true }));
+              persist();
+              assert.ok(tool.observed.regular, 'Selected executable must be a regular file, not a link or directory');
+              assert.equal(realpathSync(tool.path), tool.path, 'Selected executable path must already be canonical');
+              fd = openSync(tool.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+              tool.before = snapshot(fd);
+              assert.equal(tool.before.dev, tool.observed.dev, 'Selected executable device changed before opening');
+              assert.equal(tool.before.ino, tool.observed.ino, 'Selected executable inode changed before opening');
+              persist();
+              accessSync(tool.path, constants.X_OK);
+              const mode = Number.parseInt(tool.before.mode, 8);
+              const admittedMode = mode & ~0o022;
+              if (mode !== admittedMode) {
+                assert.equal(tool.before.uid, String(report.runnerUid), 'Selected writable executable is not owned by the runner; no permission change is authorized');
+                fchmodSync(fd, admittedMode);
+                tool.permissionsChanged = true;
+                persist();
+              }
+              tool.after = snapshot(fd);
+              persist();
+              for (const key of ['dev', 'ino', 'uid', 'gid', 'size', 'mtimeNs', 'sha256']) {
+                assert.equal(tool.after[key], tool.before[key], `Selected executable ${key} changed during preparation`);
+              }
+              assert.equal(tool.after.mode, admittedMode.toString(8).padStart(4, '0'), 'Selected executable mode is not admitted');
+              const named = metadata(lstatSync(tool.path, { bigint: true }));
+              assert.ok(named.regular, 'Selected executable path is no longer a regular file');
+              assert.equal(named.dev, tool.after.dev, 'Selected executable path device changed');
+              assert.equal(named.ino, tool.after.ino, 'Selected executable path inode changed');
+              assert.equal(named.mode, tool.after.mode, 'Selected executable path mode changed');
+              assert.equal(realpathSync(tool.path), tool.path, 'Selected executable path is no longer canonical');
+              accessSync(tool.path, constants.X_OK);
+              tool.status = 'prepared';
+            } catch (error) {
+              tool.status = 'blocked';
+              tool.blocker = `Fixture-preparation blocker (${tool.id}): ${error.message}`;
+              if (typeof error.code === 'string') tool.errorCode = error.code;
+              console.error(tool.blocker);
+              process.exitCode = 1;
+              break;
+            } finally {
+              if (fd !== undefined) closeSync(fd);
+              persist();
+            }
+          }
+          if (report.tools.every((tool) => tool.status === 'prepared')) report.status = 'prepared';
+          persist();
+          NODE
+
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
 
@@ -589,11 +682,12 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Run native POSIX lock source diagnostics (not custody or release qualification)
+      - name: Run native POSIX lock and readonly guard source diagnostics (not custody or release qualification)
         env:
           LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: "1"
+          LIFTOFF_LINUX_READONLY_PROCESS_TEST: "1"
         run: >-
-          npx vitest run tests/state-posix-platform.test.ts
+          npx vitest run tests/state-posix-platform.test.ts tests/state-linux-readonly-process.test.ts
           --maxWorkers=1 --reporter=verbose --reporter=json
           --outputFile.json=diagnostics/native-posix-lock-tests.json
 
@@ -604,6 +698,7 @@ jobs:
           name: native-posix-lock-source-diagnostics-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
           path: |
             diagnostics/native-posix-lock-host.json
+            diagnostics/native-posix-tool-preparation.json
             diagnostics/native-posix-lock-tests.json
           if-no-files-found: error
           retention-days: 7

@@ -469,7 +469,12 @@ source-only evidence, not native, live-provider or publication qualification.
 
 The optional `diagnostic_native_posix_locks_only` dispatch exercises only native
 Linux x64/arm64 POSIX locking on synthetic local state with explicitly selected
-Python/OpenTofu binaries. Actual host architecture metadata accompanies each
+Python/OpenTofu binaries, plus nonsecret per-process Linux read-only guard
+fixtures. Exact selected-file preparation may remove group/other write bits
+only from runner-owned executables; before/after UID, GID, mode, file identity
+and byte digests are retained, with failure closed on unauthorized or changed
+inputs. It never copies Python alone, changes broader toolcache permissions or
+relaxes production admission. Actual host architecture metadata accompanies each
 test report; configured runner labels alone are not execution evidence, and an
 unavailable arm64 result remains pending. This lane does not establish encrypted
 storage, key-store custody, enrollment or release readiness. It may combine with
