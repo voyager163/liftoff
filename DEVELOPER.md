@@ -482,6 +482,18 @@ the Windows and native Go diagnostic flags, but any diagnostic selection omits
 the full source matrix and coverage gate. Default, push and PR coverage stays
 unchanged; see the [diagnostic routing table](CONTRIBUTING.md#validate-a-change).
 
+Default source CI also compiles `native/linux-keystore-client` on native Linux
+x64 and arm64 from exact libsecret commit
+`a5cd57f103038c06b64d5f6ebfd0e627bb40af4e`, with the crypto-enabled library in an
+explicit private prefix. These two jobs supplement rather than replace the
+complete suite and separate coverage gates. The
+`diagnostic_linux_keystore_build_only` input selects just those build/interface
+checks, or combines them with explicitly selected diagnostics. Dependency-free
+protocol tests may execute their framing fixture, but the production helper and
+real Secret Service are not invoked. Bounded reports and `build-identity.json`
+are source/compile evidence only; no helper binary is uploaded and provider,
+custody, loader/runtime closure and release admission remain separate.
+
 The standalone gate reads only the two canonical coverage-summary paths through
 bounded, identity-checked reads. Its `ok` covers **TypeScript/JavaScript
 measurements only**, not native helpers or release readiness. Missing reports,

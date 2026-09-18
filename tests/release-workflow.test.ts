@@ -10,8 +10,10 @@ import { createRootTestConfig } from '../vitest.config.js';
 
 const execFileAsync = promisify(execFile);
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
-const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)";
+const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)";
+const keystoreBuildCondition = `${fullValidationCondition} || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)`;
 const fullValidationJobs = ['test', 'test-shards', 'telemetry-infrastructure', 'standard-node-templates', 'coverage-qualification'];
+const defaultSourceJobs = [...fullValidationJobs, 'linux-keystore-build'];
 
 async function scratchDirectory() {
   await mkdir('.cache', { recursive: true });
@@ -33,7 +35,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -142,9 +144,13 @@ describe('read-only coordinated release evidence workflow', () => {
       description: 'Run Linux POSIX lock source diagnostics (not custody or release qualification)',
       type: 'boolean', required: false, default: false
     });
+    expect(workflow.on.workflow_dispatch.inputs.diagnostic_linux_keystore_build_only).toEqual({
+      description: 'Compile Linux keystore helper and test source protocol (not provider or custody qualification)',
+      type: 'boolean', required: false, default: false
+    });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...fullValidationJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
@@ -167,19 +173,28 @@ describe('read-only coordinated release evidence workflow', () => {
   });
 
   it.each([
-    { windows: false, go: false, posix: false, manualJobs: fullValidationJobs },
-    { windows: true, go: false, posix: false, manualJobs: ['windows-diagnostics'] },
-    { windows: false, go: true, posix: false, manualJobs: ['native-go-diagnostics'] },
-    { windows: true, go: true, posix: false, manualJobs: ['windows-diagnostics', 'native-go-diagnostics'] },
-    { windows: false, go: false, posix: true, manualJobs: ['native-posix-lock-diagnostics'] },
-    { windows: true, go: false, posix: true, manualJobs: ['windows-diagnostics', 'native-posix-lock-diagnostics'] },
-    { windows: false, go: true, posix: true, manualJobs: ['native-go-diagnostics', 'native-posix-lock-diagnostics'] },
-    { windows: true, go: true, posix: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'] }
-  ])('routes Windows=$windows, Go=$go and POSIX=$posix without a diagnostic-only success pretending to be full validation', async ({ windows, go, posix, manualJobs }) => {
+    { windows: false, go: false, posix: false, build: false, manualJobs: defaultSourceJobs },
+    { windows: true, go: false, posix: false, build: false, manualJobs: ['windows-diagnostics'] },
+    { windows: false, go: true, posix: false, build: false, manualJobs: ['native-go-diagnostics'] },
+    { windows: true, go: true, posix: false, build: false, manualJobs: ['windows-diagnostics', 'native-go-diagnostics'] },
+    { windows: false, go: false, posix: true, build: false, manualJobs: ['native-posix-lock-diagnostics'] },
+    { windows: true, go: false, posix: true, build: false, manualJobs: ['windows-diagnostics', 'native-posix-lock-diagnostics'] },
+    { windows: false, go: true, posix: true, build: false, manualJobs: ['native-go-diagnostics', 'native-posix-lock-diagnostics'] },
+    { windows: true, go: true, posix: true, build: false, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'] },
+    { windows: false, go: false, posix: false, build: true, manualJobs: ['linux-keystore-build'] },
+    { windows: true, go: false, posix: false, build: true, manualJobs: ['windows-diagnostics', 'linux-keystore-build'] },
+    { windows: false, go: true, posix: false, build: true, manualJobs: ['native-go-diagnostics', 'linux-keystore-build'] },
+    { windows: true, go: true, posix: false, build: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'linux-keystore-build'] },
+    { windows: false, go: false, posix: true, build: true, manualJobs: ['native-posix-lock-diagnostics', 'linux-keystore-build'] },
+    { windows: true, go: false, posix: true, build: true, manualJobs: ['windows-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] },
+    { windows: false, go: true, posix: true, build: true, manualJobs: ['native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] },
+    { windows: true, go: true, posix: true, build: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] }
+  ])('routes Windows=$windows, Go=$go, POSIX=$posix and build=$build without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
       const conditions: Record<string, boolean> = {
-        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix),
+        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build),
+        [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build) || build,
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only": event === 'workflow_dispatch' && windows,
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix
@@ -188,8 +203,128 @@ describe('read-only coordinated release evidence workflow', () => {
         expect(Object.hasOwn(conditions, job.if)).toBe(true);
         return conditions[job.if];
       }).map(([id]) => id);
-      expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : fullValidationJobs)].sort());
+      expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs)].sort());
       expect(selected.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('adds two compile-only source jobs with exact libsecret source, crypto, private prefix and no helper execution', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['linux-keystore-build'];
+    expect(job.if).toBe(keystoreBuildCondition);
+    expect(job.name).toContain('compile/source-interface');
+    expect(job.name).toContain('not provider or custody qualification');
+    expect(job['runs-on']).toBe('${{ matrix.os }}');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.needs).toBeUndefined();
+    expect(job.strategy).toEqual({
+      'fail-fast': false, 'max-parallel': 2,
+      matrix: { include: [{ os: 'ubuntu-24.04', arch: 'x64' }, { os: 'ubuntu-24.04-arm', arch: 'arm64' }] }
+    });
+    expect(job.env).toEqual({
+      LIBSECRET_COMMIT: 'a5cd57f103038c06b64d5f6ebfd0e627bb40af4e',
+      EXPECTED_ARCH: '${{ matrix.arch }}'
+    });
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe('24.20.0');
+    expect(job.steps.some((step: any) => step.run === 'npm install --global "npm@12.0.2"')).toBe(true);
+    expect(job.steps.some((step: any) => step.run === 'npm ci')).toBe(true);
+    const prerequisites = job.steps.find((step: any) => step.id === 'prerequisites').run;
+    expect(prerequisites).toContain('sudo apt-get install --yes --no-install-recommends build-essential pkg-config libglib2.0-dev libgcrypt20-dev meson ninja-build gettext');
+    expect(prerequisites).toContain('pkg-config --atleast-version=2.74 glib-2.0 gio-2.0 gobject-2.0');
+    const source = job.steps.find((step: any) => step.id === 'source').run;
+    expect(source).toContain('root="$RUNNER_TEMP/liftoff-libsecret-build"');
+    expect(source).toContain('mkdir -m 700 "$root"');
+    expect(source).toContain('fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/libsecret.git "$LIBSECRET_COMMIT"');
+    expect(source).toContain('checkout --quiet --detach FETCH_HEAD');
+    expect(source).toContain('test "$(git -C "$root/source" rev-parse HEAD)" = "$LIBSECRET_COMMIT"');
+    expect(source).toContain('status --porcelain=v1 --untracked-files=all');
+    expect(source).toContain('LIBSECRET_SOURCE_DIR=%s\\nLIBSECRET_PREFIX=%s\\nLIBSECRET_BUILD_DIR=%s\\n');
+    const libsecret = job.steps.find((step: any) => step.id === 'libsecret').run;
+    expect(libsecret).toContain('--prefix="$LIBSECRET_PREFIX" --libdir=lib --buildtype=release --wrap-mode=nodownload');
+    for (const option of [
+      '-Dcrypto=libgcrypt', '-Dmanpage=false', '-Dgtk_doc=false', '-Dintrospection=false', '-Dvapi=false',
+      '-Dpam=false', '-Dtpm2=false', '-Dbash_completion=disabled', '-Dtest_setup=disabled'
+    ]) expect(libsecret).toContain(option);
+    expect(libsecret).toContain('meson install -C "$LIBSECRET_BUILD_DIR" --no-rebuild');
+    expect(libsecret).toContain('test "$(git -C "$LIBSECRET_SOURCE_DIR" rev-parse HEAD)" = "$LIBSECRET_COMMIT"');
+    expect(libsecret).toContain('status --porcelain=v1 --untracked-files=all');
+    expect(libsecret).toContain('PKG_CONFIG_PATH="$LIBSECRET_PREFIX/lib/pkgconfig" pkg-config --variable=prefix libsecret-1');
+    expect(job.steps.find((step: any) => step.id === 'protocol').run).toBe(
+      'npx vitest run tests/linux-keystore-client-contract.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+      '--outputFile.json=diagnostics/linux-keystore-protocol-tests.json'
+    );
+    expect(job.steps.find((step: any) => step.id === 'helper').run).toBe('node native/linux-keystore-client/build.mjs');
+    const commands = job.steps.map((step: any) => step.run ?? '').join('\n');
+    expect(commands).not.toMatch(/gnome-keyring|secret-tool|dbus-run-session|--contract|\bmeson test\b|-Dcrypto=disabled|LD_LIBRARY_PATH|gate:release|npm publish/);
+    const retained = job.steps.at(-1);
+    expect(retained.if).toBe('always()');
+    expect(retained.with).toEqual({
+      name: 'linux-keystore-compile-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}',
+      path: 'diagnostics/linux-keystore-build-report.json\ndiagnostics/linux-keystore-protocol-summary.json\ndiagnostics/build-identity.json\n',
+      'if-no-files-found': 'error', 'retention-days': 7
+    });
+  });
+
+  it('retains bounded compile/protocol evidence and rejects missing, oversized or mismatched build identities', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['linux-keystore-build'];
+    const step = job.steps.find((entry: any) => entry.name === 'Capture bounded compile and protocol evidence (not runtime closure)');
+    expect(step.if).toBe('always()');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'native/linux-keystore-client/build'), { recursive: true });
+      await mkdir(path.join(root, 'diagnostics'));
+      const identity = {
+        platform: 'linux', architecture: process.arch, libsecretCommit: job.env.LIBSECRET_COMMIT,
+        qualification: 'compile-only-not-provider-or-runtime-admission'
+      };
+      const identityFile = path.join(root, 'native/linux-keystore-client/build/build-identity.json');
+      const protocolFile = path.join(root, 'diagnostics/linux-keystore-protocol-tests.json');
+      const writeIdentity = (value: object) => writeFile(identityFile, JSON.stringify(value));
+      await writeIdentity(identity);
+      await writeFile(protocolFile, JSON.stringify({
+        success: true, numPassedTests: 1, numFailedTests: 0, numPendingTests: 0,
+        testResults: [{ assertionResults: [{ fullName: 'dependency-free framing', status: 'passed' }] }]
+      }));
+      const run = (outcomes: Record<string, string> = {}) => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root, env: {
+          ...process.env, EXPECTED_ARCH: process.arch, LIBSECRET_COMMIT: job.env.LIBSECRET_COMMIT,
+          GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2',
+          PREREQUISITES_OUTCOME: 'success', SOURCE_OUTCOME: 'success', LIBSECRET_OUTCOME: 'success',
+          PROTOCOL_OUTCOME: 'success', HELPER_OUTCOME: 'success', ...outcomes
+        }
+      });
+      await run();
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/build-identity.json'), 'utf8'))).toEqual(identity);
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-build-report.json'), 'utf8'))).toMatchObject({
+        classification: 'compile-source-interface-only', architecture: process.arch, sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        helperExecution: 'not-performed', providerQualification: 'not-performed', custodyQualification: 'not-performed',
+        runtimeClosure: 'not-performed', issues: []
+      });
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-protocol-summary.json'), 'utf8')))
+        .toMatchObject({ success: true, passed: 1, failed: 0, pending: 0 });
+      await writeIdentity({ ...identity, libsecretCommit: 'b'.repeat(40) });
+      await expect(run()).rejects.toThrow();
+      await expect(readFile(path.join(root, 'diagnostics/build-identity.json'))).rejects.toThrow();
+      await writeIdentity({ ...identity, architecture: 'not-the-current-architecture' });
+      await expect(run()).rejects.toThrow();
+      await writeFile(identityFile, ' '.repeat(128 * 1024 + 1));
+      await expect(run()).rejects.toThrow();
+      await rm(identityFile);
+      await expect(run()).rejects.toThrow();
+      await writeIdentity(identity);
+      await writeFile(protocolFile, ' '.repeat(256 * 1024 + 1));
+      await expect(run()).rejects.toThrow();
+      await rm(protocolFile);
+      await expect(run()).rejects.toThrow();
+      await run({ PROTOCOL_OUTCOME: 'skipped', HELPER_OUTCOME: 'failure' });
+      await expect(readFile(path.join(root, 'diagnostics/build-identity.json'))).rejects.toThrow();
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-build-report.json'), 'utf8')).stages)
+        .toMatchObject({ protocol: 'skipped', helper: 'failure' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

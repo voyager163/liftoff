@@ -50,7 +50,9 @@ Native framework/preparation and backend-disabled OpenTofu checks, the explicit
 Windows boundary lane, per-host launcher Go coverage, telemetry checks, package
 smoke and Linux generated containers run in separate source-integration jobs.
 The two Node-template lanes and telemetry OpenTofu/container lane remain
-separate. This is 16 jobs in total, not a longer timeout or reduced test scope.
+separate. Two additional Linux x64/arm64 keystore-helper compile checks bring
+default source validation to 18 jobs, preserving all 16 existing jobs rather
+than increasing timeouts or reducing test scope.
 Linux full-suite shards also collect V8 coverage rather than repeating the
 entire Linux suite in another job. The [coverage gate](DEVELOPER.md#focused-commands)
 merges their actual measurements before checking the two packages independently.
@@ -104,23 +106,60 @@ provider downloads or privileged host changes. If the arm64 runner is
 unavailable, its result remains pending or missing; an x64 success is not a
 substitute and no emulation/fallback is selected.
 
-All three inputs default to `false`. Manual dispatch routing is explicit:
+The keystore-helper compile checks run on the same documented Linux x64/arm64
+labels by default, or separately with `diagnostic_linux_keystore_build_only`.
+They use Node 24.20.0/npm 12.0.2 and prepare only declared C11, pkg-config,
+GLib/GIO/GObject >=2.74, Meson, Ninja, gettext and libgcrypt development
+prerequisites on the ephemeral runner. No keystore daemon package is needed.
+Installed prerequisite versions are retained rather than invented pins.
 
-| `diagnostic_windows_only` | `diagnostic_native_go_only` | `diagnostic_native_posix_locks_only` | Jobs executed |
-| --- | --- | --- | --- |
-| `false` | `false` | `false` | Complete 16-job source validation, including coverage |
-| `true` | `false` | `false` | Windows diagnostics |
-| `false` | `true` | `false` | Ubuntu and macOS native Go diagnostics |
-| `true` | `true` | `false` | Windows and native Go diagnostics |
-| `false` | `false` | `true` | Linux x64 and arm64 POSIX lock diagnostics |
-| `true` | `false` | `true` | Windows and POSIX lock diagnostics |
-| `false` | `true` | `true` | Native Go and POSIX lock diagnostics |
-| `true` | `true` | `true` | All three diagnostic lanes |
+The workflow fetches the exact clean libsecret commit
+[`a5cd57f103038c06b64d5f6ebfd0e627bb40af4e`](https://gitlab.gnome.org/GNOME/libsecret/-/tree/a5cd57f103038c06b64d5f6ebfd0e627bb40af4e),
+not a release tag, into a new runner-owned directory. Its
+[pinned Meson options](https://gitlab.gnome.org/GNOME/libsecret/-/blob/a5cd57f103038c06b64d5f6ebfd0e627bb40af4e/meson_options.txt)
+select `crypto=libgcrypt`; documentation, introspection, PAM, TPM2 and automatic
+test-service setup are disabled. Libsecret installs into an explicit private
+prefix with `--libdir=lib`, and `LIBSECRET_SOURCE_DIR`/`LIBSECRET_PREFIX` are
+passed to `native/linux-keystore-client/build.mjs`. System libsecret fallback
+and plain/disabled crypto are not alternatives.
+
+The 20-minute jobs run dependency-free framing/source-interface tests and
+compile the helper, but do not execute the production helper—even with
+`--contract`—or run upstream service tests. No daemon, bus, store or key is
+accessed. Bounded build/protocol reports and the original `build-identity.json`
+are retained under source SHA, actual runner architecture and run attempt;
+helper binaries are not uploaded, signed or published. This is compile/source
+interface evidence, not provider behavior, encrypted custody or runtime closure.
+Missing prerequisites or either architecture remain explicit blockers.
+
+All four inputs default to `false`. In the table, Windows, Go, POSIX and Build
+mean `diagnostic_windows_only`, `diagnostic_native_go_only`,
+`diagnostic_native_posix_locks_only` and `diagnostic_linux_keystore_build_only`.
+
+| Windows | Go | POSIX | Build | Jobs executed |
+| --- | --- | --- | --- | --- |
+| `false` | `false` | `false` | `false` | Complete 18-job source validation, including coverage and helper builds |
+| `true` | `false` | `false` | `false` | Windows diagnostics |
+| `false` | `true` | `false` | `false` | Ubuntu and macOS native Go diagnostics |
+| `true` | `true` | `false` | `false` | Windows and native Go diagnostics |
+| `false` | `false` | `true` | `false` | Linux x64 and arm64 POSIX lock diagnostics |
+| `true` | `false` | `true` | `false` | Windows and POSIX lock diagnostics |
+| `false` | `true` | `true` | `false` | Native Go and POSIX lock diagnostics |
+| `true` | `true` | `true` | `false` | All three execution diagnostic lanes |
+| `false` | `false` | `false` | `true` | Linux x64 and arm64 helper compile/source-interface checks |
+| `true` | `false` | `false` | `true` | Windows diagnostics and helper builds |
+| `false` | `true` | `false` | `true` | Native Go diagnostics and helper builds |
+| `true` | `true` | `false` | `true` | Windows/native Go diagnostics and helper builds |
+| `false` | `false` | `true` | `true` | POSIX lock diagnostics and helper builds |
+| `true` | `false` | `true` | `true` | Windows/POSIX lock diagnostics and helper builds |
+| `false` | `true` | `true` | `true` | Native Go/POSIX lock diagnostics and helper builds |
+| `true` | `true` | `true` | `true` | All selected diagnostics, including helper builds |
 
 A diagnostic-only dispatch **does not qualify the source or release**, even if
-it is green. Any selected diagnostic flag excludes all full-validation jobs and
-gates; multiple flags run all selected diagnostics rather than skipping
-everything or enabling qualification gates. Push and pull-request events always
+it is green. Any selected diagnostic flag excludes unrelated full-validation
+jobs and gates; helper builds run during diagnostic dispatch only if their own
+flag is selected. Multiple flags run all selected diagnostics rather than
+skipping everything or enabling qualification gates. Push and pull-request events always
 retain the complete source workflow regardless of diagnostic input values.
 
 Before a change is release-ready, also verify the packed artifact:

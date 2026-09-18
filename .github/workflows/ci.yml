@@ -18,6 +18,11 @@ on:
         type: boolean
         required: false
         default: false
+      diagnostic_linux_keystore_build_only:
+        description: Compile Linux keystore helper and test source protocol (not provider or custody qualification)
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -28,7 +33,7 @@ permissions:
 jobs:
   test:
     name: Source integrations (${{ matrix.os }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -162,7 +167,7 @@ jobs:
 
   test-shards:
     name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -249,7 +254,7 @@ jobs:
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -295,7 +300,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -329,7 +334,7 @@ jobs:
 
   coverage-qualification:
     name: Source coverage gate (not native qualification)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
     needs: test-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -400,6 +405,181 @@ jobs:
             coverage/coverage-final.json
             services/telemetry-ingest/coverage/coverage-summary.json
             services/telemetry-ingest/coverage/coverage-final.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-keystore-build:
+    name: Linux keystore compile/source-interface (${{ matrix.arch }}, not provider or custody qualification)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only) || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    env:
+      LIBSECRET_COMMIT: a5cd57f103038c06b64d5f6ebfd0e627bb40af4e
+      EXPECTED_ARCH: ${{ matrix.arch }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Verify actual compile host
+        run: >-
+          node --input-type=module -e
+          "import assert from 'node:assert/strict';
+          assert.equal(process.platform, 'linux');
+          assert.equal(process.arch, process.env.EXPECTED_ARCH);
+          assert.equal(process.arch, process.env.RUNNER_ARCH.toLowerCase());"
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare declared compile prerequisites (no keystore daemon)
+        id: prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libglib2.0-dev libgcrypt20-dev meson ninja-build gettext
+          pkg-config --atleast-version=2.74 glib-2.0 gio-2.0 gobject-2.0
+          mkdir -p diagnostics
+          dpkg-query -W build-essential pkg-config libglib2.0-dev libgcrypt20-dev meson ninja-build gettext > diagnostics/linux-keystore-prerequisites.txt
+
+      - name: Run dependency-free framing and source-interface tests
+        id: protocol
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/linux-keystore-protocol-tests.json
+
+      - name: Fetch and verify exact clean libsecret source (not a release tag)
+        id: source
+        run: |
+          root="$RUNNER_TEMP/liftoff-libsecret-build"
+          mkdir -m 700 "$root"
+          mkdir -m 700 "$root/source" "$root/prefix"
+          git -C "$root/source" init --quiet
+          git -C "$root/source" -c credential.helper= -c core.hooksPath=/dev/null fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/libsecret.git "$LIBSECRET_COMMIT"
+          git -C "$root/source" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$root/source" rev-parse HEAD)" = "$LIBSECRET_COMMIT"
+          test -z "$(git -C "$root/source" status --porcelain=v1 --untracked-files=all)"
+          printf 'LIBSECRET_SOURCE_DIR=%s\nLIBSECRET_PREFIX=%s\nLIBSECRET_BUILD_DIR=%s\n' "$root/source" "$root/prefix" "$root/build" >> "$GITHUB_ENV"
+
+      - name: Build crypto-enabled pinned libsecret into the private prefix
+        id: libsecret
+        run: |
+          meson setup "$LIBSECRET_BUILD_DIR" "$LIBSECRET_SOURCE_DIR" \
+            --prefix="$LIBSECRET_PREFIX" --libdir=lib --buildtype=release --wrap-mode=nodownload \
+            -Dcrypto=libgcrypt -Dmanpage=false -Dgtk_doc=false -Dintrospection=false -Dvapi=false \
+            -Dpam=false -Dtpm2=false -Dbash_completion=disabled -Dtest_setup=disabled
+          meson compile -C "$LIBSECRET_BUILD_DIR" --jobs=2
+          meson install -C "$LIBSECRET_BUILD_DIR" --no-rebuild
+          test "$(git -C "$LIBSECRET_SOURCE_DIR" rev-parse HEAD)" = "$LIBSECRET_COMMIT"
+          test -z "$(git -C "$LIBSECRET_SOURCE_DIR" status --porcelain=v1 --untracked-files=all)"
+          test "$(PKG_CONFIG_PATH="$LIBSECRET_PREFIX/lib/pkgconfig" pkg-config --variable=prefix libsecret-1)" = "$LIBSECRET_PREFIX"
+
+      - name: Compile helper only (do not execute helper or connect to a service)
+        id: helper
+        run: node native/linux-keystore-client/build.mjs
+
+      - name: Capture bounded compile and protocol evidence (not runtime closure)
+        if: always()
+        env:
+          PREREQUISITES_OUTCOME: ${{ steps.prerequisites.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          LIBSECRET_OUTCOME: ${{ steps.libsecret.outcome }}
+          PROTOCOL_OUTCOME: ${{ steps.protocol.outcome }}
+          HELPER_OUTCOME: ${{ steps.helper.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+          const report = {
+            schemaVersion: 1, classification: 'compile-source-interface-only',
+            platform: process.platform, architecture: process.arch, expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            libsecretCommit: process.env.LIBSECRET_COMMIT,
+            stages: Object.fromEntries(['prerequisites', 'source', 'libsecret', 'protocol', 'helper'].map(
+              (stage) => [stage, process.env[`${stage.toUpperCase()}_OUTCOME`] ?? 'not-run'])),
+            helperExecution: 'not-performed', providerQualification: 'not-performed',
+            custodyQualification: 'not-performed', runtimeClosure: 'not-performed',
+            issues: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          for (const file of ['diagnostics/build-identity.json', 'diagnostics/linux-keystore-protocol-summary.json']) {
+            rmSync(file, { force: true });
+          }
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).size <= limit, `Report exceeds byte limit: ${file}`);
+            return readFileSync(file);
+          };
+          const capture = (label, operation) => {
+            try { operation(); } catch (error) {
+              report.issues.push(`${label}: ${String(error.message).slice(0, 512)}`);
+              process.exitCode = 1;
+            }
+          };
+          const prerequisites = 'diagnostics/linux-keystore-prerequisites.txt';
+          if (existsSync(prerequisites)) capture('prerequisites', () => {
+            report.prerequisites = bounded(prerequisites, 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const protocolFile = 'diagnostics/linux-keystore-protocol-tests.json';
+          if (existsSync(protocolFile)) capture('protocol', () => {
+            const protocol = JSON.parse(bounded(protocolFile, 256 * 1024));
+            const cases = protocol.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256, 'Protocol case inventory is missing or oversized');
+            if (report.stages.protocol === 'success') {
+              assert.equal(protocol.success, true);
+              assert.equal(protocol.numFailedTests, 0);
+              assert.equal(protocol.numPendingTests, 0, 'Required dependency-free protocol cases must execute');
+            }
+            writeFileSync('diagnostics/linux-keystore-protocol-summary.json', JSON.stringify({
+              classification: 'dependency-free-framing-and-source-interface-only',
+              success: protocol.success, passed: protocol.numPassedTests, failed: protocol.numFailedTests,
+              pending: protocol.numPendingTests,
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+          });
+          else if (report.stages.protocol === 'success') capture('protocol', () => {
+            throw new Error('Successful protocol step has no test report');
+          });
+          if (report.stages.helper === 'success') capture('build-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.architecture, process.env.EXPECTED_ARCH);
+            assert.equal(identity.libsecretCommit, process.env.LIBSECRET_COMMIT);
+            assert.equal(identity.qualification, 'compile-only-not-provider-or-runtime-admission');
+            writeFileSync('diagnostics/build-identity.json', bytes);
+          });
+          writeFileSync('diagnostics/linux-keystore-build-report.json', JSON.stringify(report, null, 2) + '\n');
+          NODE
+
+      - name: Retain compile/source-interface reports only (no helper binary)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-keystore-compile-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/linux-keystore-build-report.json
+            diagnostics/linux-keystore-protocol-summary.json
+            diagnostics/build-identity.json
           if-no-files-found: error
           retention-days: 7
 
