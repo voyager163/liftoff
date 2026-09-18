@@ -710,6 +710,13 @@ export interface NativeLocalQualificationResult {
   atomicStateReplacement: false;
 }
 
+export interface LinuxNativeLocalQualificationResult extends Omit<NativeLocalQualificationResult, 'schemaVersion' | 'platform'> {
+  schemaVersion: 2;
+  platform: 'linux';
+  architecture: 'x64' | 'arm64';
+  encryptedCustodyQualification: 'not-performed';
+}
+
 export interface DarwinStateVolumeObservation {
   canonicalDirectory: string;
   deviceNode: string;

@@ -1,7 +1,8 @@
 // The protocol is pinned to OpenTofu 1.12.6 internal/flock and statemgr.
 // lockf uses POSIX fcntl record locks, NOT BSD flock. The holder must never
 // open/close another descriptor to its state inode: POSIX would drop its locks.
-export const posixStateLockProgram = String.raw`
+function createPosixStateLockProgram(platform: 'darwin' | 'linux'): string {
+  return String.raw`
 import base64, datetime, errno, fcntl, hashlib, json, os, select, signal, stat, sys, time
 
 MAX = 32 * 1024 * 1024
@@ -58,7 +59,7 @@ signal.signal(signal.SIGTERM, terminate)
 signal.signal(signal.SIGINT, terminate)
 
 try:
-    if sys.platform != "darwin":
+    if sys.platform != "${platform}":
         raise Blocked("unsupported-native-platform")
     if sys.version_info[:2] != (3, 14):
         raise Blocked("native-lock-provider-required")
@@ -182,3 +183,7 @@ finally:
         finally:
             os.close(fd)
 `;
+}
+
+export const posixStateLockProgram = createPosixStateLockProgram('darwin');
+export const linuxPosixStateLockProgram = createPosixStateLockProgram('linux');

@@ -69,13 +69,26 @@ export async function runPrivateStateProcess(request: {
   });
 }
 
-export async function inspectNativeLocalStateTools(request: {
+interface NativeLocalStateToolInspection {
   pythonPath: string;
   tofuPath: string;
   workingDirectory: string;
   signal?: AbortSignal;
-}): Promise<NativeLocalStateTools> {
-  stateAssert(process.platform === 'darwin', 'unsupported-native-platform');
+}
+
+export function inspectNativeLocalStateTools(request: NativeLocalStateToolInspection): Promise<NativeLocalStateTools> {
+  return inspectPosixLocalStateTools(request, 'darwin');
+}
+
+export function inspectLinuxLocalStateTools(request: NativeLocalStateToolInspection): Promise<NativeLocalStateTools> {
+  return inspectPosixLocalStateTools(request, 'linux');
+}
+
+async function inspectPosixLocalStateTools(
+  request: NativeLocalStateToolInspection, platform: 'darwin' | 'linux'
+): Promise<NativeLocalStateTools> {
+  stateAssert(process.platform === platform, 'unsupported-native-platform');
+  if (platform === 'linux') stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
   const python = await captureStateExecutable(request.pythonPath);
   const tofu = await captureStateExecutable(request.tofuPath);
   const py = await runPrivateStateProcess({
@@ -95,7 +108,7 @@ export async function inspectNativeLocalStateTools(request: {
   try {
     const info = JSON.parse(Buffer.from(tf.stdout).toString('utf8'));
     stateAssert(tf.exitCode === 0 && info.terraform_version === nativeLocalStateProtocol.tofuVersion
-      && info.platform === `darwin_${process.arch === 'arm64' ? 'arm64' : 'amd64'}`, 'unqualified-combination');
+      && info.platform === `${platform}_${process.arch === 'arm64' ? 'arm64' : 'amd64'}`, 'unqualified-combination');
   } finally { tf.stdout.fill(0); tf.stderr.fill(0); }
   return { python, tofu, pythonVersion, tofuVersion: '1.12.6', hostId: nativeStateHostId() };
 }

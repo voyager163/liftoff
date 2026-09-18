@@ -3,15 +3,16 @@ import { chmod, lstat, mkdir, readFile, rename, rm, unlink, writeFile } from 'no
 import path from 'node:path';
 import {
   StateMigrationError,
-  type NativeLocalQualificationResult, type NativeLocalStateTools, type StateRegisteredExecutable
+  type LinuxNativeLocalQualificationResult, type NativeLocalQualificationResult,
+  type NativeLocalStateTools, type StateRegisteredExecutable
 } from '../../domain/repair/stateful.js';
 import { assertNoResourceChanges, stateAssert, stateDigest, stateObjectDigest } from '../../domain/repair/stateful-invariants.js';
 import {
-  inspectNativeLocalStateTools, nativeLocalStateProtocol, nativeStateHostId,
+  inspectLinuxLocalStateTools, inspectNativeLocalStateTools, nativeLocalStateProtocol, nativeStateHostId,
   runPrivateStateProcess, startPrivateStateProcess
 } from './native-system.js';
-import { DarwinPosixStateLockProvider } from './posix-native-lock.js';
-import { posixStateLockProgram } from './posix-lock-program.js';
+import { DarwinPosixStateLockProvider, LinuxPosixStateLockProvider } from './posix-native-lock.js';
+import { linuxPosixStateLockProgram, posixStateLockProgram } from './posix-lock-program.js';
 import { stopOwnedStateProcess, stopOwnedStateProcessesIn } from './owned-process.js';
 
 async function localVersion(filename: string): Promise<string> {
@@ -64,6 +65,7 @@ async function waitForNativeConsoleLock(filename: string, exited: () => boolean,
 }
 
 const nativeQualifications = new WeakSet<NativeLocalQualificationResult>();
+const linuxQualifications = new WeakSet<LinuxNativeLocalQualificationResult>();
 
 export function isActualNativeLocalQualification(
   result: NativeLocalQualificationResult, tools: NativeLocalStateTools
@@ -72,18 +74,52 @@ export function isActualNativeLocalQualification(
     && result.tofuBinaryDigest === tools.tofu.sha256 && result.pythonBinaryDigest === tools.python.sha256;
 }
 
+export function isActualLinuxLocalQualification(
+  result: LinuxNativeLocalQualificationResult, tools: NativeLocalStateTools
+): boolean {
+  return process.platform === 'linux' && linuxQualifications.has(result) && result.architecture === process.arch
+    && result.hostRef === nativeStateHostId() && result.hostRef === tools.hostId
+    && result.tofuBinaryDigest === tools.tofu.sha256 && result.pythonBinaryDigest === tools.python.sha256;
+}
+
+interface NativeLocalQualificationRequest {
+  pythonPath: string;
+  tofuPath: string;
+  scratchParent: string;
+  signal?: AbortSignal;
+}
+
 /**
  * Explicit, opt-in qualification. It creates only a fixed terraform_data
  * fixture in a fresh directory, with no cloud/provider credentials or downloads.
  * This is native/backend qualification, never Azure live-resource evidence.
  */
-export async function qualifyNativeLocalState(request: {
-  pythonPath: string;
-  tofuPath: string;
-  scratchParent: string;
-  signal?: AbortSignal;
-}): Promise<{ tools: NativeLocalStateTools; result: NativeLocalQualificationResult }> {
-  stateAssert(process.platform === 'darwin', 'unsupported-native-platform');
+export async function qualifyNativeLocalState(
+  request: NativeLocalQualificationRequest
+): Promise<{ tools: NativeLocalStateTools; result: NativeLocalQualificationResult }> {
+  const { tools, observation } = await qualifyPosixLocalState(request, 'darwin');
+  const result: NativeLocalQualificationResult = Object.freeze({ schemaVersion: 1, platform: 'darwin', ...observation });
+  nativeQualifications.add(result);
+  return { tools, result };
+}
+
+/** Linux lock/tool qualification only; it grants no encrypted custody or producer authority. */
+export async function qualifyLinuxLocalState(
+  request: NativeLocalQualificationRequest
+): Promise<{ tools: NativeLocalStateTools; result: LinuxNativeLocalQualificationResult }> {
+  stateAssert(process.platform === 'linux', 'unsupported-native-platform');
+  stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
+  const { tools, observation } = await qualifyPosixLocalState(request, 'linux');
+  const result: LinuxNativeLocalQualificationResult = Object.freeze({
+    schemaVersion: 2, platform: 'linux', architecture: process.arch,
+    encryptedCustodyQualification: 'not-performed', ...observation
+  });
+  linuxQualifications.add(result);
+  return { tools, result };
+}
+
+async function qualifyPosixLocalState(request: NativeLocalQualificationRequest, platform: 'darwin' | 'linux') {
+  stateAssert(process.platform === platform, 'unsupported-native-platform');
   const parent = await lstat(request.scratchParent);
   stateAssert(parent.isDirectory() && !parent.isSymbolicLink(), 'unsafe-path');
   const root = path.join(request.scratchParent, `state-native-qualification-${randomUUID()}`);
@@ -97,10 +133,12 @@ export async function qualifyNativeLocalState(request: {
     const mirror = path.join(root, 'empty-provider-mirror');
     await mkdir(mirror, { mode: 0o700 });
     await writeFile(path.join(root, 'liftoff.private.tfrc'), `disable_checkpoint = true\nprovider_installation {\n filesystem_mirror { path = ${JSON.stringify(mirror)} }\n}\n`, { mode: 0o600 });
-    const tools = await inspectNativeLocalStateTools({
+    const inspectTools = platform === 'darwin' ? inspectNativeLocalStateTools : inspectLinuxLocalStateTools;
+    const tools = await inspectTools({
       pythonPath: request.pythonPath, tofuPath: request.tofuPath, workingDirectory: root, signal: request.signal
     });
-    const provider = new DarwinPosixStateLockProvider({ python: tools.python });
+    const provider = platform === 'darwin' ? new DarwinPosixStateLockProvider({ python: tools.python })
+      : new LinuxPosixStateLockProvider({ python: tools.python });
     checks.push('exact-installed-tofu-1.12.6', 'registered-cpython-3.14', 'verified-pinned-fcntl-source');
     const backend = `terraform {\n backend "local" { path = ${JSON.stringify(statePath)} }\n}\n`;
     const fixture = 'resource "terraform_data" "fixture" {\n input = "liftoff-synthetic-native-qualification"\n}\n';
@@ -268,16 +306,20 @@ export async function qualifyNativeLocalState(request: {
     checks.push('inode-preserving-conditional-publication', 'stale-publication-rejected', 'absent-destination-unsupported',
       'unlink-retirement-unsupported', 'uncoordinated-inode-replacement-detected');
     original.fill(0); moved.fill(0); concurrentBytes.fill(0);
-    const result: NativeLocalQualificationResult = Object.freeze({
-      schemaVersion: 1, kind: 'native-local-state-qualification', status: 'verified', platform: 'darwin',
-      hostRef: nativeStateHostId(), tofuVersion: '1.12.6', tofuBinaryDigest: tools.tofu.sha256,
-      pythonBinaryDigest: tools.python.sha256,
-      protocolDigest: stateObjectDigest({ protocol: nativeLocalStateProtocol, helper: stateDigest(posixStateLockProgram) }),
-      sourceCommit: nativeLocalStateProtocol.sourceCommit, observedAt: Date.now(), checks: Object.freeze(checks),
-      stateScope: 'synthetic-disposable-only', azureLiveQualification: 'not-performed', atomicStateReplacement: false
-    });
-    nativeQualifications.add(result);
-    return { tools, result };
+    return {
+      tools,
+      observation: {
+        kind: 'native-local-state-qualification', status: 'verified',
+        hostRef: nativeStateHostId(), tofuVersion: '1.12.6', tofuBinaryDigest: tools.tofu.sha256,
+        pythonBinaryDigest: tools.python.sha256,
+        protocolDigest: stateObjectDigest({
+          protocol: nativeLocalStateProtocol,
+          helper: stateDigest(platform === 'darwin' ? posixStateLockProgram : linuxPosixStateLockProgram)
+        }),
+        sourceCommit: nativeLocalStateProtocol.sourceCommit, observedAt: Date.now(), checks: Object.freeze(checks),
+        stateScope: 'synthetic-disposable-only', azureLiveQualification: 'not-performed', atomicStateReplacement: false
+      } as const
+    };
   } finally {
     if (consoleProcess) {
       consoleProcess.stdin.end();
