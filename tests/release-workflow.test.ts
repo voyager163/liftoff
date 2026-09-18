@@ -1,9 +1,30 @@
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { parse } from 'yaml';
 
 describe('read-only coordinated release evidence workflow', () => {
+  it('keeps all packaged text-resource families LF-stable under Windows checkout defaults', () => {
+    const resources = [
+      'assets/templates/components/common/dockerignore.txt', 'assets/templates/catalog.json',
+      'assets/skills/catalog.json', 'assets/profiles/catalog.json', 'assets/distribution/native-trust.json',
+      'assets/governance/single-maintainer-gitflow/policy.md', 'assets/repair/windows-job-controller.ps1'
+    ];
+    const fields = execFileSync('git', ['-c', 'core.autocrlf=true', 'check-attr', '-z', 'eol', '--', ...resources], {
+      cwd: process.cwd(), encoding: 'utf8'
+    }).split('\0').filter(Boolean);
+    expect(fields).toEqual(resources.flatMap((file) => [file, 'eol', 'lf']));
+  });
+
+  it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    for (const id of ['test', 'coverage-qualification']) {
+      const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
+      expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
+    }
+  });
+
   it('measures native launcher source fixtures separately on each source host without claiming PE qualification', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const job = workflow.jobs.test;

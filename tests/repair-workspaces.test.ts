@@ -1,8 +1,6 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
 import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createRepairVerificationWorkspace, inspectRepairVerificationWorkspaces, recoverRepairVerificationWorkspaces,
@@ -19,9 +17,10 @@ import {
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
+import { NodeCommandRunner, type CommandResult } from '../src/process-runner.js';
 
-const execute = promisify(execFile);
 const roots: string[] = [];
+const retained = new Set<string>();
 const activity = {
   kind: 'verification' as const, commandDigest: canonicalSha256('reviewed command'),
   network: false, lifecycle: false
@@ -29,7 +28,9 @@ const activity = {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) {
+    if (!retained.has(root)) await rm(root, { recursive: true, force: true });
+  }
 });
 
 async function tree(root: string): Promise<Record<string, string>> {
@@ -130,15 +131,29 @@ describe('private repair workspace registration', () => {
       device: expect.any(String), inode: expect.any(String), birthtime: expect.any(String)
     }));
     await handle.checkpoint('copying');
-    const value = await handle.runOwned(activity, async () => {
-      const registered = await recordFor(f, handle);
-      expect(registered.record.activities).toMatchObject({ started: 1, settled: 0 });
-      expect(registered.record.activities.inFlight).toHaveLength(1);
-      await execute(process.execPath, ['-e', "require('node:fs').writeFileSync('effect.txt', 'approved private effect\\n')"], {
-        cwd: handle.roles.project, timeout: 5_000, maxBuffer: 1024
+    let commandResult: CommandResult | undefined;
+    let value: number;
+    try {
+      value = await handle.runOwned(activity, async () => {
+        const registered = await recordFor(f, handle);
+        expect(registered.record.activities).toMatchObject({ started: 1, settled: 0 });
+        expect(registered.record.activities.inFlight).toHaveLength(1);
+        commandResult = await new NodeCommandRunner().run({
+          executable: process.execPath,
+          args: ['-e', "require('node:fs').writeFileSync('effect.txt', 'approved private effect\\n')"]
+        }, {
+          cwd: handle.roles.project, timeoutMs: 5_000, maxOutputBytes: 1024,
+          ensureProcessTreeSettled: true
+        });
+        if (commandResult.processTreeSettled !== true) retained.add(f.directory);
+        return { value: 42, allKnownCommandsSettled: commandResult.processTreeSettled === true };
       });
-      return { value: 42, allKnownCommandsSettled: true };
-    });
+    } catch (error) {
+      if (commandResult?.processTreeSettled !== true) retained.add(f.directory);
+      throw new Error(`Native workspace execution failed; cwd length=${handle.roles.project.length}, code=${commandResult?.errorCode ?? 'no-result'}, retained=${retained.has(f.directory)}.`, { cause: error });
+    }
+    expect(commandResult?.status, `${commandResult?.errorCode ?? ''}: ${commandResult?.errorMessage ?? ''}; cwd length=${handle.roles.project.length}`).toBe(0);
+    expect(await readFile(path.join(handle.roles.project, 'effect.txt'), 'utf8')).toBe('approved private effect\n');
     expect(value).toBe(42);
     await handle.checkpoint('verified');
     await handle.releaseOwner();

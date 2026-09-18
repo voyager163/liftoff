@@ -53,7 +53,7 @@ function targetsProject(
 export function createUpdateContinuation(
   projectRoot: string,
   mode: UpdateCommandMode = 'normal',
-  platform: NodeJS.Platform = process.platform,
+  platform?: NodeJS.Platform,
   context?: UpdateGuidanceContext
 ): StructuredContinuationV1 {
   const root = targetsProject(projectRoot, context) ? context.projectRoot : projectRoot;
@@ -70,7 +70,7 @@ export function createUpdateContinuation(
 export function formatUpdateCommand(
   projectRoot: string,
   mode: UpdateCommandMode = 'normal',
-  platform: NodeJS.Platform = process.platform,
+  platform?: NodeJS.Platform,
   context?: UpdateGuidanceContext
 ): string {
   return createUpdateContinuation(projectRoot, mode, platform, context).displayCommand;

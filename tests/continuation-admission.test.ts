@@ -6,6 +6,7 @@ import { assertStrictKeys, assertStrictObject, protocolString } from '../src/pro
 import { canonicalizePathBoundary, formatNativeSafeCommandLine } from '../src/domain/execution/continuation.js';
 import { formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
+import { createUpdateContinuation } from '../src/application/update/command-guidance.js';
 
 function bound() {
   return createStructuredContinuation({
@@ -17,6 +18,17 @@ function bound() {
 }
 
 describe('literal and context-bound continuation admission', () => {
+  it('renders canonical update targets for their recorded host unless presentation explicitly selects another host', () => {
+    const windows = createUpdateContinuation('C:\\work\\project', 'check');
+    const posix = createUpdateContinuation('/work/project', 'check');
+    expect(windows.displayCommand).toBe("& 'liftoff' 'update' '--check' '--project' 'C:\\work\\project'");
+    expect(posix.displayCommand).toBe('liftoff update --check --project /work/project');
+    expect(validateStructuredContinuation(windows)).toEqual(windows);
+    expect(validateStructuredContinuation(posix)).toEqual(posix);
+    expect(() => createUpdateContinuation('/work/project', 'check', 'win32')).toThrow(/different hosts/);
+    expect(() => createUpdateContinuation('C:\\work\\project', 'check', 'linux')).toThrow(/different hosts/);
+  });
+
   it('binds selected governance scope and configuration into actual parseable arguments', () => {
     const continuation = bound();
     expect(parseArgs([...continuation.args])).toMatchObject({

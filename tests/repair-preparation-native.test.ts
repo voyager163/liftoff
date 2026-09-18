@@ -77,7 +77,14 @@ describe('native locked application preparation qualification', () => {
     const f = await fixture({ stack: 'go-huma' });
     const before = await inspectApplicationLayout(f.root, f.manifest);
     const candidate = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
-    expect(candidate.blockers).toEqual([]);
+    expect(candidate.blockers, JSON.stringify({
+      blockers: candidate.blockers,
+      inventoryComplete: candidate.report.inventory.complete,
+      mappings: candidate.scope.mappings.length,
+      stagedFiles: candidate.scope.staging.files.length,
+      preparations: candidate.scope.preparation.map((entry) => entry.provider),
+      tools: candidate.scope.toolchain.map((entry) => ({ id: entry.id, version: entry.version }))
+    })).toEqual([]);
     const result = await verifyApplicationPatch(f.root, candidate, new NodeCommandRunner(),
       await applicationVerificationFixtureContext(f.root, candidate, { projectCode: true, dependencyPreparation: true, network: true }));
     expect(result.status, result.blockers.join('\n')).toBe('passed');
