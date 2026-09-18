@@ -115,9 +115,13 @@ default. Do not persist verification overrides globally or commit workstation
 registry preferences.
 
 The package smoke test builds, runs `npm pack`, checks the explicit package
-surface and size budget, installs the tarball into an isolated prefix, and
-executes the installed CLI, upgrade help, and an injected read-only self-upgrade
-check without selecting the host global prefix. The standard template verifier generates a Node.js
+surface and the approved 20 MiB unpacked-size budget, installs the tarball into
+an isolated prefix, and executes the installed CLI, native-owner upgrade help
+and effect-free unsupported-ownership refusal without selecting the host global
+prefix. This private archive is source-test transport, not an npm release or
+migration bridge; the budget does not change native-release requirements.
+Only the two explicitly packaged infrastructure READMEs are allowed, not
+deployment files or state. The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.

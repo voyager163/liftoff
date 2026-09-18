@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import fs from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, X509Certificate } from 'node:crypto';
 import {
   isRfc1918Ipv4,
   validateFqdn,
@@ -112,12 +112,21 @@ describe('staging-private-http transport primitive', () => {
       '-keyout', expiredKeyPath, '-out', expiredCsrPath,
       '-subj', `/CN=${approvedFqdn}`
     ]);
+    const caConfigPath = path.join(certDir, 'ca.cnf');
+    fs.writeFileSync(path.join(certDir, 'index.txt'), '');
+    fs.writeFileSync(path.join(certDir, 'serial'), '01\n');
+    fs.writeFileSync(caConfigPath, [
+      '[ca]', 'default_ca = fixture', '[fixture]',
+      'database = index.txt', 'serial = serial', 'new_certs_dir = .',
+      'default_md = sha256', 'policy = fixture_policy',
+      '[fixture_policy]', 'commonName = supplied', ''
+    ].join('\n'));
     execFileSync('openssl', [
-      'x509', '-req', '-in', expiredCsrPath,
-      '-CA', caCertPath, '-CAkey', caKeyPath, '-CAcreateserial',
-      '-out', expiredCertPath,
-      '-not_before', '20190101000000Z', '-not_after', '20200101000000Z'
-    ]);
+      'ca', '-batch', '-notext', '-config', caConfigPath,
+      '-cert', caCertPath, '-keyfile', caKeyPath,
+      '-in', expiredCsrPath, '-out', expiredCertPath, '-extfile', sanExtPath,
+      '-startdate', '20190101000000Z', '-enddate', '20200101000000Z'
+    ], { cwd: certDir });
 
     caCertPem = fs.readFileSync(caCertPath, 'utf8');
     serverCertPem = fs.readFileSync(serverCertPath, 'utf8');
@@ -126,6 +135,10 @@ describe('staging-private-http transport primitive', () => {
     wrongKeyPem = fs.readFileSync(wrongKeyPath, 'utf8');
     expiredCertPem = fs.readFileSync(expiredCertPath, 'utf8');
     expiredKeyPem = fs.readFileSync(expiredKeyPath, 'utf8');
+    const expired = new X509Certificate(expiredCertPem);
+    expect(new Date(expired.validFrom).toISOString()).toBe('2019-01-01T00:00:00.000Z');
+    expect(new Date(expired.validTo).toISOString()).toBe('2020-01-01T00:00:00.000Z');
+    expect(expired.checkHost(approvedFqdn)).toBe(approvedFqdn);
   });
 
   afterAll(() => {
