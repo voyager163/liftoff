@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { reviewedBytesDigest as digest } from '../../domain/execution/immutable-plan.js';
 import { liftoffVersion } from '../../version.js';
 import { createUpdatePreviewDescriptor } from './preview.js';
 import { uniqueUpdateSnapshots, type UpdateInspection } from './inspection.js';
@@ -6,15 +6,12 @@ import { planUpdateWrites } from './write-plan.js';
 import type { UpdatePlanSummary } from './output.js';
 import { prepareUpdateRevalidation } from './revalidation-plan.js';
 import type { CommandRunner } from '../../process-runner.js';
-
-function digest(content: string | Buffer): string {
-  return createHash('sha256').update(content).digest('hex');
-}
+import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 
 export async function prepareUpdateReview(
   inspection: UpdateInspection,
   force: boolean,
-  options: { runner?: CommandRunner; now?: Date } = {}
+  options: { runner?: CommandRunner; now?: Date; storage?: UpdatePreviewOptions } = {}
 ) {
   const writePlan = planUpdateWrites(inspection, force);
   const revalidation = await prepareUpdateRevalidation(inspection, writePlan, options);

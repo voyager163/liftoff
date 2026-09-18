@@ -1,12 +1,13 @@
+import { spawnSync } from 'node:child_process';
 import { access, mkdir, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import type { CommandContext } from '../src/application/context.js';
 import { createUpdateTransactionApprovalStore, loadUpdatePreviewReceipt } from '../src/adapters/filesystem/update-previews.js';
 import { applyReviewedUpdateTransaction, inspectReviewedUpdateTransaction } from '../src/adapters/filesystem/reviewed-update-transaction.js';
-import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { formatUpdateCommand, formatUpdateValidationCommands } from '../src/application/update/command-guidance.js';
 import { formatRepairCommand } from '../src/application/repair/guidance.js';
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
@@ -22,8 +23,10 @@ import { currentActivationIdentity } from '../src/domain/governance/activation/g
 import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
 import { inspectGovernanceTransition } from '../src/governance-activation/commands.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
+import { rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
 import { readActivationEvidence } from '../src/governance-activation/read-only.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
+import { materializeReleasedFiles, readReleasedBaselineIndex, releasedCaseFiles } from './fixtures/released-baseline/corpus.js';
 import { formatCommand, type CommandResult, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
@@ -76,12 +79,6 @@ async function run(root: string, args: string[], overrides: Partial<CommandConte
   return { code, report: { ...report, plans }, text, stderr };
 }
 
-function implicitUpdate(mode: 'normal' | 'check' | 'force' = 'normal'): string {
-  return formatShellCommand({
-    executable: 'liftoff', args: ['update', ...(mode === 'normal' ? [] : [`--${mode}`])]
-  }, commandShellForPlatform(process.platform));
-}
-
 async function preview(root: string, mode: 'normal' | 'force' = 'normal') {
   const result = await run(root, ['update', '--check', '--json']);
   expect(result.code, result.text).toBe(2);
@@ -98,17 +95,81 @@ async function historicalFixture(includeFrontend = false) {
     cloud: 'azure', region: 'eastus', environments: ['dev'],
     specWorkflow: 'openspec', agents: ['copilot'], includeFrontend
   });
-  const manifest = await loadManifest(root);
-  if (manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') {
-    throw new Error('Expected enabled fixture governance.');
+  const current = await loadManifest(root);
+  const release = readReleasedBaselineIndex().sources.find((source) => source.release === 'v0.12.3');
+  if (!release || release.commit !== '70d10881b46d873118d825735696f39b6d35ebe0') throw new Error('Missing exact released source closure.');
+  const storage = updateTestPreviewOptions(root);
+  if (!storage.homedir) throw new Error('Missing owned fixture home.');
+  // Current application files may differ; historical metadata and hashes come only from the pinned released producers.
+  const sourceRoot = path.join(path.dirname(storage.homedir), 'released-source');
+  await mkdir(sourceRoot, { mode: 0o700 });
+  await materializeReleasedFiles(sourceRoot, release.files);
+  const producer = spawnSync(process.execPath, ['--input-type=module', '--eval', `
+    const input = JSON.parse(process.argv[1]);
+    const { loadReleasedSource } = await import(input.loader);
+    const baseline = loadReleasedSource(input.sourceRoot);
+    const { buildProjectPlan } = await baseline.import('src/application/project/planning.ts');
+    const { buildArtifacts } = await baseline.import('src/templates.ts');
+    const { parseManifest } = await baseline.import('src/application/project/manifest.ts');
+    const { preserveDiagnosticGovernanceIdentity } = await baseline.import('src/application/update/inspection.ts');
+    const { buildHistoricalV1Fixture } = await baseline.import('tests/fixtures/activation-v1/fixture.ts');
+    const plan = buildProjectPlan({
+      projectName: 'Flight Log', projectType: 'standard', apiStack: 'node-fastify',
+      cloud: 'azure', region: 'eastus', environments: ['dev'], specWorkflow: 'openspec',
+      agents: ['github-copilot'], includeFrontend: input.includeFrontend,
+      governanceProfile: 'single-maintainer-gitflow'
+    }, { requireProjectName: true });
+    const artifacts = buildArtifacts(plan);
+    const marker = artifacts.find((artifact) => artifact.logicalName === 'manifest');
+    if (!marker) throw new Error('Released writer did not produce a manifest.');
+    const manifest = JSON.parse(marker.content);
+    if (manifest.artifactVersion !== 7 || manifest.liftoffVersion !== '0.12.3') throw new Error('Wrong released writer identity.');
+    preserveDiagnosticGovernanceIdentity(manifest, buildHistoricalV1Fixture().manifest);
+    parseManifest(manifest);
+    process.stdout.write(JSON.stringify({
+      files: artifacts.filter((artifact) => artifact.lifecycle === 'managed-core' || artifact.logicalName === 'manifest')
+        .map((artifact) => ({ pathParts: artifact.pathParts, content: artifact.logicalName === 'manifest'
+          ? JSON.stringify(manifest, null, 2) + '\\n' : artifact.content })),
+      loaded: [...baseline.loaded]
+    }));
+  `, JSON.stringify({
+    loader: pathToFileURL(path.resolve('tests/fixtures/released-baseline/source-loader.mjs')).href,
+    sourceRoot, includeFrontend
+  })], { cwd: process.cwd(), encoding: 'utf8', timeout: 30_000, maxBuffer: 4 * 1024 * 1024 });
+  expect(producer.error, producer.stderr).toBeUndefined();
+  expect(producer.status, producer.stderr).toBe(0);
+  const rendered: unknown = JSON.parse(producer.stdout);
+  if (!isRecord(rendered) || !Array.isArray(rendered.files) || !Array.isArray(rendered.loaded)) {
+    throw new Error('Invalid released producer result.');
   }
-  manifest.governance.activationIdentity = historicalActivationIdentities[0];
-  await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(manifest, null, 2)}\n`);
+  const sourcePaths = new Set(release.files.map((file) => file.path));
+  for (const name of rendered.loaded) {
+    if (typeof name !== 'string') throw new Error('Invalid released source identity.');
+    expect(sourcePaths.has(name)).toBe(true);
+  }
+  const releasedPaths = new Set<string>();
+  for (const file of rendered.files) {
+    if (!isRecord(file) || !Array.isArray(file.pathParts) || !file.pathParts.every((part) => typeof part === 'string') ||
+      typeof file.content !== 'string') throw new Error('Invalid released file inventory.');
+    releasedPaths.add(file.pathParts.join('/'));
+    await writeProjectFile(root, file.pathParts, file.content);
+  }
+  for (const artifact of current.managedArtifacts) {
+    if (!releasedPaths.has(artifact.pathParts.join('/'))) await rm(path.join(root, ...artifact.pathParts));
+  }
+  const originalManifest = await readFile(path.join(root, 'liftoff.manifest.json'));
+  const sourceManifest = await loadManifest(root);
+  expect(sourceManifest.artifactVersion).toBe(7);
+  expect(sourceManifest.governance).toMatchObject({ activationIdentity: historicalActivationIdentities[0] });
   const historical = buildHistoricalV1Fixture();
+  const captured = releasedCaseFiles('activation-v1');
+  const originalRecords = new Map<string, Buffer>();
   for (const [name, bytes] of historical.files) {
     if (name === 'governance/activation-state.json' || name.startsWith('governance/evidence/') ||
       name.startsWith('governance/plans/') || name.startsWith('governance/approvals/')) {
+      expect(bytes).toEqual(captured.get(name));
       await writeProjectFile(root, name.split('/'), bytes);
+      if (name.endsWith('.json')) originalRecords.set(name, bytes);
     }
   }
   const seed = 'bootstrap-flight-log';
@@ -123,7 +184,10 @@ async function historicalFixture(includeFrontend = false) {
   await mkdir(path.join(root, 'backend', 'node_modules'), { recursive: true });
   if (includeFrontend) await mkdir(path.join(root, 'frontend', 'node_modules'), { recursive: true });
   await mkdir(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', 'dev', '.terraform'), { recursive: true });
-  return { root, originalState: historical.files.get('governance/activation-state.json')! };
+  return {
+    root, originalManifest, originalRecords, originalProjectArtifacts: sourceManifest.projectArtifacts,
+    originalState: historical.files.get('governance/activation-state.json')!
+  };
 }
 
 class MigrationRunner implements CommandRunner {
@@ -287,7 +351,6 @@ describe('reviewed update command integration', () => {
     expect(checked.code, checked.err).toBe(1);
     expect(checked.err).toContain(formatUpdateCommand(root, 'normal', process.platform, guidance));
     expect(checked.err).toContain(formatUpdateCommand(root, 'check', process.platform, guidance));
-    if (location !== 'another project') expect(checked.err).not.toContain('--project');
     await expect(loadUpdatePreviewReceipt(root, previewOptions)).rejects.toMatchObject({ code: 'preview-missing' });
 
     const recovered = await runRaw(root, ['update', ...target], { cwd });
@@ -299,7 +362,7 @@ describe('reviewed update command integration', () => {
   });
 
   it.each(['root', 'subdirectory', 'ancestor alias'])(
-    'guides the raw preview and approval sequence from the %s without a redundant project argument',
+    'guides the raw preview and approval sequence from the %s with a stable explicit project target',
     async (location) => {
       const { root, guide, originalGuide } = await fixture();
       let cwd = root;
@@ -317,14 +380,12 @@ describe('reviewed update command integration', () => {
       expect(missing.text).toContain(await realpath(root));
       expect(missing.err).toContain('No saved update preview was found');
       expect(missing.err).toContain('No new project update was performed');
-      expect(missing.err).toContain(implicitUpdate('check'));
+      expect(missing.err).toContain(formatUpdateCommand(root, 'check'));
       expect(missing.err).not.toContain('preview-storage');
-      expect(missing.err).not.toContain('--project');
 
       const checked = await runRaw(root, ['update', '--check'], { cwd });
       expect(checked.code, checked.err).toBe(2);
-      expect(checked.text).toContain(implicitUpdate());
-      expect(checked.text).not.toContain('--project');
+      expect(checked.text).toContain(formatUpdateCommand(root));
       const stored = await loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root));
       const selected = stored.receipt.variants.find((entry) => entry.mode === 'normal');
       if (!selected) throw new Error('Expected a reviewed normal plan.');
@@ -332,17 +393,14 @@ describe('reviewed update command integration', () => {
       const unapproved = await runRaw(root, ['update'], { cwd });
       expect(unapproved.code, unapproved.err).toBe(1);
       expect(unapproved.err).toContain('Explicit approval of this exact update plan is required.');
-      expect(unapproved.err).not.toContain('--project');
+      expect(unapproved.err).toContain('--project');
+      expect(unapproved.err).toContain(await realpath(root));
       expect(await fingerprintUpdateTestProject(root)).toEqual(before);
 
       const applied = await runRaw(root, ['update', '--approve-plan', selected.fingerprint], { cwd });
       expect(applied.code, applied.err).toBe(0);
       const guidance = await resolveUpdateGuidanceContext(cwd, root);
       expect(applied.text).toContain(formatUpdateValidationCommands(root, process.platform, guidance));
-      if (location !== 'subdirectory') {
-        expect(applied.text).not.toContain('cd --');
-        expect(applied.text).not.toContain('Set-Location');
-      }
       expect(await readFile(guide)).toEqual(originalGuide);
       await expect(loadUpdatePreviewReceipt(root, updateTestPreviewOptions(root)))
         .rejects.toMatchObject({ code: 'preview-missing' });
@@ -446,8 +504,7 @@ describe('reviewed update command integration', () => {
       } else {
         expect(failed.err).toContain(detail);
         expect(failed.err).toContain(remedy);
-        expect(failed.err).toContain(implicitUpdate('check'));
-        expect(failed.err).not.toContain('--project');
+        expect(failed.err).toContain(formatUpdateCommand(root, 'check'));
       }
       expect(failed.text + failed.err).not.toContain('Repair any reported preview-storage issue');
       expect(await fingerprintUpdateTestProject(root)).toEqual(before);
@@ -546,8 +603,8 @@ describe('reviewed update command integration', () => {
     await expect(access(guide)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
-  it('preserves maintained v1 history and establishes fresh local v2 proof', async () => {
-    const { root, originalState } = await historicalFixture();
+  it('preserves maintained v1 history and establishes fresh local v4 proof', async () => {
+    const { root, originalState, originalManifest, originalRecords, originalProjectArtifacts } = await historicalFixture();
     const runner = new MigrationRunner();
     const checked = await run(root, ['update', '--check', '--json'], { runner });
     expect(checked.code, checked.text).toBe(2);
@@ -568,7 +625,21 @@ describe('reviewed update command integration', () => {
     expect(snapshots).toHaveLength(1);
     expect(await readFile(path.join(history, snapshots[0]!, 'files', 'governance', 'activation-state.json')))
       .toEqual(originalState);
-    expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([3, 3, 3]);
+    for (const [name, bytes] of originalRecords) {
+      expect(await readFile(path.join(history, snapshots[0]!, 'files', ...name.split('/')))).toEqual(bytes);
+    }
+    expect(await readFile(path.join(history, snapshots[0]!, 'files', 'liftoff.manifest.json'))).toEqual(originalManifest);
+    const current = await loadManifest(root);
+    if (current.artifactVersion !== 8 || current.provenance.kind !== 'generated' || current.provenance.origin.kind !== 'historical-manifest') {
+      throw new Error('Expected the real history-preserving v7-to-v8 metadata migration.');
+    }
+    expect(current.provenance.origin).toMatchObject({
+      artifactVersion: 7, writerVersion: '0.12.3', originalProfile: 'unknown',
+      contentHash: `sha256:${rawHistoryDigest(originalManifest)}`
+    });
+    expect(await readFile(path.join(root, ...current.provenance.origin.historyPathParts))).toEqual(originalManifest);
+    expect(current.projectArtifacts).toEqual(originalProjectArtifacts);
+    expect((await readActivationEvidence(root)).map((record) => record.header.schemaVersion)).toEqual([4, 4, 4]);
   }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('accepts approved command-generated outputs and completes fresh revalidation', async () => {
@@ -778,7 +849,7 @@ describe('reviewed update command integration', () => {
     expect(runner.calls).toEqual(callsAfterMigration);
   }, process.platform === 'win32' ? 180_000 : 90_000);
 
-  it('retains blocked v2 after revalidation failure and resumes after a new approval', async () => {
+  it('retains blocked v4 after revalidation failure and resumes after a new approval', async () => {
     const { root } = await historicalFixture();
     const runner = new MigrationRunner();
     runner.failBackend = true;
@@ -806,7 +877,7 @@ describe('reviewed update command integration', () => {
   }, process.platform === 'win32' ? 180_000 : 90_000);
 
   it('shows known local revalidation gaps in human preview and before approval', async () => {
-    const { root } = await historicalFixture();
+    const { root, originalState } = await historicalFixture();
     await rm(path.join(root, 'backend', 'node_modules'), { recursive: true });
     const inspected = await run(root, ['update', '--check', '--json']);
     expect(inspected.code, inspected.text).toBe(2);
@@ -828,7 +899,9 @@ describe('reviewed update command integration', () => {
     });
     expect(declined.code).toBe(1);
     for (const issue of issues) expect(approvalOutput.text()).toContain(issue);
-    expect(approvalOutput.text()).toContain('may commit v3');
+    expect(approvalOutput.text()).toContain('Approval may commit the displayed successor identity while these known revalidation gaps remain blocked');
+    expect(approvalOutput.text()).toContain(JSON.stringify(currentActivationIdentity));
+    expect(await readFile(path.join(root, 'governance', 'activation-state.json'))).toEqual(originalState);
   });
 
   it.each([

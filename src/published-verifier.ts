@@ -7,8 +7,10 @@ import {
   liftoffPackageName,
   npmRegistryOverrideArgs
 } from './package-identity.js';
+import { compareSemver, isStableSemver } from './semver.js';
 
 export const CANONICAL_NPM_REGISTRY = canonicalNpmRegistry;
+export const LAST_HISTORICAL_NPM_VERSION = '0.12.3';
 
 interface CommandResult {
   status: number | null;
@@ -38,6 +40,7 @@ export interface PublishedVerifierDependencies {
 export interface PublishedVerifierOptions {
   packageRoot: string;
   tag: string;
+  historicalVersion?: string;
   timeoutMs?: number;
   retryIntervalMs?: number;
   allowLegacyVersionCommand?: boolean;
@@ -59,6 +62,36 @@ interface PackageIdentity {
 const DEFAULT_TIMEOUT_MS = 120_000;
 const DEFAULT_RETRY_INTERVAL_MS = 5_000;
 const LEGACY_VERSION_COMMAND_RELEASE = '0.3.3';
+
+function assertHistoricalVersion(version: string): void {
+  if (
+    !isStableSemver(version) ||
+    !version.split('.').every((part) => Number.isSafeInteger(Number(part))) ||
+    compareSemver(version, LAST_HISTORICAL_NPM_VERSION) > 0
+  ) {
+    throw new Error(
+      `Historical npm verification requires an exact stable version at or before ` +
+      `${LAST_HISTORICAL_NPM_VERSION}; observed ${version}. Native releases are not published to npm.`
+    );
+  }
+}
+
+export function parseHistoricalVerifierArguments(args: readonly string[]): Required<Pick<
+  PublishedVerifierOptions,
+  'tag' | 'historicalVersion' | 'allowLegacyVersionCommand'
+>> {
+  const legacyFlag = '--allow-legacy-version-command';
+  const allowLegacyVersionCommand = args.includes(legacyFlag);
+  const positional = args.filter((arg) => arg !== legacyFlag);
+  if (positional.length !== 1 || args.length !== 1 + Number(allowLegacyVersionCommand)) {
+    throw new Error(
+      'Usage: npm run verify:published -- <historical-version> [--allow-legacy-version-command]'
+    );
+  }
+  const historicalVersion = positional[0];
+  assertHistoricalVersion(historicalVersion);
+  return { tag: historicalVersion, historicalVersion, allowLegacyVersionCommand };
+}
 
 interface PublishedVerifierCapabilities {
   help: boolean;
@@ -145,7 +178,7 @@ async function waitForPublishedVersion(
     }
     if (dependencies.now() >= deadline) {
       throw new Error(
-        `Canonical npm dist-tag mismatch after ${timeoutMs}ms: expected ${identity.name}@${tag} ` +
+        `Canonical npm reference mismatch after ${timeoutMs}ms: expected ${identity.name}@${tag} ` +
         `to resolve ${identity.version}, observed ${observed}.`
       );
     }
@@ -155,24 +188,43 @@ async function waitForPublishedVersion(
 
 export async function verifyPublishedPackage(
   options: PublishedVerifierOptions,
-  dependencies: PublishedVerifierDependencies = defaultDependencies()
+  suppliedDependencies?: PublishedVerifierDependencies
 ): Promise<PublishedVerificationResult> {
-  if (!/^[a-z0-9][a-z0-9._-]*$/i.test(options.tag)) {
+  if (
+    typeof options.tag !== 'string' ||
+    !/^[a-z0-9][a-z0-9._-]*$/i.test(options.tag) ||
+    options.tag.trim() !== options.tag
+  ) {
     throw new Error(`Invalid npm dist-tag: ${options.tag}`);
+  }
+  if (options.historicalVersion !== undefined) {
+    assertHistoricalVersion(options.historicalVersion);
+    if (options.tag !== options.historicalVersion) {
+      throw new Error('Historical npm verification must select the exact version, not a mutable dist-tag.');
+    }
   }
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
-  if (timeoutMs < 0 || retryIntervalMs <= 0) {
-    throw new Error('Verifier timeout must be non-negative and retry interval must be positive.');
+  if (
+    !Number.isFinite(timeoutMs) || timeoutMs < 0 ||
+    !Number.isFinite(retryIntervalMs) || retryIntervalMs <= 0
+  ) {
+    throw new Error('Verifier timeout must be finite and non-negative and retry interval must be finite and positive.');
   }
 
+  const dependencies = suppliedDependencies ?? defaultDependencies();
   const packageJsonPath = path.join(options.packageRoot, 'package.json');
-  const identity = packageIdentity(await dependencies.readJson(packageJsonPath), packageJsonPath);
-  if (identity.name !== liftoffPackageName) {
+  const sourceIdentity = packageIdentity(await dependencies.readJson(packageJsonPath), packageJsonPath);
+  if (sourceIdentity.name !== liftoffPackageName) {
     throw new Error(
-      `Published package identity must be ${liftoffPackageName}; observed ${identity.name}.`
+      `Published package identity must be ${liftoffPackageName}; observed ${sourceIdentity.name}.`
     );
   }
+  const identity = {
+    name: sourceIdentity.name,
+    version: options.historicalVersion ?? sourceIdentity.version
+  };
+  assertHistoricalVersion(identity.version);
   if (
     options.allowLegacyVersionCommand === true &&
     identity.version !== LEGACY_VERSION_COMMAND_RELEASE

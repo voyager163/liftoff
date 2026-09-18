@@ -3,6 +3,7 @@ node_modules/
 
 # Build outputs
 dist/
+/build/
 services/telemetry-ingest/build/
 *.tsbuildinfo
 *.tgz
@@ -25,6 +26,10 @@ crash.log
 coverage/
 .vitest/
 .nyc_output/
+/tests/.*/
+/tests/.liftoff-mutation-*.lock
+/tests/fixtures/released-baseline/corpus-v1/
+/.reviewed-update-fixture-*/
 
 # Logs
 logs/

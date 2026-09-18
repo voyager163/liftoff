@@ -4,6 +4,8 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildProjectPlan } from '../src/planner.js';
+import { patterns } from '../src/application/project/catalog.js';
+import { object, parseHcl, singleBlock } from '../src/adapters/hcl/semantic.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
 
 const environmentIds = ['dev', 'staging', 'prod'];
@@ -100,7 +102,67 @@ describe('independent generated infrastructure roots', () => {
     expect(readme).not.toContain('environments/dev');
   });
 
-  it.skipIf(spawnSync('tofu', ['version'], { encoding: 'utf8' }).status !== 0)('formats every emitted HCL root and module without provider access', async () => {
+  it('emits the four explicit Azure TLS and private-blob defaults for issue #80 across profiles while preserving unrelated settings', async () => {
+    const supportedProjects = [
+      ...['node-fastify', 'python-fastapi', 'go-huma'].map((apiStack) => ({
+        projectType: 'standard' as const, apiStack
+      })),
+      ...patterns.map((pattern) => ({ projectType: 'genai' as const, pattern: pattern.id }))
+    ];
+    expect(supportedProjects).toHaveLength(12);
+    for (const [index, project] of supportedProjects.entries()) {
+      const artifacts = buildArtifacts(buildProjectPlan({
+        projectName: `baseline-profile-${index}`, ...project,
+        cloud: 'azure', environments: ['dev', 'prod']
+      }, { requireProjectName: true }));
+      const main = artifacts.find(({ logicalName }) => logicalName === 'opentofu-application-main')!.content;
+      const resources = object((await parseHcl(main, 'generated main.tf')).resource, 'resources');
+      const resource = (type: string, name = 'main') => singleBlock(object(resources[type], type)[name], `${type}.${name}`);
+      expect(resource('azurerm_redis_cache')).toMatchObject({
+        minimum_tls_version: '1.2', capacity: 0, family: 'C', sku_name: 'Basic'
+      });
+      expect(resource('azurerm_servicebus_namespace')).toMatchObject({
+        minimum_tls_version: '1.2', sku: 'Standard'
+      });
+      expect(resource('azurerm_storage_account')).toMatchObject({
+        min_tls_version: 'TLS1_2', allow_nested_items_to_be_public: false,
+        account_tier: 'Standard', account_replication_type: 'LRS'
+      });
+      expect(resource('azurerm_storage_container', 'documents')).toMatchObject({ container_access_type: 'private' });
+    }
+  });
+
+  it('passes all five cited Checkov Azure controls on actual generated output', async () => {
+    const root = path.resolve('tests', '.checkov-generated', randomUUID());
+    try {
+      const artifacts = artifactsFor(['dev'], { includeFrontend: true });
+      for (const artifact of artifacts.filter((entry) => entry.category === 'infrastructure')) {
+        const file = path.join(root, ...artifact.pathParts);
+        await mkdir(path.dirname(file), { recursive: true });
+        await writeFile(file, artifact.content);
+      }
+      const controls = ['CKV_AZURE_148', 'CKV_AZURE_44', 'CKV_AZURE_190', 'CKV2_AZURE_47', 'CKV_AZURE_205'];
+      const result = spawnSync(process.env.CHECKOV_PATH ?? 'checkov', [
+        '-d', root,
+        '--framework', 'terraform', '--check', controls.join(','),
+        '--skip-download', '--download-external-modules', 'false', '--output', 'json'
+      ], { encoding: 'utf8', timeout: 60_000, maxBuffer: 4 * 1024 * 1024 });
+      expect(result.status, `${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`).toBe(0);
+      const report = JSON.parse(result.stdout);
+      expect(report.summary.parsing_errors).toBe(0);
+      expect(report.results.failed_checks).toEqual([]);
+      expect(report.results.skipped_checks).toEqual([]);
+      const applicablePassed = controls.filter((control) =>
+        report.results.passed_checks.some((check: { check_id: string }) => check.check_id === control)
+      );
+      expect(new Set(applicablePassed), 'The qualification tool must execute every cited control, including the graph control.')
+        .toEqual(new Set(controls));
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('formats every emitted HCL root and module without provider access', async () => {
     const root = path.resolve('tests', '.generated-infrastructure', randomUUID());
     try {
       for (const artifact of artifactsFor(environmentIds, { includeFrontend: true })) {
@@ -109,8 +171,10 @@ describe('independent generated infrastructure roots', () => {
         await mkdir(path.dirname(file), { recursive: true });
         await writeFile(file, artifact.content);
       }
-      const result = spawnSync('tofu', ['fmt', '-check', '-diff', '-recursive'], { cwd: root, encoding: 'utf8' });
-      expect(result.status, `${result.stdout}\n${result.stderr}`).toBe(0);
+      const result = spawnSync('tofu', ['fmt', '-check', '-diff', '-recursive'], {
+        cwd: root, encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024
+      });
+      expect(result.status, `${result.error?.message ?? ''}\n${result.stdout}\n${result.stderr}`).toBe(0);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

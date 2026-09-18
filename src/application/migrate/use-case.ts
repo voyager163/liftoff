@@ -467,17 +467,18 @@ async function executeMigration(
         presentation.bullets('Deferred project dependencies', dependencyPhase.deferred);
       }
       presentation.bullets('Next steps', [
-        `Optional - preserve history: copy the .git directory from ${sourceRoot} into ${targetRoot}, then commit the migration on top (git rename detection preserves file history).`,
-        `Execute the migration plan: ${migrationPlan.location}`,
+        `Review Git history and publication separately for ${sourceRoot} and ${targetRoot}; do not blindly copy Git/worktree metadata between targets.`,
+        `Application porting is still pending: ${migrationPlan.location}. The fresh scaffold does not prove an executable semantic conversion.`,
         'Verify compliance: liftoff validate && liftoff doctor'
       ]);
       presentation.completion(
-        `Migrated ${plan.projectName}`,
+        `Prepared fresh migration scaffold for ${plan.projectName}`,
         targetRoot,
         [
           { label: 'Target', value: targetRoot },
           { label: 'Source', value: `${sourceRoot} (not modified)` },
-          { label: 'Rollback', value: `Delete ${targetRoot}` }
+          { label: 'Application conversion', value: 'Pending explicit mappings, supported transformation and actual checks' },
+          { label: 'Rollback', value: `Review only ${targetRoot} for removal after preserving any later user edits; the source remains unchanged` }
         ],
         'liftoff validate && liftoff doctor'
       );
@@ -525,7 +526,7 @@ export async function migrateProject(request: MigrationRequest, context: Executi
     }
     context.presentation.error(
       `${sourceRoot} is already a Liftoff project.`,
-      'Use `liftoff update` for managed-core maintenance; in-place project template migration is not automated.'
+      'Use `liftoff update --check` for managed-core maintenance or a separately reviewed repair for exact existing-project effects. `liftoff adopt` is for supported uninitialized applications; this migrate command remains fresh-target only.'
     );
     return 1;
   }

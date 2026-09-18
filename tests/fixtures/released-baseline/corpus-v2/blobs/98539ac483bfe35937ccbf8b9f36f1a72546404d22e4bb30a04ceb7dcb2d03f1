@@ -1,0 +1,18 @@
+{
+  "projectName": "Flight Log",
+  "projectType": "standard",
+  "apiStack": "node-fastify",
+  "cloud": "azure",
+  "region": "eastus",
+  "includeFrontend": false,
+  "environments": [
+    "dev",
+    "staging",
+    "prod"
+  ],
+  "specWorkflow": "openspec",
+  "agents": [
+    "github-copilot"
+  ],
+  "governanceProfile": "single-maintainer-gitflow"
+}

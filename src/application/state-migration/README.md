@@ -3,6 +3,10 @@
 `index.ts` exports the stateful service functions and concrete adapters. Shared
 contracts live in `src/domain/repair/stateful.ts`. These functions do not inherit
 authority from local repair, update, activation-record migration, `--yes`, or force.
+This is an internal composition API, not an executable public `liftoff repair`
+stateful-migration mode. The unpublished 0.13.0 candidate still requires the
+specific native/backend/provider qualification and private capabilities described
+below; source presence does not establish deployment support.
 
 ## Coordinator integration
 
@@ -134,10 +138,13 @@ an inspected configuration/provider-mirror provider, and the project writer
 coordinator. Missing capabilities are blockers, not plaintext/public fallbacks.
 
 `StateRecipeQualification` must establish the exact recipe/backend/binary/host
-combination before native execution. The tests in `tests/state-migration*.test.ts`
-and `tests/state-backend*.test.ts` use deterministic synthetic state, transport,
-native-command and lock capabilities. **They are not live qualification.** No
-owner environment is contacted and no installed OpenTofu is executed by them.
+combination before native execution. Ordinary fixture tests in
+`tests/state-migration*.test.ts` and `tests/state-backend*.test.ts` use deterministic
+synthetic state, transport, native-command and lock capabilities.
+**They are not live qualification.** The separately opted-in
+`tests/state-backend-native-qualification.test.ts` lane described below executes
+the actual installed OpenTofu against disposable builtin fixtures; it does not
+qualify Azure or production state migration.
 Production registration still requires the separately approved disposable
 qualification lane; no mocked result enables it by default.
 
@@ -300,3 +307,8 @@ creation; a root-only kill or PID-reuse-prone fallback is not substituted.
 fixtures to exercise resistant grandchildren, root-exit/ignored-stdio cases,
 cancellation, output limits and retained scratch on unproven cleanup. It does
 not execute project scripts, access credentials or mutate provider resources.
+
+## Related architecture documentation
+
+- [Application repair](../../../docs/application-repair.md)
+- [Developer guide](../../../DEVELOPER.md)

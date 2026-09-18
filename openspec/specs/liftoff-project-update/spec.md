@@ -5,7 +5,7 @@ Define the `liftoff update` command that reconciles Liftoff-managed core files a
 ## Requirements
 
 ### Requirement: Update reconciles a generated project against a fresh render
-The system SHALL provide `liftoff update` with a compatibility-first, preview-gated workflow. It SHALL load `liftoff.config.json` as desired state, reconcile explicitly declared managed-core artifacts by `logicalName`, and separately identify configuration-authorized create-only provisioning and supported activation migration/revalidation. Core classifications SHALL remain unchanged, new, missing, upgrade, conflict, moved, orphan, retired, or retired-conflict. Existing production project artifacts SHALL remain outside template comparison. All write-capable plans SHALL require a matching prior check and explicit exact-plan approval. `liftoff update --check` SHALL present a human-readable preview without changing project bytes, disclose its external preview receipt, and exit 0 for no actionable work or 2 for actionable drift, migration, or revalidation.
+The system SHALL provide `liftoff update` with its compatibility-first, preview-gated workflow for supported generated and adopted projects. It SHALL read developer-owned desired state, derive managed-core expectations from actual recorded workload/profile/component and integration identity, and reconcile exact managed logical names. Configuration-authorized create-only provisioning and supported manifest/activation migration or revalidation SHALL remain separate lanes. Classifications SHALL remain unchanged, new, missing, upgrade, conflict, moved, orphan, retired, or retired-conflict. Existing project-owned application files SHALL remain outside template comparison. Every write-capable plan SHALL require a matching prior check and exact approval. Check SHALL be project-read-only, disclose its external receipt, and exit 0 for no actionable work or 2 for actionable drift, migration, or revalidation.
 
 #### Scenario: Clean project reports no drift
 - **WHEN** project-owned files differ from current templates but managed core and activation migration/revalidation require no work
@@ -43,6 +43,11 @@ The system SHALL provide `liftoff update` with a compatibility-first, preview-ga
 - **WHEN** an older manifest records an exact retired setup alias
 - **THEN** human and JSON previews identify its retired or protected retired-conflict state and exact path
 - **AND** manifest and alias bytes remain unchanged
+
+#### Scenario: An adopted project has a custom layout
+- **WHEN** a schema-8 project records a supported adopted component outside fresh-starter paths
+- **THEN** managed expectations use that actual approved identity and layout
+- **AND** update does not synthesize a starter backend, move business files, or fabricate generation provenance
 
 ### Requirement: Apply writes only safe managed-core states by default
 After matching preview validation and exact-plan approval, default update SHALL write only safe named core states whose destinations are absent, already identical, or owned by that same recorded core artifact. A clean move SHALL require an absent or matching destination. Core conflicts SHALL be skipped without an independently approved force variant; orphans SHALL not be deleted. Provisioning SHALL remain create-only, and supported activation migration SHALL have its own exact approved write set. Neither lane SHALL authorize production template replacement.
@@ -93,7 +98,7 @@ After matching preview validation and exact-plan approval, default update SHALL 
 - **THEN** its file and recorded hash remain protected and the handoff remains partial
 
 ### Requirement: Apply failures are observable and recoverable
-The system SHALL preflight the entire approved write set, treat only confirmed missing paths as absent, acquire the cooperating project lock, and verify current preconditions before mutation. Storage, replacement, cleanup, manifest, lock, and recovery failures SHALL exit 1 and name the failed operation without claiming success. Recovery SHALL preserve supported modes, clean only exact temporary paths, and restore only attributable unchanged transaction writes. Durable activation-migration recovery SHALL remain distinct from post-commit revalidation, which retains blocked/resumable v2.
+Update SHALL preflight the complete approved write set, treat only confirmed missing paths as absent, acquire the cooperating project lock, and recheck current preconditions before mutation. Storage, replacement, cleanup, manifest, lock, and recovery failures SHALL exit 1, name the failed operation, and report actual progress without claiming success. Recovery SHALL preserve supported modes, clean only exact registered temporaries, and restore only attributable unchanged transaction writes. Registered historical update/repair serializers and identities SHALL remain unchanged. Activation-migration recovery SHALL remain distinct from post-commit revalidation, whose incomplete outcome retains exit 2 and the actual linked successor as blocked/resumable rather than hard-coding an obsolete v2 execution target.
 
 #### Scenario: Destination write fails
 - **WHEN** a filesystem operation cannot write a planned artifact
@@ -127,6 +132,7 @@ The system SHALL preflight the entire approved write set, treat only confirmed m
 #### Scenario: Partial temporary files are cleaned up
 - **WHEN** temporary replacement files remain after failure
 - **THEN** recovery removes only safely identified transaction temporaries and never records them as managed artifacts
+- **AND** it does not use prefix/glob cleanup
 
 ### Requirement: Force extends apply only to conflicted managed-core files and exact retired aliases
 The system SHALL accept `--force` only for a separately previewed and approved effective plan. Its extra authority SHALL remain limited to exact already-owned core conflicts and exact retired aliases, subject to all ownership, path, compatibility, transaction, and receipt guards. Check SHALL display any available force variant and its different fingerprint without authorizing writes. `--check --force` SHALL remain invalid. Dirty-worktree guidance SHALL precede approval, not substitute for it.
@@ -205,7 +211,7 @@ The system SHALL treat desired state as developer-owned and ordinary update SHAL
 - **AND** ordinary update still cannot perform that framework mutation
 
 ### Requirement: Update refuses unsafe reconciliations
-The system SHALL refuse to run when configured workload kind or immutable workload identity differs from the corresponding normalized identity recorded by the manifest, directing the developer to a reviewed migration or fresh initialization. It SHALL continue refusing API-stack or GenAI-pattern changes, SHALL reject the retired `power-apps-code-app` discriminator before deeper artifact or activation access even when governance is disabled, and SHALL refuse when the manifest's `liftoffVersion` is newer than the running CLI, using semver-aware comparison that orders prerelease versions correctly and directing the developer to upgrade the CLI.
+Update SHALL reject configured workload kind or immutable workload/profile identity that differs from the normalized recorded identity without an explicitly supported reviewed transition. API-stack and GenAI-pattern conversion SHALL remain outside update; a fresh initialization remedy SHALL mean a separate target, never reinitializing an existing project. Retired `power-apps-code-app` identity SHALL fail before deeper artifact or activation access even with governance disabled. A newer recorded writer than the running CLI SHALL still block using SemVer-aware ordering, including prereleases. Schema-8 adopted profiles SHALL be validated as their actual form rather than forced into fabricated generated-workload fields.
 
 #### Scenario: Workload-kind change is refused
 - **WHEN** a developer changes a generated project's configured type between GenAI and standard and runs `liftoff update`
@@ -236,8 +242,13 @@ The system SHALL refuse to run when configured workload kind or immutable worklo
 - **WHEN** the manifest records a `liftoffVersion` greater than the running CLI version
 - **THEN** the command fails with a message to upgrade the CLI first
 
+#### Scenario: Adopted profile selection changes frameworks
+- **WHEN** a desired adopted profile implies an unregistered framework or component conversion
+- **THEN** update reports the exact unsupported transition before metadata or file writes
+- **AND** a profile name or matching hash does not authorize conversion
+
 ### Requirement: Apply rewrites the manifest as scoped recorded state
-After a successful approved local transaction, update SHALL write the supported manifest schema with the current CLI version, hashes only for written/adopted core artifacts, safely retired alias entries removed, and original generation provenance for project artifacts. Skipped conflicts SHALL retain their old hashes. An approved activation migration SHALL change the active identity only with its linked committed successor and preserved source metadata; post-commit revalidation failure SHALL not roll that manifest back or bless production bytes as template state.
+After an eligible approved transaction, current update SHALL write manifest 8 with the exact CLI writer, validated profile/component identity, hashes only for written or identically adopted core entries, eligible retired aliases removed, and preserved generated/adopted/repaired project provenance. Skipped conflicts SHALL retain old hashes. A source v2-v7 manifest SHALL require its declared reviewed schema transition. Activation identity SHALL change only with an explicitly approved linked successor and preserved source metadata; post-commit revalidation failure SHALL not roll back that manifest or bless custom bytes as generated state.
 
 #### Scenario: Manifest catches up after core update
 - **WHEN** an approved core transaction commits
@@ -249,7 +260,7 @@ After a successful approved local transaction, update SHALL write the supported 
 
 #### Scenario: Project file changed after generation
 - **WHEN** a project-owned file has changed or disappeared
-- **THEN** its generation provenance remains unchanged and confers no replacement authority
+- **THEN** its original generation or adoption provenance remains unchanged and confers no replacement authority
 
 #### Scenario: Retired alias is not preserved in the next manifest
 - **WHEN** an exact alias is successfully retired
@@ -299,7 +310,7 @@ The system SHALL treat seed-category artifacts as one-time gifted content: they 
 - **THEN** the command reports no drift related to the emitted plan
 
 ### Requirement: Update offers versioned machine-readable output
-The system SHALL emit schema-3 update JSON with `scope: "project-update"`, mode, stable status/reason codes, plan fingerprints, receipt/approval disposition, and separately named managed-core, provisioning, activation-migration, and revalidation results. It SHALL preserve exact retired-alias, skipped-conflict, ownership-migration, and source/target identity details. JSON SHALL not authorize apply. Stdout SHALL contain one JSON result, with progress and any interactive approval on stderr.
+Update SHALL retain schema-3 JSON with `scope: "project-update"`, mode, stable status/reason codes, fingerprints, receipt/approval disposition, and separate managed-core, provisioning, manifest/activation migration, and revalidation outcomes. Exact retired aliases, conflicts, ownership changes, source/target identity, and preserved provenance SHALL remain observable. Structured continuations SHALL use the independent schema-1 public context contract without changing stored receipts or the meaning of existing schema-3 fields. JSON SHALL not authorize apply or prompt for consent; stdout SHALL contain one result and diagnostics/progress SHALL use stderr.
 
 #### Scenario: JSON apply result
 - **WHEN** a matching explicitly approved plan is applied with `--json`
@@ -312,14 +323,14 @@ The system SHALL emit schema-3 update JSON with `scope: "project-update"`, mode,
 
 #### Scenario: JSON does not imply consent
 - **WHEN** `liftoff update --json` lacks a matching preview or usable exact-plan approval
-- **THEN** it reports a blocked reason and exits 1 without project writes
+- **THEN** it reports the specific blocked reason and exits 1 without prompting or writing
 
 #### Scenario: Local migration committed but revalidation is blocked
 - **WHEN** a schema-3 apply result follows committed migration with incomplete revalidation
 - **THEN** it distinguishes commit from blocked readiness, identifies the next action, and exits 2
 
 ### Requirement: Update migrates supported manifests without production mutation
-The system SHALL normalize supported legacy manifests into the latest ownership-aware schema before reconciliation. Check mode SHALL leave the source manifest byte-for-byte unchanged. A successful plain update SHALL retain managed-core hashes, convert non-core durable entries into project provenance, preserve legacy framework uncertainty, and omit no project provenance merely because the corresponding file is modified or absent. Manifest migration MUST NOT write, restore, move, or delete project-owned files.
+Update SHALL interpret supported v2-v7 manifests through their registered source contracts and perform ownership normalization in memory before reconciliation. Only an eligible reviewed transaction SHALL write schema 8. Check SHALL preserve the source manifest byte-for-byte. Successful migration SHALL retain exact managed hashes, release non-core legacy entries to project provenance, preserve recorded generation/adoption/repair history and framework uncertainty, and explicitly retain unknown original profile facts. Modified or absent files SHALL not lose provenance. Manifest migration SHALL not write, restore, move, or delete project-owned files.
 
 #### Scenario: Check a legacy project
 - **WHEN** a developer runs `liftoff update --check` against a supported legacy manifest
@@ -327,23 +338,23 @@ The system SHALL normalize supported legacy manifests into the latest ownership-
 - **AND** leaves the manifest and every project file byte-for-byte unchanged
 
 #### Scenario: Migrate intentionally deleted infrastructure
-- **WHEN** a legacy manifest records a generated infrastructure file that is now absent
-- **THEN** plain update records released project provenance without recreating the path
+- **WHEN** a historical manifest records generated infrastructure that is now absent and migration is approved
+- **THEN** update records preserved project provenance without recreating the path
 
 #### Scenario: Migrate production source
-- **WHEN** a legacy manifest records application source that now contains production behavior
-- **THEN** plain update converts the entry to project provenance without changing the file
+- **WHEN** a legacy manifest records source now containing production behavior and migration is approved
+- **THEN** update releases the entry from broad legacy authority without changing the file or inventing generation facts
 
 #### Scenario: Preserve legacy framework uncertainty
 - **WHEN** a legacy manifest lacks official framework metadata
-- **THEN** the latest manifest preserves legacy framework state without fabricating selected-agent integrations
+- **THEN** schema 8 preserves legacy framework state without fabricating selected-agent integrations
 
 ### Requirement: Existing projects adopt managed-core governance artifacts automatically
-When configuration omits `governanceProfile`, update SHALL continue automatically selecting `single-maintainer-gitflow` and its exact managed handoff artifacts as desired state. This automatic selection SHALL NOT authorize writes: adoption SHALL require the same preview receipt and exact-plan approval as other updates. The user-owned configuration SHALL not be rewritten to materialize its default.
+For supported initialized projects whose configuration omits `governanceProfile`, update SHALL continue selecting `single-maintainer-gitflow` and its exact applicable handoff artifacts as desired-state defaults. Automatic selection SHALL not authorize writes or perform the new in-place `adopt` operation. Applying the handoff and any required schema-8 transition SHALL use the existing matching preview and exact approval. Developer-owned configuration SHALL not be rewritten to materialize its default.
 
 #### Scenario: Adopt into an untouched v4 project
 - **WHEN** a matching approved plan adopts governance into a valid legacy project with absent destinations
-- **THEN** the named handoff artifacts and v7 manifest are written transactionally without running an agent or contacting GitHub
+- **THEN** the named handoff and v8 manifest commit transactionally without invoking an agent or contacting GitHub
 
 #### Scenario: Preview automatic adoption
 - **WHEN** the user checks before adoption
@@ -362,12 +373,12 @@ When configuration omits `governanceProfile`, update SHALL continue automaticall
 - **THEN** it records the destination without rewriting it
 
 ### Requirement: Governance opt-out preserves user-owned files
-When configuration explicitly selects `none`, update SHALL stop rendering the profile's managed-core artifacts. Previously recorded governance artifacts SHALL follow the existing orphan contract and SHALL never be deleted automatically; active or archived spec changes and agent-created governance implementation files SHALL remain outside reconciliation.
+When an eligible configuration transition explicitly selects `none`, update SHALL stop rendering that profile's handoff artifacts. Recorded governance files SHALL retain the orphan contract and SHALL not be deleted automatically; active/archived changes and agent-authored governance implementation SHALL remain outside reconciliation. Existing activation state SHALL still require the separate supported deactivation/reconciliation boundary. A successful eligible schema-8 write SHALL not imply live enforcement was removed.
 
 #### Scenario: Disable the generated profile
-- **WHEN** a developer changes `governanceProfile` from `single-maintainer-gitflow` to `none` and runs update
+- **WHEN** `governanceProfile` changes to `none` in a project eligible for local opt-out and reviewed update succeeds
 - **THEN** recorded handoff artifacts are reported as orphans and left on disk
-- **AND** the v7 manifest records governance as disabled after successful reconciliation
+- **AND** the v8 manifest records the local profile as disabled without claiming remote deactivation
 
 #### Scenario: Archive the agent-created change
 - **WHEN** a developer archives or removes the post-Phase-0 governance change
@@ -421,7 +432,7 @@ Managed-core reconciliation SHALL not itself advance, reset, delete, or rewrite 
 - **AND** eligibility alone does not authorize a successor
 
 ### Requirement: Update applies the activation compatibility matrix
-The system SHALL use an exact release-owned compatibility matrix. The execution family SHALL remain manifest 7, policy 6, activation contract/state/evidence/approval versions 2, graph schema 1, and supersession/credential-policy schemas 1. Compatibility metadata schema 3 SHALL separately describe historically readable identities, currently executable identities, and explicit approved history-preserving migration lanes; schema-2 metadata SHALL remain readable as supported historical input, not as new migration authorization. No source tuple SHALL be inferred from version ordering.
+Update SHALL use the exact release-owned compatibility matrix, not version ordering. Current execution SHALL bind manifest 8, policy 8, activation contract/state/evidence-header/approval-envelope 4, graph schema 3 with its computed hash and phase digests, credential-policy schema 2, and unchanged supersession schema 1. Compatibility metadata 5 SHALL separately declare historical readers, current execution, and exact approved migration/revalidation lanes, including the exact pre-amendment policy-7/credential-policy-schema-1 candidate. Historical metadata schemas 2, 3, and 4 SHALL remain readable only where explicitly registered with their original tuple and digest semantics, not as new authorization. Repair contract 1 and unchanged schema-2 records SHALL remain independently registered.
 
 #### Scenario: Historical activation state is supported
 - **WHEN** a complete historical source matches the declared migration lane
@@ -430,7 +441,7 @@ The system SHALL use an exact release-owned compatibility matrix. The execution 
 #### Scenario: Historical v1 activation history is diagnostic-only
 - **WHEN** the current lane permits a v1 successor
 - **THEN** the original state/evidence remain diagnostic-only in preserved history
-- **AND** fresh v2 proof is required for execution
+- **AND** fresh target-contract proof, rather than rewritten old proof, is required for execution
 
 #### Scenario: Activation identity is from the future
 - **WHEN** a contract, schema, or graph is unsupported
@@ -439,6 +450,11 @@ The system SHALL use an exact release-owned compatibility matrix. The execution 
 #### Scenario: Policy and activation contract are incompatible
 - **WHEN** their complete combination is absent from the matrix
 - **THEN** no phase advances and force cannot authorize the pair
+
+#### Scenario: Managed update encounters the prior credential policy
+- **WHEN** the project retains the pre-amendment policy-7 identity or schema-1 credential policy
+- **THEN** check distinguishes ordinary managed drift from the exact separately reviewed identity/policy transition
+- **AND** update consent does not authorize broader credential use, retag prior approval or replace an unowned policy
 
 ### Requirement: Preview receipts are project-bound external metadata
 Only public update check SHALL issue schema-versioned preview receipts in user-local storage outside the project and repository. Each receipt SHALL bind the canonical project boundary, installed target, effective plan variants, relevant source/destination/input fingerprints, and planned validation operations. It SHALL contain no source bodies or credentials and SHALL never itself be approval. Platform-native absolute storage resolution, restrictive creation permissions where supported, and explicit storage failures SHALL apply on Windows, macOS, and Linux.
@@ -465,7 +481,7 @@ Only public update check SHALL issue schema-versioned preview receipts in user-l
 - **THEN** it does not create, refresh, approve, or consume a preview receipt
 
 ### Requirement: Every effective update plan needs current exact approval
-Before new update writes, the system SHALL rebuild the plan from current authoritative inputs, match a valid receipt for its exact effective mode, obtain explicit approval, and recheck all relevant preconditions under the project lock. Interactive approval SHALL default to no. Noninteractive approval SHALL require the full fingerprint through `--approve-plan`. Neither `--force`, `--json`, a generic yes, cached operations, nor a prior unrelated check SHALL bypass these gates.
+Before new writes, update SHALL rebuild the plan from authoritative current inputs, match a valid external preview for its exact mode, obtain explicit approval, and recheck relevant preconditions under the project lock. Genuine interactive approval SHALL display the immutable plan and default to No without manual fingerprint entry. JSON/noninteractive approval SHALL require the full fingerprint through `--approve-plan` and all applicable independent permissions. Force, generic Yes, cached operations, a project-local approval claim, or an unrelated check SHALL not bypass these gates.
 
 #### Scenario: The user did not run check
 - **WHEN** apply has actionable work but no matching receipt
@@ -648,7 +664,7 @@ The system SHALL distinguish a missing saved preview from stale, invalid, unsupp
 
 ### Requirement: Guidance changes preserve durable update identities and machine contracts
 
-Context-sensitive wording SHALL be presentation-only. Equivalent invocations against the same canonical project and inputs SHALL retain identical receipt keys, effective-plan fingerprints, and approval requirements. Update JSON SHALL retain schema version 3, its field structure, canonical `projectRoot`, status and reason codes, and existing exit semantics. JSON remedies and callers without trusted invocation context SHALL retain explicitly targeted commands so their guidance remains self-contained outside the originating shell. The content of diagnostic prose SHALL explain the actual preview failure without changing machine-readable failure identity.
+Context-sensitive display SHALL remain presentation-only: equivalent canonical targets and effective inputs SHALL keep the same receipt keys, fingerprints, and approval requirements. Update SHALL retain JSON schema 3, canonical `projectRoot`, established fields, status/reason codes, and exit semantics; shared structured continuations SHALL preserve these meanings and SHALL NOT cause historical receipt rewriting. JSON remedies and callers without trusted invocation context SHALL retain explicit target, working directory, scope, and configuration binding. Diagnostic wording SHALL explain actual failures without changing machine-readable identity.
 
 #### Scenario: Implicit and explicit invocations share the same reviewed plan
 - **WHEN** check and apply target the same unchanged project but one invocation omits the path and the other supplies it
@@ -658,7 +674,7 @@ Context-sensitive wording SHALL be presentation-only. Equivalent invocations aga
 #### Scenario: A JSON missing-preview failure stays actionable outside the original shell
 - **WHEN** update emits a JSON result for a missing preview
 - **THEN** it retains schema version 3, canonical `projectRoot`, and `preview-missing`
-- **AND** its remedy contains an explicitly targeted check command without claiming an unobserved storage failure
+- **AND** its remedy explicitly targets the project with the correct working directory and configuration reference without inventing a storage failure
 
 #### Scenario: Safety gates are not relaxed by shorter commands
 - **WHEN** a follow-up command omits a redundant path
@@ -684,7 +700,7 @@ Ordinary update SHALL retain its managed-core and already-declared migration bou
 - **AND** ordinary update approval or force cannot authorize backend or resource mutation
 
 ### Requirement: Managed-context expectations use active recorded layout
-Update, repair preview, doctor, and assessment SHALL use the same installed-release expectation for a given active manifest and recorded infrastructure layout. Expected managed context SHALL not assume a fresh independent layout when the project remains legacy or unknown. Historical repair snapshots SHALL not replace the active manifest as the comparison target.
+Update, repair preview, doctor, and assessment SHALL use the same installed-release expectation for the active manifest, explicit profile/component identity, and recorded or approved adopted layout. Context SHALL not assume a fresh independent infrastructure or application layout for legacy, unknown, or adopted projects. Historical repair/adoption snapshots SHALL not replace the active target, and uncertainty SHALL remain visible rather than fabricating component generation or conformance.
 
 #### Scenario: Legacy context matches the installed contract
 - **WHEN** a context correctly describes the active legacy layout for the installed CLI
@@ -699,8 +715,13 @@ Update, repair preview, doctor, and assessment SHALL use the same installed-rele
 - **WHEN** context differs from the common expected render
 - **THEN** the existing managed-core conflict/hash rules remain enforced rather than normalizing away genuine changes
 
+#### Scenario: An adopted component does not have starter paths
+- **WHEN** current adopted provenance identifies supported custom component roots
+- **THEN** all consumers use the same truthful active mapping
+- **AND** a fresh template's paths do not become assumed current ownership or repair completion
+
 ### Requirement: Activation-contract upgrade is separate from infrastructure execution
-The reviewed update path SHALL identify the exact declared historical source and target activation successor and preserve original records before changing active identity. Its approval SHALL authorize only that inventoried local migration and finite revalidation, not live state movement, publication, enrollment, or deployment. Current activation and stateful execution SHALL require their separate current plans and authority.
+Reviewed update SHALL identify the exact historical source and current activation successor and preserve original records before changing active identity. Its approval SHALL authorize only inventoried local migration and finite declared revalidation, not live state movement, Git publication, credential enrollment, repository controls, or deployment. Current activation and stateful execution SHALL require separate current plans and authority. A historical publication affected by the old input projection SHALL retain its original digest semantics and require independently authorized linked readback/revalidation without redundant publication solely to repair metadata.
 
 #### Scenario: A v2 project needs the revised execution contract
 - **WHEN** the exact source is supported by a declared successor lane
@@ -711,6 +732,70 @@ The reviewed update path SHALL identify the exact declared historical source and
 - **WHEN** the local identity migration commits
 - **THEN** the new activation can be inspected and planned under its declared contract
 - **AND** the migration result alone does not execute its cloud or stateful stages
+
+#### Scenario: Schema-3 publication needs current proof
+- **WHEN** reviewed migration encounters the supported historical Azure-input publication mismatch
+- **THEN** it preserves old plans, approvals, receipts, source commit/ref identity, and history and identifies the separate bound revalidation action
+- **AND** it does not push, recommit, reinterpret old hashes, or claim that later local edits are already remote
+
+### Requirement: Managed profile and skill transitions have exact local scope
+Supported managed profile or integration transitions SHALL be declared by the release compatibility catalog and exposed in update preview with exact old/new logical identities, paths, content hashes, component/profile requirements, consumers, and retirement rules. They SHALL remain local and limited to already authorized managed-core or explicit migration effects. Selected-agent additions and framework/default changes SHALL continue through the supported separate repair flow where required. Unsupported profile, workflow, host, or transport changes SHALL remain blockers. Existing setup, assessment, and repair invocation identities SHALL not move or disappear merely because canonical skills are packaged.
+
+#### Scenario: Update a selected host's canonical instructions
+- **WHEN** the current selected integration has safe managed drift and a compatible registered target
+- **THEN** a matching approved update changes only those exact managed entries
+- **AND** it does not install unselected hosts, rewrite global host settings, or grant application authority
+
+#### Scenario: Migrate an existing registered transport
+- **WHEN** a supported reviewed plan relocates or retires explicit managed skill identities
+- **THEN** old and new destinations, remaining consumers, conflicts, and exact eligible cleanup are visible before approval
+- **AND** unlisted `.github`, `.claude`, `.agents`, OpenSpec, Spec Kit, and user files remain untouched
+
+#### Scenario: A new skill destination is occupied
+- **WHEN** an unowned or framework-owned destination contains different bytes
+- **THEN** the transition reports the collision and preserves it even under force
+- **AND** file resemblance or a canonical catalog entry does not acquire ownership
+
+#### Scenario: A profile transition needs application changes
+- **WHEN** a target profile requires changes to existing source, dependencies, containers, configuration, or infrastructure
+- **THEN** those effects remain outside managed update and require the appropriate separate reviewed operation
+- **AND** updating metadata alone does not claim that the profile's behavior is implemented
+
+#### Scenario: Discovery roots overlap on Windows
+- **WHEN** project and personal integrations overlap, alias, or collide by native case/normalization rules on Windows, macOS, or Linux
+- **THEN** the plan resolves exact ownership and discovery or blocks before writes
+- **AND** no symlink assumption, path-prefix test, or glob grants migration authority
+
+### Requirement: Installation changes never trigger project evolution
+Installing, replacing, or migrating the Liftoff executable SHALL not run update, alter manifest/profile/activation identity, adopt an application, repair infrastructure, replace skill projections, or initialize an existing project. Existing projects SHALL first remain readable under supported historical contracts and receive a separate project-bound review when change is needed. Project Node/npm dependencies, lockfiles, source, history, and state SHALL remain outside installation ownership.
+
+#### Scenario: Native installation replaces legacy npm Liftoff
+- **WHEN** an explicitly approved installation handover completes
+- **THEN** existing project files and metadata remain unchanged
+- **AND** a later update check is only a separately requested recommendation, not an automatic continuation
+
+#### Scenario: The new executable needs a v8 project transition
+- **WHEN** inspection finds supported older metadata requiring an eligible current write
+- **THEN** output identifies the reviewed project update/migration boundary
+- **AND** it neither reruns init nor fabricates a current activation tuple
+
+### Requirement: Update continuations retain configuration and approval boundaries
+Every update continuation SHALL preserve executable, separate arguments, working directory, canonical project, selected scope, configuration reference/digest, compatibility identity, and required authority. Existing context-sensitive human target shortening and success-dependent validate/doctor sequencing SHALL remain intact when they preserve that context; JSON SHALL remain explicitly targeted. Separate assessment or declared validation findings can recommend actual repair/adoption previews, but SHALL not turn project-owned template differences into ordinary update drift.
+
+#### Scenario: A project is selected outside the current directory
+- **WHEN** update emits repair, revalidation, approval, or resume actions for another project
+- **THEN** each action retains the same project and original resolved inputs despite a different working directory
+- **AND** Windows and POSIX displays preserve literal paths with spaces and metacharacters
+
+#### Scenario: A known project-owned defect needs repair
+- **WHEN** separate assessment or authorized validation identifies supported Scalar routing or Azure baseline remediation
+- **THEN** guidance identifies the real exact per-file application or registered infrastructure repair preview
+- **AND** update approval and force do not authorize those effects
+
+#### Scenario: A consumed input changes before continuation
+- **WHEN** the selected configuration reference or relevant contents differ from the reviewed binding
+- **THEN** continuation requires a fresh applicable preview and approval
+- **AND** omitting `--inputs` or changing directories is not a supported freshness workaround
 
 ### Requirement: Infrastructure revalidation blockers offer the real repair handoff
 Update SHALL explain that `seed-verified` means local baseline verification, not an unfinished feature change. When recorded infrastructure requires reorganization, human and machine-readable output SHALL identify the repair command targeted to the same project, explain the ownership/approval boundary, and provide the subsequent update check. Ordinary update approval SHALL NOT authorize infrastructure repair.

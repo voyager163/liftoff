@@ -1,3 +1,4 @@
+import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
@@ -78,23 +79,19 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-policy-'));
     tempDirs.push(tempDir);
 
-    // Create a mock powershell executable (script) that outputs the standard Windows execution policy error
-    const mockPs = path.join(tempDir, 'mock-powershell.sh');
+    const mockPs = path.join(tempDir, 'mock-policy.mjs');
     await writeFile(
       mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-File C:\\repair\\windows-job-controller.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
-EOF
-exit 1
-`,
-      { mode: 0o755 }
+      `console.error("File C:\\\\repair\\\\windows-job-controller.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.");\nprocess.exit(1);\n`
     );
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       {},
-      { powershellPath: mockPs, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -107,22 +104,19 @@ exit 1
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-lang-'));
     tempDirs.push(tempDir);
 
-    const mockPs = path.join(tempDir, 'mock-powershell-lang.sh');
+    const mockPs = path.join(tempDir, 'mock-lang.mjs');
     await writeFile(
       mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).
-EOF
-exit 1
-`,
-      { mode: 0o755 }
+      `console.error("Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).");\nprocess.exit(1);\n`
     );
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       {},
-      { powershellPath: mockPs, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -143,6 +137,7 @@ exit 1
       `
 import net from 'node:net';
 import path from 'node:path';
+import fs from 'node:fs';
 
 const pipeArg = process.argv[process.argv.indexOf('-ControlPipeName') + 1];
 const nonce = process.argv[process.argv.indexOf('-ExpectedNonce') + 1];
@@ -171,6 +166,9 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
       if (buf.length >= 4 + len) {
         const payload = JSON.parse(buf.subarray(4, 4 + len).toString('utf8'));
         if (payload.kind === 'spawn') {
+          if (payload.stdoutFile) fs.writeFileSync(payload.stdoutFile, '');
+          if (payload.stderrFile) fs.writeFileSync(payload.stderrFile, '');
+
           // Send ack
           const ack = {
             schemaVersion: 1,
@@ -217,19 +215,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -328,19 +320,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000, maxOutputBytes: 25 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -387,19 +373,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -416,6 +396,7 @@ exec node "${mockPs}" "$@"
       mockPs,
       `
 import net from 'node:net';
+import fs from 'node:fs';
 
 const pipeArg = process.argv[process.argv.indexOf('-ControlPipeName') + 1];
 const nonce = process.argv[process.argv.indexOf('-ExpectedNonce') + 1];
@@ -444,6 +425,9 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
       if (buf.length >= 4 + len) {
         const payload = JSON.parse(buf.subarray(4, 4 + len).toString('utf8'));
         if (payload.kind === 'spawn') {
+          if (payload.stdoutFile) fs.writeFileSync(payload.stdoutFile, '');
+          if (payload.stderrFile) fs.writeFileSync(payload.stderrFile, '');
+
           const ack = {
             schemaVersion: 1,
             kind: 'ack',
@@ -489,19 +473,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -545,19 +523,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      {
+        skipAssetVerification: true,
+        spawnController: (_cmd, args, opts) => spawn(process.execPath, [mockPs, ...args], opts)
+      }
     );
 
     expect(result.processTreeSettled).toBe(false);

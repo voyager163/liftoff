@@ -15,11 +15,11 @@ import { applicationPackageSources, applicationPreparationBounds } from './appli
 import { assertApplicationToolsCurrent } from './application-toolchain.js';
 import { loadRepairPreview } from './preview.js';
 import { createRepairVerificationWorkspace } from './workspaces.js';
-import type { RepairVerificationWorkspace } from './workspaces-types.js';
-import type { ApplicationPatchCandidate, ApplicationVerificationCommand, ApplicationVerificationResult } from './application-types.js';
+import type { RepairVerificationWorkspace, RepairWorkspaceStorageOptions } from './workspaces-types.js';
+import type { ApplicationCandidate, ApplicationPatchCandidate, ApplicationVerificationCommand, ApplicationVerificationResult } from './application-types.js';
 import type { ApplicationResolvedPreparation, ApplicationVerificationOptions } from './application-preparation-types.js';
 
-async function copyCandidate(candidate: ApplicationPatchCandidate, project: string): Promise<void> {
+async function copyCandidate(candidate: ApplicationCandidate, project: string): Promise<void> {
   for (const directory of candidate.scope.directoryInventory) {
     if (directory.exists && directory.pathParts.length) {
       await mkdir(path.join(project, ...applicationParts(directory.pathParts)), { recursive: true, mode: 0o700 });
@@ -98,6 +98,54 @@ function preparationEnvironment(
 export async function verifyApplicationPatch(
   root: string, candidate: ApplicationPatchCandidate, runner: CommandRunner, options: ApplicationVerificationOptions
 ): Promise<ApplicationVerificationResult> {
+  return verifyApplicationCandidate(root, candidate, runner, {
+    storage: options?.storage, env: options?.env,
+    allowProjectCode: options?.allowProjectCode, allowDependencyPreparation: options?.allowDependencyPreparation,
+    allowNetwork: options?.allowNetwork,
+    assertAuthority: async () => {
+      if (!options?.preview || typeof options.assertCurrent !== 'function') {
+        throw new ApplicationInspectionError('[verification-consent] Verification requires the real saved repair preview and coordinator input assertion.');
+      }
+      const preview = await loadRepairPreview(root, options.preview.fingerprint, options.storage?.clock?.() ?? new Date(), options.storage);
+      if (canonicalSha256(preview) !== canonicalSha256(options.preview) || preview.applicationPatchPath !== candidate.patchPath ||
+        preview.recipe.id !== 'application-layout-patch' || preview.verificationDigest !== canonicalSha256(candidate.verificationPolicy)) {
+        throw new ApplicationInspectionError('[stale-preview] The real saved preview does not match this application candidate, recipe, or verification/preparation policy.');
+      }
+      await options.assertCurrent();
+    },
+    assertCandidateCurrent: () => assertApplicationCandidateCurrent(root, candidate),
+    inspectedProjectUnchanged: () => applicationInspectedProjectUnchanged(root, candidate),
+    createWorkspace: () => createRepairVerificationWorkspace(root, {
+      planFingerprint: options.preview.fingerprint,
+      repairIdentity: { cliVersion: options.preview.cliVersion, repairContractVersion: options.preview.repairContractVersion, recipe: options.preview.recipe },
+      patchStagingRoot: candidate.scope.staging.root,
+      bindings: {
+        inputDigest: options.preview.inputDigest, verificationPolicyDigest: canonicalSha256(candidate.verificationPolicy),
+        providerDigest: canonicalSha256(candidate.verificationPolicy.preparation), toolchainDigest: canonicalSha256(candidate.verificationPolicy.toolchain)
+      },
+      approvedScopes: {
+        projectCode: true, dependencyPreparation: candidate.verificationPolicy.effects.preparation && options.allowDependencyPreparation,
+        network: candidate.networkRequired && options.allowNetwork, lifecycle: false
+      }
+    }, options.storage)
+  });
+}
+
+export interface ApplicationCandidateVerificationOptions {
+  storage?: RepairWorkspaceStorageOptions;
+  env?: NodeJS.ProcessEnv;
+  allowProjectCode: boolean;
+  allowDependencyPreparation: boolean;
+  allowNetwork: boolean;
+  assertAuthority(): Promise<void>;
+  assertCandidateCurrent(): Promise<void>;
+  inspectedProjectUnchanged(): Promise<boolean>;
+  createWorkspace(): Promise<RepairVerificationWorkspace>;
+}
+
+export async function verifyApplicationCandidate(
+  root: string, candidate: ApplicationCandidate, runner: CommandRunner, options: ApplicationCandidateVerificationOptions
+): Promise<ApplicationVerificationResult> {
   const policy = candidate.verificationPolicy;
   const result: ApplicationVerificationResult = {
     schemaVersion: 1, kind: 'liftoff-application-verification', status: 'blocked',
@@ -125,7 +173,8 @@ export async function verifyApplicationPatch(
         throw new ApplicationInspectionError(`[corrupted-controller-asset] ${err instanceof Error ? err.message : String(err)}`);
       }
     }
-    if (!options || typeof options.assertCurrent !== 'function' || !options.preview ||
+    if (!options || typeof options.assertAuthority !== 'function' || typeof options.assertCandidateCurrent !== 'function' ||
+        typeof options.createWorkspace !== 'function' || typeof options.inspectedProjectUnchanged !== 'function' ||
         options.allowProjectCode !== true || typeof options.allowDependencyPreparation !== 'boolean' ||
         typeof options.allowNetwork !== 'boolean') {
       throw new ApplicationInspectionError('[verification-consent] Verification requires the real saved preview, a coordinator input assertion, and explicit project-code/preparation/network permission fields.');
@@ -136,14 +185,9 @@ export async function verifyApplicationPatch(
     if (candidate.networkRequired && !options.allowNetwork) {
       throw new ApplicationInspectionError('[network-consent] Declared network effects need separate approval before any preparation/check command (or explicit --allow-network automation).');
     }
-    const preview = await loadRepairPreview(root, options.preview.fingerprint, options.storage?.clock?.() ?? new Date(), options.storage);
-    if (canonicalSha256(preview) !== canonicalSha256(options.preview) || preview.applicationPatchPath !== candidate.patchPath ||
-        preview.recipe.id !== 'application-layout-patch' || preview.verificationDigest !== result.verificationPolicyDigest) {
-      throw new ApplicationInspectionError('[stale-preview] The real saved preview does not match this application candidate, recipe, or verification/preparation policy.');
-    }
-    try { await options.assertCurrent(); }
+    try { await options.assertAuthority(); }
     catch { throw new ApplicationInspectionError('[stale-preview] The coordinator could not rebind the same approved raw inputs and immutable plan. Request a fresh review.'); }
-    await assertApplicationCandidateCurrent(root, candidate);
+    await options.assertCandidateCurrent();
     await assertApplicationToolsCurrent(root, candidate.scope.staging.root, policy.toolchain);
     admissionChecked = true;
     result.inspectedProjectUnchanged = true;
@@ -203,19 +247,7 @@ export async function verifyApplicationPatch(
   };
   try {
     await assertAdmission();
-    workspace = await createRepairVerificationWorkspace(root, {
-      planFingerprint: options.preview.fingerprint,
-      repairIdentity: { cliVersion: options.preview.cliVersion, repairContractVersion: options.preview.repairContractVersion, recipe: options.preview.recipe },
-      patchStagingRoot: candidate.scope.staging.root,
-      bindings: {
-        inputDigest: options.preview.inputDigest, verificationPolicyDigest: result.verificationPolicyDigest,
-        providerDigest: result.providerDigest, toolchainDigest: result.toolchainDigest
-      },
-      approvedScopes: {
-        projectCode: true, dependencyPreparation: policy.effects.preparation && options.allowDependencyPreparation,
-        network: candidate.networkRequired && options.allowNetwork, lifecycle: false
-      }
-    }, options.storage);
+    workspace = await options.createWorkspace();
     result.workspaceId = workspace.workspaceId;
     await workspace.checkpoint('copying');
     await copyCandidate(candidate, workspace.roles.project);
@@ -333,10 +365,10 @@ export async function verifyApplicationPatch(
   } finally {
     if (admissionChecked) {
       try {
-        await assertApplicationCandidateCurrent(root, candidate);
+        await options.assertCandidateCurrent();
         result.inspectedProjectUnchanged = true;
       } catch {
-        result.inspectedProjectUnchanged = await applicationInspectedProjectUnchanged(root, candidate);
+        result.inspectedProjectUnchanged = await options.inspectedProjectUnchanged();
         if (result.status === 'passed') result.status = 'failed';
         result.blockers.push('[changed-inputs] Inspected application or staged inputs changed; no success receipt is valid.');
       }

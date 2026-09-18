@@ -17,8 +17,11 @@ async function npmShim(candidate: string, packageId: string): Promise<boolean> {
     if (!info.isFile() || info.size > 8_192) return false;
     const content = await file.readFile('utf8');
     const normalized = content.replaceAll('\\', '/').toLowerCase();
+    const pkg = packageId.toLowerCase();
     return /^@echo off\b/i.test(content) &&
-      normalized.includes(`%dp0%/node_modules/${packageId.toLowerCase()}/`);
+      (normalized.includes(`%dp0%/node_modules/${pkg}/`) ||
+       normalized.includes(`%~dp0/node_modules/${pkg}/`) ||
+       normalized.includes(`%~dp0node_modules/${pkg}/`));
   } finally {
     await file.close();
   }

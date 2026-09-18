@@ -23,6 +23,7 @@ import {
 import { UpdatePlanError, type UpdateInspection } from './inspection.js';
 import { previewLocalRevalidation, type LocalRevalidationPreview } from './revalidation.js';
 import type { UpdateWritePlan } from './write-plan.js';
+import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 
 export interface PreparedUpdateRevalidation {
   preview: LocalRevalidationPreview;
@@ -68,7 +69,7 @@ function expectedInputSnapshot(
 export async function prepareUpdateRevalidation(
   inspection: UpdateInspection,
   writePlan: UpdateWritePlan,
-  options: { runner?: CommandRunner; now?: Date } = {}
+  options: { runner?: CommandRunner; now?: Date; storage?: UpdatePreviewOptions } = {}
 ): Promise<PreparedUpdateRevalidation | undefined> {
   if (!inspection.revalidationSource) return undefined;
   const sensitivePathExclusions = inspection.sensitivePathExclusions ?? migrationSensitivePathExclusions(inspection.historyMigration);

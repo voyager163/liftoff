@@ -10,6 +10,10 @@ export function applicationSearchEnvironment(
   if (systemRoot) environment.SystemRoot = systemRoot;
   const windir = inherited.WINDIR ?? inherited.windir ?? process.env.WINDIR ?? process.env.windir;
   if (windir) environment.WINDIR = windir;
+  const systemDrive = inherited.SystemDrive ?? inherited.SYSTEMDRIVE ?? process.env.SystemDrive ?? process.env.SYSTEMDRIVE ?? (systemRoot ? systemRoot.slice(0, 2) : undefined);
+  if (systemDrive) environment.SystemDrive = systemDrive;
+  const comspec = inherited.COMSPEC ?? inherited.ComSpec ?? process.env.COMSPEC ?? process.env.ComSpec;
+  if (comspec) environment.COMSPEC = comspec;
   for (const name of ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ']) {
     const value = inherited[name] ?? process.env[name];
     if (value) environment[name] = value;
@@ -18,13 +22,13 @@ export function applicationSearchEnvironment(
   environment.PATH = search.slice(0, 32_768).split(path.delimiter).slice(0, 256).filter((entry) =>
     path.isAbsolute(entry) && ![projectRoot, stagingRoot, cwd].some((root) => applicationWithin(root, path.resolve(entry)))
   ).join(path.delimiter);
+  for (const key of Object.keys(environment)) {
+    if (key.toLowerCase() === 'path' && key !== 'PATH') {
+      delete environment[key];
+    }
+  }
   if (process.platform === 'win32') {
     environment.PATHEXT = '.COM;.EXE;.BAT;.CMD';
-    for (const key of Object.keys(environment)) {
-      if (key.toLowerCase() === 'path' && key !== 'PATH') {
-        delete environment[key];
-      }
-    }
   }
   return environment;
 }

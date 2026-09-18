@@ -68,8 +68,17 @@ describe('public CLI delivery flows', () => {
     }
     const beforeInspection = await captureTreeState(project);
     const verified = await invoke(['governance', 'verify', '--json'], project, runner);
-    expect(verified.code, verified.out + verified.err).toBe(0);
-    expect(JSON.parse(verified.out)).toMatchObject({ consistent: true, complete: false });
+    expect(verified.code, verified.out + verified.err).toBe(2);
+    expect(JSON.parse(verified.out)).toMatchObject({
+      schemaVersion: 3, scope: 'activation', consistent: true, complete: false,
+      progress: { local: true, activation: false }
+    });
+    const local = await invoke(['governance', 'verify', '--scope', 'local', '--json'], project, runner);
+    expect(local.code, local.out + local.err).toBe(0);
+    expect(JSON.parse(local.out)).toMatchObject({
+      schemaVersion: 3, scope: 'local', consistent: true, complete: true,
+      progress: { local: true, activation: false }
+    });
     const telemetry = {
       beforeCommand: vi.fn<CliTelemetryHooks['beforeCommand']>().mockResolvedValue(true),
       afterCommand: vi.fn<CliTelemetryHooks['afterCommand']>().mockResolvedValue(undefined)

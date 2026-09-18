@@ -228,14 +228,55 @@ export interface ManifestManagedArtifact {
   contentHash: string;
 }
 
-export interface ManifestProjectArtifact {
+export interface ManifestGeneratedProjectArtifact {
   logicalName: string;
   category: string;
   pathParts: string[];
   generatedBy: string;
   generationHash: string;
   provisioningGroup: ProjectProvisioningGroup;
+  adoption?: never;
+  addition?: never;
 }
+
+export interface ManifestAdoptedProjectArtifact {
+  logicalName: string;
+  category: string;
+  pathParts: string[];
+  adoption: {
+    recordId: string;
+    componentId: string;
+    sourcePathParts: string[];
+    observedHash: string;
+    observedMode: number;
+  };
+  generatedBy?: never;
+  generationHash?: never;
+  provisioningGroup?: never;
+  addition?: never;
+}
+
+export interface ManifestAddedProjectArtifact {
+  logicalName: string;
+  category: string;
+  pathParts: string[];
+  addition: {
+    recordId: string;
+    componentId: string;
+    producer: 'reviewed-project-proposal';
+    contentHash: string;
+    mode: number;
+  };
+  generatedBy?: never;
+  generationHash?: never;
+  provisioningGroup?: never;
+  adoption?: never;
+}
+
+export type ManifestProjectArtifact =
+  | ManifestGeneratedProjectArtifact
+  | ManifestAdoptedProjectArtifact
+  | ManifestAddedProjectArtifact;
 
 export type ManifestArtifact = ManifestManagedArtifact;
 
@@ -258,9 +299,68 @@ export interface ManifestStandardApiWorkload {
   environments: EnvironmentId[];
 }
 
-export type ManifestWorkload =
+export type ManifestGeneratedWorkload =
   | ManifestGenAiWorkload
   | ManifestStandardApiWorkload;
+
+export interface ManifestComponentWorkload {
+  kind: 'components';
+}
+
+export type ManifestWorkload = ManifestGeneratedWorkload | ManifestComponentWorkload;
+
+export interface ManifestProfileIdentity {
+  schemaVersion: 1;
+  id: string;
+  revision: string;
+  digest: string;
+}
+
+export interface ManifestComponent {
+  id: string;
+  profile: ManifestProfileIdentity;
+  rootPathParts: string[];
+}
+
+export interface ManifestStandards {
+  schemaVersion: 1;
+  catalogDigest: string;
+  resourceCatalogDigest: string;
+  components: ManifestComponent[];
+}
+
+export interface ManifestHistoricalSource {
+  kind: 'historical-manifest';
+  artifactVersion: 2 | 3 | 4 | 5 | 6 | 7;
+  writerVersion: string;
+  contentHash: string;
+  historyPathParts: string[];
+  originalProfile: 'unknown';
+}
+
+export interface ManifestRepairProvenance {
+  recordId: string;
+  recipe: string;
+  recipeVersion: number;
+  sourceManifestHash: string;
+}
+
+export type ManifestProvenance =
+  | {
+      kind: 'generated';
+      origin: {
+        kind: 'catalog';
+        cliVersion: string;
+        standards: ManifestStandards;
+      } | ManifestHistoricalSource;
+      repairs: ManifestRepairProvenance[];
+    }
+  | {
+      kind: 'adopted';
+      recordId: string;
+      observationDigest: string;
+      repairs: ManifestRepairProvenance[];
+    };
 
 export type ManifestGovernance =
   | {
@@ -278,26 +378,46 @@ export type ManifestGovernance =
       activationIdentity?: ActivationIdentity;
     };
 
-export interface LiftoffManifest {
-  artifactVersion: 2 | 3 | 4 | 5 | 6 | 7;
+export interface ManifestProjectIdentity {
+  name: string;
+  workload: ManifestWorkload;
+  specWorkflow: SpecWorkflowId;
+  agents: CodingAgentId[];
+  defaultAgent?: CodingAgentId;
+}
+
+export interface ManifestFrameworkIdentity {
+  state: 'initialized' | 'legacy' | 'uninitialized';
+  adapter: SpecWorkflowId;
+  contractVersion?: string;
+}
+
+interface ManifestCommon {
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
-  project: {
-    name: string;
-    workload: ManifestWorkload;
-    specWorkflow: SpecWorkflowId;
-    agents: CodingAgentId[];
-    defaultAgent?: CodingAgentId;
-  };
-  framework: {
-    state: 'initialized' | 'legacy';
-    adapter: SpecWorkflowId;
-    contractVersion?: string;
-  };
   governance: ManifestGovernance;
   managedArtifacts: ManifestManagedArtifact[];
-  projectArtifacts: ManifestProjectArtifact[];
 }
+
+export interface HistoricalLiftoffManifest extends ManifestCommon {
+  artifactVersion: 2 | 3 | 4 | 5 | 6 | 7;
+  project: ManifestProjectIdentity & { workload: ManifestGeneratedWorkload };
+  framework: ManifestFrameworkIdentity & { state: 'initialized' | 'legacy' };
+  projectArtifacts: ManifestGeneratedProjectArtifact[];
+  standards?: never;
+  provenance?: never;
+}
+
+export interface LiftoffManifestV8 extends ManifestCommon {
+  artifactVersion: 8;
+  project: ManifestProjectIdentity;
+  framework: ManifestFrameworkIdentity;
+  projectArtifacts: ManifestProjectArtifact[];
+  standards: ManifestStandards;
+  provenance: ManifestProvenance;
+}
+
+export type LiftoffManifest = HistoricalLiftoffManifest | LiftoffManifestV8;
 
 export interface ParsedArgs {
   command?: string;

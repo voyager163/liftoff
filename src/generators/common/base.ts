@@ -12,13 +12,14 @@ import { OPEN_SPEC_PROFILE } from '../../openspec-profile.js';
 import { OPEN_SPEC_WORKFLOW_IDS } from '../../openspec-profile.js';
 import type { ProjectPlan } from '../../domain/project/contracts.js';
 import { renderBackendDockerfile } from '../containers/images.js';
-import { governanceInvocationGuide, renderGovernanceAssessmentGuide } from '../../repository-governance.js';
-import { activationContractVersion } from '../../governance-activation/identity.js';
+import { governanceInvocationGuide, renderGovernanceAssessmentGuide } from '../../application/repository-governance/agent-rendering.js';
+import { activationContractVersion } from '../../domain/governance/policy/identity.js';
 import { renderStandardDockerfile } from '../containers/images.js';
 import { renderStandardEnv } from '../standard/configuration.js';
 import { renderDockerignore } from '../containers/context.js';
 import { selectedEnvironmentId } from './values.js';
 import { workstationRequirementCatalog } from '../../workstation-catalog.js';
+import { resolvePackagedResource } from '../../adapters/packaged-assets/resource-catalog.js';
 import type { WorkstationRequirementId } from '../../workstation-catalog.js';
 
 export function addBaseArtifacts(
@@ -303,7 +304,7 @@ Application source, tests, dependencies and locks, schemas, containers, environm
 
 Project template modernization is a separately reviewed production change and is not performed by ordinary update or by the existing non-Liftoff \`migrate\` command. Managed-core conflicts are skipped by default; after reviewing every listed core path, \`liftoff update --force\` may replace only those core conflicts. Managed-core orphans remain on disk, and update never installs dependencies. A failed transaction is rolled back, but Liftoff retains no backup after a successful core overwrite.
 
-Activation migration is a separate explicitly approved write set. A supported v1/v2 source retains original state, evidence, plans, approvals, and source metadata in \`governance/history\` before a linked v${activationContractVersion} successor is created. History never becomes managed core or current execution proof. Revalidation uses only the finite reviewed local operations and stops before provider access, publication, or independent authority gates. Failure after migration commits leaves v${activationContractVersion} blocked and resumable; repair the named cause, run check again, and approve the remaining work. History is not automatically committed, pushed, or removed with preview receipts. Force never bypasses preview, approval, compatibility, or ownership checks.
+Activation migration is a separate explicitly approved write set. A supported v1/v2/v3 source retains original state, evidence, plans, approvals, and source metadata in \`governance/history\` before a linked v${activationContractVersion} successor is created. History never becomes managed core or current execution proof. Revalidation uses only the finite reviewed local operations and stops before provider access, publication, or independent authority gates. Failure after migration commits leaves v${activationContractVersion} blocked and resumable; repair the named cause, run check again, and approve the remaining work. History is not automatically committed, pushed, or removed with preview receipts. Force never bypasses preview, approval, compatibility, or ownership checks.
 
 Project repair is a separate scope: use \`liftoff repair --check\` for its exact
 project-bound preview, or \`liftoff repair --check --add-agents codex\` for additive
@@ -446,18 +447,7 @@ ${genericSection}
 }
 
 export function renderGeneratedGitignore(): string {
-  return `.venv/
-__pycache__/
-.pytest_cache/
-node_modules/
-dist/
-.env
-runtime.config.json
-migration/legacy/
-*.tfstate
-*.tfstate.*
-.terraform/
-`;
+  return resolvePackagedResource('templates.common.gitignore').content;
 }
 
 export function renderEnvExample(plan: ApiProjectPlan): string {

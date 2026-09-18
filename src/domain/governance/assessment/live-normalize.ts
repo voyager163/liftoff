@@ -2,6 +2,8 @@ import { containsSensitiveText, isRecord, sanitizeAssessmentText } from './sanit
 import { LiveFailure } from './errors.js';
 import { assessmentLimits, type AzureAssessmentBinding, type JsonValue } from './types.js';
 
+export type { JsonValue };
+
 type Decoder = (value: unknown) => JsonValue;
 type Fields = Record<string, Decoder>;
 const maxEntries = assessmentLimits.maxPages * 100;
@@ -90,23 +92,79 @@ function shape(fields: Fields, required: string[] = [], strict = false): Decoder
   };
 }
 
+export function minimumApprovals(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0 || value > 10) {
+    throw new LiveFailure('invalid-response', 'Expected minimum approvals integer between 0 and 10 was unavailable.');
+  }
+  return value;
+}
+
+export function nonNegativeInteger(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+    throw new LiveFailure('invalid-response', 'Expected non-negative integer metadata was unavailable.');
+  }
+  return value;
+}
+
 const strings = array(text);
+const pathConditions = (value: unknown) => list(value).map(text);
+const reviewerList = (value: unknown) => {
+  const entries = list(value);
+  if (entries.length > 15) {
+    throw new LiveFailure('invalid-response', 'Required reviewer collection exceeded the provider limit of 15.');
+  }
+  return entries;
+};
 const toggle = shape({ enabled: boolean }, ['enabled']);
 const actor = shape({ id, login: text, slug: text }, ['id']);
 const actors = shape({ users: array(actor), teams: array(actor), apps: array(actor) });
 const checkContext = shape({ context: text, integration_id: nullable(number) }, ['context'], true);
 const workflow = shape({ path: text, repository_id: id, ref: text, sha: text }, ['path', 'repository_id'], true);
-const ruleParameters = shape({
+
+export const normalizeDismissalActor = shape({
+  id,
+  type: enumeration(['User', 'Team', 'IntegrationInstallation', 'RepositoryRole'])
+}, ['id', 'type'], true);
+
+export const normalizeDismissalRestriction = shape({
+  enabled: boolean,
+  allowed_actors: array(normalizeDismissalActor)
+}, ['enabled'], true);
+
+export const normalizeRequiredReviewerActor = shape({
+  id,
+  type: enumeration(['Team'])
+}, ['id', 'type'], true);
+
+export const normalizeRequiredReviewer = shape({
+  reviewer: normalizeRequiredReviewerActor,
+  minimum_approvals: minimumApprovals,
+  file_patterns: pathConditions
+}, ['reviewer', 'minimum_approvals', 'file_patterns'], true);
+
+export const normalizePullRequestParameters = shape({
+  dismiss_stale_reviews_on_push: boolean,
+  require_code_owner_review: boolean,
+  require_last_push_approval: boolean,
+  required_approving_review_count: minimumApprovals,
+  required_review_thread_resolution: boolean,
+  allowed_merge_methods: array(enumeration(['merge', 'squash', 'rebase'])),
+  dismissal_restriction: normalizeDismissalRestriction,
+  require_extra_approval_for_unattributed_changes: boolean,
+  required_reviewers: (value) => reviewerList(value).map(normalizeRequiredReviewer)
+}, [
+  'dismiss_stale_reviews_on_push',
+  'require_code_owner_review',
+  'require_last_push_approval',
+  'required_approving_review_count'
+], true);
+
+const nonPullRequestParameters = shape({
   update_allows_fetch_and_merge: boolean,
   required_deployment_environments: strings,
   required_status_checks: array(checkContext),
   strict_required_status_checks_policy: boolean,
   do_not_enforce_on_create: boolean,
-  dismiss_stale_reviews_on_push: boolean,
-  require_code_owner_review: boolean,
-  require_last_push_approval: boolean,
-  required_approving_review_count: number,
-  required_review_thread_resolution: boolean,
   allowed_merge_methods: strings,
   operator: text, pattern: text, negate: boolean, name: text,
   restricted_file_paths: strings, restricted_file_extensions: strings,
@@ -122,17 +180,39 @@ const ruleParameters = shape({
   automatic_review: boolean, review_on_push: boolean, review_draft_pull_requests: boolean
 }, [], true);
 
-export const normalizeRule = shape({
-  type: enumeration([
-    'creation', 'update', 'deletion', 'required_linear_history', 'merge_queue',
-    'required_deployments', 'required_signatures', 'pull_request', 'required_status_checks',
-    'non_fast_forward', 'commit_message_pattern', 'commit_author_email_pattern', 'committer_email_pattern',
-    'branch_name_pattern', 'tag_name_pattern', 'file_path_restriction', 'max_file_path_length',
-    'file_extension_restriction', 'max_file_size', 'workflows', 'required_workflows', 'code_scanning', 'copilot_code_review'
-  ]),
-  parameters: ruleParameters,
-  ruleset_id: id, ruleset_source_type: text, ruleset_source: text
-}, ['type'], true);
+const ruleTypeEnum = enumeration([
+  'creation', 'update', 'deletion', 'required_linear_history', 'merge_queue',
+  'required_deployments', 'required_signatures', 'pull_request', 'required_status_checks',
+  'non_fast_forward', 'commit_message_pattern', 'commit_author_email_pattern', 'committer_email_pattern',
+  'branch_name_pattern', 'tag_name_pattern', 'file_path_restriction', 'max_file_path_length',
+  'file_extension_restriction', 'max_file_size', 'workflows', 'required_workflows', 'code_scanning', 'copilot_code_review'
+]);
+
+export function normalizeRule(value: unknown): JsonValue {
+  const input = record(value);
+  if (!Object.hasOwn(input, 'type')) {
+    throw new LiveFailure('invalid-response', 'Required metadata fields were omitted by the provider.');
+  }
+  const allowedKeys = ['type', 'parameters', 'ruleset_id', 'ruleset_source_type', 'ruleset_source'];
+  if (Object.keys(input).some((key) => !allowedKeys.includes(key))) {
+    throw new LiveFailure('unsupported-response', 'Unrecognized enforcement fields prevent a complete normalized observation.');
+  }
+  const ruleType = ruleTypeEnum(input.type);
+  const result: Record<string, JsonValue> = { type: ruleType };
+  if (Object.hasOwn(input, 'ruleset_id')) result.ruleset_id = id(input.ruleset_id);
+  if (Object.hasOwn(input, 'ruleset_source_type')) result.ruleset_source_type = text(input.ruleset_source_type);
+  if (Object.hasOwn(input, 'ruleset_source')) result.ruleset_source = text(input.ruleset_source);
+
+  if (ruleType === 'pull_request') {
+    if (!Object.hasOwn(input, 'parameters')) {
+      throw new LiveFailure('invalid-response', 'Required metadata fields were omitted by the provider.');
+    }
+    result.parameters = normalizePullRequestParameters(input.parameters);
+  } else if (Object.hasOwn(input, 'parameters')) {
+    result.parameters = nonPullRequestParameters(input.parameters);
+  }
+  return result;
+}
 
 const patterns = shape({ include: strings, exclude: strings }, ['include', 'exclude'], true);
 const repositoryPatterns = shape({
@@ -142,7 +222,7 @@ const propertyCondition = shape({
   name: text, source: text, property_values: strings
 }, ['name', 'property_values'], true);
 
-export const normalizeRuleset = shape({
+const rulesetDefinitionFields: Fields = {
   id, node_id: text, name: text,
   target: enumeration(['branch', 'tag', 'push']),
   enforcement: enumeration(['disabled', 'active', 'evaluate']),
@@ -159,7 +239,19 @@ export const normalizeRuleset = shape({
     actor_id: nullable(number), actor_type: text, bypass_mode: text
   }, ['actor_id', 'actor_type', 'bypass_mode'], true)),
   rules: array(normalizeRule)
-}, ['id', 'name', 'target', 'enforcement', 'source_type', 'source', 'conditions', 'bypass_actors', 'rules']);
+};
+
+export const normalizeRulesetDefinition = shape(
+  rulesetDefinitionFields,
+  ['name', 'target', 'enforcement', 'conditions', 'bypass_actors', 'rules'],
+  true
+);
+
+export const normalizeRuleset = shape(
+  rulesetDefinitionFields,
+  ['id', 'name', 'target', 'enforcement', 'source_type', 'source', 'conditions', 'bypass_actors', 'rules'],
+  true
+);
 
 export const normalizeProtection = shape({
   required_status_checks: nullable(shape({

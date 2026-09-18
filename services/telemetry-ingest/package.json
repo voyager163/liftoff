@@ -10,6 +10,7 @@
     "start": "node dist/services/telemetry-ingest/src/index.js",
     "smoke:container": "node scripts/smoke-container.mjs",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "check": "npm run build && npm test"
   },
   "engines": {
@@ -21,6 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "5.0.0",
     "typescript": "^7.0.2",
     "vite": "8.2.2",
     "vitest": "5.0.0"

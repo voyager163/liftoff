@@ -9,6 +9,7 @@ import type { CommandRunner } from '../src/process-runner.js';
 import { inspectActivationMigrationHistory } from '../src/governance-activation/migration-history.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
+import { writeHistoricalV3Fixture } from './fixtures/activation-v3/fixture.js';
 import { createActivationSuccessorRuntime } from './fixtures/activation-successor-runtime.js';
 
 const roots = new Set<string>();
@@ -43,7 +44,8 @@ async function fixture(family = 2, workflow: 'openspec' | 'spec-kit' = 'openspec
   const projectRoot = path.join(directory, 'project with spaces');
   const home = path.join(directory, 'preview home');
   roots.add(directory);
-  const source = family === 1 ? await writeHistoricalV1Fixture(projectRoot) : await writeHistoricalV2Fixture(projectRoot, { workflow });
+  const source = family === 1 ? await writeHistoricalV1Fixture(projectRoot) :
+    family === 3 ? await writeHistoricalV3Fixture(projectRoot) : await writeHistoricalV2Fixture(projectRoot, { workflow });
   await mkdir(path.join(projectRoot, '.git'), { recursive: true });
   await writeFile(path.join(projectRoot, '.git', 'HEAD'), 'ref: refs/heads/develop\n');
   const calls: string[] = [];
@@ -123,12 +125,12 @@ describe('reviewed update activation successor integration', { timeout: 60_000 }
     expect(await readFile(custom, 'utf8')).toBe('unowned custom skill\n');
     await expect(access(path.join(f.projectRoot, '.agents', 'skills', 'liftoff-setup', 'SKILL.md'))).rejects.toMatchObject({ code: 'ENOENT' });
     const history = await inspectActivationMigrationHistory(f.projectRoot);
-    if (history.status !== 'committed') throw new Error('Expected committed v3 successor.');
+    if (history.status !== 'committed') throw new Error('Expected committed v4 successor.');
     const configCopy = history.index.files.find((file) => file.originalPathParts.join('/') === 'liftoff.config.json')!;
     expect(await readFile(path.join(f.projectRoot, ...configCopy.copyPathParts))).toEqual(requestedBytes);
   });
 
-  it.each([1, 2])('checks v%s metadata read-only, commits v3, and reports resumable partial local readiness', async (family) => {
+  it.each([1, 2, 3])('checks v%s metadata read-only, commits v4, and reports resumable partial local readiness', async (family) => {
     const f = await fixture(family);
     const preview = await f.run(['--check']);
     expect(preview.code, JSON.stringify(preview.output)).toBe(2);
@@ -137,6 +139,9 @@ describe('reviewed update activation successor integration', { timeout: 60_000 }
       receipt: { status: 'issued' }
     });
     expect(preview.output.activationMigration.sourceIdentity.activationContractVersion).toBe(family);
+    expect(preview.output.activationMigration.issues).toContain(
+      `Preserve original v${family} bytes and approvals, create a linked v${currentActivationIdentity.activationContractVersion} successor, and establish fresh local proof.`
+    );
     expect(f.calls.every((command) => command.startsWith('git '))).toBe(true);
     for (const [file, content] of f.source.files) expect(await readFile(path.join(f.projectRoot, ...file.split('/')))).toEqual(content);
     const selected = preview.output.plans.find((plan: { mode: string; eligible: boolean }) => plan.mode === 'normal' && plan.eligible);
@@ -145,7 +150,7 @@ describe('reviewed update activation successor integration', { timeout: 60_000 }
     expect(applied.code, JSON.stringify(applied.output)).toBe(2);
     expect(applied.output).toMatchObject({ committed: true, activationMigration: { status: 'committed' }, revalidation: { status: 'blocked' } });
     const history = await inspectActivationMigrationHistory(f.projectRoot);
-    expect(history).toMatchObject({ status: 'committed', state: { schemaVersion: 3, identity: currentActivationIdentity } });
+    expect(history).toMatchObject({ status: 'committed', state: { schemaVersion: 4, identity: currentActivationIdentity } });
     if (history.status !== 'committed') throw new Error('Expected committed history.');
     for (const file of history.index.files) expect(await readFile(path.join(f.projectRoot, ...file.copyPathParts))).toEqual(f.source.files.get(file.originalPathParts.join('/')));
     const snapshotId = history.index.snapshotId;

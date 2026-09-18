@@ -21,6 +21,8 @@ import {
   liftoffManifestArtifactVersion,
   phaseGraphSchemaVersion,
   phaseIds,
+  requiredCredentialProviderPermissions,
+  runnerPreflightProviderReadDisclosure,
   resolveActivationCompatibility,
   supersessionSchemaVersion,
   transitionPlanForPhase,
@@ -169,8 +171,10 @@ function credentialPolicy(): CredentialPolicy {
     rotationDueAt: '2026-09-27T00:00:00.000Z',
     permissions: {
       repository: ['metadata:read'],
-      organization: ['hosted-runners:read', 'network-configurations:read']
+      organization: ['organization_administration:read', 'organization_network_configurations:read']
     },
+    providerPermissions: requiredCredentialProviderPermissions('fine-grained-pat'),
+    providerReadDisclosure: runnerPreflightProviderReadDisclosure,
     allowedWorkflows: [{ path: '.github/workflows/preflight.yml', jobs: ['runner-preflight'] }],
     nonForwarding: true,
     status: 'active',
@@ -191,16 +195,16 @@ function credentialPolicy(): CredentialPolicy {
 
 describe('activation identity compatibility', () => {
   it('exports the target version vector and resolves only explicit tuples', () => {
-    expect(liftoffActivationPackageVersion).toBe('0.12.0');
-    expect(liftoffManifestArtifactVersion).toBe(7);
-    expect(governanceActivationPolicyVersion).toBe('6');
-    expect(activationContractVersion).toBe(3);
-    expect(phaseGraphSchemaVersion).toBe(2);
-    expect(activationStateSchemaVersion).toBe(3);
-    expect(evidenceHeaderSchemaVersion).toBe(3);
-    expect(approvalEnvelopeSchemaVersion).toBe(3);
+    expect(liftoffActivationPackageVersion).toBe('0.13.0');
+    expect(liftoffManifestArtifactVersion).toBe(8);
+    expect(governanceActivationPolicyVersion).toBe('8');
+    expect(activationContractVersion).toBe(4);
+    expect(phaseGraphSchemaVersion).toBe(3);
+    expect(activationStateSchemaVersion).toBe(4);
+    expect(evidenceHeaderSchemaVersion).toBe(4);
+    expect(approvalEnvelopeSchemaVersion).toBe(4);
     expect(supersessionSchemaVersion).toBe(1);
-    expect(credentialPolicySchemaVersion).toBe(1);
+    expect(credentialPolicySchemaVersion).toBe(2);
     expect(activationCompatibility.has(activationCompatibilityKey(currentActivationIdentity))).toBe(true);
     expect(resolveActivationCompatibility(currentActivationIdentity, activationCompatibility))
       .toMatchObject({ compatible: true });
@@ -212,7 +216,7 @@ describe('activation identity compatibility', () => {
     expect(resolveActivationCompatibility(individuallyKnownUnsupported, activationCompatibility))
       .toMatchObject({
         compatible: false,
-        reason: expect.stringContaining('explicit compatibility map')
+        reason: expect.stringContaining('Unsupported activation identity field')
       });
   });
 });
@@ -260,7 +264,7 @@ describe('managed graph and artifact schemas', () => {
       .toThrow(/disposedAt is required/);
 
     const futureEvidence = clone(evidence('seed-valid')) as EvidenceHeader;
-    futureEvidence.schemaVersion = 4;
+    futureEvidence.schemaVersion = 5;
     expect(() => validateEvidenceHeader(futureEvidence)).toThrow(/schemaVersion/);
   });
 
@@ -383,6 +387,7 @@ describe('phase readiness calculation', () => {
     expect(initial.phases['seed-valid'].state).toBe('ready');
     expect(initial.phases['seed-verified'].state).toBe('blocked');
     expect(initial.nextReadyPhase).toBe('seed-valid');
+    expect(initial.scope).toBe('activation');
 
     const seedVerified = calculatePhaseReadiness({
       state: validState(),

@@ -1,0 +1,287 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schemaVersion": 1,
+  "trackedReadmes": [
+    {
+      "path": "README.md",
+      "canonicalSource": "README.md",
+      "logicalId": "project-root-readme",
+      "role": "Root product landing page leading with native channel/candidate status, interactive init, assess/adopt vs init for existing applications, and historical npm recovery",
+      "owner": "documentation",
+      "variants": [
+        "default"
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Refreshed to lead with native candidate status and verified-owner upgrades, historical npm 0.12.3 recovery, assess/adopt/skills guidance, manifest v8, and strict <135 line count.",
+      "localLinks": [
+        "docs/native-installation.md",
+        "docs/getting-started.md",
+        "docs/workloads.md",
+        "docs/spec-workflows-and-agents.md",
+        "docs/repository-governance.md",
+        "docs/existing-repositories.md",
+        "docs/prerequisites.md",
+        "docs/supported-stack.md",
+        "docs/safety-and-consent.md",
+        "docs/telemetry.md",
+        "docs/cli-reference.md",
+        "docs/project-structure.md",
+        "docs/configuration-and-manifests.md",
+        "docs/azure-deployment.md",
+        "docs/troubleshooting.md",
+        "docs/application-repair.md",
+        "docs/assessment.md",
+        "docs/skills.md",
+        "DEVELOPER.md",
+        "CONTRIBUTING.md",
+        "SECURITY.md",
+        "LICENSE",
+        "package.json",
+        "docs/assets/liftoff-terminal.svg"
+      ]
+    },
+    {
+      "path": "infrastructure/opentofu/bootstrap/README.md",
+      "canonicalSource": "infrastructure/opentofu/bootstrap/README.md",
+      "logicalId": "operator-bootstrap-readme",
+      "role": "Operator OpenTofu state bootstrap and Network Security Perimeter guide",
+      "owner": "operator",
+      "variants": [
+        "default"
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Reviewed and refreshed with discovered cross-links to operator telemetry infrastructure and docs/telemetry.md.",
+      "localLinks": [
+        "infrastructure/opentofu/telemetry/README.md",
+        "docs/telemetry.md"
+      ]
+    },
+    {
+      "path": "infrastructure/opentofu/telemetry/README.md",
+      "canonicalSource": "infrastructure/opentofu/telemetry/README.md",
+      "logicalId": "operator-telemetry-readme",
+      "role": "Operator telemetry infrastructure and Grafana dashboard guide",
+      "owner": "telemetry-operator",
+      "variants": [
+        "default"
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Reviewed and refreshed with parent dashboard operator paragraphs (All selector query semantics, query-time event age, schema-39 Azure export parity warnings) and discovered cross-links to bootstrap and telemetry docs.",
+      "localLinks": [
+        "infrastructure/opentofu/bootstrap/README.md",
+        "docs/telemetry.md"
+      ]
+    },
+    {
+      "path": "src/application/state-migration/README.md",
+      "canonicalSource": "src/application/state-migration/README.md",
+      "logicalId": "state-migration-readme",
+      "role": "Protected state migration API, coordinator integration, and native protocol guide",
+      "owner": "project-evolution",
+      "variants": [
+        "default"
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Reviewed and refreshed with discovered cross-links to docs/application-repair.md and DEVELOPER.md, preserving native POSIX locking and owned process quiesce boundaries.",
+      "localLinks": [
+        "docs/application-repair.md",
+        "DEVELOPER.md"
+      ]
+    }
+  ],
+  "generatedReadmes": [
+    {
+      "logicalId": "root-readme",
+      "canonicalSource": "src/generators/common/base.ts",
+      "category": "documentation",
+      "outputPaths": [
+        "README.md"
+      ],
+      "supportedWorkloads": [
+        "standard",
+        "genai"
+      ],
+      "supportedApiStacks": [
+        "python-fastapi",
+        "node-fastify",
+        "go-huma"
+      ],
+      "supportedGenAiPatterns": [
+        "generic",
+        "rag",
+        "chatbot",
+        "agent",
+        "prompt",
+        "multi-agent",
+        "fine-tuned",
+        "streaming",
+        "workflow"
+      ],
+      "conditionalLinks": [
+        {
+          "condition": "governanceProfile === 'none'",
+          "target": "infrastructure/opentofu/azure/README.md",
+          "description": "Direct OpenTofu guide link when governance setup is omitted"
+        },
+        {
+          "condition": "governanceProfile !== 'none'",
+          "target": ".liftoff/governance/README.md",
+          "description": "Deterministic setup guide link when governance is enabled"
+        },
+        {
+          "condition": "workload === 'genai' && pattern in ['rag', 'agent', 'multi-agent', 'workflow']",
+          "target": "functions/{workerName}",
+          "description": "Azure Functions worker directory reference when worker is enabled"
+        }
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Verified across all 3 API stacks and 9 canonical GenAI patterns; confirms accurate conditional linking for ungoverned OpenTofu and Azure Functions worker patterns."
+    },
+    {
+      "logicalId": "opentofu-readme",
+      "canonicalSource": "src/generators/infrastructure/azure.ts",
+      "category": "infrastructure",
+      "outputPaths": [
+        "infrastructure/opentofu/azure/README.md"
+      ],
+      "supportedWorkloads": [
+        "standard",
+        "genai"
+      ],
+      "supportedEnvironments": [
+        "dev",
+        "staging",
+        "prod"
+      ],
+      "conditionalLinks": [
+        {
+          "condition": "workload === 'genai' && pattern in ['rag', 'agent', 'multi-agent', 'workflow']",
+          "target": "functions/{workerName}",
+          "description": "Functions worker Service Bus queue receiver documentation"
+        },
+        {
+          "condition": "always",
+          "target": "modules/application",
+          "description": "Shared application OpenTofu module reference"
+        },
+        {
+          "condition": "always",
+          "target": "environments/{environment}/{environment}.tfvars",
+          "description": "Independent environment tfvars reference"
+        }
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Verified across standard and GenAI workloads; confirms RAG Service Bus sender/receiver separation and independent environment roots."
+    },
+    {
+      "logicalId": "functions-readme",
+      "canonicalSource": "src/generators/genai/functions.ts",
+      "category": "functions",
+      "outputPaths": [
+        "functions/README.md"
+      ],
+      "supportedWorkloads": [
+        "genai"
+      ],
+      "applicablePatterns": [
+        "rag",
+        "agent",
+        "multi-agent",
+        "workflow"
+      ],
+      "conditionalLinks": [
+        {
+          "condition": "always",
+          "target": "functions/{workerName}",
+          "description": "Specific worker adapter directory reference"
+        },
+        {
+          "condition": "always",
+          "target": "backend/orchestration",
+          "description": "Shared reusable orchestration logic reference"
+        },
+        {
+          "condition": "always",
+          "target": "backend/workers",
+          "description": "Containerized/backend-adjacent worker directory reference"
+        }
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Emitted only when hasFunctionWorker(plan) is true; reviewed unchanged with stream d73be155."
+    },
+    {
+      "logicalId": "function-worker-readme",
+      "canonicalSource": "src/generators/genai/functions.ts",
+      "category": "functions",
+      "outputPaths": [
+        "functions/{workerName}/README.md"
+      ],
+      "supportedWorkloads": [
+        "genai"
+      ],
+      "applicablePatterns": [
+        "rag",
+        "agent",
+        "multi-agent",
+        "workflow"
+      ],
+      "conditionalLinks": [
+        {
+          "condition": "always",
+          "target": "backend/orchestration",
+          "description": "Shared orchestration package reference"
+        },
+        {
+          "condition": "always",
+          "target": "../../backend",
+          "description": "Backend project root reference for testing"
+        }
+      ],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Emitted per worker under functions/{workerName}/; reviewed unchanged with stream d73be155."
+    },
+    {
+      "logicalId": "pattern-prompt-readme",
+      "canonicalSource": "src/generators/genai/patterns.ts",
+      "category": "pattern",
+      "outputPaths": [
+        "backend/orchestration/prompts/README.md"
+      ],
+      "supportedWorkloads": [
+        "genai"
+      ],
+      "applicablePatterns": [
+        "generic",
+        "rag",
+        "chatbot",
+        "agent",
+        "prompt",
+        "multi-agent",
+        "fine-tuned",
+        "streaming",
+        "workflow"
+      ],
+      "conditionalLinks": [],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Emitted for all 9 GenAI patterns; explicitly states prompt templates are editable design seeds not loaded by default runners."
+    },
+    {
+      "logicalId": "repository-governance-guide",
+      "canonicalSource": "src/application/repository-governance/agent-rendering.ts",
+      "rendererFunction": "renderGovernanceGuide",
+      "assemblySource": "src/application/repository-governance/artifacts.ts",
+      "facadeSource": "src/repository-governance.ts",
+      "policySource": "assets/governance/single-maintainer-gitflow/policy.md",
+      "category": "governance",
+      "outputPaths": [
+        ".liftoff/governance/README.md"
+      ],
+      "supportedGovernanceProfiles": [
+        "single-maintainer-gitflow"
+      ],
+      "conditionalLinks": [],
+      "reviewStatus": "refreshed",
+      "reviewNotes": "Emitted only when governanceProfile is single-maintainer-gitflow; strictly omitted when governanceProfile is none. Canonical renderer implementation is src/application/repository-governance/agent-rendering.ts#renderGovernanceGuide, assembled in artifacts.ts and exposed via compatibility facade src/repository-governance.ts."
+    }
+  ]
+}

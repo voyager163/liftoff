@@ -10,6 +10,11 @@ liftoff governance assess --help
 liftoff upgrade --help
 liftoff update --help
 liftoff repair --help
+liftoff capabilities --help
+liftoff assess --help
+liftoff adopt --help
+liftoff skills --help
+liftoff installation --help
 ```
 
 Unknown flags or commands, missing values, invalid booleans, incompatible
@@ -23,11 +28,12 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 
 | Command | Behavior |
 | --- | --- |
+| `liftoff capabilities --json` | Reports installed capability contracts, owners, schemas, and distinct availability/qualification states without a project, probes, disclosure, or writes |
 | `liftoff plan` | Resolves decisions and previews artifacts and requirements without side effects |
 | `liftoff init [project-name]` | Initializes a named child or the exact current Git root through staged readiness and framework setup |
 | `liftoff migrate <source>` | Creates a new sibling scaffold and filtered source copy without changing the source |
 | `liftoff validate [project]` | Validates manifest identity, managed-core hashes, project provenance, workload metadata, and framework markers |
-| `liftoff doctor [project]` | Runs read-only workload-derived project and workstation diagnostics |
+| `liftoff doctor` | Runs read-only workload-derived project and workstation diagnostics from the selected working directory |
 | `liftoff governance status [project]` | Reports deterministic setup state, activation identity, phase states, blockers, approvals, and evidence freshness |
 | `liftoff governance plan [project]` | Previews dependency-ready work before approval and saves a disclosed project-bound receipt outside the repository; no project/provider mutations |
 | `liftoff governance approve [project] --plan <fingerprint>` | Approves only the exact unexpired preview; does not execute its operations |
@@ -37,19 +43,26 @@ install -> upgrade CLI -> plan -> init or migrate -> /liftoff-setup -> validate,
 | `liftoff governance resume [project]` | Rechecks external blockers and readiness descendants without rerunning verified operations |
 | `liftoff governance verify [project]` | Read-only validation of graph, state, evidence, task projection, policy identity, active-change identity, and live readback; reports consistency separately from setup completion and reports completion as indeterminate when inspection fails |
 | `liftoff governance assess [project]` | Read-only comparison against the installed CLI's packaged governance target; local-only unless `--live` is explicitly requested |
-| `liftoff upgrade` | Replaces a verified global npm installation with the exact canonical stable release exposed by the configured registry |
-| `liftoff upgrade --check` | Checks installation origin and registry parity without installing; exits 2 when an installable update exists |
+| `liftoff assess [path]` | Read-only whole-project standards assessment across supported profiles without mutating files or running code |
+| `liftoff adopt <path>` | Reviewed in-place adoption of an explicitly selected supported application with manifest v8; non-TTY/JSON calls preview unless separately authorized |
+| `liftoff installation inspect` | Non-mutating inspection of running binary, installation owner, prefix, and conflicting launchers |
+| `liftoff installation migrate --to <owner>` | One-time legacy npm-to-native installation handover with schema-1 plan, TTY/exact approval, and read-only recovery |
+| `liftoff installation migrate --recover` | Read-only checkpoint recovery exposing a fresh recovery plan without repeating proven npm retirement |
+| `liftoff skills list` | Lists canonical skill library workflows and supported host projections (Copilot, Claude, Codex) |
+| `liftoff upgrade` | Requests an owner-preserving CLI upgrade through its verified delivery channel; does not authorize installation-owner migration or project changes |
+| `liftoff upgrade --check` | Checks actual owner and target availability without installing or refreshing manager configuration; exits 2 when an admissible update exists |
 | `liftoff update [project]` | Applies safe managed-core maintenance and authorized create-only component provisioning |
 | `liftoff update --check` | Reports core maintenance and provisioning without mutation; exits 0 when clean and 2 when actionable |
 | `liftoff update --force` | Overwrites only exact guarded managed-core conflicts; project-owned files remain unreachable |
 | `liftoff repair [project-path]` | Displays an exact plan and offers action-specific default-No approval on a genuine terminal; no fingerprint entry |
 | `liftoff repair [project-path] --check` | Checks/previews bounded infrastructure repair without cloud calls, application scripts or project writes |
+| `liftoff repair [project-path] --recipe azure-baseline-settings --check` | Pure inspection/preview for Azure baseline settings (Redis/Service Bus TLS 1.2, Storage TLS 1.2, public blob disabled) without tool execution |
 | `liftoff repair --capabilities --json` | Lists packaged repair contracts, recipes, schemas and real command modes without needing a project |
 | `liftoff repair [project-path] --inspect-layout` | Inventories actual application paths, target identities, references and unresolved mappings without execution |
 | `liftoff repair [project-path] --application-patch <patch.json>` | Reviews external staged application mappings; interactive verification/network/file consents remain separate |
 | `liftoff repair [project-path] --check --live --subscription <UUID>` | Explicitly requests bounded Azure metadata discovery with existing authentication and one selected subscription |
-| `liftoff repair [project-path] --verify-plan <fingerprint>` | Optional automation for exact staged application checks; declared preparation requires `--allow-dependency-preparation` and declared network requires `--allow-network` |
-| `liftoff repair [project-path] --approve-plan <fingerprint>` | Optional automation for an eligible separately approved exact file plan; application patches need fresh verified checks |
+| `liftoff repair [project-path] --verify-plan <fingerprint>` | Optional automation for exact staged application checks or baseline settings; declared preparation requires `--allow-dependency-preparation` and declared network requires `--allow-network` |
+| `liftoff repair [project-path] --approve-plan <fingerprint>` | Optional automation for an eligible separately approved exact file plan; application patches and baseline settings need fresh matching verified checks |
 | `liftoff repair [project-path] --recover` | Recovers the recorded interrupted repair transaction without starting a new repair |
 | `liftoff dev` | Prints workload-appropriate local development commands; it does not execute them |
 | `liftoff infra` | Prints OpenTofu guidance for supported API/GenAI workloads without executing it |
@@ -66,6 +79,66 @@ use `liftoff init`; there is no compatibility alias.
 `$liftoff-repair` (Codex), are native coding-agent invocations, not a `liftoff setup`
 command or `liftoff -repair` flag. Init creates a scaffold; repair
 works on a supported existing Liftoff project without reinitializing it.
+
+### Capability and continuation contracts
+
+Public capability discovery uses schema 1 without wrapping or renumbering
+existing command reports. Repair still emits report schema 2, update emits
+output schema 3, and governance emits output schema 3. `init` and fresh-target
+`migrate` remain human-output commands: their capability descriptors explicitly
+use `outputFormat: "human"` and `resultSchemaVersion: null`, not a fictional
+JSON schema or new approval flag.
+
+Available continuations carry literal `executable`/`args`, canonical `cwd`,
+target, scope, compatibility requirements, and any captured configuration
+reference/digest. The arguments must express the same target, governance scope,
+and configuration; a display string is not execution authority. Unsupported
+bindings stay blocked guidance instead of losing context. PowerShell renders
+literal quoted arguments, including `@`-prefixed values, without splatting.
+Commands selecting one existing project reject simultaneous positional and
+`--project` targets. Fresh-target `migrate` remains distinct: its positional
+source and `--project` destination have different roles.
+Project-scoped skills actions also bind an omitted `--project` selector to their
+canonical `cwd`; dropping the project selectors cannot silently switch their
+metadata to the CLI's default personal scope.
+Only each command's existing authorization contract can permit effects.
+Governance schema-3 action metadata includes an exact schema-1 `continuation`
+alongside its label and retained flat command fields. Validate that nested
+contract rather than treating presentation labels as protocol fields.
+`approvalRequired` describes a further governance approval envelope; a false
+value never removes the continuation's exact-plan execution or protected
+credential-enrollment requirements.
+
+Capability availability is not publication proof. Planner-only,
+prerequisite-blocked, implementation-missing, and unqualified results remain
+distinct, and release admission separately requires actual matching evidence.
+The unpublished candidate keeps built-in implementations `unqualified` until the
+required installed/native-host evidence is complete. Advertised platforms are
+not removed to manufacture qualification, and missing production executors stay
+`implementation-missing`. A successful local source check cannot promote either
+state to a qualified native release.
+See [native installation](native-installation.md) for owner discovery and the
+explicitly historical npm boundary.
+
+### Native CLI diagnostics
+
+Doctor's CLI layer observes the Node process actually running Liftoff; it does
+not require an ambient Node installation merely to diagnose a native CLI.
+Project/framework Node and npm remain separate requirements. The private CLI
+runtime never substitutes for a missing project toolchain.
+
+CLI freshness uses the non-installing native owner check, independently of
+project `.npmrc`, scoped npm registries and historical npm overrides. Upstream
+availability and readiness of the actual owner source are separate observations;
+manager lag, unknown ownership, errors and missing release authority are not
+reported as current or repaired through an npm fallback. Native observations in
+the schema-1 doctor report retain earlier completed/uncertain effects and
+required recovery rather than claiming an untouched installation.
+
+Run `liftoff installation inspect --json` for read-only ownership diagnostics.
+Owner migration, recovery and routine upgrade keep their separate authority;
+doctor never chooses a new owner, refreshes sources, installs, or upgrades.
+Doctor itself is cwd-based, not a positional-project command.
 
 Generation, validation, doctor, governance, and update consume the packaged
 [supported-stack baseline](supported-stack.md). The current contract uses
@@ -143,17 +216,18 @@ Status/resume preserve `storedState` and `storedBlockers` when
 an archived baseline is `retryable`; only explicit execution may replace that
 failure with verified evidence.
 
-Governance command JSON uses schema 2 and includes selected `scope`, separate
-local/activation/lifecycle progress, and `nextActions`. Each action carries its
-registered executable/argument array, project working directory, scope, and
-approval requirement; integrations must use it rather than invent commands.
-The execution identity uses activation package 0.12.0, manifest artifact 7,
-policy 6, activation contract 3, graph schema 2, state/evidence/approval schemas
-3, supersession/credential-policy schemas 1, and the computed graph hash.
-Compatibility metadata is schema 4. It never
+Governance command JSON uses schema 3 and includes selected `scope` (`local`,
+`repository`, `activation`, or `lifecycle`), separate scope progress, and
+`nextActions`. Each action carries its registered executable/argument array,
+project working directory, scope, and approval requirement; integrations must use it
+rather than invent commands. The candidate execution identity uses activation
+package 0.13.0, manifest artifact 8, policy 8, activation contract 4, graph schema
+3, state/evidence/approval schemas 4, credential-policy schema 2, supersession schema 1, and
+the computed graph hash. Compatibility metadata is schema 5. It never
 emits a setup-skill version. Future identities, unsupported compatibility
 tuples, and unrecognized graph hashes block without rewriting state; the remedy
-names the exact field and required Liftoff upgrade. Known v1/v2 history is
+names the exact field and required Liftoff upgrade. Historical v1/v2/v3 records and
+the exact pre-amendment policy-7/schema-1 candidate are
 diagnostic-only and byte-preserved; a supported successor requires
 `liftoff update --check` and explicit approval, not automatic reconciliation.
 
@@ -172,6 +246,9 @@ Never put credentials, raw state, or private plans in that file.
 Credential enrollment uses a private TTY by default; `--protected-stdin`
 explicitly selects a protected automation channel. A fingerprint is not a
 token, and approval alone neither enrolls a credential nor provisions resources.
+Actual provider permission requirements (`organization_administration` read) and
+current schema-2 permission admission and preserved schema-1 boundaries are documented in
+[credential permissions and policy admission](credential-permissions.md).
 Interrupted writes require a fresh `plan --recover-phase` before `recover`;
 unsupported or ambiguous external outcomes remain visible blockers.
 
@@ -283,9 +360,33 @@ liftoff upgrade --json
 liftoff upgrade --check --json
 ```
 
-`liftoff upgrade` is an imperative request to replace the supported global npm
-installation of `@msn-control/liftoff`; it does not prompt or accept `--yes`,
+The unpublished 0.13.0 candidate uses native release metadata and the proven
+current installation owner: `homebrew-cask`, `winget`, or `direct`.
+`liftoff upgrade` is an imperative owner-preserving request; it does not prompt or accept `--yes`,
 `--force`, `--install-tools`, project paths, or project dependency flags.
+It never falls back to npm or silently changes owners. An npm-owned installation
+returns `migration_required`; unknown, conflicting, or unlinked ownership blocks
+routine replacement. Use the separate installation inspection/migration journey.
+
+`--check` observes ownership and exact upstream/owner availability without
+installing or resuming an unfinished upgrade. An available upstream version does
+not prove the current owner can deliver it. Apply requires the independently
+admitted target, exact owner operation, and replacement verification; uncertain
+effects retain their original recovery records rather than permitting blind retry.
+Native artifacts and channels remain unpublished/unqualified, so these command
+contracts do not establish present package-manager availability.
+
+Native JSON results use schema version 1 with `distribution: 'native'`, `mode`,
+`status`, `currentVersion`, optional `targetVersion`, `owner`,
+`upstreamAvailability`, `ownerAvailability`, `reasonCode`, `completedEffects`,
+`uncertainEffects`, and `recoveryRequired`. A blocked or incomplete outcome may
+also include `manualAction` or `recordPersistence`. Exits are 0 for `current` or
+`upgraded`, 2 for `update-available`, and 1 for blocked/failed outcomes.
+
+### Historical npm upgrade behavior
+
+The v0.12.3-and-earlier npm upgrader replaces only a supported global installation
+of `@msn-control/liftoff`. It cannot discover or install native-only releases.
 Automatic replacement is refused for local dependencies, `npx` execution-cache
 copies, linked checkouts, unknown package-manager stores, ambiguous roots, or
 unsafe paths.
@@ -324,6 +425,37 @@ installation paths are not included. Status is one of `current`, `update-availab
 `blocked`, or `failed`. Child progress goes to stderr so stdout remains one JSON
 object.
 
+## Installation inspection and migration modes
+
+```bash
+liftoff installation inspect [--json]
+liftoff installation migrate --to <owner> [--destination <path>] [--launcher <path>] [--plan] [--json]
+liftoff installation migrate --to <owner> [--destination <path>] [--launcher <path>] --approve-plan <fingerprint> [--json]
+liftoff installation migrate --recover [--json]
+```
+
+`liftoff installation inspect` performs non-mutating inspection of the running binary,
+package owner (`npm`, `homebrew-cask`, `winget`, or `direct`), prefix, and conflicting
+launchers in `PATH`. It makes no file writes or network changes.
+
+`liftoff installation migrate` coordinates the one-time legacy npm-to-native handover.
+JSON+TTY and bare non-TTY invocations are strictly preview only. Execution requires
+either the displayed default-No TTY confirmation or automation via `--approve-plan <fingerprint>`.
+Direct migration requires explicit `--destination <path>` and `--launcher <path>`.
+
+`liftoff installation migrate --recover` is strictly read-only: it preserves completed
+effects, exposes a fresh recovery plan, and permits resuming through normal migrate
+exact approval without repeating proven legacy npm retirement.
+
+JSON results use schema version 1 and expose
+`{ command: 'installation', mode, status, inspection | plan | record | recovery }`.
+Structured continuations (`nextActions`) use the admitted candidate's absolute executable
+(never a bare legacy `PATH` launcher), exact canonical arguments, `scope: "installation"`,
+action-specific authorization, and exact plan fingerprints. Human output discloses the
+required working directory (`cwd`). Verified completion suggests only explicit
+installed-launcher inspection, not project update. Failed operations emit no executable
+retry; read-only `--recover` offers a fresh separately approved normal migration plan.
+
 ## Repair modes
 
 ```bash
@@ -349,6 +481,10 @@ but reports any earlier separately authorized verifier effects.
 Use a positional project path to select another project, or run inside the
 project (including a subdirectory). Commands in structured `nextActions` retain
 separate executable/argument/cwd fields and native POSIX/PowerShell quoting.
+Generated repair/update follow-ups retain an explicit absolute project target
+even when originally invoked inside that project. Validation/doctor sequences
+also select the recorded directory, so copying a remedy after changing
+directories does not silently select another project.
 Ordinary checks inspect bounded local configuration and state/backend metadata
 presence without reading state or contacting cloud services. Only explicit
 `--live` with a selected subscription permits bounded read-only Azure metadata
@@ -436,17 +572,24 @@ liftoff repair [project-path] --verify-plan <fingerprint> [--allow-dependency-pr
 liftoff repair [project-path] --approve-plan <fingerprint> [--json]
 ```
 
-The application verifier flag authorizes only exact staged checks, not file
-writes. Explicit `--allow-dependency-preparation` permits only declared locked
-private preparation in a fresh disposable environment for exact candidate
-manifests and locks (`npm-ci` v1, `uv-locked-sync` v1, `go-mod-download` v1);
-it never installs global tools, mutates live dependency trees, inherits ambient
-credentials, upgrades locks or commits dependencies/build outputs. Declared
-network needs additional `--allow-network` permission. The file-approval flag
-never runs application verification on the caller's behalf: a fresh matching
-successful receipt is required first. Flags cannot select a different patch,
-discovery subscription, command set or recipe. Repeated matching verification
-can reuse its recorded result without claiming another command ran.
+The verification flag (`--verify-plan`) authorizes only exact staged checks, not file
+writes. It covers both application patches and the `azure-baseline-settings` recipe
+(running locked backend-disabled private OpenTofu checks). Explicit
+`--allow-dependency-preparation` permits only declared locked private preparation in
+a fresh disposable environment for exact candidate manifests and locks (`npm-ci` v1,
+`uv-locked-sync` v1, `go-mod-download` v1); it never installs global tools, mutates
+live dependency trees, inherits ambient credentials, upgrades locks or commits
+dependencies/build outputs. Declared network needs additional `--allow-network`
+permission.
+
+The file-approval flag (`--approve-plan`) commits files and history only. It never runs
+verification on the caller's behalf: a fresh matching successful receipt is required
+first for both application patches and baseline settings. File approval never starts
+validation. Provider value interpretation for baseline settings is explicitly pinned
+to AzureRM 5.3.0 (only 1.2 / TLS1_2 supported); unknown stronger-looking values block
+unchanged. Flags cannot select a different patch, discovery subscription, command set
+or recipe. Repeated matching verification can reuse its recorded result without claiming
+another command ran.
 
 Do not chain check and apply with `&&`: exit 2 can mean an available plan or a
 blocked/plan-only result. Schema-2 results distinguish `inspected`, `current`,
@@ -456,7 +599,12 @@ They contain `identity`, `capabilities`, `requestedScope`, `committed`,
 `agent` or `guidance`). Fingerprints, receipts and exact operation digests remain
 machine-readable audit data. A command action includes `command.executable`,
 `command.args`, `cwd`, `scope`, `approvalRequired`, and native `displayCommand`;
-`requiresInput` means substitute confirmed values before executing it.
+complete command actions additionally carry a schema-1 `continuation` with
+canonical target, action-specific authority, compatibility identity, and any
+captured application-patch reference/digest. These additive execution-context
+fields do not wrap or renumber the schema-2 report or its historical records.
+`requiresInput` identifies a non-executable display template; it has no
+`continuation` until confirmed values can be bound.
 Exit 0 denotes completed inspection/verification, current scope or verified
 commit; 2 denotes differences, blockers or partial effects; 1 denotes a rejected
 or failed operation before a successful repair. Neither a verified staged
@@ -471,9 +619,10 @@ receipts and repair journals use schema 2. Application inventory, patch document
 and nested reports, verification results/receipts and private backup indexes
 use their own schema-1 formats. Update's journal remains schema 1.
 
-**Repair and preparation capabilities**: The package version is
-0.12.3; application repair and locked preparation capabilities require
-`repairContractVersion` 1. Do not infer capability support from
+**Repair and preparation capabilities**: Application repair and locked
+preparation were released in 0.12.3 and require `repairContractVersion` 1.
+The unpublished 0.13.0 candidate adds `azure-baseline-settings` without changing
+that repair-contract axis. Do not infer a recipe or preparation capability from
 package SemVer alone. Native integrations and tooling must query `liftoff repair --capabilities --json`
 directly to verify `repairContractVersion`, supported schemas, registered recipes,
 and the preparation matrix.
@@ -597,7 +746,11 @@ reorganization. JSON includes `revalidation.nextPhaseLabel`,
 `activationMigration.status` and `committed`: a committed migration remains
 committed even when local verification is blocked. Infrastructure repair advice
 can appear even when managed core is current and no activation revalidation is
-required. An update fingerprint never authorizes infrastructure repair.
+required. The additive `continuations` array and
+`infrastructureRepair.continuations` expose schema-1 command context alongside
+the retained human guidance; the report remains update output schema 3.
+They identify required authority, not permission to execute. An update
+fingerprint never authorizes infrastructure repair.
 
 Update never installs dependencies. Ordinary transaction backups are for failure
 recovery; activation migration additionally retains durable original history.

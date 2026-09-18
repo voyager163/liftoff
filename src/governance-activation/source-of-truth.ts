@@ -1,11 +1,13 @@
 import { readdir } from 'node:fs/promises';
 import path from 'node:path';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 import { applyProjectFileTransaction } from '../adapters/filesystem/project-transaction.js';
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
 import { resolveProjectPath } from '../adapters/filesystem/project-paths.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { withProjectMutationLock } from '../adapters/filesystem/project-lock.js';
 import { generatedSeedChangeName } from './seed-lifecycle.js';
+import { hasGeneratedWorkload } from '../domain/project/manifest/applicability.js';
 import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import {
   activationContractVersion,
@@ -802,7 +804,7 @@ async function directoryEntries(projectRoot: string, pathParts: readonly string[
 }
 
 async function activeSeedBlockers(projectRoot: string, manifest: LiftoffManifest): Promise<string[]> {
-  if (manifest.project.specWorkflow !== 'openspec') {
+  if (manifest.project.specWorkflow !== 'openspec' || !hasGeneratedWorkload(manifest)) {
     return [];
   }
   const expectedSeed = generatedSeedChangeName(manifest);
@@ -1232,13 +1234,14 @@ export interface GovernanceSourceOfTruthInput {
   state: UserActivationState;
   evidence: readonly PhaseEvidenceRecord[];
   contexts?: Partial<Record<PhaseId, EvidenceFreshnessContext>>;
+  storage?: UpdatePreviewOptions;
 }
 
 export async function inspectGovernanceSourceOfTruth(input: GovernanceSourceOfTruthInput): Promise<GovernanceSourceOfTruthInspection> {
   const seedBlockers = await activeSeedBlockers(input.projectRoot, input.manifest);
   let historical: readonly HistoricalGovernanceSource[] = [];
   if (input.state.successorHistory) {
-    const history = await inspectActivationMigrationHistory(input.projectRoot);
+    const history = await inspectActivationMigrationHistory(input.projectRoot, input.storage);
     if (history.status !== 'committed' || canonicalSha256(history.state.successorHistory) !== canonicalSha256(input.state.successorHistory) ||
       history.state.repository.id !== input.state.repository.id) {
       throw new Error('Governance source selection requires the independently validated successor history relationship.');

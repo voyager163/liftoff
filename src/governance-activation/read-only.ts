@@ -8,14 +8,18 @@ import { validateManifestActivationForExecution } from '../domain/governance/act
 import { phaseIds } from '../domain/governance/activation/types.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './proof-records.js';
 import { inspectActivationMigrationHistory } from './migration-history.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 export { readActivationEvidence, readReviewedTransitionPlans } from './proof-records.js';
 
 /** Read-only proof boundary: returned values carry no executor, credential, or mutation port. */
-export async function inspectCurrentActivationEvidence(projectRoot: string, manifest: LiftoffManifest, options: { runner?: CommandRunner; now?: Date } = {}) {
+export async function inspectCurrentActivationEvidence(
+  projectRoot: string, manifest: LiftoffManifest,
+  options: { runner?: CommandRunner; now?: Date; storage?: UpdatePreviewOptions } = {}
+) {
   validateManifestActivationForExecution(manifest);
-  const loaded = await loadActivationState(projectRoot);
+  const loaded = await loadActivationState(projectRoot, options.storage);
   if (!loaded) return { status: 'not-started' as const };
-  const migration = await inspectActivationMigrationHistory(projectRoot);
+  const migration = await inspectActivationMigrationHistory(projectRoot, options.storage);
   const historicalLifecycleObligations = migration.status === 'committed' ? migration.lifecycleObligations : [];
   const sensitivePathExclusions = activationSensitivePathExclusions(loaded.state, historicalLifecycleObligations.map((obligation) => obligation.retention));
   const snapshot = await readActivationInputSnapshot(projectRoot, manifest, options.runner, { sensitivePathExclusions });

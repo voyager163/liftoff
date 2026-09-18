@@ -28,7 +28,7 @@ import {
 } from '../src/governance-activation/migration-history.js';
 import { buildHistoricalV1Fixture, historicalFixtureArchiveParts, writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { historicalFixtureGraph } from './fixtures/activation-v1/graph.js';
-import { fixtureContext, fixturePayload } from './governance-activation-fixtures.js';
+import { fixtureContext, fixturePayload, successorFixtureManifest } from './governance-activation-fixtures.js';
 import { planDigestFor } from '../src/domain/governance/activation/operations.js';
 import { savedPlanAuthorityDigest } from '../src/domain/governance/activation/approvals.js';
 import { evidenceWriteOperation, stateWriteOperation } from '../src/governance-activation/transition-records.js';
@@ -54,7 +54,7 @@ async function fixtureRoot(options: Parameters<typeof writeHistoricalV1Fixture>[
 
 function ordinaryCurrentState(): UserActivationState {
   return validateUserActivationState({
-    schemaVersion: 3, identity: currentActivationIdentity,
+    schemaVersion: 4, identity: currentActivationIdentity,
     repository: { id: `local:${randomUUID()}`, name: 'Flight Log', defaultBranch: 'develop' },
     activeChange: null, applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
     phases: Object.fromEntries(canonicalPhaseGraph.phases.map(({ id }) => [id, {
@@ -103,10 +103,7 @@ async function committedFixture() {
   const plan = await eligible(root);
   const finalized = finalizeActivationHistoryMigration(plan, approvedFingerprint, now);
   await installMutations(root, finalized.mutations);
-  await writeJson(root, 'liftoff.manifest.json', {
-    ...fixture.manifest, liftoffVersion: '0.11.1',
-    governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity }
-  });
+  await writeJson(root, 'liftoff.manifest.json', await successorFixtureManifest(root));
   return { root, fixture, plan, finalized };
 }
 
@@ -133,7 +130,7 @@ async function completedRevalidationFixture() {
     payload.planDigest = plan.planDigest;
     payload.savedPlanDigest = canonicalSha256(plan);
     const header = validateEvidenceHeader({
-      schemaVersion: 3, scope: 'local', repositoryId: state.repository.id, identity: currentActivationIdentity,
+      schemaVersion: 4, scope: 'local', repositoryId: state.repository.id, identity: currentActivationIdentity,
       phaseGraphHash: currentActivationIdentity.phaseGraphHash, phaseId,
       phaseContractDigest: context.phaseContractDigest, inputDigest, baselineSha, transition: context.transition,
       producedAt, producer: 'versioned-test-fixture', result: 'verified', bodyDigest: evidenceBodyDigest(payload),
@@ -393,9 +390,7 @@ describe('exact, read-only history planning', () => {
     }
     expect(await readBytes(root)).toEqual(before);
     await installMutations(root, finalized.mutations);
-    await writeJson(root, 'liftoff.manifest.json', {
-      ...fixture.manifest, governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity }
-    });
+    await writeJson(root, 'liftoff.manifest.json', await successorFixtureManifest(root));
     expect(await inspectActivationMigrationHistory(root)).toMatchObject({ status: 'committed' });
     for (const entry of planned.index.files) {
       expect(await readFile(path.join(root, ...entry.copyPathParts))).toEqual(before.get(entry.originalPathParts.join('/')));
@@ -491,7 +486,7 @@ describe('approved finalization and immutable snapshot reuse', () => {
     const current = await planActivationHistoryMigration(root);
     expect(current).toMatchObject({ status: 'current', history: { status: 'committed' } });
     const manifest: unknown = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest).toMatchObject({ artifactVersion: 7, projectArtifacts: fixture.manifest.projectArtifacts });
+    expect(manifest).toMatchObject({ artifactVersion: 8, projectArtifacts: fixture.manifest.projectArtifacts });
     expect(await readFile(path.join(root, 'governance', 'production-settings.json'))).toEqual(fixture.files.get('governance/production-settings.json'));
     for (const [name, content] of fixture.files) if (name.startsWith('openspec/')) expect(await readFile(path.join(root, ...name.split('/')))).toEqual(content);
   });
@@ -809,7 +804,7 @@ describe('portable paths and strict committed history links', () => {
     const state = structuredClone(finalized.successor);
     for (const [phaseId, name] of [['committed', 'a-first'], ['pushed', 'z-later']] as const) {
       const approval: ApprovalEnvelope = {
-        schemaVersion: 3, id: name, phaseId, gateKind: 'repository-publish', identity: currentActivationIdentity,
+        schemaVersion: 4, id: name, phaseId, gateKind: 'repository-publish', identity: currentActivationIdentity,
         baselineSha: canonicalSha256({ currentFixture: root }),
         planDigest: canonicalSha256({ phaseId, scope: 'empty fixture review scope' }),
         resources: [], destinations: [], permissions: [], costCeiling: { currency: 'USD', fixedMonthlyCents: 0, usageMonthlyCents: 0 },
@@ -867,13 +862,14 @@ describe('portable paths and strict committed history links', () => {
     expect(() => validateMigrationJournal({ ...pending, inheritedApproval: true })).toThrow(/not supported/);
   });
 
-  it('recognizes an independently started current-v3 project without making a snapshot or journal', async () => {
+  it('recognizes an independently started current-v4 project without making an activation snapshot or journal', async () => {
     const root = path.resolve('tests', `.activation-history-current-${process.pid}-${randomUUID()}`);
     roots.add(root);
     await mkdir(path.join(root, 'governance'), { recursive: true });
     const fixture = buildHistoricalV1Fixture();
     await writeJson(root, 'governance/activation-state.json', ordinaryCurrentState());
-    await writeJson(root, 'liftoff.manifest.json', { ...fixture.manifest, governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity } });
+    await writeJson(root, 'liftoff.manifest.json', fixture.manifest);
+    await writeJson(root, 'liftoff.manifest.json', await successorFixtureManifest(root));
     const before = await readBytes(root);
     expect(await inspectActivationMigrationHistory(root)).toEqual({ status: 'none' });
     expect(await readMigrationJournal(root)).toBeUndefined();
@@ -881,10 +877,10 @@ describe('portable paths and strict committed history links', () => {
     expect(await readBytes(root)).toEqual(before);
   });
 
-  it('blocks an apparent v3 state if its active collection still contains v1 records', async () => {
+  it('blocks an apparent v4 state if its active collection still contains v1 records', async () => {
     const { root, fixture } = await fixtureRoot();
     await writeJson(root, 'governance/activation-state.json', ordinaryCurrentState());
-    await writeJson(root, 'liftoff.manifest.json', { ...fixture.manifest, governance: { ...fixture.manifest.governance, activationIdentity: currentActivationIdentity } });
+    await writeJson(root, 'liftoff.manifest.json', await successorFixtureManifest(root));
     expect(await planActivationHistoryMigration(root)).toMatchObject({ status: 'blocked', reasonCode: 'invalid-current-proof' });
     expect(await readMigrationJournal(root)).toBeUndefined();
   });

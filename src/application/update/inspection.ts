@@ -1,6 +1,7 @@
 import { lstat, realpath } from 'node:fs/promises';
 import path from 'node:path';
-import { captureProjectFileSnapshot, type ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
+import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
+import { captureReviewedSnapshot as captureProjectFileSnapshot } from '../execution/plan-binding.js';
 import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
 import { FileSystemError } from '../../domain/project/errors.js';
@@ -22,7 +23,14 @@ import { hasDrift, reconcileProject } from '../../reconcile.js';
 import { compareSemver } from '../../semver.js';
 import { buildManifest } from '../../templates.js';
 import { liftoffVersion } from '../../version.js';
-import { loadManifest } from '../project/manifest.js';
+import { loadManifest, parseManifest } from '../project/manifest.js';
+import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
+import {
+  buildComponentMaintenanceManifest, componentMaintenancePlan, type ManagedProjectPlan
+} from '../project/component-artifacts.js';
+import { preserveManifestProvenance } from '../project/manifest-provenance.js';
+import { inspectRepairVerificationWorkspaces } from '../repair/workspaces.js';
+import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 import { buildProjectPlan, loadConfigOptions } from '../project/planning.js';
 import {
   buildUpdateArtifacts,
@@ -76,7 +84,7 @@ export interface DeferredAgentRepair {
 
 function deferredAgentRepair(
   manifest: LiftoffManifest,
-  plan: ProjectPlan
+  plan: ManagedProjectPlan
 ): DeferredAgentRepair | null {
   if (manifest.framework.state !== 'initialized') return null;
   const add = plan.agents.filter((agent) => !manifest.project.agents.includes(agent.id));
@@ -94,7 +102,7 @@ function deferredAgentRepair(
   };
 }
 
-function recordedAgentRenderPlan(plan: ProjectPlan, manifest: LiftoffManifest): ProjectPlan {
+function recordedAgentRenderPlan(plan: ManagedProjectPlan, manifest: LiftoffManifest): ManagedProjectPlan {
   if (manifest.framework.state === 'legacy') return { ...plan, agents: [], defaultAgent: undefined };
   const agents = manifest.project.agents.map((id) => {
     const agent = plan.agents.find((agent) => agent.id === id);
@@ -142,7 +150,7 @@ export async function findUpdateRepositoryBoundary(projectRoot: string): Promise
 async function assertUpdateIntent(
   projectRoot: string,
   manifest: LiftoffManifest,
-  plan: ProjectPlan
+  plan: ManagedProjectPlan
 ): Promise<void> {
   const recorded = manifest.project.workload;
   const separateMigration = 'Restore liftoff.config.json or perform a separately reviewed project migration.';
@@ -152,31 +160,34 @@ async function assertUpdateIntent(
       'project-identity-change', separateMigration
     );
   }
-  if (plan.workload !== recorded.kind) {
+  const adoptedMaintenance = manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted' && plan.workload === 'components';
+  if (!adoptedMaintenance && plan.workload !== recorded.kind) {
     throw new UpdatePlanError(
       `Project type changes (${recorded.kind} -> ${plan.workload}) are not supported by update.`,
       'workload-change', separateMigration
     );
   }
-  for (const [label, from, to] of [
+  if (recorded.kind !== 'components' && plan.workload !== 'components') {
+    for (const [label, from, to] of [
     ['Cloud', recorded.cloud, plan.provider.id],
     ['Region', recorded.region, plan.region.slug],
     ['API stack', recorded.apiStack, plan.apiStack.id]
-  ] as const) {
+    ] as const) {
     if (from !== to) {
       throw new UpdatePlanError(
         `${label} changes (${from} -> ${to}) are a migration, not an update.`,
         'workload-identity-change', separateMigration
       );
     }
-  }
-  const recordedPattern = recorded.kind === 'genai' ? recorded.pattern : undefined;
-  const desiredPattern = plan.workload === 'genai' ? plan.pattern.id : undefined;
-  if (recordedPattern !== desiredPattern) {
+    }
+    const recordedPattern = recorded.kind === 'genai' ? recorded.pattern : undefined;
+    const desiredPattern = plan.workload === 'genai' ? plan.pattern.id : undefined;
+    if (recordedPattern !== desiredPattern) {
     throw new UpdatePlanError(
       `Pattern changes (${recordedPattern ?? 'none'} -> ${desiredPattern ?? 'none'}) are a migration, not an update.`,
       'pattern-change', separateMigration
     );
+    }
   }
   if (
     manifest.governance.profile !== 'none' && manifest.governance.profile !== 'unspecified' &&
@@ -208,13 +219,35 @@ async function assertUpdateIntent(
 
 export async function inspectProjectUpdate(
   projectDirectory: string,
-  options: { runner?: CommandRunner } = {}
+  options: { runner?: CommandRunner; storage?: UpdatePreviewOptions } = {}
 ) {
   const projectRoot = await realpath(projectDirectory);
   const initialSnapshots = [
-    await captureProjectFileSnapshot(projectRoot, ['liftoff.manifest.json'])
+    await captureProjectFileSnapshot(projectRoot, ['liftoff.manifest.json'], 4 * 1024 * 1024)
   ];
   const manifest = await loadManifest(projectRoot);
+  const privateWorkspaces = await inspectRepairVerificationWorkspaces(projectRoot, options.storage);
+  if (privateWorkspaces.status !== 'absent') {
+    throw new UpdatePlanError(
+      'Registered private verification workspaces are active, retained or untrusted; they block conflicting update writers.',
+      'private-workspace-recovery-required',
+      'Inspect the exact registered workspace and use its original repair/adoption recovery operation. Do not remove locks or workspaces by path prefix, PID or age.'
+    );
+  }
+  const sourceManifest = initialSnapshots[0]!.content;
+  if (!sourceManifest || canonicalSha256(parseManifest(JSON.parse(sourceManifest.toString('utf8')))) !== canonicalSha256(manifest)) {
+    throw new UpdatePlanError('Manifest changed during inspection.', 'inputs-changed', 'Run a fresh update check.');
+  }
+  const preserved = preserveManifestProvenance(manifest, sourceManifest);
+  const manifestHistoryMutations: import('../../adapters/filesystem/project-transaction.js').ProjectFileMutation[] = [];
+  if (preserved.history) {
+    const historySnapshot = await captureProjectFileSnapshot(projectRoot, preserved.history.pathParts, 4 * 1024 * 1024);
+    if (historySnapshot.content !== undefined && !historySnapshot.content.equals(sourceManifest)) {
+      throw new UpdatePlanError('Preserved source manifest history has different bytes.', 'manifest-history-conflict', 'Preserve history and resolve the exact conflicting identity; force cannot rewrite it.');
+    }
+    initialSnapshots.push(historySnapshot);
+    if (historySnapshot.content === undefined) manifestHistoryMutations.push(preserved.history);
+  }
   const interrupted = await inspectReviewedUpdateTransaction(projectRoot);
   if (interrupted.status !== 'absent') {
     throw new UpdatePlanError(
@@ -230,25 +263,34 @@ export async function inspectProjectUpdate(
     );
   }
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, ['liftoff.config.json']));
-  const config = await loadConfigOptions('liftoff.config.json', projectRoot);
-  if (config.cloud !== undefined && config.cloud !== manifest.project.workload.cloud) {
+  let plan: ManagedProjectPlan;
+  if (manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted') {
+    const configBytes = initialSnapshots.find((snapshot) => snapshot.pathParts.join('/') === 'liftoff.config.json')!.content;
+    if (!configBytes) throw new UpdatePlanError('Adopted desired state is missing.', 'desired-state-missing', 'Restore the reviewed adopted desired state; do not initialize over the application.');
+    plan = componentMaintenancePlan(manifest, JSON.parse(configBytes.toString('utf8')) as unknown);
+  } else {
+    if (manifest.project.workload.kind === 'components') throw new Error('Component-only identity requires explicit adopted provenance.');
+    const config = await loadConfigOptions('liftoff.config.json', projectRoot);
+    if (config.cloud !== undefined && config.cloud !== manifest.project.workload.cloud) {
     throw new UpdatePlanError(
       `Cloud changes (${manifest.project.workload.cloud} -> ${config.cloud}) are a migration, not an update.`,
       'workload-identity-change', 'Restore liftoff.config.json or perform a separately reviewed project migration.'
     );
+    }
+    plan = buildProjectPlan(config, { requireProjectName: true });
   }
-  const plan = buildProjectPlan(config, { requireProjectName: true });
   await assertUpdateIntent(projectRoot, manifest, plan);
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...activationStateFilePathParts]));
   initialSnapshots.push(await captureProjectFileSnapshot(projectRoot, [...migrationStateFilePathParts]));
   const separateAgentRepair = deferredAgentRepair(manifest, plan);
   const desiredRenderPlan = recordedAgentRenderPlan(plan, manifest);
-  const stateMigration = await planHistoricalActivationStateMigration(projectRoot);
-  let historyMigration = await planActivationHistoryMigration(projectRoot);
+  const stateMigration = await planHistoricalActivationStateMigration(projectRoot, undefined, undefined, options.storage);
+  let historyMigration = await planActivationHistoryMigration(projectRoot, { storage: options.storage });
   if (historyMigration.status === 'blocked' &&
     historyMigration.reasonCode === 'unreviewed-historical-records' && historyMigration.unreviewedPathParts) {
     historyMigration = await planActivationHistoryMigration(projectRoot, {
-      reviewedUnreferencedPathParts: historyMigration.unreviewedPathParts
+      reviewedUnreferencedPathParts: historyMigration.unreviewedPathParts,
+      storage: options.storage
     });
   }
   const sensitivePathExclusions = normalizeSensitivePathExclusions([
@@ -290,11 +332,16 @@ export async function inspectProjectUpdate(
     snapshots.push(...historyMigration.history.preconditions);
   }
   const entries = await reconcileProject(manifest, render, projectRoot);
-  const ownershipMigrationPending = manifest.artifactVersion !== 7 ||
+  const ownershipMigrationPending = manifest.artifactVersion !== 8 ||
     manifestHadFilteredLegacyNonDurableOwnership(manifest);
-  const plannedManifest = buildManifest(renderPlan, render, {
-    frameworkState: manifest.framework.state, projectArtifacts: manifest.projectArtifacts
-  });
+  const plannedManifest = renderPlan.workload === 'components' && manifest.artifactVersion === 8
+    ? buildComponentMaintenanceManifest(manifest, renderPlan, render)
+    : renderPlan.workload !== 'components' && manifest.framework.state !== 'uninitialized'
+      ? buildManifest(renderPlan, render, {
+        frameworkState: manifest.framework.state, projectArtifacts: manifest.projectArtifacts,
+        provenance: preserved.provenance
+      })
+      : (() => { throw new Error('Unsupported adopted workload/framework maintenance combination.'); })();
   if (stateMigration.report.diagnosticOnly === true && historyMigration.status !== 'eligible') {
     preserveDiagnosticGovernanceIdentity(plannedManifest, manifest);
   }
@@ -313,7 +360,7 @@ export async function inspectProjectUpdate(
         to: historyMigration.semanticPlan.targetIdentity
       }],
       phaseImpact: { preservedPhaseIds: [], invalidPhaseIds: [...phaseIds] },
-      issues: ['Original v1/v2 history will be preserved; current v3 proof must be established by approved local revalidation.'],
+      issues: [`Original v${historyMigration.semanticPlan.sourceIdentity.activationContractVersion} history will be preserved; current v${historyMigration.semanticPlan.targetIdentity.activationContractVersion} proof must be established by approved local revalidation.`],
       remedy: 'Review the history-preserving successor plan and explicitly approve the matching preview.'
     } : stateMigrationReconciliation(stateMigration);
   const activeChangeReport: ManagedUpdateReconciliationReport = historyMigration.status === 'eligible'
@@ -334,6 +381,8 @@ export async function inspectProjectUpdate(
     projectRoot,
     repositoryRoot: await findUpdateRepositoryBoundary(projectRoot),
     manifest,
+    manifestProvenance: preserved.provenance,
+    manifestHistoryMutations,
     plan,
     deferredAgentRepair: separateAgentRepair,
     renderPlan,

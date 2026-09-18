@@ -1,7 +1,7 @@
 ---
 schemaVersion: 1
 profile: single-maintainer-gitflow
-policyVersion: "6"
+policyVersion: "8"
 state: handoff-generated
 ---
 
@@ -12,6 +12,56 @@ This is my standard for every new repository, so implement it as a repeatable ba
 one-off.
 
 The numbered policy sections below are capability chapters, not execution order. The packaged managed phase graph is the sole execution-order authority for activation transitions, dependencies, approvals, evidence, invalidation, rollback, and terminal states. If prose, generated tasks, or an agent response disagree with the graph, follow the graph and report the inconsistent source.
+
+## Independent completion boundaries
+
+Repository-only enforcement is explicitly selected with `liftoff governance plan --scope repository`.
+Unscoped governance retains activation scope. Local seed completion and exact approved commit/push
+are shared prerequisites, not permission to access Azure. Repository discovery, reviewed source
+workflow publication, positive and controlled-negative unmerged check qualification, exact
+enforcement approval, owned-control reconciliation and independent readback form a separate path.
+Repository proof is not production qualification, full activation, or disposal of retained state.
+
+A separately approved main-update hold may prevent all updates to the reviewed `main` baseline
+while production is deferred. The hold must be an effective update restriction, not a linear-history
+rule or an invented required check. Replacing it needs actual applicable qualification, fresh
+main/control observations and a separate exact approval. Preserve foreign protections and never
+automatically disable protections after a partial failure.
+
+Every required check binds the actual repository, reviewed workflow source, actor, unmerged ref,
+commit, job/context and result. Posted synthetic statuses, skipped checks, runner setup failures,
+and file presence are not positive or deliberate-negative proof. Current provider response
+normalization retains all supported review restrictions; neutral defaults alone require no write.
+Missing runtime prerequisites, missing producer implementation and unqualified provider/host
+combinations are different blockers. Disposable live qualification requires exact targets,
+permitted effects, identities, spending and time limits through separately recorded approval.
+
+Azure phases require explicitly selected non-placeholder subscription, tenant and region bindings
+and exact usable-account readback. Later Azure-only configuration does not change completed Git
+publication identity; actual payload, repository or destination changes do. Historical v1/v2/v3
+receipts retain their original bytes and algorithms. Approved v4 successor/readback operations
+append fresh proof without republishing solely to fix input binding or resetting retention due dates.
+
+## Explicit credential provider permissions
+
+Policy 8 and credential-policy schema 2 record the actual provider grant:
+`metadata:read`, `organization_administration:read`, and
+`organization_network_configurations:read`, with no extra or missing permissions.
+Administration read includes broader organization, billing and Actions-settings reads;
+it is not a hosted-runners-only grant. Selected-repository access does not narrow
+the organization grant to that repository.
+
+Disclose that reach before fresh exact plan-bound approval. Bind observed grants,
+principal, repository and organization, allowed workflows/jobs, expiry, and exact
+reviewed endpoints and resource identities. A broader provider grant does not
+authorize incidental reads or additional Liftoff operations.
+
+Schema-1 policies and original approvals retain their original bytes and meaning.
+The pre-amendment policy-7 candidate requires its registered reviewed transition;
+old approval, generic Yes, or approval of this policy text grants no new credential
+authority. Exact PAT identity/lifetime proof, supported conditional secret creation,
+and separate finalization remain required; never substitute create-or-update writes
+or replace a foreign secret to complete enrollment.
 
 ## Fixed context — these are settled, do not re-litigate them
 
@@ -39,9 +89,12 @@ The numbered policy sections below are capability chapters, not execution order.
   Azure network setting, organisation hosted-compute network configuration, selected-access runner
   group, and bounded larger runner described below. Prove the required Azure and GitHub organisation
   write authority first; never generalise this exception to any unrelated org-level control.
-- **Automation identity is the built-in `GITHUB_TOKEN`.** Set the **GitHub Actions app** as the bypass
-  actor where automation must act on a protected ref — no custom GitHub App is available, since
-  installing one requires org ownership. Note that pushes made with `GITHUB_TOKEN` do not trigger
+- **Automation identity is the built-in `GITHUB_TOKEN` or an explicitly approved scoped identity.**
+  Protected branches have no bypass actors. Automation changes them only through the allowed
+  PR/check path. Restricted version-tag creation and immutable update/deletion controls are
+  separate from branch permissions. PAT and GitHub App enrollment obey the same least-privilege
+  repository/workflow policy and require independent usage/permission readback.
+  Note that pushes made with `GITHUB_TOKEN` do not trigger
   further workflows: never rely on a tag-push trigger. Create the tag, Release and durable evidence in
   the successful production workflow. Where a checked back-merge needs another run, dispatch it
   explicitly for the exact SHA and fail if that dispatch or its required checks do not succeed.

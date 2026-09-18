@@ -1,0 +1,11 @@
+output "backend_url" {
+  value = module.application.backend_url
+}
+
+output "container_registry" {
+  value = module.application.container_registry
+}
+
+output "container_registry_name" {
+  value = module.application.container_registry_name
+}

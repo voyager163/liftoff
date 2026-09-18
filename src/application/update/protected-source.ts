@@ -1,7 +1,5 @@
-import { createHash } from 'node:crypto';
-import { lstat, readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
-import { resolveProjectPath } from '../../adapters/filesystem/project-paths.js';
+import { captureRetainedInputTree } from '../../adapters/filesystem/retained-inputs.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { isProjectMutationReservationName } from '../../domain/governance/activation/inputs.js';
 import { reviewedUpdateTransactionPathParts } from '../../domain/project/reviewed-update-artifacts.js';
@@ -39,29 +37,7 @@ export function isRetainedProjectInput(parts: readonly string[]): boolean {
 }
 
 export async function captureRetainedProjectInputs(projectRoot: string): Promise<RetainedProjectInput[]> {
-  const result: RetainedProjectInput[] = [];
-  async function visit(parts: string[]): Promise<void> {
-    const directory = parts.length ? await resolveProjectPath(projectRoot, parts) : projectRoot;
-    for (const entry of (await readdir(directory, { withFileTypes: true })).sort((a, b) => a.name.localeCompare(b.name, 'en'))) {
-      const child = [...parts, entry.name];
-      if (!isRetainedProjectInput(child)) continue;
-      const absolute = await resolveProjectPath(projectRoot, child);
-      const details = await lstat(absolute);
-      if (entry.isDirectory() && details.isDirectory()) {
-        await visit(child);
-      } else if (entry.isFile() && details.isFile()) {
-        result.push({
-          pathParts: child,
-          digest: createHash('sha256').update(await readFile(absolute)).digest('hex'),
-          mode: details.mode & 0o7777
-        });
-      } else {
-        throw new Error(`Protected update source ${child.join('/')} must not be a link or special file.`);
-      }
-    }
-  }
-  await visit([]);
-  return result.sort((a, b) => a.pathParts.join('/').localeCompare(b.pathParts.join('/'), 'en'));
+  return captureRetainedInputTree(projectRoot, isRetainedProjectInput);
 }
 
 export function changedRetainedProjectInputs(

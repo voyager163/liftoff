@@ -4,26 +4,21 @@ import type {
 import type {
   ExecutionContext
 } from '../../application/context.js';
-import {
-  diagnoseProject
-} from '../../application/diagnose/doctor.js';
-import {
-  validateProject
-} from '../../application/diagnose/validate.js';
+import { getApplicationEngines } from '../../application/engine-composition.js';
 import { readBooleanFlag, readStringFlag } from '../args/readers.js';
 
-export const doctorCommand = (
+export const doctorCommand = async (
   parsed: ParsedArgs,
   context: ExecutionContext
-): Promise<number> => diagnoseProject({
+): Promise<number> => (await getApplicationEngines(context))['standards-assessment'].diagnoseProject({
   json: readBooleanFlag(parsed.flags, 'json') ?? false,
   cloud: readStringFlag(parsed.flags, 'cloud')
 }, context);
 
-export const validateCommand = (
+export const validateCommand = async (
   parsed: ParsedArgs,
   context: ExecutionContext
-): Promise<number> => validateProject({
+): Promise<number> => (await getApplicationEngines(context))['standards-assessment'].validateProject({
   json: readBooleanFlag(parsed.flags, 'json') ?? false,
   project: parsed.positional[0] ?? readStringFlag(parsed.flags, 'project')
 }, context);

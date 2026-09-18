@@ -18,10 +18,14 @@ export const genAiPattern = (plan: GenAiProjectPlan) => {
   return plan.pattern;
 };
 
-export const hasFunctionWorker = (plan: ApiProjectPlan) =>
+export const hasFunctionWorker = (plan: { workload: 'standard' } | {
+  workload: 'genai';
+  provider: Pick<GenAiProjectPlan['provider'], 'id'>;
+  pattern: Pick<GenAiProjectPlan['pattern'], 'worker'>;
+}) =>
   plan.workload === 'genai' && plan.provider.id === 'azure' && plan.pattern.worker;
 
-export const functionWorkerName = (plan: GenAiProjectPlan) => `${plan.pattern.id}-worker`;
+export const functionWorkerName = (plan: Pick<GenAiProjectPlan, 'pattern'>) => `${plan.pattern.id}-worker`;
 
 export function selectedEnvironmentId(plan: ApiProjectPlan): string {
   return plan.environments[0]?.id ?? 'dev';

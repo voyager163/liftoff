@@ -2,18 +2,15 @@ import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256 } from '../../../src/domain/governance/activation/canonical-json.js';
 import type { PhaseExecutionState, TransitionOperation } from '../../../src/domain/governance/activation/types.js';
-import { historicalActivationIdentities, historicalV2ActivationIdentity } from '../../../src/domain/governance/policy/identity.js';
+import { historicalActivationIdentities } from '../../../src/domain/governance/policy/identity.js';
 import {
   assertHistoricalPhasesComplete, historicalPhaseIds, historicalTransitionPlanPathParts,
   type HistoricalActivationState, type HistoricalApprovalEnvelope, type HistoricalEvidenceRecord,
   type HistoricalPhaseId, type HistoricalSavedTransitionPlan
 } from '../../../src/governance-activation/historical-state.js';
 import { rawHistoryDigest } from '../../../src/governance-activation/history-contracts.js';
-import { buildProjectPlan } from '../../../src/application/project/planning.js';
-import { buildRepositoryGovernanceArtifacts } from '../../../src/repository-governance.js';
-import { validateGovernanceCompatibilityMetadata } from '../../../src/governance-activation/compatibility.js';
 import { historicalFixtureGraph } from './graph.js';
-import { historicalV2PhaseGraph } from '../../../src/governance-activation/historical-v2.js';
+import { releasedCaseFiles } from '../released-baseline/corpus.js';
 
 export const historicalFixtureIdentity = historicalActivationIdentities[0];
 export const historicalFixtureCreatedAt = '2026-08-30T09:00:00.000Z';
@@ -252,69 +249,9 @@ export function buildHistoricalV1Fixture() {
 
 export function buildPostMaintenanceHistoricalV1Fixture(compatibilitySchemaVersion: 2 | 3 = 3) {
   const fixture = buildHistoricalV1Fixture();
-  const project = buildProjectPlan({
-    projectName: fixture.manifest.project.name, projectType: 'standard', apiStack: 'node-fastify',
-    cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'], includeFrontend: false,
-    specWorkflow: 'openspec', agents: ['github-copilot', 'claude'], governanceProfile: 'single-maintainer-gitflow'
-  }, { requireProjectName: true });
-  // The maintained 0.11.1 fixture predates Codex and repair integrations.
-  const core = buildRepositoryGovernanceArtifacts(project).filter((artifact) =>
-    historicalCoreLogicalNames.some((name) => name === artifact.logicalName)
-  );
-  for (const artifact of core) {
-    let content = artifact.content;
-    if (artifact.logicalName === 'repository-governance-phase-graph') {
-      content = canonicalJson(historicalV2PhaseGraph());
-    } else if (artifact.logicalName === 'repository-governance-credential-policy-schema') {
-      const schema = JSON.parse(content);
-      schema.properties.identity.properties = Object.fromEntries(Object.entries(historicalV2ActivationIdentity)
-        .map(([key, value]) => [key, { const: value }]));
-      content = canonicalJson(schema);
-    } else if (artifact.logicalName === 'repository-governance-compatibility') {
-      const value: unknown = JSON.parse(content);
-      const metadata = validateGovernanceCompatibilityMetadata(value);
-      content = canonicalJson({
-        ...metadata, schemaVersion: compatibilitySchemaVersion, liftoffVersion: '0.11.0',
-        managedCore: {
-          ...metadata.managedCore,
-          logicalNameAllowlist: [...historicalCoreLogicalNames],
-          pathAllowlist: core.map((entry) => entry.pathParts),
-          updateInventory: metadata.managedCore.updateInventory.filter((entry) =>
-            historicalCoreLogicalNames.some((name) => name === entry.logicalName)
-          )
-        },
-        activation: {
-          currentCompatibleTuples: [historicalV2ActivationIdentity],
-          historicalReadability: {
-            tuples: [historicalFixtureIdentity], activationContractVersion: 1, activationStateSchemaVersion: 1,
-            evidenceHeaderSchemaVersion: 1, execution: 'diagnostic-only',
-            migration: compatibilitySchemaVersion === 2 ? 'unsupported-preserve-bytes' : 'explicit-successor-preserve-bytes'
-          },
-          recognizedGraphHashes: [historicalV2ActivationIdentity.phaseGraphHash],
-          graphMappings: [], historicalStateMigrations: [], unsupportedRemedy: 'Preserve unsupported activation records.',
-          ...(compatibilitySchemaVersion === 3 ? { successorMigrations: [{
-            id: 'activation-v1-to-v2', fromIdentity: historicalFixtureIdentity, toIdentity: historicalV2ActivationIdentity,
-            strategy: 'preserve-history-revalidate', historySchemaVersion: 1, journalSchemaVersion: 1
-          }] } : {})
-        }
-      });
-    }
-    fixture.files.set(artifact.pathParts.join('/'), Buffer.from(content.replace(/\r?\n/g, '\r\n'), 'utf8'));
-  }
-  const manifest = {
-    ...fixture.manifest, liftoffVersion: '0.11.1',
-    project: { ...fixture.manifest.project, agents: ['github-copilot', 'claude'] },
-    managedArtifacts: core.map((artifact) => {
-      const content = fixture.files.get(artifact.pathParts.join('/'));
-      if (content === undefined) throw new Error(`Missing maintained source metadata ${artifact.logicalName}.`);
-      return {
-        logicalName: artifact.logicalName, category: artifact.category, pathParts: artifact.pathParts,
-        contentHash: `sha256:${rawHistoryDigest(content)}`
-      };
-    })
-  };
-  fixture.files.set('liftoff.manifest.json', fixtureJson(manifest, true));
-  return { ...fixture, manifest };
+  const files = releasedCaseFiles(`activation-v1-maintained-schema${compatibilitySchemaVersion}`);
+  const manifest = JSON.parse(files.get('liftoff.manifest.json')!.toString('utf8')) as typeof fixture.manifest;
+  return { ...fixture, files, manifest };
 }
 
 export async function writeHistoricalV1Fixture(root: string, options: { maintainedCoreCompatibilitySchema?: 2 | 3 } = {}) {

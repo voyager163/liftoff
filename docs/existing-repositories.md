@@ -169,6 +169,23 @@ orchestration, data, and infrastructure through a reviewed project change.
 Changing the configuration to RAG, chatbot, or another pattern and running
 `liftoff update` is intentionally rejected.
 
+## Whole-project assessment and adoption
+
+Liftoff distinguishes read-only whole-project assessment (`liftoff assess`), reviewed
+in-place adoption (`liftoff adopt`), fresh-target migration (`liftoff migrate`),
+managed update (`liftoff update`), recipe-bound repair (`liftoff repair`), and new-project
+scaffolding (`liftoff init`) as distinct operations:
+
+- `liftoff assess`: Read-only, bounded inventory and standards findings against
+  standards profiles (`fastapi`, `fastify`, `go-huma`, `vue`, `genai`) without creating
+  metadata, executing project code, or contacting network providers. See [assessment](assessment.md).
+- `liftoff adopt`: Reviewed, explicitly mapped in-place adoption of existing supported
+  codebases. Preserves custom business logic, application code, dependencies, and Git
+  history, generating manifest artifact version 8 with explicit adopted provenance rather
+  than overwriting the application with a starter.
+- `liftoff migrate`: Creates a fresh sibling scaffold with a filtered source copy.
+- `liftoff update`: Maintains managed-core control-plane files only.
+
 ## Existing non-Liftoff application
 
 Use migration when you want a fresh governed scaffold and a filtered source

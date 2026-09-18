@@ -18,20 +18,23 @@ import type {
   EvidenceReference,
   SavedTransitionPlan,
   UserActivationState
+  , GovernanceScope
 } from './types.js';
 import { phaseIds } from './types.js';
 import { validateEvidenceHeader, validateLiveReadbackProof, validateSavedTransitionPlan } from './validators.js';
 import { assertPlanOperationsAllowed, planDigestFor } from './operations.js';
 import { savedPlanAuthorityDigest } from './approvals.js';
+import { matchesPrivateRunnerCreatedReadback, privateRunnerPayloadIssues } from './runner-evidence.js';
 
 export interface PhaseEvidenceSource {
   evidence: readonly PhaseEvidenceRecord[];
   contexts: Record<PhaseId, EvidenceFreshnessContext>;
 }
 
-export function rulesetSourceDigestFromEvidence(inspection: PhaseEvidenceSource): string | null {
-  const record = latestRecordWithPayload(inspection, 'workflow-source-ready');
-  if (!record || !isRecord(record.payload) || record.payload.kind !== 'workflow-source-ready.v1') return null;
+export function rulesetSourceDigestFromEvidence(inspection: PhaseEvidenceSource, scope: GovernanceScope = 'activation'): string | null {
+  const phaseId = scope === 'repository' ? 'repository-workflow-source-ready' : 'workflow-source-ready';
+  const record = latestRecordWithPayload(inspection, phaseId);
+  if (!record || !isRecord(record.payload) || record.payload.kind !== `${phaseId}.v1`) return null;
   const digest = record.payload.rulesetSourceDigest;
   return typeof digest === 'string' && /^[a-f0-9]{64}$/u.test(digest) ? digest : null;
 }
@@ -139,6 +142,15 @@ function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
   const value = payload as Record<string, unknown>;
   const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' : `${record.header.phaseId}.v1`;
   const issues = value.kind === expected ? [] : [`${record.header.phaseId} payload kind must be ${expected}.`];
+  if (['rulesets-applied', 'live-readback', 'repository-rulesets-applied', 'repository-live-readback'].includes(record.header.phaseId)) {
+    if (typeof value.sourceDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(value.sourceDigest) ||
+      value.readbackDigest !== value.sourceDigest || typeof value.resourceId !== 'string' ||
+      !(Array.isArray(record.liveReadback) && record.liveReadback.some((proof) =>
+        isRecord(proof) && proof.provider === 'github' && proof.resourceId === value.resourceId &&
+        proof.sourceDigest === value.sourceDigest && proof.readbackDigest === value.readbackDigest && proof.matches === true))) {
+      issues.push('Control evidence must bind matching reviewed source and independent readback digests for the same resource.');
+    }
+  }
   if (record.header.phaseId === 'seed-verified') {
     if (!Array.isArray(value.checks) || value.checks.length === 0 || value.checks.some((check) =>
       typeof check !== 'object' || check === null || !['passed', 'inapplicable'].includes(String(check.status)))) {
@@ -150,6 +162,19 @@ function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
       .every((id) => (value.facts as Array<{ id?: unknown; value?: unknown }>).some((fact) => fact.id === id && typeof fact.value === 'string' && fact.value))) {
       issues.push('Phase 0 requires independently observed repository identity facts.');
     }
+    const facts = Array.isArray(value.facts) ? value.facts.filter(isRecord) : [];
+    const fact = (id: string) => facts.find((entry) => entry.id === id)?.value;
+    const subscription = fact('azure.subscriptionId');
+    const tenant = fact('azure.tenantId');
+    const uuid = /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/iu;
+    if (fact('azure.accountReadable') !== true || fact('azure.accountState') !== 'Enabled' ||
+      typeof subscription !== 'string' || !uuid.test(subscription) || /^0{8}-0{4}-0{4}-0{4}-0{12}$/u.test(subscription) ||
+      typeof tenant !== 'string' || !uuid.test(tenant) || /^0{8}-0{4}-0{4}-0{4}-0{12}$/u.test(tenant) ||
+      !(Array.isArray(record.liveReadback) && record.liveReadback.some((proof) => isRecord(proof) && proof.provider === 'azure' &&
+        typeof proof.resourceId === 'string' &&
+        proof.resourceId.toLowerCase() === `/subscriptions/${subscription.toLowerCase()}`))) {
+      issues.push('Full Phase 0 requires exact non-placeholder subscription/tenant, Enabled account facts and independent subscription readback.');
+    }
   }
   if (['committed', 'pushed'].includes(record.header.phaseId) &&
     (typeof value.head !== 'string' || !/^[a-f0-9]{40,64}$/.test(value.head))) {
@@ -160,14 +185,18 @@ function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
     issues.push('Publication evidence must match the independently observed resulting Git object ID.');
   }
   if (record.header.phaseId === 'runner-ready') {
-    if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
+    if (value.scope === 'network-reachability-only' || value.scope === 'workflow-assignment-only') {
+      issues.push(...privateRunnerPayloadIssues(record));
+    } else {
+      if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
       !(value.groupId === null || Number.isInteger(value.groupId)) ||
       !(value.networkConfigurationId === null || typeof value.networkConfigurationId === 'string')) {
-      issues.push('Runner proof requires an explicit organization, runner ID, group, and network-configuration binding.');
-    }
-    if (!(record.liveReadback ?? []).some((proof) => proof.provider === 'github' &&
+        issues.push('Runner proof requires an explicit organization, runner ID, group, and network-configuration binding.');
+      }
+      if (!(record.liveReadback ?? []).some((proof) => proof.provider === 'github' &&
       (proof.resourceId === String(value.runnerId) || proof.resourceId.endsWith(`/hosted-runners/${value.runnerId}`)))) {
-      issues.push('Runner payload ID has no matching independent runner resource readback.');
+        issues.push('Runner payload ID has no matching independent runner resource readback.');
+      }
     }
   }
   if (record.header.phaseId === 'state-path-selected' && !['existing-private', 'bootstrap-local'].includes(String(value.statePath))) {
@@ -346,6 +375,13 @@ export function validateEvidenceFreshness(
           issues.push(issue('payload.checks', 'Baseline outcome must cover every planned applicable check exactly once.', undefined, undefined, record.evidenceId));
         }
       }
+      for (const operation of plan.operations) {
+        if (operation.actionId === 'github.ruleset.readback' && operation.inputs.rulesetSourceDigest !== undefined &&
+          operation.inputs.rulesetSourceDigest !== payload.sourceDigest) {
+          issues.push(issue('payload.sourceDigest', 'Control readback differs from the exact reviewed ruleset source digest.',
+            undefined, undefined, record.evidenceId));
+        }
+      }
       for (const proof of record.liveReadback ?? []) {
         if (Date.parse(proof.observedAt) < Date.parse(plan.createdAt)) {
           issues.push(issue('liveReadback.observedAt', 'Independent readback predates the reviewed transition plan.', undefined, undefined, record.evidenceId));
@@ -359,11 +395,15 @@ export function validateEvidenceFreshness(
             : operation.destination.subscriptionId !== undefined));
         if (!operations.some((operation) => {
           const destination = operation.destination;
-          const scopeMatches = destination.identity === proof.resourceId ||
+          const scopeMatches = matchesPrivateRunnerCreatedReadback(operation, proof, payload) ||
+            destination.identity === proof.resourceId ||
             destination.repository === proof.resourceId ||
-            (destination.repository && (proof.resourceId.startsWith(`/repos/${destination.repository}/`) ||
+            (destination.repository && (proof.resourceId === `/repos/${destination.repository}` ||
+              proof.resourceId === `https://api.github.com/repos/${destination.repository}` ||
+              proof.resourceId.startsWith(`/repos/${destination.repository}/`) ||
               proof.resourceId.startsWith(`https://api.github.com/repos/${destination.repository}/`))) ||
-            (destination.subscriptionId && proof.resourceId.toLowerCase().startsWith(`/subscriptions/${destination.subscriptionId.toLowerCase()}/`));
+            (destination.subscriptionId && (proof.resourceId.toLowerCase() === `/subscriptions/${destination.subscriptionId.toLowerCase()}` ||
+              proof.resourceId.toLowerCase().startsWith(`/subscriptions/${destination.subscriptionId.toLowerCase()}/`)));
           return scopeMatches && (operation.inputs.sourceDigest === undefined || operation.inputs.sourceDigest === proof.sourceDigest);
         })) {
           issues.push(issue('liveReadback.destination', 'Readback resource or source is outside the reviewed plan destinations.', undefined, undefined, record.evidenceId));

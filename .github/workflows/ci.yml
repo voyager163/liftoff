@@ -43,8 +43,8 @@ jobs:
           tofu_version: 1.12.6
           tofu_wrapper: false
 
-      - name: Install uv
-        run: python -m pip install uv==0.12.7
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
 
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
@@ -54,6 +54,21 @@ jobs:
 
       - name: Install telemetry gateway dependencies
         run: npm ci --prefix services/telemetry-ingest
+
+      - name: Measure Windows launcher source fixtures (not native qualification)
+        shell: bash
+        run: >-
+          go test -count=1 -coverprofile="$RUNNER_TEMP/liftoff-windows-launcher-source.coverprofile"
+          scripts/distribution/windows-launcher.go scripts/distribution/windows-launcher_test.go
+
+      - name: Retain separate launcher source coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-launcher-source-coverage-${{ matrix.os }}
+          path: ${{ runner.temp }}/liftoff-windows-launcher-source.coverprofile
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Install isolated pinned framework smoke tools
         if: runner.os == 'Linux'
@@ -84,7 +99,7 @@ jobs:
           tests/repair-identity.test.ts tests/repair-approval.test.ts tests/repair-application-command.test.ts
           tests/repair-application.test.ts tests/repair-integrations.test.ts
           tests/repair-workspaces.test.ts tests/repair-framework.test.ts
-          tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
+          tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts tests/windows-execution-qualification.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts tests/governance-assessment-history.test.ts
@@ -201,3 +216,69 @@ jobs:
         env:
           npm_config_engine_strict: "false"
         run: npm run verify:standard-node-templates
+
+  coverage-qualification:
+    name: Coverage and Publication Gate Qualification
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Run gate test suites
+        run: npx vitest run tests/coverage-gate.test.ts tests/release-gate.test.ts
+
+      - name: Run telemetry service coverage
+        run: npm run test:coverage --prefix services/telemetry-ingest -- --maxWorkers=2
+
+      - name: Run complete CLI coverage
+        run: npm run test:coverage -- --maxWorkers=2
+
+      - name: Enforce independent raw-count coverage
+        run: npm run gate:coverage
+
+      - name: Retain independent coverage measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-coverage
+          path: |
+            coverage/coverage-summary.json
+            coverage/coverage-final.json
+            services/telemetry-ingest/coverage/coverage-summary.json
+            services/telemetry-ingest/coverage/coverage-final.json
+          if-no-files-found: error
+          retention-days: 7

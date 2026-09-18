@@ -1,21 +1,22 @@
 import type { ActivationIdentity } from '../activation/types.js';
 
-export const liftoffActivationPackageVersion = '0.12.0' as const;
-export const liftoffManifestArtifactVersion = 7 as const;
-export const governanceActivationPolicyVersion = '6' as const;
-export const activationContractVersion = 3 as const;
-export const phaseGraphSchemaVersion = 2 as const;
-export const activationStateSchemaVersion = 3 as const;
-export const evidenceHeaderSchemaVersion = 3 as const;
-export const approvalEnvelopeSchemaVersion = 3 as const;
-export const compatibilityMetadataSchemaVersion = 4 as const;
+export const liftoffActivationPackageVersion = '0.13.0' as const;
+export const liftoffManifestArtifactVersion = 8 as const;
+export const governanceActivationPolicyVersion = '8' as const;
+export const activationContractVersion = 4 as const;
+export const phaseGraphSchemaVersion = 3 as const;
+export const activationStateSchemaVersion = 4 as const;
+export const evidenceHeaderSchemaVersion = 4 as const;
+export const approvalEnvelopeSchemaVersion = 4 as const;
+export const compatibilityMetadataSchemaVersion = 5 as const;
+export const governanceOutputSchemaVersion = 3 as const;
 export const supersessionSchemaVersion = 1 as const;
-export const credentialPolicySchemaVersion = 1 as const;
+export const credentialPolicySchemaVersion = 2 as const;
 
 export const knownActivationVersions = {
   liftoffVersion: [liftoffActivationPackageVersion],
   manifestArtifactVersion: [liftoffManifestArtifactVersion],
-  policyVersion: ['5', governanceActivationPolicyVersion],
+  policyVersion: [governanceActivationPolicyVersion],
   activationContractVersion: [activationContractVersion],
   phaseGraphSchemaVersion: [phaseGraphSchemaVersion],
   activationStateSchemaVersion: [activationStateSchemaVersion],
@@ -78,12 +79,40 @@ export const historicalActivationIdentities = [{
   approvalEnvelopeSchemaVersion: 2,
   supersessionSchemaVersion: 1,
   credentialPolicySchemaVersion: 1
+}, {
+  liftoffVersion: '0.12.0',
+  manifestArtifactVersion: 7,
+  policyVersion: '6',
+  activationContractVersion: 3,
+  phaseGraphSchemaVersion: 2,
+  phaseGraphHash: '2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703',
+  activationStateSchemaVersion: 3,
+  evidenceHeaderSchemaVersion: 3,
+  approvalEnvelopeSchemaVersion: 3,
+  supersessionSchemaVersion: 1,
+  credentialPolicySchemaVersion: 1
+}, {
+  liftoffVersion: '0.13.0',
+  manifestArtifactVersion: 8,
+  policyVersion: '7',
+  activationContractVersion: 4,
+  phaseGraphSchemaVersion: 3,
+  phaseGraphHash: '00226d3a7e74b760f463e510847676b11baac432be013062cccda19fb77bcca2',
+  activationStateSchemaVersion: 4,
+  evidenceHeaderSchemaVersion: 4,
+  approvalEnvelopeSchemaVersion: 4,
+  supersessionSchemaVersion: 1,
+  credentialPolicySchemaVersion: 1
 }] as const satisfies readonly ActivationIdentity[];
 
 export const historicalV1ActivationIdentity = historicalActivationIdentities[0];
 export const historicalV2ActivationIdentity = historicalActivationIdentities[1];
+export const historicalV3ActivationIdentity = historicalActivationIdentities[2];
+export const historicalV4Policy7ActivationIdentity = historicalActivationIdentities[3];
 export type HistoricalV1ActivationIdentity = typeof historicalV1ActivationIdentity;
 export type HistoricalV2ActivationIdentity = typeof historicalV2ActivationIdentity;
+export type HistoricalV3ActivationIdentity = typeof historicalV3ActivationIdentity;
+export type HistoricalV4Policy7ActivationIdentity = typeof historicalV4Policy7ActivationIdentity;
 
 export type HistoricalActivationIdentity = typeof historicalActivationIdentities[number];
 export type ReadableActivationIdentity = CurrentActivationIdentity | HistoricalActivationIdentity;
@@ -102,6 +131,14 @@ export function isHistoricalV1ActivationIdentity(value: unknown): value is Histo
 
 export function isHistoricalV2ActivationIdentity(value: unknown): value is HistoricalV2ActivationIdentity {
   return isHistoricalActivationIdentity(value) && value.activationContractVersion === 2;
+}
+
+export function isHistoricalV3ActivationIdentity(value: unknown): value is HistoricalV3ActivationIdentity {
+  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 3;
+}
+
+export function isHistoricalV4Policy7ActivationIdentity(value: unknown): value is HistoricalV4Policy7ActivationIdentity {
+  return isHistoricalActivationIdentity(value) && value.activationContractVersion === 4 && value.policyVersion === '7';
 }
 
 export function createActivationIdentity(phaseGraphHash: string): CurrentActivationIdentity {
@@ -143,7 +180,7 @@ export function resolveActivationCompatibility(
   compatibility: ActivationCompatibilityMap
 ): ActivationCompatibilityResult {
   if (isHistoricalActivationIdentity(identity)) {
-    return { compatible: false, reason: `Historical activation v${identity.activationContractVersion} is diagnostic-only. Run liftoff update --check to inspect an explicitly supported history-preserving v3 successor; preserve original bytes without reset, retagging, or automatic conversion.` };
+    return { compatible: false, reason: `Historical activation v${identity.activationContractVersion} policy ${identity.policyVersion} is diagnostic-only. Run liftoff update --check to inspect an explicitly supported history-preserving policy-8 successor; preserve original bytes and obtain fresh credential approval without reset, retagging, or automatic conversion.` };
   }
   for (const field of Object.keys(knownActivationVersions) as (keyof typeof knownActivationVersions)[]) {
     if (!knownVersion(field, identity[field])) {

@@ -13,7 +13,10 @@ import { runGit, commandSucceeded, commandFailure } from './transition-process.j
 import type { UserActivationState, PhaseGraphNode, TransitionOperation } from '../domain/governance/activation/types.js';
 import { operation, transitionDestination } from '../domain/governance/activation/operations.js';
 import { canonicalApprovalEnvelopeHash } from '../domain/governance/activation/approvals.js';
-import { readbackProof } from './transition-records.js';
+import { readbackProof, cloneState } from './transition-records.js';
+import { planHistoricalPublicationReadback, executeHistoricalPublicationReadback } from '../application/repository-governance/publication-revalidation.js';
+import { clientFor } from './github-config.js';
+import { positiveId, safeGitHubFailure } from '../adapters/github/activation-rest.js';
 
 async function allProjectFiles(projectRoot: string): Promise<string[]> {
   const files: string[] = [];
@@ -161,6 +164,8 @@ export async function gitCommitOperations(
   phase: PhaseGraphNode,
   runner: CommandRunner
 ): Promise<TransitionOperation[]> {
+  const revalidation = await planHistoricalPublicationReadback(inspection, 'committed', runner);
+  if (revalidation) return revalidation;
   const git = await inspectGitRepository(inspection.projectRoot, runner);
   if (git.issues.length > 0) throw new Error(git.issues.join(' '));
   const branch = defaultBranch(inspection.state);
@@ -219,6 +224,8 @@ export async function gitPushOperations(
   phase: PhaseGraphNode,
   runner: CommandRunner
 ): Promise<TransitionOperation[]> {
+  const revalidation = await planHistoricalPublicationReadback(inspection, 'pushed', runner);
+  if (revalidation) return revalidation;
   const git = await inspectGitRepository(inspection.projectRoot, runner);
   if (git.issues.length > 0) throw new Error(git.issues.join(' '));
   if (!git.insideWorkTree || !git.head) throw new Error('A reviewed local commit is required before push.');
@@ -232,6 +239,9 @@ export async function gitPushOperations(
     throw new Error(`Expected exactly one approved origin remote; found ${git.remotes.map((remote) => remote.name).join(', ') || 'none'}.`);
   }
   const pushUrl = reviewedPushUrl(git);
+  if (inspection.state.remoteBinding && inspection.state.remoteBinding.pushUrl !== pushUrl) {
+    throw new Error('The actual push URL differs from the verified push destination. Explicit repository reconciliation is required; no automatic rebind or push is authorized.');
+  }
   const remoteSha = await remoteHead(runner, inspection.projectRoot, pushUrl, branch);
   if (remoteSha && remoteSha !== git.head && !(await isAncestor(runner, inspection.projectRoot, remoteSha, git.head))) {
     throw new Error('Remote branch is not a fast-forward target; force, reset, rebase, and non-fast-forward push are forbidden.');
@@ -251,6 +261,8 @@ export async function gitPushOperations(
 
 export async function executeGitOperations(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   if (input.phase.id !== 'committed' && input.phase.id !== 'pushed') return null;
+  const revalidation = await executeHistoricalPublicationReadback(input);
+  if (revalidation) return revalidation;
   const completed: TransitionOperation[] = [];
   for (const op of input.plan.operations.filter((entry) => entry.adapter === 'git')) {
     if (op.actionId === 'git.verify-existing-commit' || op.actionId === 'git.verify-existing-push') {
@@ -301,8 +313,29 @@ export async function executeGitOperations(input: PhaseAdapterExecutionInput): P
       return { status: 'blocked', blocker: 'Independent push destination readback does not match the reviewed commit.', completedOperations: completed };
     }
   }
+  let stateOverride: UserActivationState | undefined;
+  if (input.phase.id === 'pushed') {
+    try {
+      const pushUrl = reviewedPushUrl(verified);
+      const name = githubRepositoryFromPushUrl(pushUrl);
+      const repository = await clientFor(input).get(`/repos/${name}`);
+      const id = String(positiveId(repository.id));
+      if (repository.full_name !== name || repository.default_branch !== defaultBranch(input.inspection.state) ||
+        input.inspection.state.remoteBinding && input.inspection.state.remoteBinding.id !== id) {
+        throw new Error('Actual repository identity or default branch differs from the reviewed publication.');
+      }
+      stateOverride = cloneState(input.inspection.state);
+      stateOverride.remoteBinding = {
+        id, name, defaultBranch: String(repository.default_branch), pushUrl,
+        verifiedAt: (input.clock?.() ?? input.now).toISOString()
+      };
+    } catch (error) {
+      return { status: 'blocked', blocker: safeGitHubFailure(error), completedOperations: completed };
+    }
+  }
   return {
     status: 'completed', resultState: 'verified',
+    ...(stateOverride ? { stateOverride } : {}),
     evidencePayload: { kind: `${input.phase.id}.v1`, head: verified.head, ...(input.phase.id === 'pushed' ? { pushUrl: reviewedPushUrl(verified) } : {}) },
     ...(input.phase.id === 'pushed' ? { liveReadback: [readbackProof(input, 'github', 'git-ref', reviewedPushUrl(verified), {
       head: verified.head, ref: defaultBranch(input.inspection.state), pushUrl: reviewedPushUrl(verified)

@@ -1,0 +1,851 @@
+{
+  "artifactVersion": 7,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.12.3",
+  "project": {
+    "name": "Frozen v0.12.3 genai",
+    "workload": {
+      "kind": "genai",
+      "apiStack": "python-fastapi",
+      "pattern": "rag",
+      "cloud": "azure",
+      "region": "eastus",
+      "frontend": false,
+      "environments": [
+        "dev"
+      ]
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.11.0"
+  },
+  "governance": {
+    "profile": "none",
+    "state": "disabled"
+  },
+  "managedArtifacts": [
+    {
+      "logicalName": "liftoff-repair-copilot",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-repair.prompt.md"
+      ],
+      "contentHash": "sha256:af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+    }
+  ],
+  "projectArtifacts": [
+    {
+      "logicalName": "root-readme",
+      "category": "documentation",
+      "pathParts": [
+        "README.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:d8641ec9718a88da92160df52eee5217235be55fea49811746af946f00fba02e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "root-gitignore",
+      "category": "project",
+      "pathParts": [
+        ".gitignore"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:0b692f03bae8d31bb5696744cf7607d99bfba0611ac9bc66ca6300c5224ab079",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "root-dockerignore",
+      "category": "runtime",
+      "pathParts": [
+        ".dockerignore"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:3c3facbe318b27efcb8c48c45ec5e16727dbcf188444853fed76f7e0ad433429",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "env-example",
+      "category": "configuration",
+      "pathParts": [
+        ".env.example"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:cc9abdda29f9ea34413d239cf57f486e42268adbf2a090ecde8824af12329c03",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-dockerfile",
+      "category": "runtime",
+      "pathParts": [
+        "Dockerfile"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:81fc4099492d8168b5a4d5bf9e61e303f74c5703050fce39303c61a604b10b30",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-pyproject",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "pyproject.toml"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:00fd35d49d30ea044d799fc26e95d93f7912c49e65fbdbaeeb2b247151673600",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-uv-lock",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "uv.lock"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:438c063cce5c0ab8d3d5926c8a83f0cdd9ba1b4218a6900ac99b1a657cfdb315",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-api-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-main",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "main.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:03dff6c505f36f0fdb4bfc1f5af0b135cff3f6eb985d54e4e184da9d5158880f",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-health-routes",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "routes",
+        "health.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:7704e4e6affd7055bfda54163147c26721e234f0cb402b1a6519c6805219ac1f",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-pattern-routes",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "routes",
+        "rag.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:fccc49e0cf6486bf685c495e14685fb8893601ae86374e4726b166efc661ab4f",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-routes-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "routes",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-auth-dependency",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "apis",
+        "dependencies",
+        "auth.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:12fa88d28c3758b44f376e401847301f3abedfe729242d3eef25474758baf339",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-config-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "config",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-settings",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "config",
+        "settings.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:9a1920ab0d80f392a172ac34901e6b84cd8a48414e4448d546ecccb187e2208e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-orchestration-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-model-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "model_config.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:55539914265a49353c62e11390ba92881cf6c16517f7ffdaff7e19ca3b00d96c",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-messaging-tool",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "tools",
+        "messaging.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:0d5123cee042cd55c808804eb0569fa91af8cbdbe456585fad527098db6fceff",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-tools-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "tools",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-observability",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "observability",
+        "tracing.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:6f2f433643a2ec3b07bb5d679248fde295afd0b0ef2857e5847d600910880df8",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-observability-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "observability",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-test-health",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "tests",
+        "test_health.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:b9ebcceff82035f7b223de1d3e16764c04263dc29c56f0b37abfb3971a435876",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-test-messaging",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "tests",
+        "test_messaging.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:096a06493aa03e2b4ad7813decd38d160af07a73a0159eb5787208e2dca79f5c",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-test-tracing",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "tests",
+        "test_tracing.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:3af878ae0f99ba30ada5ae5f56b6230fd25a660005603ae22068551f582aaf8e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-alembic-ini",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "alembic.ini"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:96747d66fdb44e37ceeb2011b64b7e865a04d992c6d3ffe86b4a332a5481b812",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-alembic-env",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "env.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:183197646c89d44d051ada785c2a38ea60efec6da0a63efd8c9f92a6609cc00a",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-initial-migration",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "versions",
+        "0001_initial.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:e7cc54871126361be589e32d789e9d81a1559f92fe67a925b9c16ff7e2dbe35a",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-schema",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "models",
+        "schema.sql"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:1350d76c813067f2c88f5ee92d4e5ed0812eb1969ca9d4c2462519c63045c63e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-agent",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "agents",
+        "rag_agent.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:21cf0c9684cc3cf49d02df39ab40b1e60956d7fa3cf036529a22d44119097ff0",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-agent-test",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "tests",
+        "test_rag_orchestration.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:841c57083e65e60c3ca3e80bf2a8a27fead646cb8b8fc3f42ce3a261b8e24401",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-prompt",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "prompts",
+        "rag.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:2124581ec638cf9efd369102a583f522d70c02b6e9147952242dea6da1293008",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-agent-package",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "agents",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-prompt-readme",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "prompts",
+        "README.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:d8b668947431a4a1074bd720e292a37d96dbb293641aeaddf952dd17b2aa08c4",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "rag-vector-store",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "retrieval",
+        "vector_store.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:f177d52e2a8b14cdff846ebee34c9d4cadd8f60db4055d90e6c9d2093ebd6467",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "rag-retrieval-package",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "orchestration",
+        "retrieval",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "pattern-worker",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "workers",
+        "rag_worker.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:76de795f5160f4d6bbfb127ee88c8e3df83574716a778e61d3f5ba69f53281c3",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-workers-package",
+      "category": "pattern",
+      "pathParts": [
+        "backend",
+        "workers",
+        "__init__.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "functions-readme",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "README.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:0575f7722a2d2607d8805576a17590b1f41b2722b38e81cae875d4085aae0cc3",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-readme",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "README.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:3ee4f4cfdbc2e4e68ec8269045ccd66df1c5a104354aec77f0d8d1d206d1402b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-host",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "host.json"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:6807c805e01f645e9249b28fb65e8221873a1251802b4c112746b77f202cd2e2",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-local-settings",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "local.settings.example.json"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:8855d119a14c45e52789508ebd3a681e1c750b896d4f78978668a9958274ffa1",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-requirements",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "requirements.txt"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:3d8fa15e16764e7b1d5d2b884829a06e0e020f4627bd2e83c221461564e4cbfb",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-app",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "function_app.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:33713172bc8ac2f76953c3249518314dbd312b33843c428bab58baceedf07707",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-test",
+      "category": "functions-test",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        "tests",
+        "test_function_app.py"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:a3e7502bb68852604ca098cc1502241e5c4024d38d5efdb7226021f9db3a81c0",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-funcignore",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        ".funcignore"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:703abad36886e2ebe02434ea61f01d009cdd8c39ff16e8ad3accc37938c11a17",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "function-worker-gitignore",
+      "category": "functions",
+      "pathParts": [
+        "functions",
+        "rag-worker",
+        ".gitignore"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:2cb14d84f2ab779be2df2506d3b289753745228e7529d50afc8437f2c7f10803",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "environment-dev-backend",
+      "category": "environment",
+      "pathParts": [
+        "environments",
+        "dev",
+        "backend.env"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:eafd2c13bd530ac6bf0a01efcb747469c9904710d015cf683c0f7e3b46e5c9c9",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "environment-dev-functions",
+      "category": "environment",
+      "pathParts": [
+        "environments",
+        "dev",
+        "functions.env"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:7d83ce8550fb25e8b5d33e072744573f9373f4815620d9ec3ecf99186b682462",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "docker-compose",
+      "category": "local-development",
+      "pathParts": [
+        "docker-compose.yml"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:2cd30df6f0d5701522c958ca4feb590af4cca519e251f63b4a056367050013f4",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-application-versions",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "modules",
+        "application",
+        "versions.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-application-variables",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "modules",
+        "application",
+        "variables.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:757db251f50abefa7eb876e9e83c64d0fd02630362d39a1025b0f34083424d95",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-application-main",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "modules",
+        "application",
+        "main.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:476747ea5ff918b04eb4bd793be15ca2e10ee8fdc4a0d768f114f3124816ce3d",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-application-outputs",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "modules",
+        "application",
+        "outputs.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:26463c74c0b66628f1aeed187c6d9eebfae0ead6fa316448ab86976a16234639",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-readme",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "README.md"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:9d1650d0a9d50f950abbe9cf594c65b6a648c246281d2eb4e5f8e90cb65b64f5",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-dev-versions",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "versions.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-provider-lock",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        ".terraform.lock.hcl"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-providers",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "providers.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:86f53e037a5b8c98f06133e05ce13f7f213f451d1c529e08780ef875abcd012f",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-variables",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "variables.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:91bc0fa0e3fc9f374a45717df2c81bc0f10b43787f6480942b543b6269e79ee2",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-main",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "main.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:c54c468f717c1f68b3002f67443a9b362a28184d195381a041932da9eda2a6b9",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-outputs",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "outputs.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:d1271fe99b10be303d36e5b351334303466f8677c2766a54d74405e0daf50d77",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-local-state",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "backend.local.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:2bb9f3562f76d45078762fc0b4aa9554dbe7fec714bbda992eb5f5991c4e3639",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-remote-state-example",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "backend.remote.example.tf"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:494a0e93e1df2d6c10421d74d2345554eed2a7784bb9a3eca09ec971dc79a309",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "opentofu-dev-tfvars",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev",
+        "dev.tfvars"
+      ],
+      "generatedBy": "0.12.3",
+      "generationHash": "sha256:78b9d31ceac0bd61c7580b435bab38443ac36a2aa869e91b65f5e4284cbaabe1",
+      "provisioningGroup": "environment:dev"
+    }
+  ]
+}

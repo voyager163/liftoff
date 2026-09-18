@@ -33,7 +33,7 @@ export function renderPythonPyproject(plan: StandardApiProjectPlan, context: Gen
 }
 
 export function renderPythonMain(plan: StandardApiProjectPlan): string {
-  return `from fastapi import FastAPI
+  return `from fastapi import FastAPI, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 try:
@@ -64,7 +64,21 @@ app.include_router(health.router)
 def scalar_reference():
     if get_scalar_api_reference is None:
         return {"message": "Install scalar-fastapi to enable the Scalar developer portal."}
-    return get_scalar_api_reference(openapi_url=app.openapi_url, title=f"{app.title} API")
+    return get_scalar_api_reference(openapi_url="./openapi.json", title=f"{app.title} API")
+
+
+@app.get("/scalar/", include_in_schema=False)
+def scalar_slash_redirect(request: Request):
+    query_string = request.scope.get("query_string", b"").decode("latin-1")
+    location = "../scalar" + (f"?{query_string}" if query_string else "")
+    return Response(status_code=307, headers={"location": location})
+
+
+@app.get("/openapi.json/", include_in_schema=False)
+def openapi_slash_redirect(request: Request):
+    query_string = request.scope.get("query_string", b"").decode("latin-1")
+    location = "../openapi.json" + (f"?{query_string}" if query_string else "")
+    return Response(status_code=307, headers={"location": location})
 
 
 @app.get("/api")

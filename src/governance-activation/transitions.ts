@@ -39,6 +39,12 @@ import {
   type CapturedGovernanceTaskSource
 } from './task-writes.js';
 import type { ActivationInputSnapshot } from '../domain/governance/activation/inputs.js';
+import { phaseCapabilities } from '../domain/governance/activation/capabilities.js';
+import { sanitizeAssessmentText } from '../domain/governance/assessment/sanitize.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
+import { bindGovernanceTransitionContext } from './transition-context.js';
+import { executeCompositePhase } from './phase-composite.js';
+import { readPhaseReviews, reviewMatchesPlan, storePhaseReview } from './phase-reviews.js';
 
 export type * from './transition-ports.js';
 export { governancePlanDirectoryPathParts, transitionPlanPathParts } from './transition-records.js';
@@ -47,6 +53,16 @@ export { rollbackPlanFromCompletedOperations, planDigestFor } from '../domain/go
 
 type PhaseExecutor = (input: PhaseAdapterExecutionInput) => PhaseAdapterOutcome | null | Promise<PhaseAdapterOutcome | null>;
 
+function executeAzureProvider(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
+  const engine = input.adapters.providerEngines?.azureActivation;
+  return engine ? engine.executePhase(input) : executeAzurePhase(input);
+}
+
+function executeGitHubProvider(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
+  const engine = input.adapters.providerEngines?.repositoryGovernance;
+  return engine ? engine.executePhase(input) : executeGitHubPhase(input);
+}
+
 const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   'seed-valid': executeSeedOperations,
   'seed-verified': executeSeedOperations,
@@ -54,13 +70,14 @@ const builtInExecutors: Partial<Record<PhaseId, PhaseExecutor>> = {
   committed: executeGitOperations,
   pushed: executeGitOperations,
   'phase-0-complete': discoverPhase0,
+  'provider-ready': executeAzureProvider,
+  'state-path-selected': executeAzureProvider,
   'activation-approved': executeActivationApproval,
   'enforcement-approved': () => ({ status: 'completed', resultState: 'approved', completedOperations: [] }),
-  'credential-ready': executeCredentialReady,
   'remote-ready': remoteImportRetention,
   'bootstrap-state-disposed': executeBootstrapStateDisposal,
-  'rulesets-applied': executeRulesetPhase,
-  'live-readback': executeRulesetPhase
+  'repository-discovered': executeGitHubProvider,
+  'repository-enforcement-approved': executeActivationApproval
 };
 
 async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localRevalidation = false): Promise<PhaseAdapterOutcome> {
@@ -71,14 +88,29 @@ async function executeBuiltInPhase(input: PhaseAdapterExecutionInput, localReval
   }
   const custom = input.adapters.phases?.[input.phase.id];
   if (custom) return await custom.execute(input);
+  const capability = phaseCapabilities[input.phase.id];
+  const explicitRulesetPort = input.adapters.githubRulesets &&
+    ['rulesets-applied', 'live-readback'].includes(input.phase.id);
+  if (capability.blocker && !explicitRulesetPort) {
+    return { status: 'blocked', blocker: capability.blocker, completedOperations: [] };
+  }
+  if ((input.phase.id === 'committed' || input.phase.id === 'pushed') &&
+    input.plan.operations.some((operation) => isRecord(operation.inputs.publicationRevalidation))) {
+    const publication = await executeGitOperations(input);
+    if (!publication) throw new Error('The reviewed publication readback has no matching registered executor.');
+    return publication;
+  }
   if (phaseScope(input.phase.id) === 'local') {
     const outcome = await executeSeedOperations(input);
     if (!outcome) throw new Error(`The local scope has no executor for ${input.phase.id}.`);
     return outcome;
   }
-  const githubFirst = ['private-backend-proof', 'application-artifact-ready', 'staging-qualified', 'production-rehearsed'].includes(input.phase.id);
-  const azurePhase = () => phaseUsesProvider(input.phase, 'azure') ? executeAzurePhase(input) : null;
-  const githubPhase = () => phaseUsesProvider(input.phase, 'github') ? executeGitHubPhase(input) : null;
+  const compositeEngine = input.adapters.providerEngines?.azureActivation;
+  const composite = await (compositeEngine ? compositeEngine.executeCompositePhase(input) : executeCompositePhase(input));
+  if (composite) return composite;
+  const githubFirst = ['private-backend-proof', 'staging-qualified', 'production-rehearsed'].includes(input.phase.id);
+  const azurePhase = () => phaseUsesProvider(input.phase, 'azure') ? executeAzureProvider(input) : null;
+  const githubPhase = () => phaseUsesProvider(input.phase, 'github') ? executeGitHubProvider(input) : null;
   const first = await (githubFirst ? githubPhase() : azurePhase());
   if (first && first.status !== 'completed') return first;
   const second = await (githubFirst ? azurePhase() : githubPhase());
@@ -166,6 +198,7 @@ export interface ApplyNextExecutionInput {
   reinspect: () => Promise<GovernanceTransitionInspection>;
   runner?: CommandRunner;
   adapters?: GovernanceTransitionAdapters;
+  storage?: UpdatePreviewOptions;
   now?: Date;
   clock?: () => Date;
   localRevalidation?: boolean;
@@ -177,10 +210,11 @@ export interface ApplyNextExecutionInput {
 }
 
 export async function executeApplyNext(input: ApplyNextExecutionInput): Promise<ApplyNextExecutionResult> {
+  input = { ...input, ...bindGovernanceTransitionContext(input) };
   validateManifestActivationForExecution(input.inspection.manifest);
   if (input.localRevalidation && (!input.inspection.loadedState || input.inspection.state.repository.id === 'unbound' ||
     !input.assertReviewedPlan || !input.assertProtectedInputs)) {
-    throw new Error('Local revalidation requires a committed anchored v3 state and exact reviewed-plan/protected-input guards.');
+    throw new Error('Local revalidation requires a committed anchored v4 state and exact reviewed-plan/protected-input guards.');
   }
   return withProjectMutationLock(input.inspection.projectRoot, async (lease) => {
     await lease.assertHeld();
@@ -201,11 +235,11 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const now = clock();
   const localRevalidation = input.localRevalidation ?? false;
   const initialPlan = await buildSavedTransitionPlan({
-    inspection: input.inspection, runner, now, localRevalidation,
+    inspection: input.inspection, runner, now, localRevalidation, adapters,
     ...(input.reviewedPlan ? { createdAt: input.reviewedPlan.createdAt } : {})
   });
   if (!initialPlan) {
-    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation });
+    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation, adapters });
     return {
       ...preview,
       applied: false,
@@ -220,6 +254,17 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   }
   const phase = phaseById(input.inspection.graph, initialPlan.phaseId);
   assertPlanOperationsAllowed(initialPlan, phase);
+  const originalPlans = input.inspection.contexts[phase.id].reviewedPlans ?? [];
+  const reviews = await readPhaseReviews(input.inspection.projectRoot, input.inspection.state, originalPlans, input.storage);
+  const priorReview = reviews.find((review) => reviewMatchesPlan(review, initialPlan, originalPlans));
+  if (priorReview) {
+    return {
+      ...executionBlockedResult(input.inspection, initialPlan, null,
+        'This exact stage is already settled. Review its retained public result and provide the next-stage inputs; no operation was repeated.',
+        [], input.inspection.loadedState?.contentHash ?? null, [], false),
+      reason: 'phase-review-required', authorized: false, noWrites: true, phaseComplete: false, review: priorReview
+    };
+  }
   if (input.reviewedPlan && (input.reviewedPlan.planDigest !== initialPlan.planDigest ||
     input.reviewedPlan.stateHash !== initialPlan.stateHash ||
     Date.parse(input.reviewedPlan.expiresAt) <= now.getTime())) {
@@ -235,7 +280,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     }
   }
   if (initialPlan.approval.evaluation.approvalRequired) {
-    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation });
+    const preview = await previewApplyNext({ inspection: input.inspection, runner, now, execute: true, localRevalidation, adapters });
     return {
       ...preview, applied: false, executedPhase: null, noWrites: false,
       executedOperations: [], evidence: null, stateHash: null, rollbackPlan: initialPlan.rollbackPlan, cleanupWarnings: []
@@ -244,18 +289,18 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   if (initialPlan.approval.required && initialPlan.approval.envelopeId) {
     const envelope = input.inspection.approvals.find((entry) => entry.id === initialPlan.approval.envelopeId);
     if (envelope) {
-      await assertGovernanceApprovalIssued(input.inspection.projectRoot, envelope);
+      await assertGovernanceApprovalIssued(input.inspection.projectRoot, envelope, input.storage);
     }
   }
   await input.assertReviewedPlan?.(initialPlan);
   await input.assertProtectedInputs?.();
   const saved = await saveTransitionPlan(input.inspection.projectRoot, initialPlan);
   const freshInspection = await input.reinspect();
-  const freshPlan = await buildSavedTransitionPlan({ inspection: freshInspection, runner, now, createdAt: initialPlan.createdAt, localRevalidation });
+  const freshPlan = await buildSavedTransitionPlan({ inspection: freshInspection, runner, now, createdAt: initialPlan.createdAt, localRevalidation, adapters });
   const freshnessIssues = comparePlanFreshness(initialPlan, freshPlan);
   if (freshnessIssues.length > 0) {
     return {
-      schemaVersion: 2, scope: input.inspection.scope, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
+      schemaVersion: 3, scope: input.inspection.scope, command: 'governance apply-next', projectRoot: input.inspection.projectRoot,
       execute: true, applied: false, authorized: false, reason: 'stale-after-plan-save', message: freshnessIssues.join(' '),
       selectedPhase: initialPlan.phaseId, executedPhase: null, nextReadyPhase: freshInspection.readiness.nextReadyPhase,
       approval: initialPlan.approval,
@@ -329,6 +374,33 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   const gitBinding = await verifiedGitInputBinding(beforeSnapshot.git, postSnapshot.git, initialPlan, freshInspection.projectRoot, runner);
   const effectiveSnapshot = snapshotWithPlannedWrites(postSnapshot, outcome.fileMutations ?? []);
   const afterInputDigest = phaseInputDigest(phase.id, effectiveSnapshot, freshInspection.state);
+  if (outcome.status === 'review-required') {
+    if (localRevalidation) throw new Error('Local identity revalidation cannot request a new producer execution stage.');
+    const finalInspection = await input.reinspect();
+    const authorization = evaluateApprovalForTransitionPlan(
+      approvalRequestForSavedPlan(initialPlan, phase, finalInspection.state), finalInspection.approvals, { now: clock() }
+    );
+    if (authorization.approvalRequired || authorization.envelopeHash !== initialPlan.approval.envelopeHash) {
+      return executionBlockedResult(freshInspection, initialPlan, saved,
+        'Stage approval changed or expired; its exact private effects remain retained and no next-stage authority was recorded.',
+        completedOperations, executionStateHash ?? '', outcome.cleanupWarnings ?? [], false);
+    }
+    const review = await storePhaseReview(freshInspection, initialPlan, outcome, clock(), input.storage);
+    const message = outcome.blocker ?? 'The bounded stage is settled. Review its public result and separately approve the exact next-stage plan; this phase is not complete.';
+    const nextState = nextStateForOutcome({
+      inspection: freshInspection, phase, plan: initialPlan, resultState: 'pending', now: clock(), blocker: message
+    });
+    const write = await persistWithTaskProjection({
+      inspection: freshInspection, plan: initialPlan, nextState, source: taskSource, snapshot: postSnapshot, now: clock(),
+      storage: input.storage,
+      expectedStateHash: executionStateHash, projectCreation: false, fallbackState: nextState
+    });
+    return {
+      ...executionBlockedResult(freshInspection, initialPlan, saved, message, completedOperations, write.stateHash,
+        [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]),
+      reason: 'phase-review-required', authorized: true, executedPhase: phase.id, phaseComplete: false, review
+    };
+  }
   if (outcome.status === 'pending') {
     if (!outcome.operation || outcome.operation.status !== 'running') {
       throw new Error('A pending phase must provide a concrete resumable external operation handle.');
@@ -339,11 +411,12 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     });
     const write = await persistWithTaskProjection({
       inspection: freshInspection, plan: initialPlan, nextState, source: taskSource, snapshot: postSnapshot, now: clock(),
+      storage: input.storage,
       expectedStateHash: executionStateHash, projectCreation: false, fallbackState: nextState
     });
     return {
       ...executionBlockedResult(freshInspection, initialPlan, saved,
-        outcome.blocker ?? `External operation ${outcome.operation.operationId} is running; resume polls this operation without redispatch.`,
+        outcome.blocker ?? `External operation ${outcome.operation.operationId} is running; an explicitly authorized execution polls its recorded identity without redispatch. Resume only inspects readiness.`,
         [...completedOperations, ...taskSource?.contract.source === 'existing' && !write.projectionFailure
           ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction) : []],
         write.stateHash, [...outcome.cleanupWarnings ?? [], ...(write.projectionFailure ? [write.projectionFailure] : [])]),
@@ -375,6 +448,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     });
     const write = await persistWithTaskProjection({
       inspection: freshInspection, plan: initialPlan, nextState, source: taskSource, snapshot: postSnapshot, now: clock(),
+      storage: input.storage,
       expectedStateHash: executionStateHash, projectCreation: false, fallbackState: nextState
     });
     return executionBlockedResult(freshInspection, initialPlan, saved, blocker,
@@ -461,6 +535,7 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
   await input.assertProtectedInputs?.();
   const write = await persistWithTaskProjection({
     inspection: outcomeInspection, plan: initialPlan, nextState, source: taskSource, snapshot: effectiveSnapshot, now: outcomeNow,
+    storage: input.storage,
     evidenceRecord, evidencePathParts: evidenceParts, fileMutations: outcome.fileMutations, filePreconditions: outcome.filePreconditions,
     expectedStateHash: executionStateHash, projectCreation: true,
     fallbackState: blockedState({
@@ -472,27 +547,38 @@ async function executeApplyNextLocked(input: ApplyNextExecutionInput, lease: Pro
     return executionBlockedResult(freshInspection, initialPlan, saved, write.projectionFailure,
       completedOperations, write.stateHash, [...outcome.cleanupWarnings ?? [], 'No successful phase or task projection was claimed; inspect and approve recovery of any completed external effects.']);
   }
-  await input.assertProtectedInputs?.();
   const rollbackPlan = rollbackPlanForPhase(phase, completedOperations);
-  const completedInspection = await input.reinspect();
+  let completedInspection: GovernanceTransitionInspection | undefined;
+  let inspectionFailure: string | undefined;
+  try {
+    await input.assertProtectedInputs?.();
+    completedInspection = await input.reinspect();
+  } catch (error) {
+    inspectionFailure = sanitizeAssessmentText(error instanceof Error ? error.message : 'Post-operation inspection failed.');
+  }
   return {
-    schemaVersion: 2, scope: freshInspection.scope, command: 'governance apply-next', projectRoot: freshInspection.projectRoot,
-    execute: true, applied: true, authorized: true, reason: 'phase-executed',
-    message: `Executed one phase: ${phase.id}.`, selectedPhase: phase.id, executedPhase: phase.id,
-    nextReadyPhase: completedInspection.readiness.nextReadyPhase, approval: initialPlan.approval,
+    schemaVersion: 3, scope: freshInspection.scope, command: 'governance apply-next', projectRoot: freshInspection.projectRoot,
+    execute: true, applied: true, authorized: true,
+    reason: inspectionFailure ? 'phase-executed-readiness-indeterminate' : 'phase-executed',
+    message: inspectionFailure ? `Phase ${phase.id} committed; current readiness could not be inspected. Earlier approved effects remain recorded.` : `Executed one phase: ${phase.id}.`,
+    selectedPhase: phase.id, executedPhase: phase.id,
+    nextReadyPhase: completedInspection?.readiness.nextReadyPhase ?? null, approval: initialPlan.approval,
     proposedMutations: { local: initialPlan.mutationClasses.local, remote: initialPlan.mutationClasses.remote, operations: initialPlan.operations },
     savedPlan: saved, noWrites: false, blockers: [],
     executedOperations: [...completedOperations,
       ...(taskSource ? initialPlan.operations.filter((operation) => operation.actionId === governanceTaskProjectionAction) : []),
       ...(evidenceParts ? [evidenceWriteOperation(phase, evidenceParts)] : []), stateWriteOperation(phase)],
     evidence: write.evidence, stateHash: write.stateHash, rollbackPlan,
-    cleanupWarnings: [...rollbackPlan.cleanupWarnings, ...(outcome.cleanupWarnings ?? [])]
+    cleanupWarnings: [...rollbackPlan.cleanupWarnings, ...(outcome.cleanupWarnings ?? [])],
+    readinessStatus: inspectionFailure ? 'indeterminate' : 'observed',
+    ...(inspectionFailure ? { inspectionFailure } : {})
   };
 }
 
 async function persistWithTaskProjection(input: {
   inspection: GovernanceTransitionInspection; plan: SavedTransitionPlan; nextState: UserActivationState;
   source?: CapturedGovernanceTaskSource; snapshot: ActivationInputSnapshot; now: Date;
+  storage?: UpdatePreviewOptions;
   fallbackState: UserActivationState; expectedStateHash: string | null; projectCreation: boolean;
   evidenceRecord?: PhaseEvidenceRecord; evidencePathParts?: readonly string[];
   fileMutations?: Parameters<typeof writeOutcomeTransaction>[0]['fileMutations'];
@@ -540,17 +626,17 @@ async function persistWithTaskProjection(input: {
 function executionBlockedResult(
   inspection: GovernanceTransitionInspection,
   plan: SavedTransitionPlan,
-  saved: { pathParts: readonly string[]; digest: string },
+  saved: { pathParts: readonly string[]; digest: string } | null,
   blocker: string,
   completedOperations: readonly TransitionOperation[],
-  stateHashValue: string,
+  stateHashValue: string | null,
   cleanupWarnings: readonly string[] = [],
   stateWritten = true
 ): ApplyNextExecutionResult {
   const phase = phaseById(inspection.graph, plan.phaseId);
   const rollbackPlan = rollbackPlanForPhase(phase, completedOperations);
   return {
-    schemaVersion: 2, scope: inspection.scope, command: 'governance apply-next', projectRoot: inspection.projectRoot,
+    schemaVersion: 3, scope: inspection.scope, command: 'governance apply-next', projectRoot: inspection.projectRoot,
     execute: true, applied: false, authorized: false, reason: 'blocked', message: blocker,
     selectedPhase: plan.phaseId, executedPhase: null, nextReadyPhase: inspection.readiness.nextReadyPhase, approval: plan.approval,
     proposedMutations: { local: plan.mutationClasses.local, remote: plan.mutationClasses.remote, operations: plan.operations },

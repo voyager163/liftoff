@@ -28,7 +28,7 @@ const digest = (value: string) => canonicalSha256(value);
 
 function state(): UserActivationState {
   return {
-    schemaVersion: 3, identity: currentActivationIdentity,
+    schemaVersion: currentActivationIdentity.activationStateSchemaVersion, identity: currentActivationIdentity,
     repository: { id: 'local:test', name: 'test', defaultBranch: 'develop' },
     activeChange: null,
     applicability: {
@@ -55,7 +55,7 @@ function localEvidence(): PhaseEvidenceRecord[] {
     return {
       evidenceId: `${id}-receipt`,
       header: {
-        schemaVersion: 3, repositoryId: 'local:test', identity: currentActivationIdentity,
+        schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion, repositoryId: 'local:test', identity: currentActivationIdentity,
         phaseGraphHash: canonicalPhaseGraphHash, phaseId: id, phaseContractDigest: canonicalPhaseContractDigests[id],
         inputDigest: current[id].inputDigest, baselineSha: current[id].baselineSha, transition: current[id].transition,
         producedAt: now.toISOString(), producer: 'contract-fixture', bodyDigest: evidenceBodyDigest(payload),
@@ -66,16 +66,16 @@ function localEvidence(): PhaseEvidenceRecord[] {
   });
 }
 
-describe('v3 activation execution contracts', () => {
-  it('uses the approved exact identity vector and a computed 29-phase graph', () => {
+describe('current activation execution contracts', () => {
+  it('uses the approved exact identity vector and a computed 35-phase graph', () => {
     expect(currentActivationIdentity).toMatchObject({
-      liftoffVersion: '0.12.0', manifestArtifactVersion: 7, policyVersion: '6',
-      activationContractVersion: 3, phaseGraphSchemaVersion: 2,
-      activationStateSchemaVersion: 3, evidenceHeaderSchemaVersion: 3, approvalEnvelopeSchemaVersion: 3,
-      supersessionSchemaVersion: 1, credentialPolicySchemaVersion: 1
+      liftoffVersion: '0.13.0', manifestArtifactVersion: 8, policyVersion: '8',
+      activationContractVersion: 4, phaseGraphSchemaVersion: 3,
+      activationStateSchemaVersion: 4, evidenceHeaderSchemaVersion: 4, approvalEnvelopeSchemaVersion: 4,
+      supersessionSchemaVersion: 1, credentialPolicySchemaVersion: 2
     });
     expect(canonicalPhaseGraphHash).toBe(canonicalSha256(canonicalPhaseGraph));
-    expect(phaseIds).toHaveLength(29);
+    expect(phaseIds).toHaveLength(35);
     expect(validateManagedPhaseGraph(canonicalPhaseGraph)).toEqual(canonicalPhaseGraph);
     expect(() => validateActivationIdentity(historicalV1ActivationIdentity)).toThrow();
     expect(() => validateActivationIdentity(historicalV2ActivationIdentity)).toThrow();
@@ -134,7 +134,7 @@ describe('v3 activation execution contracts', () => {
     expect(() => validateEvidenceHeader({ ...header, scope: 'activation' })).toThrow();
   });
 
-  it('keeps publication history and local checks stable across workflow publication but not source edits', () => {
+  it('keeps local checks stable while actual new publication payload and commits invalidate publication', () => {
     const snapshot: ActivationInputSnapshot = {
       schemaVersion: 2, project: { name: 'app' },
       files: [{ path: 'src/app.ts', digest: digest('source') }],
@@ -146,9 +146,12 @@ describe('v3 activation execution contracts', () => {
       files: [...snapshot.files, { path: '.github/workflows/liftoff-bootstrap.yml', digest: digest('workflow') }],
       git: { ...snapshot.git, head: 'b'.repeat(40) }
     };
-    for (const id of ['seed-verified', 'committed', 'pushed'] as const) {
+    for (const id of ['seed-verified'] as const) {
       expect(phaseInputDigest(id, workflow)).toBe(phaseInputDigest(id, snapshot));
       expect(phaseInputDigest(id, { ...workflow, files: [{ path: 'src/app.ts', digest: digest('changed') }] })).not.toBe(phaseInputDigest(id, snapshot));
+    }
+    for (const id of ['committed', 'pushed'] as const) {
+      expect(phaseInputDigest(id, workflow)).not.toBe(phaseInputDigest(id, snapshot));
     }
     expect(phaseInputDigest('bootstrap-workflow-source-ready', workflow)).not.toBe(phaseInputDigest('bootstrap-workflow-source-ready', snapshot));
   });
@@ -169,7 +172,7 @@ describe('v3 activation execution contracts', () => {
     const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'committed')!;
     const request = transitionPlanForPhase(phase, state(), contexts().committed.transition);
     const envelope = {
-      ...request, schemaVersion: 3, id: 'approval', approvedAt: now.toISOString(),
+      ...request, schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion, id: 'approval', approvedAt: now.toISOString(),
       expiresAt: '2026-05-01T11:00:00.000Z', approver: 'operator'
     };
     expect(canonicalApprovalEnvelopeHash(envelope)).not.toBe(canonicalApprovalEnvelopeHash({ ...envelope, scope: 'local' }));
@@ -194,7 +197,7 @@ describe('v3 activation execution contracts', () => {
       undefined, undefined, { operations, fileChanges: [] });
     const bundle = combineApprovalRequests([first, second]);
     const envelope = validateApprovalEnvelope({
-      ...bundle, schemaVersion: 3, id: 'enforcement-bundle', approvedAt: now.toISOString(),
+      ...bundle, schemaVersion: currentActivationIdentity.approvalEnvelopeSchemaVersion, id: 'enforcement-bundle', approvedAt: now.toISOString(),
       expiresAt: '2026-05-01T11:00:00.000Z', approver: 'operator'
     });
     expect(envelope.coveredPhases).toEqual(['enforcement-approved', 'rulesets-applied']);

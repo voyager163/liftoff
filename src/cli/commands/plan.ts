@@ -1,21 +1,13 @@
-import {
-  buildProjectPlan
-} from '../../application/project/planning.js';
+import { getApplicationEngines } from '../../application/engine-composition.js';
 import {
   projectPlanEntries
 } from '../../domain/project/planning.js';
-import {
-  buildArtifacts
-} from '../../templates.js';
 import type {
   ExecutionContext
 } from '../../application/context.js';
 import type {
   ParsedArgs
 } from '../../domain/project/contracts.js';
-import {
-  selectWorkstationRequirements
-} from '../../workstation.js';
 import {
   optionsFromParsedArgs
 } from '../project-options.js';
@@ -25,8 +17,7 @@ export async function planCommand(parsed: ParsedArgs, context: ExecutionContext)
   const { presentation } = context;
   presentation.identity('Preview project decisions, artifacts, and workstation requirements');
   const options = await optionsFromParsedArgs(parsed, context.cwd, false);
-  const plan = buildProjectPlan(options, { requireProjectName: false });
-  const artifacts = buildArtifacts(plan);
+  const { plan, artifacts, requirements } = (await getApplicationEngines(context))['project-generation'].previewProject(options);
   presentation.definitions('Project decisions', projectPlanEntries(plan));
   presentation.table(
     `Artifacts (${artifacts.length})`,
@@ -39,7 +30,7 @@ export async function planCommand(parsed: ParsedArgs, context: ExecutionContext)
       artifact.pathParts.join('/')
     ])
   );
-  const workstationRows = selectWorkstationRequirements(plan).map((requirement) => [
+  const workstationRows = requirements.map((requirement) => [
     requirement.definition.label,
     formatRequirementVersion(requirement),
     requirement.severity

@@ -23,6 +23,7 @@ import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
 import { createActivationSuccessorRuntime } from './fixtures/activation-successor-runtime.js';
 import { frameworkIntegrationPaths } from '../src/framework-validation.js';
 import { planGovernanceTaskProjection } from '../src/governance-activation/task-writes.js';
+import { successorFixtureManifest, fixtureSubscription } from './governance-activation-fixtures.js';
 
 const roots = new Set<string>();
 const cacheRoot = path.resolve('tests', `.task-writes-loader-${process.pid}-${randomUUID()}`);
@@ -47,11 +48,16 @@ async function put(root: string, parts: readonly string[], value: string | Buffe
   await writeFile(file, typeof value === 'string' || Buffer.isBuffer(value) ? value : canonicalJson(value));
 }
 
-async function fixture(workflow: 'openspec' | 'spec-kit' = 'openspec') {
+async function fixture(
+  workflow: 'openspec' | 'spec-kit' = 'openspec',
+  privateStore: 'ambient-fixture' | 'selected' = 'ambient-fixture'
+) {
   const container = path.resolve('tests', `.task-writes-${process.pid}-${randomUUID()}`);
   roots.add(container);
   const root = path.join(container, 'project');
   const home = path.join(container, 'home');
+  const storage = privateStore === 'selected' ? { homedir: path.join(container, 'selected-private-home'), env: {} } : undefined;
+  if (storage) await mkdir(storage.homedir, { recursive: true, mode: 0o700 });
   for (const [key, value] of Object.entries({
     HOME: home, USERPROFILE: home, XDG_STATE_HOME: path.join(home, 'state'), LOCALAPPDATA: path.join(home, 'local')
   })) vi.stubEnv(key, value);
@@ -100,7 +106,7 @@ async function fixture(workflow: 'openspec' | 'spec-kit' = 'openspec') {
     else await put(root, mutation.pathParts, mutation.content);
   }
   for (const artifact of artifacts.filter((entry) => entry.lifecycle === 'managed-core')) await put(root, artifact.pathParts, artifact.content);
-  const manifest = parseManifest({ ...sourceManifest, liftoffVersion: '0.12.0', governance: { ...sourceManifest.governance, activationIdentity: currentActivationIdentity } });
+  const manifest = await successorFixtureManifest(root);
   await put(root, ['liftoff.manifest.json'], manifest);
   const state = structuredClone(migrated.successor);
   state.remoteBinding = { id: 'R_CURRENT', name: 'owner/repo', defaultBranch: 'develop', pushUrl: 'https://github.com/owner/repo.git', verifiedAt: '2026-09-12T00:00:00.000Z' };
@@ -123,14 +129,19 @@ async function fixture(workflow: 'openspec' | 'spec-kit' = 'openspec') {
       destination: remote ? { type: 'repository', identity: 'owner/repo', repository: 'owner/repo' } : { type: 'local', identity: root },
       remote, destructive: false
     }, evidenceWriteOperation(phase, ['governance', 'evidence', `${phaseId}-current.json`]), stateWriteOperation(phase)];
+    if (phaseId === 'phase-0-complete') ops.push({
+      phaseId, adapter: 'azure-opentofu', actionId: 'azure.phase0.discover', mutationClass: 'azure-read',
+      inputs: {}, destination: { type: 'subscription', identity: fixtureSubscription, subscriptionId: fixtureSubscription },
+      remote: true, destructive: false
+    });
     const request = transitionPlanForPhase(phase, state, context.transition, root, undefined, { operations: ops, fileChanges: [] });
     const approvals = phase.approvalGate.required ? [validateApprovalEnvelope({
-      ...request, schemaVersion: 3, id: `${phaseId}-approval`, approvedAt: now.toISOString(),
+      ...request, schemaVersion: 4, id: `${phaseId}-approval`, approvedAt: now.toISOString(),
       expiresAt: '2026-09-13T00:00:00.000Z', approver: 'fixture-owner'
     })] : [];
     for (const approval of approvals) {
       await put(root, ['governance', 'approvals', `${approval.id}.json`], approval);
-      await writeGovernanceApprovalAuthority(root, canonicalSha256({ request }), approval);
+      await writeGovernanceApprovalAuthority(root, canonicalSha256({ request }), approval, storage);
     }
     const evaluation = evaluateApprovalForTransitionPlan(request, approvals, { now });
     const plan: SavedTransitionPlan = {
@@ -150,19 +161,24 @@ async function fixture(workflow: 'openspec' | 'spec-kit' = 'openspec') {
       ...(phaseId === 'seed-archived' && snapshot.workflowSpecDigest ? { synchronizedSpecDigest: snapshot.workflowSpecDigest } : {}),
       ...(['committed', 'pushed'].includes(phaseId) ? { head: 'a'.repeat(40), pushUrl: 'https://github.com/owner/repo.git' } : {}),
       ...(phaseId === 'phase-0-complete' ? { facts: [
-        { id: 'repository.id', value: 'R_CURRENT' }, { id: 'repository.nameWithOwner', value: 'owner/repo' }, { id: 'repository.defaultBranch', value: 'develop' }
+        { id: 'repository.id', value: 'R_CURRENT' }, { id: 'repository.nameWithOwner', value: 'owner/repo' }, { id: 'repository.defaultBranch', value: 'develop' },
+        { id: 'azure.accountReadable', value: true }, { id: 'azure.accountState', value: 'Enabled' },
+        { id: 'azure.subscriptionId', value: fixtureSubscription }, { id: 'azure.tenantId', value: fixtureSubscription }
       ] } : {})
     };
     const readback = remote ? [{
-      schemaVersion: 3, identity: state.identity, repositoryId: state.repository.id, phaseGraphHash: state.identity.phaseGraphHash,
+      schemaVersion: 4, identity: state.identity, repositoryId: state.repository.id, phaseGraphHash: state.identity.phaseGraphHash,
       phaseId, baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
       observedAt: now.toISOString(), provider: 'github' as const, resourceType: 'repository', resourceId: 'owner/repo',
       sourceDigest: canonicalSha256(payload), readbackDigest: canonicalSha256(payload), matches: true
     }] : [];
+    if (phaseId === 'phase-0-complete') readback.push({
+      ...readback[0], provider: 'azure' as never, resourceType: 'subscription', resourceId: `/subscriptions/${fixtureSubscription}`
+    });
     const record: PhaseEvidenceRecord = {
       evidenceId: `${phaseId}-current`, payload, liveReadback: readback,
       header: {
-        schemaVersion: 3, scope: plan.scope, identity: state.identity, repositoryId: state.repository.id,
+        schemaVersion: 4, scope: plan.scope, identity: state.identity, repositoryId: state.repository.id,
         phaseGraphHash: state.identity.phaseGraphHash, phaseId, phaseContractDigest: context.phaseContractDigest,
         baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
         producedAt: now.toISOString(), producer: 'validated-transport-fixture', result: 'verified', bodyDigest: evidenceBodyDigest(payload, readback),
@@ -179,8 +195,8 @@ async function fixture(workflow: 'openspec' | 'spec-kit' = 'openspec') {
   await put(root, ['governance', 'activation-state.json'], state);
   let ticks = 0;
   const clock = () => new Date(Date.parse('2026-09-12T00:02:00.000Z') + ticks++ * 1000);
-  const inspect = (scope: 'local' | 'activation' = 'activation') => commands.inspectGovernanceTransition(root, { runner, now: clock(), scope });
-  return { root, runner, inspect, clock, historical, migrated };
+  const inspect = (scope: 'local' | 'activation' = 'activation') => commands.inspectGovernanceTransition(root, { runner, now: clock(), scope, storage });
+  return { root, runner, inspect, clock, historical, migrated, storage };
 }
 
 async function approveInitial(f: Awaited<ReturnType<typeof fixture>>) {
@@ -197,13 +213,15 @@ async function approveInitial(f: Awaited<ReturnType<typeof fixture>>) {
     operations: plan.operations, fileChanges: plan.fileChanges, configuration: plan.configuration, recovery: plan.recovery
   });
   const approval = validateApprovalEnvelope({
-    ...request, schemaVersion: 3, id: 'activation-source-approved', approvedAt: f.clock().toISOString(),
+    ...request, schemaVersion: 4, id: 'activation-source-approved', approvedAt: f.clock().toISOString(),
     expiresAt: '2026-09-13T00:00:00.000Z', approver: 'fixture-owner'
   });
   await put(f.root, ['governance', 'approvals', `${approval.id}.json`], approval);
-  await writeGovernanceApprovalAuthority(f.root, canonicalSha256({ reviewedPlan: plan.planDigest }), approval);
+  await writeGovernanceApprovalAuthority(f.root, canonicalSha256({ reviewedPlan: plan.planDigest }), approval, f.storage);
   const inspection = await f.inspect();
-  const result = await transitions.executeApplyNext({ inspection, reinspect: () => f.inspect(), runner: f.runner, clock: f.clock });
+  const result = await transitions.executeApplyNext({
+    inspection, reinspect: () => f.inspect(), runner: f.runner, clock: f.clock, storage: f.storage
+  });
   expect(result, JSON.stringify(result)).toMatchObject({ applied: true, executedPhase: 'activation-approved' });
   const state = JSON.parse(await readFile(path.join(f.root, 'governance', 'activation-state.json'), 'utf8'));
   const task = path.join(f.root, ...(state.taskProjection.taskPathParts as string[]));
@@ -211,13 +229,25 @@ async function approveInitial(f: Awaited<ReturnType<typeof fixture>>) {
 }
 
 describe('approved current governance task writes', { timeout: 90_000 }, () => {
+  it('uses the selected private store through real post-outcome task projection and migrated-state readback', async () => {
+    const f = await fixture('openspec', 'selected');
+    const source = await approveInitial(f);
+    expect(source.result).toMatchObject({ applied: true, executedPhase: 'activation-approved' });
+    expect(source.state.taskProjection).toMatchObject({ status: 'complete', purpose: 'projection-audit-only' });
+    expect(await readFile(source.task, 'utf8')).toMatch(/^- \[x\].*<!-- liftoff-phase: activation-approved -->$/m);
+    expect((await f.inspect()).state.taskProjection?.status).toBe('complete');
+    await expect(commands.inspectGovernanceTransition(f.root, {
+      runner: f.runner, now: f.clock(), scope: 'activation'
+    })).rejects.toThrow(/no project-bound authority/);
+  });
+
   it.each(['openspec', 'spec-kit'] as const)('creates initial %s tasks from fresh post-approval readiness atomically after migration', async (workflow) => {
     const f = await fixture(workflow);
     const source = await approveInitial(f);
     const markdown = await readFile(source.task, 'utf8');
     expect(source.state.successorHistory).toEqual(f.migrated.successor.successorHistory);
     expect(source.state.taskProjection).toMatchObject({ status: 'complete', purpose: 'projection-audit-only' });
-    expect(markdown).toContain('[x] 7.1');
+    expect(markdown).toMatch(/^- \[x\].*<!-- liftoff-phase: activation-approved -->$/m);
     expect(source.state.taskProjection.states['activation-approved']).toBe('approved');
     expect(source.state.taskProjection.states['credential-ready']).toBe('blocked');
     expect(source.result.proposedMutations.operations.some((operation) => operation.actionId === governanceTaskProjectionAction)).toBe(true);

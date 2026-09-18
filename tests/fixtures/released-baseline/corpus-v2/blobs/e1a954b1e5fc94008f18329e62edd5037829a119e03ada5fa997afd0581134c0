@@ -1,0 +1,14 @@
+# node-fastify-application-baseline
+
+## Purpose
+
+Preserve the generated API baseline.
+
+## Requirements
+
+### Requirement: Baseline responds
+The system SHALL respond to local health requests.
+
+#### Scenario: Local baseline
+- **WHEN** the local health endpoint is queried
+- **THEN** the generated API responds

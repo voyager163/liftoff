@@ -25,6 +25,12 @@ import {
 
 import type { RegionResolution } from './contracts.js';
 
+export const canonicalDefaultEnvironmentIds = [
+  'dev',
+  'staging',
+  'prod'
+] as const satisfies readonly EnvironmentId[];
+
 export const OPEN_SPEC_WORKFLOW_IDS = [
   'propose', 'explore', 'new', 'continue', 'apply', 'update',
   'ff', 'sync', 'archive', 'bulk-archive', 'verify', 'onboard'
@@ -402,12 +408,6 @@ export function createProjectCatalog(context: ProjectCatalogContext) {
       aliases: ['korea', 'korea south', 'koreasouth', 'busan']
     }
   ];
-
-  const canonicalDefaultEnvironmentIds = [
-    'dev',
-    'staging',
-    'prod'
-  ] as const satisfies readonly EnvironmentId[];
 
   const environments: EnvironmentDefinition[] = [
     { id: 'dev', label: 'Development', description: 'Low-cost local and Azure development defaults.' },

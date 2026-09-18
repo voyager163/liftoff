@@ -8,7 +8,7 @@ import type {
   ApplicationInspectionOptions, ApplicationPreparationRequest, ApplicationResolvedCheck,
   ApplicationToolId, ApplicationToolIdentity
 } from './application-preparation-types.js';
-import type { ApplicationPatchCandidate } from './application-types.js';
+import type { ApplicationCandidate } from './application-types.js';
 
 function compatibleRange(version: string, value: string): boolean {
   const trimmed = value.trim();
@@ -34,11 +34,12 @@ function compatibleRange(version: string, value: string): boolean {
 }
 
 export async function resolveApplicationPreparation(
-  candidate: ApplicationPatchCandidate, requests: readonly ApplicationPreparationRequest[],
-  options: ApplicationInspectionOptions, approvedTools?: readonly ApplicationToolIdentity[]
+  candidate: ApplicationCandidate, requests: readonly ApplicationPreparationRequest[],
+  options: ApplicationInspectionOptions, approvedTools?: readonly ApplicationToolIdentity[],
+  bindUnpreparedChecks = false
 ): Promise<void> {
-  if (!requests.length) return;
-  candidate.verificationPolicy.effects.preparation = true;
+  if (!requests.length && !bindUnpreparedChecks) return;
+  candidate.verificationPolicy.effects.preparation = requests.length > 0;
   candidate.verificationPolicy.effects.network ||= requests.some((entry) => entry.network);
   const preparation = resolveApplicationPreparationInputs(candidate, requests);
   candidate.verificationPolicy.preparation = preparation;
@@ -100,7 +101,7 @@ export async function resolveApplicationPreparation(
   candidate.verificationPolicy.toolchain = toolchain;
   candidate.verificationPolicy.executionCommands = executionCommands;
   candidate.verificationPolicy.outputRoles = preparation.flatMap((entry) => entry.outputRoles);
-  candidate.verificationPolicy.effects.preparation = true;
+  candidate.verificationPolicy.effects.preparation = preparation.length > 0;
   candidate.verificationPolicy.effects.network ||= preparation.some((entry) => entry.network);
   candidate.scope.preparation = preparation;
   candidate.scope.toolchain = toolchain;

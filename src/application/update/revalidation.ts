@@ -31,6 +31,8 @@ import { captureMigrationRetainedProjectInputs } from '../../governance-activati
 import { historyPathParts } from '../../governance-activation/history-contracts.js';
 import { assertSafeHistoricalRecord } from '../../governance-activation/historical-safety.js';
 import { infrastructureRepairGuidance } from '../repair/guidance.js';
+import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
+import { bindGovernanceTransitionContext } from '../../governance-activation/transition-context.js';
 
 const localPhases: readonly LocalSeedPhaseId[] = localSetupPhaseIds;
 const successfulStates = new Set(['verified', 'approved', 'inapplicable', 'retained', 'disposed']);
@@ -203,11 +205,13 @@ export async function executeLocalRevalidation(input: {
   };
   runner?: CommandRunner;
   clock?: () => Date;
+  storage?: UpdatePreviewOptions;
   onProgress?: (progress: LocalRevalidationProgress) => void | Promise<void>;
 }): Promise<LocalRevalidationResult> {
   const approved = input.approvedPreview;
   const runner = input.runner ?? new NodeCommandRunner();
   const clock = input.clock ?? (() => new Date());
+  const { storage } = bindGovernanceTransitionContext({ storage: input.storage });
   const phaseResults: LocalRevalidationPhaseResult[] = [];
   let current: GovernanceTransitionInspection | undefined;
   let activePhase: LocalSeedPhaseId | null = null;
@@ -285,7 +289,7 @@ export async function executeLocalRevalidation(input: {
   };
   const reinspect = async () => {
     await assertProtectedInputs();
-    const inspection = await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock(), scope: 'local' });
+    const inspection = await inspectGovernanceTransition(approved.projectRoot, { runner: guardedRunner, now: clock(), scope: 'local', storage });
     await assertProtectedInputs();
     return resumableLocalInspection(inspection);
   };
@@ -338,7 +342,7 @@ export async function executeLocalRevalidation(input: {
     protectedSnapshot = await capturePublicInputs();
     current = await reinspect();
     if (!current.loadedState || current.state.repository.id === 'unbound') {
-      throw new Error('Local revalidation starts only after the anchored v3 successor is committed.');
+      throw new Error(`Local revalidation starts only after the anchored v${approved.targetIdentity.activationContractVersion} successor is committed.`);
     }
     for (const reused of approved.reusedPhases) {
       const selected = selectLatestPhaseEvidence(current.evidence.filter((record) => record.header.phaseId === reused.phaseId), current.contexts[reused.phaseId]).selected;
@@ -377,6 +381,7 @@ export async function executeLocalRevalidation(input: {
       });
       const execution = await executeApplyNext({
         inspection: current, reinspect, runner: guardedRunner, clock, localRevalidation: true,
+        storage,
         assertProtectedInputs,
         assertReviewedPlan(plan: SavedTransitionPlan) {
           const node = phaseById(current!.graph, phase.phaseId);
@@ -395,10 +400,21 @@ export async function executeLocalRevalidation(input: {
           }
         }
       });
+      const readinessIndeterminate = execution.readinessStatus === 'indeterminate';
+      const executionBlockers = execution.blockers.map(revalidationDiagnostic);
+      if (readinessIndeterminate) {
+        executionBlockers.push(revalidationDiagnostic(
+          `Phase ${execution.executedPhase ?? phase.phaseId} ${execution.applied ? 'committed' : 'did not complete'}, but post-commit readiness is indeterminate: ${execution.inspectionFailure ?? execution.message}`
+        ));
+      }
       phaseResults.push({
-        phaseId: phase.phaseId, status: execution.applied ? 'verified' : 'blocked',
-        blockers: execution.blockers.map(revalidationDiagnostic), evidence: execution.evidence, savedPlan: execution.savedPlan
+        phaseId: phase.phaseId, status: execution.applied && !readinessIndeterminate ? 'verified' : 'blocked',
+        blockers: executionBlockers, evidence: execution.evidence, savedPlan: execution.savedPlan
       });
+      if (readinessIndeterminate) {
+        current = undefined;
+        throw new Error(executionBlockers.join(' '));
+      }
       if (!execution.applied) throw new Error(execution.blockers.join(' ') || execution.message);
       if (commandIndex !== expectedCommands.length) throw new Error(`The ${phase.phaseId} outcome omitted reviewed local checks.`);
       current = await reinspect();
@@ -420,7 +436,7 @@ export async function executeLocalRevalidation(input: {
     const blockers = [blocker];
     if (current) {
       try {
-        current = await inspectGovernanceTransition(approved.projectRoot, { runner: metadataRunner, now: clock(), scope: 'local' });
+        current = await inspectGovernanceTransition(approved.projectRoot, { runner: metadataRunner, now: clock(), scope: 'local', storage });
         for (const [index, phase] of phaseResults.entries()) {
           if (phase.status !== 'blocked' && current.readiness.phases[phase.phaseId].state !== 'verified') {
             phaseResults[index] = { ...phase, status: 'blocked', blockers: [

@@ -1,0 +1,287 @@
+{
+	"schemaVersion": 2,
+	"identity": {
+		"liftoffVersion": "0.11.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 2,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"activationStateSchemaVersion": 2,
+		"evidenceHeaderSchemaVersion": 2,
+		"approvalEnvelopeSchemaVersion": 2,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"repository": {
+		"id": "local:00000000-0000-4000-8000-000000000002",
+		"name": "Flight Log",
+		"defaultBranch": "develop"
+	},
+	"activeChange": null,
+	"applicability": {
+		"statePath": "existing-private",
+		"privateStagingDast": false,
+		"credentialRequired": false
+	},
+	"remoteBinding": {
+		"id": "R_SOURCE_REMOTE",
+		"name": "example-org/flight-log",
+		"defaultBranch": "develop",
+		"pushUrl": "https://github.com/example-org/flight-log.git",
+		"verifiedAt": "2026-09-01T08:00:00.000Z"
+	},
+	"phases": {
+		"seed-valid": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-valid",
+					"evidenceId": "published-v2-seed-valid",
+					"headerDigest": "d63e68f0bc07c3db6f043c9b427a743afcd8e337239598b92b8fc3cf474f0263",
+					"result": "verified"
+				}
+			]
+		},
+		"seed-verified": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-verified",
+					"evidenceId": "published-v2-seed-verified",
+					"headerDigest": "2485c363c7819ea97af0a012407f15be9aedc7fbdc2f2fb6c37818bfa72425eb",
+					"result": "verified"
+				}
+			]
+		},
+		"seed-archived": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-archived",
+					"evidenceId": "published-v2-seed-archived",
+					"headerDigest": "59b105b8a16705d562c7ad73ada2927d8004a0d566c3a173499c6bfc5f8145e9",
+					"result": "verified"
+				}
+			]
+		},
+		"committed": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [
+				"published-v2-publication-approval"
+			],
+			"evidence": [
+				{
+					"phaseId": "committed",
+					"evidenceId": "published-v2-committed",
+					"headerDigest": "eea90560ab11063da15e1c1d48de1157bb103126f8df1125641a2815317aecb4",
+					"result": "verified"
+				}
+			]
+		},
+		"pushed": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"phase-0-complete": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"activation-approved": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"credential-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"provider-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"state-path-selected": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"existing-private-path": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-local": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"runner-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"private-backend-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"remote-import-verified": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"approvals": [],
+			"blockers": [],
+			"evidence": [
+				{
+					"phaseId": "remote-import-verified",
+					"evidenceId": "published-v2-remote-import-verified",
+					"headerDigest": "6e9aad70061fe93369d6fc65e30916a8369f25c3a03311b3454b4a32a6b67b4f",
+					"result": "verified"
+				}
+			]
+		},
+		"remote-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"application-foundation": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"workflow-source-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"dev-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"staging-qualified": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"production-rehearsed": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"green-red-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"enforcement-approved": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"rulesets-applied": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"live-readback": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-state-disposed": {
+			"state": "disposed",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"approvals": [],
+			"blockers": [],
+			"evidence": [
+				{
+					"phaseId": "bootstrap-state-disposed",
+					"evidenceId": "published-v2-bootstrap-state-disposed",
+					"headerDigest": "54c12759d6fe478da13dac852fe7127b1dacde45b6c9c31444192175b8a514e2",
+					"result": "disposed"
+				}
+			]
+		}
+	},
+	"createdAt": "2026-09-01T08:00:00.000Z",
+	"updatedAt": "2026-09-01T08:00:00.000Z",
+	"bootstrapState": {
+		"status": "disposed",
+		"remoteImportEvidenceId": "published-v2-remote-import-verified",
+		"remoteImportEvidenceDigest": "6e9aad70061fe93369d6fc65e30916a8369f25c3a03311b3454b4a32a6b67b4f",
+		"retainedAt": "2026-08-01T00:00:00.000Z",
+		"disposeAfter": "2026-08-31T00:00:00.000Z",
+		"encryptedStatePathParts": [
+			[
+				"governance",
+				"protected-material",
+				"opaque-bootstrap-data"
+			]
+		],
+		"encryptionKeyPathParts": [
+			[
+				"governance",
+				"protected-material",
+				"opaque-bootstrap-key"
+			]
+		],
+		"disposedAt": "2026-09-01T00:00:00.000Z",
+		"deletionEvidenceId": "published-v2-bootstrap-state-disposed"
+	}
+}

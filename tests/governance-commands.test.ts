@@ -30,7 +30,9 @@ import type { CommandRunner, CommandResult, RunCommandOptions } from '../src/pro
 import type { ExternalCommand } from '../src/types.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import { activationEvidenceContexts, readActivationInputSnapshot } from '../src/governance-activation/inputs.js';
-import { fixtureHeader, fixtureRemoteBinding, persistFixtureEvidence, writeBootstrapFixture, writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
+import { currentGovernanceManifest, fixtureHeader, fixtureRemoteBinding, persistFixtureEvidence, writeBootstrapFixture, writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
+import { loadGovernancePreview } from '../src/governance-activation/public-plans.js';
+import { validateStructuredContinuation } from '../src/protocol/continuation.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-command-tests-${process.pid}`);
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
@@ -42,8 +44,11 @@ function nextRoot(name: string): string {
 }
 
 function manifest(projectName: string): string {
+  const current = currentGovernanceManifest(projectName);
   return `${JSON.stringify({
-    artifactVersion: 7,
+    artifactVersion: 8,
+    standards: current.standards,
+    provenance: current.provenance,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -66,7 +71,7 @@ function manifest(projectName: string): string {
     },
     governance: {
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: currentActivationIdentity.policyVersion,
       activationIdentity: currentActivationIdentity,
       state: 'handoff-partial'
     },
@@ -281,9 +286,63 @@ class AuthorityBoundaryRunner extends ReadyInitRunner {
 beforeEach(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
   await mkdir(scratchRoot, { recursive: true });
+  await mkdir(path.join(scratchRoot, '.git'));
 });
 
 describe('governance command parsing and discovery', () => {
+  it('retains repository scope, canonical project and exact input reference when a continuation changes cwd', async () => {
+    const root = await writeProject('bound-inputs');
+    const nested = path.join(root, 'working directory');
+    await mkdir(nested);
+    const reference = path.join(root, 'public inputs & exact.json');
+    const text = JSON.stringify({
+      schemaVersion: 1, phases: {},
+      azure: {
+        subscriptionId: '11111111-1111-4111-8111-111111111111',
+        tenantId: '22222222-2222-4222-8222-222222222222', region: 'eastus'
+      }
+    });
+    await writeFile(reference, text);
+    const status = await run(['governance', 'status', '--scope', 'repository', '--inputs', '../public inputs & exact.json', '--json'], nested);
+    expect(status.code, status.out + status.err).toBe(0);
+    const body = JSON.parse(status.out);
+    const action = body.nextActions[0];
+    expect(body.scope).toBe('repository');
+    expect(body.progress).toEqual({ local: false, repository: false, activation: false, lifecycle: false });
+    expect(action).toMatchObject({
+      project: root, cwd: root, scope: 'repository', configPath: reference,
+      configDigest: createHash('sha256').update(text).digest('hex')
+    });
+    const continuation = validateStructuredContinuation(action.continuation);
+    expect(continuation).toMatchObject({
+      project: root, cwd: root, scope: 'repository', configPath: reference, configDigest: action.configDigest
+    });
+    expect(action.args).toEqual(continuation.args);
+    expect(action.command).toEqual({ executable: continuation.executable, args: continuation.args });
+    expect(parseArgs(action.args).flags).toMatchObject({ project: root, scope: 'repository', inputs: reference });
+    const planned = await run(action.args, scratchRoot);
+    expect(planned.code, planned.out + planned.err).toBe(0);
+    const preview = JSON.parse(planned.out);
+    expect(preview.plan.configurationBinding).toEqual({ schemaVersion: 1, reference, digest: action.configDigest });
+    expect(preview.plan.selectionScope).toBe('repository');
+    await writeFile(reference, `${text}\n`);
+    await expect(loadGovernancePreview(root, preview.preview.fingerprint)).rejects.toThrow(/reference or bytes changed/);
+  });
+
+  it('reports invalid input bindings as schema-3 inconsistent verification without provider access', async () => {
+    const root = await writeProject('invalid-bound-inputs');
+    const reference = path.join(root, 'invalid-public-inputs.json');
+    await writeFile(reference, JSON.stringify({
+      schemaVersion: 1, phases: {},
+      azure: { subscriptionId: '00000000-0000-0000-0000-000000000000', tenantId: '22222222-2222-4222-8222-222222222222', region: 'eastus' }
+    }));
+    const runner = new AuthorityBoundaryRunner();
+    const result = await run(['governance', 'verify', '--inputs', reference, '--json'], root, runner);
+    expect(result.code).toBe(1);
+    expect(JSON.parse(result.out)).toMatchObject({ schemaVersion: 3, scope: 'activation', ok: false, consistent: false, complete: false });
+    expect(runner.forbidden).toEqual([]);
+  });
+
   it('strictly parses governance subcommands, flags, project arguments, and help', async () => {
     expect(parseArgs(['governance', 'status', '--json']).subcommand).toBe('status');
     expect(parseArgs(['governance', 'apply-next', '--execute']).flags.execute).toBe(true);
@@ -330,7 +389,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     const result = await run(['governance', 'status', '--scope', 'local', '--json'], root);
     expect(result.code).toBe(0);
     const body = JSON.parse(result.out);
-    expect(body.schemaVersion).toBe(2);
+    expect(body.schemaVersion).toBe(3);
     expect(body.activationIdentity).toEqual(currentActivationIdentity);
     expect(body.graphHash).toBe(canonicalPhaseGraphHash);
     expect(body.nextReadyPhase).toBe('seed-valid');
@@ -352,9 +411,9 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
 
     const result = await run(['governance', 'verify', '--scope', 'local', '--json'], root);
 
-    expect(result.code).toBe(0);
+    expect(result.code).toBe(2);
     expect(JSON.parse(result.out)).toMatchObject({
-      ok: true,
+      ok: false,
       consistent: true,
       verificationStatus: 'consistent',
       complete: false,
@@ -386,9 +445,9 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
 
     const result = await run(['governance', 'verify', '--scope', 'local', '--json'], root);
 
-    expect(result.code, result.out).toBe(0);
+    expect(result.code, result.out).toBe(2);
     expect(JSON.parse(result.out)).toMatchObject({
-      ok: true,
+      ok: false,
       verificationStatus: 'consistent',
       complete: false,
       setupStatus: 'in-progress',
@@ -501,7 +560,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     const root = await writeProject('human');
     for (const subcommand of ['status', 'plan', 'resume', 'verify'] as const) {
       const result = await run(['governance', subcommand], root);
-      expect(result.code).toBe(0);
+      expect(result.code).toBe(subcommand === 'verify' ? 2 : 0);
       expect(result.out).toContain(`GOVERNANCE ${subcommand.toUpperCase()}`);
       if (subcommand === 'verify') {
         expect(result.out).toContain('setup-completion');
@@ -510,12 +569,12 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
       expect(result.err).toBe('');
     }
 
-    const apply = await run(['governance', 'apply-next'], root);
+    const apply = await run(['governance', 'apply-next', '--scope', 'local'], root);
     expect(apply.code).toBe(0);
     expect(apply.out).toContain('Preview only');
     expect(apply.err).toBe('');
 
-    const applyJson = await run(['governance', 'apply-next', '--json'], root);
+    const applyJson = await run(['governance', 'apply-next', '--scope', 'local', '--json'], root);
     expect(applyJson.code).toBe(0);
     expect(JSON.parse(applyJson.out)).toMatchObject({
       applied: false,
@@ -821,7 +880,7 @@ describe('governance status, plan, resume, verify, and apply-next', () => {
     expect(JSON.parse(status.out).evidenceFreshness.find((entry: { phaseId: string }) => entry.phaseId === 'seed-valid'))
       .toMatchObject({ status: 'fresh', selectedEvidenceId: 'current-valid' });
     const verify = await run(['governance', 'verify', '--json'], root);
-    expect(verify.code, verify.out).toBe(0);
+    expect(verify.code, verify.out).toBe(2);
     const checks = JSON.parse(verify.out).checks as Array<{ id: string; status: string; issues: string[] }>;
     expect(checks.find((check) => check.id === 'evidence-freshness')?.status).toBe('passed');
     expect(checks.find((check) => check.id === 'state-evidence')?.status).toBe('passed');

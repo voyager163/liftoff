@@ -2,7 +2,7 @@ import type { LiftoffManifest } from '../domain/project/contracts.js';
 import type {
   ManagedPhaseGraph, UserActivationState, ApprovalEnvelope, PhaseEvidenceRecord, PhaseId, EvidenceHeader,
   LiveReadbackProof, TransitionOperation, SavedTransitionPlan, PhaseGraphNode, MutationClass, TransitionRollbackPlan,
-  GovernanceScope, ActivationConfiguration, ExternalOperationState, PhaseOutputBindings
+  GovernanceScope, ActivationConfiguration, ActivationConfigurationBinding, ExternalOperationState, PhaseOutputBindings
 } from '../domain/governance/activation/types.js';
 import type { LoadedActivationState } from './activation-state.js';
 import type { EvidenceFreshnessContext } from '../domain/governance/activation/evidence.js';
@@ -11,6 +11,8 @@ import type { ProjectFileMutation, ProjectFileSnapshot } from '../adapters/files
 import type { CommandRunner } from '../process-runner.js';
 import type { ProjectMutationLease } from '../adapters/filesystem/project-lock.js';
 import type { HistoricalLifecycleObligation } from './migration-history.js';
+import type { GitHubActivationPorts } from './github-ports.js';
+import type { AzureActivationPorts } from './azure-ports.js';
 
 export interface GovernanceTransitionInspection {
   projectRoot: string;
@@ -19,6 +21,7 @@ export interface GovernanceTransitionInspection {
   graphHash: string;
   scope?: GovernanceScope;
   activationInputs?: ActivationConfiguration;
+  configurationBinding?: ActivationConfigurationBinding;
   recoverPhase?: PhaseId;
   sensitivePathExclusions?: readonly (readonly string[])[];
   historicalLifecycleObligations?: readonly HistoricalLifecycleObligation[];
@@ -26,6 +29,7 @@ export interface GovernanceTransitionInspection {
   state: UserActivationState;
   approvals: readonly ApprovalEnvelope[];
   evidence: readonly PhaseEvidenceRecord[];
+  reviews?: readonly PhaseReviewRequest[];
   contexts: Record<PhaseId, EvidenceFreshnessContext>;
   readiness: {
     nextReadyPhase: PhaseId | null;
@@ -73,6 +77,8 @@ export interface GitHubRulesetWriteResult {
   resourceId: string;
   sourceDigest: string;
   readbackDigest: string;
+  observationDigest?: string;
+  ownedControls?: readonly { id: number; name: string }[];
 }
 
 export interface GitHubRulesetAdapter {
@@ -87,8 +93,16 @@ export interface GitHubRulesetAdapter {
   }): Promise<GitHubRulesetWriteResult>;
 }
 
+export interface PhaseReviewRequest {
+  schemaVersion: 1;
+  kind: 'application-private-plan' | 'application-prerequisites-rbac' | 'credential-enrollment' | 'credential-usage';
+  phaseId: PhaseId;
+  sourcePlanDigest: string;
+  payload: unknown;
+}
+
 export interface PhaseAdapterOutcome {
-  status: 'completed' | 'blocked' | 'pending';
+  status: 'completed' | 'blocked' | 'pending' | 'review-required';
   resultState?: EvidenceHeader['result'] | 'approved';
   blocker?: string;
   evidencePayload?: unknown;
@@ -102,6 +116,7 @@ export interface PhaseAdapterOutcome {
   retryableWithoutStateMutation?: boolean;
   operation?: ExternalOperationState;
   outputs?: PhaseOutputBindings;
+  review?: PhaseReviewRequest;
 }
 
 export interface PhasePlanBuild {
@@ -116,6 +131,7 @@ export interface PhasePlanningInput {
   phase: PhaseGraphNode;
   runner: CommandRunner;
   now: Date;
+  adapters?: GovernanceTransitionAdapters;
 }
 
 export interface GovernancePhaseAdapter {
@@ -136,13 +152,27 @@ export interface PhaseAdapterExecutionInput {
   credentialEnrollment?: { protectedStdin: boolean };
 }
 
+export interface GovernanceProviderEngine {
+  planPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null>;
+  executePhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null>;
+}
+
 export interface GovernanceTransitionAdapters {
   phases?: Partial<Record<PhaseId, GovernancePhaseAdapter>>;
   githubRulesets?: GitHubRulesetAdapter;
+  githubActivation?: GitHubActivationPorts;
+  azureActivation?: AzureActivationPorts;
+  providerEngines?: {
+    readonly repositoryGovernance: GovernanceProviderEngine;
+    readonly azureActivation: GovernanceProviderEngine & {
+      planCompositePhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null>;
+      executeCompositePhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null>;
+    };
+  };
 }
 
 export interface ApplyNextPreview {
-  schemaVersion: 2;
+  schemaVersion: 3;
   scope?: GovernanceScope;
   command: 'governance apply-next';
   projectRoot: string;
@@ -174,7 +204,7 @@ export interface ApplyNextExecutionResult extends Omit<ApplyNextPreview, 'applie
     pathParts: readonly string[];
     digest: string;
   } | null;
-  noWrites: false;
+  noWrites: boolean;
   executedOperations: readonly TransitionOperation[];
   evidence: {
     evidenceId: string;
@@ -185,4 +215,8 @@ export interface ApplyNextExecutionResult extends Omit<ApplyNextPreview, 'applie
   stateHash: string | null;
   rollbackPlan: TransitionRollbackPlan;
   cleanupWarnings: readonly string[];
+  readinessStatus?: 'observed' | 'indeterminate';
+  inspectionFailure?: string;
+  review?: PhaseReviewRequest;
+  phaseComplete?: boolean;
 }

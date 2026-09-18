@@ -22,12 +22,122 @@ or `$skill-name`; it does not receive a fabricated slash-command adapter.
 The user-owned activation state records
 execution, not an agent's claim of completion.
 
+Historical policy-only handoffs remain readable without an activation identity.
+Released manifest 5/policy 1 and manifest 6/policy 5 inventories contain policy,
+context, guide and their exact retired setup aliases, not an activation graph or
+current execution proof. Assessment preserves their original bytes and points to
+`liftoff update --check`; it does not invent a v1/v2/v3 identity, read unversioned
+records as current authority, or create a successor history without actual
+registered activation records. Current activation requires the separately
+reviewed managed-handoff update.
+
 **Independent milestones:** local readiness does not imply publication or
 deployment. Explicit local-only use and declining a later approval remain
 supported. Activation requires real source-matching provider evidence;
 unsupported account capabilities, unverified private access, and incomplete
 observations remain explicit blockers. Retained-state disposal is separate
 lifecycle work, not a 30-day delay before initial activation can complete.
+
+Repository-scope discovery reads only the exact published GitHub repository; it
+does not request Azure configuration or organization-level access. Its bounded
+inventory includes GitFlow refs, classic branch protections, repository and
+inherited rulesets (including observed actor bypass capability), workflow bytes
+at the observed default-branch commit, exact check/App identities, and
+Actions/token settings. Two matching observations are
+required. Denied reads, masked protection 404s, malformed enforcement and changing
+inventories block discovery rather than becoming empty lists or disabled controls.
+Missing optional metadata stays explicitly unobserved. Discovery grants no
+control ownership, mutation approval, check qualification or production proof;
+unqualified producer and release gates remain separate.
+
+Workflow publication and owned-control changes use separate exact approvals.
+All three source-workflow phases publish through reviewed GitFlow pull requests,
+not direct protected-branch updates. Repository settings and rulesets remain
+distinct effect classes; neither a publication approval nor repository-only
+check proof authorizes full production enforcement. Published commits, pull
+requests and protections are retained after partial failures.
+
+Preview, approval issuance, replanning, execution and provider recovery share
+one project-bound private storage namespace. Conflicting storage boundaries are
+rejected rather than silently reading approval from one location and writing
+recovery records elsewhere. Pending provider work retains its actual recorded
+identity; another explicitly authorized execution can observe that operation
+without blind redispatch. `governance resume` only recalculates readiness and
+never dispatches or polls provider work.
+The same namespace also covers current approvals inside migrated projects,
+doctor and governance assessment, and local update revalidation. Preserved historical approval
+bytes remain non-executable; a different private home cannot substitute for
+the authority originally issued for the current plan.
+
+A fully settled preparation or credential stage can return
+`phase-review-required` without completing its phase. The command exits 0 for
+this non-error pending result, with `phaseComplete: false` and the bounded public
+`review` payload in JSON. Status, plan and resume read the same project-bound
+private review record. Repeating the settled stage performs no operation and
+does not reuse its approval. Inspect the public result with `--json`, supply the
+next-stage inputs, then request and approve a fresh exact plan. A continuation
+does not authorize the next stage or turn a completed stage into verified
+evidence. `governance verify` still exits 2 for consistent but incomplete setup
+(0 only for consistent completion, 1 for inconsistency).
+Verification includes selected-scope execution blockers in the skipped readiness
+check. Missing local engines, inputs or authority remain visible without being
+misreported as inconsistent history or successful execution.
+
+Azure metadata readback likewise requires the returned namespace, subscription
+and resource identities and actual provider state. Missing provisioning or
+runtime state is not `Succeeded` or `Running`. Artifact inspection requires an
+explicit registry, repository and immutable digest; neither generated names nor
+the first/latest image establish authority. Registration configuration flags do
+not grant approval, and an observed `Registering` value without a bound
+provider-issued operation ID does not create a synthetic resumable operation.
+Complete source-bound registration/provisioning, durable recovery and live
+qualification remain separate implementation and authorization requirements.
+Phase-specific Azure bindings inherit global values only when their fields are
+absent. Explicit null, non-string, empty, nil or malformed values block planning
+and discovery rather than silently selecting the global subscription or tenant.
+
+The candidate implements a bounded source-backed provider registration adapter.
+`phases.provider-ready` takes an exact manifest-declared Azure OpenTofu
+`rootPathParts`, the Azure principal object ID as `principalId`, and a
+`registration` intent of `read-only` or `register-missing`. The planner parses
+actual selected-environment sources and local modules rather than guessing a
+namespace list from the workload name. Each namespace has its own reviewed
+operation and real private approval; the intent string is not permission.
+Infrastructure inventory hashes are distinct from provider readback hashes.
+
+The provider plan also requires `phases.state-path-selected.statePath` in the
+input configuration before that later phase executes. With `bootstrap-local`,
+it consumes the actual typed bootstrap and runner ARM plans, including
+`GitHub.Network/networkSettings`; it does not infer namespaces from resource
+names or accept an `additionalProviders` list. The SDK plans must target the
+same subscription and tenant. Explicit provider-registration and later
+bootstrap principals remain separate bindings.
+
+The composite inventory commits actual HCL bytes/modes and SDK resource
+IDs, types, API versions and body digests. Relevant SDK configuration changes
+invalidate provider plans even when namespace names remain the same.
+Unrelated later phase inputs do not change this identity. Configuration-only
+SDK changes do not retag committed/pushed proof; actual publication payload,
+repository and ref changes still invalidate it. The original HCL-only inventory
+reader and its digest algorithm remain separate and unchanged. Planning does
+not open private custody, select the active backend, or authorize future
+bootstrap effects.
+
+Before a registration POST, the released immutable private store records the
+exact operation, project creation identity and client correlation ID. Provider
+request IDs remain separate. Three bounded polling reads cannot trigger another
+dispatch. A known rejected attempt needs a fresh, separately approved recovery;
+unknown submission remains readback-only until its actual result is established.
+Prior attempt records and subscription registrations are retained, never
+silently removed or overwritten. A complete namespace inventory does not
+qualify a provider, host or deployment path; producer acceptance and separately
+authorized live qualification remain distinct gates.
+
+`phases.state-path-selected.statePath` explicitly selects `existing-private` or
+`bootstrap-local`. Its implemented producer verifies the exact approved account
+and choice, not private backend readiness. Private reachability/state proof and
+staging or production qualification cannot be inferred from versioning metadata
+or a `Running` application.
 
 ## Managed files and user-owned state
 
@@ -78,7 +188,7 @@ governance/credentials/preflight-policy.json
 
 The complete policy is packaged at
 [`assets/governance/single-maintainer-gitflow/policy.md`](../assets/governance/single-maintainer-gitflow/policy.md).
-Policy version 6 treats numbered policy sections as capability chapters, not
+Policy version 7 treats numbered policy sections as capability chapters, not
 execution order. The managed phase graph is the sole execution-order authority.
 
 ## Read-only governance assessment
@@ -272,11 +382,12 @@ Only the actual user's action-specific approval for the same immutable plan and
 effect scopes authorizes those flags. A generic repair request, unrelated
 approval, autopilot mode or agent-generated Yes cannot substitute.
 
-Missing verification tools or dependencies remain explicit blockers. Repair
-currently supplies no `npm ci`/`npm install` or Python environment preparation.
-Do not invent installer commands, copy live dependency trees, inherit credentials
-or rewrite locks. `go test`/`go vet` may download modules under separately approved
-declared network scope. Missing Node/Vue dependencies do not establish framework
+Missing verification tools or dependencies remain explicit blockers. Registered
+`npm-ci`, `uv-locked-sync` and `go-mod-download` preparation uses exact candidate
+locks and private environments under separate consent. Do not invent installer
+commands, copy live dependency trees, inherit credentials or rewrite locks.
+Project checks and declared network access still require their own authority.
+Missing Node/Vue dependencies do not establish framework
 qualification, and a frontend build without a test script is build-only evidence.
 
 Submitted application patches must preserve manifest/provenance, desired state,
@@ -486,8 +597,20 @@ Never paste or show the value in chat, argv, command arguments,
 logs, evidence, files, or screenshots. A disclosed value is
 compromised and must be revoked and rotated through its owner-controlled system.
 
+See [credential provider permissions and policy admission](credential-permissions.md)
+for documented GitHub permission requirements and policy admission boundaries.
+The actual endpoint `GET /orgs/{org}/actions/hosted-runners` requires
+`organization_administration:read`, including broader organization, billing and
+Actions-settings read reach. Policy 8 and credential-policy schema 2 represent
+that grant explicitly. Human previews and approval output disclose the scope and
+exact operations; fresh plan-bound approval and original usage/run/artifact
+custody are still required. Schema-1 policies and policy-7 approvals are not new
+authority. PAT bearer binding, lifetime proof and create-only secret operations
+remain separate unresolved boundaries.
+
 The recorded credential policy is payload-free: it stores auth kind, display
-name, secret name, owner, repository, expiry, rotation lead, permissions,
+name, secret name, owner, repository, expiry, rotation lead, actual provider
+permissions and broader-read disclosure,
 allowed workflows/jobs, non-forwarding rules, and readback evidence, never the
 secret value.
 
@@ -525,12 +648,91 @@ Forced update can remove
 exact retired generated setup-alias entries from older manifests. When a policy,
 activation-contract, schema, or graph-hash change affects active work, status
 reports `reconciliation-required` and identifies affected descendants. Historical
-activation-v1/v2 state and evidence remain byte-preserved and non-executable.
+activation-v1/v2/v3 state and evidence remain byte-preserved and non-executable.
 `liftoff update --check` can preview an exact supported successor migration;
-explicitly approved apply preserves original history and creates linked v3 state.
+explicitly approved apply preserves original history and creates linked v4 state.
 Fresh local revalidation stops at unsupported or independently authorized work.
-Failure after commit leaves v3 blocked/resumable, not reset to older authority. Never
+Failure after commit leaves v4 blocked/resumable, not reset to older authority. Never
 acknowledge an identity by editing JSON or treat old approvals as current consent.
+
+For affected v3 publications, the successor supports separately reviewed
+readback of the original commit and GitHub repository/ref. Later Azure-only
+inputs do not require another commit or push. Fresh current approval is still
+required; retained historical approval files do not grant it. New local
+manifest, policy or workflow content is not thereby published:
+`publicationRevalidation.newLocalMetadataPublished` distinguishes the original
+publication from pending local metadata. Changed publication facts and new
+workflow source require their own review and publication, not rewritten old
+receipts.
+
+## Independent repository-only execution and source checks
+
+The public governance CLI supports independent `--scope repository` execution
+alongside `local`, `activation`, and `lifecycle`. Direct governance commands
+default to `--scope activation`; selecting repository-only scope must be explicit
+and does not create Azure dependencies or satisfy production qualification.
+
+Source publication phases accept `{ sourceSha, paths, publication?: { featureBranch, repositoryId, actorId, commitTime, commitMessage } }`
+with commit times formatted as whole-second UTC ISO timestamps. Mutations publish
+only through GitHub REST immutable trees/commits, new feature or automation branches,
+and pull requests. Protected branches (`main`, `develop`) are never updated directly.
+Pull requests must be merged externally through passing checks by a reviewed actor,
+with pending PR IDs retained.
+The full `workflow-source-ready` phase also requires exact file-backed ruleset
+source paths; workflow files alone cannot establish its completion. Each returned
+workflow resource has matching independent registration/source readback so its
+outputs remain usable by later engine inspection. Application build source can
+use either the compatible singular `applicationBuild` or a bounded
+`applicationBuilds` array for the explicit backend/frontend recipes, never both.
+All generated paths, source bytes, actors and refs remain in the exact approval;
+adding another recipe does not authorize local file replacement.
+
+Repository-check configuration binds `{ sourceSha, repositoryId, actorId, workflowPaths, fixtures }`
+across registered fixture pairs (`develop`, `main`, `release/*`, `hotfix/*`,
+`release/**`, `hotfix/**`) with
+`targetBranch`, `baseSha`, `positiveBranch`, `negativeBranch`, and `commitTime`.
+Supported immutable source validation commands are `node --test`, exact `package.json`
+`npm test` -> `vitest run`, `uv run --frozen pytest`, and `go test ./...`. Matrix, conditional,
+reusable, privileged, or unknown recipes are rejected rather than guessing contexts.
+Negative qualification also reads the exact already-bound Actions job's bounded
+native test log. It requires the registered test, source path, assertion and
+single-failure summary, not just a failed step, check summary or archived fixture
+source. Dependency/collection failures, missing or truncated logs and mixed
+failures remain blocked. Raw logs are withheld rather than copied into public
+evidence; the receipt binds the assertion identity to the observed job.
+
+Shared workflow dispatch requires string input `liftoff_operation_id` and run-name
+`liftoff-${{ inputs.liftoff_operation_id }}` for lost-response recovery.
+All three source-workflow phases require exact `repository-publish` approval and
+independent GitHub readback. Candidate `0.13.0` provider qualification remains
+explicitly **UNQUALIFIED**: source implementation and fixture-based execution do
+not establish successful live repository or cloud qualification.
+
+### Owned ruleset enforcement and settings reconciliation
+
+Phase configuration for `repository-rulesets-applied` and full-activation `rulesets-applied`
+binds an explicit repository `settings` subset (`default_branch: 'develop'`, `allow_merge_commit: true`,
+`allow_squash_merge: false`, `allow_rebase_merge: false`, `delete_branch_on_merge: true`)
+and `mainHold: 'hold' | 'replace' | 'qualified'`. Exact published `.github/rulesets` JSON bytes
+and file inventory digests remain distinct from the normalized enforcement digest. Actual provider
+IDs originate strictly from private issuance and response receipts, never from matching names.
+
+Reconciliation uses zero-write matching when live controls already agree. Owned
+PUT/PATCH enforcement implements authoritative pre-reads, cooperating repository
+locks, stale-state refusal, per-write private checkpoints, documented GitHub REST
+APIs, and independent readback, without claiming cross-writer API serialization or
+sending undocumented `If-Match` headers. New plans explicitly use the
+`authoritative-pre-read-and-independent-readback` contract; older create-only plans
+cannot gain replacement authority.
+
+Operations make no cross-system atomicity promises. Lost versus mismatched outcomes
+are handled explicitly through attributable checkpoints, and any divergence requires
+a fresh exact reviewed recovery before any further effect. Foreign and newer observed
+controls remain preserved on disk and in remotes, with no automatic rollback or
+protection removal. Full hold release remains blocked on complete source, artifact,
+and native qualification, not on a blanket serialization impossibility.
+Repository-only completion never satisfies full activation, production qualification,
+or bootstrap state disposal.
 
 ## Private staging and bootstrap retention
 
@@ -546,6 +748,10 @@ path is approved, the bounded `bootstrap-local` branch may create only the
 access-establishing resources needed to reach the backend. Local bootstrap state
 is encrypted, gitignored, single-writer, never uploaded or copied through GitHub
 artifacts or secrets, and cannot authorize application provisioning.
+See [private-state and runner activation](private-state-activation.md) for access-only
+ARM network plans, dedicated runner observations, encrypted custody, and explicit
+frozen graph boundaries (including exclusive-lease execution blockers for
+`private-backend-proof` under graph 3).
 
 After verified declarative import, backend identity parity, state locking, Blob
 versioning, and a clean-checkout no-change plan, local state becomes read-only

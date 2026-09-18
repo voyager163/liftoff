@@ -1,0 +1,28 @@
+import { describe, expect, it } from 'vitest';
+import { buildApp } from '../src/app.js';
+import { loadConfig } from '../src/config.js';
+
+describe('health endpoints', () => {
+  it('reports healthy and ready', async () => {
+    const app = await buildApp(loadConfig({
+      DATABASE_URL: 'postgresql://localhost/test',
+      REDIS_URL: 'redis://localhost:6379/0',
+      CORS_ALLOWED_ORIGINS: 'http://localhost:5173'
+    }));
+    const health = await app.inject({ method: 'GET', url: '/health' });
+    const ready = await app.inject({ method: 'GET', url: '/ready' });
+    expect(health.json()).toEqual({ status: 'ok' });
+    expect(ready.json()).toEqual({ status: 'ready' });
+    const preflight = await app.inject({
+      method: 'OPTIONS',
+      url: '/api',
+      headers: {
+        origin: 'http://localhost:5173',
+        'access-control-request-method': 'GET'
+      }
+    });
+    expect(preflight.statusCode).toBe(204);
+    expect(preflight.headers['access-control-allow-origin']).toBe('http://localhost:5173');
+    await app.close();
+  });
+});

@@ -1,9 +1,9 @@
-import { mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { runCommand } from '../src/commands.js';
+import { runCommand as runProjectCommand } from '../src/commands.js';
 import { parseArgs } from '../src/args.js';
 import { buildArtifacts } from '../src/templates.js';
 import { buildProjectPlan } from '../src/planner.js';
@@ -16,12 +16,57 @@ import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import type { UpdateApprovalPrompt } from '../src/application/update/approval.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 
-const roots: string[] = [];
+interface OwnedFixtureRoot {
+  path: string;
+  device: number;
+  inode: number;
+  birthtimeMs: number;
+  mode: number;
+}
+
+const roots: OwnedFixtureRoot[] = [];
+const runners = new Set<Runner>();
+let activeInvocations = 0;
 const now = new Date('2026-09-13T12:00:00Z');
+
+async function cleanupOwnedFixtures(
+  current: readonly OwnedFixtureRoot[], owners: readonly Pick<Runner, 'pending' | 'uncertain'>[], invocations: number
+): Promise<void> {
+  if (invocations || owners.some((runner) => runner.pending || runner.uncertain)) {
+    throw new Error(`Retaining exact application-repair fixtures with active or uncertain owned work: ${current.map((root) => root.path).join(', ')}`);
+  }
+  for (const root of current) {
+    const identity = await lstat(root.path);
+    if (!identity.isDirectory() || identity.isSymbolicLink() || await realpath(root.path) !== root.path ||
+        identity.dev !== root.device || identity.ino !== root.inode ||
+        identity.birthtimeMs !== root.birthtimeMs || identity.mode !== root.mode) {
+      throw new Error(`Application-repair fixture creation identity changed; preserving ${root.path}`);
+    }
+    await rm(root.path, { recursive: true });
+  }
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  const current = roots.splice(0);
+  const owners = [...runners];
+  runners.clear();
+  await cleanupOwnedFixtures(current, owners, activeInvocations);
 });
+
+async function createOwnedFixture(): Promise<OwnedFixtureRoot> {
+  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "liftoff-guided repair's-")));
+  const identity = await lstat(parent);
+  const owner = { path: parent, device: identity.dev, inode: identity.ino, birthtimeMs: identity.birthtimeMs, mode: identity.mode };
+  roots.push(owner);
+  return owner;
+}
+
+async function runCommand(...args: Parameters<typeof runProjectCommand>): Promise<number> {
+  activeInvocations++;
+  try { return await runProjectCommand(...args); }
+  finally { activeInvocations--; }
+}
 
 async function put(root: string, parts: string[], content: string) {
   const file = path.join(root, ...parts);
@@ -30,10 +75,10 @@ async function put(root: string, parts: string[], content: string) {
 }
 
 async function fixture(network = false) {
-  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "liftoff-guided repair's-")));
-  roots.push(parent);
+  const { path: parent } = await createOwnedFixture();
   const root = path.join(parent, 'project'), stage = path.join(parent, 'staged patch'), home = path.join(parent, 'home');
   await Promise.all([root, stage, home].map((folder) => mkdir(folder)));
+  await mkdir(path.join(root, '.git'));
   const plan = buildProjectPlan({
     projectName: 'Reviewed application', projectType: 'standard', apiStack: 'node', agents: ['copilot'],
     governanceProfile: 'none', environments: ['dev']
@@ -94,11 +139,44 @@ async function fixture(network = false) {
 class Runner implements CommandRunner {
   readonly calls: { command: ExternalCommand; options?: RunCommandOptions }[] = [];
   readonly native = new NodeCommandRunner();
+  pending = 0;
+  uncertain = false;
+
+  constructor() { runners.add(this); }
+
   async run(command: ExternalCommand, options?: RunCommandOptions) {
     this.calls.push({ command, options });
-    return this.native.run(command, options);
+    this.pending++;
+    try {
+      const result = await this.native.run(command, options);
+      this.uncertain ||= result.processTreeSettled !== true;
+      return result;
+    } catch (error) {
+      this.uncertain = true;
+      throw error;
+    } finally { this.pending--; }
   }
 }
+
+describe('application-repair fixture cleanup ownership', () => {
+  it.each([
+    { invocations: 1, pending: 0, uncertain: false },
+    { invocations: 0, pending: 1, uncertain: false },
+    { invocations: 0, pending: 0, uncertain: true }
+  ])('preserves fixture material while owned work is active or uncertain: %j', async (state) => {
+    const owner = await createOwnedFixture();
+    const marker = path.join(owner.path, 'retained.txt');
+    await writeFile(marker, 'test-owned marker');
+    await expect(cleanupOwnedFixtures([owner], [state], state.invocations)).rejects.toThrow(/active or uncertain/);
+    expect(await readFile(marker, 'utf8')).toBe('test-owned marker');
+  });
+
+  it('does not remove a path using mismatching creation identity', async () => {
+    const owner = await createOwnedFixture();
+    await expect(cleanupOwnedFixtures([{ ...owner, inode: owner.inode + 1 }], [], 0)).rejects.toThrow(/creation identity changed/);
+    expect((await lstat(owner.path)).isDirectory()).toBe(true);
+  });
+});
 
 async function json(project: Awaited<ReturnType<typeof fixture>>, args: string[], runner = new Runner()) {
   const stdout = new CaptureStream(), stderr = new CaptureStream();

@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { commandDefinitions } from '../src/args.js';
+import releasedClient from '../services/telemetry-ingest/tests/fixtures/released-client-v0.12.3.json';
 import {
   canonicalTelemetryCommand,
+  canPersistTelemetryNotice,
   createTelemetryEvent,
   createTelemetryStorageRecord,
   isTelemetryCliVersion,
@@ -12,6 +14,20 @@ import {
 } from '../src/telemetry/contract.js';
 
 describe('telemetry contract', () => {
+  it('adds only the reviewed lifecycle commands to the immutable released allowlist', () => {
+    expect(releasedClient.sourceCommit).toBe('70d10881b46d873118d825735696f39b6d35ebe0');
+    expect(telemetryCommands.filter((command) => !releasedClient.commands.includes(command)).sort()).toEqual([
+      'adopt',
+      'installation:migrate',
+      'skills:install',
+      'skills:migrate',
+      'skills:remove',
+      'skills:update'
+    ]);
+    expect(releasedClient.commands.every((command) =>
+      telemetryCommands.some((current) => current === command))).toBe(true);
+  });
+
   it('covers explicit CLI commands except the exact read-only telemetry exclusions', () => {
     const expected = new Set<string>(['version']);
     for (const [command, definition] of Object.entries(commandDefinitions)) {
@@ -21,7 +37,10 @@ describe('telemetry contract', () => {
       }
     }
     expect([...telemetryCommands, ...telemetryExcludedCommands].sort()).toEqual([...expected].sort());
-    expect(telemetryExcludedCommands).toEqual(['governance:assess']);
+    expect(telemetryExcludedCommands).toEqual([
+      'governance:assess', 'assess', 'capabilities', 'installation', 'installation:inspect',
+      'skills', 'skills:list', 'skills:plan', 'skills:inspect'
+    ]);
     expect(telemetryCommands.some((command) => telemetryExcludedCommands.some((excluded) => excluded === String(command)))).toBe(false);
   });
 
@@ -43,6 +62,31 @@ describe('telemetry contract', () => {
     ]);
   });
 
+  it.each([
+    { flags: {} },
+    ...['help', 'version', 'plan', 'patterns', 'providers', 'regions', 'validate', 'doctor', 'dev', 'infra']
+      .map((command) => ({ command, flags: {} })),
+    { command: 'upgrade', flags: { check: true } },
+    { command: 'update', flags: { check: true } },
+    { command: 'repair', flags: { check: true } },
+    { command: 'init', flags: { help: true } },
+    { command: 'governance', flags: {} },
+    ...['status', 'plan', 'resume', 'verify', 'assess', 'apply-next']
+      .map((subcommand) => ({ command: 'governance', subcommand, flags: {} })),
+    { command: 'repair', flags: { capabilities: true } }
+  ])('does not persist disclosure for read-only $command $subcommand', (input) => {
+    expect(canPersistTelemetryNotice(input)).toBe(false);
+  });
+
+  it.each([
+    { command: 'init', flags: {} },
+    { command: 'update', flags: {} },
+    { command: 'upgrade', flags: {} },
+    { command: 'governance', subcommand: 'apply-next', flags: { execute: true } }
+  ])('retains disclosure persistence for eligible $command $subcommand', (input) => {
+    expect(canPersistTelemetryNotice(input)).toBe(true);
+  });
+
   it('normalizes help and nested command paths without arguments', () => {
     expect(canonicalTelemetryCommand({ flags: {} })).toBe('help');
     expect(canonicalTelemetryCommand({ command: 'init', flags: { help: true } })).toBe('help');
@@ -52,6 +96,32 @@ describe('telemetry contract', () => {
     expect(canonicalTelemetryCommand({ command: 'unknown', flags: {} })).toBeUndefined();
     expect(canonicalTelemetryCommand({ command: 'governance', subcommand: 'assess', flags: {} })).toBeUndefined();
     expect(canonicalTelemetryCommand({ command: 'governance', subcommand: 'assess', flags: { help: true } })).toBeUndefined();
+  });
+
+  it.each([
+    { command: 'installation', subcommand: 'inspect', flags: {} },
+    { command: 'installation', subcommand: 'inspect', flags: { help: true } },
+    { command: 'help', positional: ['installation'], flags: {} },
+    { command: 'installation', subcommand: 'migrate', flags: { to: 'direct' } },
+    { command: 'installation', subcommand: 'migrate', interactive: true, flags: { to: 'direct', json: true } },
+    { command: 'installation', subcommand: 'migrate', interactive: true, flags: { to: 'direct', check: true } },
+    { command: 'installation', subcommand: 'migrate', flags: { recover: true } }
+  ])('excludes installation inspection and non-executing previews %j', (input) => {
+    expect(canonicalTelemetryCommand(input)).toBeUndefined();
+    expect(canPersistTelemetryNotice(input)).toBe(false);
+  });
+
+  it('records at most the outer approved migration, without making preview approval implicit', () => {
+    expect(canonicalTelemetryCommand({
+      command: 'installation', subcommand: 'migrate', interactive: true, flags: { to: 'direct' }
+    })).toBe('installation:migrate');
+    expect(canonicalTelemetryCommand({
+      command: 'installation', subcommand: 'migrate',
+      flags: { to: 'direct', 'approve-plan': 'a'.repeat(64), json: true }
+    })).toBe('installation:migrate');
+    expect(canonicalTelemetryCommand({
+      command: 'installation', subcommand: 'migrate', flags: { to: 'direct', yes: true }
+    })).toBeUndefined();
   });
 
   it('maps only exit status into the event and adds server time separately', () => {

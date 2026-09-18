@@ -143,6 +143,59 @@ origin, include that frontend origin in the comma-separated
 `CORS_ALLOWED_ORIGINS` value. Generated Azure infrastructure
 sets it to the deployed frontend URL.
 
+## Azure baseline settings and configuration repair
+
+Liftoff templates emit explicit minimum TLS versions and restrict public blob access across all supported profiles:
+
+- Redis Cache: `minimum_tls_version = "1.2"`
+- Service Bus Namespace: `minimum_tls_version = "1.2"`
+- Storage Account: `min_tls_version = "TLS1_2"`
+- Storage Account: `allow_nested_items_to_be_public = false`
+
+The private container configuration (`container_access_type = "private"`) remains
+distinct from the account-wide restriction. Generated and supported remediated
+configuration is checked against `CKV_AZURE_148`, `CKV_AZURE_44`,
+`CKV_AZURE_190`, `CKV_AZURE_205`, and `CKV2_AZURE_47`. These are configuration
+checks, not live Azure compliance evidence.
+
+The five-control qualification lane requires a complete Checkov installation,
+including its packaged graph-check resources. An incomplete installation that
+omits `CKV2_AZURE_47` cannot qualify the lane even when the other four checks pass.
+Tests require every named control to execute with no failed or skipped checks;
+an executable version string alone is insufficient. `CHECKOV_PATH` can select a
+complete isolated Python installation without changing a global installation,
+project dependencies, or deployment authority.
+
+For existing projects that have independent roots but omit these required explicit settings, Liftoff provides the registered `azure-baseline-settings` version 1 repair recipe:
+
+```bash
+# Preview baseline settings remediation without modifying files
+liftoff repair --recipe azure-baseline-settings --check
+
+# Review and apply interactively with default-No approval
+liftoff repair --recipe azure-baseline-settings
+
+# Or separately authorize private validation of the exact preview
+liftoff repair --verify-plan <fingerprint> --allow-dependency-preparation --allow-network
+
+# Then independently approve only the verified files and history
+liftoff repair --approve-plan <fingerprint>
+```
+
+Baseline settings repair plans exact HCL edits to
+`infrastructure/opentofu/azure/modules/application/main.tf` while preserving
+other resource settings, local variables, outputs, and comments. Inspection runs
+no formatter, tool, or network command. Separately approved validation performs
+locked provider preparation and backend-disabled OpenTofu checks in a private
+candidate; it never plans or applies Azure resources or accesses live state.
+File approval does not grant validation or network permission.
+
+Value interpretation is pinned to AzureRM 5.3.0. Already compliant supported
+values are a no-op. Stronger-looking but unsupported values such as `TLS1_3` or
+`1.3`, ambiguous expressions, and unrecognized/custom forms remain unchanged
+and block automatic repair. Infrastructure files remain excluded from
+`application-layout-patch`, and no configuration result claims deployed compliance.
+
 ## Deployment boundary
 
 For governed projects, these are reference steps, not the next setup action.
@@ -150,7 +203,12 @@ The separately approved `application-foundation` phase must authorize the exact
 mutation, but its production executor and a public approval-persistence channel
 are not supplied in this release. Do not bypass those blockers by executing
 printed commands directly. Separately reviewed platform implementation is needed;
-generated files alone are not deployment authority.
+generated files alone are not deployment authority. See [private-state and runner activation](private-state-activation.md)
+for access-only ARM network plans, dedicated runner observations, and explicit frozen graph boundaries.
+Runner preflight and credential admission boundaries are documented in
+[credential permissions and policy admission](credential-permissions.md).
+Private resource execution, initial empty-state CAS, and application activation contracts
+are documented in [private application activation](private-application-activation.md).
 
 Before applying infrastructure:
 

@@ -1,0 +1,33 @@
+{
+  "name": "flight-log-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24.20"
+  },
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/server.js",
+    "test": "vitest run",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/swagger": "^9.5.2",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.12.3",
+    "pg": "^8.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.6.0",
+    "@types/pg": "^8.23.1",
+    "drizzle-kit": "^0.31.0",
+    "tsx": "^4.23.13",
+    "typescript": "^7.0.2",
+    "vite": "8.2.2",
+    "vitest": "5.0.0"
+  }
+}

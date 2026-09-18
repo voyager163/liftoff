@@ -1,0 +1,1013 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "liftoff-standards-profiles",
+  "revision": "2026.09.01",
+  "profiles": {
+    "python-fastapi": {
+      "schemaVersion": 1,
+      "id": "python-fastapi",
+      "label": "Python / FastAPI Standard API",
+      "revision": "2026.09.01",
+      "category": "backend",
+      "targetWorkload": "standard",
+      "supported": true,
+      "componentBoundaries": [
+        "backend"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:ae5320dc0195c561ee65e30fb10a5cfd6fbcb8dd13d02f9613c84488eecd5509"
+    },
+    "node-fastify": {
+      "schemaVersion": 1,
+      "id": "node-fastify",
+      "label": "Node.js / Fastify Standard API",
+      "revision": "2026.09.01",
+      "category": "backend",
+      "targetWorkload": "standard",
+      "supported": true,
+      "componentBoundaries": [
+        "backend"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "typescript",
+        "framework": "fastify",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:322e683708351b69c3d4d33c6f968ab157457a5e0873bfb7038549d1225c607a"
+    },
+    "go-huma": {
+      "schemaVersion": 1,
+      "id": "go-huma",
+      "label": "Go / Huma Standard API",
+      "revision": "2026.09.01",
+      "category": "backend",
+      "targetWorkload": "standard",
+      "supported": true,
+      "componentBoundaries": [
+        "backend"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "go",
+        "framework": "huma",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:89508af042dcbcf197f6df8aac07c103bf383f2715315cf91fa914b41b181a03"
+    },
+    "vue-component": {
+      "schemaVersion": 1,
+      "id": "vue-component",
+      "label": "Vue 3 Component (Frontend Only)",
+      "revision": "2026.09.01",
+      "category": "frontend",
+      "targetWorkload": "component-only",
+      "supported": true,
+      "componentBoundaries": [
+        "frontend"
+      ],
+      "capabilities": {
+        "backend": false,
+        "language": "typescript",
+        "framework": "vue",
+        "cloud": "none",
+        "generationSupported": false,
+        "adoptionSupported": true,
+        "assessmentSupported": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-FRONTEND-PACKAGE",
+          "description": "Frontend package.json and locked dependencies",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-FRONTEND-ENTRY",
+          "description": "Vue 3 main.ts and App.vue root component",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-FRONTEND-BUILD",
+          "description": "Vite and Tailwind CSS build configuration",
+          "kind": "build",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:343004bb942ea1f6ac8cacb3c592c434c93d4f63b055a280671c43fda344dd43"
+    },
+    "genai-generic": {
+      "schemaVersion": 1,
+      "id": "genai-generic",
+      "label": "GenAI Pattern: Generic GenAI Starter",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "generic",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": false
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:4eac1f9d3af1acec71b30d9781a1584ecc1e6e1df41c1caf6699607babd93ffd"
+    },
+    "genai-rag": {
+      "schemaVersion": 1,
+      "id": "genai-rag",
+      "label": "GenAI Pattern: RAG (Knowledge Retrieval)",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "rag",
+        "scaffoldStatus": "foundation",
+        "vectorStore": true,
+        "worker": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:28adb9925b2e78ecb7eb9c3a8ab2828fbc25883e085a54fd87061af7bbe2ef3d"
+    },
+    "genai-chatbot": {
+      "schemaVersion": 1,
+      "id": "genai-chatbot",
+      "label": "GenAI Pattern: Chatbot / Conversational AI",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "chatbot",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": false
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:0eeb9c62ee1ca8f28c8abead2d4580a702b6acebf1dc9aa2f638f00124376ef8"
+    },
+    "genai-agent": {
+      "schemaVersion": 1,
+      "id": "genai-agent",
+      "label": "GenAI Pattern: Agent-based (Task Automation)",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "agent",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:143969e90cdcab3aec1a09b67c8b64b3046ede63ff326f766d8dc222599e0269"
+    },
+    "genai-prompt": {
+      "schemaVersion": 1,
+      "id": "genai-prompt",
+      "label": "GenAI Pattern: Prompt-based App (Simple LLM)",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "prompt",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": false
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:2853ee9fd6d39496ebc0cf15914282cbfae5386455dbf5d71f58fd4340085a3e"
+    },
+    "genai-multi-agent": {
+      "schemaVersion": 1,
+      "id": "genai-multi-agent",
+      "label": "GenAI Pattern: Multi-Agent System",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "multi-agent",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:623cda19258aa7a91ce10c7984a334ccbcaacf1e545c39f56d3972dc88c080e0"
+    },
+    "genai-fine-tuned": {
+      "schemaVersion": 1,
+      "id": "genai-fine-tuned",
+      "label": "GenAI Pattern: Fine-tuned Model App",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "fine-tuned",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": false
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:82177cf4656065a2733c0109a13402028119959c66fb16ecd2c71417dc613f05"
+    },
+    "genai-streaming": {
+      "schemaVersion": 1,
+      "id": "genai-streaming",
+      "label": "GenAI Pattern: Real-time / Streaming AI",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "streaming",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": false
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:f1af933ab4ec4862400e93a118f9d8d85880d45705df1462830ad4f0df4d75ad"
+    },
+    "genai-workflow": {
+      "schemaVersion": 1,
+      "id": "genai-workflow",
+      "label": "GenAI Pattern: AI Workflow / Pipeline",
+      "revision": "2026.09.01",
+      "category": "genai",
+      "targetWorkload": "genai",
+      "supported": true,
+      "componentBoundaries": [
+        "backend",
+        "orchestration"
+      ],
+      "capabilities": {
+        "backend": true,
+        "language": "python",
+        "framework": "fastapi",
+        "cloud": "azure",
+        "generationSupported": true,
+        "adoptionSupported": true,
+        "assessmentSupported": true,
+        "pattern": "workflow",
+        "scaffoldStatus": "foundation",
+        "vectorStore": false,
+        "worker": true
+      },
+      "evaluationCoverage": [
+        {
+          "id": "RULE-LIFTOFF-MANIFEST",
+          "description": "Root manifest validation and lifecycle conformance",
+          "kind": "marker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-DEP-LOCK",
+          "description": "Pinned lockfile presence and integrity verification",
+          "kind": "dependency",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-HEALTH",
+          "description": "Deterministic health endpoint returning status ok",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-API-DOCS",
+          "description": "Prefix-safe OpenAPI/Scalar documentation route",
+          "kind": "routing",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-TEST-SUITE",
+          "description": "Integrated automated test suite passing in private workspace",
+          "kind": "test",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-CONT-COMPOSE",
+          "description": "Multi-service container orchestration declaration",
+          "kind": "docker",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-MODEL-CONFIG",
+          "description": "Deterministic model and provider configuration",
+          "kind": "entrypoint",
+          "mandatory": true
+        },
+        {
+          "id": "RULE-GENAI-PATTERN-CONTRACT",
+          "description": "Honest pattern-specific implementation route",
+          "kind": "routing",
+          "mandatory": true
+        }
+      ],
+      "digest": "sha256:73e40261cb8955049d7b6c155b92e5ec3b05b4aeb6f370eba6d3b18da330bd3c"
+    }
+  },
+  "unsupportedStacks": {
+    "express": {
+      "id": "express",
+      "label": "Express.js",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Express is not an approved Liftoff API stack. Liftoff standardizes on Node.js Fastify for high-performance schema-validated APIs.",
+      "remedy": "Run read-only standards assessment diagnostics. Liftoff does not perform automatic Express-to-Fastify migration."
+    },
+    "django": {
+      "id": "django",
+      "label": "Django",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Django monolithic architecture is not a supported Liftoff standard API profile.",
+      "remedy": "Run read-only standards assessment diagnostics. Liftoff uses FastAPI for asynchronous ASGI Python backends."
+    },
+    "flask": {
+      "id": "flask",
+      "label": "Flask",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Flask is not an approved Liftoff standard API stack.",
+      "remedy": "Run read-only standards assessment diagnostics. Liftoff standardizes on FastAPI with Pydantic."
+    },
+    "spring": {
+      "id": "spring",
+      "label": "Spring Boot (Java / Kotlin)",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Java/Spring Boot is outside the supported Liftoff runtime matrix.",
+      "remedy": "Assessment only. Liftoff supports Python, Node.js, and Go backends."
+    },
+    "aspnetcore": {
+      "id": "aspnetcore",
+      "label": "ASP.NET Core (C# / .NET)",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": ".NET / ASP.NET Core is outside the supported Liftoff runtime matrix.",
+      "remedy": "Assessment only. Liftoff supports Python, Node.js, and Go backends."
+    },
+    "rails": {
+      "id": "rails",
+      "label": "Ruby on Rails",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Ruby on Rails is not a supported Liftoff standards profile.",
+      "remedy": "Assessment only."
+    },
+    "nextjs": {
+      "id": "nextjs",
+      "label": "Next.js Full-Stack",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Next.js server-side fullstack framework is not supported for Liftoff API backend generation.",
+      "remedy": "Assessment only. Liftoff separates headless APIs (FastAPI/Fastify/Huma) from single-page Vue components."
+    },
+    "remix": {
+      "id": "remix",
+      "label": "Remix",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Remix is not a supported Liftoff standards profile.",
+      "remedy": "Assessment only."
+    },
+    "angular": {
+      "id": "angular",
+      "label": "Angular",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Angular is not a supported Liftoff frontend framework.",
+      "remedy": "Assessment only. Liftoff standardizes on Vue 3 with Vite."
+    },
+    "svelte": {
+      "id": "svelte",
+      "label": "Svelte / SvelteKit",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Svelte is not a supported Liftoff frontend framework.",
+      "remedy": "Assessment only. Liftoff standardizes on Vue 3 with Vite."
+    },
+    "power-apps-code-app": {
+      "id": "power-apps-code-app",
+      "label": "Power Apps Code App (Retired)",
+      "supported": false,
+      "assessmentOnly": true,
+      "reason": "Power Apps code app workload is retired and unsupported by Liftoff. Choose a GenAI or standard API workload.",
+      "remedy": "Power Apps workload is retired. No conversion, generation, or adoption is permitted."
+    }
+  },
+  "digest": "sha256:66e35a04410ae04bb691a990f7d6060ed8ae2ab75a084dcb3b32fd03254fd45a"
+}

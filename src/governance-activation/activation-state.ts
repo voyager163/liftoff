@@ -21,6 +21,7 @@ import { isHistoricalActivationIdentity } from '../domain/governance/policy/iden
 import { activeActivationRecordsWithoutState, inspectActivationMigrationHistory } from './migration-history.js';
 import { validateReadableHistoricalActivationState } from './historical-state.js';
 import { parseHistoryJson } from './history-contracts.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 
 export class ActivationStateFileError extends Error {
   constructor(message: string) {
@@ -61,6 +62,7 @@ export interface ActivationStateWriteResult {
 
 export interface ActivationStateWriteOptions {
   failAfterReplace?: boolean;
+  storage?: UpdatePreviewOptions;
 }
 
 export const activationStateFilePathParts = ['governance', 'activation-state.json'] as const;
@@ -85,7 +87,9 @@ export function activationStateContentHash(content: string | Buffer): string {
   return sha256Hex(typeof content === 'string' ? content : content.toString('utf8'));
 }
 
-export async function loadActivationState(projectRoot: string): Promise<LoadedActivationState | undefined> {
+export async function loadActivationState(
+  projectRoot: string, storage?: UpdatePreviewOptions
+): Promise<LoadedActivationState | undefined> {
   const bytes = await readProjectFile(projectRoot, activationStatePathParts());
   if (bytes === undefined) {
     const orphaned = await activeActivationRecordsWithoutState(projectRoot);
@@ -110,7 +114,7 @@ export async function loadActivationState(projectRoot: string): Promise<LoadedAc
         `governance/activation-state.json is missing while active execution records remain: ${orphaned.map((parts) => parts.join('/')).join(', ')}.`
       );
     }
-    await inspectActivationMigrationHistory(projectRoot);
+    await inspectActivationMigrationHistory(projectRoot, storage);
     return undefined;
   }
   const content = bytes.toString('utf8');
@@ -129,7 +133,7 @@ export async function loadActivationState(projectRoot: string): Promise<LoadedAc
     }
     throw new ActivationStateFileError(
       `Historical activation v${parsed.identity.activationContractVersion} state is diagnostic-only. ` +
-      'Run liftoff update --check to inspect its declared history-preserving v3 successor; original state, evidence, and approvals remain untouched until explicit approval. ' +
+      'Run liftoff update --check to inspect its declared history-preserving v4 successor; original state, evidence, and approvals remain untouched until explicit approval. ' +
       'Do not reset, delete, relabel, or hand-edit activation history. This is not OpenTofu-state migration.'
     );
   }
@@ -138,7 +142,7 @@ export async function loadActivationState(projectRoot: string): Promise<LoadedAc
   } catch (error) {
     throw new ActivationStateFileError(`Invalid governance/activation-state.json: ${errorMessage(error)}`);
   }
-  await inspectActivationMigrationHistory(projectRoot);
+  await inspectActivationMigrationHistory(projectRoot, storage);
   return {
     state,
     content,
@@ -206,7 +210,7 @@ async function writeActivationStateLocked(
   lease: ProjectMutationLease
 ): Promise<ActivationStateWriteResult> {
   const validatedState = validateUserActivationState(state);
-  const prior = await loadActivationState(projectRoot);
+  const prior = await loadActivationState(projectRoot, options.storage);
   assertExpectedPrior(prior, expectation);
 
   const content = canonicalJson(validatedState);
@@ -234,7 +238,7 @@ async function writeActivationStateLocked(
     temporaryWritten = true;
     try { await temporary.writeFile(content, 'utf8'); await temporary.chmod(mode); }
     finally { await temporary.close(); }
-    assertExpectedPrior(await loadActivationState(projectRoot), expectation);
+    assertExpectedPrior(await loadActivationState(projectRoot, options.storage), expectation);
     await lease.assertHeld();
     await rename(temporaryPath, targetPath);
     replacementInstalled = true;

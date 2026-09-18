@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "phaseId": "seed-verified",
+  "createdAt": "2026-08-30T09:05:00.000Z",
+  "expiresAt": "2026-08-30T10:15:00.000Z",
+  "identity": {
+    "liftoffVersion": "0.10.0",
+    "manifestArtifactVersion": 7,
+    "policyVersion": "6",
+    "activationContractVersion": 1,
+    "phaseGraphSchemaVersion": 1,
+    "phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+    "activationStateSchemaVersion": 1,
+    "evidenceHeaderSchemaVersion": 1,
+    "approvalEnvelopeSchemaVersion": 1,
+    "supersessionSchemaVersion": 1,
+    "credentialPolicySchemaVersion": 1
+  },
+  "graphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+  "stateHash": "bfbfc731466fa225d70b75f3a0eae1425eaf173308a7ea46b382fe1b6f96b17d",
+  "baselineDigest": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+  "inputDigest": "6892beb0165ee17c99f91b2e3e3cd0725b24f524287f917150d4fb10514e7899",
+  "transitionDigest": "f9a651e30313abf36ccdb01d4173f403fb286e7a9a3d459b7bbc15a3e26a69b8",
+  "planDigest": "8ed4c76551ede6c0a87f2e3bfaef4a3e8e07cd308bda593fc337697766cc9b71",
+  "mutationClasses": {
+    "local": [
+      "read-worktree",
+      "write-evidence",
+      "write-activation-state"
+    ],
+    "remote": [
+      "none"
+    ]
+  },
+  "operations": [
+    {
+      "adapter": "selected-spec-workflow",
+      "actionId": "openspec.seed.baseline-verify",
+      "mutationClass": "read-worktree",
+      "phaseId": "seed-verified",
+      "inputs": {
+        "checks": [
+          {
+            "id": "backend-tests",
+            "taskId": "2.2",
+            "applicable": true
+          }
+        ]
+      },
+      "destination": {
+        "type": "local",
+        "identity": "historical-flight-log-checkout"
+      },
+      "remote": false,
+      "destructive": false
+    },
+    {
+      "adapter": "local-evidence",
+      "actionId": "governance.evidence.write",
+      "mutationClass": "write-evidence",
+      "phaseId": "seed-verified",
+      "inputs": {
+        "pathParts": [
+          "governance",
+          "evidence",
+          "seed-verified-20260830T090500000Z.json"
+        ]
+      },
+      "destination": {
+        "type": "local",
+        "identity": "governance/evidence/seed-verified-20260830T090500000Z.json",
+        "pathParts": [
+          "governance",
+          "evidence",
+          "seed-verified-20260830T090500000Z.json"
+        ]
+      },
+      "remote": false,
+      "destructive": false
+    },
+    {
+      "adapter": "local-evidence",
+      "actionId": "governance.activation-state.write",
+      "mutationClass": "write-activation-state",
+      "phaseId": "seed-verified",
+      "inputs": {
+        "pathParts": [
+          "governance",
+          "activation-state.json"
+        ]
+      },
+      "destination": {
+        "type": "local",
+        "identity": "governance/activation-state.json",
+        "pathParts": [
+          "governance",
+          "activation-state.json"
+        ]
+      },
+      "remote": false,
+      "destructive": false
+    }
+  ],
+  "approval": {
+    "gateKind": "none",
+    "required": false,
+    "envelopeId": null,
+    "envelopeHash": null,
+    "evaluation": {
+      "phaseId": "seed-verified",
+      "gateKind": "none",
+      "questionKind": null,
+      "approvalRequired": false,
+      "status": "not-required",
+      "envelopeId": null,
+      "envelopeHash": null,
+      "reasons": [],
+      "expansionReasons": []
+    }
+  },
+  "rollbackPlan": {
+    "phaseId": "seed-verified",
+    "strategy": "none",
+    "target": null,
+    "operations": [],
+    "retained": [],
+    "cleanupWarnings": []
+  },
+  "noSecrets": true
+}

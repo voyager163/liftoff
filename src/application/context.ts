@@ -6,6 +6,9 @@ import type { PresentationSession, PresentationSessionOptions } from '../termina
 import type { UpdateApprovalPrompt } from './update/approval.js';
 import type { resolveUpdatePreviewLocation } from '../adapters/filesystem/update-previews.js';
 import type { WorkstationNoProgressStore, WorkstationProbeOptions } from '../workstation.js';
+import type { NativeUpgradeResult } from './distribution/native-upgrade.js';
+import type { ApplicationEngines } from './engine-composition.js';
+import type { GovernanceTransitionAdapters } from '../governance-activation/transition-ports.js';
 
 export interface CommandContext {
   cwd: string;
@@ -15,11 +18,15 @@ export interface CommandContext {
   env?: NodeJS.ProcessEnv;
   runner?: CommandRunner;
   selfUpgrade?: SelfUpgradeExecutor;
+  nativeUpgradeCheck?: () => Promise<NativeUpgradeResult>;
   stableReleaseLookup?: () => Promise<StableRelease>;
   configuredRegistryTargetLookup?: ConfiguredRegistryTargetLookup;
   updatePreview?: Parameters<typeof resolveUpdatePreviewLocation>[1];
+  storage?: Parameters<typeof resolveUpdatePreviewLocation>[1];
+  adapters?: GovernanceTransitionAdapters;
   approveUpdatePlan?: UpdateApprovalPrompt;
   approveRepairPlan?: UpdateApprovalPrompt;
+  approveAdoptionPlan?: UpdateApprovalPrompt;
   updateNow?: () => Date;
   workstationProbe?: WorkstationProbeOptions;
   workstationNoProgressStore?: WorkstationNoProgressStore;
@@ -31,4 +38,5 @@ export interface CommandContext {
 
 export interface ExecutionContext extends CommandContext {
   presentation: PresentationSession;
+  engines?: ApplicationEngines;
 }

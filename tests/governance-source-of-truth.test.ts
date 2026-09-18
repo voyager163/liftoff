@@ -33,6 +33,7 @@ import { executeActivationApproval } from '../src/governance-activation/phase-go
 import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
 import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
 import { planGovernanceTaskProjection } from '../src/governance-activation/task-writes.js';
+import { currentGovernanceManifest } from './governance-activation-fixtures.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-source-of-truth-tests-${process.pid}`);
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
@@ -45,8 +46,9 @@ function nextRoot(name: string): string {
 }
 
 function manifest(projectName: string, workflowKind: SpecWorkflowId = 'openspec'): LiftoffManifest {
+  const current = currentGovernanceManifest(projectName);
   return {
-    artifactVersion: 7,
+    artifactVersion: 8, standards: current.standards, provenance: current.provenance,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -69,7 +71,7 @@ function manifest(projectName: string, workflowKind: SpecWorkflowId = 'openspec'
     },
     governance: {
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: currentActivationIdentity.policyVersion,
       activationIdentity: currentActivationIdentity,
       state: 'handoff-partial'
     },
@@ -155,7 +157,10 @@ function phase0Evidence(): PhaseEvidenceRecord {
   };
   const payload = { kind: 'phase-0-discovery.v1', facts: [
     { id: 'repository.id', value: 'R_remote' }, { id: 'repository.nameWithOwner', value: 'owner/demo' },
-    { id: 'repository.defaultBranch', value: 'main' }
+    { id: 'repository.defaultBranch', value: 'main' },
+    { id: 'azure.accountReadable', value: true }, { id: 'azure.accountState', value: 'Enabled' },
+    { id: 'azure.subscriptionId', value: '11111111-1111-4111-8111-111111111111' },
+    { id: 'azure.tenantId', value: '22222222-2222-4222-8222-222222222222' }
   ] };
   const liveReadback = [{
     schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion, repositoryId: header.repositoryId, identity: header.identity, phaseGraphHash: header.phaseGraphHash,
@@ -163,6 +168,10 @@ function phase0Evidence(): PhaseEvidenceRecord {
     observedAt: header.producedAt, provider: 'github' as const, resourceType: 'repository', resourceId: 'owner/demo',
     sourceDigest: canonicalSha256(payload.facts), readbackDigest: canonicalSha256(payload.facts), matches: true
   }];
+  liveReadback.push({
+    ...liveReadback[0], provider: 'azure' as never, resourceType: 'subscription',
+    resourceId: '/subscriptions/11111111-1111-4111-8111-111111111111'
+  });
   header.bodyDigest = evidenceBodyDigest(payload, liveReadback);
   header.remoteBindingDigest = remoteBindingDigest(state().remoteBinding);
   return { evidenceId: 'phase0', header, payload, liveReadback };

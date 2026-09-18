@@ -1,0 +1,447 @@
+{
+  "description": "Anonymous, best-effort recorded events, not a census: opted-out, CI, excluded and offline runs may be absent. The public ingestion endpoint can receive forged valid events. Queries are capped at 180 days. Manual refresh; displayed values and event age reflect the last successful query, not a live clock. Inspect native query errors for denied access, missing table, timeout or throttling; failed or loading observations are not zero usage or service health.",
+  "editable": false,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 0,
+  "liveNow": false,
+  "panels": [
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Accepted records matching the selected time range and filters, not people or installations. Observation text distinguishes a successful empty time range from filters matching no records. Query failures must remain native errors, not zero counts.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "Observation unavailable",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "Observation" },
+            "properties": [{ "id": "unit", "value": "none" }]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 8,
+        "x": 0,
+        "y": 0
+      },
+      "id": 1,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^(TotalEvents|Observation)$/",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| summarize TotalEvents = count()\n| extend Observation = case(TotalEvents > 0, \"Matching recorded events\", set_has_element(command_values, \"All\") and set_has_element(version_values, \"All\"), \"No recorded events in selected time range\", \"No events matching selected filters\")",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Recorded Command Events",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Timestamp and age at the last query within the selected scope. Refresh manually to recalculate age; Query observed at identifies the last successful query, including empty results. Compare it with the current time to recognize stale displayed observations. Timestamps use the selected browser timezone. The absence of events alone is not proof of service outage.",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "No events matching scope",
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "blue",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "LatestEventTime" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeAsIso" },
+              { "id": "displayName", "value": "Latest event timestamp" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "EventAgeMinutes" },
+            "properties": [
+              { "id": "unit", "value": "suffix: min" },
+              { "id": "displayName", "value": "Age at last query" }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "QueryObservedAt" },
+            "properties": [
+              { "id": "unit", "value": "dateTimeAsIso" },
+              { "id": "displayName", "value": "Query observed at" },
+              { "id": "noValue", "value": "Observation unavailable" }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 16,
+        "x": 8,
+        "y": 0
+      },
+      "id": 6,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "none",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^(LatestEventTime|EventAgeMinutes|QueryObservedAt)$/",
+          "values": false
+        },
+        "textMode": "auto"
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| summarize LatestEventTime = max(TimeGenerated)\n| extend EventAgeMinutes = datetime_diff('minute', now(), LatestEventTime), QueryObservedAt = now()\n| project LatestEventTime, EventAgeMinutes, QueryObservedAt",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Latest Matching Event",
+      "type": "stat"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Counts and share labeled as nonzero exits; Outcome = failure also includes expected exit-2 states and is not a crash/error rate",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "No matching events",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 6
+      },
+      "id": 5,
+      "options": {
+        "legend": {
+          "displayMode": "table",
+          "placement": "right",
+          "showLegend": true,
+          "values": [
+            "value",
+            "percent"
+          ]
+        },
+        "pieType": "pie",
+        "reduceOptions": {
+          "calcs": [],
+          "fields": "",
+          "values": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| extend OutcomeCategory = case(Outcome == \"success\", \"Zero exit (success)\", Outcome == \"failure\", \"Nonzero exit (failure / exit-2)\", \"Unknown outcome\")\n| summarize EventCount = count() by OutcomeCategory\n| project OutcomeCategory, EventCount\n| order by EventCount desc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Nonzero Exit Outcomes",
+      "type": "piechart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Time-bucketed command-event counts using server-generated timestamps",
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "drawStyle": "line",
+            "fillOpacity": 10,
+            "lineInterpolation": "linear",
+            "lineWidth": 2
+          },
+          "mappings": [],
+          "noValue": "No matching events",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 12
+      },
+      "id": 2,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| summarize EventCount = count() by bin(TimeGenerated, 1h)\n| order by TimeGenerated asc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "time_series"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Event Volume Over Time",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Ranked counts for actual recorded command values",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "No matching events",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 0,
+        "y": 20
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "displayMode": "list",
+          "placement": "bottom",
+          "showLegend": true
+        },
+        "orientation": "horizontal",
+        "showValue": "always",
+        "tooltip": {
+          "mode": "single"
+        }
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| summarize EventCount = count() by Command\n| top 50 by EventCount desc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Events by Command",
+      "type": "barchart"
+    },
+    {
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "grafana-azure-monitor-datasource"
+      },
+      "description": "Observed version distribution, not an installation inventory or native-channel attribution",
+      "fieldConfig": {
+        "defaults": {
+          "mappings": [],
+          "noValue": "No matching events",
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 12,
+        "x": 12,
+        "y": 20
+      },
+      "id": 4,
+      "options": {
+        "footer": {
+          "enablePagination": true,
+          "show": true
+        },
+        "showHeader": true
+      },
+      "targets": [
+        {
+          "azureLogAnalytics": {
+            "query": "let selected_command = dynamic(${command:json});\nlet selected_version = dynamic(${cliVersion:json});\nlet command_values = iff(gettype(selected_command) == \"array\", selected_command, pack_array(tostring(selected_command)));\nlet version_values = iff(gettype(selected_version) == \"array\", selected_version, pack_array(tostring(selected_version)));\nLiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| where (set_has_element(command_values, \"All\") or Command in (command_values))\n| where (set_has_element(version_values, \"All\") or CliVersion in (version_values))\n| summarize EventCount = count() by CliVersion\n| top 50 by EventCount desc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "refId": "A"
+        }
+      ],
+      "title": "Events by CLI Version",
+      "type": "table"
+    }
+  ],
+  "refresh": "",
+  "schemaVersion": 39,
+  "tags": [
+    "liftoff",
+    "telemetry",
+    "azure-monitor"
+  ],
+  "templating": {
+    "list": [
+      {
+        "allValue": null,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "All"
+        },
+        "datasource": {
+          "type": "grafana-azure-monitor-datasource",
+          "uid": "grafana-azure-monitor-datasource"
+        },
+        "definition": "All commands, or one of the first 100 observed command values in the selected time range",
+        "description": "Filter events by canonical command name.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "Command",
+        "multi": false,
+        "name": "command",
+        "options": [],
+        "query": {
+          "azureLogAnalytics": {
+            "query": "union (print Command = \"All\"), (LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| distinct Command\n| top 100 by Command asc)\n| order by Command asc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "rawQuery": "union (print Command = \"All\"), (LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| distinct Command\n| top 100 by Command asc)\n| order by Command asc"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      },
+      {
+        "allValue": null,
+        "current": {
+          "selected": true,
+          "text": "All",
+          "value": "All"
+        },
+        "datasource": {
+          "type": "grafana-azure-monitor-datasource",
+          "uid": "grafana-azure-monitor-datasource"
+        },
+        "definition": "All versions, or one of 100 observed version values in the selected time range; All is not limited to those choices",
+        "description": "Filter events by CLI release version.",
+        "hide": 0,
+        "includeAll": false,
+        "label": "CLI Version",
+        "multi": false,
+        "name": "cliVersion",
+        "options": [],
+        "query": {
+          "azureLogAnalytics": {
+            "query": "union (print CliVersion = \"All\"), (LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| distinct CliVersion\n| top 100 by CliVersion desc)\n| order by CliVersion asc",
+            "resources": [
+              "__WORKSPACE_ID__"
+            ],
+            "resultFormat": "table"
+          },
+          "queryType": "Azure Log Analytics",
+          "rawQuery": "union (print CliVersion = \"All\"), (LiftoffCommandEvents_CL\n| where TimeGenerated >= ago(180d)\n| where $__timeFilter(TimeGenerated)\n| distinct CliVersion\n| top 100 by CliVersion desc)\n| order by CliVersion asc"
+        },
+        "refresh": 2,
+        "regex": "",
+        "sort": 1,
+        "type": "query"
+      }
+    ]
+  },
+  "time": {
+    "from": "now-7d",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "title": "__DASHBOARD_TITLE__",
+  "uid": "liftoff-telemetry"
+}

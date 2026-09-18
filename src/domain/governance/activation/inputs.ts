@@ -1,6 +1,6 @@
 import { canonicalSha256 } from './canonical-json.js';
 import { canonicalPhaseGraph } from './graph.js';
-import type { PhaseId, UserActivationState } from './types.js';
+import type { ActivationConfiguration, PhaseId, UserActivationState } from './types.js';
 import { phaseScope } from './types.js';
 
 export interface ActivationInputFile {
@@ -62,7 +62,10 @@ export function phaseInputFiles(phaseId: PhaseId, snapshot: ActivationInputSnaps
   const workflow = (file: ActivationInputFile) =>
     file.path.startsWith('.github/workflows/') || file.path.startsWith('.github/actions/') ||
     file.path.startsWith('.github/rulesets/') || file.path.startsWith('governance/rulesets/');
-  if (['seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed', 'activation-approved'].includes(phaseId)) {
+  if (phaseId === 'committed' || phaseId === 'pushed') {
+    return snapshot.files.filter((file) => file.path !== 'governance/credentials/preflight-policy.json');
+  }
+  if (['seed-valid', 'seed-verified', 'seed-archived', 'activation-approved'].includes(phaseId)) {
     // Workflow publication is qualified by its own phases, not by local application checks.
     return snapshot.files.filter((file) => !workflow(file) && file.path !== 'governance/credentials/preflight-policy.json');
   }
@@ -76,14 +79,85 @@ export function phaseInputFiles(phaseId: PhaseId, snapshot: ActivationInputSnaps
       file.path === 'governance/credentials/preflight-policy.json'
     );
   }
-  if (phaseId === 'phase-0-complete' || phaseId === 'provider-ready' || phaseId === 'state-path-selected' ||
+  if (phaseId === 'phase-0-complete' || phaseId === 'state-path-selected' ||
     phaseId === 'bootstrap-state-disposed') {
     return snapshot.files.filter((file) => file.path.startsWith('.liftoff/governance/'));
   }
-  if (['existing-private-path', 'bootstrap-local', 'remote-import-verified', 'remote-ready', 'application-prerequisites-ready'].includes(phaseId)) {
+  if (['provider-ready', 'existing-private-path', 'bootstrap-local', 'remote-import-verified', 'remote-ready', 'application-prerequisites-ready'].includes(phaseId)) {
     return snapshot.files.filter((file) => file.path.startsWith('infrastructure/') || file.path.startsWith('.liftoff/governance/'));
   }
   return snapshot.files;
+}
+
+interface ConsumedConfiguration {
+  repository: boolean;
+  azure: boolean;
+  phase: boolean;
+  budget: boolean;
+}
+
+const none = { repository: false, azure: false, phase: false, budget: false } as const;
+const repository = { repository: true, azure: false, phase: true, budget: false } as const;
+const azure = { repository: false, azure: true, phase: true, budget: false } as const;
+const infrastructure = { repository: true, azure: true, phase: true, budget: true } as const;
+
+export const phaseConsumedConfiguration: Readonly<Record<PhaseId, ConsumedConfiguration>> = {
+  'seed-valid': none,
+  'seed-verified': none,
+  'seed-archived': none,
+  committed: repository,
+  pushed: repository,
+  'repository-discovered': repository,
+  'repository-workflow-source-ready': repository,
+  'repository-checks-qualified': repository,
+  'repository-enforcement-approved': repository,
+  'repository-rulesets-applied': repository,
+  'repository-live-readback': repository,
+  'phase-0-complete': { ...repository, azure: true },
+  'activation-approved': infrastructure,
+  'bootstrap-workflow-source-ready': repository,
+  'credential-ready': repository,
+  'provider-ready': azure,
+  'state-path-selected': azure,
+  'existing-private-path': azure,
+  'bootstrap-local': infrastructure,
+  'runner-ready': infrastructure,
+  'private-backend-proof': { ...repository, azure: true },
+  'remote-import-verified': infrastructure,
+  'remote-ready': azure,
+  'application-prerequisites-ready': infrastructure,
+  'workflow-source-ready': repository,
+  'application-artifact-ready': infrastructure,
+  'application-foundation': infrastructure,
+  'dev-proof': { ...repository, azure: true },
+  'staging-qualified': infrastructure,
+  'production-rehearsed': infrastructure,
+  'green-red-proof': repository,
+  'enforcement-approved': repository,
+  'rulesets-applied': repository,
+  'live-readback': repository,
+  'bootstrap-state-disposed': { ...none, phase: true }
+};
+
+export function providerSdkConfigurationProjection(configuration?: ActivationConfiguration): Readonly<Record<string, unknown>> {
+  const statePath = configuration?.phases['state-path-selected']?.statePath ?? null;
+  return {
+    statePath,
+    bootstrap: statePath === 'bootstrap-local' ? configuration?.phases['bootstrap-local'] ?? null : null
+  };
+}
+
+export function phaseConfigurationProjection(
+  phaseId: PhaseId, configuration?: ActivationConfiguration
+): Readonly<Record<string, unknown>> {
+  const consumed = phaseConsumedConfiguration[phaseId];
+  return {
+    ...(consumed.repository ? { repository: configuration?.repository ?? null } : {}),
+    ...(consumed.azure ? { azure: configuration?.azure ?? null } : {}),
+    ...(consumed.phase ? { phase: configuration?.phases[phaseId] ?? null } : {}),
+    ...(consumed.budget ? { budget: configuration?.budget ?? null } : {}),
+    ...(phaseId === 'provider-ready' ? { sdk: providerSdkConfigurationProjection(configuration) } : {})
+  };
 }
 
 export function phaseInputDigest(phaseId: PhaseId, snapshot: ActivationInputSnapshot, state?: UserActivationState): string {
@@ -93,7 +167,7 @@ export function phaseInputDigest(phaseId: PhaseId, snapshot: ActivationInputSnap
     .filter((id) => state?.phaseOutputs?.[id] !== undefined)
     .map((id) => [id, state!.phaseOutputs![id]]));
   return canonicalSha256({
-    schemaVersion: 3,
+    schemaVersion: 4,
     phaseId,
     project: snapshot.project,
     files: phaseInputFiles(phaseId, snapshot),
@@ -101,12 +175,11 @@ export function phaseInputDigest(phaseId: PhaseId, snapshot: ActivationInputSnap
       protectedPathsDigest: canonicalSha256(snapshot.sensitivePathExclusions)
     } : {}),
     ...(!local && phaseId !== 'committed' ? { pushUrls: snapshot.git.pushUrls } : {}),
+    ...(phaseId === 'committed' || phaseId === 'pushed' ? {
+      git: { head: snapshot.git.head, branch: snapshot.git.branch }
+    } : {}),
     ...(!local ? {
-      configuration: state?.activationInputs ? {
-        repository: state.activationInputs.repository ?? null,
-        azure: state.activationInputs.azure ?? null,
-        phase: state.activationInputs.phases[phaseId] ?? null
-      } : null,
+      configuration: phaseConfigurationProjection(phaseId, state?.activationInputs),
       parentOutputs
     } : {})
   });

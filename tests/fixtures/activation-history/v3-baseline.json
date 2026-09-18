@@ -1,0 +1,110 @@
+{
+  "baseline": "70d10881b46d873118d825735696f39b6d35ebe0",
+  "sourceDigests": {
+    "src/domain/governance/activation/graph.ts": "9fff5edc11ad56d6296b9e100cbe90a99544a288f62188b8be98741ba4421594",
+    "src/domain/governance/activation/canonical-json.ts": "1f17d9af130216dacedc01476fb5a0de2ead2ce2b9a1cf398e4b9aae0c74e78b",
+    "src/domain/governance/policy/identity.ts": "c06b70c5adf54e384985c9469e315f731a7fec59803dcff1f9182cfeb8aac323",
+    "src/domain/governance/activation/types.ts": "f4b18b5bda3b8549cbad1fe825d8e70ff041d1e97893270387d79e1fcaae4eab",
+    "src/domain/governance/activation/inputs.ts": "a99bef3aae818608cf34681925620029cc4b7987e5d9f60b8bcced5c1b00f03f"
+  },
+  "identity": {
+    "liftoffVersion": "0.12.0",
+    "manifestArtifactVersion": 7,
+    "policyVersion": "6",
+    "activationContractVersion": 3,
+    "phaseGraphSchemaVersion": 2,
+    "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+    "activationStateSchemaVersion": 3,
+    "evidenceHeaderSchemaVersion": 3,
+    "approvalEnvelopeSchemaVersion": 3,
+    "supersessionSchemaVersion": 1,
+    "credentialPolicySchemaVersion": 1
+  },
+  "graphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+  "phaseContractDigests": {
+    "seed-valid": "12222a13d0529ba0b35c44641505034c54c88347c1a7d6f0fbc833331e0f4eba",
+    "seed-verified": "f33688ad0d29e79d0849480deb79e983dc10d4a8f6e818f390b1f8a957967b18",
+    "seed-archived": "733a380bac8ede450fb4b46a4fb4755bb3363a5d71145c718ba6cd7e82f78966",
+    "committed": "0af790c4e35668a95afd687329f4a6c1442e4d71f0c5e7dc2de1730c81b9afea",
+    "pushed": "5f97f5bb86eb5a58422e52975e435c9ddb316a17447b56b5d220fa6f416671e1",
+    "phase-0-complete": "430175643d545cc05926f80bef4f3958ed402dc21ee917f0b49d8e015cae9d61",
+    "activation-approved": "3a6eea6044c12000398f9f57cd59428a4f7dd9f04438a1c539f37018c54931cb",
+    "bootstrap-workflow-source-ready": "025f92ced0433d92c4880fa72c8decddd9b484295e53af98f75441562038d2e4",
+    "credential-ready": "26b30465b059428e1e7700579715218efcb238f0bf80eff8bc4a1882d9fef14b",
+    "provider-ready": "2f06ceb252db6207e1053e9299580462e04904e433c8cbded592f2bf31dc7b10",
+    "state-path-selected": "5bfe6e2aeb1bc1ba01c47b20a21e5e59e72ff38e3de43e4ac0cec57c83c8bedb",
+    "existing-private-path": "b42f5cb15d743fe2ff1c7f6c0a5b7830317f436d235a54bf044da52fe05abef6",
+    "bootstrap-local": "e2470f1903def7d99e2863581a2f84a6632f4057c1380812df33d65c165238e2",
+    "runner-ready": "ade4d4ebaa9d77d98db7285f140bf8e094ff898adf286ea077c38a313c20b6ce",
+    "private-backend-proof": "f0b4ab7c89c22aa75a646d50300cdaa2fb2a800cf08b6cec195eddd244755088",
+    "remote-import-verified": "fc7a3be4a29b5d8550a66d5f325e9853579b197ffa3ecbfb023f4f01012e06c6",
+    "remote-ready": "a926ec4d405c56436111c14b83299359455abbdf1571ec6793df4797608fcfd9",
+    "application-prerequisites-ready": "5d2016396c5e8ea731aa08a1bc1ea60e39aa91e9ebdc5a965ec409b1b8d905e9",
+    "workflow-source-ready": "7a184191c54a148847c624c28bf318fd47ab2634db90e90bb3428e02da2c7206",
+    "application-artifact-ready": "54a216d788d44638f8671f3b538c98adc0259f4b03bda3c1f651f69c75c69ae8",
+    "application-foundation": "0d46e736d1e1e91d0d200a1017db4291b89b35aa4a956600b9ad21e1d490b8e6",
+    "dev-proof": "b24718f969ea8659fd4fe7f4e2becb734245aa891a0a990c2ea0a610c445a8bf",
+    "staging-qualified": "971bfa6069ed9a3765fa1399f9a1d9afb9a9d2a8f3596aa5c1929f24d7751127",
+    "production-rehearsed": "f12800a9c69facbeeff4bce81ee7bb0924bcd4e077450de2d4b7867cb9cf8576",
+    "green-red-proof": "7ab4dc86f2fa0bd326e2e9796e371a4e5081b4998664186fd9bbdd759f129084",
+    "enforcement-approved": "d19851a63bde004b10bd4ce874e3446f492de0c5c73c8c488c19048c4825664c",
+    "rulesets-applied": "6c7b227a69b84ac03c54d073f1529098358abc23d900d26251be3ba03ff43257",
+    "live-readback": "c4fe4c0f8dbab78fce96f2f866e545b6e2e16c9cf72f2ba215c977397e9c481b",
+    "bootstrap-state-disposed": "c106cc3501f12ad631cc41386e5ebc65df25cd21447c7b2d43e21fcb8113c8c5"
+  },
+  "snapshot": {
+    "schemaVersion": 2,
+    "project": {
+      "name": "released-v3"
+    },
+    "files": [
+      {
+        "path": "README.md",
+        "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      {
+        "path": ".github/workflows/checks.yml",
+        "digest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    ],
+    "git": {
+      "head": "cccccccccccccccccccccccccccccccccccccccc",
+      "branch": "develop",
+      "pushUrls": [
+        "https://github.com/example/released-v3.git"
+      ]
+    },
+    "baselineSha": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
+  },
+  "configuration": {
+    "schemaVersion": 1,
+    "phases": {},
+    "azure": {
+      "subscriptionId": "11111111-1111-4111-8111-111111111111",
+      "tenantId": "22222222-2222-4222-8222-222222222222",
+      "region": "eastus"
+    }
+  },
+  "inputDigests": {
+    "seed-valid": {
+      "absent": "fbacbbc3551701f50b45b7313ce0a3e06540b4b5f73fcb6d09a2de5cbd12f505",
+      "empty": "fbacbbc3551701f50b45b7313ce0a3e06540b4b5f73fcb6d09a2de5cbd12f505",
+      "azure": "fbacbbc3551701f50b45b7313ce0a3e06540b4b5f73fcb6d09a2de5cbd12f505"
+    },
+    "committed": {
+      "absent": "8e176d1dbda566e7f57834094b00ff6ee36aed37a241767082b98261810f35af",
+      "empty": "b01917afe3bfe977419d67de74d39a4b6df7d747e6013e8b764a330d92d21ffa",
+      "azure": "096da3614705bf9d517903a0c11da74f2af95ea2f91f4461959705074577893e"
+    },
+    "pushed": {
+      "absent": "084cd1cdb86270c5d74ab9091ba0cf053541e8ed9c77fb4ae694d519edcf27d5",
+      "empty": "a99d36337c37a3aa1e5ebbf7596eb0932da85684b5599f2228088848ad39c430",
+      "azure": "2ec8fadcbbfd736693d789f660fc0410bb7489b2e7273d8c16f7a0dd490329c5"
+    },
+    "phase-0-complete": {
+      "absent": "0419db99c119c4bfa855e84a332586faf0671abcc6b3fd136967cf2846a10e8b",
+      "empty": "2bf1f968baa214eb352272fe7e762dc89d37d50b473ab5fcb5e20ed3877ad2dc",
+      "azure": "09a7262e4d64d4cc0e2c0174c5b80dc05c6b1fea5638c57874a09c359978be2e"
+    }
+  }
+}

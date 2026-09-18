@@ -92,6 +92,32 @@ describe('telemetry HTTP server', () => {
     });
   });
 
+  it('accepts new lifecycle events but rejects owner details and similarly named commands over HTTP', async () => {
+    const deps = dependencies();
+    await withServer(deps, async (baseUrl) => {
+      for (const command of [
+        'adopt', 'installation:migrate', 'skills:install', 'skills:update', 'skills:remove', 'skills:migrate'
+      ]) {
+        const event = { ...validEvent, command, cliVersion: '0.13.0' };
+        for (const [body, status] of [
+          [event, 204],
+          [{ ...event, owner: 'fixture-owner' }, 400],
+          [{ ...event, command: `${command}:unregistered` }, 400]
+        ] as const) {
+          const response = await fetch(`${baseUrl}${telemetryRoute}`, {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify(body)
+          });
+          expect(response.status).toBe(status);
+          expect(await response.text()).toBe('');
+        }
+      }
+    });
+    expect(deps.upload).toHaveBeenCalledTimes(6);
+    expect(deps.upload.mock.calls.every(([record]) => Object.keys(record).length === 6)).toBe(true);
+  });
+
   it('exposes no health or diagnostics route and initializes no dependencies there', async () => {
     const resolve = vi.fn(() => dependencies());
     const server = createTelemetryServer(resolve);

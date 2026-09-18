@@ -45,10 +45,12 @@ import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type { CommandResult, CommandRunner, RunCommandOptions } from '../src/process-runner.js';
 import { NodeCommandRunner, formatCommand } from '../src/process-runner.js';
 import { executeRulesetPhase } from '../src/governance-activation/phase-governance.js';
+import { writeOutcomeTransaction } from '../src/governance-activation/transition-records.js';
 import type { ExternalCommand, LiftoffManifest } from '../src/types.js';
 import { loadManifest } from '../src/application/project/manifest.js';
 import {
-  fixtureContext as evidenceContextForPhase, fixtureHeader, fixturePayload, fixtureRemoteBinding,
+  fixtureContext as evidenceContextForPhase, fixtureHeader, fixturePayload, fixturePlan, fixtureRemoteBinding, currentGovernanceManifest,
+  githubDiscoveryCliFixture, fixtureSubscription,
   bindFixtureEvidence, persistFixtureEvidence, writeBootstrapFixture, writeIndependentInfrastructureFixture
 } from './governance-activation-fixtures.js';
 
@@ -68,8 +70,9 @@ function nextRoot(name: string): string {
 }
 
 function manifest(projectName: string): LiftoffManifest {
+  const current = currentGovernanceManifest(projectName);
   return {
-    artifactVersion: 7,
+    artifactVersion: 8, standards: current.standards, provenance: current.provenance,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -92,7 +95,7 @@ function manifest(projectName: string): LiftoffManifest {
     },
     governance: {
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: currentActivationIdentity.policyVersion,
       activationIdentity: currentActivationIdentity,
       state: 'handoff-partial'
     },
@@ -243,10 +246,10 @@ function defaultTestRunner(): CommandRunner {
   };
 }
 
-async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId, runner?: CommandRunner): Promise<ApprovalEnvelope> {
+async function writeApproval(root: string, state: UserActivationState, phaseId: PhaseId, runner?: CommandRunner, evidence?: readonly PhaseEvidenceRecord[]): Promise<ApprovalEnvelope> {
   const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === phaseId)!;
   const manifest = await loadManifest(root);
-  const inspection = await inspectionFor({ root, phaseId, state });
+  const inspection = await inspectionFor({ root, phaseId, state, evidence });
   const planned = await buildSavedTransitionPlan({ inspection, runner: runner ?? defaultTestRunner(), now });
   const context = activationEvidenceContexts(canonicalPhaseGraph, state, await readActivationInputSnapshot(root, manifest), now)[phaseId];
   const plan = planned
@@ -264,6 +267,19 @@ async function writeApproval(root: string, state: UserActivationState, phaseId: 
   await writeFile(path.join(root, 'governance', 'approvals', `${approval.id}.json`), `${JSON.stringify(approval, null, 2)}\n`, 'utf8');
   await writeGovernanceApprovalAuthority(root, canonicalSha256({ testApproval: approval.id }), approval);
   return approval;
+}
+
+function reviewedInjectedRulesetPlan(inspection: GovernanceTransitionInspection, sourceDigest: string) {
+  const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'rulesets-applied')!;
+  const plan = fixturePlan(inspection.contexts['rulesets-applied'], inspection.state, now.toISOString(), { sourceDigest }, inspection.projectRoot);
+  const approval: ApprovalEnvelope = {
+    ...approvalRequestForSavedPlan(plan, phase, inspection.state),
+    schemaVersion: 4, id: plan.approval.envelopeId!, approver: 'fixture-owner',
+    approvedAt: plan.createdAt, expiresAt: plan.expiresAt
+  };
+  expect(canonicalApprovalEnvelopeHash(approval)).toBe(plan.approval.envelopeHash);
+  inspection.approvals = [approval];
+  return plan;
 }
 
 async function fingerprint(root: string): Promise<string> {
@@ -332,18 +348,11 @@ class Phase0Runner extends ReadyInitRunner {
     }
     if (command.executable === 'gh') {
       this.calls.push(command);
-      return this.result(command, {
-        stdout: `${JSON.stringify({
-          id: 'R_phase0',
-          nameWithOwner: 'owner/phase0',
-          defaultBranchRef: { name: 'develop' },
-          isPrivate: true
-        })}\n`
-      });
+      return this.result(command, { stdout: githubDiscoveryCliFixture(command, 'owner/phase0') ?? '' });
     }
     if (command.executable === 'az' && command.args[0] === 'account') {
       this.calls.push(command);
-      return this.result(command, { stdout: '{"id":"sub"}\n' });
+      return this.result(command, { stdout: JSON.stringify({ id: fixtureSubscription, tenantId: fixtureSubscription, state: 'Enabled', name: 'fixture' }) });
     }
     return await super.run(command, options);
   }
@@ -452,14 +461,43 @@ async function inspectionFor(input: {
 beforeEach(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
   await mkdir(scratchRoot, { recursive: true });
+  await mkdir(path.join(scratchRoot, '.git'));
   await writeFile(emptyGitConfig, '');
 });
 
 describe('controlled governance apply-next transitions', () => {
+  it('preserves committed phase evidence when post-operation readiness cannot be inspected', async () => {
+    const root = await writeProject('post-commit-inspection');
+    const inspection = await inspectionFor({ root, phaseId: 'seed-valid' });
+    let inspections = 0;
+    const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) => executeApplyNext({
+      inspection, now, runner: new ReadyInitRunner(),
+      reinspect: async () => {
+        if (++inspections > 1) throw new Error('Post-operation metadata read was unavailable.');
+        return inspection;
+      },
+      adapters: { phases: {
+        'seed-valid': {
+          phaseId: 'seed-valid',
+          async execute() {
+            return { status: 'completed', resultState: 'verified', evidencePayload: { kind: 'seed-valid.v1', status: 'passed' } };
+          }
+        }
+      } }
+    }));
+    expect(result).toMatchObject({
+      schemaVersion: 3, applied: true, executedPhase: 'seed-valid', nextReadyPhase: null,
+      readinessStatus: 'indeterminate', reason: 'phase-executed-readiness-indeterminate'
+    });
+    expect(result.evidence?.result).toBe('verified');
+    expect(JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')).phases['seed-valid'].state).toBe('verified');
+    expect(result.inspectionFailure).toContain('Post-operation metadata read');
+  });
+
   it('previews exact mutations and requires --execute before any write', async () => {
     const root = await writeProject('preview');
     const before = await fingerprint(root);
-    const result = await run(['governance', 'apply-next', '--json'], root);
+    const result = await run(['governance', 'apply-next', '--scope', 'local', '--json'], root);
     expect(result.code).toBe(0);
     const body = JSON.parse(result.out);
     expect(body).toMatchObject({
@@ -481,7 +519,7 @@ describe('controlled governance apply-next transitions', () => {
   it('executes at most one seed phase and persists a strict saved plan, evidence, and state', async () => {
     const root = await writeProject('seeded');
     await writeSeed(root, 'seeded');
-    const result = await run(['governance', 'apply-next', '--json', '--execute'], root, new ReadyInitRunner());
+    const result = await run(['governance', 'apply-next', '--scope', 'local', '--json', '--execute'], root, new ReadyInitRunner());
     expect(result.code).toBe(0);
     const body = JSON.parse(result.out);
     expect(body).toMatchObject({
@@ -506,7 +544,7 @@ describe('controlled governance apply-next transitions', () => {
   it('persists one stable blocker and does not retry a failed phase automatically', async () => {
     const root = await writeProject('blocked');
     await writeSeed(root, 'blocked');
-    const first = await run(['governance', 'apply-next', '--json', '--execute'], root, new FailingOpenSpecRunner());
+    const first = await run(['governance', 'apply-next', '--scope', 'local', '--json', '--execute'], root, new FailingOpenSpecRunner());
     expect(first.code).toBe(1);
     expect(JSON.parse(first.out)).toMatchObject({
       selectedPhase: 'seed-valid',
@@ -516,7 +554,7 @@ describe('controlled governance apply-next transitions', () => {
     expect(state.phases['seed-valid'].state).toBe('blocked');
     expect(state.phases['seed-valid'].blockers).toHaveLength(1);
 
-    const second = await run(['governance', 'apply-next', '--json'], root, new ReadyInitRunner());
+    const second = await run(['governance', 'apply-next', '--scope', 'local', '--json'], root, new ReadyInitRunner());
     const body = JSON.parse(second.out);
     expect(second.code).toBe(0);
     expect(body.reason).toBe('execute-required');
@@ -581,11 +619,13 @@ describe('controlled governance apply-next transitions', () => {
     expect(await exists(path.join(root, 'governance', 'evidence'))).toBe(false);
   });
 
-  it('rolls back local file mutations when evidence/state transaction fails', async () => {
+  it('refuses injected local workflow changes without an exact publication plan and approval', async () => {
     const root = await writeProject('rollback');
+    let executed = false;
     const adapter: GovernancePhaseAdapter = {
       phaseId: 'workflow-source-ready',
       async execute() {
+        executed = true;
         return {
           status: 'completed',
           resultState: 'verified',
@@ -599,7 +639,7 @@ describe('controlled governance apply-next transitions', () => {
       }
     };
     const base = await inspectionFor({ root, phaseId: 'workflow-source-ready' });
-    await expect(buildSavedTransitionPlan({ inspection: base, now })).resolves.toBeTruthy();
+    await expect(buildSavedTransitionPlan({ inspection: base, now })).rejects.toThrow(/Supply exact sourceSha/);
     await expect(import('../src/governance-activation/transitions.js').then((module) =>
       module.executeApplyNext({
         inspection: base,
@@ -607,8 +647,29 @@ describe('controlled governance apply-next transitions', () => {
         adapters: { phases: { 'workflow-source-ready': adapter } },
         now
       })
-    )).rejects.toThrow(/rolled back|Project update failed/);
+    )).rejects.toThrow(/Supply exact sourceSha/);
+    expect(executed).toBe(false);
     expect(await exists(path.join(root, '.github', 'workflows', 'marker.yml'))).toBe(false);
+    expect(await exists(path.join(root, 'governance', 'activation-state.json'))).toBe(false);
+  });
+
+  it('rejects conflicting transaction paths without changing source, evidence or state', async () => {
+    const root = await writeProject('outcome-rollback');
+    const marker = ['.liftoff', 'governance', 'rollback-marker.md'];
+    await writeFile(path.join(root, ...marker), 'original\n');
+    const base = await inspectionFor({ root, phaseId: 'seed-valid' });
+    const plan = (await buildSavedTransitionPlan({ inspection: base, now }))!;
+    await expect(writeOutcomeTransaction({
+      projectRoot: root, plan, nextState: base.state,
+      evidenceRecord: evidenceRecord('seed-valid', base.state),
+      evidencePathParts: ['governance', 'evidence', 'transaction-test.json'],
+      fileMutations: [
+        { type: 'write', pathParts: marker, content: 'changed\n' },
+        { type: 'write', pathParts: [...marker, 'child.txt'], content: 'cannot write through a regular file\n' }
+      ]
+    })).rejects.toThrow('Artifact path parent is not a directory: .liftoff/governance/rollback-marker.md');
+    expect(await readFile(path.join(root, ...marker), 'utf8')).toBe('original\n');
+    expect(await exists(path.join(root, 'governance', 'evidence', 'transaction-test.json'))).toBe(false);
     expect(await exists(path.join(root, 'governance', 'activation-state.json'))).toBe(false);
   });
 });
@@ -674,6 +735,8 @@ describe('initial Git adapters', () => {
     const transport = new NodeCommandRunner();
     const localGitTransport: CommandRunner = {
       async run(command, options) {
+        const response = githubDiscoveryCliFixture(command);
+        if (response) return { command, displayCommand: formatCommand(command), status: 0, stdout: response, stderr: '' };
         if (['gh', 'az'].includes(command.executable) ||
           command.executable === 'git' && ['fetch', 'pull', 'clone'].includes(command.args[0]!)) {
           throw new Error('Unexpected external read is forbidden by the local Git fixture transport.');
@@ -759,19 +822,23 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
   it('runs Phase 0 through read-only literal commands and writes no active change before approval', async () => {
     const root = await writeProject('phase0');
     const runner = new Phase0Runner();
-    const inspection = await inspectionFor({ root, phaseId: 'phase-0-complete', source: sourceNone() });
+    const phaseState = validState();
+    phaseState.remoteBinding = { ...fixtureRemoteBinding, name: 'owner/phase0', pushUrl: 'https://github.com/owner/phase0.git' };
+    phaseState.activationInputs = { schemaVersion: 1, phases: {}, azure: { subscriptionId: fixtureSubscription, tenantId: fixtureSubscription, region: 'eastus' } };
+    const inspection = await inspectionFor({ root, state: phaseState, phaseId: 'phase-0-complete', source: sourceNone() });
     const result = await import('../src/governance-activation/transitions.js').then(({ executeApplyNext }) =>
       executeApplyNext({ inspection, reinspect: async () => inspection, runner, now }));
-    expect(result.applied, result.message).toBe(true);
+    expect(result.applied, result.message).toBe(false);
+    expect(result.message).toContain('incomplete authoritative GitHub coverage');
     const commands = runner.calls.map((command) => `${command.executable} ${command.args.join(' ')}`);
-    expect(commands).toContain('gh repo view owner/phase0 --json id,nameWithOwner,defaultBranchRef,isPrivate');
+    expect(commands.some((command) => command.startsWith('gh api ') && command.includes('/repos/owner/phase0'))).toBe(true);
     expect(commands).not.toContain('az account show --output json');
     expect(commands.some((command) => /\b(gh repo create|gh api --method (POST|PATCH)|az deployment|tofu apply)\b/u.test(command))).toBe(false);
     expect(JSON.parse(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')).activeChange).toBeNull();
     expect((await readdir(path.join(root, 'openspec', 'changes'))).some((name) => name.startsWith('governance-'))).toBe(false);
   });
 
-  it('requires exact green/red proof and live ruleset readback matching saved source', async () => {
+  it('retains exact green/red and readback guards in the explicitly injected ruleset facade without authorizing the production planner', async () => {
     const root = await writeProject('rulesets');
     const state = validState();
     state.phases['enforcement-approved'].state = 'approved';
@@ -780,27 +847,26 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
       evidenceRecord('workflow-source-ready', state, 'verified', {
         kind: 'workflow-source-ready.v1',
         rulesetSourceDigest: sourceDigest
-      }),
+      }, [liveProof('workflow-source-ready', 'github', state)]),
       evidenceRecord('green-red-proof', state, 'verified', {
         kind: 'green-red-proof.v1',
         green: { conclusion: 'success', checkName: 'required' },
         deliberateRed: { conclusion: 'failure', deliberate: true, checkName: 'required' }
       }, [liveProof('green-red-proof', 'github', state)])
     ];
-    const approval = await writeApproval(root, state, 'rulesets-applied');
     const inspection = await inspectionFor({
       root,
       phaseId: 'rulesets-applied',
       state,
-      evidence,
-      approvals: [approval]
+      evidence
     });
+    await expect(buildSavedTransitionPlan({ inspection, now })).rejects.toThrow(/mainHold mode explicitly/);
     const intactSource = inspection.evidence[0]!;
     inspection.evidence = [{
       ...intactSource,
       payload: { ...(intactSource.payload as Record<string, unknown>), rulesetSourceDigest: 'c'.repeat(64) }
     }, ...inspection.evidence];
-    const expiringPlan = (await buildSavedTransitionPlan({ inspection, now }))!;
+    const expiringPlan = reviewedInjectedRulesetPlan(inspection, sourceDigest);
     let unexpectedProviderAccess = false;
     const expired = await executeRulesetPhase({
       inspection, plan: expiringPlan,
@@ -828,11 +894,10 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
     });
     expect(expiredApproval?.blocker).toContain('approval is no longer valid');
     expect(unexpectedProviderAccess).toBe(false);
-    const module = await import('../src/governance-activation/transitions.js');
-    const result = await module.executeApplyNext({
+    const result = await executeRulesetPhase({
       inspection,
-      reinspect: async () => inspection,
-      now,
+      plan: expiringPlan, phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'rulesets-applied')!,
+      runner: new ReadyInitRunner(), now,
       adapters: {
         githubRulesets: {
           async applyRuleset(input) {
@@ -845,11 +910,20 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
         }
       }
     });
-    expect(result.applied).toBe(true);
-    expect(result.evidence?.result).toBe('verified');
+    expect(result).toMatchObject({ status: 'completed', resultState: 'verified' });
+    const mismatching = await executeRulesetPhase({
+      inspection, plan: expiringPlan, phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'rulesets-applied')!,
+      runner: new ReadyInitRunner(), now,
+      adapters: { githubRulesets: {
+        async applyRuleset() {
+          return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: 'c'.repeat(64) };
+        },
+        async readRuleset() { throw new Error('Write readback must be validated immediately.'); }
+      } }
+    });
+    expect(mismatching).toMatchObject({ status: 'blocked', blocker: expect.stringContaining('did not match') });
 
     const skippedRoot = await writeProject('rulesets-skipped');
-    const skippedApproval = await writeApproval(skippedRoot, state, 'rulesets-applied');
     const skipped = await inspectionFor({
       root: skippedRoot,
       phaseId: 'rulesets-applied',
@@ -861,32 +935,42 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
           green: { conclusion: 'skipped', checkName: 'required' },
           deliberateRed: { conclusion: 'failure', deliberate: true, checkName: 'required' }
         }, [liveProof('green-red-proof', 'github', state)])
-      ],
-      approvals: [skippedApproval]
+      ]
     });
-    const blocked = await module.executeApplyNext({
+    const blocked = await executeRulesetPhase({
       inspection: skipped,
-      reinspect: async () => skipped,
-      now,
+      plan: reviewedInjectedRulesetPlan(skipped, sourceDigest),
+      phase: canonicalPhaseGraph.phases.find((phase) => phase.id === 'rulesets-applied')!,
+      runner: new ReadyInitRunner(), now,
       adapters: {
         githubRulesets: {
           async applyRuleset() {
-            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
+            unexpectedProviderAccess = true;
+            throw new Error('Skipped proof cannot access a provider.');
           },
           async readRuleset() {
-            return { resourceId: '/repos/owner/repo/rulesets/1', sourceDigest, readbackDigest: sourceDigest };
+            unexpectedProviderAccess = true;
+            throw new Error('Skipped proof cannot access a provider.');
           }
         }
       }
     });
-    expect(blocked.applied).toBe(false);
-    expect(blocked.message).toContain('Skipped, cancelled, and neutral');
+    expect(blocked?.status).toBe('blocked');
+    expect(blocked?.blocker).toContain('Skipped, cancelled, and neutral');
+    expect(unexpectedProviderAccess).toBe(false);
   });
 
-  it.each([false, true])('keeps unavailable credential enrollment/readback blocked even with policy metadata present=%s', async (policyPresent) => {
+  it.each([false, true])('refuses to issue an enrollment plan with missing credential inputs even with policy metadata present=%s', async (policyPresent) => {
     const root = await writeProject(`credential-${policyPresent}`);
     if (policyPresent) {
       const policy = buildFineGrainedPatCredentialPolicy({
+        providerPermissions: {
+          kind: 'fine-grained-pat', permissions: {
+            repository: { metadata: 'read' },
+            organization: { organization_administration: 'read', organization_network_configurations: 'read' },
+            other: {}
+          }
+        },
         repository: canonicalCredentialRepository({ id: 'R_REMOTE', owner: 'owner', name: 'repo' }),
         allowedWorkflows: [{ path: '.github/workflows/preflight.yml', jobs: ['runner-preflight'] }],
         createdAt: now,
@@ -902,24 +986,8 @@ describe('phase 0, rulesets, rollback, and retention guards', () => {
         credentialRequired: true
       }
     });
-    const approval = await writeApproval(root, state, 'credential-ready');
-    const inspection = await inspectionFor({
-      root,
-      phaseId: 'credential-ready',
-      state,
-      approvals: [approval]
-    });
-    const module = await import('../src/governance-activation/transitions.js');
-    const result = await module.executeApplyNext({
-      inspection,
-      reinspect: async () => inspection,
-      now
-    });
-    expect(result.applied).toBe(false);
-    expect(result.message).toMatch(/credential (?:enrollment|readback).*unavailable/i);
-    expect(result.message).not.toContain('secure masked input channel');
-    expect(result.evidence).toBeNull();
-    expect(JSON.stringify(result)).not.toMatch(/github_pat_|gh[pousr]_/);
+    await expect(writeApproval(root, state, 'credential-ready'))
+      .rejects.toThrow('Credential phase configuration did not return a JSON object');
   });
 
   it('excludes retained provider registrations from rollback and keeps day-30 disposal pending until due', async () => {

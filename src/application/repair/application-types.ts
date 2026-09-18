@@ -1,5 +1,5 @@
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
-import type { ManifestProjectArtifact, ManifestWorkload, ProjectProvisioningGroup } from '../../domain/project/contracts.js';
+import type { ManifestProjectArtifact, ManifestStandards, ManifestWorkload, ProjectProvisioningGroup } from '../../domain/project/contracts.js';
 import type {
   ApplicationPreparationRequest, ApplicationPreparationResult, ApplicationPrivateOutputRole,
   ApplicationResolvedCheck, ApplicationResolvedPreparation, ApplicationToolIdentity
@@ -46,6 +46,7 @@ export interface ApplicationTargetLayout {
   version: 1;
   workload: ManifestWorkload;
   artifacts: ApplicationTargetArtifact[];
+  standards?: ManifestStandards;
   digest: string;
 }
 
@@ -217,6 +218,24 @@ export interface ApplicationPatchCandidate {
   snapshots: ProjectFileSnapshot[];
   mutations: ProjectFileMutation[];
   scope: ApplicationPatchScope;
+  verificationPolicy: ApplicationVerificationPolicy;
+  readonly networkRequired: boolean;
+}
+
+/** Shared private candidate shape; a recipe's public submission and authority remain separate. */
+export interface ApplicationCandidate {
+  blockers: string[];
+  snapshots: ProjectFileSnapshot[];
+  mutations: ProjectFileMutation[];
+  scope: {
+    projectRoot: string;
+    inspectionDigest: string;
+    target: ApplicationTargetLayout | null;
+    staging: { root: string };
+    directoryInventory: ApplicationDirectoryObservation[];
+    preparation: ApplicationResolvedPreparation[];
+    toolchain: ApplicationToolIdentity[];
+  };
   verificationPolicy: ApplicationVerificationPolicy;
   readonly networkRequired: boolean;
 }

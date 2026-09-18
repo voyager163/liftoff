@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "repository": "voyager163/liftoff",
+  "observedAt": "2026-09-14T16:49:16Z",
+  "permanentBranches": ["main", "develop"],
+  "localBranches": [
+    { "name": "main", "commit": "70d10881b46d873118d825735696f39b6d35ebe0", "checkedOut": true, "worktree": "current", "uncommittedWork": true, "ownerReleased": false },
+    { "name": "develop", "commit": "70d10881b46d873118d825735696f39b6d35ebe0", "checkedOut": true, "worktree": "linked-develop", "uncommittedWork": false, "ownerReleased": false }
+  ],
+  "remoteBranches": [
+    { "name": "main", "commit": "70d10881b46d873118d825735696f39b6d35ebe0", "protected": true },
+    { "name": "develop", "commit": "70d10881b46d873118d825735696f39b6d35ebe0", "protected": false }
+  ],
+  "openPullRequests": [],
+  "eligibleBranchDeletions": [],
+  "eligibleWorktreeRemovals": [],
+  "verifiedStaleTrackingRefs": [],
+  "plan": "Preserve both permanent branches and their active worktrees. No cleanup is necessary or authorized by this observation.",
+  "futureCleanupRequirements": [
+    "fresh exact ref and pull-request inventory",
+    "explicit reviewed deletion list and user approval",
+    "release by each owning user or session",
+    "preservation of dirty worktrees, unmerged commits and active temporary PR branches",
+    "immediate pre-action identity and ownership revalidation"
+  ],
+  "observationsGrantDeletionAuthority": false,
+  "mutationsPerformed": []
+}

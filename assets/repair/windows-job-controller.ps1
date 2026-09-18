@@ -94,9 +94,9 @@ public static class Win32JobNative {
     [StructLayout(LayoutKind.Sequential)]
     public struct STARTUPINFO {
         public uint cb;
-        public string lpReserved;
-        public string lpDesktop;
-        public string lpTitle;
+        public IntPtr lpReserved;
+        public IntPtr lpDesktop;
+        public IntPtr lpTitle;
         public uint dwX;
         public uint dwY;
         public uint dwXSize;
@@ -229,23 +229,25 @@ public static class Win32JobNative {
     public static extern bool CancelIoEx(IntPtr hFile, IntPtr lpOverlapped);
 
     public const uint STARTF_USESTDHANDLES = 0x00000100;
+    public const uint GENERIC_READ = 0x80000000;
     public const uint GENERIC_WRITE = 0x40000000;
     public const uint FILE_SHARE_READ = 0x00000001;
     public const uint FILE_SHARE_WRITE = 0x00000002;
     public const uint FILE_SHARE_DELETE = 0x00000004;
     public const uint CREATE_ALWAYS = 2;
+    public const uint OPEN_EXISTING = 3;
     public const uint FILE_ATTRIBUTE_NORMAL = 0x00000080;
     public const uint HANDLE_FLAG_INHERIT = 0x00000001;
 
-    public static STARTUPINFOEX CreateStartupInfoEx(IntPtr lpAttributeList, IntPtr hStdOut, IntPtr hStdErr) {
+    public static STARTUPINFOEX CreateStartupInfoEx(IntPtr lpAttributeList, IntPtr hStdIn, IntPtr hStdOut, IntPtr hStdErr) {
         STARTUPINFOEX siex = new STARTUPINFOEX();
         siex.StartupInfo.cb = (uint)Marshal.SizeOf(typeof(STARTUPINFOEX));
         siex.lpAttributeList = lpAttributeList;
         if (hStdOut != IntPtr.Zero && hStdErr != IntPtr.Zero && hStdOut.ToInt64() != -1 && hStdErr.ToInt64() != -1) {
             siex.StartupInfo.dwFlags = STARTF_USESTDHANDLES;
+            siex.StartupInfo.hStdInput = hStdIn;
             siex.StartupInfo.hStdOutput = hStdOut;
             siex.StartupInfo.hStdError = hStdErr;
-            siex.StartupInfo.hStdInput = IntPtr.Zero;
         }
         return siex;
     }
@@ -301,7 +303,19 @@ public static class Win32JobNative {
             return 2;
         }
 
-        ResumeThread(pi.hThread);
+        uint resumeRes = ResumeThread(pi.hThread);
+        if (resumeRes != 1) {
+            int err = Marshal.GetLastWin32Error();
+            TerminateProcess(pi.hProcess, 1);
+            CloseHandle(pi.hThread);
+            CloseHandle(pi.hProcess);
+            hProcess = IntPtr.Zero;
+            processId = 0;
+            errorMessage = resumeRes == unchecked((uint)-1)
+                ? "ResumeThread failed with Win32 error " + err
+                : "Unexpected initial thread suspend count " + resumeRes + "; expected 1.";
+            return 3;
+        }
         CloseHandle(pi.hThread);
 
         hProcess = pi.hProcess;
@@ -374,6 +388,7 @@ $pExtendedInfo = [IntPtr]::Zero
 $pAccounting = [IntPtr]::Zero
 $pEnv = [IntPtr]::Zero
 $pHandleList = [IntPtr]::Zero
+$hStdIn = [IntPtr]::Zero
 $hStdOut = [IntPtr]::Zero
 $hStdErr = [IntPtr]::Zero
 
@@ -481,6 +496,14 @@ try {
     # Prepare stdio file handles if specified
     $hasStdHandles = $false
     if (-not [string]::IsNullOrEmpty($req.stdoutFile) -and -not [string]::IsNullOrEmpty($req.stderrFile)) {
+        $hStdIn = [Win32JobNative]::CreateFile(
+            "NUL",
+            [Win32JobNative]::GENERIC_READ,
+            [Win32JobNative]::FILE_SHARE_READ -bor [Win32JobNative]::FILE_SHARE_WRITE,
+            [IntPtr]::Zero,
+            [Win32JobNative]::OPEN_EXISTING,
+            [Win32JobNative]::FILE_ATTRIBUTE_NORMAL,
+            [IntPtr]::Zero)
         $hStdOut = [Win32JobNative]::CreateFile(
             $req.stdoutFile,
             [Win32JobNative]::GENERIC_WRITE,
@@ -498,12 +521,15 @@ try {
             [Win32JobNative]::FILE_ATTRIBUTE_NORMAL,
             [IntPtr]::Zero)
 
-        if ($hStdOut -eq [IntPtr]::Zero -or $hStdOut.ToInt64() -eq -1 -or
+        if ($hStdIn -eq [IntPtr]::Zero -or $hStdIn.ToInt64() -eq -1 -or
+            $hStdOut -eq [IntPtr]::Zero -or $hStdOut.ToInt64() -eq -1 -or
             $hStdErr -eq [IntPtr]::Zero -or $hStdErr.ToInt64() -eq -1 -or
+            -not [Win32JobNative]::SetHandleInformation($hStdIn, [Win32JobNative]::HANDLE_FLAG_INHERIT, [Win32JobNative]::HANDLE_FLAG_INHERIT) -or
             -not [Win32JobNative]::SetHandleInformation($hStdOut, [Win32JobNative]::HANDLE_FLAG_INHERIT, [Win32JobNative]::HANDLE_FLAG_INHERIT) -or
             -not [Win32JobNative]::SetHandleInformation($hStdErr, [Win32JobNative]::HANDLE_FLAG_INHERIT, [Win32JobNative]::HANDLE_FLAG_INHERIT)) {
 
             $err = [System.Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if ($hStdIn -ne [IntPtr]::Zero -and $hStdIn.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdIn) | Out-Null; $hStdIn = [IntPtr]::Zero }
             if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdOut) | Out-Null; $hStdOut = [IntPtr]::Zero }
             if ($hStdErr -ne [IntPtr]::Zero -and $hStdErr.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdErr) | Out-Null; $hStdErr = [IntPtr]::Zero }
 
@@ -574,16 +600,17 @@ try {
 
     # Update Attribute List with PROC_THREAD_ATTRIBUTE_HANDLE_LIST if stdio handles exist
     if ($hasStdHandles) {
-        $pHandleList = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]::Size * 2)
-        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, 0, $hStdOut)
-        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, [IntPtr]::Size, $hStdErr)
+        $pHandleList = [System.Runtime.InteropServices.Marshal]::AllocHGlobal([IntPtr]::Size * 3)
+        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, 0, $hStdIn)
+        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, [IntPtr]::Size, $hStdOut)
+        [System.Runtime.InteropServices.Marshal]::WriteIntPtr($pHandleList, [IntPtr]::Size * 2, $hStdErr)
 
         if (-not [Win32JobNative]::UpdateProcThreadAttribute(
             $attributeList,
             0,
             [IntPtr][Win32JobNative]::PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
             $pHandleList,
-            [IntPtr]([IntPtr]::Size * 2),
+            [IntPtr]([IntPtr]::Size * 3),
             [IntPtr]::Zero,
             [IntPtr]::Zero)) {
 
@@ -604,7 +631,7 @@ try {
     }
 
     # Prepare STARTUPINFOEX via C# helper to guarantee native struct field initialization
-    $siex = [Win32JobNative]::CreateStartupInfoEx($attributeList, $hStdOut, $hStdErr)
+    $siex = [Win32JobNative]::CreateStartupInfoEx($attributeList, $hStdIn, $hStdOut, $hStdErr)
 
     # Launch root process suspended inside the Job Object
     $creationFlags = [Win32JobNative]::EXTENDED_STARTUPINFO_PRESENT -bor
@@ -777,6 +804,10 @@ try {
         try { [void]$pipe.EndRead($pipeAsync) } catch {}
     }
 
+    if ($hStdIn -ne [IntPtr]::Zero -and $hStdIn.ToInt64() -ne -1) {
+        [Win32JobNative]::CloseHandle($hStdIn) | Out-Null
+        $hStdIn = [IntPtr]::Zero
+    }
     if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) {
         [Win32JobNative]::CloseHandle($hStdOut) | Out-Null
         $hStdOut = [IntPtr]::Zero
@@ -865,6 +896,7 @@ try {
 } finally {
     if ($pEnv -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pEnv) }
     if ($pHandleList -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pHandleList) }
+    if ($hStdIn -ne [IntPtr]::Zero -and $hStdIn.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdIn) | Out-Null }
     if ($hStdOut -ne [IntPtr]::Zero -and $hStdOut.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdOut) | Out-Null }
     if ($hStdErr -ne [IntPtr]::Zero -and $hStdErr.ToInt64() -ne -1) { [Win32JobNative]::CloseHandle($hStdErr) | Out-Null }
     if ($pAccounting -ne [IntPtr]::Zero) { [System.Runtime.InteropServices.Marshal]::FreeHGlobal($pAccounting) }

@@ -22,6 +22,13 @@ Python's tested patch is 3.14.7; its supported runtime floor is 3.14.0 within
 3.14.x. Floors, tested versions, and allowed release lines are separate values
 in the baseline; a newer untested major is not automatically compatible.
 
+Project toolchains (external Node.js, Python, Go, uv, OpenTofu) remain project
+prerequisites and are distinct from the CLI's private bundled runtime.
+Liftoff's native candidate bundle format includes its own private runtime and relocatable launcher;
+that private runtime does not satisfy or replace external project tool prerequisites.
+This describes the bundle contract, not published artifacts, native-host qualification,
+or verified package-manager availability.
+
 Power Apps is retired and has no active SDK, starter snapshot, or source-commit
 compatibility lane in the supported baseline.
 

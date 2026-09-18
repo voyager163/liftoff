@@ -122,7 +122,7 @@ describe('upgrade command surface', () => {
     const selfUpgrade = vi.fn<SelfUpgradeExecutor>();
     const result = await execute(['upgrade', '--help'], selfUpgrade);
     expect(result).toMatchObject({ code: 0, err: '' });
-    expect(result.out).toContain('Replace the supported global npm Liftoff CLI');
+    expect(result.out).toMatch(/verified installation owner|Replace the supported global npm Liftoff CLI/);
     expect(result.out).toContain('--check');
     expect(result.out).toContain('--json');
     expect(selfUpgrade).not.toHaveBeenCalled();
@@ -132,7 +132,7 @@ describe('upgrade command surface', () => {
     expect(maintenance).toEqual(expect.arrayContaining([
       expect.objectContaining({
         syntax: 'upgrade',
-        description: expect.stringContaining('global npm Liftoff CLI')
+        description: expect.stringMatching(/verified installation owner|global npm Liftoff CLI/)
       }),
       expect.objectContaining({
         syntax: 'update',

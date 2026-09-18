@@ -16,6 +16,7 @@ import {
 import { ActivationHistoryError, parseHistoryJson } from './history-contracts.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
 import { activeActivationRecordsWithoutState, inspectActivationMigrationHistory } from './migration-history.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 
 export const updateFailureInjectionEnv = 'LIFTOFF_UPDATE_INJECT_FAILURE' as const;
 
@@ -93,7 +94,8 @@ function unchanged(status: 'not-present' | 'current'): ActivationStateMigrationP
 /** Read-only diagnostic compatibility. Actual successors use the reviewed history transaction. */
 export async function planHistoricalActivationStateMigration(
   projectRoot: string, _nowIso = new Date().toISOString(),
-  _mappingInput: ActivationStateMigrationMappingInput = {}
+  _mappingInput: ActivationStateMigrationMappingInput = {},
+  storage?: UpdatePreviewOptions
 ): Promise<ActivationStateMigrationPlan> {
   try {
     const snapshot = await captureHistoryFile(projectRoot, activationStateFilePathParts);
@@ -114,7 +116,7 @@ export async function planHistoricalActivationStateMigration(
     if (isHistoricalActivationIdentity(parsed.identity)) {
       validateReadableHistoricalActivationState(parsed);
       return blocked('unsupported-activation-identity', [
-        `Historical activation v${parsed.identity.activationContractVersion} is diagnostic-only. Run liftoff update --check to inspect the exact history-preserving v3 successor. Historical proof and approval remain non-executable; no v2 intermediate, header relabeling, or OpenTofu-state operation is authorized.`
+        `Historical activation v${parsed.identity.activationContractVersion} is diagnostic-only. Run liftoff update --check to inspect the exact history-preserving v4 successor. Historical proof and approval remain non-executable; no intermediate retagging, header relabeling, or OpenTofu-state operation is authorized.`
       ], true);
     }
     if (canonicalSha256(parsed.identity) !== canonicalSha256(currentActivationIdentity)) {
@@ -124,7 +126,7 @@ export async function planHistoricalActivationStateMigration(
     }
     try {
       validateUserActivationState(parsed);
-      await inspectActivationMigrationHistory(projectRoot);
+      await inspectActivationMigrationHistory(projectRoot, storage);
       return unchanged('current');
     } catch (error) {
       return blocked('malformed-state', [`Current activation state failed strict validation: ${error instanceof Error ? error.message : 'unknown validation failure'}`]);

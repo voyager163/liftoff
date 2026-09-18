@@ -175,3 +175,46 @@ export const assessmentLimits = {
   retries: 1,
   maxFiles: 500
 } as const;
+
+export interface DismissalActor {
+  id: number;
+  type: 'User' | 'Team' | 'IntegrationInstallation' | 'RepositoryRole';
+}
+
+export interface DismissalRestriction {
+  enabled: boolean;
+  allowed_actors?: DismissalActor[];
+}
+
+export interface RequiredReviewerActor {
+  id: number;
+  type: 'Team';
+}
+
+export interface RequiredReviewer {
+  reviewer: RequiredReviewerActor;
+  minimum_approvals: number;
+  file_patterns: string[];
+}
+
+export interface NormalizedPullRequestParameters {
+  allowed_merge_methods?: Array<'merge' | 'squash' | 'rebase'>;
+  dismiss_stale_reviews_on_push: boolean;
+  require_code_owner_review: boolean;
+  require_last_push_approval: boolean;
+  required_approving_review_count: number;
+  required_review_thread_resolution?: boolean;
+  dismissal_restriction?: DismissalRestriction;
+  require_extra_approval_for_unattributed_changes?: boolean;
+  required_reviewers?: RequiredReviewer[];
+}
+
+export interface PullRequestComparisonResult {
+  matches: boolean;
+  differences: string[];
+}
+
+export interface RulesetReconciliationResult {
+  requiresWrite: boolean;
+  differences: string[];
+}

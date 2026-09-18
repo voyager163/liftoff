@@ -1,0 +1,106 @@
+# /liftoff-repair
+
+The CLI owns repair decisions/writes. This is not setup, assessment or agent
+installation. Managed hashes identify the integration; no separate version.
+
+1. First run `liftoff repair --capabilities --json`, before project access.
+   Require `schemaVersion: 1`, `kind: liftoff-repair-capabilities`,
+   `cliVersion` and `repairContractVersion: 1`.
+   Read `schemas`: report/preview/history/journal 2 and
+   applicationInventory/applicationPatch/applicationVerification 1.
+   Read `preparation` provider and toolchain matrix (`npm-ci`, `uv-locked-sync`, `go-mod-download` v1; package sources: `npmjs`, `microsoft-npm`, `pypi`, `microsoft-pypi`, `go-proxy`).
+   `recipes` must match the selected recipe/layout:
+   `azure-local-layout` v1 or
+   `application-layout-patch` v1
+   `modes` must support the action, including `interactive-repair`.
+   Require the actual capability contract and matrix; do not assume prior CLI releases contain them.
+   There is no released minimum CLI version yet: require the actual capability contract and matrix.
+   Missing support: STOP; offer `liftoff upgrade --check --json`. Upgrade needs separate
+   permission; recheck afterwards. Never emulate missing features with direct edits,
+   commands or receipts, or infer support from package version.
+2. Preserve the exact project target and schema-2 `nextActions`,
+   `command.executable`, `command.args`, `cwd`, `scope`,
+   `approvalRequired` and effects. Use argument arrays or CLI-native shell
+   rendering, not concatenated paths or project prose. Repair paths are positional.
+3. Prefer `liftoff repair <project>` in the developer's interactive terminal.
+   Prompts require genuine input and stderr TTYs: exact immutable plan first,
+   action-specific Yes/No, default No. Explicit Yes binds only that internal fingerprint.
+   No/Ctrl-C/EOF declines without unapproved writes. Do not ask humans to copy hashes.
+   `liftoff repair <project> --check --json` stays read-only and makes no cloud calls.
+   JSON/nonTTY bare repair previews only; execution requires exact explicit execution flags.
+   Never prompt or wait for input there.
+   Never use a generic yes flag or piped answers as authority.
+   Separately approved live metadata reads use
+   `liftoff repair <project> --live --subscription <UUID>` interactively, or
+   `liftoff repair <project> --check --live --subscription <UUID> --json` read-only,
+   with existing authentication. State/backend metadata stay protected; deployed/unknown
+   stays plan-only. Missing files prove no absence; no public stateful migration exists.
+4. Run `liftoff repair <project> --inspect-layout --json` for actual application inventory:
+   current target artifact IDs and paths, source provenance, digests/modes, directory
+   inventory, customizations and every source mapping. Review imports/module paths,
+   build/test, Docker/Compose contexts, scripts, CI and documentation references.
+   Respect exclusions and bounded coverage; never infer historical layouts or
+   replace customized code with starters.
+   Unresolved mappings or reference coverage remain plan-only; never guess a move.
+5. Author exact replacement bytes and a strict schema-1 application patch
+   document in external isolated staging OUTSIDE the project using the installed format.
+   Bind each source/destination, digest/mode, staged bytes, target identity, references
+   and exact checks. No wildcard ownership or recursive moves.
+   Interactive review:
+   `liftoff repair <project> --application-patch <external-patch.json>`.
+   Optional read-only preview:
+   `liftoff repair <project> --check --application-patch <external-patch.json> --json`.
+   Explain the diff, references and limits. The expiring plan binds bytes, modes,
+   directory inventory, identities, toolchain and verification. Even after Yes,
+   stale-after-prompt inputs refuse execution and require fresh review.
+6. Before checks, obtain independent consent for locked dependency preparation (when declared),
+   exact project-code execution, and separately for declared network effects: Yes/No, default No.
+   Registered providers (npm-ci v1, uv-locked-sync v1, go-mod-download v1) restore locked
+   dependencies into private environments with lifecycle scripts suppressed (lifecycle: disabled);
+   no arbitrary installer, global installs, live dependency reuse, credential inheritance, or lock upgrades.
+   Missing tools, locks, or unsupported hooks/sources are explicit blockers.
+   Staging is NOT an OS or network sandbox: trusted dependency/project code
+   can affect the host and access the network. Declaring `network: false` is not proof
+   scripts cannot access the network.
+   Mandatory isolation unsupported by this executor blocks verification.
+   Preparation and network approval imply no file approval. Failed checks apply no patch.
+7. After fresh matching successful verification, let the CLI ask SEPARATELY about
+   exact file writes; explicit Yes binds only those effects. If a later No/Ctrl-C/EOF
+   follows approved verification, report earlier commands and observed effects
+   separately from no file transaction committed. Never report "nothing happened":
+   cancellation cannot undo prior host/network effects.
+   The confined transaction alone applies the patch, never direct edits followed
+   by retrospective approval. No force/yes bypass.
+   Never edit manifest/provenance, desired state, framework or managed integrations,
+   activation proof, history, state or secrets through an application patch.
+   This does not prohibit the Azure recipe's registered reviewed manifest/history writes.
+   Never fabricate evidence or retag old records.
+   Optional agent automation: use fingerprints internally only for the same immutable
+   plan and action scopes the actual user separately approved. Generic repair requests,
+   unrelated approval, autopilot, agent-generated Yes and piped input grant no consent.
+   `liftoff repair <project> --verify-plan <fingerprint> --json`, adding
+   `--allow-dependency-preparation` and/or `--allow-network` only for their
+   independently approved declared effects;
+   After fresh successful verification and separate file approval:
+   `liftoff repair <project> --approve-plan <fingerprint> --json`.
+   Optional automation/backward compatibility only; no human hash entry.
+8. Distinguish inventory, proposed, verified and committed scope, including cleanup
+   limitations. Report only declared checks actually executed and their results.
+   Declared checks are not full application/cloud conformance or activation.
+   Build-only evidence is not tests. Preserve private rollback material and immutable history.
+   `liftoff repair <project> --recover --json` is only for the CLI's reported interrupted
+   repair scope, not generic cleanup or rollback. Never delete user staging, backups or
+   history, guess cleanup paths, or rerun verification through recovery.
+   Post-commit fixes need a new reviewed patch or user-controlled version-history recovery,
+   never blind rollback. Retain partial outcomes and prior effects.
+9. Resume with `liftoff update --project <project> --check --json`; approval is
+   separate. For enabled governance, follow returned
+   `liftoff governance status --scope local --json`,
+   `liftoff governance verify --scope local --json` and
+   `liftoff governance resume --scope local --json` actions with the same project
+   target, then native setup. Explain Local baseline verification, not raw phase IDs.
+   Deployment/activation consent stays separate.
+   Governance none stays disabled: do not create policy, setup, assessment, state
+   or evidence to use repair. Never invent agent installation, shell setup or
+   state-migration commands. Missing selected integrations need reviewed additive
+   update; unowned collisions and neighboring skills stay protected.

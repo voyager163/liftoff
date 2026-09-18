@@ -18,6 +18,7 @@ const cases = [
 const intentionalChanges = new Set([
   'manifest', 'root-readme', 'root-gitignore', 'root-dockerignore', 'env-example', 'docker-compose',
   'backend-settings', 'backend-model-config', 'backend-messaging-tool', 'backend-observability',
+  'backend-main',
   'backend-test-messaging', 'backend-test-tracing', 'database-alembic-env',
   'pattern-agent', 'pattern-prompt-readme', 'rag-vector-store', 'pattern-worker',
   'frontend-app', 'frontend-dockerignore', 'openspec-seed-tasks',

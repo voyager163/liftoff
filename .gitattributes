@@ -3,3 +3,6 @@
 /assets/locks/** text eol=lf
 /assets/repair/** text eol=lf
 /assets/supported-stack.json text eol=lf
+
+# Historical fixtures include byte-exact CRLF, BOM and binary payloads.
+/tests/fixtures/** -text

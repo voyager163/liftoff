@@ -3,6 +3,8 @@ import { canonicalPhaseGraph, currentActivationIdentity } from './graph.js';
 import { githubRepositoryFromPushUrl, remoteRepository } from './inputs.js';
 import type {
   ActivationConfiguration,
+  ActivationConfigurationBinding,
+  GovernanceScope,
   ActivationIdentity,
   ApprovalCostCeiling,
   ApprovalDestinationScope,
@@ -50,10 +52,10 @@ const activationIdentityProperties = {
   credentialPolicySchemaVersion: { const: currentActivationIdentity.credentialPolicySchemaVersion }
 } satisfies Record<string, unknown>;
 
-export const approvalEnvelopeV3Schema = {
+export const approvalEnvelopeV4Schema = {
   $schema: 'https://json-schema.org/draft/2020-12/schema',
-  $id: 'https://mission-control.local/liftoff/governance/approval-envelope.schema.v3.json',
-  title: 'Liftoff governance approval envelope v3',
+  $id: 'https://mission-control.local/liftoff/governance/approval-envelope.schema.v4.json',
+  title: 'Liftoff governance approval envelope v4',
   type: 'object',
   additionalProperties: false,
   required: [
@@ -78,7 +80,7 @@ export const approvalEnvelopeV3Schema = {
     schemaVersion: { const: currentActivationIdentity.approvalEnvelopeSchemaVersion },
     id: { type: 'string', minLength: 1 },
     phaseId: { type: 'string' },
-    scope: { enum: ['local', 'activation', 'lifecycle'] },
+    scope: { enum: ['local', 'repository', 'activation', 'lifecycle'] },
     coveredPhases: { type: 'array', uniqueItems: true, items: { enum: phaseIds } },
     operationDigests: { type: 'array', uniqueItems: true, items: { type: 'string', pattern: '^[a-f0-9]{64}$' } },
     phasePlanDigests: { type: 'object', additionalProperties: { type: 'string', pattern: '^[a-f0-9]{64}$' } },
@@ -136,10 +138,11 @@ export const approvalEnvelopeV3Schema = {
   }
 } as const;
 
-/** @deprecated Use approvalEnvelopeV3Schema for current execution. */
-export const approvalEnvelopeV2Schema = approvalEnvelopeV3Schema;
+/** @deprecated Naming facade only; current execution uses approvalEnvelopeV4Schema. */
+export const approvalEnvelopeV3Schema = approvalEnvelopeV4Schema;
+export const approvalEnvelopeV2Schema = approvalEnvelopeV4Schema;
 /** @deprecated Use the immutable historical contracts to read v1 artifacts. */
-export const approvalEnvelopeV1Schema = approvalEnvelopeV3Schema;
+export const approvalEnvelopeV1Schema = approvalEnvelopeV4Schema;
 
 function cleanString(value: string, path: string): string {
   if (typeof value !== 'string') {
@@ -629,6 +632,8 @@ export function transitionAuthorityDigest(input: {
   transitionDigest: string;
   operations?: readonly TransitionOperation[];
   configuration?: ActivationConfiguration;
+  configurationBinding?: ActivationConfigurationBinding;
+  selectionScope?: GovernanceScope;
   fileChanges?: readonly PlannedFileChange[];
   recovery?: boolean;
 }): string {
@@ -640,6 +645,8 @@ export function transitionAuthorityDigest(input: {
     allowedMutations: input.phase.allowedMutations,
     operations: input.operations === undefined ? null : authorityOperations(input.operations),
     configuration: input.configuration ?? null,
+    configurationBinding: input.configurationBinding ?? null,
+    selectionScope: input.selectionScope ?? phaseScope(input.phase.id),
     fileChanges: input.fileChanges ?? [],
     recovery: input.recovery ?? false
   });
@@ -654,6 +661,8 @@ export function transitionPlanForPhase(
   planned?: {
     operations: readonly TransitionOperation[];
     configuration?: ActivationConfiguration;
+    configurationBinding?: ActivationConfigurationBinding;
+    selectionScope?: GovernanceScope;
     fileChanges?: readonly PlannedFileChange[];
     recovery?: boolean;
   }
@@ -682,7 +691,8 @@ export function transitionPlanForPhase(
     baselineSha: transition.baselineSha,
     planDigest: transitionAuthorityDigest({
       phase, transitionDigest: transition.transitionDigest,
-      operations, configuration: planned?.configuration, fileChanges: planned?.fileChanges, recovery: planned?.recovery
+      operations, configuration: planned?.configuration, configurationBinding: planned?.configurationBinding,
+      selectionScope: planned?.selectionScope, fileChanges: planned?.fileChanges, recovery: planned?.recovery
     }),
     resources: effects ? [...new Map(effects.map((effect) => {
       const resource = { type: effect.mutationClass, identity: effect.destination.identity };
@@ -710,14 +720,17 @@ export function approvalRequestForSavedPlan(plan: SavedTransitionPlan, phase: Ph
   const primary = transitionPlanForPhase(phase, state, {
     phaseId: plan.phaseId, baselineSha: plan.baselineDigest,
     inputDigest: plan.inputDigest, transitionDigest: plan.transitionDigest
-  }, undefined, undefined, { operations: plan.operations, configuration: plan.configuration, fileChanges: plan.fileChanges, recovery: plan.recovery });
+  }, undefined, undefined, { operations: plan.operations, configuration: plan.configuration,
+    configurationBinding: plan.configurationBinding, selectionScope: plan.selectionScope,
+    fileChanges: plan.fileChanges, recovery: plan.recovery });
   if (!plan.approvalBundle?.length) return primary;
   const secondary = plan.approvalBundle.map((entry) => {
     const node = canonicalPhaseForApproval(entry.phaseId);
     return transitionPlanForPhase(node, state, {
       phaseId: entry.phaseId, baselineSha: plan.baselineDigest, inputDigest: entry.inputDigest,
       transitionDigest: entry.transitionDigest
-    }, undefined, undefined, { operations: entry.operations, configuration: plan.configuration, fileChanges: entry.fileChanges });
+    }, undefined, undefined, { operations: entry.operations, configuration: plan.configuration,
+      configurationBinding: plan.configurationBinding, selectionScope: plan.selectionScope, fileChanges: entry.fileChanges });
   });
   return combineApprovalRequests([primary, ...secondary]);
 }
@@ -725,14 +738,16 @@ export function approvalRequestForSavedPlan(plan: SavedTransitionPlan, phase: Ph
 export function savedPlanAuthorityDigest(plan: SavedTransitionPlan, phase: PhaseGraphNode): string {
   const primary = transitionAuthorityDigest({
     phase, transitionDigest: plan.transitionDigest, operations: plan.operations,
-    configuration: plan.configuration, fileChanges: plan.fileChanges, recovery: plan.recovery
+    configuration: plan.configuration, configurationBinding: plan.configurationBinding, selectionScope: plan.selectionScope,
+    fileChanges: plan.fileChanges, recovery: plan.recovery
   });
   if (!plan.approvalBundle?.length) return primary;
   const phasePlanDigests = Object.fromEntries([
     [phase.id, primary],
     ...plan.approvalBundle.map((entry) => [entry.phaseId, transitionAuthorityDigest({
       phase: canonicalPhaseForApproval(entry.phaseId), transitionDigest: entry.transitionDigest,
-      operations: entry.operations, fileChanges: entry.fileChanges, configuration: plan.configuration
+      operations: entry.operations, fileChanges: entry.fileChanges, configuration: plan.configuration,
+      configurationBinding: plan.configurationBinding, selectionScope: plan.selectionScope
     })])
   ]);
   return canonicalSha256({ scope: phaseScope(phase.id), phasePlanDigests });

@@ -1,0 +1,94 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+import { parseEnv } from 'node:util';
+
+export interface AppConfig {
+  appName: string;
+  appEnv: string;
+  port: number;
+  cloudProvider: string;
+  azureRegion: string;
+  databaseUrl: string;
+  redisUrl: string;
+  messagingTransport: string;
+  blobEndpoint?: string;
+  corsAllowedOrigins: string[];
+}
+
+let cachedConfig: AppConfig | undefined;
+
+function validateDotenv(text: string): void {
+  let position = 0;
+  const invalid = (offset: number): never => {
+    const line = text.slice(0, offset).split('\n').length;
+    throw new Error('Malformed runtime configuration at line ' + line + ': expected KEY=value with balanced quotes.');
+  };
+  if (text.includes('\0')) invalid(text.indexOf('\0'));
+  while (position < text.length) {
+    while (position < text.length && ' \t\r\n'.includes(text[position])) position++;
+    if (position === text.length) break;
+    const start = position;
+    if (text[position] === '#') {
+      while (position < text.length && !'\r\n'.includes(text[position])) position++;
+      continue;
+    }
+    const assignment = /^(?:export[ \t]+)?[A-Za-z_][A-Za-z0-9_]*[ \t]*=/.exec(text.slice(position));
+    if (!assignment) invalid(start);
+    position += assignment![0].length;
+    while (position < text.length && ' \t'.includes(text[position])) position++;
+    if (position < text.length && (text[position] === '"' || text[position] === "'")) {
+      const quote = text[position++];
+      while (position < text.length && text[position] !== quote) {
+        if (text[position] === '\\' && text[position + 1] === quote) invalid(start);
+        position += text[position] === '\\' ? 2 : 1;
+      }
+      if (position >= text.length) invalid(start);
+      position++;
+      while (position < text.length && ' \t'.includes(text[position])) position++;
+      if (position < text.length && !'#\r\n'.includes(text[position])) invalid(start);
+    }
+    while (position < text.length && !'\r\n'.includes(text[position])) position++;
+  }
+}
+
+
+export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
+  if (env === process.env && cachedConfig) return cachedConfig;
+  const selectedFile = env.LIFTOFF_ENV_FILE;
+  const file = selectedFile ?? fileURLToPath(new URL('../../.env', import.meta.url));
+  let local: Record<string, string | undefined> = {};
+  try {
+    const content = new TextDecoder('utf-8', { fatal: true }).decode(readFileSync(file));
+    validateDotenv(content);
+    local = parseEnv(content);
+  } catch (error) {
+    if (selectedFile !== undefined || (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+      throw new Error('Unable to read runtime configuration file: ' + file, { cause: error });
+    }
+  }
+  const resolved = { ...local, ...Object.fromEntries(Object.entries(env).filter(([, value]) => value !== undefined)) };
+  const databaseUrl = resolved.DATABASE_URL;
+  const redisUrl = resolved.REDIS_URL;
+  if (!databaseUrl || !redisUrl) {
+    throw new Error('DATABASE_URL and REDIS_URL are required.');
+  }
+  const port = Number(resolved.PORT ?? '8000');
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    throw new Error('PORT must be an integer from 1 to 65535.');
+  }
+  const config: AppConfig = {
+    appName: resolved.APP_NAME ?? "Flight Log",
+    appEnv: resolved.APP_ENV ?? 'dev',
+    port,
+    cloudProvider: resolved.CLOUD_PROVIDER ?? 'azure',
+    azureRegion: resolved.AZURE_REGION ?? 'eastus',
+    databaseUrl,
+    redisUrl,
+    messagingTransport: resolved.MESSAGING_TRANSPORT ?? 'redis-streams',
+    blobEndpoint: resolved.BLOB_ENDPOINT || undefined,
+    corsAllowedOrigins: (resolved.CORS_ALLOWED_ORIGINS ?? 'http://localhost:5173')
+      .split(',').map((origin) => origin.trim()).filter(Boolean)
+  };
+  if (env === process.env) cachedConfig = config;
+  return config;
+}

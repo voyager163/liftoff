@@ -1,0 +1,36 @@
+{
+	"id": "published-v2-publication-approval",
+	"phaseId": "committed",
+	"gateKind": "repository-publish",
+	"baselineSha": "152ee65754af56819de71c86667fce366013384868f4f5f7ad4b27fae3ad8c13",
+	"planDigest": "6b9fdc8aaf4b66ad0eec3d657e910b02f9fc3d34875353d243840c7687c38003",
+	"resources": [],
+	"destinations": [],
+	"permissions": [
+		"git-commit"
+	],
+	"costCeiling": {
+		"currency": "USD",
+		"fixedMonthlyCents": 0,
+		"usageMonthlyCents": 0
+	},
+	"policyExceptions": [],
+	"destructiveScope": [],
+	"expiresAt": "2026-09-01T08:15:00.000Z",
+	"approvedAt": "2026-09-01T08:00:00.000Z",
+	"approver": "historical-maintainer",
+	"schemaVersion": 2,
+	"identity": {
+		"liftoffVersion": "0.11.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 2,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"activationStateSchemaVersion": 2,
+		"evidenceHeaderSchemaVersion": 2,
+		"approvalEnvelopeSchemaVersion": 2,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	}
+}

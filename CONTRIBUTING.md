@@ -63,20 +63,14 @@ tofu -chdir=infrastructure/opentofu/telemetry validate
 The container smoke test requires a running Docker daemon. Standard hosted CI
 performs these static and local checks but never plans or applies production.
 
-On a Microsoft-managed device, pass the approved registries into generated
-container verification:
-
-```bash
-npm_config_registry=https://packagefeedproxy.microsoft.io/npm/ \
-npm_config_allow_remote=all \
-UV_DEFAULT_INDEX=https://packagefeedproxy.microsoft.io/pypi/simple \
-  npm --replace-registry-host=never run verify:generated-containers
-```
-
-The npm proxy returns approved backing-feed tarball URLs. Disabling registry-host
-replacement prevents a user-level `replace-registry-host=always` setting from
-rewriting those URLs into invalid proxy paths; npm 12 requires the command-local
-remote opt-in for that redirect. Do not persist either override globally.
+Generated container verification uses public npm and PyPI defaults; a particular
+device, employer, or Docker installation does not by itself require a proxy.
+Only when an explicit organizational policy requires another approved registry,
+pass its credential-free URL through command-local `npm_config_registry` or
+`UV_DEFAULT_INDEX`. Review any registry-host rewriting or remote redirect
+requirements for that specific feed instead of enabling broad overrides by
+default. Do not persist verification overrides globally or commit workstation
+registry preferences.
 
 The package smoke test builds, runs `npm pack`, checks the explicit package
 surface and size budget, installs the tarball into an isolated prefix, and
@@ -108,8 +102,8 @@ short landing page. Static README assets live under `docs/assets/`. No
 documentation generator is required.
 
 Release-owned compatibility, deterministic setup version vectors, bump rules,
-graph integrity, credential leak tests, cross-agent equivalence, and npm trusted
-publishing requirements live in [DEVELOPER.md](DEVELOPER.md).
+graph integrity, credential leak tests, cross-agent equivalence, native release
+qualification, and historical npm recovery live in [DEVELOPER.md](DEVELOPER.md).
 
 When editing documentation:
 
@@ -142,13 +136,10 @@ workflow runs the same command weekly and through manual dispatch. Ordinary
 pull-request CI uses committed fixtures so new registry advisories or registry
 outages do not make unrelated test runs nondeterministic.
 
-The command defaults to canonical npm. On a Microsoft-managed device where
-public registries are blocked, use the approved feed for local verification:
-
-```bash
-LIFTOFF_NPM_AUDIT_REGISTRY=https://packagefeedproxy.microsoft.io/npm/ \
-  npm run audit:template-dependencies
-```
+The command defaults to canonical npm. If an explicit organizational policy
+requires an approved mirror, select its credential-free URL with the command-local
+`LIFTOFF_NPM_AUDIT_REGISTRY` override. Do not infer a registry restriction from the
+workstation or persist a machine-specific preference in project documentation.
 
 GitHub-hosted workflows leave this override unset and continue to audit against
 `https://registry.npmjs.org`.
@@ -271,10 +262,16 @@ openspec validate <change-name> --strict
 ## Pull requests
 
 - Keep changes focused and include tests for changed behavior.
+- Only `main` and `develop` are permanent source branches; temporary feature,
+  repair, release, and Dependabot PR branches remain valid while active.
+  Branch preservation requires live ref inventory and owner release;
+  `assets/qualification/source-preservation.json` records the preservation plan.
 - Update user and contributor documentation when commands, generated output,
   or workflows change.
 - Confirm generated projects contain no real credentials or unreviewed live
   resource bindings; nonsecret environment defaults must be explicit.
+- Source-only qualification is not real native, provider, or dashboard qualification;
+  missing credentials, signing, or live infrastructure remain explicit blockers.
 - Do not change persisted manifest identity, activation version vectors, graph
   hashes, schema versions, compatibility maps, or stable identifiers without an
   explicit main-spec decision and migration or rejection-remedy tests.
@@ -283,22 +280,26 @@ openspec validate <change-name> --strict
 
 ## Release verification
 
-The public release authority is `https://registry.npmjs.org`. The `Release
-Liftoff` workflow runs package checks, package smoke, a pack inspection, and
-release-identity validation before publishing. It uses npm trusted publishing
-with provenance and verifies the published dist-tag from canonical npm
-afterward.
+Historical npm publications used `https://registry.npmjs.org` with npm trusted publishing.
+Current candidate 0.13.0 and future distributions cut over to the coordinated native
+release workflow (`.github/workflows/release.yml`), validating self-contained bundles,
+candidate owner channels (Homebrew cask, WinGet portable, direct archive), and signed
+evidence without publishing an npm package or bridge.
+These are target channels, not claims of published artifacts, native qualification,
+or package-manager availability.
 
 Before tagging, update package and lockfile metadata together and run:
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.12.3
+npm run verify:release-identity -- v0.13.0
 ```
 
 Replace the example tag with the intended release. The Git tag, root package
-metadata, root lockfile metadata, packed package version, and installed
+metadata, root lockfile metadata, native bundle version, and installed
 `liftoff --version` output must all identify the same release.
+This source check does not replace signed-artifact, native-host, owner-channel,
+or separately authorized publication qualification.
 
 When a release raises runtime floors or adopts generated-stack majors, label it
 as breaking and direct existing projects to `liftoff update --check` before
@@ -308,46 +309,61 @@ core update never applies them. The release rollback boundary is a source revert
 before publication. Project owners recover separately applied template changes
 through version control; Liftoff must not silently downgrade their dependencies.
 
-The first release containing `liftoff upgrade` must retain the one-time bootstrap
-command for users on older versions:
+### Historical npm verification
+
+Before the native cutover, releases predating npm self-upgrade required a manual
+npm upgrade to a then-published version. That historical bootstrap is not the
+current setup path. Even an npm installation whose `upgrade` reports current
+cannot discover native-only releases; use the separately approved
+[native installation handover](docs/native-installation.md).
+
+The retained verifier selects one exact stable historical version no newer than
+`0.12.3`, independently of this checkout's native candidate version:
 
 ```bash
-npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+npm run verify:published -- 0.12.3
+npm run verify:published -- 0.3.3 --allow-legacy-version-command
 ```
 
-That explicit canonical default is reference material for approved canonical
-delivery. Managed installations retain their configured
-`@msn-control:registry` before the default registry; do not override a scoped
-mirror to bypass policy. Canonical verification isolates the scope only for its
-read-only comparison.
+It installs only the selected version from canonical npm into a disposable
+prefix, cache, and home, then checks its package identity and supported commands
+outside the checkout. The second invocation retains only the immutable `0.3.3`
+command exception; no native artifact may use it. Mutable `latest`/`next` tags,
+newer versions, and mixed tag/version inputs are rejected.
 
-All upgrade apply tests use temporary prefixes, homes, caches, and injected
-registry responses. Never run self-upgrade apply against a developer or release
-runner's actual global prefix.
+This is an isolated historical command/identity smoke check, not proof of
+original tarball/source provenance or current native qualification. Verify
+retained immutable tarball, source, lockfile, and publication evidence separately.
+Historical dist-tag claims refer to the tag at publication time; today's tag
+need not equal an earlier release and must never represent native availability.
 
-Stable versions publish with `latest`; prereleases publish with `next`. The
-post-publish verifier must remain after `npm publish`, receive the selected
-dist-tag, and must not use `continue-on-error` or legacy compatibility mode.
+Managed installations retain their configured `@msn-control:registry` before
+the default registry. Never bypass a scoped mirror to recover a historical
+installation; the explicit canonical verification above is a separate comparison,
+not installation authority. All upgrade apply tests use temporary prefixes,
+homes, caches, and injected registry responses. Never apply against a developer
+or release runner's actual global prefix.
 
 ## Release recovery
 
-If canonical post-publish verification fails, do not announce the release as
-complete. Compare the expected and observed dist-tag versions.
+If native release qualification or publication fails, retain the exact artifact,
+source, approval, and per-effect evidence and report the incomplete state. Do not
+announce a partial stable release, publish an npm bridge, move npm tags, or use
+an unsigned or unqualified rebuild as recovery. Reconcile any already-published
+native effects through the separately reviewed release procedure.
 
-- Correct the dist-tag when the expected immutable package already exists.
-- Otherwise publish a corrected patch release.
-- Do not unpublish a released package as routine recovery.
+Historical npm recovery likewise compares the explicit expected version with
+the observed package and executable identity. Do not unpublish or replace a
+released package as routine recovery. A successful canonical historical check
+does not make an external managed mirror ready: withhold internal installation
+guidance until that approved mirror exposes the exact historical version and
+an isolated mirrored installation reports the expected identity.
 
-A successful canonical release does not make an external managed mirror ready.
-Teams using a managed registry must withhold internal installation guidance
-until the mirror exposes both the canonical stable dist-tag and explicit
-version and a clean mirrored install reports the expected version.
-
-Pre-0.3 releases remain available for reproducibility. An authorized npm
-release owner applies the warning without unpublishing:
+Pre-0.3 releases remain available for reproducibility. Updating a registry warning
+is separate authorized historical maintenance, not part of current publication:
 
 ```bash
-npm deprecate '@msn-control/liftoff@<0.3.0' 'Liftoff versions before 0.3.0 are unsupported. Upgrade to @msn-control/liftoff@latest.' --registry=https://registry.npmjs.org
+npm deprecate '@msn-control/liftoff@<0.3.0' 'Liftoff versions before 0.3.0 are unsupported. Current releases are native-only; see https://github.com/voyager163/liftoff/blob/main/docs/native-installation.md.' --registry=https://registry.npmjs.org
 ```
 
 Verify that an old explicit version retains both the warning and tarball:

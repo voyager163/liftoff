@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { nativeExecutableObserver } from '../../adapters/filesystem/executables.js';
+import { executableCandidates } from '../../domain/workstation/executables.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { compareVersionCores, extractVersion, isPrereleaseVersion, matchesReleaseLine } from '../../domain/workstation/versions.js';
 import { NodeCommandRunner } from '../../process-runner.js';
@@ -28,6 +29,7 @@ async function toolFile(
   if ([projectRoot, stagingRoot].some((root) => applicationWithin(root, target)) || /[\u0000-\u001f\u007f]/u.test(target)) {
     throw new ApplicationInspectionError('[untrusted-tool] Installed tools must resolve outside project/staging paths, not to project PATH shims.');
   }
+
   const before = await lstat(target, { bigint: true });
   if (!before.isFile() || before.isSymbolicLink() || before.size > BigInt(applicationPreparationBounds.toolFileBytes) ||
       before.size === 0n) {
@@ -77,6 +79,21 @@ async function toolFile(
   }
 }
 
+export const captureInstalledApplicationToolFile = toolFile;
+
+async function toolFileIfExists(
+  target: string, projectRoot: string, stagingRoot: string, binary: boolean
+): Promise<ApplicationToolFileIdentity | null> {
+  try {
+    return await toolFile(target, projectRoot, stagingRoot, binary);
+  } catch (error) {
+    if (error instanceof ApplicationInspectionError) throw error;
+    const code = error && typeof error === 'object' && 'code' in error ? (error as { code: unknown }).code : undefined;
+    if (code === 'ENOENT' || code === 'ENOTDIR') return null;
+    throw error;
+  }
+}
+
 async function readNpmIdentity(file: string): Promise<{ name: string; version: string }> {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
@@ -99,7 +116,7 @@ export async function resolveApplicationPreparationTools(
   projectRoot: string, stagingRoot: string, preparation: readonly ApplicationResolvedPreparation[],
   options: ApplicationInspectionOptions = {}, additionalTools: readonly ApplicationToolId[] = []
 ): Promise<ApplicationToolIdentity[]> {
-  if (!preparation.length) return [];
+  if (!preparation.length && !additionalTools.length) return [];
   const platform = process.platform;
   if (platform !== 'darwin' && platform !== 'linux' && platform !== 'win32') {
     throw new ApplicationInspectionError('[unsupported-tool-platform] Preparation tool identities cannot be observed on this platform.');
@@ -121,82 +138,128 @@ export async function resolveApplicationPreparationTools(
     for (const id of order.filter((item) => requested.has(item))) {
       const definition = workstationRequirementCatalog[id];
       const names = id === 'python' ? ['python3', 'python'] : [id];
-      let launcher: { path: string; realPath: string } | undefined;
-      for (const executable of names) {
-        const observed = await nativeExecutableObserver.resolve(executable, {
-          platform: platform as SupportedPlatform, cwd: probeRoot, env, definition
-        });
+      const requirement = applicationToolRequirement(id);
+      const observationContext = {
+        platform: platform as SupportedPlatform,
+        cwd: probeRoot,
+        env,
+        definition
+      };
+      const candidatePaths = names.flatMap((name) => executableCandidates(name, observationContext));
+
+      let foundTool: ApplicationToolIdentity | undefined;
+      let sawIncompatible = false;
+
+      for (const candidatePath of candidatePaths) {
+        const observed = await nativeExecutableObserver.inspect(candidatePath, observationContext);
         if (observed.resolution !== 'resolved') continue;
+
         if ([projectRoot, stagingRoot].some((root) => applicationWithin(root, observed.realPath!) ||
             applicationWithin(root, path.resolve(observed.resolvedPath!)))) {
           throw new ApplicationInspectionError(`[untrusted-tool] ${id} resolves through project/staging executable scope.`);
         }
-        launcher = { path: observed.resolvedPath!, realPath: observed.realPath! };
+
+        const launcher = { path: observed.resolvedPath!, realPath: observed.realPath! };
+        let executablePath = launcher.realPath;
+        const prefixArgs: string[] = [];
+        const files: ApplicationToolFileIdentity[] = [];
+        let declaredNpmVersion: string | undefined;
+
+        const launcherIdentity = await toolFileIfExists(launcher.path, projectRoot, stagingRoot, id !== 'npm');
+        if (!launcherIdentity) continue;
+
+        if (id === 'npm') {
+          const node = tools.find((item) => item.id === 'node');
+          if (!node) throw new ApplicationInspectionError('[missing-tool] npm preparation requires an independently resolved Node interpreter.');
+          const cli = path.basename(launcher.realPath) === 'npm-cli.js'
+            ? launcher.realPath
+            : path.join(path.dirname(launcher.realPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+          const cliIdentity = await toolFileIfExists(cli, projectRoot, stagingRoot, false);
+          if (!cliIdentity) {
+            // cli missing: skip candidate
+            continue;
+          }
+          if (path.basename(path.dirname(cliIdentity.path)) !== 'bin' ||
+              path.basename(path.dirname(path.dirname(cliIdentity.path))) !== 'npm') {
+            throw new ApplicationInspectionError('[untrusted-tool] npm does not resolve to its registered installed JavaScript launcher.');
+          }
+          const packagePath = path.join(path.dirname(path.dirname(cliIdentity.path)), 'package.json');
+          const packageIdentity = await toolFileIfExists(packagePath, projectRoot, stagingRoot, false);
+          if (!packageIdentity) {
+            // package.json missing: skip candidate
+            continue;
+          }
+          declaredNpmVersion = (await readNpmIdentity(packageIdentity.path)).version;
+
+          if (!declaredNpmVersion || !matchesReleaseLine(declaredNpmVersion, requirement.releaseLine) ||
+              compareVersionCores(declaredNpmVersion, requirement.minimumVersion) < 0 ||
+              (!requirement.allowPrerelease && isPrereleaseVersion(declaredNpmVersion))) {
+            sawIncompatible = true;
+            continue;
+          }
+
+          files.push(launcherIdentity, cliIdentity, packageIdentity, ...node.files);
+          executablePath = node.executablePath;
+          prefixArgs.push(cliIdentity.path);
+        } else {
+          files.push(launcherIdentity);
+          executablePath = files[0]!.path;
+        }
+
+        const probe = {
+          executable: executablePath,
+          args: [...prefixArgs, ...(id === 'go' ? ['version'] : id === 'python' ? ['-I', '-S', '--version'] : ['--version'])]
+        };
+        const actual = await runner.run(probe, {
+          cwd: probeRoot, env, timeoutMs: applicationPreparationBounds.probeTimeoutMs,
+          maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false
+        });
+        const diagnostic = applicationCommandFailure({
+          executable: id, args: probe.args, cwdPathParts: [], network: false,
+          timeoutMs: applicationPreparationBounds.probeTimeoutMs, maxOutputBytes: applicationPreparationBounds.probeOutputBytes
+        }, actual);
+        if (diagnostic) {
+          unsafeCleanup ||= diagnostic.cleanupUnsafe;
+          throw new ApplicationInspectionError(`[tool-probe-${diagnostic.kind}] Installed ${id} metadata could not be confirmed. ${diagnostic.message}`);
+        }
+
+        const version = extractVersion(`${actual.stdout}\n${actual.stderr}`, id);
+        if (!version || !/^\d+\.\d+\.\d+$/u.test(version) || !matchesReleaseLine(version, requirement.releaseLine) ||
+            compareVersionCores(version, requirement.minimumVersion) < 0 ||
+            (!requirement.allowPrerelease && isPrereleaseVersion(version)) ||
+            (id === 'npm' && version !== declaredNpmVersion)) {
+          sawIncompatible = true;
+          continue;
+        }
+
+        const uniqueFiles = [...new Map(files.map((item) => [item.path, item])).values()];
+        let changed = false;
+        for (const file of uniqueFiles) {
+          const checked = await toolFile(file.path, projectRoot, stagingRoot, id !== 'npm');
+          if (canonicalSha256(checked) !== canonicalSha256(file)) {
+            changed = true;
+            break;
+          }
+        }
+        if (changed) {
+          throw new ApplicationInspectionError('[changed-tool] Installed tool identity changed during its probe.');
+        }
+        if (await realpath(launcher.path) !== files[0]?.path) {
+          throw new ApplicationInspectionError('[changed-tool] Installed launcher resolution changed during its probe.');
+        }
+
+        const body = { schemaVersion: 1 as const, id, launcherPath: launcher.path, executablePath, prefixArgs, version, requirement, files: uniqueFiles, probe };
+        foundTool = { ...body, digest: canonicalSha256(body) };
+        tools.push(foundTool);
         break;
       }
-      if (!launcher) {
+
+      if (!foundTool) {
+        if (sawIncompatible) {
+          throw new ApplicationInspectionError(`[incompatible-tool] Installed ${id} must satisfy ${requirement.minimumVersion}+ on release line ${requirement.releaseLine}; its resolved file identity and version must agree. Prepare a compatible tool separately.`);
+        }
         throw new ApplicationInspectionError(`[missing-tool] Compatible installed ${id} is required for this preparation provider. Prepare that tool separately; repair does not install it.`);
       }
-      let executablePath = launcher.realPath;
-      const prefixArgs: string[] = [];
-      const files: ApplicationToolFileIdentity[] = [];
-      let declaredNpmVersion: string | undefined;
-      if (id === 'npm') {
-        const node = tools.find((item) => item.id === 'node');
-        if (!node) throw new ApplicationInspectionError('[missing-tool] npm preparation requires an independently resolved Node interpreter.');
-        const cli = path.basename(launcher.realPath) === 'npm-cli.js'
-          ? launcher.realPath
-          : path.join(path.dirname(launcher.realPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-        const cliIdentity = await toolFile(cli, projectRoot, stagingRoot, false);
-        if (path.basename(path.dirname(cliIdentity.path)) !== 'bin' ||
-            path.basename(path.dirname(path.dirname(cliIdentity.path))) !== 'npm') {
-          throw new ApplicationInspectionError('[untrusted-tool] npm does not resolve to its registered installed JavaScript launcher.');
-        }
-        const packagePath = path.join(path.dirname(path.dirname(cliIdentity.path)), 'package.json');
-        const packageIdentity = await toolFile(packagePath, projectRoot, stagingRoot, false);
-        declaredNpmVersion = (await readNpmIdentity(packageIdentity.path)).version;
-        files.push(await toolFile(launcher.path, projectRoot, stagingRoot, false), cliIdentity, packageIdentity,
-          ...node.files);
-        executablePath = node.executablePath;
-        prefixArgs.push(cliIdentity.path);
-      } else {
-        files.push(await toolFile(launcher.path, projectRoot, stagingRoot, true));
-        executablePath = files[0]!.path;
-      }
-      const probe = {
-        executable: executablePath,
-        args: [...prefixArgs, ...(id === 'go' ? ['version'] : id === 'python' ? ['-I', '-S', '--version'] : ['--version'])]
-      };
-      const actual = await runner.run(probe, {
-        cwd: probeRoot, env, timeoutMs: applicationPreparationBounds.probeTimeoutMs,
-        maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false
-      });
-      const diagnostic = applicationCommandFailure({
-        executable: id, args: probe.args, cwdPathParts: [], network: false,
-        timeoutMs: applicationPreparationBounds.probeTimeoutMs, maxOutputBytes: applicationPreparationBounds.probeOutputBytes
-      }, actual);
-      if (diagnostic) {
-        unsafeCleanup ||= diagnostic.cleanupUnsafe;
-        throw new ApplicationInspectionError(`[tool-probe-${diagnostic.kind}] Installed ${id} metadata could not be confirmed. ${diagnostic.message}`);
-      }
-      const version = extractVersion(`${actual.stdout}\n${actual.stderr}`, id);
-      const requirement = applicationToolRequirement(id);
-      if (!version || !/^\d+\.\d+\.\d+$/u.test(version) || !matchesReleaseLine(version, requirement.releaseLine) ||
-          compareVersionCores(version, requirement.minimumVersion) < 0 ||
-          !requirement.allowPrerelease && isPrereleaseVersion(version) ||
-          id === 'npm' && version !== declaredNpmVersion) {
-        throw new ApplicationInspectionError(`[incompatible-tool] Installed ${id} must satisfy ${requirement.minimumVersion}+ on release line ${requirement.releaseLine}; its resolved file identity and version must agree. Prepare a compatible tool separately.`);
-      }
-      const uniqueFiles = [...new Map(files.map((item) => [item.path, item])).values()];
-      for (const file of uniqueFiles) {
-        const checked = await toolFile(file.path, projectRoot, stagingRoot, id !== 'npm');
-        if (canonicalSha256(checked) !== canonicalSha256(file)) throw new ApplicationInspectionError('[changed-tool] Installed tool identity changed during its probe.');
-      }
-      if (await realpath(launcher.path) !== files[0]?.path) {
-        throw new ApplicationInspectionError('[changed-tool] Installed launcher resolution changed during its probe.');
-      }
-      const body = { schemaVersion: 1 as const, id, launcherPath: launcher.path, executablePath, prefixArgs, version, requirement, files: uniqueFiles, probe };
-      tools.push({ ...body, digest: canonicalSha256(body) });
     }
     return tools;
   } catch (error) {

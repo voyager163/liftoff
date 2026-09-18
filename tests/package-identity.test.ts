@@ -16,6 +16,18 @@ import { CANONICAL_NPM_REGISTRY } from '../src/published-verifier.js';
 import { supportedStack } from '../src/supported-stack.js';
 
 describe('canonical Liftoff package identity', () => {
+  it('keeps the native-only source package non-publishable while retaining complete local resource packaging', () => {
+    const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8'));
+    expect(packageJson.private).toBe(true);
+    expect(packageJson.publishConfig).toBeUndefined();
+    expect(packageJson.files).toEqual(expect.arrayContaining([
+      'assets/skills', 'assets/templates', 'assets/profiles',
+      'assets/locks', 'assets/governance', 'assets/repair', 'assets/supported-stack.json', 'docs'
+    ]));
+    expect(packageJson.files).not.toContain('assets');
+    expect(packageJson.files).not.toContain('assets/qualification');
+  });
+
   it('shares package, registry, stable channel, and npm baseline constants', () => {
     const packageJson = JSON.parse(
       readFileSync(new URL('../package.json', import.meta.url), 'utf8')

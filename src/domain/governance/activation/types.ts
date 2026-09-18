@@ -4,6 +4,12 @@ export const phaseIds = [
   'seed-archived',
   'committed',
   'pushed',
+  'repository-discovered',
+  'repository-workflow-source-ready',
+  'repository-checks-qualified',
+  'repository-enforcement-approved',
+  'repository-rulesets-applied',
+  'repository-live-readback',
   'phase-0-complete',
   'activation-approved',
   'bootstrap-workflow-source-ready',
@@ -32,19 +38,33 @@ export const phaseIds = [
 
 export type PhaseId = typeof phaseIds[number];
 
-export const governanceScopes = ['local', 'activation', 'lifecycle'] as const;
+export const governanceScopes = ['local', 'repository', 'activation', 'lifecycle'] as const;
 export type GovernanceScope = typeof governanceScopes[number];
 
 export const localSetupPhaseIds = ['seed-valid', 'seed-verified', 'seed-archived'] as const satisfies readonly PhaseId[];
 export const lifecyclePhaseIds = ['bootstrap-state-disposed'] as const satisfies readonly PhaseId[];
+export const sharedPublicationPhaseIds = ['committed', 'pushed'] as const satisfies readonly PhaseId[];
+export const repositoryPhaseIds = [
+  'repository-discovered', 'repository-workflow-source-ready', 'repository-checks-qualified',
+  'repository-enforcement-approved', 'repository-rulesets-applied', 'repository-live-readback'
+] as const satisfies readonly PhaseId[];
 export const activationPhaseIds: readonly PhaseId[] = phaseIds.filter((id) =>
-  !(localSetupPhaseIds as readonly PhaseId[]).includes(id) && !(lifecyclePhaseIds as readonly PhaseId[]).includes(id)
+  !(localSetupPhaseIds as readonly PhaseId[]).includes(id) && !(lifecyclePhaseIds as readonly PhaseId[]).includes(id) &&
+  !(repositoryPhaseIds as readonly PhaseId[]).includes(id)
 );
 
 export function phaseScope(phaseId: PhaseId): GovernanceScope {
   if ((localSetupPhaseIds as readonly PhaseId[]).includes(phaseId)) return 'local';
+  if ((repositoryPhaseIds as readonly PhaseId[]).includes(phaseId)) return 'repository';
   if ((lifecyclePhaseIds as readonly PhaseId[]).includes(phaseId)) return 'lifecycle';
   return 'activation';
+}
+
+export function phaseInScope(phaseId: PhaseId, scope: GovernanceScope, prerequisites = false): boolean {
+  if (phaseScope(phaseId) === scope) return true;
+  if (scope === 'repository' && (sharedPublicationPhaseIds as readonly PhaseId[]).includes(phaseId)) return true;
+  return prerequisites && (scope === 'activation' || scope === 'repository') &&
+    (localSetupPhaseIds as readonly PhaseId[]).includes(phaseId);
 }
 
 export const phaseStates = [
@@ -229,6 +249,7 @@ export interface ManagedPhaseGraph {
   phases: readonly PhaseGraphNode[];
   completionGroups: {
     local: readonly PhaseId[];
+    repository: readonly PhaseId[];
     activation: readonly PhaseId[];
     lifecycle: readonly PhaseId[];
   };
@@ -249,6 +270,12 @@ export interface ActivationConfiguration {
   };
   budget?: ApprovalCostCeiling;
   phases: Partial<Record<PhaseId, Readonly<Record<string, unknown>>>>;
+}
+
+export interface ActivationConfigurationBinding {
+  schemaVersion: 1;
+  reference: string;
+  digest: string;
 }
 
 export interface ExternalOperationState {
@@ -382,6 +409,7 @@ export interface UserActivationState {
   successorHistory?: ActivationSuccessorHistory;
   taskProjection?: GovernanceTaskProjectionRecord;
   activationInputs?: ActivationConfiguration;
+  configurationBinding?: ActivationConfigurationBinding;
   phaseOutputs?: Partial<Record<PhaseId, PhaseOutputBindings>>;
   bootstrapState?: BootstrapStateRetention;
   phases: Record<PhaseId, PhaseExecutionState>;
@@ -490,6 +518,7 @@ export interface TransitionRollbackPlan {
 export interface SavedTransitionPlan {
   schemaVersion: 2;
   scope: GovernanceScope;
+  selectionScope?: GovernanceScope;
   phaseId: PhaseId;
   createdAt: string;
   expiresAt: string;
@@ -512,6 +541,7 @@ export interface SavedTransitionPlan {
   rollbackPlan: TransitionRollbackPlan;
   noSecrets: true;
   configuration?: ActivationConfiguration;
+  configurationBinding?: ActivationConfigurationBinding;
   fileChanges?: readonly PlannedFileChange[];
   recovery?: boolean;
   approvalBundle?: readonly {
@@ -641,12 +671,40 @@ export const runnerPreflightPatLifetimeDays = 30 as const;
 export const runnerPreflightRotationLeadDays = 7 as const;
 export const runnerPreflightRepositoryPermissions = ['metadata:read'] as const;
 export const runnerPreflightOrganizationPermissions = [
-  'hosted-runners:read',
-  'network-configurations:read'
+  'organization_administration:read',
+  'organization_network_configurations:read'
 ] as const;
+export const runnerPreflightProviderPermissions = Object.freeze({
+  metadata: 'read', organization_administration: 'read', organization_network_configurations: 'read'
+} as const);
+export const runnerPreflightProviderReadDisclosure = Object.freeze({
+  kind: 'github-organization-administration-read.v1',
+  permission: 'organization_administration:read',
+  additionalReadReachScope: 'all-organization-administration-read-endpoints',
+  readCategories: Object.freeze(['organization', 'billing', 'actions-settings'] as const),
+  executionBoundary: 'exact-approved-endpoints-and-resources'
+} as const);
 
 export type CredentialAuthKind = 'github-app' | 'fine-grained-pat';
 export type CredentialStatus = 'active' | 'expiring' | 'expired' | 'compromised';
+export type CredentialProviderPermissionMap = Readonly<Record<string, 'read' | 'write' | 'admin'>>;
+export type ObservedCredentialPermissions =
+  | { kind: 'github-app'; permissions: CredentialProviderPermissionMap }
+  | { kind: 'fine-grained-pat'; permissions: {
+      repository: CredentialProviderPermissionMap;
+      organization: CredentialProviderPermissionMap;
+      other: CredentialProviderPermissionMap;
+    } };
+
+export function requiredCredentialProviderPermissions(kind: CredentialAuthKind): ObservedCredentialPermissions {
+  return kind === 'github-app' ? { kind, permissions: runnerPreflightProviderPermissions } : {
+    kind, permissions: {
+      repository: { metadata: 'read' },
+      organization: { organization_administration: 'read', organization_network_configurations: 'read' },
+      other: {}
+    }
+  };
+}
 
 export interface CredentialRepositoryIdentity {
   id: string;
@@ -705,6 +763,8 @@ export interface CredentialPolicy {
   rotationLeadDays: typeof runnerPreflightRotationLeadDays;
   rotationDueAt: string;
   permissions: CredentialPermissionSet;
+  providerPermissions: ObservedCredentialPermissions;
+  providerReadDisclosure: typeof runnerPreflightProviderReadDisclosure;
   allowedWorkflows: readonly CredentialWorkflowAllowlistEntry[];
   nonForwarding: true;
   status: CredentialStatus;

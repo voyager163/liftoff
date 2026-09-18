@@ -1,10 +1,10 @@
 import type { ParsedArgs } from '../../domain/project/contracts.js';
 import type { ExecutionContext } from '../../application/context.js';
-import { repairProject } from '../../application/repair/use-case.js';
+import { getApplicationEngines } from '../../application/engine-composition.js';
 import { readBooleanFlag, readStringFlag } from '../args/readers.js';
 
 export async function repairCommand(parsed: ParsedArgs, context: ExecutionContext): Promise<number> {
-  return repairProject({
+  return (await getApplicationEngines(context))['project-evolution'].repairProject({
     project: readStringFlag(parsed.flags, 'project') ?? parsed.positional[0],
     check: readBooleanFlag(parsed.flags, 'check') === true,
     live: readBooleanFlag(parsed.flags, 'live') === true,
@@ -17,6 +17,7 @@ export async function repairCommand(parsed: ParsedArgs, context: ExecutionContex
     allowNetwork: readBooleanFlag(parsed.flags, 'allow-network') === true,
     allowDependencyPreparation: readBooleanFlag(parsed.flags, 'allow-dependency-preparation') === true,
     recover: readBooleanFlag(parsed.flags, 'recover') === true,
+    recipe: readStringFlag(parsed.flags, 'recipe'),
     json: readBooleanFlag(parsed.flags, 'json') === true
   }, context);
 }

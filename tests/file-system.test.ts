@@ -25,6 +25,7 @@ import {
   currentActivationIdentity,
   createActivationIdentity
 } from '../src/governance-activation/index.js';
+import { historicalV3ActivationIdentity } from '../src/domain/governance/policy/identity.js';
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures');
 const cleanups: string[] = [];
@@ -105,6 +106,10 @@ async function v5ManifestRoot(
   const managedArtifacts = manifest.managedArtifacts as Array<Record<string, unknown>>;
   const projectArtifacts = manifest.projectArtifacts as Array<Record<string, unknown>>;
   manifest.artifactVersion = 5;
+  delete manifest.standards;
+  delete manifest.provenance;
+  const governance = manifest.governance as Record<string, unknown>;
+  if (governance.profile !== 'none') governance.policyVersion = '6';
   manifest.artifacts = [
     ...managedArtifacts,
     ...projectArtifacts.map((artifact) => ({
@@ -139,6 +144,12 @@ async function v6ManifestRoot(
   const manifest = JSON.parse(
     artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
   ) as Record<string, unknown>;
+  manifest.artifactVersion = 6;
+  delete manifest.standards;
+  delete manifest.provenance;
+  const governance = manifest.governance as Record<string, unknown>;
+  governance.policyVersion = '6';
+  delete governance.activationIdentity;
   mutate?.(manifest);
   await writeFile(
     path.join(root, 'liftoff.manifest.json'),
@@ -163,6 +174,14 @@ async function v7ManifestRoot(
   const manifest = JSON.parse(
     artifacts.find((artifact) => artifact.logicalName === 'manifest')!.content
   ) as Record<string, unknown>;
+  manifest.artifactVersion = 7;
+  delete manifest.standards;
+  delete manifest.provenance;
+  const governance = manifest.governance as Record<string, unknown>;
+  if (governance.profile !== 'none') {
+    governance.policyVersion = '6';
+    governance.activationIdentity = structuredClone(historicalV3ActivationIdentity);
+  }
   mutate?.(manifest);
   await writeFile(
     path.join(root, 'liftoff.manifest.json'),
@@ -207,9 +226,9 @@ describe('manifest validation', () => {
     }, /unsafe path part/],
     ['unsupported activation tuple', (value: any) => {
       value.governance.activationIdentity.phaseGraphHash = 'f'.repeat(64);
-    }, /explicit compatibility map|recognized graph hashes/],
+    }, /explicit compatibility map|recognized graph hashes|activationIdentity is invalid/],
     ['future manifest schema', (value: any) => {
-      value.artifactVersion = 8;
+      value.artifactVersion = 9;
     }, /Unsupported manifest artifactVersion/],
     ['project-owned managed name', (value: any) => {
       value.managedArtifacts[0].logicalName = 'project-owned-workflow';
@@ -234,7 +253,7 @@ describe('manifest validation', () => {
     const framework = normalizeManifestFramework(raw.framework, raw.artifactVersion, project);
     expect(project.name).toBe('Manifest V7');
     expect(framework).toMatchObject({ state: 'initialized', adapter: 'openspec' });
-    expect(() => parseManifest(raw)).toThrow(/explicit compatibility map|recognized graph hashes/);
+    expect(() => parseManifest(raw)).toThrow(/explicit compatibility map|recognized graph hashes|activationIdentity is invalid/);
     expect(() => normalizeManifestProject({ ...raw.project, unexpected: true }, 7))
       .toThrow(/unexpected/);
     expect(() => normalizeManifestFramework({ ...raw.framework, unexpected: true }, 7, project))
@@ -528,9 +547,9 @@ describe('manifest validation', () => {
     [
       'unknown manifest version',
       (manifest: Record<string, unknown>) => {
-        manifest.artifactVersion = 8;
+        manifest.artifactVersion = 9;
       },
-      /Unsupported manifest artifactVersion 8.*2, 3, 4, 5, 6, 7/
+      /Unsupported manifest artifactVersion 9.*2, 3, 4, 5, 6, 7, 8/
     ],
     [
       'standard GenAI field',
@@ -651,7 +670,7 @@ describe('manifest validation', () => {
     expect(governed.artifactVersion).toBe(7);
     expect(governed.governance.profile).toBe('single-maintainer-gitflow');
     expect(governed.governance.state).toBe('handoff-generated');
-    expect(governed.governance.activationIdentity).toEqual(currentActivationIdentity);
+    expect(governed.governance.activationIdentity).toEqual(historicalV3ActivationIdentity);
     expect(governed.managedArtifacts.filter((artifact) =>
       artifact.category === 'governance'
     )).toHaveLength(9);

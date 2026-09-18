@@ -42,12 +42,21 @@ subscription capability.
 
 ## CLI self-upgrade boundary
 
-`liftoff upgrade` is itself the narrow authorization to replace a supported
-global npm installation with one exact stable version. It accepts no project
+In the unpublished native candidate, `liftoff upgrade` is itself the narrow
+authorization to replace one proven native-owner installation with an independently
+admitted exact stable target. It accepts no project
 path, `--yes`, `--force`, tool-install, or dependency-install permission.
-`liftoff upgrade --check` is read-only and invokes no npm installation.
+`liftoff upgrade --check` performs non-installing owner/target observations and
+does not resume unfinished effects. Missing qualified artifacts, channel evidence,
+or ownership blocks replacement; an npm installation requires separate owner
+migration. Native upgrade does not fall back to npm, bypass owner controls,
+elevate privileges, or change projects. Preserve original completed/uncertain
+effects and recovery evidence after a failed handover.
 
-Both modes operate from a temporary neutral directory so a project `.npmrc`
+### Historical npm upgrade boundary
+
+The v0.12.3-and-earlier npm self-upgrader has a separate historical boundary.
+Both historical modes operate from a temporary neutral directory so a project `.npmrc`
 cannot redirect machine-level discovery. Canonical npm selects the target while
 the configured registry must provide that exact release. Liftoff does not expose
 registry credentials, rewrite npm configuration, bypass a stale mirror, invoke
@@ -56,7 +65,7 @@ Machine-level `@msn-control:registry` takes precedence over default `registry`;
 canonical verification isolates both settings, but installation still honors
 the effective delivery registry.
 
-npm replacement is not a Liftoff file transaction. If npm or post-install
+Historical npm replacement is not a Liftoff file transaction. If npm or post-install
 verification fails, Liftoff reports an exact-version repair command and does not
 claim automatic rollback.
 

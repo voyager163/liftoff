@@ -1,0 +1,20 @@
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS build
+
+WORKDIR /app/backend
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+COPY backend/package*.json ./
+RUN npm ci --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
+COPY backend ./
+RUN npm run build
+
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS runtime
+WORKDIR /app/backend
+ENV NODE_ENV=production
+ARG NPM_CONFIG_REGISTRY=https://registry.npmjs.org
+COPY backend/package*.json ./
+RUN npm ci --omit=dev --ignore-scripts --no-audit --no-fund --registry="$NPM_CONFIG_REGISTRY"
+COPY --from=build /app/backend/dist ./dist
+COPY database /app/database
+
+EXPOSE 8000
+CMD ["node", "dist/server.js"]

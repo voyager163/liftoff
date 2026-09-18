@@ -7,6 +7,7 @@ export interface GitHubRequest {
   path: string;
   body?: unknown;
   binary?: boolean;
+  text?: boolean;
 }
 export interface GitHubResponse {
   status: number;
@@ -29,8 +30,20 @@ export class GitHubActivationError extends Error {
 }
 
 export function apiPath(value: string): string {
+  const encodedBranch = /^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/branches\/([^/?]+)\/protection(?:\?[^#]*)?$/u.exec(value);
+  let hasSafeEncodedBranch = false;
+  if (encodedBranch && /%2F/u.test(encodedBranch[1]!)) {
+    try {
+      const branch = githubRef(decodeURIComponent(encodedBranch[1]!));
+      hasSafeEncodedBranch = encodeURIComponent(branch) === encodedBranch[1] &&
+        !/%/u.test(value.replace(encodedBranch[1]!, ''));
+    } catch (error) {
+      if (!(error instanceof GitHubActivationError) && !(error instanceof URIError)) throw error;
+    }
+  }
   if (!/^\/(?:repos|orgs|user|users|app|installation|applications)(?:\/|$|\?)/u.test(value) ||
-    /[\s\\#\u0000-\u001f\u007f]/u.test(value) || /(?:%2e|%2f|%5c)/iu.test(value) ||
+    /[\s\\#\u0000-\u001f\u007f]/u.test(value) ||
+    /(?:%2e|%5c)/iu.test(value) || (/%2f/iu.test(value) && !hasSafeEncodedBranch) ||
     value.split('?')[0]!.split('/').some((part) => part === '..' || part === '.')) {
     throw new GitHubActivationError('invalid-endpoint', 'GitHub requests must use a fixed, scoped REST endpoint.');
   }
@@ -97,7 +110,7 @@ export function expectStatus(response: GitHubResponse, statuses: readonly number
   throw new GitHubActivationError('provider-response', `${operation}: ${reason} (HTTP ${response.status}).`, response.status);
 }
 
-function parseResponse(bytes: Buffer, binary: boolean): GitHubResponse {
+function parseResponse(bytes: Buffer, binary: boolean, plainText = false): GitHubResponse {
   let body = bytes;
   let status = 0;
   const headers: Record<string, string> = {};
@@ -118,6 +131,7 @@ function parseResponse(bytes: Buffer, binary: boolean): GitHubResponse {
     throw new GitHubActivationError('invalid-response', 'GitHub CLI did not return an HTTP status.');
   }
   if (binary && status === 200) return { status, headers, data: body };
+  if (plainText && status === 200) return { status, headers, data: body.toString('utf8') };
   let data: unknown = null;
   try { data = body.length ? JSON.parse(body.toString('utf8')) : null; }
   catch { throw new GitHubActivationError('invalid-response', 'GitHub returned invalid JSON; response bytes were withheld.'); }
@@ -161,6 +175,10 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
   return {
     async request(request) {
       const endpoint = apiPath(request.path);
+      if (request.text && (request.binary || request.method !== 'GET' || request.body !== undefined ||
+        !/^\/repos\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+\/actions\/jobs\/[1-9][0-9]*\/logs$/u.test(endpoint))) {
+        throw new GitHubActivationError('invalid-endpoint', 'Plain-text GitHub reads are limited to the exact read-only Actions job log endpoint.');
+      }
       const args = ['api', '--hostname', 'github.com', '--method', request.method,
         '--header', `X-GitHub-Api-Version: ${apiVersion}`, '--header', 'Accept: application/vnd.github+json', '--include', endpoint];
       if (request.binary) {
@@ -178,8 +196,11 @@ export function createGitHubCliTransport(runner: CommandRunner, projectRoot: str
       if (result.timedOut || result.outputLimitExceeded || result.errorCode || result.aborted) {
         throw new GitHubActivationError('bounded-request', 'GitHub request was not completed within its bounded execution window.');
       }
+      if (request.text && (result.status !== 0 || result.signal !== null)) {
+        throw new GitHubActivationError('bounded-request', 'The exact GitHub job log read failed or was interrupted; partial output cannot qualify execution.');
+      }
       // Even errors are parsed only for status, never copied into public output.
-      return parseResponse(Buffer.from(result.stdout), false);
+      return parseResponse(Buffer.from(result.stdout), false, request.text === true);
     }
   };
 }
@@ -190,7 +211,7 @@ export function createAuthenticatedGitHubTransport(
 ): GitHubActivationTransport {
   return {
     async request(request) {
-      if (request.binary) throw new GitHubActivationError('invalid-endpoint', 'Protected credential probes cannot download arbitrary artifacts.');
+      if (request.binary || request.text) throw new GitHubActivationError('invalid-endpoint', 'Protected credential probes cannot download arbitrary artifacts or job logs.');
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), requestTimeoutMs);
       try {

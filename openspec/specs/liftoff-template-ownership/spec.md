@@ -5,7 +5,7 @@ Define the permanent ownership boundary between Liftoff's maintained control pla
 ## Requirements
 
 ### Requirement: Every generated artifact has an explicit lifecycle
-The system SHALL assign every generated artifact an explicit lifecycle of `managed-core`, `project`, `desired-state`, `framework`, or `seed` through its exact logical artifact declaration. Domain categories, path prefixes, filenames, glob matches, and content inspection MUST NOT infer lifecycle or update authority.
+The system SHALL assign every generated artifact an explicit lifecycle of `managed-core`, `project`, `desired-state`, `framework`, or `seed` through its exact logical declaration. Composed artifacts SHALL additionally identify their release-owned component and destination. Domain categories, path prefixes, filenames, glob matches, framework resemblance, and content inspection SHALL NOT infer lifecycle or authority. Reusable components and canonical skill projections SHALL not duplicate or transfer ownership implicitly.
 
 #### Scenario: Generate an API project
 - **WHEN** Liftoff renders an API project
@@ -28,11 +28,13 @@ The system SHALL assign every generated artifact an explicit lifecycle of `manag
 
 #### Scenario: Render on supported operating systems
 - **WHEN** the same plan is rendered on Windows, macOS, and Linux
-- **THEN** logical names and lifecycle declarations are identical
-- **AND** path parts remain portable while filesystem access uses platform-correct resolution
+- **THEN** logical names, component identities, and lifecycle declarations are identical
+- **AND** path parts remain portable while filesystem access uses native resolution with collision and confinement checks
 
 ### Requirement: Managed core is the only post-generation update authority
 Managed-core declarations SHALL remain the only authority for post-generation template reconciliation. Existing project, desired-state, framework, and seed artifacts SHALL not become replaceable through update or force. A separate exact-plan-approved activation-migration lane SHALL authorize only its explicitly inventoried history copies, historical active-record retirements, linked successor state, and migration metadata; it SHALL not reclassify those records as managed core or confer general governance-directory ownership. Retirement of flat-root OpenTofu identities SHALL not grant mutation authority over historical infrastructure or provenance.
+
+Adoption, application repair, profile changes, and skill transport migrations SHALL require their separately declared exact effects rather than deriving authority from a catalog or generation/adoption hash.
 
 #### Scenario: Project source differs from the current starter
 - **WHEN** production source differs from the current template
@@ -57,7 +59,7 @@ Managed-core declarations SHALL remain the only authority for post-generation te
 
 #### Scenario: Retired workload bytes remain user-owned
 - **WHEN** a project contains retired Power Apps workload bytes
-- **THEN** retirement grants no conversion, reconciliation, or activation-migration authority over them
+- **THEN** retirement grants no conversion, reconciliation, adoption, or activation-migration authority over them
 
 #### Scenario: Retired infrastructure identity does not authorize deletion
 - **WHEN** update encounters one of the eight retired flat-root infrastructure identities
@@ -116,7 +118,7 @@ Completed migration snapshots SHALL be durable project-owned historical records.
 - **THEN** its location alone does not grant copy, modification, or deletion authority
 
 ### Requirement: Project template evolution requires separate authorization
-The system SHALL keep release-driven project template evolution outside `liftoff update`, including application changes, dependency and lock refreshes, container changes, database changes, runtime configuration changes, and infrastructure topology changes. Adopting those changes into an existing project MUST use a separately reviewed migration process that is not implied by installing or updating the CLI. Retirement of a formerly supported workload SHALL NOT authorize automatic conversion, deletion, or fallback reinterpretation of its project files.
+Release-driven application, dependency/lock, container, database, runtime configuration, documentation, and infrastructure changes SHALL remain outside `liftoff update`. Existing projects SHALL adopt them only through a separately reviewed supported in-place adoption, per-file application repair, registered infrastructure recipe, or fresh-target migration as applicable. CLI installation or upgrade SHALL not imply any such operation. Unsupported frameworks and semantic conversions SHALL remain assessment-only or blocked. Workload retirement SHALL NOT authorize conversion, deletion, or fallback reinterpretation.
 
 #### Scenario: Supported stack baseline changes
 - **WHEN** a newer Liftoff release packages different dependencies, lockfiles, images, or provider constraints
@@ -131,6 +133,16 @@ The system SHALL keep release-driven project template evolution outside `liftoff
 - **WHEN** a developer points Liftoff at an existing retired `power-apps-code-app` project after support has been removed
 - **THEN** Liftoff reports the workload as unsupported
 - **AND** ordinary update does not transition its application files, source identity, or owned paths into another workload
+
+#### Scenario: A known schema-routing defect has a supported fix
+- **WHEN** an existing Go, Node, Python, or GenAI handler needs a registered prefix-safe documentation correction
+- **THEN** only a separately reviewed exact application mapping and matching staged checks can authorize the change
+- **AND** an updated template is not permission to overwrite the backend
+
+#### Scenario: An Azure configuration baseline needs remediation
+- **WHEN** supported existing infrastructure needs the registered `azure-baseline-settings` version-1 repair
+- **THEN** its exact reviewed configuration edits remain project-owned and outside ordinary update
+- **AND** application-patch exclusions and separate cloud/state execution authority remain intact
 
 ### Requirement: Legacy production ownership is released safely
 When a supported legacy manifest records broad durable artifact ownership, the system SHALL map each known logical artifact through the current explicit lifecycle declaration, retain only managed-core write authority, and preserve all other entries as project provenance. Unknown legacy logical names SHALL default to project-owned provenance. This ownership migration MUST NOT write, restore, move, or delete project files.
@@ -217,6 +229,8 @@ Approved activation SHALL authorize only its exact source/workflow/configuration
 ### Requirement: Native repair integrations have exact additive managed ownership
 The system SHALL declare `liftoff-repair-copilot`, `liftoff-repair-claude` and `liftoff-repair-codex` at their exact native paths as selected-agent managed-core artifacts. Generation and reviewed update SHALL use explicit identity lookup, not parent-directory or filename-pattern authority. Supported older complete manifests and compatibility inventories SHALL remain readable without retagging historical identities; absence of the new integrations SHALL become safe additive reviewed drift. Governance-disabled projects SHALL be allowed to own only their applicable repair integrations without gaining policy/setup/assessment authority.
 
+Those exact invocation identities SHALL persist until a reviewed compatible transport migration. Their content SHALL derive from the canonical skill library without independent per-skill SemVer; generation and reviewed update SHALL check current managed hashes, host compatibility, and collisions.
+
 #### Scenario: An older selected-agent project is updated
 - **WHEN** its manifest predates repair integrations and the developer previews a managed update
 - **THEN** only applicable exact repair artifacts are offered along with legitimate managed drift
@@ -235,6 +249,65 @@ The system SHALL declare `liftoff-repair-copilot`, `liftoff-repair-claude` and `
 - **WHEN** a selected-agent update is interrupted or a destination is unsafe on Windows, macOS or Linux
 - **THEN** the guarded transaction preserves original bytes or reports exact recoverable progress
 - **AND** no prefix cleanup or blanket skill-directory replacement is permitted
+
+### Requirement: Catalog membership never grants existing-application ownership
+A template or standards catalog SHALL identify supported targets and exact artifact lifecycles, not claim files already present in a repository. A component's logical identity SHALL be immutable unless an explicit retirement contract names it. Removal or relocation of generated artifacts SHALL require exact registered source/destination identities and the owning operation's approval; missing catalog entries SHALL not become deletion instructions. Ambiguous canonical, case, normalization, or linked path identities SHALL fail closed on Windows, macOS, and Linux.
+
+#### Scenario: Existing code resembles a template component
+- **WHEN** assessment finds a familiar filename or byte-identical starter code
+- **THEN** it records evidence without acquiring managed-core authority
+- **AND** mutation still requires the supported explicit adoption or repair plan
+
+#### Scenario: A component disappears from the catalog
+- **WHEN** a later release no longer emits a formerly recorded artifact without an explicit retirement
+- **THEN** the file remains preserved for review
+- **AND** no cleanup selects it through its component name or directory prefix
+
+#### Scenario: A registered path migrates
+- **WHEN** a supported reviewed transition names an old and new destination for the same logical artifact
+- **THEN** only those exact eligible paths can be changed after collision and ownership checks
+- **AND** matching Windows path spelling or neighboring files do not expand the transition
+
+### Requirement: Adoption grants only its reviewed per-file and metadata effects
+In-place adoption SHALL preserve existing application ownership and original provenance. It SHALL acquire managed authority only for exact approved managed-core additions or identically adopted entries and SHALL record other observed bytes as project-owned adopted provenance. Its deterministic metadata/framework producers SHALL remain separate from submitted application patches, whose protected-file exclusions SHALL not change. Hashes, directory coverage, profile selection, or model assertions SHALL not confer general overwrite or deletion rights.
+
+#### Scenario: A supported application is adopted
+- **WHEN** the reviewed transaction records existing business files and new minimal integrations
+- **THEN** business files remain project-owned while only exact approved managed entries acquire reconciliation hashes
+- **AND** whole backend, frontend, framework, or governance directories do not become managed core
+
+#### Scenario: Application code is changed through adoption
+- **WHEN** independently verified and approved application mappings commit
+- **THEN** only their exact source/destination effects occur and original provenance remains available
+- **AND** application-patch submissions cannot forge the manifest, desired state, approval, or activation proof
+
+#### Scenario: An adoption is followed by managed update
+- **WHEN** current template application bytes differ from an adopted project
+- **THEN** managed update preserves the adopted files, including modified or absent files
+- **AND** adoption observations are not treated as generation hashes or overwrite permission
+
+### Requirement: Personal and project skill projections have separate ownership
+User-scope and project-scope skill delivery SHALL have separate explicit inventories, targets, and approval records. A shared qualified physical projection SHALL record its selected consumers without multiplying copies or claiming host settings. Updates, migrations, and removals SHALL preserve unlisted user/framework skills and check overlapping discovery roots before effects. Project activation manifests SHALL not record personal installation as project initialization or gain independent skill SemVers.
+
+#### Scenario: Personal skills are installed before a project exists
+- **WHEN** a developer approves selected-host user-scope delivery
+- **THEN** only its exact personal file inventory and external ownership records change
+- **AND** no current repository files or project manifests become owned
+
+#### Scenario: Copilot and Codex share one projection
+- **WHEN** their qualified personal discovery paths resolve to the same physical skill files
+- **THEN** one explicit managed projection records both consumers
+- **AND** removing one consumer does not delete files still required by another without reviewed resolution
+
+#### Scenario: Personal and project invocations collide
+- **WHEN** discovery finds incompatible personal and project copies of the same workflow
+- **THEN** the exact ambiguity is reported before changing or executing the affected integration
+- **AND** neither directory is broadly overwritten to repair discovery
+
+#### Scenario: Native discovery paths are unsafe
+- **WHEN** a selected root or file has an escaping link/junction, unresolved drive or UNC identity, or case/normalization collision
+- **THEN** installation, update, and removal refuse the unsafe identity on every supported platform
+- **AND** no symlink assumption or prefix-based ownership fallback is used
 
 ### Requirement: Application patch authority never becomes generation provenance
 Application-patch approval SHALL authorize only its exact explicitly mapped project files and registered repair bookkeeping. It SHALL NOT allow an agent or submitted application patch to forge or retag Liftoff manifest generation identity, desired state, framework installation, approval, activation evidence or historical conformance. This restriction SHALL NOT remove the deterministic Azure recipe's separately registered, reviewed manifest and history writes. Original provenance and history SHALL be preserved even when application files are moved or customized.

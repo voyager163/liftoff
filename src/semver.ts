@@ -60,3 +60,9 @@ export function compareSemver(a: string, b: string): number {
 
   return 0;
 }
+
+export function isStableSemver(value: unknown): value is string {
+  if (typeof value !== 'string') return false;
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/u.exec(value);
+  return match !== null && match[0] === value;
+}

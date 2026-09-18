@@ -7,10 +7,13 @@ Define the `liftoff migrate` command that adopts existing non-Liftoff projects t
 ### Requirement: Migrate adopts existing projects through a fresh scaffold
 The system SHALL provide a `liftoff migrate <path>` command that scans an existing non-Liftoff project, captures project decisions through the standard init prompts, generates a fresh Liftoff scaffold in a new directory beside the source project using the staged official-framework generation pipeline, and SHALL NOT write to the source project in any way.
 
+The fresh target SHALL use current manifest artifact 8 and its explicit profile/generation identity. This source-read-only command SHALL NOT become an alias for in-place adoption or CLI installation migration.
+
 #### Scenario: Migrate produces a compliant scaffold
-- **WHEN** a developer runs `liftoff migrate ../legacy-app` and completes the prompts
-- **THEN** a new Liftoff project is generated in a fresh directory with a schema-v7 manifest and complete official framework integration
+- **WHEN** a developer runs `liftoff migrate ../legacy-app`, selects a supported target, and completes the prompts and required planning/prerequisite permissions
+- **THEN** a new Liftoff project is generated in a fresh directory with a manifest-8 scaffold and complete official framework integration
 - **AND** `liftoff validate` passes on it
+- **AND** scaffold validation is distinguished from completion of the pending application-porting work
 
 #### Scenario: Source project is untouched
 - **WHEN** a full migrate run completes or fails
@@ -123,6 +126,8 @@ The system SHALL copy the source project into `migration/legacy/` within the gen
 ### Requirement: The migration plan is emitted as an executable change
 The system SHALL emit the migration plan into the scaffold as an OpenSpec change named `migrate-to-liftoff` containing a proposal and a task list seeded from the scan inventory, with each task mapping staged legacy material to its Liftoff destination, exact logical artifact, or explicit placement decision. Dependency and prerequisite tasks SHALL appear before dependent porting work, verification SHALL precede staging cleanup, and the proposal SHALL state the completion gate (all tasks done, `liftoff validate` and `liftoff doctor` green, scaffold tests passing, change archived). When the selected spec workflow is not OpenSpec, the system SHALL emit the same plan as a `MIGRATION.md` checklist instead.
 
+An executable change describes reviewed implementation work, not automatic semantic-conversion authority. Unsupported source mappings SHALL remain explicit blockers until a registered transformation and actual validation establish their outcomes; checked tasks alone SHALL NOT certify conversion.
+
 #### Scenario: Emitted change reflects the scan
 - **WHEN** the scan detected Python dependencies, env files, and tests
 - **THEN** `openspec/changes/migrate-to-liftoff/tasks.md` contains tasks for porting dependencies, mapping environment variables, and relocating tests, referencing paths under `migration/legacy/`
@@ -209,3 +214,34 @@ adoption tasks complete.
 - **WHEN** migration runs from source and target paths containing spaces on Windows, macOS, or Linux
 - **THEN** strict validation receives the correct staged project directory
 - **AND** artifacts use the same stable logical names and portable path parts
+
+### Requirement: Fresh-target planning does not invent semantic conversion support
+A developer's supported target selection SHALL determine the fresh scaffold and placement plan without certifying that legacy application behavior has been converted. Source findings and unresolved mappings SHALL remain visible. Executable application adoption or porting SHALL require a registered supported profile/recipe, exact reviewed effects and actual validation; unsupported source-stack conversion SHALL remain diagnostic or explicitly unresolved planning work.
+
+#### Scenario: The target differs from the detected source
+- **WHEN** the developer explicitly chooses a supported target stack different from the source evidence
+- **THEN** migration can describe the selected fresh scaffold and source-preserving placement work
+- **AND** it does not claim that application behavior has already been converted or that unregistered porting is executable
+
+#### Scenario: A source framework is unsupported
+- **WHEN** source assessment finds an unregistered framework or uncertain semantic mapping
+- **THEN** those facts remain explicit blockers for executable application conversion
+- **AND** generated target files or checked planning tasks cannot substitute for a supported transformation and proof
+
+### Requirement: Project and installation migration retain distinct targets
+Fresh-target project migration, reviewed in-place adoption and installation-owner migration SHALL retain separate commands, target identities, plans and permissions. None SHALL infer the other's mutation authority. Native path handling SHALL preserve these boundaries on Windows, macOS and Linux.
+
+#### Scenario: A historical npm user replaces only the CLI
+- **WHEN** installation migration is selected
+- **THEN** no project scaffold, legacy-source copy, application mapping or manifest rewrite occurs
+- **AND** `liftoff migrate` is not offered as the npm-to-native handover command
+
+#### Scenario: The user wants to keep the existing project location
+- **WHEN** an existing supported application requests in-place adoption
+- **THEN** the CLI identifies the reviewed adopt workflow
+- **AND** it does not weaken fresh-target migrate's non-empty-target refusal
+
+#### Scenario: Source and target paths contain spaces
+- **WHEN** fresh-target migration operates on Windows, macOS or Linux paths containing spaces or platform-specific separators
+- **THEN** it binds and resolves the exact distinct source and destination using native path semantics
+- **AND** path aliases, escapes and target overlap cannot authorize source mutation

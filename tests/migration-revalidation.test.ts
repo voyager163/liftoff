@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { preserveManifestProvenance } from '../src/application/project/manifest-provenance.js';
 import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
 import { formatRepairCommand } from '../src/application/repair/guidance.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
@@ -19,7 +20,7 @@ import { currentActivationIdentity } from '../src/domain/governance/activation/g
 import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
 import { phaseIds, type UserActivationState } from '../src/domain/governance/activation/types.js';
 import { validateUserActivationState } from '../src/domain/governance/activation/validators.js';
-import type { ExternalCommand, LiftoffManifest, ProjectOptions } from '../src/domain/project/contracts.js';
+import type { ExternalCommand, ProjectOptions } from '../src/domain/project/contracts.js';
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
 import { inspectGovernanceTransition } from '../src/governance-activation/commands.js';
 import { loadActivationState } from '../src/governance-activation/activation-state.js';
@@ -36,8 +37,7 @@ import { completedSpecKitTasks, specKitBootstrapPath } from '../src/governance-a
 import { specKitIntegrationPaths } from '../src/framework-validation.js';
 import { buildSavedTransitionPlan, executeApplyNext } from '../src/governance-activation/transitions.js';
 import { formatCommand, type CommandResult, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
-import { buildArtifacts } from '../src/templates.js';
-import { liftoffVersion } from '../src/version.js';
+import { buildArtifacts, buildManifest } from '../src/templates.js';
 import { CaptureStream } from './helpers.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 
@@ -197,6 +197,50 @@ describe('bounded migration local revalidation', {
     });
   });
 
+  it('stops on a transient indeterminate post-commit outcome while retaining the real phase evidence', async () => {
+    const { root, clock } = await fixture();
+    const approved = await approval(root, clock);
+    const runner = new LocalRunner();
+    const progress: LocalRevalidationProgress[] = [];
+    let observationFailed = false;
+    const result = await executeLocalRevalidation({
+      approvedPreview: approved.preview, runner, clock,
+      protectedInputs: {
+        binding: approved.protectedInputs.binding,
+        async assertUnchanged() {
+          await approved.protectedInputs.assertUnchanged();
+          const committed = (await loadActivationState(root))?.state.phases['seed-valid'].state === 'verified';
+          if (committed && !observationFailed) {
+            observationFailed = true;
+            throw new Error('Injected transient post-commit observation failure.');
+          }
+        }
+      },
+      onProgress: (event) => { progress.push(event); }
+    });
+    expect(observationFailed).toBe(true);
+    expect(result).toMatchObject({
+      status: 'blocked', phaseId: 'seed-valid', nextIncompletePhase: null,
+      phaseResults: [{
+        phaseId: 'seed-valid', status: 'blocked',
+        evidence: { result: 'verified', evidenceId: expect.any(String) },
+        savedPlan: { digest: expect.any(String) }
+      }]
+    });
+    expect(result.blockers.join(' ')).toMatch(/committed.*readiness is indeterminate/);
+    expect(progress.at(-1)?.phaseResults[0]?.evidence).toEqual(result.phaseResults[0]?.evidence);
+    const recorded = await readActivationEvidence(root);
+    expect(recorded).toHaveLength(1);
+    expect(recorded[0]?.evidenceId).toBe(result.phaseResults[0]?.evidence?.evidenceId);
+    expect((await loadActivationState(root))?.state.phases).toMatchObject({
+      'seed-valid': { state: 'verified' },
+      'seed-verified': { state: 'pending' },
+      'seed-archived': { state: 'pending' }
+    });
+    expect(runner.calls.filter(({ command }) => command.executable === 'openspec')).toHaveLength(1);
+    expect(runner.calls.some(({ command }) => ['npm', 'tofu', 'docker'].includes(command.executable))).toBe(false);
+  });
+
   it('binds fresh v2 plans and evidence to the committed successor while retaining historical source bytes', async () => {
     const { root, manifest, clock, state } = await fixture();
     const originalManifest = { ...manifest, governance: {
@@ -270,23 +314,22 @@ describe('bounded migration local revalidation', {
     const migration = await planActivationHistoryMigration(root);
     expect(migration.status, JSON.stringify(migration)).toBe('eligible');
     if (migration.status !== 'eligible') throw new Error('Expected the exact supported historical fixture.');
-    const core = buildArtifacts(buildProjectPlan({
+    const project = buildProjectPlan({
       projectName: 'Flight Log', projectType: 'standard', apiStack: 'node-fastify',
       cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'],
       specWorkflow: 'openspec', agents: ['copilot'], includeFrontend: false
-    }, { requireProjectName: true })).filter((artifact) => artifact.lifecycle === 'managed-core');
-    const targetManifest: LiftoffManifest = {
-      ...migration.inventory.manifest,
-      liftoffVersion,
-      governance: {
-        profile: 'single-maintainer-gitflow', policyVersion: '6', state: 'handoff-generated',
-        activationIdentity: currentActivationIdentity
-      },
-      managedArtifacts: core.map((artifact) => ({
-        logicalName: artifact.logicalName, category: artifact.category, pathParts: [...artifact.pathParts],
-        contentHash: `sha256:${createHash('sha256').update(artifact.content).digest('hex')}`
-      }))
-    };
+    }, { requireProjectName: true });
+    const core = buildArtifacts(project).filter((artifact) => artifact.lifecycle === 'managed-core');
+    const originalManifest = await readFile(path.join(root, 'liftoff.manifest.json'));
+    const preserved = preserveManifestProvenance(migration.inventory.manifest, originalManifest);
+    const historicalFramework = migration.inventory.manifest.framework;
+    if (historicalFramework.state === 'uninitialized') throw new Error('Expected a released framework identity.');
+    const targetManifest = buildManifest(project, core, {
+      frameworkState: historicalFramework.state,
+      projectArtifacts: migration.inventory.manifest.projectArtifacts,
+      provenance: preserved.provenance
+    });
+    targetManifest.framework = historicalFramework;
     const binding = canonicalSha256({ historyPlan: migration.planDigest, source: 'reviewed historical fixture inputs' });
     const preview = await previewLocalRevalidation({ projectRoot: root, targetManifest, protectedInputBinding: binding });
     expect(preview.phases.find((phase) => phase.phaseId === 'seed-verified')?.blockers.join(' ')).toContain('migration-required');
@@ -295,13 +338,13 @@ describe('bounded migration local revalidation', {
     const finalized = finalizeActivationHistoryMigration(
       migration, canonicalSha256({ migration: migration.semanticPlan, revalidation: preview }), clock()
     );
-    for (const mutation of finalized.mutations) {
+    for (const mutation of [...finalized.mutations, ...(preserved.history ? [preserved.history] : [])]) {
       const destination = path.join(root, ...mutation.pathParts);
       if (mutation.type === 'delete') await rm(destination);
       else {
         await mkdir(path.dirname(destination), { recursive: true });
         await writeFile(destination, mutation.content, { mode: mutation.mode });
-        await chmod(destination, mutation.mode);
+        if (mutation.mode !== undefined) await chmod(destination, mutation.mode);
       }
     }
     for (const artifact of core) await writeProjectFile(root, [...artifact.pathParts], artifact.content);
@@ -801,9 +844,10 @@ describe('bounded migration local revalidation', {
       const stdout = new CaptureStream();
       const stderr = new CaptureStream();
       const code = await runCommand(parseArgs(['governance', command, '--json']), { cwd: root, stdout, stderr, runner });
-      expect(code, stdout.text() + stderr.text()).toBe(0);
+      expect(code, stdout.text() + stderr.text()).toBe(command === 'verify' ? 2 : 0);
       const output: unknown = JSON.parse(stdout.text());
       if (!isRecord(output)) throw new Error('Expected read-only governance output.');
+      expect(output.schemaVersion).toBe(3);
       expect(output.readOnly).toBe(true);
       if (command === 'verify') {
         expect(output.consistent).toBe(true);

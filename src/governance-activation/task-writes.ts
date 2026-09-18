@@ -29,6 +29,7 @@ import { parseHistoryJson } from './history-contracts.js';
 import { historicalLifecyclePhaseBlockers } from './migration-history.js';
 import { readActivationEvidence, readReviewedTransitionPlans } from './proof-records.js';
 import { assertGovernanceApprovalIssued } from './authority-records.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 
 export interface CapturedGovernanceTaskSource {
   contract: GovernanceTaskProjectionContract;
@@ -160,13 +161,13 @@ export async function captureGovernanceTaskSource(
   return { contract, metadata, metadataBefore, taskBefore, text: taskText };
 }
 
-async function issuedApprovals(inspection: GovernanceTransitionInspection) {
+async function issuedApprovals(inspection: GovernanceTransitionInspection, storage?: UpdatePreviewOptions) {
   const approvals = [];
   for (const parts of await historicalActiveRecordPaths(inspection.projectRoot, 'approvals')) {
     const file = await captureHistoryFile(inspection.projectRoot, parts);
     if (!file.content) throw new Error('A current approval disappeared during post-outcome inspection.');
     const approval = validateApprovalEnvelope(parseHistoryJson(file.content, parts.join('/')), { expectedIdentity: inspection.state.identity });
-    await assertGovernanceApprovalIssued(inspection.projectRoot, approval);
+    await assertGovernanceApprovalIssued(inspection.projectRoot, approval, storage);
     approvals.push(approval);
   }
   return approvals;
@@ -175,6 +176,7 @@ async function issuedApprovals(inspection: GovernanceTransitionInspection) {
 export async function calculatePostOutcomeTaskReadiness(input: {
   inspection: GovernanceTransitionInspection; plan: SavedTransitionPlan; nextState: UserActivationState;
   snapshot: ActivationInputSnapshot; evidenceRecord?: PhaseEvidenceRecord; now: Date;
+  storage?: UpdatePreviewOptions;
 }) {
   const { inspection, plan, nextState, snapshot, now } = input;
   const evidence = await readActivationEvidence(inspection.projectRoot);
@@ -192,7 +194,7 @@ export async function calculatePostOutcomeTaskReadiness(input: {
   const local = [...(infrastructure ? [infrastructure] : []), ...protectedLocalInputBlockers(snapshot.sensitivePathExclusions ?? [])];
   const historical = historicalLifecyclePhaseBlockers(inspection.historicalLifecycleObligations ?? []);
   return calculatePhaseReadiness({
-    graph: inspection.graph, state: nextState, evidence, approvals: await issuedApprovals(inspection),
+    graph: inspection.graph, state: nextState, evidence, approvals: await issuedApprovals(inspection, input.storage),
     transitionContexts: contexts, scope: inspection.scope, recoverPhase: inspection.recoverPhase,
     retryArchivedSeedBaseline: nextState.phases['seed-verified'].state === 'blocked' && archived.status === 'valid' && seed.state === 'archived',
     historicalLifecycleBlockers: historical['bootstrap-state-disposed'],
@@ -209,6 +211,7 @@ export async function calculatePostOutcomeTaskReadiness(input: {
 export async function prepareGovernanceTaskProjection(input: {
   source: CapturedGovernanceTaskSource; inspection: GovernanceTransitionInspection; plan: SavedTransitionPlan;
   nextState: UserActivationState; snapshot: ActivationInputSnapshot; evidenceRecord?: PhaseEvidenceRecord; now: Date;
+  storage?: UpdatePreviewOptions;
 }): Promise<PreparedGovernanceTaskProjection> {
   const readiness = await calculatePostOutcomeTaskReadiness(input);
   const succeeded = new Set(['verified', 'approved', 'inapplicable', 'retained', 'disposed']);

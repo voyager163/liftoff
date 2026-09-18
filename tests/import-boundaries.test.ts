@@ -207,6 +207,16 @@ describe('source import boundaries', () => {
     expect(violations).toEqual([]);
   });
 
+  it('keeps protocol modules independent from I/O and transport layers', async () => {
+    const protocolRoot = path.join(sourceRoot, 'protocol');
+    const files = await sourceFiles();
+    const dependencies = await runtimeDependencyMap(files);
+    const violations = (await sourceFiles(protocolRoot)).flatMap((file) =>
+      transitiveIoPaths(file, dependencies)
+    );
+    expect(violations).toEqual([]);
+  });
+
   it('keeps application runtime independent from CLI transport', async () => {
     const applicationRoot = path.join(sourceRoot, 'application');
     const cliRoot = path.join(sourceRoot, 'cli');
@@ -234,6 +244,7 @@ describe('source import boundaries', () => {
           'commands.ts',
           'file-system.ts',
           'planner.ts',
+          'repository-governance.ts',
           'supported-stack.ts',
           'types.ts'
         ])
@@ -316,6 +327,41 @@ describe('source import boundaries', () => {
         facades: new Set([
           'artifact-lifecycle.ts',
           'catalogs.ts',
+          'planner.ts',
+          'supported-stack.ts',
+          'types.ts'
+        ])
+      },
+      {
+        root: path.join(sourceRoot, 'protocol'),
+        facades: new Set([
+          'args.ts',
+          'artifact-lifecycle.ts',
+          'catalogs.ts',
+          'commands.ts',
+          'file-system.ts',
+          'planner.ts',
+          'supported-stack.ts',
+          'types.ts'
+        ])
+      },
+      {
+        root: path.join(sourceRoot, 'domain', 'execution'),
+        facades: new Set([
+          'types.ts',
+          'catalogs.ts',
+          'planner.ts',
+          'artifact-lifecycle.ts',
+          'supported-stack.ts'
+        ])
+      },
+      {
+        root: path.join(sourceRoot, 'application', 'execution'),
+        facades: new Set([
+          'args.ts',
+          'artifact-lifecycle.ts',
+          'catalogs.ts',
+          'commands.ts',
           'planner.ts',
           'supported-stack.ts',
           'types.ts'

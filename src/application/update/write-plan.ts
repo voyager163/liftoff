@@ -5,6 +5,7 @@ import type { ReconcileEntry } from '../../reconcile.js';
 import { buildManifest } from '../../templates.js';
 import { appendProvisionedProjectArtifacts, isUnownedUpdateConflict, type ProvisioningEntry } from './planning.js';
 import { preserveDiagnosticGovernanceIdentity, type UpdateInspection } from './inspection.js';
+import { buildComponentMaintenanceManifest } from '../project/component-artifacts.js';
 
 export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
   const { manifest, entries, oldByName, provisioningPlans, plan, renderPlan, render } = inspection;
@@ -58,10 +59,15 @@ export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
     }
   }
   mutations.push(...inspection.stateMigration.mutations);
-  const nextManifest = buildManifest(renderPlan, render.filter((artifact) => artifact.logicalName !== 'manifest'), {
-    frameworkState: manifest.framework.state,
-    projectArtifacts: appendProvisionedProjectArtifacts(manifest.projectArtifacts, provisioningPlans)
-  });
+  const nextManifest = renderPlan.workload === 'components' && manifest.artifactVersion === 8
+    ? buildComponentMaintenanceManifest(manifest, renderPlan, render)
+    : renderPlan.workload !== 'components' && manifest.framework.state !== 'uninitialized'
+      ? buildManifest(renderPlan, render.filter((artifact) => artifact.logicalName !== 'manifest'), {
+        frameworkState: manifest.framework.state,
+        projectArtifacts: appendProvisionedProjectArtifacts(manifest.projectArtifacts, provisioningPlans),
+        provenance: inspection.manifestProvenance
+      })
+      : (() => { throw new Error('Unsupported component/workload update combination.'); })();
   nextManifest.framework = manifest.framework;
   nextManifest.project.specWorkflow = manifest.project.specWorkflow;
   nextManifest.project.agents = manifest.project.agents;
@@ -95,6 +101,7 @@ export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
   const writesManifest = inspection.hasDrift &&
     (mutations.length > 0 || manifestChanged || inspection.ownershipMigrationPending);
   if (writesManifest) {
+    mutations.push(...inspection.manifestHistoryMutations);
     mutations.push({
       type: 'write', pathParts: ['liftoff.manifest.json'],
       content: `${JSON.stringify(nextManifest, null, 2)}\n`

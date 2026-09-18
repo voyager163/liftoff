@@ -15,12 +15,20 @@ export interface ProjectMutationLease {
   assertHeld(): Promise<void>;
 }
 
+export interface HeldProjectMutationLease extends ProjectMutationLease {
+  readonly path: string;
+}
+
 interface HeldLock {
   root: string;
   path: string;
   handle: FileHandle;
   device: number;
   inode: number;
+  mode: number;
+  linkCount: number;
+  uid: number;
+  gid: number;
   content: string;
   active: boolean;
 }
@@ -52,21 +60,45 @@ async function canonicalProjectRoot(projectRoot: string): Promise<string> {
   }
 }
 
-function lockPathForRoot(root: string): string {
+function lockPathForRoot(root: string, userScope = false): string {
   // Missing paths have no canonical spelling yet; fold aliases conservatively on every filesystem.
   const identity = root.normalize('NFC').toLowerCase();
   const digest = createHash('sha256').update(identity).digest('hex');
   // A sibling reservation also protects a new target before its directory exists.
-  return path.join(path.dirname(root), `.liftoff-mutation-${digest}.lock`);
+  return path.join(userScope ? root : path.dirname(root), `.liftoff-mutation-${digest}.lock`);
 }
 
 export async function projectMutationLockPath(projectRoot: string): Promise<string> {
   return lockPathForRoot(await canonicalProjectRoot(projectRoot));
 }
 
+export async function userScopeMutationLockPath(userRoot: string): Promise<string> {
+  return lockPathForRoot(await canonicalProjectRoot(userRoot), true);
+}
+
+export async function currentProjectMutationLease(projectRoot: string): Promise<HeldProjectMutationLease | undefined> {
+  const held = activeLocks.getStore();
+  if (!held?.size) return undefined;
+  const root = await canonicalProjectRoot(projectRoot);
+  const lock = held.get(lockPathForRoot(root));
+  if (!lock) return undefined;
+  await assertHeld(lock);
+  return Object.freeze({ path: lock.path, assertHeld: () => assertHeld(lock) });
+}
+
+async function assertNoOtherScopeLock(lockPath: string): Promise<void> {
+  try {
+    await lstat(lockPath);
+    throw new ProjectMutationLockError(`Another cooperating Liftoff target-scope mutation blocks new work. Lock: ${lockPath}. The existing entry was preserved.`);
+  } catch (error) {
+    if (errorCode(error) !== 'ENOENT') throw error;
+  }
+}
+
 async function assertLockIdentity(lock: HeldLock, allowPartialContent = false): Promise<void> {
   const details = await lstat(lock.path);
-  if (!details.isFile() || details.dev !== lock.device || details.ino !== lock.inode) {
+  if (!details.isFile() || details.dev !== lock.device || details.ino !== lock.inode ||
+      details.mode !== lock.mode || details.nlink !== lock.linkCount || details.uid !== lock.uid || details.gid !== lock.gid) {
     throw new ProjectMutationLockError(`Project mutation lock changed: ${lock.path}. The replacement was preserved.`);
   }
   const content = await readFile(lock.path, 'utf8');
@@ -139,6 +171,10 @@ async function acquireLock(root: string, lockPath: string): Promise<HeldLock> {
       handle,
       device: details.dev,
       inode: details.ino,
+      mode: details.mode,
+      linkCount: details.nlink,
+      uid: details.uid,
+      gid: details.gid,
       content: `${JSON.stringify({ schemaVersion: 1, pid: process.pid, token: randomUUID() })}\n`,
       active: true
     };
@@ -166,22 +202,27 @@ async function acquireLock(root: string, lockPath: string): Promise<HeldLock> {
   }
 }
 
-export async function withProjectMutationLock<T>(
+async function withMutationLock<T>(
   projectRoot: string,
-  operation: (lease: ProjectMutationLease) => Promise<T>
+  operation: (lease: ProjectMutationLease) => Promise<T>,
+  userScope: boolean
 ): Promise<T> {
   const root = await canonicalProjectRoot(projectRoot);
-  const lockPath = lockPathForRoot(root);
-  const inherited = activeLocks.getStore()?.get(lockPath);
+  const lockKey = lockPathForRoot(root);
+  const lockPath = lockPathForRoot(root, userScope);
+  const conflictingPath = lockPathForRoot(root, !userScope);
+  const inherited = activeLocks.getStore()?.get(lockKey);
   if (inherited) {
     await assertHeld(inherited);
     return operation({ assertHeld: () => assertHeld(inherited) });
   }
+  await assertNoOtherScopeLock(conflictingPath);
   const lock = await acquireLock(root, lockPath);
   const scope = new Map(activeLocks.getStore());
-  scope.set(lockPath, lock);
+  scope.set(lockKey, lock);
   let result: T;
   try {
+    await assertNoOtherScopeLock(conflictingPath);
     result = await activeLocks.run(scope, () => operation({ assertHeld: () => assertHeld(lock) }));
   } catch (error) {
     try {
@@ -196,4 +237,16 @@ export async function withProjectMutationLock<T>(
   }
   await releaseLock(lock);
   return result;
+}
+
+export function withProjectMutationLock<T>(
+  projectRoot: string, operation: (lease: ProjectMutationLease) => Promise<T>
+): Promise<T> {
+  return withMutationLock(projectRoot, operation, false);
+}
+
+export function withUserScopeMutationLock<T>(
+  userRoot: string, operation: (lease: ProjectMutationLease) => Promise<T>
+): Promise<T> {
+  return withMutationLock(userRoot, operation, true);
 }

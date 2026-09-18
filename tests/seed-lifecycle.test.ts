@@ -1,11 +1,11 @@
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand, type CommandContext } from '../src/commands.js';
-import { validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
+import { loadManifest, manifestHadFilteredLegacyNonDurableOwnership, parseManifest, validateGeneratedProject, writeArtifacts, writeProjectFile } from '../src/file-system.js';
 import {
   archiveGeneratedSeedForPhase,
   completeGeneratedSeedLifecycle,
@@ -28,22 +28,26 @@ import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
 import { SPEC_KIT_AGENT_SURFACES, SPEC_KIT_WORKFLOW_IDS } from '../src/domain/project/catalog.js';
 
 const cleanups: string[] = [];
-let workspaceCounter = 0;
-const receiptHome = path.join(os.tmpdir(), `liftoff-seed-preview-${process.pid}`);
+let receiptHome: string | undefined;
+
+beforeEach(async () => {
+  receiptHome = await mkdtemp(path.join(os.tmpdir(), 'liftoff-seed-preview-'));
+});
 
 afterEach(async () => {
   delete process.env.LIFTOFF_STAGING_ROOT;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
-  await rm(receiptHome, { recursive: true, force: true });
+  const ownedReceiptHome = receiptHome;
+  receiptHome = undefined;
+  if (ownedReceiptHome) await rm(ownedReceiptHome, { recursive: true, force: true });
 });
 
 async function testWorkspace(prefix: string): Promise<string> {
-  workspaceCounter += 1;
-  const root = path.join(process.cwd(), 'tmp', `${prefix}-${process.pid}-${workspaceCounter}`);
-  await rm(root, { recursive: true, force: true });
-  await mkdir(root, { recursive: true });
+  const parent = path.join(process.cwd(), 'tmp');
+  await mkdir(parent, { recursive: true });
+  const root = await mkdtemp(path.join(parent, `${prefix}-`));
   cleanups.push(root);
   return root;
 }
@@ -96,6 +100,7 @@ async function runCli(
     'configuredRegistryTargetLookup' | 'stableReleaseLookup' | 'runner'
   >> = {}
 ): Promise<{ code: number; out: string; err: string }> {
+  if (!receiptHome) throw new Error('The isolated seed preview home has not been initialized.');
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
   const reviewedArgs = await reviewedUpdateArguments(args, (rawArgs) => runCli(rawArgs, cwd, context));
@@ -324,7 +329,7 @@ describe('seed artifact lifecycle', () => {
       expect(await fileExists(path.join(root, '.claude', 'commands', 'liftoff-setup.md')))
         .toBe(selected.includes('claude'));
       expect(status.code, `${status.out}${status.err}`).toBe(0);
-      expect(body.schemaVersion).toBe(2);
+      expect(body.schemaVersion).toBe(3);
       expect(body.nextReadyPhase).toBe('seed-valid');
       expect(body.activeSourceOfTruth.createPlan.status).toBe('blocked');
       expect(JSON.stringify(body)).not.toMatch(/setup[-_]?skillVersion|gh repo|az deployment|tofu apply/i);
@@ -346,13 +351,15 @@ describe('seed artifact lifecycle', () => {
       path.join(root, '.claude', 'commands', 'liftoff-setup.md')
     ]) {
       const skill = await readFile(skillPath, 'utf8');
-      expect(skill).toContain('liftoff governance apply-next --scope local --json');
-      expect(skill).toContain('liftoff governance apply-next --scope local --json --execute');
+      expect(skill).toContain('liftoff governance plan --project ./my-app --scope local --json');
+      expect(skill).toMatch(/Apply-next without\s+`--execute` is read-only/);
+      expect(skill).toContain('nextActions.continuation');
       expect(skill).toContain('`selectedPhase`');
       expect(skill).toContain('`executedPhase`');
       expect(skill).toContain('nextReadyPhase');
-      expect(skill).toContain('Do not repeat an unchanged failure');
-      expect(skill).toContain('Only for a reported ready, approval-free local action');
+      expect(skill).toContain('Stop unchanged failures');
+      expect(skill).toMatch(/Even approval-free local actions need exact execution\s+consent/);
+      expect(skill).toContain('Never automatically approve a plan');
     }
 
     const preview = await runCli(['governance', 'apply-next', '--json'], root);
@@ -391,9 +398,10 @@ describe('seed artifact lifecycle', () => {
     expect(JSON.parse(status.out).nextReadyPhase).toBe('seed-verified');
 
     const verify = await runCli(['governance', 'verify', '--json'], root);
-    expect(verify.code).toBe(0);
+    expect(verify.code).toBe(2);
     expect(JSON.parse(verify.out)).toMatchObject({
-      ok: true,
+      ok: false,
+      consistent: true,
       verificationStatus: 'consistent',
       setupStatus: 'in-progress',
       complete: false,
@@ -579,8 +587,9 @@ describe('seed artifact lifecycle', () => {
       ['.github', 'prompts', 'liftoff-setup.prompt.md'],
       ['.claude', 'commands', 'liftoff-setup.md']
     ]) {
-      expect(await readFile(path.join(root, ...parts), 'utf8'))
-        .toContain('`liftoff governance apply-next --scope local --json --execute`');
+      const skill = await readFile(path.join(root, ...parts), 'utf8');
+      expect(skill).toContain('nextActions.continuation');
+      expect(skill).toMatch(/Even approval-free local actions need exact execution\s+consent/);
     }
 
     const resumed = await runCli(['governance', 'resume', '--json'], root, { runner });
@@ -614,11 +623,15 @@ describe('seed artifact lifecycle', () => {
         evidence: { result: 'verified' }
       });
       const verified = await runCli(['governance', 'verify', '--json'], root, { runner });
-      expect(verified.code, verified.out).toBe(0);
+      expect(verified.code, verified.out).toBe(next === null ? 0 : 2);
       expect(JSON.parse(verified.out)).toMatchObject({
+        schemaVersion: 3,
+        scope: 'local',
         consistent: true,
+        ok: next === null,
         complete: next === null,
-        nextReadyPhase: next
+        nextReadyPhase: next,
+        progress: { local: next === null, repository: false, activation: false }
       });
     }
 
@@ -684,7 +697,7 @@ describe('seed artifact lifecycle', () => {
         noWrites: true
       });
       const initialVerify = await runCli(['governance', 'verify', '--json'], root, { runner });
-      expect(initialVerify.code, initialVerify.out).toBe(0);
+      expect(initialVerify.code, initialVerify.out).toBe(2);
       expect(JSON.parse(initialVerify.out)).toMatchObject({ consistent: true, complete: false });
       const remaining = entryPoint === 'fresh'
         ? ['seed-valid', 'seed-verified', 'seed-archived']
@@ -697,8 +710,11 @@ describe('seed artifact lifecycle', () => {
         expect(applied.code, applied.out).toBe(0);
         expect(JSON.parse(applied.out)).toMatchObject({ executedPhase: phase, applied: true });
         const verify = await runCli(['governance', 'verify', '--json'], root, { runner });
-        expect(verify.code, verify.out).toBe(0);
-        expect(JSON.parse(verify.out)).toMatchObject({ consistent: true, complete: phase === 'seed-archived' });
+        expect(verify.code, verify.out).toBe(phase === 'seed-archived' ? 0 : 2);
+        expect(JSON.parse(verify.out)).toMatchObject({
+          schemaVersion: 3, scope: 'local', consistent: true, complete: phase === 'seed-archived',
+          progress: { local: phase === 'seed-archived', repository: false, activation: false }
+        });
       }
       const final = await runCli(['governance', 'status', '--json'], root, { runner });
       expect(JSON.parse(final.out).phases.find((phase: { id: string }) => phase.id === 'committed'))
@@ -803,7 +819,7 @@ describe('seed artifact lifecycle', () => {
       const readsRunner = new SeedLifecycleRunner();
       for (const command of ['status', 'plan', 'resume', 'verify', 'apply-next']) {
         const read = await runCli(['governance', command, '--json'], root, { runner: readsRunner });
-        expect(read.code, `${command}: ${read.out}`).toBe(0);
+        expect(read.code, `${command}: ${read.out}`).toBe(command === 'verify' ? 2 : 0);
         if (command === 'resume') {
           expect(JSON.parse(read.out)).toMatchObject({
             nextReadyPhase: 'seed-verified',
@@ -891,7 +907,12 @@ describe('seed artifact lifecycle', () => {
       const applied = await runCli(['governance', 'apply-next', '--json', '--execute'], root, { runner });
       expect(applied.code, applied.out).toBe(0);
       expect(JSON.parse(applied.out).executedPhase).toBe(phase);
-      expect((await runCli(['governance', 'verify', '--json'], root, { runner })).code).toBe(0);
+      const verified = await runCli(['governance', 'verify', '--json'], root, { runner });
+      expect(verified.code, verified.out).toBe(phase === 'seed-archived' ? 0 : 2);
+      expect(JSON.parse(verified.out)).toMatchObject({
+        consistent: true, complete: phase === 'seed-archived',
+        progress: { local: phase === 'seed-archived', repository: false, activation: false }
+      });
     }
     expect(runner.calls.filter(({ command }) => command.args[0] === 'archive')).toHaveLength(1);
   }, 60_000);
@@ -1142,73 +1163,117 @@ describe('seed artifact lifecycle', () => {
   });
 
   it('heals legacy manifests that recorded seed entries', async () => {
+    const fixturePath = path.join(process.cwd(), 'tests', 'fixtures', 'manifest-v5-governed-released.json');
+    const releasedBytes = await readFile(fixturePath);
+    expect(createHash('sha256').update(releasedBytes).digest('hex'))
+      .toBe('a3e809901469cc7c2e3842ccf8f03e5433cec457c452059c7ac0e9e458ce8ff5');
+    const released: unknown = JSON.parse(releasedBytes.toString('utf8'));
+    if (typeof released !== 'object' || released === null || !('artifacts' in released) || !Array.isArray(released.artifacts)) {
+      throw new Error('Expected the released v5 artifact inventory.');
+    }
+    const legacyArtifacts: unknown[] = released.artifacts;
+    const legacy = parseManifest(released);
+    if (legacy.artifactVersion !== 5 || legacy.project.workload.kind !== 'standard') {
+      throw new Error('Expected the genuine released standard v5 manifest.');
+    }
+    const workload = legacy.project.workload;
     const { root } = await fixtureProject({
-      projectName: 'Legacy Seed App',
-      pattern: 'prompt',
-      cloud: 'azure',
-      region: 'eastus',
-      environments: ['dev'],
-      specWorkflow: 'openspec',
-      includeFrontend: false
+      projectName: legacy.project.name,
+      projectType: 'standard',
+      apiStack: workload.apiStack,
+      cloud: workload.cloud,
+      region: workload.region,
+      environments: workload.environments,
+      specWorkflow: legacy.project.specWorkflow,
+      agents: legacy.project.agents,
+      includeFrontend: workload.frontend,
+      governanceProfile: 'single-maintainer-gitflow'
     });
     const manifestPath = path.join(root, 'liftoff.manifest.json');
-    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    const changeName = generatedSeedChangeName(manifest);
-    manifest.artifactVersion = 5;
-    delete manifest.governance.activationIdentity;
-    manifest.artifacts = [
-      ...manifest.managedArtifacts,
-      ...manifest.projectArtifacts.map((artifact: {
-        logicalName: string;
-        category: string;
-        pathParts: string[];
-        generationHash: string;
-      }) => ({
-        logicalName: artifact.logicalName,
-        category: artifact.category,
-        pathParts: artifact.pathParts,
-        contentHash: artifact.generationHash
-      }))
-    ];
-    delete manifest.managedArtifacts;
-    delete manifest.projectArtifacts;
+    const current = await loadManifest(root);
+    for (const artifact of current.managedArtifacts) {
+      await rm(path.join(root, ...artifact.pathParts));
+    }
+    const changeName = generatedSeedChangeName(legacy);
+    const missingApplication = legacy.projectArtifacts.find((artifact) => artifact.logicalName === 'backend-dockerfile');
+    const customizedApplication = legacy.projectArtifacts.find((artifact) => artifact.logicalName === 'node-backend-package');
+    if (!missingApplication || !customizedApplication) throw new Error('Released fixture lacks expected application provenance.');
+    await rm(path.join(root, ...missingApplication.pathParts), { force: true });
+    const customizedPath = path.join(root, ...customizedApplication.pathParts);
+    const customizedBytes = Buffer.concat([await readFile(customizedPath), Buffer.from('\n')]);
+    await writeFile(customizedPath, customizedBytes);
+    expect(`sha256:${createHash('sha256').update(customizedBytes).digest('hex')}`).not.toBe(customizedApplication.generationHash);
 
     const seedFiles: Array<[string, string[]]> = [
       ['openspec-seed-change-metadata', ['.openspec.yaml']],
       ['openspec-seed-proposal', ['proposal.md']],
       ['openspec-seed-design', ['design.md']],
       ['openspec-seed-tasks', ['tasks.md']],
-      ['openspec-seed-spec', ['specs', generatedSeedCapabilityId(manifest.project.workload), 'spec.md']]
+      ['openspec-seed-spec', ['specs', generatedSeedCapabilityId(workload), 'spec.md']]
     ];
+    const originalSeeds = new Map<string, Buffer>();
+    const seedEntries: Array<{ logicalName: string; category: string; pathParts: string[]; contentHash: string }> = [];
     for (const [logicalName, fileName] of seedFiles) {
       const pathParts = ['openspec', 'changes', changeName, ...fileName];
+      const content = logicalName === 'openspec-seed-change-metadata'
+        ? 'schema: spec-driven\n'
+        : `# Historical application seed: ${logicalName}\n\nPreserve these application-specific notes after archival.\n`;
+      await writeProjectFile(root, pathParts, content);
       const bytes = await readFile(path.join(root, ...pathParts));
-      manifest.artifacts.push({
+      originalSeeds.set(logicalName, bytes);
+      seedEntries.push({
         logicalName,
         category: 'governance',
         pathParts,
         contentHash: `sha256:${createHash('sha256').update(bytes).digest('hex')}`
       });
     }
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    await archiveSeedChange(root, changeName);
+    // Model obsolete ownership of actual seed bytes, not current artifacts retagged as historical generation.
+    const originalManifest = Buffer.from(`${JSON.stringify({
+      ...released, artifacts: [...legacyArtifacts, ...seedEntries]
+    }, null, 2)}\n`);
+    expect(manifestHadFilteredLegacyNonDurableOwnership(parseManifest(JSON.parse(originalManifest.toString('utf8'))))).toBe(true);
+    await writeFile(manifestPath, originalManifest);
+    await rm(path.join(root, 'openspec', 'changes', changeName, 'design.md'));
+    const archived = await archiveSeedChange(root, changeName);
 
     const stagingRoot = await testWorkspace('liftoff-legacy-staging');
     process.env.LIFTOFF_STAGING_ROOT = stagingRoot;
     const check = await runCli(['update', '--check'], root);
-    expect(check.code).toBe(2);
+    expect(check.code, `${check.out}${check.err}`).toBe(2);
     expect(check.out).toContain('Manifest maintenance');
+    expect(await readFile(manifestPath)).toEqual(originalManifest);
+    expect(await readFile(customizedPath)).toEqual(customizedBytes);
+    expect(await fileExists(path.join(root, ...missingApplication.pathParts))).toBe(false);
 
+    const applied = await runCli(['update'], root);
+    expect(applied.code, `${applied.out}${applied.err}`).toBe(0);
+    const rewritten = await loadManifest(root);
+    expect(rewritten.artifactVersion).toBe(8);
+    if (rewritten.artifactVersion !== 8 || rewritten.provenance.kind !== 'generated' || rewritten.provenance.origin.kind !== 'historical-manifest') {
+      throw new Error('Expected history-preserving manifest-8 metadata migration.');
+    }
+    expect(rewritten.provenance.origin).toMatchObject({
+      artifactVersion: 5, writerVersion: legacy.liftoffVersion, originalProfile: 'unknown',
+      contentHash: `sha256:${createHash('sha256').update(originalManifest).digest('hex')}`
+    });
+    expect(await readFile(path.join(root, ...rewritten.provenance.origin.historyPathParts))).toEqual(originalManifest);
+    expect(rewritten.projectArtifacts).toEqual(legacy.projectArtifacts);
+    expect([...rewritten.managedArtifacts, ...rewritten.projectArtifacts].filter((artifact) =>
+      seedEntries.some((seed) => seed.logicalName === artifact.logicalName)
+    )).toEqual([]);
+    expect(await fileExists(path.join(root, 'openspec', 'changes', changeName))).toBe(false);
+    expect(await fileExists(path.join(archived, 'design.md'))).toBe(false);
+    for (const [logicalName, fileName] of seedFiles.filter(([name]) => name !== 'openspec-seed-design')) {
+      expect(await readFile(path.join(archived, ...fileName))).toEqual(originalSeeds.get(logicalName));
+    }
+    expect(await readFile(customizedPath)).toEqual(customizedBytes);
+    expect(await fileExists(path.join(root, ...missingApplication.pathParts))).toBe(false);
     const validate = await runCli(['validate'], root);
-    expect(validate.code).toBe(0);
-
-    await runCli(['update'], root);
-    const rewritten = JSON.parse(await readFile(manifestPath, 'utf8'));
-    expect(
-      [...rewritten.managedArtifacts, ...rewritten.projectArtifacts].filter(
-        (artifact: { logicalName: string }) => artifact.logicalName.startsWith('openspec-seed')
-      )
-    ).toEqual([]);
+    expect(validate.code, `${validate.out}${validate.err}`).toBe(0);
+    const repeated = await runCli(['update', '--check'], root);
+    expect(repeated.code, `${repeated.out}${repeated.err}`).toBe(0);
+    expect(await readFile(fixturePath)).toEqual(releasedBytes);
   });
 
   it('keeps the emitted migrate-to-liftoff change invisible after archiving', async () => {

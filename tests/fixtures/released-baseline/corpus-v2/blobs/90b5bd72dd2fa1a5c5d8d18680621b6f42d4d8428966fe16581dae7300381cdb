@@ -1,0 +1,78 @@
+{
+	"schemaVersion": 1,
+	"laneId": "activation-v1-to-v2",
+	"snapshotId": "319cfa4e06af55c243984426ea28af8cbce2dec0b9d2d7ae748f7fe552a21bde",
+	"historyIndexPathParts": [
+		"governance",
+		"history",
+		"319cfa4e06af55c243984426ea28af8cbce2dec0b9d2d7ae748f7fe552a21bde",
+		"index.json"
+	],
+	"historyIndexDigest": "8d650c9fd2361fde080e9fd09fd906b3f8f71bca4d6d467639a1d31032c6e50f",
+	"sourceIdentity": {
+		"liftoffVersion": "0.10.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 1,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+		"activationStateSchemaVersion": 1,
+		"evidenceHeaderSchemaVersion": 1,
+		"approvalEnvelopeSchemaVersion": 1,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"targetIdentity": {
+		"liftoffVersion": "0.11.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 2,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"activationStateSchemaVersion": 2,
+		"evidenceHeaderSchemaVersion": 2,
+		"approvalEnvelopeSchemaVersion": 2,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"approvedPlanFingerprint": "c7cc625acfcdcc26e8589bb323e64399e70cb0d16d44836c23bc4b017086c44b",
+	"successor": {
+		"repositoryId": "local:00000000-0000-4000-8000-000000000002",
+		"createdAt": "2026-09-01T08:00:00.000Z"
+	},
+	"transaction": {
+		"status": "committed",
+		"committedAt": "2026-09-01T08:00:00.000Z"
+	},
+	"revalidation": {
+		"status": "complete",
+		"updatedAt": "2026-09-01T08:00:00.000Z",
+		"nextAction": null,
+		"phases": [
+			{
+				"phaseId": "seed-valid",
+				"status": "complete",
+				"evidenceIds": [
+					"published-v2-seed-valid"
+				],
+				"blockers": []
+			},
+			{
+				"phaseId": "seed-verified",
+				"status": "complete",
+				"evidenceIds": [
+					"published-v2-seed-verified"
+				],
+				"blockers": []
+			},
+			{
+				"phaseId": "seed-archived",
+				"status": "complete",
+				"evidenceIds": [
+					"published-v2-seed-archived"
+				],
+				"blockers": []
+			}
+		]
+	}
+}

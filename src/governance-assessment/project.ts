@@ -6,7 +6,9 @@ import {
 import { validateArtifactPathParts } from '../domain/project/paths.js';
 import { buildProjectPlan } from '../application/project/planning.js';
 import { formatUpdateCommand } from '../application/update/command-guidance.js';
-import { buildRepositoryGovernanceArtifacts } from '../repository-governance.js';
+import { buildRepositoryGovernanceArtifacts } from '../application/repository-governance/artifacts.js';
+import { governancePolicyVersion } from '../domain/governance/policy/content-validation.js';
+import { buildComponentManagedArtifacts, componentDesiredState, componentMaintenancePlan } from '../application/project/component-artifacts.js';
 import { currentActivationIdentity } from '../domain/governance/activation/graph.js';
 import { canonicalJson, canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
@@ -17,6 +19,7 @@ import {
   validateReadableActivationIdentity
 } from '../domain/governance/activation/validators.js';
 import { assertGovernanceApprovalIssued } from '../governance-activation/authority-records.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 import type {
   ApprovalEnvelope,
   PhaseEvidenceRecord,
@@ -80,13 +83,16 @@ function diagnostic(code: string, message: string, source: string): AssessmentDi
 }
 
 /** Returns only diagnostic data, never historical proof or update authority. */
-export async function inspectAssessmentHistoricalActivation(projectRoot: string): Promise<AssessmentHistoricalActivation> {
+export async function inspectAssessmentHistoricalActivation(
+  projectRoot: string, storage?: UpdatePreviewOptions
+): Promise<AssessmentHistoricalActivation> {
   const checkCommand = formatUpdateCommand(projectRoot, 'check');
-  let migration = await planActivationHistoryMigration(projectRoot);
+  let migration = await planActivationHistoryMigration(projectRoot, { storage });
   if (migration.status === 'blocked' && migration.reasonCode === 'unreviewed-historical-records' &&
       migration.unreviewedPathParts) {
     migration = await planActivationHistoryMigration(projectRoot, {
-      reviewedUnreferencedPathParts: migration.unreviewedPathParts
+      reviewedUnreferencedPathParts: migration.unreviewedPathParts,
+      storage
     });
   }
   if (migration.status === 'eligible') {
@@ -164,7 +170,7 @@ function rawArtifactPaths(raw: Record<string, unknown>): void {
   }
 }
 
-export async function inspectAssessmentProject(files: AssessmentFiles): Promise<AssessmentProject> {
+export async function inspectAssessmentProject(files: AssessmentFiles, storage?: UpdatePreviewOptions): Promise<AssessmentProject> {
   const text = await files.read(['liftoff.manifest.json']);
   if (text === null) throw new AssessmentInputError('project-not-found', 'No liftoff.manifest.json was found in the selected project.');
   const raw = parseAssessmentJson(text, 'liftoff.manifest.json');
@@ -180,15 +186,16 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
       );
     }
   }
-  if (!isRecord(raw) || typeof raw.artifactVersion !== 'number' || ![2, 3, 4, 5, 6, 7].includes(raw.artifactVersion)) {
+  if (!isRecord(raw) || typeof raw.artifactVersion !== 'number' || ![2, 3, 4, 5, 6, 7, 8].includes(raw.artifactVersion)) {
     throw new AssessmentInputError('unsupported-manifest', 'Manifest schema is unknown; no artifact paths were accessed.', 'liftoff.manifest.json');
   }
-  rawArtifactPaths(raw);
+  if (raw.artifactVersion !== 8) rawArtifactPaths(raw);
   const gov = raw.artifactVersion >= 5 && isRecord(raw.governance) ? raw.governance : {};
   const recordedIdentity = gov.activationIdentity === undefined ? null : identityHeader(gov.activationIdentity, 'manifest activation identity');
+  if (raw.artifactVersion === 8) parseManifest(raw);
   const historical = isHistoricalActivationIdentity(recordedIdentity);
   const unsupported = recordedIdentity !== null && !compatibleIdentity(recordedIdentity) ||
-    (typeof gov.policyVersion === 'string' && !['1', '2', '3', '4', '5', '6'].includes(gov.policyVersion));
+    (typeof gov.policyVersion === 'string' && !['1', '2', '3', '4', '5', '6', governancePolicyVersion].includes(gov.policyVersion));
   let manifest: LiftoffManifest | null;
   let project: LiftoffManifest['project'];
   if (unsupported && !historical) {
@@ -213,22 +220,32 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     manifest = parsed;
     project = parsed.project;
   }
+  const unrecordedActivation = manifest?.governance.profile === 'single-maintainer-gitflow' && recordedIdentity === null;
   const diagnostics: AssessmentDiagnostic[] = [];
   if (historical) diagnostics.push(diagnostic(
     'activation-history-diagnostic-only',
-    'Historical activation v1 is diagnostic-only. Its state, evidence, and approvals are not current proof or provider-read authority; assessment does not migrate or authorize them.',
+    'Historical activation is diagnostic-only. Its state, evidence, and approvals are not current proof or provider-read authority; assessment does not migrate or authorize them.',
+    'liftoff.manifest.json'
+  ));
+  else if (unrecordedActivation) diagnostics.push(diagnostic(
+    'activation-identity-unrecorded',
+    'This policy-only governance handoff has no recorded activation identity. Its manifest remains readable, but no current state, evidence, approval or historical successor lane is inferred. ' +
+      `Review ${formatUpdateCommand(files.root, 'check')} for the supported managed-handoff update before activation.`,
     'liftoff.manifest.json'
   ));
   else if (unsupported) diagnostics.push(diagnostic('unsupported-activation', 'The recorded activation tuple is not supported. Independent local facts remain assessable; no migration mapping is being inferred.', 'liftoff.manifest.json'));
   const profile = manifest?.governance.profile ?? String(gov.profile);
   const identity: AssessmentProjectIdentity = {
-    availability: unsupported ? 'unsupported' : 'known', manifestVersion: raw.artifactVersion,
+    availability: unsupported || unrecordedActivation ? 'unsupported' : 'known', manifestVersion: raw.artifactVersion,
     cliVersion: typeof raw.liftoffVersion === 'string' ? raw.liftoffVersion : null,
     profile, policyVersion: typeof gov.policyVersion === 'string' ? sanitizeAssessmentText(gov.policyVersion, 64) : null,
-    recordedActivationIdentity: recordedIdentity, stateSource: historical ? 'unsupported' : 'not-started'
+    recordedActivationIdentity: recordedIdentity, stateSource: historical || unrecordedActivation ? 'unsupported' : 'not-started'
   };
   const workload = project.workload;
-  const plan = project.agents.length === 0 ? null : buildProjectPlan({
+  const adoptedPlan = manifest?.artifactVersion === 8 && manifest.provenance.kind === 'adopted'
+    ? componentMaintenancePlan(manifest, JSON.parse(componentDesiredState(manifest)) as unknown)
+    : null;
+  const plan = project.agents.length === 0 || workload.kind === 'components' || adoptedPlan ? null : buildProjectPlan({
     projectName: project.name, projectType: workload.kind,
     apiStack: workload.apiStack, cloud: workload.cloud, region: workload.region,
     includeFrontend: workload.frontend, environments: workload.environments,
@@ -236,8 +253,8 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     agents: project.agents, defaultAgent: project.defaultAgent, specWorkflow: project.specWorkflow,
     governanceProfile: profile === 'none' ? 'none' : 'single-maintainer-gitflow'
   }, { requireProjectName: true });
-  const renderedCore = plan ? buildRepositoryGovernanceArtifacts(plan) : [];
-  if (!plan) diagnostics.push(diagnostic(
+  const renderedCore = adoptedPlan ? buildComponentManagedArtifacts(adoptedPlan) : plan ? buildRepositoryGovernanceArtifacts(plan) : [];
+  if (!plan && !adoptedPlan) diagnostics.push(diagnostic(
     'unobserved-agent-selection',
     'This historical manifest does not identify configured agents. Current managed handoff rendering is not inferred.',
     'liftoff.manifest.json'
@@ -249,9 +266,9 @@ export async function inspectAssessmentProject(files: AssessmentFiles): Promise<
     kind: 'liftoff', manifest, project, identity, managedEntries, renderedCore, state: null,
     stateIdentity: null, evidence: [], approvals: [], plans: [], bindingBaseline: null, invalidEvidence: false, diagnostics
   };
-  if (profile === 'none') return input;
+  if (profile === 'none' || unrecordedActivation) return input;
   if (historical) {
-    input.historicalActivation = await inspectAssessmentHistoricalActivation(files.root);
+    input.historicalActivation = await inspectAssessmentHistoricalActivation(files.root, storage);
     diagnostics.push(input.historicalActivation.diagnostic);
     return input;
   }

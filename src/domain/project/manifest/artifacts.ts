@@ -1,4 +1,4 @@
-import type { ManifestManagedArtifact, ManifestProjectArtifact, ProjectProvisioningGroup } from '../contracts.js';
+import type { ManifestGeneratedProjectArtifact, ManifestManagedArtifact, ManifestProjectArtifact, ProjectProvisioningGroup } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
 import { validateArtifactPathParts } from '../paths.js';
 import { isManagedCoreLogicalName, isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName,
@@ -51,7 +51,7 @@ export function createManifestArtifactReader(catalog: ManifestContractContext['c
     });
   }
 
-  function normalizeManifestProjectArtifacts(value: unknown): ManifestProjectArtifact[] {
+  function normalizeManifestProjectArtifacts(value: unknown): ManifestGeneratedProjectArtifact[] {
     if (!Array.isArray(value)) {
       throw new FileSystemError('Manifest.projectArtifacts must be an array.');
     }

@@ -22,6 +22,20 @@ export interface PackagedTemplateAssetContext {
     versions: string;
     providerLock: string;
   };
+  staticComponents?: {
+    common: {
+      dockerignore: string;
+      gitignore: string;
+    };
+    frontend: {
+      styles: string;
+      main: string;
+      viteConfig: string;
+      tailwindConfig: string;
+      envExample: string;
+      dockerignore: string;
+    };
+  };
 }
 
 function readPackagedText(...pathParts: string[]): string {
@@ -74,6 +88,20 @@ export function loadPackagedTemplateAssetContext(): PackagedTemplateAssetContext
         'opentofu-azure',
         '.terraform.lock.hcl'
       )
+    },
+    staticComponents: {
+      common: {
+        dockerignore: readPackagedText('assets', 'templates', 'components', 'common', 'dockerignore.txt'),
+        gitignore: readPackagedText('assets', 'templates', 'components', 'common', 'gitignore.txt')
+      },
+      frontend: {
+        styles: readPackagedText('assets', 'templates', 'components', 'frontend', 'styles.css'),
+        main: readPackagedText('assets', 'templates', 'components', 'frontend', 'main.ts'),
+        viteConfig: readPackagedText('assets', 'templates', 'components', 'frontend', 'vite.config.ts'),
+        tailwindConfig: readPackagedText('assets', 'templates', 'components', 'frontend', 'tailwind.config.ts'),
+        envExample: readPackagedText('assets', 'templates', 'components', 'frontend', 'env.example'),
+        dockerignore: readPackagedText('assets', 'templates', 'components', 'frontend', 'dockerignore.txt')
+      }
     }
   };
 }

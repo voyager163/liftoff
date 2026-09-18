@@ -518,6 +518,9 @@ async function inspectGlobalInstallation(
   return installation;
 }
 
+// Native handover reuses this read-only released owner inspection, never its npm updater.
+export const inspectReleasedNpmInstallation = inspectGlobalInstallation;
+
 function registryKind(value: string): SelfUpgradeRegistryKind {
   let parsed: URL;
   try {

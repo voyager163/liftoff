@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { preserveManifestProvenance } from '../src/application/project/manifest-provenance.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import { createUpdatePreviewDescriptor } from '../src/application/update/preview.js';
 import { executeLocalRevalidation, previewLocalRevalidation, type LocalRevalidationProgress } from '../src/application/update/revalidation.js';
@@ -13,12 +14,11 @@ import { writeProjectFile } from '../src/adapters/filesystem/project-files.js';
 import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { canonicalSha256, isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
-import type { LiftoffManifest } from '../src/domain/project/contracts.js';
 import { assessGovernance } from '../src/governance-assessment/engine.js';
 import { loadActivationState } from '../src/governance-activation/activation-state.js';
 import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
 import {
-  migrationRevalidationPhaseIds, migrationStateFilePathParts, rawHistoryDigest,
+  migrationRevalidationPhaseIds, migrationStateFilePathParts,
   validateMigrationJournal, type MigrationRevalidationStatus
 } from '../src/governance-activation/history-contracts.js';
 import {
@@ -26,7 +26,7 @@ import {
 } from '../src/governance-activation/migration-history.js';
 import { readActivationEvidence } from '../src/governance-activation/read-only.js';
 import { formatCommand, type CommandRunner } from '../src/process-runner.js';
-import { buildArtifacts } from '../src/templates.js';
+import { buildArtifacts, buildManifest } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
@@ -81,18 +81,16 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   if (migration.status !== 'eligible') throw new Error(`Expected frozen v1 eligibility: ${JSON.stringify(migration)}`);
   const sourceBytes = await bytes(root);
   const core = buildArtifacts(project).filter((artifact) => artifact.lifecycle === 'managed-core');
-  const targetManifest: LiftoffManifest = {
-    ...migration.inventory.manifest,
-    liftoffVersion,
-    governance: {
-      profile: 'single-maintainer-gitflow', policyVersion: '6', state: 'handoff-generated',
-      activationIdentity: currentActivationIdentity
-    },
-    managedArtifacts: core.map((artifact) => ({
-      logicalName: artifact.logicalName, category: artifact.category, pathParts: [...artifact.pathParts],
-      contentHash: `sha256:${rawHistoryDigest(Buffer.from(artifact.content))}`
-    }))
-  };
+  const originalManifest = await readFile(path.join(root, 'liftoff.manifest.json'));
+  const preserved = preserveManifestProvenance(migration.inventory.manifest, originalManifest);
+  const historicalFramework = migration.inventory.manifest.framework;
+  if (historicalFramework.state === 'uninitialized') throw new Error('Expected a released framework identity.');
+  const targetManifest = buildManifest(project, core, {
+    frameworkState: historicalFramework.state,
+    projectArtifacts: migration.inventory.manifest.projectArtifacts,
+    provenance: preserved.provenance
+  });
+  targetManifest.framework = historicalFramework;
   let ticks = 0;
   const startedAt = Date.now() - 60_000;
   const clock = () => new Date(startedAt + ticks++);
@@ -106,13 +104,13 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   });
   const receipt = await issueUpdatePreviewReceipt(root, [descriptor], updatePreview);
   const finalized = finalizeActivationHistoryMigration(migration, descriptor.fingerprint, clock());
-  for (const mutation of finalized.mutations) {
+  for (const mutation of [...finalized.mutations, ...(preserved.history ? [preserved.history] : [])]) {
     const destination = path.join(root, ...mutation.pathParts);
     if (mutation.type === 'delete') await rm(destination);
     else {
       await mkdir(path.dirname(destination), { recursive: true });
       await writeFile(destination, mutation.content, { mode: mutation.mode });
-      await chmod(destination, mutation.mode);
+      if (mutation.mode !== undefined) await chmod(destination, mutation.mode);
     }
   }
   for (const artifact of core) await writeProjectFile(root, [...artifact.pathParts], artifact.content);
@@ -223,10 +221,10 @@ describe('linked migration inspection', {
       let sharedSummary: unknown;
       for (const command of subcommands) {
         const structured = await inspect(command, true);
-        expect(structured.code, structured.stdout + structured.stderr).toBe(0);
+        expect(structured.code, structured.stdout + structured.stderr).toBe(command === 'verify' ? 2 : 0);
         expect(structured.stderr).toBe('');
         const report = jsonReport(structured.stdout);
-        expect(report).toMatchObject({ schemaVersion: 2, command: `governance ${command}`, readOnly: true, migration: journal });
+        expect(report).toMatchObject({ schemaVersion: 3, command: `governance ${command}`, readOnly: true, migration: journal });
         expect(report.migrationSummary).toMatchObject({
           localCommit: journal.transaction,
           snapshot: {
@@ -238,6 +236,11 @@ describe('linked migration inspection', {
           currentProofRequired: true,
           remedy: status === 'complete' ? null : expect.stringContaining(checkCommand)
         });
+        if (status !== 'complete') {
+          expect(report.migrationSummary).toMatchObject({
+            remedy: expect.stringContaining(`Keep the committed v${journal.targetIdentity.activationContractVersion} successor`)
+          });
+        }
         if (sharedSummary === undefined) sharedSummary = report.migrationSummary;
         else expect(report.migrationSummary).toEqual(sharedSummary);
         if (command === 'verify') {
@@ -245,14 +248,14 @@ describe('linked migration inspection', {
         } else {
           expect(report.approvals).toEqual([]);
           expect(report.remoteBinding).toBeNull();
-          expect(report.nextReadyPhase).toBe(status === 'complete' || report.scope === 'activation' ? null : 'seed-valid');
+          expect(report.nextReadyPhase).toBe(status === 'complete' ? null : 'seed-valid');
           expect(report.phases).toEqual(expect.arrayContaining(migrationRevalidationPhaseIds.map((id) => expect.objectContaining({
             id, storedState: status === 'complete' ? 'verified' : 'pending',
             evidence: expect.objectContaining({ freshness: expect.objectContaining({ status: status === 'complete' ? 'fresh' : 'missing' }) })
           }))));
         }
         const human = await inspect(command, false);
-        expect(human.code, human.stdout + human.stderr).toBe(0);
+        expect(human.code, human.stdout + human.stderr).toBe(command === 'verify' ? 2 : 0);
         expect(human.stderr).toBe('');
         expect(human.stdout).toContain('Migration progress (journal)');
         expect(human.stdout).toContain(`Local migration: committed at ${journal.transaction.committedAt}`);

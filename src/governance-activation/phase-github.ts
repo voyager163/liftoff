@@ -1,21 +1,54 @@
-import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome, PhasePlanBuild, PhasePlanningInput } from './transition-ports.js';
-import type { TransitionOperation, LiveReadbackProof } from '../domain/governance/activation/types.js';
+import type {
+  PhaseAdapterExecutionInput,
+  PhaseAdapterOutcome,
+  PhasePlanBuild,
+  PhasePlanningInput
+} from './transition-ports.js';
 import { planGitHubPublication, executeGitHubPublication } from './github-publication.js';
-import { planGitHubDiscovery, observeGitHubPhase0 } from './github-discovery.js';
+import { planGitHubDiscovery } from './github-discovery.js';
 import { discoverPhase0 } from './phase-discovery.js';
-import { clientFor, githubOperation, repositoryConfiguration } from './github-config.js';
-import { executeCredentialReady, executeRulesetPhase } from './phase-governance.js';
-import { readbackProof, cloneState } from './transition-records.js';
-import { writeProjectFile } from '../adapters/filesystem/project-files.js';
-import { credentialPolicyPathParts, buildFineGrainedPatCredentialPolicy, canonicalCredentialRepository } from './credentials.js';
-import { runnerPreflightSecretName } from '../domain/governance/activation/types.js';
-import { protectedStdinCredentialChannel, privateTtyCredentialChannel } from '../adapters/credentials/protected-input.js';
-import { githubCliSecretWriter } from '../adapters/credentials/github-enrollment.js';
-import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { githubOperation, repositoryConfiguration } from './github-config.js';
+import {
+  executeActivationApproval,
+  executeRulesetPhase
+} from './phase-governance.js';
+
+// Application and adapter imports
+import {
+  planRepositoryDiscovery,
+  executeRepositoryDiscovery
+} from '../application/repository-governance/producer-discovery.js';
+import {
+  planRepositoryWorkflowSource,
+  executeRepositoryWorkflowSource
+} from '../application/repository-governance/producer-workflow-source.js';
+import {
+  planRepositoryChecks,
+  executeRepositoryChecks
+} from '../application/repository-governance/producer-checks.js';
+import {
+  planRepositoryRulesets,
+  planRepositoryLiveReadback,
+  executeRepositoryRulesets,
+  executeRepositoryLiveReadback
+} from '../application/repository-governance/producer-rulesets.js';
+import {
+  executeProductionCredentialEnrollment,
+  executeProductionCredentialChallenge,
+  planProductionCredentialReadiness,
+  verifyProductionCredentialReadiness
+} from '../adapters/credentials/production-credentials.js';
+import { executeCompositePhase, planCompositePhase } from './phase-composite.js';
+import { executePrivateRunner, planPrivateRunner } from '../application/azure-activation/producer-runner.js';
+import { stateWriteOperation } from './transition-records.js';
+import { planGreenRedProofPhase } from '../application/azure-activation/producer-qualification.js';
 
 export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhasePlanBuild | null> {
+  if (input.phase.id === 'pushed' && !input.inspection.activationInputs?.repository?.create) return null;
   const repository = repositoryConfiguration(input.inspection).name;
-  switch (input.phase.id) {
+  const phaseId = input.phase.id as string;
+
+  switch (phaseId) {
     case 'pushed':
       if (input.inspection.activationInputs?.repository?.create) {
         return planGitHubPublication(input);
@@ -23,116 +56,45 @@ export async function planGitHubPhase(input: PhasePlanningInput): Promise<PhaseP
       return null;
     case 'phase-0-complete':
       return await planGitHubDiscovery(input);
+    case 'repository-discovered':
+      return await planRepositoryDiscovery(input);
     case 'bootstrap-workflow-source-ready':
-      return {
-        operations: [
-          {
-            phaseId: input.phase.id, adapter: 'local-state', actionId: 'local.workflow-source.write',
-            mutationClass: 'write-workflows', inputs: { path: '.github/workflows' },
-            destination: { type: 'local', identity: '.github/workflows', pathParts: ['.github', 'workflows'] },
-            remote: false, destructive: false
-          },
-          {
-            phaseId: input.phase.id, adapter: 'git', actionId: 'git.commit-reviewed',
-            mutationClass: 'git-commit', inputs: { message: 'Bootstrap verification workflows' },
-            destination: { type: 'local', identity: '.git' },
-            remote: false, destructive: false
-          },
-          {
-            phaseId: input.phase.id, adapter: 'git', actionId: 'git.push-approved-ref',
-            mutationClass: 'git-push', inputs: { branch: 'develop' },
-            destination: { type: 'repository', identity: repository, repository },
-            remote: true, destructive: false
-          },
-          githubOperation(input, 'github.bootstrap-local.configure', 'github-write', { repository })
-        ]
-      };
-    case 'credential-ready':
-      return {
-        operations: [
-          githubOperation(input, 'github.credential.verify-policy', 'github-read', { repository })
-        ]
-      };
-    case 'runner-ready':
-      return {
-        operations: [
-          githubOperation(input, 'github.runner.ensure-ready', 'github-write', { repository })
-        ]
-      };
-    case 'private-backend-proof':
-      return {
-        operations: [
-          githubOperation(input, 'github.runner.backend-proof', 'github-workflow-dispatch', { repository })
-        ]
-      };
-    case 'application-artifact-ready':
-      return {
-        operations: [
-          githubOperation(input, 'github.artifact.build-dispatch', 'github-workflow-dispatch', { repository })
-        ]
-      };
     case 'workflow-source-ready':
-      return {
-        operations: [
-          {
-            phaseId: input.phase.id, adapter: 'local-state', actionId: 'local.workflow-source.write',
-            mutationClass: 'write-workflows', inputs: { path: '.github/workflows' },
-            destination: { type: 'local', identity: '.github/workflows', pathParts: ['.github', 'workflows'] },
-            remote: false, destructive: false
-          },
-          {
-            phaseId: input.phase.id, adapter: 'local-state', actionId: 'local.ruleset-source.write',
-            mutationClass: 'write-ruleset-source', inputs: { path: '.github/rulesets' },
-            destination: { type: 'local', identity: '.github/rulesets', pathParts: ['.github', 'rulesets'] },
-            remote: false, destructive: false
-          }
-        ]
-      };
+    case 'repository-workflow-source-ready':
+      return await planRepositoryWorkflowSource(input);
+    case 'credential-ready':
+      return planProductionCredentialReadiness(input);
+    case 'runner-ready':
+      return planPrivateRunner(input);
+    case 'repository-checks-qualified':
+      return await planRepositoryChecks(input);
+    case 'private-backend-proof':
+      return planCompositePhase(input);
+    case 'application-artifact-ready':
     case 'dev-proof':
-      return {
-        operations: [
-          githubOperation(input, 'github.checks.dev-proof', 'github-workflow-dispatch', { repository })
-        ]
-      };
-    case 'staging-qualified':
-      return {
-        operations: [
-          githubOperation(input, 'github.checks.staging', 'github-workflow-dispatch', { repository })
-        ]
-      };
     case 'production-rehearsed':
-      return {
-        operations: [
-          githubOperation(input, 'github.checks.production-rehearsal', 'github-workflow-dispatch', { repository })
-        ]
-      };
+    case 'staging-qualified':
+      return planCompositePhase(input);
     case 'green-red-proof':
-      return {
-        operations: [
-          githubOperation(input, 'github.checks.green-red-proof', 'github-workflow-dispatch', { repository })
-        ]
-      };
+      return planGreenRedProofPhase(input);
+    case 'repository-enforcement-approved':
+      return { operations: [stateWriteOperation(input.phase)] };
     case 'rulesets-applied':
-      return {
-        operations: [
-          githubOperation(input, 'github.ruleset.apply', 'github-ruleset-write', { repository }),
-          githubOperation(input, 'github.ruleset.readback', 'github-read', { repository })
-        ]
-      };
+    case 'repository-rulesets-applied':
+      return await planRepositoryRulesets(input);
     case 'live-readback':
-      return {
-        operations: [
-          githubOperation(input, 'github.ruleset.readback', 'github-read', { repository })
-        ]
-      };
+    case 'repository-live-readback':
+      return planRepositoryLiveReadback(input);
     default:
       return null;
   }
 }
 
 export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  const repository = repositoryConfiguration(input.inspection).name;
-  switch (input.phase.id) {
+  if (input.phase.id === 'pushed' && !input.inspection.activationInputs?.repository?.create) return null;
+  const phaseId = input.phase.id as string;
+
+  switch (phaseId) {
     case 'pushed':
       if (input.inspection.activationInputs?.repository?.create) {
         return executeGitHubPublication(input);
@@ -140,54 +102,47 @@ export async function executeGitHubPhase(input: PhaseAdapterExecutionInput): Pro
       return null;
     case 'phase-0-complete':
       return discoverPhase0(input);
+    case 'repository-discovered':
+      return executeRepositoryDiscovery(input);
+    case 'bootstrap-workflow-source-ready':
+    case 'workflow-source-ready':
+    case 'repository-workflow-source-ready':
+      return executeRepositoryWorkflowSource(input);
     case 'credential-ready': {
       if (input.credentialEnrollment) {
-        try {
-          const channel = input.credentialEnrollment.protectedStdin
-            ? protectedStdinCredentialChannel(true)
-            : privateTtyCredentialChannel();
-          const secretBytes = await channel.read('fine-grained PAT');
-          const writer = githubCliSecretWriter(input.runner, input.inspection.projectRoot);
-          await writer.write(repository, runnerPreflightSecretName, secretBytes);
-          const [owner, name] = repository.split('/') as [string, string];
-          const policy = buildFineGrainedPatCredentialPolicy({
-            repository: canonicalCredentialRepository({ id: input.inspection.state.repository.id, owner, name }),
-            allowedWorkflows: [{ path: '.github/workflows/bootstrap-import-preflight.yml', jobs: ['bootstrap-import-preflight'] }],
-            createdAt: input.now,
-            proof: {
-              verifiedAt: input.now.toISOString(),
-              readbackDigest: canonicalSha256(secretBytes),
-              readbackProvider: 'github-api',
-              payloadFree: true
-            }
-          });
-          secretBytes.fill(0);
-          await writeProjectFile(input.inspection.projectRoot, [...credentialPolicyPathParts], `${JSON.stringify(policy, null, 2)}\n`);
-          const resourceId = `/repos/${repository}/actions/secrets/${runnerPreflightSecretName}`;
-          return {
-            status: 'completed',
-            resultState: 'verified',
-            evidencePayload: {
-              kind: 'credential-ready.v1',
-              policyDigest: canonicalSha256(policy),
-              secretName: runnerPreflightSecretName
-            },
-            liveReadback: [readbackProof(input, 'github', 'secret', resourceId, { enrolled: true })],
-            completedOperations: input.plan.operations.filter((op) => op.actionId.startsWith('github.credential.'))
-          };
-        } catch (error) {
-          return {
-            status: 'blocked',
-            blocker: error instanceof Error ? error.message : String(error),
-            completedOperations: []
-          };
-        }
+        return executeProductionCredentialEnrollment({ executionInput: input });
       }
-      return executeCredentialReady(input);
+      if (input.plan.operations.some((operation) => operation.actionId === 'github.credential.enroll-masked')) {
+        return { status: 'blocked', completedOperations: [],
+          blocker: 'Credential enrollment requires its owning credential-enroll command and protected input; apply-next cannot acquire secret custody.' };
+      }
+      if (input.plan.operations.some((operation) => operation.actionId === 'github.credential.usage-challenge')) {
+        return executeProductionCredentialChallenge(input);
+      }
+      return verifyProductionCredentialReadiness(input);
     }
+    case 'runner-ready':
+      return executePrivateRunner(input);
+    case 'private-backend-proof':
+      return executeCompositePhase(input);
+    case 'repository-checks-qualified':
+      return executeRepositoryChecks(input);
+    case 'application-artifact-ready':
+    case 'dev-proof':
+    case 'production-rehearsed':
+    case 'staging-qualified':
+    case 'green-red-proof':
+      return executeCompositePhase(input);
+    case 'repository-enforcement-approved':
+      return executeActivationApproval(input);
     case 'rulesets-applied':
+      return executeRulesetPhase(input);
+    case 'repository-rulesets-applied':
+      return executeRepositoryRulesets(input);
     case 'live-readback':
       return executeRulesetPhase(input);
+    case 'repository-live-readback':
+      return executeRepositoryLiveReadback(input);
     default:
       return null;
   }

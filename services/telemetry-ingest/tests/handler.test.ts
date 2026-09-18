@@ -9,9 +9,12 @@ import {
   type TelemetryIngestionDependencies
 } from '../src/handler.js';
 import {
+  telemetryCommands,
+  telemetryExcludedCommands,
   telemetryStorageFields,
   type TelemetryStorageRecord
 } from '../../../src/telemetry/contract.js';
+import releasedClient from './fixtures/released-client-v0.12.3.json';
 
 const validEvent = {
   schemaVersion: 1,
@@ -57,6 +60,66 @@ function dependencies(): TelemetryIngestionDependencies & {
 }
 
 describe('telemetry ingestion handler', () => {
+  it.each(releasedClient.commands)('retains the released v0.12.3 %s event without a schema migration', async (command) => {
+    for (const outcome of ['success', 'failure']) {
+      const deps = dependencies();
+      const event = {
+        schemaVersion: releasedClient.schemaVersion,
+        event: releasedClient.event,
+        command,
+        cliVersion: releasedClient.cliVersion,
+        outcome
+      };
+      expect(await handleTelemetryRequest(request(JSON.stringify(event)), deps)).toEqual({ status: 204 });
+      expect(deps.upload).toHaveBeenCalledOnce();
+      expect(deps.upload.mock.calls[0][0]).toEqual({
+        TimeGenerated: '2026-07-26T00:00:00.000Z',
+        EventName: event.event,
+        SchemaVersion: event.schemaVersion,
+        Command: command,
+        CliVersion: event.cliVersion,
+        Outcome: outcome
+      });
+    }
+  });
+
+  it.each(telemetryCommands)('admits only the exact five-field %s event into the existing six columns', async (command) => {
+    const deps = dependencies();
+    const event = { ...validEvent, command, cliVersion: '0.13.0', outcome: 'failure' };
+    expect(await handleTelemetryRequest(request(JSON.stringify(event)), deps)).toEqual({ status: 204 });
+    expect(deps.upload).toHaveBeenCalledOnce();
+    const record = deps.upload.mock.calls[0][0];
+    expect(Object.keys(record)).toEqual(telemetryStorageFields);
+    expect(record).toMatchObject({ Command: command, CliVersion: '0.13.0', Outcome: 'failure' });
+  });
+
+  it.each([
+    ...telemetryExcludedCommands,
+    'assess:execute',
+    'adopt:all',
+    'skills:install-all',
+    'installation:migrate:direct',
+    'installation:inspect:/project'
+  ])('rejects excluded or similarly named command %s', async (command) => {
+    const deps = dependencies();
+    expect(await handleTelemetryRequest(
+      request(JSON.stringify({ ...validEvent, command })), deps
+    )).toEqual({ status: 400 });
+    expect(deps.upload).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    'installationId', 'sessionId', 'owner', 'channel', 'path', 'profile', 'model',
+    'prompt', 'response', 'planFingerprint', 'receiptId', 'artifactChecksum',
+    'resourceId', 'duration', 'architecture', 'arguments'
+  ])('never admits lifecycle detail %s, even when only a hash is supplied', async (field) => {
+    const deps = dependencies();
+    expect(await handleTelemetryRequest(
+      request(JSON.stringify({ ...validEvent, [field]: 'a'.repeat(64) })), deps
+    )).toEqual({ status: 400 });
+    expect(deps.upload).not.toHaveBeenCalled();
+  });
+
   it('accepts an exact event and uploads exactly six approved columns', async () => {
     const deps = dependencies();
     const response = await handleTelemetryRequest(request(JSON.stringify(validEvent)), deps);

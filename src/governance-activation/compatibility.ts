@@ -16,6 +16,8 @@ import {
   historicalActivationIdentities,
   historicalV1ActivationIdentity,
   historicalV2ActivationIdentity,
+  historicalV3ActivationIdentity,
+  historicalV4Policy7ActivationIdentity,
   evidenceHeaderSchemaVersion,
   governanceActivationPolicyVersion,
   liftoffActivationPackageVersion,
@@ -33,10 +35,12 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 
 export const governanceCompatibilitySchemaVersion = compatibilityMetadataSchemaVersion;
 export const minimumLiftoffForManifestV7 = '0.10.0' as const;
-export const supportedManifestReadVersions = [2, 3, 4, 5, 6, 7] as const;
-export const activationSuccessorMigrationId = 'activation-v1-to-v3' as const;
-export const activationSuccessorMigrationIds = [activationSuccessorMigrationId, 'activation-v2-to-v3'] as const;
+export const minimumLiftoffForManifestV8 = liftoffActivationPackageVersion;
+export const supportedManifestReadVersions = [2, 3, 4, 5, 6, 7, 8] as const;
+export const activationSuccessorMigrationId = 'activation-v1-to-v4' as const;
+export const activationSuccessorMigrationIds = [activationSuccessorMigrationId, 'activation-v2-to-v4', 'activation-v3-to-v4', 'activation-v4-policy7-to-policy8'] as const;
 export type ActivationSuccessorMigrationId = typeof activationSuccessorMigrationIds[number];
+const historicalReaderIds = ['activation-v1', 'activation-v2', 'activation-v3', 'activation-v4-policy7'] as const;
 
 export interface ActivationSuccessorMigration {
   id: ActivationSuccessorMigrationId;
@@ -50,7 +54,9 @@ export interface ActivationSuccessorMigration {
 export function packagedActivationSuccessorMigrations(): ActivationSuccessorMigration[] {
   const lanes = [
     [activationSuccessorMigrationId, historicalV1ActivationIdentity],
-    ['activation-v2-to-v3', historicalV2ActivationIdentity]
+    ['activation-v2-to-v4', historicalV2ActivationIdentity],
+    ['activation-v3-to-v4', historicalV3ActivationIdentity],
+    ['activation-v4-policy7-to-policy8', historicalV4Policy7ActivationIdentity]
   ] as const satisfies readonly (readonly [ActivationSuccessorMigrationId, ActivationIdentity])[];
   return lanes.map(([id, identity]) => ({
     id,
@@ -94,6 +100,7 @@ export interface GovernanceCompatibilityMetadata {
   liftoffVersion: typeof liftoffActivationPackageVersion;
   minimumLiftoffVersions: {
     manifestWriteVersion7: typeof minimumLiftoffForManifestV7;
+    manifestWriteVersion8: typeof minimumLiftoffForManifestV8;
     remedy: string;
   };
   manifest: {
@@ -105,7 +112,7 @@ export interface GovernanceCompatibilityMetadata {
     currentCompatibleTuples: readonly ActivationIdentity[];
     historicalReadability: {
       tuples: readonly ActivationIdentity[];
-      readers?: readonly ('activation-v1' | 'activation-v2')[];
+      readers?: readonly typeof historicalReaderIds[number][];
       activationContractVersion?: number;
       activationStateSchemaVersion?: number;
       evidenceHeaderSchemaVersion?: number;
@@ -207,7 +214,8 @@ export function buildGovernanceCompatibilityMetadata(
     liftoffVersion: liftoffActivationPackageVersion,
     minimumLiftoffVersions: {
       manifestWriteVersion7: minimumLiftoffForManifestV7,
-      remedy: `Upgrade Liftoff to ${minimumLiftoffForManifestV7} or newer with ${exactGlobalInstallCommand(`${minimumLiftoffForManifestV7}`)}.`
+      manifestWriteVersion8: minimumLiftoffForManifestV8,
+      remedy: `Inspect installation ownership and install the verified native Liftoff ${liftoffActivationPackageVersion} candidate separately from this reviewed project update.`
     },
     manifest: {
       readVersions: [...supportedManifestReadVersions],
@@ -218,7 +226,7 @@ export function buildGovernanceCompatibilityMetadata(
       currentCompatibleTuples: [stableIdentity(currentActivationIdentity)],
       historicalReadability: {
         tuples: historicalActivationIdentities.map(stableIdentity),
-        readers: ['activation-v1', 'activation-v2'],
+        readers: [...historicalReaderIds],
         execution: 'diagnostic-only',
         migration: 'explicit-successor-preserve-bytes'
       },
@@ -444,14 +452,42 @@ function inventoryEntry(value: unknown, label: string): ManagedCompatibilityInve
   };
 }
 
-export function validateGovernanceCompatibilityMetadata(
-  value: unknown,
-  expected?: {
+interface CompatibilityInventoryExpectation {
     logicalNameAllowlist?: readonly string[];
     pathAllowlist?: readonly (readonly string[])[];
     inventory?: readonly ManagedCompatibilityInventoryEntry[];
     agents?: readonly CodingAgentId[];
-  }
+}
+
+interface CompatibilityReadContract {
+  identity: ActivationIdentity;
+  history: readonly ActivationIdentity[];
+  readers: readonly typeof historicalReaderIds[number][];
+  migrations: readonly ActivationSuccessorMigration[];
+}
+
+export function validateGovernanceCompatibilityMetadata(
+  value: unknown, expected?: CompatibilityInventoryExpectation
+): GovernanceCompatibilityMetadata {
+  return validateCompatibilityMetadata(value, expected, {
+    identity: currentActivationIdentity, history: historicalActivationIdentities,
+    readers: historicalReaderIds, migrations: packagedActivationSuccessorMigrations()
+  });
+}
+
+export function validatePolicy7CompatibilityMetadata(value: unknown): GovernanceCompatibilityMetadata {
+  return validateCompatibilityMetadata(value, undefined, {
+    identity: historicalV4Policy7ActivationIdentity,
+    history: [historicalV1ActivationIdentity, historicalV2ActivationIdentity, historicalV3ActivationIdentity],
+    readers: ['activation-v1', 'activation-v2', 'activation-v3'],
+    migrations: packagedActivationSuccessorMigrations()
+      .filter((lane) => lane.id !== 'activation-v4-policy7-to-policy8')
+      .map((lane) => ({ ...lane, toIdentity: stableIdentity(historicalV4Policy7ActivationIdentity) }))
+  });
+}
+
+function validateCompatibilityMetadata(
+  value: unknown, expected: CompatibilityInventoryExpectation | undefined, contract: CompatibilityReadContract
 ): GovernanceCompatibilityMetadata {
   const item = exact(value, [
     'schemaVersion',
@@ -463,8 +499,8 @@ export function validateGovernanceCompatibilityMetadata(
     'managedCore'
   ], 'compatibility');
   const schemaVersion = numberField(item, 'schemaVersion', 'compatibility');
-  if (![2, 3, governanceCompatibilitySchemaVersion].includes(schemaVersion)) {
-    throw new Error(`compatibility.schemaVersion must be 2, 3, or ${governanceCompatibilitySchemaVersion}; historical metadata requires its version-specific reader.`);
+  if (schemaVersion !== governanceCompatibilitySchemaVersion) {
+    throw new Error(`compatibility.schemaVersion must be ${governanceCompatibilitySchemaVersion}; historical metadata requires its isolated version-specific reader.`);
   }
   if (item.generatedBy !== 'Mission Control Liftoff') {
     throw new Error('compatibility.generatedBy must be Mission Control Liftoff.');
@@ -472,9 +508,12 @@ export function validateGovernanceCompatibilityMetadata(
   if (item.liftoffVersion !== liftoffActivationPackageVersion) {
     throw new Error(`compatibility.liftoffVersion must be ${liftoffActivationPackageVersion}.`);
   }
-  const minimum = exact(item.minimumLiftoffVersions, ['manifestWriteVersion7', 'remedy'], 'compatibility.minimumLiftoffVersions');
+  const minimum = exact(item.minimumLiftoffVersions, ['manifestWriteVersion7', 'manifestWriteVersion8', 'remedy'], 'compatibility.minimumLiftoffVersions');
   if (minimum.manifestWriteVersion7 !== minimumLiftoffForManifestV7) {
     throw new Error(`compatibility.minimumLiftoffVersions.manifestWriteVersion7 must be ${minimumLiftoffForManifestV7}.`);
+  }
+  if (minimum.manifestWriteVersion8 !== minimumLiftoffForManifestV8) {
+    throw new Error(`compatibility.minimumLiftoffVersions.manifestWriteVersion8 must be ${minimumLiftoffForManifestV8}.`);
   }
   const manifest = exact(item.manifest, ['readVersions', 'writeVersion', 'hashAuthority'], 'compatibility.manifest');
   const readVersions = numberArray(manifest.readVersions, 'compatibility.manifest.readVersions');
@@ -502,16 +541,16 @@ export function validateGovernanceCompatibilityMetadata(
     'execution',
     'migration'
   ], 'compatibility.activation.historicalReadability');
-  if (!Array.isArray(historical.tuples) || historical.tuples.length !== historicalActivationIdentities.length) throw new Error('Historical diagnostic identity inventory differs from the packaged known history.');
-  for (const [index, identity] of historicalActivationIdentities.entries()) {
+  if (!Array.isArray(historical.tuples) || historical.tuples.length !== contract.history.length) throw new Error('Historical diagnostic identity inventory differs from the packaged known history.');
+  for (const [index, identity] of contract.history.entries()) {
     assertIdentity(activationIdentity(historical.tuples[index], `compatibility.activation.historicalReadability.tuples[${index}]`),
       identity, `compatibility.activation.historicalReadability.tuples[${index}]`);
   }
-  const historicalMigration = schemaVersion === 2 ? 'unsupported-preserve-bytes' : 'explicit-successor-preserve-bytes';
-  if ((schemaVersion >= 4 && stringArray(historical.readers, 'compatibility.activation.historicalReadability.readers').join(',') !== 'activation-v1,activation-v2') ||
+  const historicalMigration = 'explicit-successor-preserve-bytes';
+  if ((schemaVersion >= 4 && stringArray(historical.readers, 'compatibility.activation.historicalReadability.readers').join(',') !== contract.readers.join(',')) ||
     historical.execution !== 'diagnostic-only' ||
     historical.migration !== historicalMigration) {
-    throw new Error('Historical activation v1/v2 must remain diagnostic-only with exact declared readers and successor lanes.');
+    throw new Error('Historical activation must remain diagnostic-only with exact declared readers and successor lanes.');
   }
   if (!Array.isArray(activation.currentCompatibleTuples)) {
     throw new Error('compatibility.activation.currentCompatibleTuples must be an array.');
@@ -522,10 +561,10 @@ export function validateGovernanceCompatibilityMetadata(
   if (currentTuples.length !== 1) {
     throw new Error('compatibility.activation.currentCompatibleTuples must contain exactly the current tuple.');
   }
-  assertIdentity(currentTuples[0]!, currentActivationIdentity, 'compatibility.activation.currentCompatibleTuples[0]');
+  assertIdentity(currentTuples[0]!, contract.identity, 'compatibility.activation.currentCompatibleTuples[0]');
   const recognizedGraphHashes = stringArray(activation.recognizedGraphHashes, 'compatibility.activation.recognizedGraphHashes');
-  if (recognizedGraphHashes.length !== 1 || recognizedGraphHashes[0] !== canonicalPhaseGraphHash) {
-    throw new Error(`compatibility.activation.recognizedGraphHashes must contain only ${canonicalPhaseGraphHash}.`);
+  if (recognizedGraphHashes.length !== 1 || recognizedGraphHashes[0] !== contract.identity.phaseGraphHash) {
+    throw new Error(`compatibility.activation.recognizedGraphHashes must contain only ${contract.identity.phaseGraphHash}.`);
   }
   if (!Array.isArray(activation.graphMappings)) {
     throw new Error('compatibility.activation.graphMappings must be an array.');
@@ -581,7 +620,7 @@ export function validateGovernanceCompatibilityMetadata(
   }
   const successorMigrations: ActivationSuccessorMigration[] = [];
   if (schemaVersion >= 3) {
-    const expectedMigrations = packagedActivationSuccessorMigrations();
+    const expectedMigrations = contract.migrations;
     if (!Array.isArray(activation.successorMigrations) ||
       activation.successorMigrations.length !== expectedMigrations.length) {
       throw new Error('compatibility.activation.successorMigrations must match the packaged migration inventory.');
@@ -684,6 +723,7 @@ export function validateGovernanceCompatibilityMetadata(
     liftoffVersion: liftoffActivationPackageVersion,
     minimumLiftoffVersions: {
       manifestWriteVersion7: minimumLiftoffForManifestV7,
+      manifestWriteVersion8: minimumLiftoffForManifestV8,
       remedy: stringField(minimum, 'remedy', 'compatibility.minimumLiftoffVersions')
     },
     manifest: {
@@ -694,8 +734,8 @@ export function validateGovernanceCompatibilityMetadata(
     activation: {
       currentCompatibleTuples: currentTuples,
       historicalReadability: {
-        tuples: historicalActivationIdentities.map(stableIdentity),
-        ...(schemaVersion >= 4 ? { readers: ['activation-v1', 'activation-v2'] } : {
+        tuples: contract.history.map(stableIdentity),
+        ...(schemaVersion >= 4 ? { readers: [...contract.readers] } : {
           activationContractVersion: 1,
           activationStateSchemaVersion: 1,
           evidenceHeaderSchemaVersion: 1

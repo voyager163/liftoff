@@ -1,5 +1,137 @@
 // Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
 
+exports[`complete help screens > snapshots compact adopt command help 1`] = `
+"LIFTOFF / ADOPT
+Review in-place adoption of a supported existing application without replacing
+its business code
+
+Usage
+─────
+liftoff adopt <project-path>
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────────────────────────────────────────────
+project-path  Existing supported application; never a fresh scaffold destination
+
+Project options
+───────────────
+Option              Description
+──────────────────  ────────────────────────────────────────────────────────────
+--project <path>    Explicit existing project or component boundary
+--profile <id>      Installed supported standards profile target; never a
+                    framework conversion
+--component <path>  Confined existing component path within the project
+--proposal <file>   Exact reviewed application mappings and additions from
+                    external staging
+
+Command options
+───────────────
+Option     Description
+─────────  ─────────────────────────────────────────────────────────────────────
+--check    Preview without project writes, preparation, scripts, or network
+           effects
+--recover  Recover only attributable recorded adoption effects; never start a
+           new plan
+
+Consent options
+───────────────
+Option                          Description
+──────────────────────────────  ────────────────────────────────────────────────
+--approve-plan <fingerprint>    Approve only the exact saved file/metadata plan
+                                after its required verification
+--verify-plan <fingerprint>     Authorize only the exact saved private
+                                verification scope, not file commit
+--allow-dependency-preparation  Separately permit declared locked preparation
+                                with --verify-plan
+--allow-network                 Separately permit declared
+                                verification/preparation network effects with
+                                --verify-plan
+
+Output options
+──────────────
+Option  Description
+──────  ───────────────────────────────────────────────────────────────────────
+--json  Emit one schema-1 adoption result without prompting or implicit consent
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact assess command help 1`] = `
+"LIFTOFF / ASSESS
+Read-only whole-project standards assessment without initialization, scripts, or
+provider access
+
+Usage
+─────
+liftoff assess [project-path]
+
+Arguments
+─────────
+Argument      Description
+────────────  ──────────────────────────────────────────────────────────
+project-path  Existing directory; no Git or Liftoff manifest is required
+
+Project options
+───────────────
+Option              Description
+──────────────────  ────────────────────────────────────────────────────────────
+--project <path>    Explicit existing project or repository boundary; otherwise
+                    use the nearest applicable boundary
+--component <path>  Confined existing component within the selected boundary
+--profile <id>      Installed standards profile target; unsupported source
+                    remains diagnostic-only
+--inputs <file>     Bounded public configuration reference, resolved from the
+                    invocation directory
+
+Output options
+──────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit one schema-1 assessment with observed facts, limitations, and
+        scoped outcomes
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots compact capabilities command help 1`] = `
+"LIFTOFF / CAPABILITIES
+Inspect installed engine capabilities and command contracts without project or
+provider probes
+
+Usage
+─────
+liftoff capabilities
+
+Output options
+──────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────────────────
+--json  Emit the strict schema-1 capability envelope without changing existing
+        command reports
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact dev command help 1`] = `
 "LIFTOFF / DEV
 Print Docker Compose helper commands
@@ -63,7 +195,7 @@ exports[`complete help screens > snapshots compact general help 1`] = `
 "╻  ╻┏━╸╺┳╸┏━┓┏━╸┏━╸
 ┃  ┃┣╸  ┃ ┃ ┃┣╸ ┣╸
 ┗━╸╹╹   ╹ ┗━┛╹  ╹
-Mission Control Liftoff 0.12.3 - Initialize a governed application and prepare
+Mission Control Liftoff 0.13.0 - Initialize a governed application and prepare
 its local workstation.
 Usage
 ─────
@@ -79,31 +211,42 @@ Option     Description
 Onboarding
 ──────────
 Command  Description
-───────  ────────────────────────────────────────────────
+───────  ───────────────────────────────────────────────────────────────────────
 init     Initialize a project and prepare its workstation
 plan     Preview generated artifacts
-migrate  Adopt an existing project
+adopt    Review in-place adoption of a supported existing application without
+         replacing its business code
+assess   Read-only whole-project standards assessment without initialization,
+         scripts, or provider access
+migrate  Create a fresh migration target while preserving the existing source;
+         not in-place adoption
 
 Maintenance
 ───────────
-Command   Description
-────────  ──────────────────────────────────────────────────────────────────────
-validate  Validate a generated project manifest
-update    Preview and explicitly approve scoped project updates
-repair    Review and repair supported project files with separate default-No
-          approval
-upgrade   Replace the supported global npm Liftoff CLI; project templates use
-          update separately
-doctor    Check local and project readiness
+Command       Description
+────────────  ──────────────────────────────────────────────────────────────────
+validate      Validate a generated project manifest
+update        Preview and explicitly approve scoped project updates
+repair        Review and repair supported project files with separate default-No
+              approval
+upgrade       Upgrade the CLI through its verified installation owner; owner
+              migration and project update are separate
+installation  Inspect native installation ownership or plan and apply one-time
+              legacy npm migration
+skills        Inspect canonical agent skills and review exact personal or
+              project delivery
+doctor        Check local and project readiness
 
 Reference
 ─────────
-Command    Description
-─────────  ─────────────────────────────────────
-help       Show general or command-specific help
-patterns   List GenAI patterns
-providers  List cloud providers
-regions    List or search provider regions
+Command       Description
+────────────  ──────────────────────────────────────────────────────────────────
+help          Show general or command-specific help
+capabilities  Inspect installed engine capabilities and command contracts
+              without project or provider probes
+patterns      List GenAI patterns
+providers     List cloud providers
+regions       List or search provider regions
 
 Operations
 ──────────
@@ -204,8 +347,8 @@ Command options
 ───────────────
 Option                   Description
 ───────────────────────  ───────────────────────────────────────────────────────
---scope <scope>          Execution/verification boundary: local, activation, or
-                         lifecycle (default: activation)
+--scope <scope>          Execution/verification boundary: local, repository,
+                         activation, or lifecycle (default: activation)
 --recover-phase <phase>  Plan explicit recovery of one failed or interrupted
                          phase without executing it
 
@@ -303,6 +446,60 @@ Option  Description
 "
 `;
 
+exports[`complete help screens > snapshots compact installation command help 1`] = `
+"LIFTOFF / INSTALLATION
+Inspect native installation ownership or plan and apply one-time legacy npm
+migration
+
+Usage
+─────
+liftoff installation <inspect|migrate> [options]
+
+Subcommands
+───────────
+- inspect
+- migrate
+
+Command options
+───────────────
+Option              Description
+──────────────────  ────────────────────────────────────────────────────────────
+--to <owner>        Target installation owner: homebrew-cask, winget, or direct
+--candidate <path>  Path to verified unlinked native candidate bundle
+--check             Preview the schema-1 migration plan without installation or
+                    configuration changes
+--recover           Inspect an interrupted migration and its owner-specific
+                    recovery boundary without executing recovery
+
+Project options
+───────────────
+Option                Description
+────────────────────  ─────────────────────────────────────────
+--destination <path>  Custom installation destination directory
+--launcher <path>     Custom launcher path
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--approve-plan <fingerprint>  Approve the exact current migration fingerprint;
+                              never generic permission to replace another owner
+
+Output options
+──────────────
+Option  Description
+──────  ──────────────────────────
+--json  Emit machine-readable JSON
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots compact regions command help 1`] = `
 "LIFTOFF / REGIONS
 List or search provider regions
@@ -363,17 +560,20 @@ Option                            Description
 
 Command options
 ───────────────
-Option            Description
-────────────────  ──────────────────────────────────────────────────────────────
---check           Preview only; explicit dependency preparation previews include
-                  bounded installed-tool identity probes, never project scripts
-                  or installs
---capabilities    List repair contracts, recipes, preparation support, schemas
-                  and modes without a project or tool probes
---inspect-layout  Inventory actual application paths and current targets without
-                  scripts or writes
---recover         Recover only eligible recorded repair effects; live, uncertain
-                  or changed private workspace identities stay blocked
+Option             Description
+─────────────────  ─────────────────────────────────────────────────────────────
+--check            Preview only; explicit dependency preparation previews
+                   include bounded installed-tool identity probes, never project
+                   scripts or installs
+--capabilities     List repair contracts, recipes, preparation support, schemas
+                   and modes without a project or tool probes
+--inspect-layout   Inventory actual application paths and current targets
+                   without scripts or writes
+--recover          Recover only eligible recorded repair effects; live,
+                   uncertain or changed private workspace identities stay
+                   blocked
+--recipe <recipe>  Select registered repair recipe (azure-local-layout,
+                   azure-baseline-settings)
 
 Consent options
 ───────────────
@@ -430,6 +630,70 @@ integrations, not shell commands.
 - If the native integration is missing, run liftoff update --check for that
 project and review its separate managed update. See
 docs/cli-reference.md#repair-modes.
+
+"
+`;
+
+exports[`complete help screens > snapshots compact skills command help 1`] = `
+"LIFTOFF / SKILLS
+Inspect canonical agent skills and review exact personal or project delivery
+
+Usage
+─────
+liftoff skills [list|plan|inspect|install|update|remove|migrate]
+
+Subcommands
+───────────
+- list
+- plan
+- inspect
+- install
+- update
+- remove
+- migrate
+
+Framework options
+─────────────────
+Option          Description
+──────────────  ────────────────────────────────────────────────────────────────
+--host <hosts>  Explicit comma-separated hosts: copilot, claude, codex; shared
+                roots are disclosed
+
+Command options
+───────────────
+Option           Description
+───────────────  ───────────────────────────────────────────────────────────────
+--scope <scope>  Target user or project scope; defaults to user unless --project
+                 is explicit
+--skill <id>     Select one canonical workflow; omit to select the catalog for
+                 the requested hosts
+--check          Preview the selected install, update, remove, or migration
+                 without writes
+
+Project options
+───────────────
+Option            Description
+────────────────  ───────────────────────────────────────────────────────
+--project <path>  Explicit project target; never implicitly initialize it
+
+Consent options
+───────────────
+Option                        Description
+────────────────────────────  ──────────────────────────────────────────────────
+--approve-plan <fingerprint>  Approve only the exact current operation
+                              fingerprint; ordinary TTY approval defaults to No
+
+Output options
+──────────────
+Option  Description
+──────  ────────────────────────────────────────────────────────────
+--json  Emit one schema-1 result; never implicitly approve or prompt
+
+General options
+───────────────
+Option  Description
+──────  ──────────────────────────
+--help  Show command-specific help
 
 "
 `;
@@ -497,8 +761,8 @@ Option  Description
 
 exports[`complete help screens > snapshots compact upgrade command help 1`] = `
 "LIFTOFF / UPGRADE
-Replace the supported global npm Liftoff CLI; project templates use update
-separately
+Upgrade the CLI through its verified installation owner; owner migration and
+project update are separate
 
 Usage
 ─────
@@ -521,6 +785,79 @@ General options
 Option  Description
 ──────  ──────────────────────────
 --help  Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain adopt command help 1`] = `
+"LIFTOFF / ADOPT - Review in-place adoption of a supported existing application without replacing its business code
+
+Usage
+Usage: liftoff adopt <project-path>
+
+Arguments
+Argument: project-path | Description: Existing supported application; never a fresh scaffold destination
+
+Project options
+Option: --project <path> | Description: Explicit existing project or component boundary
+Option: --profile <id> | Description: Installed supported standards profile target; never a framework conversion
+Option: --component <path> | Description: Confined existing component path within the project
+Option: --proposal <file> | Description: Exact reviewed application mappings and additions from external staging
+
+Command options
+Option: --check | Description: Preview without project writes, preparation, scripts, or network effects
+Option: --recover | Description: Recover only attributable recorded adoption effects; never start a new plan
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve only the exact saved file/metadata plan after its required verification
+Option: --verify-plan <fingerprint> | Description: Authorize only the exact saved private verification scope, not file commit
+Option: --allow-dependency-preparation | Description: Separately permit declared locked preparation with --verify-plan
+Option: --allow-network | Description: Separately permit declared verification/preparation network effects with --verify-plan
+
+Output options
+Option: --json | Description: Emit one schema-1 adoption result without prompting or implicit consent
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain assess command help 1`] = `
+"LIFTOFF / ASSESS - Read-only whole-project standards assessment without initialization, scripts, or provider access
+
+Usage
+Usage: liftoff assess [project-path]
+
+Arguments
+Argument: project-path | Description: Existing directory; no Git or Liftoff manifest is required
+
+Project options
+Option: --project <path> | Description: Explicit existing project or repository boundary; otherwise use the nearest applicable boundary
+Option: --component <path> | Description: Confined existing component within the selected boundary
+Option: --profile <id> | Description: Installed standards profile target; unsupported source remains diagnostic-only
+Option: --inputs <file> | Description: Bounded public configuration reference, resolved from the invocation directory
+
+Output options
+Option: --json | Description: Emit one schema-1 assessment with observed facts, limitations, and scoped outcomes
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
+exports[`complete help screens > snapshots plain capabilities command help 1`] = `
+"LIFTOFF / CAPABILITIES - Inspect installed engine capabilities and command contracts without project or provider probes
+
+Usage
+Usage: liftoff capabilities
+
+Output options
+Option: --json | Description: Emit the strict schema-1 capability envelope without changing existing command reports
+
+General options
+Option: --help | Description: Show command-specific help
 
 "
 `;
@@ -565,7 +902,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain general help 1`] = `
-"Liftoff - Mission Control Liftoff 0.12.3 - Initialize a governed application and prepare its local workstation.
+"Liftoff - Mission Control Liftoff 0.13.0 - Initialize a governed application and prepare its local workstation.
 
 Usage
 liftoff <command> [options]
@@ -577,17 +914,22 @@ Option: --help | Description: Show general help
 Onboarding
 Command: init | Description: Initialize a project and prepare its workstation
 Command: plan | Description: Preview generated artifacts
-Command: migrate | Description: Adopt an existing project
+Command: adopt | Description: Review in-place adoption of a supported existing application without replacing its business code
+Command: assess | Description: Read-only whole-project standards assessment without initialization, scripts, or provider access
+Command: migrate | Description: Create a fresh migration target while preserving the existing source; not in-place adoption
 
 Maintenance
 Command: validate | Description: Validate a generated project manifest
 Command: update | Description: Preview and explicitly approve scoped project updates
 Command: repair | Description: Review and repair supported project files with separate default-No approval
-Command: upgrade | Description: Replace the supported global npm Liftoff CLI; project templates use update separately
+Command: upgrade | Description: Upgrade the CLI through its verified installation owner; owner migration and project update are separate
+Command: installation | Description: Inspect native installation ownership or plan and apply one-time legacy npm migration
+Command: skills | Description: Inspect canonical agent skills and review exact personal or project delivery
 Command: doctor | Description: Check local and project readiness
 
 Reference
 Command: help | Description: Show general or command-specific help
+Command: capabilities | Description: Inspect installed engine capabilities and command contracts without project or provider probes
 Command: patterns | Description: List GenAI patterns
 Command: providers | Description: List cloud providers
 Command: regions | Description: List or search provider regions
@@ -650,7 +992,7 @@ Option: --project <path> | Description: Liftoff project path
 Option: --inputs <file> | Description: Public activation configuration JSON; never credentials or state
 
 Command options
-Option: --scope <scope> | Description: Execution/verification boundary: local, activation, or lifecycle (default: activation)
+Option: --scope <scope> | Description: Execution/verification boundary: local, repository, activation, or lifecycle (default: activation)
 Option: --recover-phase <phase> | Description: Plan explicit recovery of one failed or interrupted phase without executing it
 
 Consent options
@@ -709,6 +1051,38 @@ Option: --help | Description: Show command-specific help
 "
 `;
 
+exports[`complete help screens > snapshots plain installation command help 1`] = `
+"LIFTOFF / INSTALLATION - Inspect native installation ownership or plan and apply one-time legacy npm migration
+
+Usage
+Usage: liftoff installation <inspect|migrate> [options]
+
+Subcommands
+- inspect
+- migrate
+
+Command options
+Option: --to <owner> | Description: Target installation owner: homebrew-cask, winget, or direct
+Option: --candidate <path> | Description: Path to verified unlinked native candidate bundle
+Option: --check | Description: Preview the schema-1 migration plan without installation or configuration changes
+Option: --recover | Description: Inspect an interrupted migration and its owner-specific recovery boundary without executing recovery
+
+Project options
+Option: --destination <path> | Description: Custom installation destination directory
+Option: --launcher <path> | Description: Custom launcher path
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve the exact current migration fingerprint; never generic permission to replace another owner
+
+Output options
+Option: --json | Description: Emit machine-readable JSON
+
+General options
+Option: --help | Description: Show command-specific help
+
+"
+`;
+
 exports[`complete help screens > snapshots plain regions command help 1`] = `
 "LIFTOFF / REGIONS - List or search provider regions
 
@@ -750,6 +1124,7 @@ Option: --check | Description: Preview only; explicit dependency preparation pre
 Option: --capabilities | Description: List repair contracts, recipes, preparation support, schemas and modes without a project or tool probes
 Option: --inspect-layout | Description: Inventory actual application paths and current targets without scripts or writes
 Option: --recover | Description: Recover only eligible recorded repair effects; live, uncertain or changed private workspace identities stay blocked
+Option: --recipe <recipe> | Description: Select registered repair recipe (azure-local-layout, azure-baseline-settings)
 
 Consent options
 Option: --live | Description: Allow bounded Azure metadata reads with existing authentication; never read state
@@ -772,6 +1147,44 @@ Repair approval and native help
 - Recovery cleans only authenticated CLI-created disposable workspace identities with safely established ownership; never patch staging, live projects, global caches or original-byte backups. Earlier approved effects remain visible after later cancellation.
 - Open the selected project in Copilot or Claude and invoke /liftoff-repair; in Codex use $liftoff-repair or its skill picker. These are coding-agent integrations, not shell commands.
 - If the native integration is missing, run liftoff update --check for that project and review its separate managed update. See docs/cli-reference.md#repair-modes.
+
+"
+`;
+
+exports[`complete help screens > snapshots plain skills command help 1`] = `
+"LIFTOFF / SKILLS - Inspect canonical agent skills and review exact personal or project delivery
+
+Usage
+Usage: liftoff skills [list|plan|inspect|install|update|remove|migrate]
+
+Subcommands
+- list
+- plan
+- inspect
+- install
+- update
+- remove
+- migrate
+
+Framework options
+Option: --host <hosts> | Description: Explicit comma-separated hosts: copilot, claude, codex; shared roots are disclosed
+
+Command options
+Option: --scope <scope> | Description: Target user or project scope; defaults to user unless --project is explicit
+Option: --skill <id> | Description: Select one canonical workflow; omit to select the catalog for the requested hosts
+Option: --check | Description: Preview the selected install, update, remove, or migration without writes
+
+Project options
+Option: --project <path> | Description: Explicit project target; never implicitly initialize it
+
+Consent options
+Option: --approve-plan <fingerprint> | Description: Approve only the exact current operation fingerprint; ordinary TTY approval defaults to No
+
+Output options
+Option: --json | Description: Emit one schema-1 result; never implicitly approve or prompt
+
+General options
+Option: --help | Description: Show command-specific help
 
 "
 `;
@@ -805,7 +1218,7 @@ Option: --help | Description: Show command-specific help
 `;
 
 exports[`complete help screens > snapshots plain upgrade command help 1`] = `
-"LIFTOFF / UPGRADE - Replace the supported global npm Liftoff CLI; project templates use update separately
+"LIFTOFF / UPGRADE - Upgrade the CLI through its verified installation owner; owner migration and project update are separate
 
 Usage
 Usage: liftoff upgrade
@@ -819,6 +1232,118 @@ Option: --json | Description: Emit one machine-readable result object
 General options
 Option: --help | Description: Show command-specific help
 
+"
+`;
+
+exports[`complete help screens > snapshots rich adopt command help 1`] = `
+"┌─ LIFTOFF / ADOPT ────────────────────────────────────────────────────────────────────────────┐
+│ Review in-place adoption of a supported existing application without replacing its business  │
+│ code                                                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff adopt <project-path>                                                                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ──────────────────────────────────────────────────────────────────             │
+│ project-path  Existing supported application; never a fresh scaffold destination             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option              Description                                                              │
+│ ──────────────────  ──────────────────────────────────────────────────────────────────────── │
+│ --project <path>    Explicit existing project or component boundary                          │
+│ --profile <id>      Installed supported standards profile target; never a framework          │
+│                     conversion                                                               │
+│ --component <path>  Confined existing component path within the project                      │
+│ --proposal <file>   Exact reviewed application mappings and additions from external staging  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option     Description                                                                       │
+│ ─────────  ───────────────────────────────────────────────────────────────────────────       │
+│ --check    Preview without project writes, preparation, scripts, or network effects          │
+│ --recover  Recover only attributable recorded adoption effects; never start a new plan       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                          Description                                                  │
+│ ──────────────────────────────  ──────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>    Approve only the exact saved file/metadata plan after its    │
+│                                 required verification                                        │
+│ --verify-plan <fingerprint>     Authorize only the exact saved private verification scope,   │
+│                                 not file commit                                              │
+│ --allow-dependency-preparation  Separately permit declared locked preparation with           │
+│                                 --verify-plan                                                │
+│ --allow-network                 Separately permit declared verification/preparation network  │
+│                                 effects with --verify-plan                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ───────────────────────────────────────────────────────────────────────              │
+│ --json  Emit one schema-1 adoption result without prompting or implicit consent              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich assess command help 1`] = `
+"┌─ LIFTOFF / ASSESS ───────────────────────────────────────────────────────────────────────────┐
+│ Read-only whole-project standards assessment without initialization, scripts, or provider    │
+│ access                                                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff assess [project-path]                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Arguments ──────────────────────────────────────────────────────────────────────────────────┐
+│ Argument      Description                                                                    │
+│ ────────────  ──────────────────────────────────────────────────────────                     │
+│ project-path  Existing directory; no Git or Liftoff manifest is required                     │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option              Description                                                              │
+│ ──────────────────  ──────────────────────────────────────────────────────────────────────── │
+│ --project <path>    Explicit existing project or repository boundary; otherwise use the      │
+│                     nearest applicable boundary                                              │
+│ --component <path>  Confined existing component within the selected boundary                 │
+│ --profile <id>      Installed standards profile target; unsupported source remains           │
+│                     diagnostic-only                                                          │
+│ --inputs <file>     Bounded public configuration reference, resolved from the invocation     │
+│                     directory                                                                │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────   │
+│ --json  Emit one schema-1 assessment with observed facts, limitations, and scoped outcomes   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich capabilities command help 1`] = `
+"┌─ LIFTOFF / CAPABILITIES ─────────────────────────────────────────────────────────────────────┐
+│ Inspect installed engine capabilities and command contracts without project or provider      │
+│ probes                                                                                       │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff capabilities                                                                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────────────────────────────────────────────────────────────── │
+│ --json  Emit the strict schema-1 capability envelope without changing existing command       │
+│         reports                                                                              │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;
 
@@ -882,7 +1407,7 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 │ ███████╗██║██║        ██║   ╚██████╔╝██║     ██║                                             │
 │ ╚══════╝╚═╝╚═╝        ╚═╝    ╚═════╝ ╚═╝     ╚═╝                                             │
 │                                                                                              │
-│ Mission Control Liftoff 0.12.3 - Initialize a governed application and prepare its local     │
+│ Mission Control Liftoff 0.13.0 - Initialize a governed application and prepare its local     │
 │ workstation.                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
@@ -896,28 +1421,38 @@ exports[`complete help screens > snapshots rich general help 1`] = `
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Onboarding ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command  Description                                                                         │
-│ ───────  ────────────────────────────────────────────────                                    │
+│ ───────  ─────────────────────────────────────────────────────────────────────────────────── │
 │ init     Initialize a project and prepare its workstation                                    │
 │ plan     Preview generated artifacts                                                         │
-│ migrate  Adopt an existing project                                                           │
+│ adopt    Review in-place adoption of a supported existing application without replacing its  │
+│          business code                                                                       │
+│ assess   Read-only whole-project standards assessment without initialization, scripts, or    │
+│          provider access                                                                     │
+│ migrate  Create a fresh migration target while preserving the existing source; not in-place  │
+│          adoption                                                                            │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Maintenance ────────────────────────────────────────────────────────────────────────────────┐
-│ Command   Description                                                                        │
-│ ────────  ────────────────────────────────────────────────────────────────────────────────── │
-│ validate  Validate a generated project manifest                                              │
-│ update    Preview and explicitly approve scoped project updates                              │
-│ repair    Review and repair supported project files with separate default-No approval        │
-│ upgrade   Replace the supported global npm Liftoff CLI; project templates use update         │
-│           separately                                                                         │
-│ doctor    Check local and project readiness                                                  │
+│ Command       Description                                                                    │
+│ ────────────  ────────────────────────────────────────────────────────────────────────────── │
+│ validate      Validate a generated project manifest                                          │
+│ update        Preview and explicitly approve scoped project updates                          │
+│ repair        Review and repair supported project files with separate default-No approval    │
+│ upgrade       Upgrade the CLI through its verified installation owner; owner migration and   │
+│               project update are separate                                                    │
+│ installation  Inspect native installation ownership or plan and apply one-time legacy npm    │
+│               migration                                                                      │
+│ skills        Inspect canonical agent skills and review exact personal or project delivery   │
+│ doctor        Check local and project readiness                                              │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Reference ──────────────────────────────────────────────────────────────────────────────────┐
-│ Command    Description                                                                       │
-│ ─────────  ─────────────────────────────────────                                             │
-│ help       Show general or command-specific help                                             │
-│ patterns   List GenAI patterns                                                               │
-│ providers  List cloud providers                                                              │
-│ regions    List or search provider regions                                                   │
+│ Command       Description                                                                    │
+│ ────────────  ────────────────────────────────────────────────────────────────────────────── │
+│ help          Show general or command-specific help                                          │
+│ capabilities  Inspect installed engine capabilities and command contracts without project or │
+│               provider probes                                                                │
+│ patterns      List GenAI patterns                                                            │
+│ providers     List cloud providers                                                           │
+│ regions       List or search provider regions                                                │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Operations ─────────────────────────────────────────────────────────────────────────────────┐
 │ Command     Description                                                                      │
@@ -1005,8 +1540,8 @@ exports[`complete help screens > snapshots rich governance command help 1`] = `
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                   Description                                                         │
 │ ───────────────────────  ─────────────────────────────────────────────────────────────────── │
-│ --scope <scope>          Execution/verification boundary: local, activation, or lifecycle    │
-│                          (default: activation)                                               │
+│ --scope <scope>          Execution/verification boundary: local, repository, activation, or  │
+│                          lifecycle (default: activation)                                     │
 │ --recover-phase <phase>  Plan explicit recovery of one failed or interrupted phase without   │
 │                          executing it                                                        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
@@ -1089,6 +1624,52 @@ exports[`complete help screens > snapshots rich init command help 1`] = `
 "
 `;
 
+exports[`complete help screens > snapshots rich installation command help 1`] = `
+"┌─ LIFTOFF / INSTALLATION ─────────────────────────────────────────────────────────────────────┐
+│ Inspect native installation ownership or plan and apply one-time legacy npm migration        │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff installation <inspect|migrate> [options]                                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • inspect                                                                                    │
+│ • migrate                                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option              Description                                                              │
+│ ──────────────────  ──────────────────────────────────────────────────────────────────────── │
+│ --to <owner>        Target installation owner: homebrew-cask, winget, or direct              │
+│ --candidate <path>  Path to verified unlinked native candidate bundle                        │
+│ --check             Preview the schema-1 migration plan without installation or              │
+│                     configuration changes                                                    │
+│ --recover           Inspect an interrupted migration and its owner-specific recovery         │
+│                     boundary without executing recovery                                      │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                Description                                                            │
+│ ────────────────────  ─────────────────────────────────────────                              │
+│ --destination <path>  Custom installation destination directory                              │
+│ --launcher <path>     Custom launcher path                                                   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>  Approve the exact current migration fingerprint; never generic │
+│                               permission to replace another owner                            │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --json  Emit machine-readable JSON                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
 exports[`complete help screens > snapshots rich regions command help 1`] = `
 "┌─ LIFTOFF / REGIONS ──────────────────────────────────────────────────────────────────────────┐
 │ List or search provider regions                                                              │
@@ -1139,16 +1720,18 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ --subscription <id>               Exact Azure subscription ID for live absence checks        │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
-│ Option            Description                                                                │
-│ ────────────────  ────────────────────────────────────────────────────────────────────────── │
-│ --check           Preview only; explicit dependency preparation previews include bounded     │
-│                   installed-tool identity probes, never project scripts or installs          │
-│ --capabilities    List repair contracts, recipes, preparation support, schemas and modes     │
-│                   without a project or tool probes                                           │
-│ --inspect-layout  Inventory actual application paths and current targets without scripts or  │
-│                   writes                                                                     │
-│ --recover         Recover only eligible recorded repair effects; live, uncertain or changed  │
-│                   private workspace identities stay blocked                                  │
+│ Option             Description                                                               │
+│ ─────────────────  ───────────────────────────────────────────────────────────────────────── │
+│ --check            Preview only; explicit dependency preparation previews include bounded    │
+│                    installed-tool identity probes, never project scripts or installs         │
+│ --capabilities     List repair contracts, recipes, preparation support, schemas and modes    │
+│                    without a project or tool probes                                          │
+│ --inspect-layout   Inventory actual application paths and current targets without scripts or │
+│                    writes                                                                    │
+│ --recover          Recover only eligible recorded repair effects; live, uncertain or changed │
+│                    private workspace identities stay blocked                                 │
+│ --recipe <recipe>  Select registered repair recipe (azure-local-layout,                      │
+│                    azure-baseline-settings)                                                  │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
 │ Option                          Description                                                  │
@@ -1194,6 +1777,60 @@ exports[`complete help screens > snapshots rich repair command help 1`] = `
 │ commands.                                                                                    │
 │ • If the native integration is missing, run liftoff update --check for that project and      │
 │ review its separate managed update. See docs/cli-reference.md#repair-modes.                  │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+"
+`;
+
+exports[`complete help screens > snapshots rich skills command help 1`] = `
+"┌─ LIFTOFF / SKILLS ───────────────────────────────────────────────────────────────────────────┐
+│ Inspect canonical agent skills and review exact personal or project delivery                 │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
+│ liftoff skills [list|plan|inspect|install|update|remove|migrate]                             │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Subcommands ────────────────────────────────────────────────────────────────────────────────┐
+│ • list                                                                                       │
+│ • plan                                                                                       │
+│ • inspect                                                                                    │
+│ • install                                                                                    │
+│ • update                                                                                     │
+│ • remove                                                                                     │
+│ • migrate                                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Framework options ──────────────────────────────────────────────────────────────────────────┐
+│ Option          Description                                                                  │
+│ ──────────────  ──────────────────────────────────────────────────────────────────────────── │
+│ --host <hosts>  Explicit comma-separated hosts: copilot, claude, codex; shared roots are     │
+│                 disclosed                                                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Command options ────────────────────────────────────────────────────────────────────────────┐
+│ Option           Description                                                                 │
+│ ───────────────  ─────────────────────────────────────────────────────────────────────────── │
+│ --scope <scope>  Target user or project scope; defaults to user unless --project is explicit │
+│ --skill <id>     Select one canonical workflow; omit to select the catalog for the requested │
+│                  hosts                                                                       │
+│ --check          Preview the selected install, update, remove, or migration without writes   │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Project options ────────────────────────────────────────────────────────────────────────────┐
+│ Option            Description                                                                │
+│ ────────────────  ───────────────────────────────────────────────────────                    │
+│ --project <path>  Explicit project target; never implicitly initialize it                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Consent options ────────────────────────────────────────────────────────────────────────────┐
+│ Option                        Description                                                    │
+│ ────────────────────────────  ────────────────────────────────────────────────────────────── │
+│ --approve-plan <fingerprint>  Approve only the exact current operation fingerprint; ordinary │
+│                               TTY approval defaults to No                                    │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ Output options ─────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ────────────────────────────────────────────────────────────                         │
+│ --json  Emit one schema-1 result; never implicitly approve or prompt                         │
+└──────────────────────────────────────────────────────────────────────────────────────────────┘
+┌─ General options ────────────────────────────────────────────────────────────────────────────┐
+│ Option  Description                                                                          │
+│ ──────  ──────────────────────────                                                           │
+│ --help  Show command-specific help                                                           │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 "
 `;
@@ -1253,7 +1890,8 @@ exports[`complete help screens > snapshots rich update command help 1`] = `
 
 exports[`complete help screens > snapshots rich upgrade command help 1`] = `
 "┌─ LIFTOFF / UPGRADE ──────────────────────────────────────────────────────────────────────────┐
-│ Replace the supported global npm Liftoff CLI; project templates use update separately        │
+│ Upgrade the CLI through its verified installation owner; owner migration and project update  │
+│ are separate                                                                                 │
 └──────────────────────────────────────────────────────────────────────────────────────────────┘
 ┌─ Usage ──────────────────────────────────────────────────────────────────────────────────────┐
 │ liftoff upgrade                                                                              │

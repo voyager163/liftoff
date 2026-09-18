@@ -1,0 +1,59 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://mission-control.local/liftoff/governance/credential-policy.schema.v1.json",
+  "type": "object",
+  "properties": {
+    "identity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "liftoffVersion",
+        "manifestArtifactVersion",
+        "policyVersion",
+        "activationContractVersion",
+        "phaseGraphSchemaVersion",
+        "phaseGraphHash",
+        "activationStateSchemaVersion",
+        "evidenceHeaderSchemaVersion",
+        "approvalEnvelopeSchemaVersion",
+        "supersessionSchemaVersion",
+        "credentialPolicySchemaVersion"
+      ],
+      "properties": {
+        "liftoffVersion": {
+          "const": "0.10.0"
+        },
+        "manifestArtifactVersion": {
+          "const": 7
+        },
+        "policyVersion": {
+          "const": "6"
+        },
+        "activationContractVersion": {
+          "const": 1
+        },
+        "phaseGraphSchemaVersion": {
+          "const": 1
+        },
+        "phaseGraphHash": {
+          "const": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7"
+        },
+        "activationStateSchemaVersion": {
+          "const": 1
+        },
+        "evidenceHeaderSchemaVersion": {
+          "const": 1
+        },
+        "approvalEnvelopeSchemaVersion": {
+          "const": 1
+        },
+        "supersessionSchemaVersion": {
+          "const": 1
+        },
+        "credentialPolicySchemaVersion": {
+          "const": 1
+        }
+      }
+    }
+  }
+}

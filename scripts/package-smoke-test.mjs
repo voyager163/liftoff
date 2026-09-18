@@ -172,6 +172,13 @@ try {
   assertPackageContains(packResult, 'dist/supported-stack.js');
   assertPackageContains(packResult, 'assets/supported-stack.json');
   assertPackageContains(packResult, 'assets/repair/windows-job-controller.ps1');
+  assertPackageContains(packResult, 'assets/skills/catalog.json');
+  assertPackageContains(packResult, 'assets/templates/catalog.json');
+  assertPackageContains(packResult, 'assets/profiles/catalog.json');
+  for (const skill of ['setup', 'assess', 'init', 'adopt', 'update', 'repair', 'migrate', 'governance-assess', 'governance', 'azure', 'cli-upgrade']) {
+    assertPackageContains(packResult, `assets/skills/${skill}/SKILL.md`);
+  }
+  assertPackageExcludes(packResult, 'assets/qualification');
   assertPackageContains(
     packResult,
     'assets/governance/single-maintainer-gitflow/policy.md'

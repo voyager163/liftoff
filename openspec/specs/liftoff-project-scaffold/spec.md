@@ -220,12 +220,12 @@ The system SHALL document that `backend/workers` is for backend-adjacent or cont
 - **WHEN** a developer reads the generated project README or functions documentation
 - **THEN** the documentation explains where to place Azure Functions workers and where to place reusable orchestration logic
 
-### Requirement: Generated projects include a v7 Liftoff manifest
-The system SHALL include `liftoff.manifest.json` at the root of every generated GenAI or standard API project using manifest schema v7. It SHALL record the manifest-writing CLI version, discriminated workload identity, selected spec workflow, selected coding agents, applicable default agent, tested framework contract, repository-governance profile and handoff state, activation identity, the selected API stack or one of the nine supported GenAI pattern identifiers, applicable workload preferences, managed-core artifacts with reconciliation hashes, and project artifacts with generation provenance. Actual capability descriptions SHALL come from the release-owned catalog and applicable governance context without adding an unversioned required manifest field. Framework-owned, desired-state, and one-time seed content SHALL remain outside managed-core hash authority.
+### Requirement: Generated projects include a v8 Liftoff manifest
+The system SHALL include `liftoff.manifest.json` at the root of every generated GenAI or standard API project using manifest schema 8. It SHALL record the exact manifest-writing CLI, selected release-owned profile/component identities, discriminated workload identity, selected spec workflow, canonical coding-agent selection, applicable default agent, tested framework contract, repository-governance profile and handoff state, applicable activation identity, the selected API stack or one of the nine supported GenAI pattern identifiers, applicable workload preferences, managed-core artifacts with reconciliation hashes, and actual project generation provenance. Actual capability descriptions SHALL come from the release-owned catalog and applicable governance context without adding an unversioned required manifest field. Framework-owned, desired-state, and one-time seed content SHALL remain outside managed-core hash authority. Existing adopted bytes SHALL NOT be described by this generation contract.
 
 #### Scenario: Manifest accompanies every initialized workload
 - **WHEN** a developer initializes a GenAI or standard API project
-- **THEN** the project root contains a schema-v7 manifest with exactly the workload, governance, managed-core, and project-provenance fields applicable to that project
+- **THEN** the project root contains a schema-8 manifest with exactly the workload, profile/component, governance, managed-core, and project-provenance fields applicable to that project
 
 #### Scenario: Manifest validates against generated files
 - **WHEN** `liftoff validate` runs against a freshly initialized project
@@ -233,12 +233,12 @@ The system SHALL include `liftoff.manifest.json` at the root of every generated 
 
 #### Scenario: Enabled governance records only handoff state
 - **WHEN** a project enables `single-maintainer-gitflow`
-- **THEN** its v7 manifest records the profile, policy version, activation identity, and `handoff-generated` state
+- **THEN** its v8 manifest records the profile, policy version, activation identity, and `handoff-generated` state
 - **AND** it does not claim live GitHub enforcement
 
 #### Scenario: Disabled governance omits handoff artifacts
 - **WHEN** a project selects `none`
-- **THEN** its v7 manifest records governance as disabled
+- **THEN** its v8 manifest records governance as disabled
 - **AND** contains no managed governance policy, context, guide, or setup integration entry
 
 #### Scenario: GenAI manifest records the selected pattern without fabricating specialization
@@ -534,7 +534,7 @@ The system SHALL render each Dockerfile base and Docker Compose service image fr
 - **THEN** baseline verification fails before the image reference can be packaged
 
 ### Requirement: Governed projects include one deterministic setup entry point
-When governance is enabled, Liftoff SHALL generate one native `liftoff-setup` journey for each selected agent. Copilot/Claude SHALL retain `/liftoff-setup`; Codex SHALL use its native `$liftoff-setup` skill. The integration SHALL drive local readiness and the requested approved migration/activation journey through explicit CLI scopes, without model selection or invented aliases. It SHALL obtain required authority before effects, support local-only operation, and verify actual deployment/enforcement rather than stop unconditionally after local preparation.
+When governance is enabled, Liftoff SHALL compose one canonical `liftoff-setup` journey into each selected agent's registered native projection. Copilot and Claude SHALL retain `/liftoff-setup`; Codex SHALL retain its native `$liftoff-setup` skill until reviewed migration. Delivery SHALL check the qualified host matrix, ownership, and overlapping discovery roots rather than blindly install copies. Setup SHALL negotiate CLI capabilities and guide local readiness plus the requested reviewed migration, repository-only, or activation journey through exact CLI scopes. It SHALL obtain independent authority before effects, support local-only operation, and verify actual selected-scope outcomes rather than stop unconditionally after local preparation or invent model/command aliases.
 
 #### Scenario: Generate Copilot setup
 - **WHEN** GitHub Copilot is selected
@@ -546,7 +546,7 @@ When governance is enabled, Liftoff SHALL generate one native `liftoff-setup` jo
 
 #### Scenario: Generate both agents
 - **WHEN** Copilot and Claude are selected
-- **THEN** their setup integrations reference the same graph and user-owned state
+- **THEN** their setup integrations reference the same canonical workflow, graph, and user-owned state
 - **AND** neither declares or asks for a model
 
 #### Scenario: Execute a ready approval-free phase
@@ -561,7 +561,7 @@ When governance is enabled, Liftoff SHALL generate one native `liftoff-setup` jo
 
 #### Scenario: Local setup finishes
 - **WHEN** the selected-scope CLI reports local completion
-- **THEN** the integration reports the local milestone and presents the next activation plan for the requested full journey
+- **THEN** the integration reports the local milestone and presents the next plan for the requested repository-only or full-activation journey
 - **AND** it performs no publication or provider effect without the required explicit authority
 
 #### Scenario: Full activation finishes
@@ -569,40 +569,45 @@ When governance is enabled, Liftoff SHALL generate one native `liftoff-setup` jo
 - **THEN** the native setup integration reports the requested immediate journey complete
 - **AND** future lifecycle work is shown separately
 
+#### Scenario: Repository-only setup finishes
+- **WHEN** the selected repository scope has actual positive/negative check evidence, approved controls, and current readback
+- **THEN** setup reports repository enforcement complete and separately reports pending or blocked Azure/production work
+- **AND** repository proof does not satisfy full-activation qualification
+
 ### Requirement: Generated manifests identify the activation contract
-Governed projects SHALL retain manifest artifact 7 and distinguish the writing CLI version from target activation package `0.12.0`. The executable vector SHALL identify policy 6, activation contract 3, graph schema 2 with its computed hash, state/evidence/approval schemas 3, compatibility metadata 4, and unchanged supersession/credential-policy schemas 1. Command output schema 2 and repair schema 1 SHALL remain separate identities. Existing v1/v2 proof SHALL require the declared successor/revalidation path, not retagging. Integrations SHALL use content hashes without independent skill versions or invented graph digests.
+Governed generated projects SHALL use manifest 8 and distinguish the writing CLI from the exact release-owned activation package identity. The current tuple SHALL identify policy 8, activation contract 4, graph schema 3 with its computed canonical hash and phase-contract digests, state/evidence-header/approval-envelope schemas 4, compatibility metadata 5, credential-policy schema 2, and unchanged supersession schema 1. Governance output 3, public protocol 1, and repair contract 1 with unchanged schema-2 records SHALL remain independent identities. Exact source and target tuples SHALL be registered before current output is enabled. Historical v1/v2/v3 proof and the exact pre-amendment policy-7/credential-policy-schema-1 candidate SHALL require their declared transitions and fresh proof, not retagging. Generated credential schemas and guidance SHALL disclose the actual provider grant without creating credentials, policy success records or execution approval. Skills SHALL use managed hashes and capability/schema requirements without independent per-skill SemVer or invented graph digests.
 
 #### Scenario: Generate a governed project
-- **WHEN** initialization writes the v7 manifest and governance artifacts
-- **THEN** every activation identity matches the actual packaged policy, graph, schemas, and engine constants
-- **AND** CLI and command-output versions remain separate identities
+- **WHEN** initialization writes the v8 manifest and governance artifacts
+- **THEN** every activation identity matches the actual registered packaged policy, graph, phase digests, schemas, and engine constants
+- **AND** CLI, command-output, public-protocol, and repair identities remain separate
 
 #### Scenario: Setup integration wording changes
 - **WHEN** thin setup integration bytes change
 - **THEN** their managed content hashes change without retagging existing activation proof or introducing a setup-skill version
 
 ### Requirement: Governed projects include a distinct read-only assessment integration
-When governance is enabled, Liftoff SHALL generate the distinct logical `liftoff-governance-assess` integration for every selected supported agent. Copilot and Claude SHALL retain their native slash entry points; Codex SHALL use a native skill invoked through `$liftoff-governance-assess` or its skill picker. Assessment SHALL remain separate from setup, require no model or independent skill version, and delegate classifications to the CLI. It SHALL not run automatically during initialization or replace the primary local setup recommendation.
+When governance is enabled, Liftoff SHALL compose the canonical distinct `liftoff-governance-assess` integration for every selected supported agent using exact registered ownership and collision-aware host projections. Copilot and Claude SHALL retain their native slash entry points; Codex SHALL retain `$liftoff-governance-assess` or its skill picker until reviewed migration. Governance assessment SHALL remain distinct from setup and the new whole-project `assess` workflow, negotiate supported CLI contracts, require no model selection or independent skill version, and delegate findings to the CLI. It SHALL not run automatically during initialization or replace the primary local setup recommendation.
 
 #### Scenario: Generate both supported agents
-- **WHEN** GitHub Copilot and Claude Code are selected with governance enabled
+- **WHEN** GitHub Copilot and Claude Code are selected with governance enabled and no transport migration
 - **THEN** the project contains `.github/prompts/liftoff-governance-assess.prompt.md` and `.claude/commands/liftoff-governance-assess.md`
 - **AND** both reference the same assessment contract and governance context
 
 #### Scenario: Generate one selected agent
 - **WHEN** only one supported coding agent is selected
 - **THEN** only that agent's assessment integration is generated and tracked
-- **AND** neighboring framework-owned files remain outside Liftoff ownership
+- **AND** neighboring framework-owned files and overlapping personal discovery remain outside implicit Liftoff ownership
 
 #### Scenario: Governance is disabled
 - **WHEN** the plan selects profile `none`
-- **THEN** no assessment integration is generated
-- **AND** initialization performs no assessment or live collection
+- **THEN** no project governance-assessment integration is generated
+- **AND** initialization performs no assessment or live collection, while separately installed personal assessment assistance remains independent
 
 #### Scenario: Invoke assessment through an agent
 - **WHEN** a developer invokes the selected agent's native assessment integration
 - **THEN** it calls `liftoff governance assess --json` and explains the report
-- **AND** it does not invent findings or execute update, upgrade, repair, activation, or project scripts
+- **AND** it does not invent findings or execute update, upgrade, repair, adoption, activation, or project scripts
 
 #### Scenario: Developer explicitly requests live reads
 - **WHEN** the developer requests live comparison through the assessment integration
@@ -612,11 +617,84 @@ When governance is enabled, Liftoff SHALL generate the distinct logical `liftoff
 #### Scenario: Generate across frameworks and operating systems
 - **WHEN** selected-agent plans use OpenSpec or Spec Kit on Windows, macOS, or Linux
 - **THEN** the behavioral contract remains equivalent with deterministic content and portable path parts
+- **AND** unsafe, escaping, or ambiguous discovery destinations block writes
 
 #### Scenario: Generate Codex assessment
-- **WHEN** Codex is selected with governance enabled
+- **WHEN** Codex is selected with governance enabled and no transport migration
 - **THEN** `.agents/skills/liftoff-governance-assess/SKILL.md` has valid skill metadata and its own managed identity
 - **AND** it is not generated under a Claude logical name
+
+### Requirement: Generation composes one explicit packaged template catalog
+Liftoff SHALL compose supported project profiles from one versioned release-owned template catalog and reusable common, backend, GenAI, frontend, infrastructure, and workflow components, together with canonical governance, skills, pinned locks, and supported-stack resources. Conditional output SHALL reflect the selected supported workload, pattern, environments, agents, and framework contract. Catalog entries SHALL identify exact component revisions and complete artifact inventories. Generation SHALL NOT download mutable template branches, keep independent whole-starter copies for every combination, or substitute a partial template when a required component is missing.
+
+#### Scenario: Compose two backend profiles with a common frontend
+- **WHEN** supported FastAPI and Fastify plans both select Vue and equivalent common options
+- **THEN** both use the same declared reusable frontend and common component contracts with their respective backend inventories
+- **AND** component reuse does not introduce GenAI dependencies into standard projects
+
+#### Scenario: Compose a GenAI pattern
+- **WHEN** any of the nine supported GenAI patterns is selected
+- **THEN** only its declared common and pattern-specific components are emitted
+- **AND** existing maturity labels and exclusions remain accurate rather than treating a component name as completed specialization
+
+#### Scenario: A required catalog component is unavailable
+- **WHEN** a selected profile references a missing, invalid, incompatible, or digest-mismatched packaged resource
+- **THEN** generation reports that exact resource failure before destination mutation
+- **AND** it does not fetch an upstream replacement or silently omit required output
+
+### Requirement: Composed artifacts retain exact immutable logical identities
+Every emitted artifact SHALL have an exact registered logical name, portable destination, lifecycle, and component identity. Existing append-only logical names SHALL remain stable except for explicitly inventoried retirements or reviewed path migrations. Composition SHALL reject duplicate owners, incompatible revisions, duplicate destinations, and case or normalization collisions before merging staged output. Artifact modification or deletion SHALL select explicit registered identities, never prefixes, glob matches, category names, or complete starter-directory replacement.
+
+#### Scenario: Shared components would emit the same destination
+- **WHEN** two selected components claim one destination with incompatible ownership or bytes
+- **THEN** staging fails with both exact identities identified
+- **AND** enumeration order does not select a winning file
+
+#### Scenario: A component is revised
+- **WHEN** a release changes an existing component's generated content
+- **THEN** its existing logical artifact identities retain their meanings and the new resource identity is recorded
+- **AND** the change grants no write authority over files already owned by an existing application
+
+#### Scenario: Compose paths on Windows
+- **WHEN** equivalent plans are composed on Windows, macOS, or Linux
+- **THEN** logical names, lifecycle declarations, and portable path parts agree
+- **AND** native resolution rejects drive/UNC escapes, embedded separators, unsafe links or junctions, and case/normalization collisions before writes
+
+### Requirement: Packaged generation resources are independent of the checkout and cwd
+Installed generation SHALL resolve its declared catalogs, templates, locks, governance assets, and skill sources from the verified release resources rather than the caller's directory, a build checkout, or a mutable external source. Resource access SHALL work after supported relocation and from read-only installation directories on Windows, macOS, and Linux. Staging SHALL use the existing private generation transaction and SHALL NOT make the installation directory or project source a writable resource cache.
+
+#### Scenario: Generate from an unrelated directory
+- **WHEN** the installed CLI is invoked outside its installation or source checkout
+- **THEN** it resolves the same packaged component identities and generated bytes
+- **AND** a similarly named local template directory cannot replace release-owned resources
+
+#### Scenario: The installation path is read-only and contains spaces
+- **WHEN** a qualified installation is relocated to a supported native path with spaces and no write permission
+- **THEN** generation reads the packaged resources and stages output through its declared writable workspace
+- **AND** no Windows, macOS, or Linux resource path depends on POSIX-only separators
+
+#### Scenario: A packaged asset is damaged
+- **WHEN** required resource integrity or identity validation fails
+- **THEN** generation stops with the causal asset diagnostic before committing target files
+- **AND** it does not fall back to the build checkout or a runtime download
+
+### Requirement: Generated backend documentation satisfies one prefix-safe contract
+Generated Go/Huma and Node.js/Fastify handlers SHALL remove hard-coded origin-root schema references, and standard Python/FastAPI and all supported GenAI variants SHALL satisfy the same Scalar/OpenAPI routing contract. Canonical and trailing-slash documentation and schema routes SHALL work directly and behind a prefix-stripping proxy, preserve query strings through relative canonicalization redirects, and return the actual JSON schema rather than frontend HTML. Qualification SHALL compare application schema `paths` and `components` across the route variants without requiring production model credentials.
+
+#### Scenario: Generate Go and Node backends
+- **WHEN** either affected backend profile is generated
+- **THEN** its Scalar schema reference resolves under the browser-visible prefix for canonical and trailing-slash entry points
+- **AND** the equivalent defect is not left in one language after fixing the other
+
+#### Scenario: Qualify Python and GenAI variants
+- **WHEN** standard FastAPI and supported GenAI documentation routes are exercised
+- **THEN** the same direct/proxied, redirect, query, content-type, and schema-equality checks pass
+- **AND** absence of model credentials does not require a fabricated schema response
+
+#### Scenario: Existing handlers remain project-owned
+- **WHEN** a new release changes generated documentation handlers
+- **THEN** existing project handlers remain unchanged until a separately approved per-file evolution plan is applied
+- **AND** ordinary managed update does not copy the new backend template over them
 
 ### Requirement: Spec Kit projects receive an explicit project-owned bootstrap bundle
 New supported Spec Kit projects SHALL include `spec.md`, `plan.md`, and `tasks.md` under the explicit `specs/000-liftoff-bootstrap` path. The files SHALL use the logical identities `spec-kit-bootstrap-spec`, `spec-kit-bootstrap-plan`, and `spec-kit-bootstrap-tasks` and the one-time project-owned seed lifecycle. They SHALL describe generated-project baseline preparation and local checks without claiming completed product behavior, creating Git branches, or invoking an archive. Official framework initialization markers SHALL remain separate from these seed files.

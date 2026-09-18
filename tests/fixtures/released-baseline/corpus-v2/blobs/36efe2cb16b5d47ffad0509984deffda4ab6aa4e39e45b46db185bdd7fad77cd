@@ -1,0 +1,123 @@
+{
+	"schemaVersion": 1,
+	"phaseId": "committed",
+	"createdAt": "2026-09-01T08:00:00.000Z",
+	"expiresAt": "2026-09-01T08:15:00.000Z",
+	"identity": {
+		"liftoffVersion": "0.11.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 2,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"activationStateSchemaVersion": 2,
+		"evidenceHeaderSchemaVersion": 2,
+		"approvalEnvelopeSchemaVersion": 2,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"graphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+	"stateHash": "92c952b3ea3e19565a85db879f5d970a4859fd2928d04a33df7e977f9c87ab59",
+	"baselineDigest": "152ee65754af56819de71c86667fce366013384868f4f5f7ad4b27fae3ad8c13",
+	"inputDigest": "9a2849ffb8cb6c0387238587fbd29ed84ad4a3ca9e15e6d8fe6b10e23ae1710e",
+	"transitionDigest": "2ff0a3bd0d9d9d8067032e5ba9aef84d97bb96c6731b4e465eeb4045ce8ab6c7",
+	"planDigest": "e61479426dca269bfc787dce3fe1571e09f319e73db197cea752cefffee2152b",
+	"mutationClasses": {
+		"local": [
+			"read-worktree",
+			"git-commit",
+			"write-evidence",
+			"write-activation-state"
+		],
+		"remote": [
+			"none"
+		]
+	},
+	"operations": [
+		{
+			"adapter": "git",
+			"actionId": "git.verify-existing-commit",
+			"mutationClass": "read-worktree",
+			"phaseId": "committed",
+			"inputs": {},
+			"destination": {
+				"type": "local",
+				"identity": "historical-v2-project"
+			},
+			"remote": false,
+			"destructive": false
+		},
+		{
+			"adapter": "local-evidence",
+			"actionId": "governance.evidence.write",
+			"mutationClass": "write-evidence",
+			"phaseId": "committed",
+			"inputs": {
+				"pathParts": [
+					"governance",
+					"evidence",
+					"published-v2-committed.json"
+				]
+			},
+			"destination": {
+				"type": "local",
+				"identity": "governance/evidence/published-v2-committed.json",
+				"pathParts": [
+					"governance",
+					"evidence",
+					"published-v2-committed.json"
+				]
+			},
+			"remote": false,
+			"destructive": false
+		},
+		{
+			"adapter": "local-evidence",
+			"actionId": "governance.activation-state.write",
+			"mutationClass": "write-activation-state",
+			"phaseId": "committed",
+			"inputs": {
+				"pathParts": [
+					"governance",
+					"activation-state.json"
+				]
+			},
+			"destination": {
+				"type": "local",
+				"identity": "governance/activation-state.json",
+				"pathParts": [
+					"governance",
+					"activation-state.json"
+				]
+			},
+			"remote": false,
+			"destructive": false
+		}
+	],
+	"approval": {
+		"gateKind": "repository-publish",
+		"required": true,
+		"evaluation": {
+			"phaseId": "committed",
+			"gateKind": "repository-publish",
+			"questionKind": "repository-creation-initial-commit-push",
+			"approvalRequired": false,
+			"status": "reused",
+			"envelopeId": "published-v2-publication-approval",
+			"envelopeHash": "f4068b5a572502af30e887b9369c0a685cfc090082e3de8f6b895d76730f605a",
+			"reasons": [],
+			"expansionReasons": []
+		},
+		"envelopeId": "published-v2-publication-approval",
+		"envelopeHash": "f4068b5a572502af30e887b9369c0a685cfc090082e3de8f6b895d76730f605a"
+	},
+	"rollbackPlan": {
+		"phaseId": "committed",
+		"strategy": "none",
+		"target": null,
+		"operations": [],
+		"retained": [],
+		"cleanupWarnings": []
+	},
+	"noSecrets": true
+}

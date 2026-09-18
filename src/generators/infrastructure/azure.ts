@@ -472,14 +472,17 @@ resource "azurerm_redis_cache" "main" {
   capacity            = 0
   family              = "C"
   sku_name            = "Basic"
+  minimum_tls_version = "1.2"
 }
 
 resource "azurerm_storage_account" "main" {
-  name                     = "${names.storage}"
-  resource_group_name      = azurerm_resource_group.main.name
-  location                 = azurerm_resource_group.main.location
-  account_tier             = "Standard"
-  account_replication_type = "LRS"
+  name                            = "${names.storage}"
+  resource_group_name             = azurerm_resource_group.main.name
+  location                        = azurerm_resource_group.main.location
+  account_tier                    = "Standard"
+  account_replication_type        = "LRS"
+  min_tls_version                 = "TLS1_2"
+  allow_nested_items_to_be_public = false
 }
 
 resource "azurerm_storage_container" "documents" {
@@ -493,6 +496,7 @@ resource "azurerm_servicebus_namespace" "main" {
   location            = azurerm_resource_group.main.location
   resource_group_name = azurerm_resource_group.main.name
   sku                 = "Standard"
+  minimum_tls_version = "1.2"
 }
 
 resource "azurerm_servicebus_queue" "events" {

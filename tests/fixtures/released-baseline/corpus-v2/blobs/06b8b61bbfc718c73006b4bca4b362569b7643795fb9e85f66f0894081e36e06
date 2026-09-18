@@ -1,0 +1,317 @@
+{
+  "schemaVersion": 1,
+  "policy": {
+    "profile": "single-maintainer-gitflow",
+    "version": "6",
+    "state": "handoff-generated",
+    "liveEnforcement": "not-active"
+  },
+  "project": {
+    "name": "Flight Log",
+    "safeName": "flight-log",
+    "workload": "standard",
+    "artifactForm": "containerized-api"
+  },
+  "supportedStack": {
+    "id": "2026.08.31",
+    "verifiedOn": "2026-08-31",
+    "node": "24.20.0",
+    "npm": "12.0.2",
+    "framework": {
+      "id": "openspec",
+      "version": "1.11.0"
+    },
+    "backendRuntime": "24.20.0",
+    "opentofu": "1.12.6"
+  },
+  "agents": [
+    "github-copilot",
+    "claude"
+  ],
+  "framework": {
+    "id": "openspec",
+    "version": "1.11.0"
+  },
+  "discovery": {
+    "githubRepository": "undiscovered",
+    "defaultBranch": "undiscovered",
+    "refs": "undiscovered",
+    "workflowsAndExactChecks": "undiscovered",
+    "rulesets": "undiscovered",
+    "releasesAndTags": "undiscovered",
+    "licensedSecurityFeatures": "undiscovered",
+    "privateRunnerAccess": "undiscovered",
+    "liveDeployments": "undiscovered",
+    "parallelVersionCapability": "undiscovered",
+    "canaryTrafficVolume": "undiscovered",
+    "monitoringAndAlerts": "undiscovered",
+    "slackSeverityRoutes": "undiscovered",
+    "providerStatus": "undiscovered"
+  },
+  "api": {
+    "stack": "node-fastify"
+  },
+  "commands": [
+    {
+      "id": "backend-install",
+      "cwdPathParts": [
+        "backend"
+      ],
+      "executable": "npm",
+      "args": [
+        "ci"
+      ]
+    },
+    {
+      "id": "backend-build",
+      "cwdPathParts": [
+        "backend"
+      ],
+      "executable": "npm",
+      "args": [
+        "run",
+        "build"
+      ]
+    },
+    {
+      "id": "backend-test",
+      "cwdPathParts": [
+        "backend"
+      ],
+      "executable": "npm",
+      "args": [
+        "test"
+      ]
+    },
+    {
+      "id": "local-stack-validate",
+      "cwdPathParts": [],
+      "executable": "docker",
+      "args": [
+        "compose",
+        "config",
+        "-q"
+      ]
+    },
+    {
+      "id": "opentofu-format",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure"
+      ],
+      "executable": "tofu",
+      "args": [
+        "fmt",
+        "-check",
+        "-recursive"
+      ]
+    },
+    {
+      "id": "opentofu-initialize-dev",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev"
+      ],
+      "executable": "tofu",
+      "args": [
+        "init",
+        "-backend=false"
+      ]
+    },
+    {
+      "id": "opentofu-validate-dev",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev"
+      ],
+      "executable": "tofu",
+      "args": [
+        "validate"
+      ]
+    },
+    {
+      "id": "opentofu-initialize-staging",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "staging"
+      ],
+      "executable": "tofu",
+      "args": [
+        "init",
+        "-backend=false"
+      ]
+    },
+    {
+      "id": "opentofu-validate-staging",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "staging"
+      ],
+      "executable": "tofu",
+      "args": [
+        "validate"
+      ]
+    },
+    {
+      "id": "opentofu-initialize-prod",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "prod"
+      ],
+      "executable": "tofu",
+      "args": [
+        "init",
+        "-backend=false"
+      ]
+    },
+    {
+      "id": "opentofu-validate-prod",
+      "cwdPathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "prod"
+      ],
+      "executable": "tofu",
+      "args": [
+        "validate"
+      ]
+    }
+  ],
+  "generatedBoundaries": {
+    "backend": {
+      "state": "generated",
+      "pathParts": [
+        "backend"
+      ]
+    },
+    "frontend": {
+      "state": "inapplicable"
+    },
+    "worker": {
+      "state": "inapplicable"
+    },
+    "docker": {
+      "state": "generated",
+      "pathParts": [
+        "docker-compose.yml"
+      ]
+    },
+    "opentofu": {
+      "state": "generated-not-deployed",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure"
+      ],
+      "layout": "independent",
+      "provenance": "current-generation",
+      "filesystemObservation": "not-performed",
+      "sharedApplicationModulePathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "modules",
+        "application"
+      ],
+      "environmentRoots": [
+        {
+          "environment": "dev",
+          "pathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "dev"
+          ],
+          "tfvarsPathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "dev",
+            "dev.tfvars"
+          ]
+        },
+        {
+          "environment": "staging",
+          "pathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "staging"
+          ],
+          "tfvarsPathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "staging",
+            "staging.tfvars"
+          ]
+        },
+        {
+          "environment": "prod",
+          "pathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "prod"
+          ],
+          "tfvarsPathParts": [
+            "infrastructure",
+            "opentofu",
+            "azure",
+            "environments",
+            "prod",
+            "prod.tfvars"
+          ]
+        }
+      ]
+    }
+  },
+  "environments": [
+    "dev",
+    "staging",
+    "prod"
+  ],
+  "deployment": {
+    "provider": "azure",
+    "region": "eastus",
+    "liveState": "undiscovered",
+    "customContainerPromotion": "requires-live-discovery",
+    "apiDast": "requires-live-staging-and-runner-discovery"
+  },
+  "health": [
+    {
+      "component": "backend",
+      "path": "/health",
+      "depth": "shallow"
+    },
+    {
+      "component": "backend",
+      "path": "/ready",
+      "depth": "shallow",
+      "gap": "generated endpoint does not prove dependency reachability"
+    }
+  ]
+}

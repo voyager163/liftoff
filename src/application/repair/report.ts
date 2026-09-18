@@ -8,6 +8,7 @@ import type { RepairVerificationReceipt } from './verification-receipt.js';
 import type { ApplicationVerificationResult } from './application-types.js';
 import type { RepairWorkspaceInspection, RepairWorkspaceRecoveryResult } from './workspaces-types.js';
 import { repairCapabilities } from './capabilities.js';
+import type { StructuredContinuationV1 } from '../../protocol/continuation.js';
 
 export type RepairScope = 'local-infrastructure' | 'application-layout' | 'repair-recovery';
 
@@ -21,7 +22,7 @@ interface RepairActionBase {
 }
 
 export type RepairNextAction = RepairActionBase & (
-  | { kind: 'command'; command: ExternalCommand; displayCommand: string; requiresInput?: string[] }
+  | { kind: 'command'; command: ExternalCommand; displayCommand: string; requiresInput?: string[]; continuation?: StructuredContinuationV1 }
   | { kind: 'agent'; invocation: string; agent: string }
   | { kind: 'guidance' }
 );

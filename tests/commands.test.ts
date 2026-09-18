@@ -15,6 +15,7 @@ import {
   OPEN_SPEC_WORKFLOW_IDS
 } from '../src/openspec-profile.js';
 import { liftoffVersion } from '../src/version.js';
+import { governancePolicyVersion } from '../src/repository-governance.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import type {
   CommandResult,
@@ -152,7 +153,8 @@ describe('strict update approval arguments', () => {
     expect(() => parseArgs(['update', ...flags])).toThrow(/--check and --approve-plan cannot be combined/);
   });
 
-  it.each(Object.keys(commandDefinitions).filter((command) => command !== 'update' && command !== 'repair'))(
+  it.each(Object.keys(commandDefinitions).filter((command) =>
+    !Object.hasOwn(commandDefinitions[command].flags, 'approve-plan')))(
     'does not accept update approval on %s',
     (command) => {
       expect(() => parseArgs([command, '--approve-plan', fingerprint])).toThrow(/Unknown flag/);
@@ -577,7 +579,7 @@ describe('commands', () => {
       expect(stdout.text()).toContain('Copilot cloud agent: Enabled');
       expect(stdout.text()).toContain('Workstation requirements');
       expect(stdout.text()).toContain('OpenSpec: exactly 1.11.0 [blocking]');
-      expect(stdout.text()).toContain('Single-maintainer GitFlow policy 6');
+      expect(stdout.text()).toContain(`Single-maintainer GitFlow policy ${governancePolicyVersion}`);
       expect(stdout.text()).toMatch(/[Ll]ocal handoff generated/);
       expect(stdout.text()).toContain('repository-governance-policy');
       expect(stdout.text()).toContain('managed-core');
@@ -802,7 +804,7 @@ describe('commands', () => {
         'prompts',
         'liftoff-setup.prompt.md'
       ), 'utf8');
-      expect(governancePolicy).toContain('policyVersion: "6"');
+      expect(governancePolicy).toContain(`policyVersion: "${governancePolicyVersion}"`);
       expect(governancePolicy).toContain('One provisioning exception only:');
       expect(governancePolicy).toContain('Azure Firewall Basic');
       expect(governancePolicy).toContain('Azure NAT Gateway');
@@ -810,8 +812,9 @@ describe('commands', () => {
       expect(governancePolicy).toContain('Microsoft.Network');
       expect(governancePolicy).toContain('GitHub.Network');
       expect(governanceLauncher.length).toBeLessThan(3_000);
-      expect(governanceLauncher).toContain('liftoff governance status --json');
-      expect(governanceLauncher).toContain('liftoff governance verify --json');
+      expect(governanceLauncher).toContain('liftoff capabilities --json');
+      expect(governanceLauncher).toContain('liftoff governance status --project ./my-app --scope local --json');
+      expect(governanceLauncher).toContain('`verify`: 0 consistent-complete, 2 consistent-incomplete');
       expect(governanceLauncher).not.toMatch(/\bmodel\b/i);
       expect(governanceLauncher).not.toContain('Private Staging runner provisioning contract');
       const assessmentLauncher = await readFile(path.join(
@@ -820,7 +823,8 @@ describe('commands', () => {
         'prompts',
         'liftoff-governance-assess.prompt.md'
       ), 'utf8');
-      expect(assessmentLauncher).toContain('liftoff governance assess --json');
+      expect(assessmentLauncher).toContain('liftoff capabilities --json');
+      expect(assessmentLauncher).toContain('liftoff governance assess --project ./my-app --json');
       await expect(access(path.join(
         projectRoot,
         '.claude',

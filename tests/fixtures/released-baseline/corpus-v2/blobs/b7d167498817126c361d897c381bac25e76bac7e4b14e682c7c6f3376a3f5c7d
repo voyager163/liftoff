@@ -1,0 +1,65 @@
+# Azure OpenTofu
+
+Azure is the supported infrastructure starter. Generated files are not production-readiness evidence.
+
+## Governance Gate
+
+The commands below are reference material, not authorization to mutate Azure.
+Do not run the plan/apply, ACR build, or image-replacement sequence until the
+separately approved `application-foundation` governance phase authorizes the
+exact operation. `/liftoff-setup` can evaluate and resume managed phases, but it
+does not imply that every managed phase has an executable production adapter.
+An unavailable production adapter remains a blocker; do not bypass it by running
+these commands directly.
+
+
+## Bootstrap Infrastructure
+
+The first apply uses a public bootstrap image so Azure Container Apps can start before the new ACR contains application images.
+
+```bash
+cd infrastructure/opentofu/azure/environments/dev
+tofu init
+tofu plan -var-file=dev.tfvars
+tofu apply -var-file=dev.tfvars
+```
+
+Build the generated backend in ACR, then replace the bootstrap image:
+
+```bash
+ACR_NAME="$(tofu output -raw container_registry_name)"
+SOURCE_SHA="$(git rev-parse HEAD)"
+az acr build --registry "$ACR_NAME" --image flight-log-backend:"$SOURCE_SHA" ../../../../..
+```
+
+Persist the deployed images in this root's `dev.tfvars` so future applies do not restore the bootstrap image:
+
+```hcl
+backend_image       = "<login-server>/flight-log-backend@sha256:<manifest-digest>"
+backend_target_port = 8000
+```
+
+```bash
+tofu apply -var-file=dev.tfvars
+```
+
+Each selected environment (dev, staging, prod) has its own root,
+provider lock, named tfvars, and `state/<environment>.tfstate`. Shared resource definitions
+live under `modules/application`; do not run plan/apply from that module or the Azure parent directory.
+Switch environment by selecting its root, never by passing another environment's tfvars.
+
+Operational `tofu init` initializes the root's configured backend. Only local baseline checks
+use `tofu init -backend=false` followed by `tofu validate` in each selected root.
+For reviewed remote-state adoption, replace `backend.local.tf` using that root's
+`backend.remote.example.tf`. Each example has a distinct project-and-environment blob key.
+State is secret-sensitive: require private access, encryption, ZRS redundancy, and blob-lease locking;
+do not commit state or credentials. Existing flat-root projects need a separate reviewed migration;
+Liftoff update and force do not move infrastructure or state.
+The default PostgreSQL firewall permits Azure-hosted services. Replace it with private networking before production; set `enable_private_networking=true` only when the required VNet, delegated subnet, and private DNS resources are added.
+
+## Azure Name Suffixes
+
+Every bounded Azure name includes a stable digest of the full project identity, not only its truncated display prefix.
+Each environment tfvars also supplies a deterministic 12-character `resource_suffix` for global names.
+If Azure reports that a name is already taken, replace that environment's suffix with another unique value matching `^[a-z0-9]{12}$`; `tofu validate` rejects invalid overrides before deployment.
+

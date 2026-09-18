@@ -98,7 +98,8 @@ export async function inspectNativeLocalStateTools(request: {
     pythonVersion = info.version;
   } finally { py.stdout.fill(0); py.stderr.fill(0); }
   const tf = await runPrivateStateProcess({
-    executable: tofu, args: ['version', '-json'], cwd: request.workingDirectory, signal: request.signal
+    executable: tofu, args: ['version', '-json'], cwd: request.workingDirectory, signal: request.signal,
+    environment: { ...isolatedStateEnvironment(request.workingDirectory), TF_CLI_CONFIG_FILE: '/dev/null' }
   });
   try {
     const info = JSON.parse(Buffer.from(tf.stdout).toString('utf8'));

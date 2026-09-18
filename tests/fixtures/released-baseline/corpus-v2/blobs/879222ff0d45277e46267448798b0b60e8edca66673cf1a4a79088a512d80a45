@@ -1,0 +1,56 @@
+{
+	"evidenceId": "seed-verified-20260830T090500000Z",
+	"header": {
+		"schemaVersion": 1,
+		"repositoryId": "R_HISTORICAL_FLIGHT_LOG",
+		"identity": {
+			"liftoffVersion": "0.10.0",
+			"manifestArtifactVersion": 7,
+			"policyVersion": "6",
+			"activationContractVersion": 1,
+			"phaseGraphSchemaVersion": 1,
+			"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+			"activationStateSchemaVersion": 1,
+			"evidenceHeaderSchemaVersion": 1,
+			"approvalEnvelopeSchemaVersion": 1,
+			"supersessionSchemaVersion": 1,
+			"credentialPolicySchemaVersion": 1
+		},
+		"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+		"phaseId": "seed-verified",
+		"phaseContractDigest": "9de278215c4b8eb7735d720930bccebc2bf318ab6653f782318347001e0bf896",
+		"inputDigest": "6892beb0165ee17c99f91b2e3e3cd0725b24f524287f917150d4fb10514e7899",
+		"baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+		"transition": {
+			"phaseId": "seed-verified",
+			"baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+			"inputDigest": "6892beb0165ee17c99f91b2e3e3cd0725b24f524287f917150d4fb10514e7899",
+			"transitionDigest": "f9a651e30313abf36ccdb01d4173f403fb286e7a9a3d459b7bbc15a3e26a69b8"
+		},
+		"producedAt": "2026-08-30T09:05:00.000Z",
+		"producer": "liftoff-governance-transition-engine",
+		"result": "verified"
+	},
+	"payload": {
+		"kind": "seed-verified.v1",
+		"changeName": "bootstrap-flight-log",
+		"status": "passed",
+		"checks": [
+			{
+				"id": "backend-tests",
+				"taskId": "2.2",
+				"status": "passed",
+				"command": {
+					"executable": "npm",
+					"args": [
+						"test"
+					],
+					"status": 0
+				},
+				"cwdPathParts": [
+					"backend"
+				]
+			}
+		]
+	}
+}

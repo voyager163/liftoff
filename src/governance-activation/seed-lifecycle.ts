@@ -12,6 +12,7 @@ import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome } from './transiti
 import { getPattern } from '../application/project/catalog.js';
 import { toSafeProjectName } from '../domain/project/planning.js';
 import { assessInfrastructureLayout } from '../domain/project/infrastructure-layout.js';
+import { hasGeneratedWorkload, isApiManifestWorkload } from '../domain/project/manifest/applicability.js';
 import type { CommandResult, CommandRunner } from '../process-runner.js';
 import { formatCommand } from '../process-runner.js';
 import { detectCredentialLeaks } from './credentials.js';
@@ -82,10 +83,11 @@ export type GeneratedSeedDiscovery =
       capabilityId: string;
     }
   | { state: 'archived'; changeName: string; detail: string }
-  | { state: 'blocked'; changeName: string; issues: readonly string[] };
+  | { state: 'blocked'; changeName: string | null; issues: readonly string[] };
 
 export type ArchivedSeedIntegrity =
-  | { status: 'not-applicable' | 'not-archived'; changeName: string; issues: readonly [] }
+  | { status: 'not-applicable'; changeName: string | null; issues: readonly [] }
+  | { status: 'not-archived'; changeName: string; issues: readonly [] }
   | { status: 'valid'; changeName: string; capabilityId: string; contentDigest: string; issues: readonly [] }
   | { status: 'invalid'; changeName: string; capabilityId: string; issues: readonly string[] };
 
@@ -100,7 +102,7 @@ export type GeneratedSeedLifecycleResult =
     }
   | {
       status: 'blocked';
-      changeName: string;
+      changeName: string | null;
       issues: readonly string[];
       checks: readonly SeedBaselineCheckOutcome[];
     }
@@ -112,11 +114,11 @@ export type GeneratedSeedLifecycleResult =
 
 export type SeedPhaseValidationResult =
   | { status: 'passed'; changeName: string; capabilityId?: string; command?: CommandResult; detail: string }
-  | { status: 'blocked'; changeName: string; issues: readonly string[] };
+  | { status: 'blocked'; changeName: string | null; issues: readonly string[] };
 
 export type SeedPhaseVerificationResult =
   | { status: 'passed'; changeName: string; checks: readonly SeedBaselineCheckOutcome[]; fileMutations?: readonly ProjectFileMutation[]; filePreconditions?: readonly ProjectFileSnapshot[] }
-  | { status: 'blocked'; changeName: string; issues: readonly string[]; checks: readonly SeedBaselineCheckOutcome[] };
+  | { status: 'blocked'; changeName: string | null; issues: readonly string[]; checks: readonly SeedBaselineCheckOutcome[] };
 
 export type SeedPhaseArchiveResult =
   | {
@@ -131,7 +133,7 @@ export type SeedPhaseArchiveResult =
     }
   | {
       status: 'blocked';
-      changeName: string;
+      changeName: string | null;
       issues: readonly string[];
       retryableAfterRepair?: boolean;
       archiveCompleted?: boolean;
@@ -166,6 +168,9 @@ interface SeedExecutionOptions {
 }
 
 const seedChangePathParts = (changeName: string) => ['openspec', 'changes', changeName] as const;
+export const missingGeneratedLocalEngine =
+  'Missing local engine (missing-local-engine): adopted or component-only provenance requires its registered profile verification. ' +
+  'API workload facts do not authorize generated bootstrap validation, baseline commands, task projection or archive; no seed is inferred or created.';
 
 function errorCode(error: unknown): string | undefined {
   if (typeof error !== 'object' || error === null || !('code' in error)) {
@@ -180,11 +185,15 @@ function errorMessage(error: unknown): string {
 }
 
 export function generatedSeedChangeName(manifest: LiftoffManifest): string {
+  if (!hasGeneratedWorkload(manifest)) throw new Error(missingGeneratedLocalEngine);
   if (manifest.project.specWorkflow === 'spec-kit') return specKitBootstrapId;
   return `bootstrap-${toSafeProjectName(manifest.project.name)}`;
 }
 
 export function generatedSeedCapabilityId(workload: ManifestWorkload): string {
+  if (!isApiManifestWorkload(workload)) {
+    throw new Error('A generated application capability requires recorded API workload facts.');
+  }
   if (workload.kind === 'standard') {
     return `${workload.apiStack}-application-baseline`;
   }
@@ -196,6 +205,7 @@ function isWorkerWorkload(workload: ManifestWorkload): workload is Extract<Manif
 }
 
 export function seedInfrastructureBaselineBlocker(manifest: LiftoffManifest): string | undefined {
+  if (!hasGeneratedWorkload(manifest)) return missingGeneratedLocalEngine;
   const layout = assessInfrastructureLayout(manifest);
   return layout.kind === 'independent' ? undefined :
     `Local baseline verification (seed-verified) is blocked: infrastructure layout migration-required (${layout.kind}). ${layout.reason} ` +
@@ -213,6 +223,7 @@ export function selectSeedBaselineChecks(
   const layoutBlocker = seedInfrastructureBaselineBlocker(manifest);
   if (layoutBlocker) throw new Error(layoutBlocker);
   const workload = manifest.project.workload;
+  if (!hasGeneratedWorkload(manifest) || !isApiManifestWorkload(workload)) throw new Error(missingGeneratedLocalEngine);
   const checks: SeedBaselineCheck[] = [
     {
       id: 'liftoff-validate',
@@ -371,7 +382,7 @@ export function selectSeedBaselineChecks(
     }
   });
 
-  const environmentChecks = manifest.project.workload.environments.flatMap((environment, index): SeedBaselineCheck[] => {
+  const environmentChecks = workload.environments.flatMap((environment, index): SeedBaselineCheck[] => {
     const cwdPathParts = ['infrastructure', 'opentofu', 'azure', 'environments', environment];
     return [
       { id: 'tofu-init', taskId: `2.7.${index + 1}`, label: `Initialize ${environment} OpenTofu without a backend`, applicability: {
@@ -432,6 +443,8 @@ export async function previewLocalSeedPhase(
   manifest: LiftoffManifest,
   phaseId: LocalSeedPhaseId
 ): Promise<LocalSeedPhasePreview> {
+  const workload = manifest.project.workload;
+  if (!hasGeneratedWorkload(manifest) || !isApiManifestWorkload(workload)) throw new Error(missingGeneratedLocalEngine);
   const discovery = await discoverGeneratedSeed(projectRoot, manifest);
   const blockers: string[] = discovery.state === 'blocked' ? [...discovery.issues] : [];
   const changeName = generatedSeedChangeName(manifest);
@@ -471,19 +484,19 @@ export async function previewLocalSeedPhase(
       const { command, cwdPathParts, env } = check.applicability;
       commands.push({ command, cwdPathParts, env: env ?? {} });
     }
-    for (const environment of manifest.project.workload.environments) {
+    for (const environment of workload.environments) {
       const root = ['infrastructure', 'opentofu', 'azure', 'environments', environment];
       if (await readProjectFile(projectRoot, [...root, 'main.tf']) === undefined) {
         blockers.push(`Missing selected OpenTofu environment root ${[...root, 'main.tf'].join('/')}.`);
       }
       await requireInstalledDirectory([...root, '.terraform'], 'OpenTofu initialization');
     }
-    if (manifest.project.workload.kind === 'genai' || manifest.project.workload.apiStack === 'python-fastapi') {
+    if (workload.kind === 'genai' || workload.apiStack === 'python-fastapi') {
       await requireInstalledDirectory(['backend', '.venv'], 'Python environment');
-    } else if (manifest.project.workload.apiStack === 'node-fastify') {
+    } else if (workload.apiStack === 'node-fastify') {
       await requireInstalledDirectory(['backend', 'node_modules'], 'Backend dependencies');
     }
-    if (manifest.project.workload.frontend) await requireInstalledDirectory(['frontend', 'node_modules'], 'Frontend dependencies');
+    if (workload.frontend) await requireInstalledDirectory(['frontend', 'node_modules'], 'Frontend dependencies');
   } else if (manifest.project.specWorkflow === 'openspec') {
     if (phaseId === 'seed-archived' && discovery.state !== 'archived') {
       blockers.push('The seed is not already archived. Review liftoff governance plan and complete its separate setup/archive transition; update revalidation never archives or edits seed files.');
@@ -611,6 +624,7 @@ export async function inspectArchivedSeedIntegrity(
   suppliedManifest?: LiftoffManifest
 ): Promise<ArchivedSeedIntegrity> {
   const manifest = suppliedManifest ?? await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'not-applicable', changeName: null, issues: [] };
   const changeName = generatedSeedChangeName(manifest);
   if (manifest.project.specWorkflow !== 'openspec') {
     return { status: 'not-applicable', changeName, issues: [] };
@@ -649,6 +663,7 @@ export async function inspectArchivedSeedIntegrity(
 
 export async function discoverGeneratedSeed(projectRoot: string, suppliedManifest?: LiftoffManifest): Promise<GeneratedSeedDiscovery> {
   const manifest = suppliedManifest ?? await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { state: 'blocked', changeName: null, issues: [missingGeneratedLocalEngine] };
   const changeName = generatedSeedChangeName(manifest);
   if (manifest.project.specWorkflow !== 'openspec') {
     const bundle = await inspectSpecKitBootstrap(projectRoot, manifest);
@@ -965,6 +980,7 @@ export async function validateGeneratedSeedForPhase(
     };
   }
   const manifest = await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, issues: [missingGeneratedLocalEngine] };
   if (manifest.project.specWorkflow === 'spec-kit') {
     return { status: 'passed', changeName: discovery.changeName, detail: 'Real Spec Kit bootstrap bundle and independent official initialization markers are valid.' };
   }
@@ -994,7 +1010,8 @@ export async function verifyGeneratedSeedBaselineForPhase(
   options: SeedExecutionOptions = {}
 ): Promise<SeedPhaseVerificationResult> {
   const manifest = await loadManifest(projectRoot);
-  const discovery = await discoverGeneratedSeed(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, checks: [], issues: [missingGeneratedLocalEngine] };
+  const discovery = await discoverGeneratedSeed(projectRoot, manifest);
   if (discovery.state === 'blocked') {
     return {
       status: 'blocked',
@@ -1062,6 +1079,8 @@ export async function archiveGeneratedSeedForPhase(
   runner: CommandRunner,
   options: SeedExecutionOptions = {}
 ): Promise<SeedPhaseArchiveResult> {
+  const manifest = await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, issues: [missingGeneratedLocalEngine] };
   return withProjectMutationLock(projectRoot, (lease) => archiveGeneratedSeedForPhaseLocked(projectRoot, runner, lease, options));
 }
 
@@ -1069,6 +1088,7 @@ async function archiveGeneratedSeedForPhaseLocked(
   projectRoot: string, runner: CommandRunner, lease: ProjectMutationLease, options: SeedExecutionOptions
 ): Promise<SeedPhaseArchiveResult> {
   const manifest = await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, issues: [missingGeneratedLocalEngine] };
   if (manifest.project.specWorkflow === 'spec-kit') {
     const bundle = await inspectSpecKitBootstrap(projectRoot, manifest);
     if (bundle.issues.length || !bundle.tasks || /^\s*- \[ \] B00[1-6] /m.test(bundle.tasks)) {
@@ -1188,6 +1208,9 @@ export async function executeSeedOperations(
   input: PhaseAdapterExecutionInput, options: SeedExecutionOptions = {}
 ): Promise<PhaseAdapterOutcome | null> {
   if (!input.phase.id.startsWith('seed-')) return null;
+  if (!hasGeneratedWorkload(input.inspection.manifest)) return {
+    status: 'blocked', blocker: missingGeneratedLocalEngine, completedOperations: []
+  };
   if (input.phase.id === 'seed-valid') {
     const result = await validateGeneratedSeedForPhase(input.inspection.projectRoot, input.runner, options);
     if (result.status === 'blocked') {
@@ -1265,11 +1288,14 @@ export async function completeGeneratedSeedLifecycle(
   projectRoot: string,
   runner: CommandRunner
 ): Promise<GeneratedSeedLifecycleResult> {
+  const manifest = await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, checks: [], issues: [missingGeneratedLocalEngine] };
   return withProjectMutationLock(projectRoot, () => completeGeneratedSeedLifecycleLocked(projectRoot, runner));
 }
 
 async function completeGeneratedSeedLifecycleLocked(projectRoot: string, runner: CommandRunner): Promise<GeneratedSeedLifecycleResult> {
   const manifest = await loadManifest(projectRoot);
+  if (!hasGeneratedWorkload(manifest)) return { status: 'blocked', changeName: null, checks: [], issues: [missingGeneratedLocalEngine] };
   if (manifest.project.specWorkflow === 'spec-kit') {
     return {
       status: 'blocked', changeName: specKitBootstrapId, checks: [],

@@ -7,7 +7,8 @@ import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
   applicationParts, applicationPathFold, applicationPathKey, applicationWithin, assertApplicationNoLinkAncestors
 } from './application-files.js';
-import { currentApplicationTargets, inspectApplicationLayout } from './application-inventory.js';
+import { currentApplicationTargets, inspectApplicationLayout, isAdoptionInspectionContext, type ApplicationSourceContext } from './application-inventory.js';
+import type { AdoptionInspectionContext } from '../project-evolution/adoption/context.js';
 import { applicationText, inspectApplicationReferences } from './application-references.js';
 import { applicationVerificationLimitation, validateApplicationCommands } from './application-commands.js';
 import { assertApplicationCandidateBounds } from './application-candidate.js';
@@ -190,7 +191,7 @@ function descriptors(snapshots: readonly ProjectFileSnapshot[]) {
   })).sort((a, b) => applicationPathKey(a.pathParts).localeCompare(applicationPathKey(b.pathParts), 'en'));
 }
 
-export function applicationCandidateDigest(candidate: ApplicationPatchCandidate): string {
+export function applicationCandidateDigest(candidate: import('./application-types.js').ApplicationCandidate): string {
   return canonicalSha256({
     scope: candidate.scope, verificationPolicy: candidate.verificationPolicy, snapshots: descriptors(candidate.snapshots),
     mutations: candidate.mutations.map((item) => ({
@@ -201,11 +202,12 @@ export function applicationCandidateDigest(candidate: ApplicationPatchCandidate)
 }
 
 interface PrivateCandidateBinding {
-  manifest: LiftoffManifest;
+  manifest: ApplicationSourceContext;
   digest: string;
   projectRoot: string;
   inspectionDigest: string;
   inspectionOptions: ApplicationInspectionOptions;
+  parseDocument: (content: Buffer) => ApplicationPatchDocument;
 }
 const bindings = new WeakMap<ApplicationPatchCandidate, PrivateCandidateBinding>();
 
@@ -224,6 +226,7 @@ export async function assertApplicationCandidateCurrent(root: string, candidate:
   }
   const current = await inspectApplicationPatchState(
     root, binding.manifest, candidate.patchPath, binding.inspectionOptions, candidate.verificationPolicy.toolchain
+    , binding.parseDocument
   );
   if (current.blockers.length || applicationCandidateDigest(current) !== binding.digest) {
     throw new ApplicationInspectionError('Application source, directories, modes, patch, or staging changed after review; request a new inspection and preview.');
@@ -245,7 +248,7 @@ function mergeDirectories(...inventories: ApplicationDirectoryObservation[][]): 
   return [...merged.values()].sort((a, b) => applicationPathKey(a.pathParts).localeCompare(applicationPathKey(b.pathParts), 'en'));
 }
 
-function validateMappingCollisions(mappings: readonly ApplicationPatchMapping[]): void {
+export function validateMappingCollisions(mappings: readonly ApplicationPatchMapping[]): void {
   const sources = new Set<string>(), targets = new Set<string>(), staged = new Set<string>();
   const paths: { key: string; index: number }[] = [];
   for (const [index, item] of mappings.entries()) {
@@ -269,7 +272,7 @@ function validateMappingCollisions(mappings: readonly ApplicationPatchMapping[])
   }
 }
 
-function validateReferenceReview(
+export function validateReferenceReview(
   mappings: readonly ApplicationPatchMapping[], before: readonly ApplicationReference[],
   after: readonly ApplicationReference[], candidateFiles: readonly ProjectFileSnapshot[],
   directories: readonly ApplicationDirectoryObservation[]
@@ -328,8 +331,9 @@ function validateReferenceReview(
 }
 
 async function inspectApplicationPatchState(
-  root: string, manifest: LiftoffManifest, externalPatchFile: string, options: ApplicationInspectionOptions,
-  approvedTools?: readonly ApplicationToolIdentity[]
+  root: string, manifest: ApplicationSourceContext, externalPatchFile: string, options: ApplicationInspectionOptions,
+  approvedTools?: readonly ApplicationToolIdentity[],
+  parseDocument: (content: Buffer) => ApplicationPatchDocument = parseApplicationPatch
 ): Promise<ApplicationPatchCandidate> {
   const inspection = await inspectApplicationLayout(root, manifest);
   const projectRoot = inspection.report.projectRoot;
@@ -390,7 +394,7 @@ async function inspectApplicationPatchState(
     if (!patch.content) throw new ApplicationInspectionError('The external application patch file is missing.');
     candidate.scope.patch.digest = applicationDigest(patch.content);
     candidate.scope.patch.mode = patch.mode!;
-    const document = parseApplicationPatch(patch.content);
+    const document = parseDocument(patch.content);
     if (document.projectRoot !== projectRoot || document.inspectionDigest !== inspection.report.inspectionDigest ||
         document.targetLayoutDigest !== inspection.report.target.digest) {
       throw new ApplicationInspectionError('Application patch belongs to another root, stale inspection, or different current target inventory.');
@@ -414,6 +418,11 @@ async function inspectApplicationPatchState(
       if (!targetIdentity) throw new ApplicationInspectionError('Application patch names an unknown or unselected current target identity.');
       for (const parts of [mapping.sourcePathParts, mapping.targetPathParts]) {
         if (applicationExclusion(parts, current.protectedPaths, current.examplePaths)) {
+          if (parts[0] === 'infrastructure') {
+            throw new ApplicationInspectionError(
+              `${parts.join('/')}: infrastructure files are excluded from application patches; use the separate azure-baseline-settings recipe.`
+            );
+          }
           throw new ApplicationInspectionError(`${parts.join('/')}: protected files cannot participate in an application patch.`);
         }
       }
@@ -430,7 +439,10 @@ async function inspectApplicationPatchState(
         if (exactTarget) throw new ApplicationInspectionError('A generated target path must use its exact generated-artifact identity.');
         if (mapping.role === 'application') {
           const componentRoot = applicationPathKey(targetIdentity.componentRootPathParts);
-          if (!componentRoot || !targetKey.startsWith(`${componentRoot}/`) ||
+          const approvedRootComponent = !componentRoot && (
+            isAdoptionInspectionContext(manifest) || manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted'
+          );
+          if (!approvedRootComponent && (!componentRoot || !targetKey.startsWith(`${componentRoot}/`)) ||
               targetIdentity.component === 'functions' && targetIdentity.componentRootPathParts.length !== 2) {
             throw new ApplicationInspectionError('Custom application files require an explicit mapping into a selected current application component.');
           }
@@ -501,7 +513,8 @@ async function inspectApplicationPatchState(
     bindings.set(candidate, {
       manifest: structuredClone(manifest), digest: applicationCandidateDigest(candidate),
       projectRoot, inspectionDigest: inspection.report.inspectionDigest,
-      inspectionOptions: { ...options, ...(options.env ? { env: { ...options.env } } : {}) }
+      inspectionOptions: { ...options, ...(options.env ? { env: { ...options.env } } : {}) },
+      parseDocument
     });
   } catch (error) {
     candidate.blockers.push(applicationFailure(error));
@@ -514,6 +527,18 @@ export async function inspectApplicationPatch(
   root: string, manifest: LiftoffManifest, externalPatchFile: string, options: ApplicationInspectionOptions = {}
 ): Promise<ApplicationPatchCandidate> {
   return inspectApplicationPatchState(root, manifest, externalPatchFile, options);
+}
+
+export async function inspectAdoptionApplicationPatch(
+  root: string, context: AdoptionInspectionContext, proposalFile: string,
+  selectDocument: (content: Buffer) => ApplicationPatchDocument,
+  options: ApplicationInspectionOptions = {}
+): Promise<ApplicationPatchCandidate> {
+  if (!isAdoptionInspectionContext(context) || context.schemaVersion !== 1 ||
+    !/^[a-f0-9]{64}$/u.test(context.assessmentDigest)) {
+    throw new ApplicationInspectionError('Adoption patch inspection requires an explicit current profile/evidence context, not a fabricated manifest.');
+  }
+  return inspectApplicationPatchState(root, context, proposalFile, options, undefined, selectDocument);
 }
 
 export type { ApplicationPatchCandidate, ApplicationPatchDocument } from './application-types.js';

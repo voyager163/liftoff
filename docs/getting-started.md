@@ -6,21 +6,32 @@ and standard APIs.
 ## 1. Install the CLI
 
 Workstation readiness requires stable Node.js 24 LTS at 24.20.0 or newer within
-that line, plus npm 12.x at 12.0.2 or newer when selected tools need it.
+that line, plus npm 12.x at 12.0.2 or newer when selected project tools need it.
 Python workloads use Python 3.14.x with frozen `uv` dependency locks.
 
-The canonical release registry is `https://registry.npmjs.org`:
+Liftoff 0.13.0 is an unpublished native-only candidate. Signed artifacts,
+supported-host qualification, and verified delivery channels are not yet available;
+do not treat a source build or proposed manager command as a qualified installation.
+
+See [native installation](native-installation.md)
+for native channel specifications, architecture floors, and the one-time legacy npm handover.
+The candidate does not publish an npm bridge or recommend new npm installations.
+
+### Historical npm recovery only
+
+The npm distribution line ends at v0.12.3. For explicitly selected historical
+recovery, not current candidate onboarding:
 
 ```bash
-npm view @msn-control/liftoff@latest version --registry=https://registry.npmjs.org --@msn-control:registry=https://registry.npmjs.org
-npm install -g @msn-control/liftoff@latest
+npm view @msn-control/liftoff@0.12.3 version --registry=https://registry.npmjs.org --@msn-control:registry=https://registry.npmjs.org
+npm install -g @msn-control/liftoff@0.12.3
 liftoff --version
 ```
 
 Versions before 0.3.0 are unsupported and must not be used for new projects.
-If your organization requires a managed npm registry, query
-`@msn-control/liftoff@latest` through that registry and compare the version with
-canonical npm. Stop if the mirror is older or rejects the explicit current
+If your organization requires a managed npm registry for historical recovery, query
+`@msn-control/liftoff@0.12.3` through that registry and compare the version with
+canonical npm. Stop if the mirror is older or rejects the selected historical
 version; ask the mirror owner to synchronize or approve the release. Liftoff
 does not modify `.npmrc` or bypass registry policy.
 The read-only canonical query isolates both default and scoped registry
@@ -28,16 +39,18 @@ overrides. Installation intentionally honors the configured
 `@msn-control:registry` before the default registry; do not force a canonical
 download around an organization's delivery policy.
 
-Versions predating the self-upgrade command require that manual global install
-once. After a capable version is installed globally with npm, use:
+Historical versions predating the self-upgrade command require that manual global
+install once. For a historical version with the npm self-upgrader, use:
 
 ```bash
 liftoff upgrade --check
 liftoff upgrade
 ```
 
-`upgrade` replaces only the supported global CLI installation. It does not read
-or update a generated project. Inspect Liftoff-managed core maintenance
+Those commands remain within the historical npm line; they cannot discover or
+install the native candidate. The candidate's owner-preserving `upgrade` uses
+native release metadata and refuses an npm-owned or unproven installation.
+CLI upgrade does not read or update a generated project. Inspect Liftoff-managed core maintenance
 separately with `liftoff update --check`; production template modernization is
 a reviewed project change.
 

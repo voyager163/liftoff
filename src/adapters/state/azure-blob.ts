@@ -333,6 +333,40 @@ export class AzureBlobStateBackend implements StateBackendAdapter {
     return current;
   }
 
+  /** Empty application bootstrap only. Unlike migration publication, this never acquires a lease or retires a source. */
+  async initializeEmptyPrivate(request: {
+    bytes: Uint8Array; expected: StateBackendMetadata; context: StateExecutionContext; operationId: string; signal?: AbortSignal;
+  }): Promise<StateBackendMetadata> {
+    stateAssert(!request.expected.exists && request.bytes.byteLength > 0 && request.bytes.byteLength <= 4096, 'invalid-binding');
+    await this.assertAccess(request.context, true, request.signal);
+    stateAssert(stateMetadataMatches(request.expected, await this.metadata(request.context, request.signal)), 'stale-state');
+    const state = inspectStateBytes({ ...request.expected, exists: true, size: request.bytes.byteLength }, request.bytes);
+    let document: unknown;
+    try { document = JSON.parse(Buffer.from(request.bytes).toString('utf8')); }
+    catch { throw new StateMigrationError('invalid-binding'); }
+    stateAssert(typeof document === 'object' && document !== null && !Array.isArray(document) &&
+      'version' in document && document.version === 4 &&
+      'terraform_version' in document && document.terraform_version === '1.12.6' &&
+      'serial' in document && document.serial === 1 &&
+      'lineage' in document && typeof document.lineage === 'string' &&
+      /^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/u.test(document.lineage) &&
+      'resources' in document && Array.isArray(document.resources) && document.resources.length === 0 &&
+      'outputs' in document && typeof document.outputs === 'object' && document.outputs !== null &&
+      !Array.isArray(document.outputs) && Object.keys(document.outputs).length === 0 &&
+      'check_results' in document && document.check_results === null &&
+      Object.keys(document).sort().join(',') === 'check_results,lineage,outputs,resources,serial,terraform_version,version' &&
+      state.snapshot.serial === 1, 'invalid-binding');
+    const response = await this.request(request.context, {
+      method: 'PUT', target: 'blob', body: request.bytes, operationId: request.operationId, signal: request.signal,
+      headers: { 'x-ms-blob-type': 'BlockBlob', 'content-type': 'application/json',
+        'x-ms-meta-liftoff-operation': request.operationId, 'if-none-match': '*' }
+    });
+    successful(response, [201]);
+    const current = await this.metadata(request.context, request.signal);
+    stateAssert(current.exists && current.etag === response.headers.etag && current.operationId === request.operationId, 'stale-state');
+    return current;
+  }
+
   async remove(request: Parameters<StateBackendAdapter['remove']>[0]): Promise<StateBackendMetadata> {
     await this.assertAccess(request.context, true, request.signal);
     const lease = await this.held(request.lease);

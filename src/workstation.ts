@@ -104,13 +104,24 @@ export interface RequirementProbeResult {
   remediationAttempts?: RemediationAttempt[];
 }
 
+export type WorkstationWorkloadSelection =
+  | {
+      kind: 'genai' | 'standard';
+      apiStack: { id: ApiStackId };
+      provider: { id: ProviderId };
+      frontend?: boolean;
+    }
+  | {
+      kind: 'components';
+      components?: Array<{
+        id: string;
+        profileId?: string;
+      }>;
+      provider?: { id: ProviderId };
+    };
+
 export interface WorkstationRequirementSelection {
-  workload: {
-    kind: 'genai' | 'standard';
-    apiStack: { id: ApiStackId };
-    provider: { id: ProviderId };
-    frontend?: boolean;
-  };
+  workload: WorkstationWorkloadSelection;
   specWorkflow: { id: SpecWorkflowId };
   framework: { version: string };
   agents: Array<{ id: CodingAgentId; label: string }>;
@@ -198,7 +209,7 @@ const REQUIREMENT_ORDER: WorkstationRequirementId[] = [
 
 const MISSING_ERROR_CODES = new Set(['ENOENT']);
 
-export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
+export function selectLiftoffRuntimeRequirements(): [SelectedRequirement] {
   const definition = workstationRequirementCatalog.node;
   return [{
     id: 'node',
@@ -209,6 +220,29 @@ export function selectLiftoffRuntimeRequirements(): SelectedRequirement[] {
     releaseLine: definition.releaseLine,
     allowPrerelease: definition.allowPrerelease ?? false
   }];
+}
+
+export function observeLiftoffRuntime(): RequirementProbeResult {
+  const [requirement] = selectLiftoffRuntimeRequirements();
+  const identity: ExecutableIdentity = {
+    executable: process.execPath, resolvedPath: process.execPath, resolution: 'resolved',
+    kind: 'executable', origin: 'unknown', evidence: 'documented-location'
+  };
+  const version = extractVersion(process.versions.node, 'node');
+  if (!version) {
+    return resultWithCause(requirement, identity, 'version-unparseable',
+      'The running CLI process has no interpretable Node runtime version.');
+  }
+  const result = classifyVersionValue(requirement, version, process.execPath, identity);
+  return {
+    ...result,
+    detail: result.state === 'ready'
+      ? `Running CLI Node ${version}; this is not a project toolchain probe`
+      : `Running CLI Node ${version}: ${result.detail}`,
+    ...(result.state === 'ready' ? {} : {
+      remedy: 'Use a supported Liftoff bundle or its declared contributor runtime; native runtime replacement is owner-specific.'
+    })
+  };
 }
 
 export function selectWorkstationRequirements(
@@ -246,6 +280,67 @@ export function selectWorkstationRequirements(
       scope
     });
   };
+
+  if (typeof plan.workload === 'object' && plan.workload.kind === 'components') {
+    add('node', 'Liftoff runtime', {
+      minimumVersion: supportedStack.runtimes.node.minimumVersion
+    });
+    const components = plan.workload.components ?? [];
+    const hasVue = components.some((c) =>
+      c.profileId === 'vue-component' || c.profileId === 'frontend' || c.id === 'frontend' || c.id === 'vue'
+    );
+    const hasPython = components.some((c) =>
+      c.profileId === 'python-fastapi' || (c.profileId?.startsWith('genai-') ?? false)
+    );
+    const hasGo = components.some((c) => c.profileId === 'go-huma');
+    const hasNodeApi = components.some((c) => c.profileId === 'node-fastify');
+
+    if (hasVue || hasNodeApi || components.length === 0) {
+      add('npm', 'selected frontend dependency manager');
+    }
+    if (hasPython) {
+      add('python', 'selected Python component stack', {
+        minimumVersion: supportedStack.runtimes.python.minimumVersion
+      });
+      add('uv', 'locked Python dependency manager');
+    }
+    if (hasGo) {
+      add('go', 'selected Go component stack', {
+        minimumVersion: supportedStack.runtimes.go.minimumVersion
+      });
+    }
+
+    if (plan.specWorkflow.id === 'openspec') {
+      add('npm', 'OpenSpec installer and launcher');
+      add('node', 'OpenSpec runtime', {
+        minimumVersion: supportedStack.runtimes.node.minimumVersion
+      });
+      if (options.includeFramework !== false) {
+        add('openspec', 'selected spec-driven framework', { exactVersion: plan.framework.version });
+      }
+    } else {
+      add('python', 'Spec Kit runtime', {
+        minimumVersion: supportedStack.runtimes.python.minimumVersion
+      });
+      add('uv', 'Spec Kit installer and launcher');
+      if (options.includeFramework !== false) {
+        add('spec-kit', 'selected spec-driven framework', { exactVersion: plan.framework.version });
+      }
+    }
+
+    if (plan.workload.provider?.id === 'azure') {
+      add('azure-cli', 'selected Azure cloud');
+    }
+    for (const agent of plan.agents) {
+      add(agent.id, `selected ${agent.label} coding agent`);
+    }
+    for (const id of options.requiredTools ?? []) add(id, `required ${scope} operation`, { severity: 'blocking' });
+
+    return REQUIREMENT_ORDER.flatMap((id) => {
+      const requirement = selected.get(id);
+      return requirement ? [requirement] : [];
+    });
+  }
 
   const workload = typeof plan.workload === 'string'
     ? {
@@ -577,7 +672,16 @@ function classifyVersion(
         remedy: `Verify the ${requirement.definition.label} executable and its version output before selecting a remedy.`
       });
   }
-  const detected = { detectedVersion: version, detectedBy: command.executable };
+  return classifyVersionValue(requirement, version, command.executable, identity);
+}
+
+function classifyVersionValue(
+  requirement: SelectedRequirement,
+  version: string,
+  executable: string,
+  identity: ExecutableIdentity
+): RequirementProbeResult {
+  const detected = { detectedVersion: version, detectedBy: executable };
   if (
     version &&
     !requirement.allowPrerelease &&

@@ -9,7 +9,7 @@ import type {
   TransitionOperation, TransitionOperationDestination, TransitionRollbackPlan
 } from '../domain/governance/activation/types.js';
 import {
-  historicalActivationIdentities, isHistoricalV2ActivationIdentity,
+  historicalActivationIdentities, isHistoricalV2ActivationIdentity, isHistoricalV3ActivationIdentity, isHistoricalV4Policy7ActivationIdentity,
   type HistoricalActivationIdentity
 } from '../domain/governance/policy/identity.js';
 import type { ProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
@@ -22,10 +22,12 @@ import {
   historyPathParts, historyRecord, historyRecordId, historyString, historyStrings, historyTimestamp,
   historicalActivationIdentity, historicalActivationStatePathParts, historicalManifestPathParts, historicalMetadataPathParts,
   migrationStateFilePathParts, historicalSourceChangePathParts, parseHistoryJson, rawHistoryDigest, validateHistoricalV2SourceMigrationJournal,
-  type HistoricalFileKind, type ActivationHistoryIndex, type HistoricalV2SourceMigrationJournal
+  validateHistoricalV3SourceMigrationJournal,
+  validateHistoricalV4Policy7SourceMigrationJournal,
+  type HistoricalFileKind, type ActivationHistoryIndex, type HistoricalSourceMigrationJournal
 } from './history-contracts.js';
 import { FileSystemError } from '../domain/project/errors.js';
-import { validateGovernanceCompatibilityMetadata } from './compatibility.js';
+import { validateGovernanceCompatibilityMetadata, validatePolicy7CompatibilityMetadata } from './compatibility.js';
 import { assertSafeHistoricalBytes, assertSafeHistoricalRecord } from './historical-safety.js';
 import { historicalV1PhaseContractDigests, historicalV1ResultAllowed } from './historical-v1-phase-contracts.js';
 import { validateHistoricalV1AuxiliaryRecord } from './historical-v1-auxiliary.js';
@@ -38,6 +40,21 @@ import {
   type HistoricalV2ActivationState, type HistoricalV2EvidenceRecord,
   type HistoricalV2ApprovalEnvelope, type HistoricalV2SavedTransitionPlan
 } from './historical-v2.js';
+import {
+  historicalV3PhaseIds, historicalV3ApprovalEnvelopeHash, validateHistoricalV3ActivationState,
+  validateHistoricalV3EvidenceRecord, validateHistoricalV3ApprovalEnvelope, validateHistoricalV3SavedTransitionPlan,
+  validateHistoricalV3AuxiliaryRecord, validateHistoricalV3Compatibility,
+  type HistoricalV3ActivationState, type HistoricalV3EvidenceRecord, type HistoricalV3ApprovalEnvelope,
+  type HistoricalV3SavedTransitionPlan
+} from './historical-v3.js';
+import {
+  historicalV4Policy7PhaseGraph, historicalV4Policy7ApprovalEnvelopeHash,
+  validateHistoricalV4Policy7ActivationState, validateHistoricalV4Policy7EvidenceRecord,
+  validateHistoricalV4Policy7ApprovalEnvelope, validateHistoricalV4Policy7SavedTransitionPlan,
+  validateHistoricalV4Policy7AuxiliaryRecord,
+  type HistoricalV4Policy7ActivationState, type HistoricalV4Policy7EvidenceRecord,
+  type HistoricalV4Policy7ApprovalEnvelope, type HistoricalV4Policy7SavedTransitionPlan
+} from './historical-v4-policy7.js';
 
 export * from './historical-common.js';
 import {
@@ -230,12 +247,15 @@ export interface HistoricalSourceFile {
   mode: number;
 }
 
-export type ReadableHistoricalActivationState = HistoricalActivationState | HistoricalV2ActivationState;
+export type ReadableHistoricalActivationState = HistoricalActivationState | HistoricalV2ActivationState | HistoricalV3ActivationState | HistoricalV4Policy7ActivationState;
+type ReadableHistoricalEvidenceRecord = HistoricalEvidenceRecord | HistoricalV2EvidenceRecord | HistoricalV3EvidenceRecord | HistoricalV4Policy7EvidenceRecord;
+type ReadableHistoricalSavedTransitionPlan = HistoricalSavedTransitionPlan | HistoricalV2SavedTransitionPlan | HistoricalV3SavedTransitionPlan | HistoricalV4Policy7SavedTransitionPlan;
+type ReadableHistoricalApprovalEnvelope = HistoricalApprovalEnvelope | HistoricalV2ApprovalEnvelope | HistoricalV3ApprovalEnvelope | HistoricalV4Policy7ApprovalEnvelope;
 
 export interface HistoricalActivationInventory {
   manifest: LiftoffManifest;
   state: ReadableHistoricalActivationState;
-  sourceMigration?: HistoricalV2SourceMigrationJournal;
+  sourceMigration?: HistoricalSourceMigrationJournal;
   sourceChangeMetadata?: HistoricalGovernanceChangeMetadata;
   files: HistoricalSourceFile[];
   unreviewedRecords: HistoricalSourceFile[];
@@ -321,9 +341,9 @@ export function validateHistoricalSourceManifest(value: unknown): LiftoffManifes
   const label = 'historicalSourceManifest';
   assertSafeHistoricalRecord(value, label);
   const raw = historyRecord(value, label);
-  historyLiteral(raw.artifactVersion, 7, `${label}.artifactVersion`);
   const governance = historyRecord(raw.governance, `${label}.governance`);
-  historicalIdentity(governance.activationIdentity, `${label}.governance.activationIdentity`);
+  const identity = historicalIdentity(governance.activationIdentity, `${label}.governance.activationIdentity`);
+  historyLiteral(raw.artifactVersion, identity.manifestArtifactVersion, `${label}.artifactVersion`);
   try {
     return parseManifest(raw);
   } catch (error) {
@@ -401,9 +421,13 @@ function validateHistoricalMetadata(file: HistoricalSourceFile): void {
       validateHistoricalCompatibility(value, label);
     } else if (isRecord(value) && (value.schemaVersion === 2 || value.schemaVersion === 3)) {
       validateHistoricalV2Compatibility(value, label);
+    } else if (isRecord(value) && value.schemaVersion === 4) {
+      validateHistoricalV3Compatibility(value, label);
     } else {
       try {
-        const metadata = validateGovernanceCompatibilityMetadata(value);
+        const original = isRecord(value) && isRecord(value.activation) && Array.isArray(value.activation.currentCompatibleTuples) &&
+          value.activation.currentCompatibleTuples.some(isHistoricalV4Policy7ActivationIdentity);
+        const metadata = original ? validatePolicy7CompatibilityMetadata(value) : validateGovernanceCompatibilityMetadata(value);
         for (const parts of metadata.managedCore.pathAllowlist) historyPathParts(parts, `${label}.managedCore.pathAllowlist`);
         for (const entry of metadata.managedCore.updateInventory) historyPathParts(entry.pathParts, `${label}.managedCore.updateInventory.pathParts`);
       } catch (error) {
@@ -416,7 +440,8 @@ function validateHistoricalMetadata(file: HistoricalSourceFile): void {
     historyLiteral(context.schemaVersion, 1, `${label}.schemaVersion`);
     const policy = historyExact(context.policy, ['profile', 'version', 'state', 'liveEnforcement'], `${label}.policy`);
     historyLiteral(policy.profile, 'single-maintainer-gitflow', `${label}.policy.profile`);
-    historyLiteral(policy.version, '6', `${label}.policy.version`);
+    historyEnum(policy.version, [...new Set([...historicalActivationIdentities.map((identity) => identity.policyVersion),
+      currentActivationIdentity.policyVersion])], `${label}.policy.version`);
     historyLiteral(policy.state, 'handoff-generated', `${label}.policy.state`);
     historyLiteral(policy.liveEnforcement, 'not-active', `${label}.policy.liveEnforcement`);
     const discovery = historyRecord(context.discovery, `${label}.discovery`);
@@ -479,7 +504,8 @@ function validateAt<T>(file: HistoricalSourceFile, validator: (value: unknown) =
 
 export function validateReadableHistoricalActivationState(value: unknown): ReadableHistoricalActivationState {
   const item = historyRecord(value, 'historicalActivationState');
-  return isHistoricalV2ActivationIdentity(item.identity)
+  return isHistoricalV4Policy7ActivationIdentity(item.identity) ? validateHistoricalV4Policy7ActivationState(value) :
+    isHistoricalV3ActivationIdentity(item.identity) ? validateHistoricalV3ActivationState(value) : isHistoricalV2ActivationIdentity(item.identity)
     ? validateHistoricalV2ActivationState(value) : validateHistoricalActivationState(value);
 }
 
@@ -543,16 +569,25 @@ async function readHistoricalInventory(
     historyFail(historyPathKey(stateFile.pathParts), 'active change belongs to a different spec workflow.', 'historical-spec-ownership-conflict');
   }
   const files = [manifestFile, stateFile];
-  let sourceMigration: HistoricalV2SourceMigrationJournal | undefined;
+  let sourceMigration: HistoricalSourceMigrationJournal | undefined;
   const migrationSnapshot = await capture(migrationStateFilePathParts);
   if (migrationSnapshot.content !== undefined) {
-    if (state.schemaVersion !== 2) historyFail(historyPathKey(migrationStateFilePathParts), 'v1 active state cannot have a committed v2 source migration.', 'mixed-active-identity');
+    if (state.schemaVersion === 1) historyFail(historyPathKey(migrationStateFilePathParts), 'v1 active state cannot have a committed source migration.', 'mixed-active-identity');
     const file = sourceFile(migrationSnapshot, 'migration');
-    sourceMigration = validateAt(file, validateHistoricalV2SourceMigrationJournal);
+    sourceMigration = validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7SourceMigrationJournal(value) : state.schemaVersion === 3
+      ? validateHistoricalV3SourceMigrationJournal(value) : validateHistoricalV2SourceMigrationJournal(value));
     if (sourceMigration.successor.repositoryId !== state.repository.id || sourceMigration.successor.createdAt !== state.createdAt) {
-      historyFail(historyPathKey(file.pathParts), 'source migration does not identify this active v2 successor.', 'invalid-historical-reference');
+      historyFail(historyPathKey(file.pathParts), 'source migration does not identify this exact active historical successor.', 'invalid-historical-reference');
+    }
+    if ((state.schemaVersion === 3 || state.schemaVersion === 4) && (!state.successorHistory ||
+      state.successorHistory.snapshotId !== sourceMigration.snapshotId ||
+      state.successorHistory.historyIndexDigest !== sourceMigration.historyIndexDigest ||
+      historyPathKey(state.successorHistory.historyIndexPathParts) !== historyPathKey(sourceMigration.historyIndexPathParts))) {
+      historyFail(historyPathKey(file.pathParts), 'historical successor backlink contradicts its retained source migration.', 'invalid-historical-reference');
     }
     files.push(file);
+  } else if ((state.schemaVersion === 3 || state.schemaVersion === 4) && state.successorHistory) {
+    historyFail(historyPathKey(migrationStateFilePathParts), 'historical successor declares a missing source migration.', 'missing-historical-record');
   }
   let sourceChangeMetadata: HistoricalGovernanceChangeMetadata | undefined;
   if (state.activeChange) {
@@ -578,24 +613,24 @@ async function readHistoricalInventory(
     validateHistoricalMetadata(file);
     files.push(file);
   }
-  const evidence = new Map<string, { file: HistoricalSourceFile; record: HistoricalEvidenceRecord | HistoricalV2EvidenceRecord }>();
-  const plans: Array<{ file: HistoricalSourceFile; record: HistoricalSavedTransitionPlan | HistoricalV2SavedTransitionPlan }> = [];
-  const approvals = new Map<string, { file: HistoricalSourceFile; record: HistoricalApprovalEnvelope | HistoricalV2ApprovalEnvelope }>();
+  const evidence = new Map<string, { file: HistoricalSourceFile; record: ReadableHistoricalEvidenceRecord }>();
+  const plans: Array<{ file: HistoricalSourceFile; record: ReadableHistoricalSavedTransitionPlan }> = [];
+  const approvals = new Map<string, { file: HistoricalSourceFile; record: ReadableHistoricalApprovalEnvelope }>();
   for (const [directory, kind] of [['evidence', 'evidence'], ['plans', 'plan'], ['approvals', 'approval']] as const) {
     for (const parts of await activeRecordPaths(directory)) {
       const file = sourceFile(await capture(parts), kind);
       if (!parts[2].endsWith('.json')) historyFail(historyPathKey(parts), 'active record extension is not the registered lowercase .json layout.');
       if (kind === 'evidence') {
-        const record = validateAt(file, (value) => state.schemaVersion === 2
+        const record = validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7EvidenceRecord(value) : state.schemaVersion === 3 ? validateHistoricalV3EvidenceRecord(value) : state.schemaVersion === 2
           ? validateHistoricalV2EvidenceRecord(value) : validateHistoricalEvidenceRecord(value, parts[2].slice(0, -5)));
         if (record.header.repositoryId !== state.repository.id) historyFail(historyPathKey(parts), 'historical evidence belongs to another repository.', 'invalid-historical-reference');
         if (evidence.has(record.evidenceId)) historyFail(historyPathKey(parts), 'duplicates an evidence identity.');
         evidence.set(record.evidenceId, { file, record });
       } else if (kind === 'plan') {
-        plans.push({ file, record: validateAt(file, (value) => state.schemaVersion === 2
+        plans.push({ file, record: validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7SavedTransitionPlan(value) : state.schemaVersion === 3 ? validateHistoricalV3SavedTransitionPlan(value) : state.schemaVersion === 2
           ? validateHistoricalV2SavedTransitionPlan(value) : validateHistoricalSavedTransitionPlan(value)) });
       } else {
-        const record = validateAt(file, (value) => state.schemaVersion === 2
+        const record = validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7ApprovalEnvelope(value) : state.schemaVersion === 3 ? validateHistoricalV3ApprovalEnvelope(value) : state.schemaVersion === 2
           ? validateHistoricalV2ApprovalEnvelope(value) : validateHistoricalApprovalEnvelope(value));
         if (approvals.has(record.id)) historyFail(historyPathKey(parts), 'duplicates an approval identity.');
         approvals.set(record.id, { file, record });
@@ -607,7 +642,7 @@ async function readHistoricalInventory(
     for (const parts of records) {
       const file = sourceFile(await capture(parts), kind);
       try {
-        validateAt(file, (value) => state.schemaVersion === 1
+        validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7AuxiliaryRecord(value, kind) : state.schemaVersion === 3 ? validateHistoricalV3AuxiliaryRecord(value, kind) : state.schemaVersion === 1
           ? validateHistoricalV1AuxiliaryRecord(value, kind) : validateHistoricalV2AuxiliaryRecord(value, kind));
       } catch (error) {
         if (!(error instanceof ActivationHistoryError) || error.code !== 'invalid-history-record') throw error;
@@ -623,7 +658,7 @@ async function readHistoricalInventory(
         historyFail(historyPathKey(parts), 'active auxiliary proof has no registered source retirement contract; it cannot be silently carried forward.', 'unsupported-active-record');
       }
       const file = sourceFile(snapshot, 'credential-policy');
-      validateAt(file, (value) => state.schemaVersion === 1
+      validateAt(file, (value) => state.schemaVersion === 4 ? validateHistoricalV4Policy7AuxiliaryRecord(value, 'credential-policy') : state.schemaVersion === 3 ? validateHistoricalV3AuxiliaryRecord(value, 'credential-policy') : state.schemaVersion === 1
         ? validateHistoricalV1AuxiliaryRecord(value, 'credential-policy') : validateHistoricalV2AuxiliaryRecord(value, 'credential-policy'));
       files.push(file);
     }
@@ -633,9 +668,10 @@ async function readHistoricalInventory(
   const requireApproval = (id: string, expectedPhase: string, expectedHash?: string) => {
     const found = approvals.get(id);
     if (!found) historyFail(`governance/approvals/${id}`, 'referenced historical approval is missing.', 'missing-historical-record');
-    const scopeHash = found.record.schemaVersion === 1
+    const scopeHash = found.record.schemaVersion === 4 ? historicalV4Policy7ApprovalEnvelopeHash(found.record) : found.record.schemaVersion === 3 ? historicalV3ApprovalEnvelopeHash(found.record) : found.record.schemaVersion === 1
       ? historicalApprovalEnvelopeHash(found.record) : historicalV2ApprovalEnvelopeHash(found.record);
-    if (found.record.phaseId !== expectedPhase || expectedHash !== undefined && scopeHash !== expectedHash) {
+    const covered = (found.record.schemaVersion === 3 || found.record.schemaVersion === 4) && found.record.coveredPhases?.some((phase) => phase === expectedPhase);
+    if (found.record.phaseId !== expectedPhase && !covered || expectedHash !== undefined && scopeHash !== expectedHash) {
       historyFail(historyPathKey(found.file.pathParts), 'approval phase or scope hash contradicts its reference.', 'invalid-historical-reference');
     }
     select(found.file);
@@ -647,12 +683,13 @@ async function readHistoricalInventory(
       requireApproval(entry.record.approval.envelopeId, entry.record.phaseId, entry.record.approval.envelopeHash);
     }
   };
-  const selectEvidence = (entry: { file: HistoricalSourceFile; record: HistoricalEvidenceRecord | HistoricalV2EvidenceRecord }) => {
+  const selectEvidence = (entry: { file: HistoricalSourceFile; record: ReadableHistoricalEvidenceRecord }) => {
     select(entry.file);
     const { header, payload, evidenceId } = entry.record;
     const matching = plans.filter((candidate) =>
       candidate.record.phaseId === header.phaseId && candidate.record.transitionDigest === header.transition.transitionDigest &&
-      candidate.record.baselineDigest === header.baselineSha && candidate.record.inputDigest === header.inputDigest);
+      candidate.record.baselineDigest === header.baselineSha &&
+      candidate.record.inputDigest === (header.schemaVersion === 3 || header.schemaVersion === 4 ? header.transition.inputDigest : header.inputDigest));
     const planDigest = isRecord(payload) && Object.hasOwn(payload, 'planDigest')
       ? historyDigest(payload.planDigest, `${evidenceId}.payload.planDigest`) : undefined;
     const savedPlanDigest = isRecord(payload) && Object.hasOwn(payload, 'savedPlanDigest')
@@ -665,8 +702,11 @@ async function readHistoricalInventory(
     }
     linked.forEach(selectPlan);
   };
-  for (const id of historicalPhaseIds) {
-    const phase = state.phases[id];
+  const sourcePhaseIds = state.schemaVersion === 4 ? historicalV4Policy7PhaseGraph().phases.map((phase) => phase.id) :
+    state.schemaVersion === 3 ? historicalV3PhaseIds : historicalPhaseIds;
+  for (const id of sourcePhaseIds) {
+    const phase = (state.phases as Partial<Record<string, PhaseExecutionState>>)[id];
+    if (!phase) historyFail(`governance/activation-state.json#phases.${id}`, 'required historical phase is missing.', 'missing-historical-record');
     if (['verified', 'inapplicable', 'retained', 'disposed'].includes(phase.state) && phase.evidence.length === 0 ||
       phase.state === 'approved' && phase.approvals.length === 0) {
       historyFail(`governance/activation-state.json#phases.${id}`, 'terminal historical state has no required record references.', 'missing-historical-record');

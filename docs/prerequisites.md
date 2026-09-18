@@ -6,6 +6,10 @@ framework such as Spec Kit can require Python for its own tooling.
 
 ## Baseline
 
+These are external project/framework tool requirements, not prerequisites for
+running a qualified native CLI bundle with its private runtime. Native candidate
+bundles and owner channels still require release qualification.
+
 - Workstation Node.js: stable Node.js 24 LTS, version 24.20.0 or newer within 24.x.
 - npm-dependent stacks or OpenSpec: stable npm 12.x, version 12.0.2 or newer.
 - Python projects: stable Python 3.14.x and `uv` 0.12.x at version 0.12.7 or newer.
@@ -25,11 +29,16 @@ required, it is probed separately before destination writes. A missing npm
 executable requires a separately reviewed machine-level repair; Liftoff does not
 try to run the missing executable or reinstall Node.js on its behalf.
 
-Automatic `liftoff upgrade` additionally requires that the running canonical
-`@msn-control/liftoff` package is a normal global npm installation beneath
-`npm root --global`. Local dependencies, `npx` cache copies, linked checkouts,
-and other package-manager stores use the documented manual global npm command
-instead. Liftoff never requests elevation.
+The candidate's `liftoff upgrade` requires a healthy, proven native installation
+owner and an independently admitted exact native target. Missing channel evidence,
+unknown ownership, an unlinked bundle, or an npm-owned installation blocks routine
+native replacement; changing owners requires separate installation migration.
+Liftoff never requests elevation.
+
+The historical npm upgrader instead required the canonical package beneath
+`npm root --global` or an independently verified supported Homebrew Node/npm
+prefix. Its manual npm remedies apply only to historical recovery, not native
+installation or owner migration.
 
 API workloads additionally require their selected Python, Node.js, or Go
 runtime. GenAI uses Python 3.14 and the Python/FastAPI/PydanticAI stack.
@@ -71,7 +80,9 @@ The default repository-governance handoff has no additional initialization
 prerequisite. `gh`, a remote, licensed GitHub security features, private runners,
 Azure and GitHub provisioning authority, Slack, and deployment access are
 discovered only during post-push Phase 0 and may be reported as gaps; they do
-not block local generation or authorize cloud mutation.
+not block local generation or authorize cloud mutation. Runner preflight credential
+requirements and policy admission boundaries are documented in
+[credential permissions and policy admission](credential-permissions.md).
 
 When private backend access creates a runner bootstrap cycle, Phase 0 also
 discovers an existing private management path or proposes the policy's bounded

@@ -1,0 +1,12 @@
+# Replace backend.local.tf with a reviewed backend.tf using this example.
+# Use approved private, encrypted ZRS state storage; blob leases provide locking.
+# State may contain secrets. Do not commit it or place credentials in this file.
+# terraform {
+#   backend "azurerm" {
+#     resource_group_name  = "rg-opentofu-state"
+#     storage_account_name = "stliftoffstate"
+#     container_name       = "tfstate"
+#     key                  = "flight-log-ae055e41/prod/terraform.tfstate"
+#     use_azuread_auth     = true
+#   }
+# }

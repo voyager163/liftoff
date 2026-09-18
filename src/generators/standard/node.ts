@@ -136,7 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 }
 
 export function renderNodeApp(plan: StandardApiProjectPlan): string {
-  const scalarPage = `<!doctype html><html><head><title>${escapeHtml(plan.projectName)} API</title></head><body><script id="api-reference" data-url="/openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>`;
+  const scalarPage = `<!doctype html><html><head><title>${escapeHtml(plan.projectName)} API</title></head><body><script id="api-reference" data-url="./openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>`;
   return `import cors from '@fastify/cors';
 import swagger from '@fastify/swagger';
 import Fastify from 'fastify';
@@ -167,7 +167,17 @@ export async function buildApp(config: AppConfig = loadConfig()) {
   app.get('/ready', { schema: statusSchema }, async () => ({ status: 'ready' }));
   app.get('/api', async () => ({ name: ${sourceString(plan.projectName)}, stack: 'node-fastify' }));
   app.get('/openapi.json', async () => app.swagger());
-  app.get('/scalar', async (_request, reply) => reply.type('text/html').send(scalarPage));
+  app.get('/openapi.json/', async (request, reply) => {
+    const queryIndex = request.raw.url?.indexOf('?') ?? -1;
+    const query = queryIndex !== -1 ? request.raw.url!.slice(queryIndex) : '';
+    return reply.code(307).header('location', \`../openapi.json\${query}\`).send();
+  });
+  app.get('/scalar', async (_request, reply) => reply.type('text/html; charset=utf-8').send(scalarPage));
+  app.get('/scalar/', async (request, reply) => {
+    const queryIndex = request.raw.url?.indexOf('?') ?? -1;
+    const query = queryIndex !== -1 ? request.raw.url!.slice(queryIndex) : '';
+    return reply.code(307).header('location', \`../scalar\${query}\`).send();
+  });
   return app;
 }
 `;

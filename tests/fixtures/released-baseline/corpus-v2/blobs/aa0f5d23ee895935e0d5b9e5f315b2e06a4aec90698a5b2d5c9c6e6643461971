@@ -1,0 +1,33 @@
+import cors from '@fastify/cors';
+import swagger from '@fastify/swagger';
+import Fastify from 'fastify';
+import { loadConfig, type AppConfig } from './config.js';
+
+const scalarPage = "<!doctype html><html><head><title>Flight Log API</title></head><body><script id=\"api-reference\" data-url=\"/openapi.json\"></script><script src=\"https://cdn.jsdelivr.net/npm/@scalar/api-reference\"></script></body></html>";
+
+export async function buildApp(config: AppConfig = loadConfig()) {
+  const app = Fastify({ logger: true });
+  await app.register(cors, { origin: config.corsAllowedOrigins });
+  await app.register(swagger, {
+    openapi: {
+      info: { title: "Flight Log API", version: '0.1.0' }
+    }
+  });
+
+  const statusSchema = {
+    response: {
+      200: {
+        type: 'object',
+        required: ['status'],
+        properties: { status: { type: 'string' } }
+      }
+    }
+  } as const;
+
+  app.get('/health', { schema: statusSchema }, async () => ({ status: 'ok' }));
+  app.get('/ready', { schema: statusSchema }, async () => ({ status: 'ready' }));
+  app.get('/api', async () => ({ name: "Flight Log", stack: 'node-fastify' }));
+  app.get('/openapi.json', async () => app.swagger());
+  app.get('/scalar', async (_request, reply) => reply.type('text/html').send(scalarPage));
+  return app;
+}

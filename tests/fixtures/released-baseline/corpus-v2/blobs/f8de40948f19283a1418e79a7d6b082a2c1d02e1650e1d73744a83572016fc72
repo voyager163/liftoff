@@ -1,0 +1,89 @@
+{
+  "caseId": "repair-v0.12.3-application-schema2",
+  "release": "v0.12.3",
+  "root": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/repair-v0.12.3-application-schema2-committed/project's directory with spaces",
+  "home": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/repair-v0.12.3-application-schema2-committed/private home",
+  "fingerprint": "396fa04efee9038f0efc7ea279357a3e907de7d616338005e116df412b514290",
+  "lock": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/repair-v0.12.3-application-schema2-committed/.liftoff-mutation-fd8d9f2623b40eb4d2b80d4d7732b0e39041470990fda4eba296b4f2700f3f37.lock",
+  "platform": "darwin",
+  "node": "v24.21.0",
+  "checkpoint": {
+    "phase": "committed"
+  },
+  "before": [
+    {
+      "path": "infra/opentofu/main.tf",
+      "mode": 416,
+      "bytes": "77u/Iw0K/wCADQo="
+    },
+    {
+      "path": "liftoff.manifest.json",
+      "mode": 384,
+      "bytes": "ew0KCSJmaXh0dXJlIjogIm9yaWdpbmFsIHJlbGVhc2VkIHRyYW5zYWN0aW9uIGJ5dGVzIg0KfQ0K"
+    },
+    {
+      "path": "unrelated.bin",
+      "mode": 420,
+      "bytes": "AP7/DQo="
+    },
+    {
+      "path": "user-script.sh",
+      "mode": 488,
+      "bytes": "IyEvYmluL3NoDQpwcmludGYgdW50b3VjaGVkDQo="
+    }
+  ],
+  "mutations": [
+    {
+      "type": "write",
+      "pathParts": [
+        ".liftoff",
+        "repair-history",
+        "396fa04efee9038f0efc7ea279357a3e907de7d616338005e116df412b514290",
+        "infra",
+        "opentofu",
+        "main.tf"
+      ],
+      "content": "77u/Iw0K/wCADQo=",
+      "mode": 288
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        ".liftoff",
+        "repair-history",
+        "396fa04efee9038f0efc7ea279357a3e907de7d616338005e116df412b514290",
+        "liftoff.manifest.json"
+      ],
+      "content": "ew0KCSJmaXh0dXJlIjogIm9yaWdpbmFsIHJlbGVhc2VkIHRyYW5zYWN0aW9uIGJ5dGVzIg0KfQ0K",
+      "mode": 288
+    },
+    {
+      "type": "delete",
+      "pathParts": [
+        "infra",
+        "opentofu",
+        "main.tf"
+      ]
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        "infra",
+        "opentofu",
+        "modules",
+        "application",
+        "main.tf"
+      ],
+      "content": "77u/Iw0K/wCADQo=",
+      "mode": 416
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        "liftoff.manifest.json"
+      ],
+      "content": "eyJmaXh0dXJlIjoiYXBwcm92ZWQgdGFyZ2V0IGJ5dGVzIn0K",
+      "mode": 384
+    }
+  ]
+}

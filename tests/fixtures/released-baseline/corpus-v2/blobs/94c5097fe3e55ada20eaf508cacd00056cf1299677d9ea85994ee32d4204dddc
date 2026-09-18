@@ -1,0 +1,5 @@
+CREATE TABLE app_records (
+  id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+  name varchar(255) NOT NULL,
+  created_at timestamptz NOT NULL DEFAULT now()
+);

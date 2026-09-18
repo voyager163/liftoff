@@ -6,6 +6,13 @@ import * as planning from '../src/governance-activation/transition-planning.js';
 import * as records from '../src/governance-activation/transition-records.js';
 import * as operations from '../src/domain/governance/activation/operations.js';
 import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
+import * as validators from '../src/domain/governance/activation/validators.js';
+import * as stateContracts from '../src/domain/governance/activation/validation/state.js';
+import * as evidenceContracts from '../src/domain/governance/activation/validation/evidence.js';
+import * as graphContracts from '../src/domain/governance/activation/validation/graph.js';
+import * as governanceFacade from '../src/repository-governance.js';
+import * as governanceArtifacts from '../src/application/repository-governance/artifacts.js';
+import * as policyRendering from '../src/application/repository-governance/policy-rendering.js';
 
 describe('activation orchestration boundaries', () => {
   it('preserves public planning, record-path and rollback exports as direct aliases', () => {
@@ -15,6 +22,27 @@ describe('activation orchestration boundaries', () => {
     expect(transitions.governancePlanDirectoryPathParts).toBe(records.governancePlanDirectoryPathParts);
     expect(transitions.rollbackPlanFromCompletedOperations).toBe(operations.rollbackPlanFromCompletedOperations);
     expect(transitions.planDigestFor).toBe(operations.planDigestFor);
+  });
+
+  it('preserves facades over coherent validation and rendering families', () => {
+    expect(validators.validateUserActivationState).toBe(stateContracts.validateUserActivationState);
+    expect(validators.validateEvidenceHeader).toBe(evidenceContracts.validateEvidenceHeader);
+    expect(validators.validateManagedPhaseGraph).toBe(graphContracts.validateManagedPhaseGraph);
+    expect(governanceFacade.buildRepositoryGovernanceArtifacts).toBe(governanceArtifacts.buildRepositoryGovernanceArtifacts);
+    expect(governanceFacade.renderCanonicalGovernancePolicy).toBe(policyRendering.renderCanonicalGovernancePolicy);
+  });
+
+  it('separates inspection and verification from CLI presentation and argument parsing', async () => {
+    for (const file of ['inspection', 'verification', 'reporting', 'continuation']) {
+      const source = await readFile(`src/application/repository-governance/${file}.ts`, 'utf8');
+      const ast = parseAst(source, { lang: 'ts' }, file) as any;
+      const imports = ast.body.filter((node: any) => node.type === 'ImportDeclaration').map((node: any) => node.source.value);
+      expect(imports.some((value: string) => value.includes('/cli/') || value.endsWith('/terminal.js') ||
+        value.endsWith('/repository-governance.js'))).toBe(false);
+      expect(source).not.toMatch(/rawStdout|presentation\.status/);
+    }
+    const coordinator = await readFile('src/governance-activation/commands.ts', 'utf8');
+    expect(coordinator).not.toMatch(/function (?:inspectGovernance|verifyChecks|validateStateEvidence|renderStatusHuman)\b/);
   });
 
   it('assembles the declared executors without retaining their implementations or raw file mutations', async () => {
@@ -41,7 +69,6 @@ describe('activation orchestration boundaries', () => {
   it('keeps actual handler families independent of the orchestration module', async () => {
     for (const [file, definitions] of [
       ['phase-publication', ['gitCommitOperations', 'gitPushOperations', 'executeGitOperations']],
-      ['phase-discovery', ['discoverPhase0']],
       ['phase-governance', ['executeActivationApproval', 'executeCredentialReady', 'executeRulesetPhase']],
       ['phase-bootstrap-state', ['remoteImportRetention', 'executeBootstrapStateDisposal']],
       ['seed-lifecycle', ['executeSeedOperations', 'runSeedBaselineChecks', 'archiveGeneratedSeedForPhase']]
@@ -53,5 +80,8 @@ describe('activation orchestration boundaries', () => {
       expect(functions).toEqual(expect.arrayContaining([...definitions]));
       expect(ast.body.some((node: any) => node.type === 'ImportDeclaration' && node.source.value === './transitions.js')).toBe(false);
     }
+    const discoveryFacade = await import('../src/governance-activation/phase-discovery.js');
+    const azureDiscovery = await import('../src/application/azure-activation/producer-full-discovery.js');
+    expect(discoveryFacade.discoverPhase0).toBe(azureDiscovery.discoverPhase0);
   });
 });

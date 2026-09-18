@@ -7,7 +7,6 @@ import { runCommand } from '../src/commands.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { loadManifest } from '../src/application/project/manifest.js';
-import { repairManagedCoreLogicalNames } from '../src/domain/project/artifact-lifecycle.js';
 import { writeArtifacts } from '../src/adapters/filesystem/project-files.js';
 import {
   canonicalPhaseGraph,
@@ -17,6 +16,7 @@ import {
 import {
   phaseIds,
   phaseScope,
+  type LiveReadbackProof,
   type PhaseEvidenceRecord,
   type SavedTransitionPlan,
   type UserActivationState
@@ -57,6 +57,7 @@ import {
 import type { ProjectOptions, ExternalCommand } from '../src/types.js';
 import type { CommandRunner } from '../src/process-runner.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { fixturePayload, fixturePlan, fixtureRemoteBinding, fixtureSubscription } from './governance-activation-fixtures.js';
 
 const roots: string[] = [];
 const now = () => new Date('2026-09-05T00:00:00.000Z');
@@ -131,6 +132,27 @@ function savedAssessmentPlan(
     noSecrets: true
   };
 }
+
+function phase0Readbacks(current: UserActivationState, context: EvidenceFreshnessContext): LiveReadbackProof[] {
+  return [
+    {
+      provider: 'github' as const, resourceType: 'repository', resourceId: `/repos/${fixtureRemoteBinding.name}`,
+      observation: { id: fixtureRemoteBinding.id, name: fixtureRemoteBinding.name, defaultBranch: fixtureRemoteBinding.defaultBranch }
+    },
+    {
+      provider: 'azure' as const, resourceType: 'subscription', resourceId: `/subscriptions/${fixtureSubscription}`,
+      observation: { id: fixtureSubscription, tenantId: fixtureSubscription, state: 'Enabled' }
+    }
+  ].map(({ observation, ...resource }) => ({
+    schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
+    repositoryId: current.repository.id, identity: currentActivationIdentity,
+    phaseGraphHash: canonicalPhaseGraphHash, phaseId: context.phaseId,
+    baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
+    observedAt: now().toISOString(), ...resource,
+    sourceDigest: canonicalSha256(observation), readbackDigest: canonicalSha256(observation), matches: true
+  }));
+}
+
 async function tree(root: string): Promise<string> {
   const entries: Array<[string, string]> = [];
   async function visit(parts: string[]) {
@@ -709,37 +731,22 @@ describe('read-only assessment command', () => {
     }
   );
 
-  it.each([2, 3, 4, 5, 6] as const)('assesses supported manifest schema %s without migration', async (version) => {
-    const root = await fixture({ projectType: 'genai', pattern: 'prompt', apiStack: 'python' });
-    const manifest = await loadManifest(root);
-    if (manifest.project.workload.kind === 'power-apps-code-app' || manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') throw new Error('Wrong legacy fixture.');
-    const workload = manifest.project.workload;
-    const historicalManaged = manifest.managedArtifacts.filter((entry) =>
-      !entry.logicalName.startsWith('liftoff-governance-assess-') &&
-      !repairManagedCoreLogicalNames.some((name) => name === entry.logicalName));
-    const artifacts = [...historicalManaged, ...manifest.projectArtifacts.map((entry) => ({
-      logicalName: entry.logicalName, category: entry.category, pathParts: entry.pathParts, contentHash: entry.generationHash
-    }))];
-    const raw: Record<string, unknown> = {
-      ...manifest, artifactVersion: version, managedArtifacts: historicalManaged,
-      governance: { profile: manifest.governance.profile, state: manifest.governance.state, policyVersion: manifest.governance.policyVersion }
-    };
-    if (version <= 5) {
-      raw.artifacts = artifacts;
-      delete raw.managedArtifacts; delete raw.projectArtifacts;
-    }
-    if (version <= 4) delete raw.governance;
-    if (version <= 3) raw.project = {
-      name: manifest.project.name, ...(version === 3 ? { projectType: 'genai', apiStack: workload.apiStack, agents: manifest.project.agents } : {}),
-      pattern: 'prompt', cloud: workload.cloud, region: workload.region, frontend: workload.frontend,
-      environments: workload.environments, specWorkflow: manifest.project.specWorkflow
-    };
-    if (version === 2) delete raw.framework;
-    await writeFile(path.join(root, 'liftoff.manifest.json'), JSON.stringify(raw));
+  it.each([
+    { version: 2, file: 'manifest-v2.json' },
+    { version: 3, file: 'manifest-v3.json' },
+    { version: 4, file: 'manifest-v4-genai.json' },
+    { version: 5, file: 'manifest-v5-governed-released.json' },
+    { version: 6, file: 'manifest-v6-governed-released.json' },
+    { version: 7, file: 'manifest-v7-governed-released.json' }
+  ])('assesses actual supported manifest schema $version without migration', async ({ version, file }) => {
+    const root = await temporaryRoot('assessment-released-manifest ');
+    const original = await readFile(new URL(`./fixtures/${file}`, import.meta.url));
+    await writeFile(path.join(root, 'liftoff.manifest.json'), original);
     const before = await tree(root);
     const report = await assessGovernance(root, { runner: noCommands, now });
     expect(report, JSON.stringify(report.diagnostics)).toMatchObject({ outcome: 'partial', projectIdentity: { manifestVersion: version } });
     expect(await tree(root)).toBe(before);
+    expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(original);
   });
 
   it('returns a JSON error before unsafe or unknown-manifest paths can be used', async () => {
@@ -970,13 +977,7 @@ describe('read-only assessment command', () => {
     const root = await fixture();
     const manifest = await loadManifest(root);
     const current = state();
-    current.remoteBinding = {
-      id: 'R_assessment',
-      name: 'owner/repo',
-      defaultBranch: 'develop',
-      pushUrl: 'https://github.com/owner/repo.git',
-      verifiedAt: '2026-09-04T00:00:00Z'
-    };
+    current.remoteBinding = { ...fixtureRemoteBinding };
     current.applicability.privateStagingDast = false;
     const snapshot = await readActivationInputSnapshot(
       root,
@@ -991,47 +992,13 @@ describe('read-only assessment command', () => {
     );
     const phaseId = 'phase-0-complete';
     const context = contexts[phaseId];
-    const plan = savedAssessmentPlan(phaseId, current, context, [], [{
-      adapter: 'github',
-      actionId: 'github.phase0.discover',
-      mutationClass: 'github-read',
-      phaseId,
-      inputs: { sourceDigest: 'c'.repeat(64) },
-      destination: {
-        type: 'repository',
-        identity: 'owner/repo',
-        repository: 'owner/repo'
-      },
-      remote: true,
-      destructive: false
-    }]);
+    const plan = fixturePlan(context, current, now().toISOString(), fixturePayload(phaseId), root);
     const payload = {
-      kind: 'phase-0-discovery.v1',
+      ...fixturePayload(phaseId),
       planDigest: plan.planDigest,
-      savedPlanDigest: canonicalSha256(plan),
-      facts: [
-        { id: 'repository.id', value: current.repository.id },
-        { id: 'repository.nameWithOwner', value: current.repository.name },
-        { id: 'repository.defaultBranch', value: current.repository.defaultBranch }
-      ]
+      savedPlanDigest: canonicalSha256(plan)
     };
-    const readback = [{
-      schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
-      repositoryId: current.repository.id,
-      identity: currentActivationIdentity,
-      phaseGraphHash: canonicalPhaseGraphHash,
-      phaseId,
-      baselineSha: context.baselineSha,
-      inputDigest: context.inputDigest,
-      transition: context.transition,
-      observedAt: now().toISOString(),
-      provider: 'github' as const,
-      resourceType: 'repository',
-      resourceId: 'owner/repo',
-      sourceDigest: 'c'.repeat(64),
-      readbackDigest: 'c'.repeat(64),
-      matches: true
-    }];
+    const readback = phase0Readbacks(current, context);
     const evidence: PhaseEvidenceRecord = {
       evidenceId: 'phase0-applicability',
       header: {
@@ -1311,13 +1278,7 @@ describe('read-only assessment command', () => {
   it('selects only referenced evidence bound to a real baseline and saved phase context', async () => {
     const root = await fixture();
     const current = state();
-    current.remoteBinding = {
-      id: 'R_assessment',
-      name: 'owner/repo',
-      defaultBranch: 'develop',
-      pushUrl: 'https://github.com/owner/repo.git',
-      verifiedAt: '2026-09-04T00:00:00Z'
-    };
+    current.remoteBinding = { ...fixtureRemoteBinding };
     const phaseId = 'phase-0-complete';
     const baselineSha = 'a'.repeat(64);
     const inputDigest = 'b'.repeat(64);
@@ -1330,48 +1291,14 @@ describe('read-only assessment command', () => {
         now: now()
       })
     ])) as Record<(typeof phaseIds)[number], EvidenceFreshnessContext>;
-    const plan = savedAssessmentPlan(phaseId, current, contexts[phaseId], [], [{
-      adapter: 'github',
-      actionId: 'github.phase0.discover',
-      mutationClass: 'github-read',
-      phaseId,
-      inputs: { sourceDigest: 'c'.repeat(64) },
-      destination: {
-        type: 'repository',
-        identity: 'owner/repo',
-        repository: 'owner/repo'
-      },
-      remote: true,
-      destructive: false
-    }]);
+    const plan = fixturePlan(contexts[phaseId], current, now().toISOString(), fixturePayload(phaseId), root);
     const context = contexts[phaseId];
     const payload = {
-      kind: 'phase-0-discovery.v1',
+      ...fixturePayload(phaseId),
       planDigest: plan.planDigest,
-      savedPlanDigest: canonicalSha256(plan),
-      facts: [
-        { id: 'repository.id', value: current.repository.id },
-        { id: 'repository.nameWithOwner', value: current.repository.name },
-        { id: 'repository.defaultBranch', value: current.repository.defaultBranch }
-      ]
+      savedPlanDigest: canonicalSha256(plan)
     };
-    const liveReadback = [{
-      schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion,
-      repositoryId: current.repository.id,
-      identity: currentActivationIdentity,
-      phaseGraphHash: canonicalPhaseGraphHash,
-      phaseId,
-      baselineSha,
-      inputDigest,
-      transition: context.transition,
-      observedAt: now().toISOString(),
-      provider: 'github' as const,
-      resourceType: 'repository',
-      resourceId: 'owner/repo',
-      sourceDigest: 'c'.repeat(64),
-      readbackDigest: 'c'.repeat(64),
-      matches: true
-    }];
+    const liveReadback = phase0Readbacks(current, context);
     const record: PhaseEvidenceRecord = {
       evidenceId: 'bound-discovery',
       header: {
@@ -1402,7 +1329,7 @@ describe('read-only assessment command', () => {
       ...context,
       evidenceReferences: current.phases[phaseId].evidence,
       reviewedPlans: [plan],
-      liveReadbackProviders: ['github'] as const
+      liveReadbackProviders: ['github', 'azure'] as const
     };
     const invalidFirst = {
       ...record,

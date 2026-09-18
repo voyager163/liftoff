@@ -1,0 +1,121 @@
+{
+  "schemaVersion": 1,
+  "kind": "unpublished-pre-amendment-policy7-reader",
+  "identity": {
+    "liftoffVersion": "0.13.0",
+    "manifestArtifactVersion": 8,
+    "policyVersion": "7",
+    "activationContractVersion": 4,
+    "phaseGraphSchemaVersion": 3,
+    "phaseGraphHash": "00226d3a7e74b760f463e510847676b11baac432be013062cccda19fb77bcca2",
+    "activationStateSchemaVersion": 4,
+    "evidenceHeaderSchemaVersion": 4,
+    "approvalEnvelopeSchemaVersion": 4,
+    "supersessionSchemaVersion": 1,
+    "credentialPolicySchemaVersion": 1
+  },
+  "sourceDigests": {
+    "src/domain/governance/activation/approvals.ts": "5562d751e8142052750d767b02eb368753b821d507397a6fec8163db0fb5d68f",
+    "src/domain/governance/activation/canonical-json.ts": "1f17d9af130216dacedc01476fb5a0de2ead2ce2b9a1cf398e4b9aae0c74e78b",
+    "src/domain/governance/activation/graph.ts": "e669caef2fffe21ada6f81a886768ca3479791ba74eb482984ba7938ff6d8c18",
+    "src/domain/governance/activation/inputs.ts": "7524f2661d01728a4cd767f20936fc8d9d7eb32daa0197483f90e23d09788db0",
+    "src/domain/governance/activation/operations.ts": "28291e4ea48c4950085913389982552693be7591960ddecc6ab0a40d32d7b163",
+    "src/domain/governance/activation/types.ts": "2061513a0574cc8029db4fd7b5c8c40bd8342fc99f8eb1f5db15269b91203382",
+    "src/domain/governance/activation/validation/approval.ts": "3d18e0141cc954cee60e75df159ebcfac6c798138af0f9af4ea424ca5f390ab1",
+    "src/domain/governance/activation/validation/bindings.ts": "c9a654b09dd1654ffd3d27f6a1882562cc7e10def8ace649f729b87d330fe6fe",
+    "src/domain/governance/activation/validation/common.ts": "16dff22cbc58cea23d1c866069457cfe25c3edb9e9c3ee131b7be36caefdeecc",
+    "src/domain/governance/activation/validation/configuration.ts": "981830651fb4df2572d503f241b0b112ed5a9c1141b3412c087d13a302c94dc8",
+    "src/domain/governance/activation/validation/credentials.ts": "fb706e7ddace24b10cc6e50acff45af9d1ec970a3e43790ad466503e32de3fdc",
+    "src/domain/governance/activation/validation/evidence.ts": "3260f6625b6aed589e336dfdf7968398632cce59855496658ba2b599d38a3693",
+    "src/domain/governance/activation/validation/graph.ts": "6dc23d25245f4a1e653dd7a8b4a29ab3d45be4e59cfe85fd537c90a15378a8a0",
+    "src/domain/governance/activation/validation/identity.ts": "8325d63c12c0eb42f18291c9c0c843d722cb07b58997451dfe2f033cc4929f68",
+    "src/domain/governance/activation/validation/state.ts": "74a7ac374ef22044fa6a3c76c9c10040329bf22cbb7b0f4fdf19c75b80345905",
+    "src/domain/governance/activation/validation/transitions.ts": "561a307e69493812d0e1754bf3cc5fb2c3a830c6483d13e2af80f056902d76dc",
+    "src/domain/governance/activation/validators.ts": "f5e03200c4add531a05713c4eb71875638aa29ee3a4f50907ad5bc86c0bc8add",
+    "src/domain/governance/policy/identity.ts": "55321ca3967e98971b12d44dcf4f993b6b6be80ea781598981a172ee5112a1b6",
+    "src/domain/project/errors.ts": "281b8c6f3b0a783b19ec0d48a227e6cdb01065498c5abb91823bee3d49d364d5",
+    "src/domain/project/paths.ts": "6bf286dff5403102485fb2de5d2bb6469fe017335540e2896ab20ecea9450281"
+  },
+  "files": [
+    {
+      "path": "domain/governance/activation/approvals.js",
+      "digest": "c542b4d7a427cefed179f6ed8f0846b37d6fd8506c7bed2dcdc4673322a1718a"
+    },
+    {
+      "path": "domain/governance/activation/canonical-json.js",
+      "digest": "1a8c1f98721be9eb17e505185bb5f0597ddaa334e25f7f26c6e5a35079e6a6c4"
+    },
+    {
+      "path": "domain/governance/activation/graph.js",
+      "digest": "e5120e8f07d79a462041beab87121087563c10daff5d935b2dab746ef5ef1875"
+    },
+    {
+      "path": "domain/governance/activation/inputs.js",
+      "digest": "8e16ac9d2adbe798063c117b5ac1893e8d94ce6b256c38c41e47415064da27ed"
+    },
+    {
+      "path": "domain/governance/activation/operations.js",
+      "digest": "d1a2f84cb51f2f9c78e02613384c92b83c33aee55069f064d7e97512f1f93de3"
+    },
+    {
+      "path": "domain/governance/activation/types.js",
+      "digest": "5d54abf8e8f1c686dd539eb0b1d2bd025063fa26f0d81abb56c0338c3ed58c40"
+    },
+    {
+      "path": "domain/governance/activation/validation/approval.js",
+      "digest": "a496677aa8959d5f8aaa2d76d7470a492f63396cde03881b752c7fd347fd4d98"
+    },
+    {
+      "path": "domain/governance/activation/validation/bindings.js",
+      "digest": "f7f48fa58ae0e8d77d33cd387f820edbff650ce7457fc8b74a3ad5d917f78a69"
+    },
+    {
+      "path": "domain/governance/activation/validation/common.js",
+      "digest": "b95e8d8c8714a537de7b44f1e012000b22281482954dbee04b238d91f85751f9"
+    },
+    {
+      "path": "domain/governance/activation/validation/configuration.js",
+      "digest": "bfba2854c3dec48615a0919e6879506a9b711ad805089736f5c05a8c5e7ca314"
+    },
+    {
+      "path": "domain/governance/activation/validation/credentials.js",
+      "digest": "11d7c9b6c851a5a0502f0500d41e4922e6529d7cd515708000a22163ee36ab22"
+    },
+    {
+      "path": "domain/governance/activation/validation/evidence.js",
+      "digest": "fe8b7f5c7473d87717bebbc16434623fca4fd86cb48a19a2c7d1877c7c4ed430"
+    },
+    {
+      "path": "domain/governance/activation/validation/graph.js",
+      "digest": "83f7d5f461a5b2ed5a9074fcf266c42a4b9533bc6d26f836179c4b402f5e1166"
+    },
+    {
+      "path": "domain/governance/activation/validation/identity.js",
+      "digest": "3f7ef70861e4607dd810aac363925f3a38d1914fa48097ce73424a376c6311d4"
+    },
+    {
+      "path": "domain/governance/activation/validation/state.js",
+      "digest": "e94e5bc3cf8bab2f89dc2706f11e2d8a35ecc74408496f8b1aeb8b1548df20dd"
+    },
+    {
+      "path": "domain/governance/activation/validation/transitions.js",
+      "digest": "4a3b5ed9640b602d66a5bbd1445c5004e6edc9bc661de61c60761c7ef49baf96"
+    },
+    {
+      "path": "domain/governance/activation/validators.js",
+      "digest": "f5e03200c4add531a05713c4eb71875638aa29ee3a4f50907ad5bc86c0bc8add"
+    },
+    {
+      "path": "domain/governance/policy/identity.js",
+      "digest": "335fb9a6e3882d6fadd7503f5e7b9d800930fdbad613e30a8a8cd7f3f429dc1b"
+    },
+    {
+      "path": "domain/project/errors.js",
+      "digest": "fe711f175c93b639e9a586d9ed1b79bcb222d0d45aa8894d4cdc013048c6859b"
+    },
+    {
+      "path": "domain/project/paths.js",
+      "digest": "3f20dc787e79281916ac9ee96b4fb17a5af104c1fbd3c809ceb63d336f0147b5"
+    }
+  ]
+}

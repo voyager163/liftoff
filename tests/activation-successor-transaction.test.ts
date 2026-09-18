@@ -14,6 +14,11 @@ import {
 } from '../src/governance-activation/migration-history.js';
 import { captureHistoryFile } from '../src/governance-activation/historical-state.js';
 import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
+import { buildProjectPlan } from '../src/application/project/planning.js';
+import { generatedManifestStandards, preserveManifestProvenance } from '../src/application/project/manifest-provenance.js';
+import { parseManifest } from '../src/application/project/manifest.js';
+import { buildRepositoryGovernanceArtifacts } from '../src/application/repository-governance/artifacts.js';
+import { rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
 
 const roots = new Set<string>();
 const fingerprint = canonicalSha256({ approved: 'explicit local successor transaction' });
@@ -39,13 +44,26 @@ async function fixture() {
   const plan = await planActivationHistoryMigration(root);
   if (plan.status !== 'eligible') throw new Error(JSON.stringify(plan));
   const finalized = finalizeActivationHistoryMigration(plan, fingerprint, new Date('2026-09-12T00:00:00.000Z'));
+  const targetPlan = buildProjectPlan({
+    projectName: source.manifest.project.name, projectType: 'standard', apiStack: 'node-fastify',
+    cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'],
+    specWorkflow: 'openspec', agents: ['github-copilot'], includeFrontend: false
+  }, { requireProjectName: true });
+  const core = buildRepositoryGovernanceArtifacts(targetPlan);
+  const preserved = preserveManifestProvenance(parseManifest(source.manifest), source.files.get('liftoff.manifest.json')!);
   const manifest = {
-    ...source.manifest, liftoffVersion: '0.12.0',
-    governance: { ...source.manifest.governance, activationIdentity: currentActivationIdentity }
+    ...source.manifest, artifactVersion: 8, liftoffVersion: '0.13.0',
+    standards: generatedManifestStandards(targetPlan), provenance: preserved.provenance,
+    governance: { ...source.manifest.governance, policyVersion: currentActivationIdentity.policyVersion, activationIdentity: currentActivationIdentity },
+    managedArtifacts: core.map((artifact) => ({
+      logicalName: artifact.logicalName, category: artifact.category, pathParts: artifact.pathParts,
+      contentHash: `sha256:${rawHistoryDigest(Buffer.from(artifact.content))}`
+    }))
   };
-  const mutations = [...finalized.mutations, {
-    type: 'write' as const, pathParts: ['.liftoff', 'governance', 'phase-graph.json'], content: canonicalJson(canonicalPhaseGraph)
-  }, { type: 'write' as const, pathParts: ['liftoff.manifest.json'], content: canonicalJson(manifest) }];
+  const mutations = [...finalized.mutations, ...core.map((artifact) => ({
+    type: 'write' as const, pathParts: [...artifact.pathParts], content: artifact.content
+  })), ...(preserved.history ? [preserved.history] : []),
+  { type: 'write' as const, pathParts: ['liftoff.manifest.json'], content: canonicalJson(manifest) }];
   const store = approvalStore();
   return {
     root, source, plan, finalized, mutations, store,
@@ -106,7 +124,7 @@ describe('recoverable activation successor transaction', () => {
     expect(retired).toEqual(f.plan.requiredRetirements.map((entry) => entry.pathParts.join('/')));
     expect(retired.some((entry) => entry.endsWith('notes.txt'))).toBe(false);
     expect(await inspectActivationMigrationHistory(f.root)).toMatchObject({
-      status: 'committed', journal: { laneId: 'activation-v2-to-v3', revalidation: { status: 'pending' } }
+      status: 'committed', journal: { laneId: 'activation-v2-to-v4', revalidation: { status: 'pending' } }
     });
   });
 
@@ -132,7 +150,7 @@ describe('recoverable activation successor transaction', () => {
     expect(await readFile(path.join(f.root, 'governance', 'activation-state.json'))).toEqual(f.source.files.get('governance/activation-state.json'));
   });
 
-  it('retains committed v3 state through interrupted cleanup and bounded recovery without a new update', async () => {
+  it('retains committed v4 state through interrupted cleanup and bounded recovery without a new update', async () => {
     const f = await fixture();
     const outcome = await applyReviewedUpdateTransaction(f.root, f.mutations, {
       ...f.options,

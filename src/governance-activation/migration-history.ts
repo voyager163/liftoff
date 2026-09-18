@@ -7,7 +7,7 @@ import {
 } from '../domain/governance/activation/types.js';
 import { validateApprovalEnvelope, validateUserActivationState } from '../domain/governance/activation/validators.js';
 import { evidenceBodyDigest } from '../domain/governance/activation/evidence.js';
-import { activationStateSchemaVersion, isHistoricalActivationIdentity, isHistoricalV2ActivationIdentity } from '../domain/governance/policy/identity.js';
+import { activationStateSchemaVersion, isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
 import { parseManifest } from '../application/project/manifest.js';
 import { FileSystemError } from '../domain/project/errors.js';
 import type { ProjectFileSnapshot } from '../adapters/filesystem/project-transaction.js';
@@ -30,6 +30,7 @@ import {
 import { readActivationEvidence, readReviewedTransitionPlans } from './proof-records.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
 import { assertGovernanceApprovalIssued } from './authority-records.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 import type { HistoricalGovernanceChangeMetadata } from './historical-source-metadata.js';
 
 export interface HistoricalRetirement {
@@ -270,11 +271,25 @@ async function verifyHistoryCopies(projectRoot: string, index: ActivationHistory
   return snapshots;
 }
 
-async function inspectAncestorHistory(projectRoot: string, inventory: HistoricalActivationInventory) {
+async function inspectAncestorHistory(
+  projectRoot: string, inventory: HistoricalActivationInventory, seen = new Set<string>()
+): Promise<{
+  references: HistoricalAncestorReference[];
+  obligations: HistoricalLifecycleObligation[];
+  preconditions: ProjectFileSnapshot[];
+  historicalSources: HistoricalGovernanceSource[];
+}> {
   const journal = inventory.sourceMigration;
   if (!journal) return { references: [], obligations: [], preconditions: [], historicalSources: [] };
+  if (seen.has(journal.snapshotId) || seen.size >= 3 ||
+    canonicalSha256(journal.targetIdentity) !== canonicalSha256(inventory.state.identity) ||
+    journal.sourceIdentity.activationContractVersion >= journal.targetIdentity.activationContractVersion) {
+    historyFail('ancestor history', 'source ancestry must follow exact acyclic released successor lanes.', 'invalid-historical-reference');
+  }
+  const ancestry = new Set([...seen, journal.snapshotId]);
   const loaded = await readActivationHistoryIndex(projectRoot, journal.snapshotId);
-  if (loaded.index.files.some((file) => !['manifest', 'state', 'metadata', 'evidence', 'plan', 'approval'].includes(file.kind))) {
+  if (journal.laneId === 'activation-v1-to-v2' &&
+    loaded.index.files.some((file) => !['manifest', 'state', 'metadata', 'evidence', 'plan', 'approval'].includes(file.kind))) {
     historyFail(historyPathKey(journal.historyIndexPathParts), 'the published v1-to-v2 history contract does not contain these record roles.', 'unsupported-historical-record');
   }
   if (loaded.digest !== journal.historyIndexDigest ||
@@ -283,10 +298,11 @@ async function inspectAncestorHistory(projectRoot: string, inventory: Historical
   }
   const copies = await verifyHistoryCopies(projectRoot, loaded.index);
   const source = await readHistoricalSnapshotInventory(projectRoot, loaded.index);
-  if (source.sourceMigration) historyFail('ancestor history', 'published v1 history cannot contain another migration.', 'invalid-historical-reference');
+  const earlier = await inspectAncestorHistory(projectRoot, source, ancestry);
+  const sourceIdentities = [source.state.identity, ...earlier.references.map((entry) => entry.sourceIdentity)];
   if (inventory.sourceChangeMetadata &&
     canonicalSha256(inventory.sourceChangeMetadata.activationIdentity) !== canonicalSha256(inventory.state.identity) &&
-    (canonicalSha256(inventory.sourceChangeMetadata.activationIdentity) !== canonicalSha256(source.state.identity) ||
+    (!sourceIdentities.some((identity) => canonicalSha256(inventory.sourceChangeMetadata!.activationIdentity) === canonicalSha256(identity)) ||
       canonicalSha256(inventory.state.activeChange) !== canonicalSha256(source.state.activeChange))) {
     historyFail('ancestor history', 'historical source metadata is not bound to the preserved ancestor pointer.', 'invalid-historical-reference');
   }
@@ -294,10 +310,10 @@ async function inspectAncestorHistory(projectRoot: string, inventory: Historical
     references: [{
       snapshotId: loaded.index.snapshotId, sourceIdentity: loaded.index.sourceIdentity,
       historyIndexPathParts: [...journal.historyIndexPathParts], historyIndexDigest: loaded.digest
-    }],
-    obligations: lifecycleObligations(loaded.index, source),
-    historicalSources: historicalSources(loaded.index, source),
-    preconditions: [loaded.snapshot, ...copies]
+    }, ...earlier.references],
+    obligations: [...lifecycleObligations(loaded.index, source), ...earlier.obligations],
+    historicalSources: [...historicalSources(loaded.index, source), ...earlier.historicalSources],
+    preconditions: [loaded.snapshot, ...copies, ...earlier.preconditions]
   };
 }
 
@@ -342,7 +358,7 @@ export async function verifyActivationHistoryBeforeReplacement(
   }
 }
 
-async function inspectActiveProofRecords(projectRoot: string, state: UserActivationState) {
+async function inspectActiveProofRecords(projectRoot: string, state: UserActivationState, storage?: UpdatePreviewOptions) {
   // Current proof is validated separately; no preserved record is considered here.
   for (const directory of ['evidence', 'plans', 'approvals']) {
     for (const parts of await historicalActiveRecordPaths(projectRoot, directory)) await captureHistoryFile(projectRoot, parts);
@@ -387,7 +403,7 @@ async function inspectActiveProofRecords(projectRoot: string, state: UserActivat
       const approval = validateApprovalEnvelope(value, { expectedIdentity: state.identity });
       historyRecordId(approval.id, `${historyPathKey(parts)}.id`);
       if (approvals.has(approval.id)) historyFail(historyPathKey(parts), 'duplicates a current approval ID.', 'invalid-current-proof');
-      await assertGovernanceApprovalIssued(projectRoot, approval);
+      await assertGovernanceApprovalIssued(projectRoot, approval, storage);
       approvals.set(approval.id, approval.phaseId);
     }
     catch (error) {
@@ -407,7 +423,9 @@ async function inspectActiveProofRecords(projectRoot: string, state: UserActivat
   return records;
 }
 
-export async function inspectActivationMigrationHistory(projectRoot: string): Promise<CommittedMigrationInspection> {
+export async function inspectActivationMigrationHistory(
+  projectRoot: string, storage?: UpdatePreviewOptions
+): Promise<CommittedMigrationInspection> {
   const journal = await readMigrationJournal(projectRoot);
   const stateSnapshot = await captureHistoryFile(projectRoot, historicalActivationStatePathParts);
   if (journal === undefined) {
@@ -452,7 +470,7 @@ export async function inspectActivationMigrationHistory(projectRoot: string): Pr
   const manifestSnapshot = await captureHistoryFile(projectRoot, historicalManifestPathParts);
   currentManifestIdentity(parseHistoryJson(requireContent(manifestSnapshot, 'committed active manifest is missing.'),
     historyPathKey(manifestSnapshot.pathParts)), historyPathKey(manifestSnapshot.pathParts));
-  const records = await inspectActiveProofRecords(projectRoot, state);
+  const records = await inspectActiveProofRecords(projectRoot, state, storage);
   for (const result of journal.revalidation.phases) {
     if (result.status !== 'complete') continue;
     const phase = state.phases[result.phaseId];
@@ -478,7 +496,7 @@ export async function inspectActivationMigrationHistory(projectRoot: string): Pr
 
 /** Project-read-only. This creates neither mutations nor approval, runtime IDs or timestamps. */
 export async function planActivationHistoryMigration(
-  projectRoot: string, options: HistoricalInventoryOptions = {}
+  projectRoot: string, options: HistoricalInventoryOptions & { storage?: UpdatePreviewOptions } = {}
 ): Promise<ActivationHistoryMigrationPlan> {
   try {
     const stateSnapshot = await captureHistoryFile(projectRoot, historicalActivationStatePathParts);
@@ -493,29 +511,39 @@ export async function planActivationHistoryMigration(
       return { status: 'not-present' };
     }
     const raw = parseHistoryJson(stateSnapshot.content, historyPathKey(stateSnapshot.pathParts));
-    if (journalSnapshot.content !== undefined && !(isRecord(raw) && isHistoricalV2ActivationIdentity(raw.identity))) {
-      const history = await inspectActivationMigrationHistory(projectRoot);
+    if (journalSnapshot.content !== undefined && !(isRecord(raw) && isHistoricalActivationIdentity(raw.identity))) {
+      const history = await inspectActivationMigrationHistory(projectRoot, options.storage);
       if (history.status !== 'committed') historyFail('migration-state.json', 'declared journal disappeared during inspection.');
       return { status: 'current', state: history.state, history };
     }
-    if (isRecord(raw) && raw.schemaVersion === activationStateSchemaVersion) {
+    if (isRecord(raw) && raw.schemaVersion === activationStateSchemaVersion && !isHistoricalActivationIdentity(raw.identity)) {
       const state = currentState(raw, historyPathKey(stateSnapshot.pathParts));
       migrationTargetIdentity(state.identity, 'activation-state.json.identity');
       const manifest = await captureHistoryFile(projectRoot, historicalManifestPathParts);
       currentManifestIdentity(parseHistoryJson(requireContent(manifest, 'active manifest is missing.'), historyPathKey(manifest.pathParts)),
         historyPathKey(manifest.pathParts));
       await inspectActiveProofRecords(projectRoot, state);
-      return { status: 'current', state, history: await inspectActivationMigrationHistory(projectRoot) };
+      return { status: 'current', state, history: await inspectActivationMigrationHistory(projectRoot, options.storage) };
     }
     if (!isRecord(raw) || !isHistoricalActivationIdentity(raw.identity) ||
       raw.schemaVersion !== raw.identity.activationStateSchemaVersion) {
-      historyFail(historyPathKey(stateSnapshot.pathParts), 'only exact versioned historical v1/v2 representations have a successor lane.', 'unsupported-historical-identity');
+      historyFail(historyPathKey(stateSnapshot.pathParts), 'only exact registered historical representations have a successor lane.', 'unsupported-historical-identity');
     }
     const lane = packagedActivationSuccessorMigrations().find((entry) =>
       canonicalSha256(entry.fromIdentity) === canonicalSha256(raw.identity) &&
       canonicalSha256(entry.toIdentity) === canonicalSha256(currentActivationIdentity));
     if (lane === undefined) historyFail(historyPathKey(stateSnapshot.pathParts), 'no exact packaged successor lane exists.', 'unsupported-historical-identity');
     const inventory = await readHistoricalActivationInventory(projectRoot, options);
+    if (inventory.state.schemaVersion === 4) {
+      const unsettled = Object.entries(inventory.state.phases)
+        .filter(([, phase]) => phase.state === 'running' || phase.operation?.status === 'running')
+        .map(([id]) => id);
+      if (unsettled.length) {
+        historyFail(historyPathKey(stateSnapshot.pathParts),
+          `Pre-amendment activation has unsettled work in ${unsettled.join(', ')}. Settle the original operation under its recorded authority before a policy successor; no checkpoint or approval was retired.`,
+          'unsupported-active-record');
+      }
+    }
     if (canonicalSha256(inventory.state.identity) !== canonicalSha256(lane.fromIdentity) ||
       !inventory.files.find((file) => file.kind === 'state')?.content.equals(stateSnapshot.content)) {
       historyFail(historyPathKey(stateSnapshot.pathParts), 'source changed during preview; obtain a fresh check.', 'historical-source-changed');
