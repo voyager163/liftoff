@@ -565,3 +565,21 @@ Guidance for #82 SHALL explain supported pull-request defaults and meaningful re
 - **WHEN** a supported nonempty reviewer or actor constraint changes effective enforcement
 - **THEN** guidance reports the actual difference and separately reviewed reconciliation path
 - **AND** a zero top-level count is not offered as proof that all review requirements are absent
+
+### Requirement: Private-state guidance declares actual native host requirements
+Guidance SHALL identify each supported macOS, Linux and Windows private-state provider, architecture and host floor, encrypted-storage requirement, principal/key binding, helper/tool prerequisite, qualification state and recovery boundary. It SHALL distinguish native implementation from fixture coverage and CLI startup from admitted private-state execution. Public examples SHALL use opaque references rather than keys, credentials or state payloads.
+
+#### Scenario: A native custody prerequisite is unavailable
+- **WHEN** the selected host lacks the registered encrypted storage, key service, locking interface, helper or permission
+- **THEN** guidance names that specific blocker and the separately approved preparation or recovery boundary
+- **AND** it does not recommend plaintext fallback, broad ACL changes, policy bypass, arbitrary helper downloads or pretending to be another platform
+
+#### Scenario: A user changes host while retaining old private state
+- **WHEN** a user selects Linux or Windows while original macOS custody or recovery records remain
+- **THEN** guidance explains their unchanged host/provider identity and any registered transition or explicit unsupported boundary
+- **AND** it does not instruct copying, retagging, rekeying or deleting private material as an automatic installation step
+
+#### Scenario: An operator prepares native qualification
+- **WHEN** documentation describes disposable encrypted volumes, key-store entries or privileged host changes
+- **THEN** it requires bounded resource/effect and cleanup approval separate from source testing and implementation approval
+- **AND** it does not represent native fixture success as live Azure/GitHub execution or release permission

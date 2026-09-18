@@ -5,7 +5,7 @@
 - [x] 1.3 Implement the amended identity authorities from the design, including manifest 8, policy 8, credential-policy schema 2, activation/state/evidence/approval 4, graph 3, compatibility 5 and governance output 3; register the exact pre-amendment policy-7/credential-policy-schema-1 candidate and its preservation/transition readers before enabling the new writer, and verify independent protocol/update/repair identities and original records remain unchanged.
 - [x] 1.4 Capture byte-exact fixtures for supported manifests v2-v7, historical activation v1/v2/v3, retained ancestor histories and sealed update/repair journals; verify the existing readers and recovery characterization tests establish the baseline without normalizing history.
 - [ ] 1.5 Define the required macOS/Windows/Linux x64/arm64 and minimum-host/libc qualification matrix; verify every advertised artifact has an identified native runner and explicit host requirements rather than an inferred support label.
-- [ ] 1.6 Prepare separate approval-bound qualification inputs for disposable GitHub/Azure resources, identities, permitted effects, spending and time limits; verify missing access is a named release blocker and no credentials or live side effects enter planning artifacts.
+- [ ] 1.6 Prepare separate approval-bound qualification inputs for disposable GitHub/Azure and native-host resources, identities, permitted effects, spending, lifetime and cleanup limits, including any encrypted volumes, key-store entries or ACL changes; verify missing access is a named release blocker and no credentials or live side effects enter planning artifacts.
 - [x] 1.7 Record the historical Windows failure evidence for run 34842047858/job 103969047717 without assuming a cause; verify each observed timeout, tool-identity and settlement symptom has a reproducible qualification case.
 
 Minimum-host admission now requires separate authenticated native/minimum-host
@@ -230,19 +230,34 @@ implementation and local acceptance, not a performed live hold replacement.
 - [x] 11.1 Complete real workflow-source producers for bootstrap and application workflows using the qualified GitHub publication primitives; verify exact source/run/artifact readback instead of file-presence success.
 - [ ] 11.2 Implement policy-8/credential-policy-schema-2 private credential enrollment and independent usage/permission readback with PAT/App equivalence, exact actual provider grants, broader organization/billing/Actions-read disclosure and fresh plan-bound approval; preserve schema-1 policies, ownership and approvals through exact reviewed transitions, reject stale or extra/missing grants, keep intended operations narrower than provider reach, and verify protected values never enter chat, argv, public records or generated files. Retain independent PAT bearer/lifetime proof and supported create-only secret semantics without inferred replacement authority.
 - [x] 11.3 Implement provider readiness and any separately approved registration derived from exact planned resource types; verify all required namespaces, failure classification and retained shared registrations.
-- [x] 11.4 Implement explicit state-path selection and existing-private-path verification; verify ownership, reachability, locking/versioning and required sensitive-read authority without publishing state payloads.
-- [x] 11.5 Implement the bounded approved bootstrap-local producer and its durable checkpoints; verify only access-establishing scope occurs before dependent provisioning and no fake ready result is returned.
+- [ ] 11.4 Implement explicit state-path selection and existing-private-path verification through registered macOS, Linux and Windows adapters; verify ownership, encrypted custody, reachability, locking/versioning and required sensitive-read authority without publishing state payloads.
+- [ ] 11.5 Implement the bounded approved bootstrap-local producer and its durable checkpoints across the registered native private-state hosts; verify only access-establishing scope occurs before dependent provisioning and no fake ready result is returned.
 - [x] 11.6 Implement supported repository-dedicated private runner provisioning/assignment and network validation; verify applicable routing, DNS, egress and target reachability and block unsupported host/account combinations.
-- [x] 11.7 Implement private-backend proof and remote-import verification through qualified state adapters; verify exact mappings, protected transport, locks, fresh no-change proof and absence of unapproved resource replacement.
+- [ ] 11.7 Implement private-backend proof and remote-import verification through the registered macOS, Linux and Windows state adapters; verify exact mappings, protected transport, platform-correct locks, fresh no-change proof and absence of unapproved resource replacement.
 - [x] 11.8 Complete application-prerequisite and immutable artifact producers; verify actual registry/identity prerequisites, source-bound builds and digest readback rather than placeholder image evidence.
-- [x] 11.9 Implement the application-foundation producer using the exact approved infrastructure plan and private backend; verify real resource identity/health readback and checkpointed partial effects.
+- [ ] 11.9 Implement the application-foundation producer using the exact approved infrastructure plan and selected native private-state adapter on macOS, Linux and Windows; verify real resource identity/health readback, protected process I/O and checkpointed partial effects.
 - [x] 11.10 Implement dev qualification with actual applicable runtime/workflow evidence; verify source, artifact, environment and principal bindings and reject skipped or stale proof.
 - [x] 11.11 Implement staging qualification with actual applicable private access and checks; verify missing runner/permission/input is an explicit prerequisite, not fabricated completion.
 - [x] 11.12 Implement production rehearsal and full-activation green/red proof for profiles that require them; verify environment applicability, explicit cost/effect approval and no synthetic production substitute.
 - [x] 11.13 Complete full-activation ruleset application and live readback using the real shared GitHub adapter; verify separate final authority, exact qualification and correct interaction with repository-only holds.
-- [x] 11.14 Qualify existing built-in publication, approval, remote-ready and retained-state-disposal producers under the new identities; verify none regresses or acquires blanket scope from another producer.
+- [ ] 11.14 Qualify existing built-in publication, approval, remote-ready and retained-state-disposal producers under the new identities and expanded native custody providers; verify original macOS records/keys remain preserved and no producer regresses or acquires blanket scope from another provider, host or phase.
 - [ ] 11.15 Implement bounded pending-operation polling and registered recovery for each external-effect producer; verify actual operation IDs, no duplicate dispatch, current preconditions and no claim of cross-provider atomic rollback.
 - [x] 11.16 Keep every required producer unqualified until its actual provider/host/recipe evidence passes the release gate; verify an injected-only adapter or removal of a blocker flag cannot qualify the coordinated release.
+- [ ] 11.17 Audit and register exact native private-state storage, key, principal, tool, lock/write and helper contracts for Linux and Windows, including x64/arm64 and minimum-host prerequisites; verify actual supported interfaces and pinned OpenTofu source semantics before enabling a new writer, and preserve existing macOS identities without a guessed global schema bump.
+- [ ] 11.18 Implement the registered Linux private-state adapters for observed encrypted local storage, private ownership/access, principal-bound key custody, exact POSIX locking/write semantics and owned-process/private-I/O lifecycle; verify unsafe storage, stale keys, changed identity, lock contention and uncertain settlement fail closed without plaintext or ambient-credential fallback.
+- [ ] 11.19 Implement the registered Windows private-state adapters for observed encrypted storage, SID/DACL ownership, native key custody, actual Windows OpenTofu locking/write semantics and owned Job Object execution with protected I/O; verify no private payload reaches ordinary temporary logs or argv and unsupported policy/host conditions fail without bypass or timeout increases.
+- [ ] 11.20 Integrate native adapter selection across all private-state producers, consumers, checkpoints and recovery, with explicit identities/readers for any new record semantics; verify original macOS bytes, keys, receipts and approvals are preserved, stale/foreign host authority rejects, and cross-host move/rekey/conversion is never implicit.
+- [ ] 11.21 After separate bounded host-fixture approval, qualify each required native private-state host/architecture combination with real encrypted-storage, key, lock, private-I/O, cancellation, descendant, no-op and recovery cases; verify portable fixtures are labeled separately, unavailable prerequisites remain named blockers and no cloud effects or release authority are inferred.
+
+The full cross-platform source matrix exposed a real macOS-only private-state
+foundation, not merely host-dependent fixture metadata. The user approved
+extending native support to Linux and Windows rather than accepting mocked
+success or retaining macOS-only execution as the coordinated endpoint.
+Tasks 11.4, 11.5, 11.7, 11.9 and 11.14 are reopened for this expanded host scope;
+their completed macOS implementation and historical evidence remain preserved.
+Tasks 11.17-11.21 own the new native contracts, adapters and integration.
+Implementation/source-CI approval does not authorize encrypted-volume
+provisioning, ACL/policy changes, real key-store access or cloud qualification.
 
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
@@ -254,7 +269,7 @@ IDs separately. These are source implementation results, not live qualification
 of the runner/provider/profile matrix in 15.9.
 
 The full-check artifact custody/revalidation connection and receipt-bound full
-control readback are implemented. Current-source publication, private state,
+control readback are implemented. Current-source publication, the existing macOS private-state path,
 bootstrap, artifact/foundation and dev producers have bounded local admission,
 execution/readback and recovery coverage. The source-task completions in this
 section do not establish live GitHub/Azure or complete end-to-end activation.
@@ -300,6 +315,7 @@ by 11.2; the other tested recovery paths do not grant credential authority.
 - [x] 12.10 Implement Windows locked-file close/handover behavior; verify no successful upgrade is reported before actual replacement/readback and no unrelated processes are terminated.
 - [x] 12.11 Verify replacement by explicit path, actual owner records, resource identity and ordinary command resolution; verify a different PATH installation cannot manufacture success.
 - [x] 12.12 Replace npm-latest/manual-install assumptions in doctor, compatibility remedies, help, published verification and release scripts; verify native discovery is independent of project npm configuration and historical npm behavior remains correctly labeled.
+- [ ] 12.13 Package and integrity-bind the registered private-state helpers for every required native target, with declared ABI/host constraints and licenses; verify read-only relocated operation, exact helper/tool admission and sensitive-I/O closure without the build checkout, undeclared ambient runtimes or user-side helper compilation, and retain separate native-helper measurement.
 
 Windows direct-handover implementation is covered by real file transactions,
 controlled lock failures, exact-PE and receipt readback, and launcher source

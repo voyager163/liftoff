@@ -222,3 +222,21 @@ Native installation, upgrade, and npm handover SHALL leave project source, manif
 - **WHEN** migration runs from a project path with spaces on Windows, macOS, or Linux
 - **THEN** installation targeting remains independent of cwd and local package configuration
 - **AND** every project byte remains unchanged
+
+### Requirement: Native bundles bind their private-state helper closure
+Each native target SHALL inventory and integrity-bind the helpers required by its private-state adapter, including the supported ABI, architecture, host constraints, protocol and licenses. Installed helper lookup SHALL remain independent of cwd and writable installation files. Operation-specific external prerequisites SHALL be declared and independently admitted; missing helpers SHALL NOT trigger an undeclared download, user-side helper build or ambient-runtime fallback.
+
+#### Scenario: Invoke private-state support after relocation
+- **WHEN** an installed bundle is relocated to a supported read-only path
+- **THEN** its selected native adapter resolves the exact bundled helper and declared external prerequisites without the build checkout
+- **AND** private execution still requires its own custody observations and current effect approval
+
+#### Scenario: Helper bytes or architecture do not match
+- **WHEN** the selected helper is missing, modified or incompatible with the admitted native target
+- **THEN** the dependent operation fails before protected effects with the actual helper prerequisite
+- **AND** another platform's helper, a same-named executable or a source fixture cannot replace it
+
+#### Scenario: CLI runtime closure succeeds without custody prerequisites
+- **WHEN** the installed CLI starts but its encrypted storage, native key provider or exact state tool is unavailable
+- **THEN** capability output reports the private-state prerequisite separately from CLI runtime readiness
+- **AND** successful version/help output does not establish private-state execution support

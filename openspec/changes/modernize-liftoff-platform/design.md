@@ -105,8 +105,8 @@ their original storage remain available only through their registered recovery
 contracts; this refinement does not introduce a workspace schema migration.
 Qualification must cover supported-length literal paths and over-limit refusal
 without changing production startup, execution, or settlement deadlines. The
-separate observed startup delays and short-path child failures remain open
-investigations, not consequences proven to share this path-length cause.
+separate startup delays and short-path child failures must be diagnosed
+independently, not assumed to share this path-length cause.
 
 **Alternatives:** Bun compilation remains a possible packaging backend only after equivalent runtime, asset and subprocess qualification and a reviewed design amendment. Node 24 SEA is not the initial choice because its entrypoint/asset constraints are not transparent packaging of the existing ESM application.
 
@@ -267,6 +267,67 @@ Credential use and local policy creation or transition require fresh exact plan-
 The amendment changes only the permission-policy boundary. It does not establish exact PAT bearer identity or lifetime, turn GitHub's create-or-update secret endpoint into conditional creation, authorize replacement of a foreign secret, or relax payload-free evidence, protected input, non-forwarding, rotation or recovery requirements. Those unresolved paths remain blocked independently until their own supported contracts and acceptance evidence exist. WinGet inspection restrictions, qualification resources, signing, deployment and publication authority are unchanged.
 
 **Alternative rejected:** deleting the current guard, hiding the provider's broader read scope, accepting arbitrary additional grants, or treating approval of this design as permission to use credentials or contact providers.
+
+### 13b. Extend the private-state foundation through native host adapters
+
+The current private-state foundation is macOS-specific: native tool inspection,
+encrypted-storage/key custody and private application execution depend on its
+Darwin implementation. Linux and Windows support is required implementation
+work, not a test-fixture change or permission to remove the platform guard.
+Use a shared private-state contract with independently registered native
+platform adapters, preserving the existing phase, approval, effect, sensitive
+transport and recovery boundaries.
+
+Before enabling a new platform writer, audit the available native storage/key
+interfaces and the pinned OpenTofu build's actual locking and write protocol.
+Register the exact supported filesystem, encryption, principal, helper,
+architecture and minimum-host combinations. Linux must establish local
+encrypted-storage coverage, private ownership/access, principal-bound key
+custody and the applicable POSIX file-lock/process-group semantics. Windows
+must establish equivalent encrypted-storage coverage, SID/DACL ownership,
+principal-bound key custody, the actual Windows OpenTofu lock/write protocol,
+and Job Object process ownership. Do not infer Windows locking from the
+existing POSIX `fcntl` registration or treat WSL, network shares, a path name,
+a filesystem label or an environment flag as protection evidence.
+
+Reuse qualified supervision primitives without sending private state or
+credentials through ordinary temporary logs, public command diagnostics or
+argv. The current Windows command runner's ordinary output-file path is not
+a private-state transport. Private stdin/stdout/stderr, descriptor/handle
+custody, bounded buffers, cancellation, zeroization/disposal and uncertain
+settlement need their own end-to-end admission and native evidence. No
+plaintext fallback, broad permission change, arbitrary helper download,
+execution-policy bypass or inferred cleanup authority is allowed.
+
+Retain original macOS provider, helper and protocol identities, encrypted
+records, keys, ownership receipts and approvals. New host/provider combinations
+must not reinterpret them as portable authority. Any new record semantics need
+their own declared identity and preservation/transition readers before a
+writer is enabled; the global governance policy/credential identity does not
+change merely because a native adapter is added. Cross-host relocation,
+rekeying or conversion is not implicit: unsupported transitions preserve the
+original material and report a blocker rather than copying or retagging it.
+
+Wire every private-state consumer, including path selection, bootstrap,
+backend proof, import, application foundation and retained-state disposal,
+through the selected native adapter. Missing implementation, an unmet host
+prerequisite and missing qualification remain distinct. Bundle and integrity-
+bind required helper resources with the native artifact, declare any operation-
+specific external prerequisites, and verify read-only relocation without
+undeclared ambient runtimes or user-side helper compilation.
+
+Portable fixtures may exercise control flow, but cannot stand in for native
+storage, key, lock, ACL, process or recovery evidence. Required x64/arm64 and
+minimum-host combinations remain release blockers until their applicable
+native/installed-artifact and separately authorized provider qualification
+passes. Creating encrypted volumes, altering ACLs or host policy, using real
+keys/credentials, moving state and provisioning disposable host/cloud fixtures
+require separate bounded authorization; approving this design grants none.
+
+**Alternative rejected:** making cross-platform tests green by substituting
+inspection results, suppressing native tests, accepting ordinary writable
+storage as encrypted custody, or advertising macOS-only execution as complete
+Linux/Windows support.
 
 ### 14. Resolve template defects and provide honest existing-project remediation
 

@@ -229,3 +229,31 @@ The coordinated release SHALL qualify the committed dashboard in the selected Az
 - **WHEN** the Azure Monitor dashboard API, region or supported data-source behavior cannot satisfy the required contract
 - **THEN** dashboard qualification remains blocked
 - **AND** the release does not silently create Managed Grafana, add tracking fields or declare an unrendered JSON file complete
+
+### Requirement: Private-state support has independent native platform evidence
+The required macOS, Linux and Windows x64/arm64 host matrix SHALL qualify each registered private-state storage, key, locking, helper and process combination at its declared floor. Evidence SHALL bind the actual host/principal, encrypted storage, tool/helper identities and applicable final installed artifact. Portable fixtures may cover control flow but SHALL NOT replace native positive, failure, cancellation and recovery evidence or hide an unavailable required implementation.
+
+#### Scenario: Observe encrypted custody and key ownership
+- **WHEN** a native private-state combination is qualified
+- **THEN** positive execution and wrong-volume, unprotected-storage, wrong-principal, stale-key and changed-ownership cases use actual native observations
+- **AND** fixture fields claiming encryption or ownership cannot qualify the host
+
+#### Scenario: Exercise the pinned native locking protocol
+- **WHEN** qualification exercises state readers and writers under contention or interruption
+- **THEN** it verifies the selected OpenTofu build's actual platform lock/write semantics, exact file identity and supported recovery
+- **AND** Windows results are not inferred from POSIX locking or vice versa
+
+#### Scenario: Exercise private subprocess custody
+- **WHEN** a native helper succeeds, exceeds a bound, loses its caller or is cancelled
+- **THEN** qualification verifies protected stdin/stdout/stderr, owned descendant accounting and refusal of unsafe cleanup
+- **AND** no sensitive payload enters public logs or ordinary temporary storage to make the test pass
+
+#### Scenario: Qualification needs privileged host fixtures
+- **WHEN** qualification needs encrypted volumes, key-store entries, ACL changes or other disposable host resources
+- **THEN** their identities, permitted effects, lifetime and cleanup bounds require separate explicit authorization before creation or access
+- **AND** source-CI or implementation approval does not grant that authority, provider credentials or cloud effects
+
+#### Scenario: A required private-state platform is absent
+- **WHEN** a native adapter, supported encrypted-storage/key interface, authorized runner or required evidence is missing
+- **THEN** the specific combination remains blocked and coordinated release completion is refused
+- **AND** platform filtering, skipped native cases or injected-only success cannot satisfy the required matrix

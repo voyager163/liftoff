@@ -393,3 +393,44 @@ Governance verification SHALL return exit 0 only when the selected scope is both
 #### Scenario: The selected scope is not started
 - **WHEN** its not-started view is structurally consistent
 - **THEN** verification returns 2 rather than treating the absence of work as completion
+
+### Requirement: Private-state execution uses qualified native host custody
+Private-state-dependent activation SHALL have native implementations for macOS, Linux and Windows under independently registered supported host/provider combinations. Path selection, bootstrap, backend proof, import, application foundation and retained-state disposal SHALL use the selected adapter's observed encrypted storage, principal-bound key custody, exact tool identity, locking/write protocol, protected I/O, process settlement and recovery. Missing implementation, unmet host prerequisites and missing qualification SHALL remain distinct; removing a platform guard or injecting a fixture SHALL NOT establish production support.
+
+#### Scenario: Select a Linux private-state adapter
+- **WHEN** an approved operation selects a registered Linux host/provider combination
+- **THEN** admission verifies local encrypted-storage coverage, private ownership/access, the principal-bound key reference, exact tools and applicable POSIX lock/process semantics
+- **AND** a path name, mode assertion, network share or supplied encryption flag cannot substitute for native observation
+
+#### Scenario: Select a Windows private-state adapter
+- **WHEN** an approved operation selects a registered Windows host/provider combination
+- **THEN** admission verifies encrypted-storage coverage, SID/DACL ownership, native key custody, the pinned OpenTofu build's actual Windows lock/write protocol and owned Job Object execution
+- **AND** POSIX lock evidence, a successful CLI startup or an unrelated host's proof cannot satisfy that combination
+
+#### Scenario: A private observation changes after approval
+- **WHEN** the host, principal, volume, directory, key, tool, helper, lock provider or reviewed input binding changes before an effect
+- **THEN** the old operation is refused before further effects and requires renewed exact review
+- **AND** no fallback provider, replacement key or broader filesystem permission is inferred
+
+#### Scenario: Private process output would use ordinary temporary storage
+- **WHEN** a selected runner cannot keep state and credentials within the admitted private transport and storage boundary
+- **THEN** execution is blocked before dispatch
+- **AND** ordinary stdout/stderr logs, argv, public evidence and unqualified temporary directories are not substitutes for protected I/O
+
+#### Scenario: Private helper settlement is uncertain
+- **WHEN** cancellation or failure leaves an owned helper or descendant unproven
+- **THEN** success and cleanup remain blocked and the original private recovery scope is retained
+- **AND** root exit, age, a bare PID or a larger timeout does not grant cleanup authority
+
+### Requirement: New private-state platforms preserve original macOS authority
+New platform/provider identities SHALL preserve existing macOS readers, encrypted records, keys, ownership receipts and approvals without rewriting or reinterpreting them. New record semantics SHALL have explicit identities and registered preservation/transition readers before new writers are enabled. Cross-host movement, rekeying and conversion SHALL NOT be inferred from installing a new CLI or selecting another platform.
+
+#### Scenario: Another host encounters macOS private-state material
+- **WHEN** Linux or Windows encounters records or key references bound to the original macOS provider
+- **THEN** it preserves the original identity and material and reports the supported historical/recovery boundary
+- **AND** it does not decrypt, copy, rekey, retag or execute them under a new provider without a separately registered and approved transition
+
+#### Scenario: Old approval names a different custody provider
+- **WHEN** a new host/provider combination requests execution using an older approval
+- **THEN** admission rejects the mismatching custody and effect binding
+- **AND** schema compatibility or numeric version ordering does not grant new native authority
