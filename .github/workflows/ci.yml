@@ -19,7 +19,7 @@ on:
         required: false
         default: false
       diagnostic_linux_keystore_build_only:
-        description: Compile Linux keystore helper and test source protocol (not provider or custody qualification)
+        description: Build and test Linux keystore synthetic source behavior (not provider or custody qualification)
         type: boolean
         required: false
         default: false
@@ -409,7 +409,7 @@ jobs:
           retention-days: 7
 
   linux-keystore-build:
-    name: Linux keystore compile/source-interface (${{ matrix.arch }}, not provider or custody qualification)
+    name: Linux keystore compile/synthetic-source (${{ matrix.arch }}, not provider or custody qualification)
     if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only) || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
@@ -496,7 +496,24 @@ jobs:
         id: helper
         run: node native/linux-keystore-client/build.mjs
 
-      - name: Capture bounded compile and protocol evidence (not runtime closure)
+      - name: Prepare declared private synthetic service test prerequisites
+        id: synthetic-prerequisites
+        if: success() && steps.helper.outcome == 'success'
+        run: |
+          sudo apt-get install --yes --no-install-recommends dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0
+          dpkg-query -W dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0 > diagnostics/linux-keystore-synthetic-prerequisites.txt
+
+      - name: Test compiled client against private synthetic service (not real provider or custody)
+        id: synthetic
+        if: success() && steps.helper.outcome == 'success'
+        env:
+          LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: "1"
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/linux-keystore-synthetic-tests.json
+
+      - name: Capture bounded compile and synthetic source evidence (not runtime closure)
         if: always()
         env:
           PREREQUISITES_OUTCOME: ${{ steps.prerequisites.outcome }}
@@ -504,24 +521,27 @@ jobs:
           LIBSECRET_OUTCOME: ${{ steps.libsecret.outcome }}
           PROTOCOL_OUTCOME: ${{ steps.protocol.outcome }}
           HELPER_OUTCOME: ${{ steps.helper.outcome }}
+          SYNTHETIC_PREREQUISITES_OUTCOME: ${{ steps.synthetic-prerequisites.outcome }}
+          SYNTHETIC_OUTCOME: ${{ steps.synthetic.outcome }}
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
           const report = {
-            schemaVersion: 1, classification: 'compile-source-interface-only',
+            schemaVersion: 1, classification: 'compile-and-native-synthetic-source-interface-only',
             platform: process.platform, architecture: process.arch, expectedArchitecture: process.env.EXPECTED_ARCH,
             sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
             libsecretCommit: process.env.LIBSECRET_COMMIT,
-            stages: Object.fromEntries(['prerequisites', 'source', 'libsecret', 'protocol', 'helper'].map(
+            stages: Object.fromEntries(['prerequisites', 'source', 'libsecret', 'protocol', 'helper', 'synthetic_prerequisites', 'synthetic'].map(
               (stage) => [stage, process.env[`${stage.toUpperCase()}_OUTCOME`] ?? 'not-run'])),
-            helperExecution: 'not-performed', providerQualification: 'not-performed',
-            custodyQualification: 'not-performed', runtimeClosure: 'not-performed',
+            helperExecution: ['success', 'failure'].includes(process.env.SYNTHETIC_OUTCOME) ? 'synthetic-fixture-suite-attempted' : 'not-performed',
+            providerQualification: 'not-performed', custodyQualification: 'not-performed',
+            enrollmentQualification: 'not-performed', installedArtifactQualification: 'not-performed', runtimeClosure: 'not-performed',
             issues: []
           };
           mkdirSync('diagnostics', { recursive: true });
-          for (const file of ['diagnostics/build-identity.json', 'diagnostics/linux-keystore-protocol-summary.json']) {
+          for (const file of ['diagnostics/build-identity.json', 'diagnostics/linux-keystore-protocol-summary.json', 'diagnostics/linux-keystore-synthetic-summary.json']) {
             rmSync(file, { force: true });
           }
           const bounded = (file, limit) => {
@@ -537,6 +557,10 @@ jobs:
           const prerequisites = 'diagnostics/linux-keystore-prerequisites.txt';
           if (existsSync(prerequisites)) capture('prerequisites', () => {
             report.prerequisites = bounded(prerequisites, 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const syntheticPrerequisites = 'diagnostics/linux-keystore-synthetic-prerequisites.txt';
+          if (existsSync(syntheticPrerequisites)) capture('synthetic-prerequisites', () => {
+            report.syntheticPrerequisites = bounded(syntheticPrerequisites, 16 * 1024).toString('utf8').trim().split('\n');
           });
           const protocolFile = 'diagnostics/linux-keystore-protocol-tests.json';
           if (existsSync(protocolFile)) capture('protocol', () => {
@@ -558,6 +582,35 @@ jobs:
           else if (report.stages.protocol === 'success') capture('protocol', () => {
             throw new Error('Successful protocol step has no test report');
           });
+          const syntheticFile = 'diagnostics/linux-keystore-synthetic-tests.json';
+          if (existsSync(syntheticFile)) capture('synthetic', () => {
+            const synthetic = JSON.parse(bounded(syntheticFile, 256 * 1024));
+            const cases = synthetic.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256, 'Synthetic case inventory is missing or oversized');
+            const suite = 'opt-in compiled client against private synthetic Secret Service, not native custody';
+            const syntheticCases = cases.filter((test) => test.ancestorTitles?.includes(suite));
+            writeFileSync('diagnostics/linux-keystore-synthetic-summary.json', JSON.stringify({
+              classification: 'native-compiled-client-private-synthetic-behavior-only',
+              platform: process.platform, architecture: process.arch,
+              sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              success: synthetic.success, passed: synthetic.numPassedTests, failed: synthetic.numFailedTests,
+              pending: synthetic.numPendingTests, syntheticCases: syntheticCases.length,
+              providerQualification: 'not-performed', custodyQualification: 'not-performed',
+              enrollmentQualification: 'not-performed', installedArtifactQualification: 'not-performed',
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+            if (report.stages.synthetic === 'success') {
+              assert.equal(report.stages.helper, 'success', 'Synthetic behavior requires the successful exact native build');
+              assert.equal(synthetic.success, true);
+              assert.equal(synthetic.numFailedTests, 0);
+              assert.equal(synthetic.numPendingTests, 0, 'Required synthetic behavior cannot be skipped');
+              assert.ok(syntheticCases.length > 0, 'Compiled-client synthetic suite did not execute');
+              assert.ok(cases.every((test) => test.status === 'passed'), 'Every reported synthetic/source case must pass');
+            }
+          });
+          else if (report.stages.synthetic === 'success') capture('synthetic', () => {
+            throw new Error('Successful synthetic step has no test report');
+          });
           if (report.stages.helper === 'success') capture('build-identity', () => {
             const bytes = bounded('native/linux-keystore-client/build/build-identity.json', 128 * 1024);
             const identity = JSON.parse(bytes);
@@ -571,7 +624,7 @@ jobs:
           writeFileSync('diagnostics/linux-keystore-build-report.json', JSON.stringify(report, null, 2) + '\n');
           NODE
 
-      - name: Retain compile/source-interface reports only (no helper binary)
+      - name: Retain separate compile and synthetic JSON reports only (no helper binary or raw output)
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
@@ -579,6 +632,7 @@ jobs:
           path: |
             diagnostics/linux-keystore-build-report.json
             diagnostics/linux-keystore-protocol-summary.json
+            diagnostics/linux-keystore-synthetic-summary.json
             diagnostics/build-identity.json
           if-no-files-found: error
           retention-days: 7

@@ -145,7 +145,7 @@ describe('read-only coordinated release evidence workflow', () => {
       type: 'boolean', required: false, default: false
     });
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_linux_keystore_build_only).toEqual({
-      description: 'Compile Linux keystore helper and test source protocol (not provider or custody qualification)',
+      description: 'Build and test Linux keystore synthetic source behavior (not provider or custody qualification)',
       type: 'boolean', required: false, default: false
     });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
@@ -208,11 +208,11 @@ describe('read-only coordinated release evidence workflow', () => {
     }
   });
 
-  it('adds two compile-only source jobs with exact libsecret source, crypto, private prefix and no helper execution', async () => {
+  it('builds exact private libsecret and runs synthetic behavior only after successful compilation on both source hosts', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const job = workflow.jobs['linux-keystore-build'];
     expect(job.if).toBe(keystoreBuildCondition);
-    expect(job.name).toContain('compile/source-interface');
+    expect(job.name).toContain('compile/synthetic-source');
     expect(job.name).toContain('not provider or custody qualification');
     expect(job['runs-on']).toBe('${{ matrix.os }}');
     expect(job['timeout-minutes']).toBe(20);
@@ -254,13 +254,31 @@ describe('read-only coordinated release evidence workflow', () => {
       '--outputFile.json=diagnostics/linux-keystore-protocol-tests.json'
     );
     expect(job.steps.find((step: any) => step.id === 'helper').run).toBe('node native/linux-keystore-client/build.mjs');
+    const helperIndex = job.steps.findIndex((step: any) => step.id === 'helper');
+    const fixturePackagesIndex = job.steps.findIndex((step: any) => step.id === 'synthetic-prerequisites');
+    const syntheticIndex = job.steps.findIndex((step: any) => step.id === 'synthetic');
+    expect(job.steps.findIndex((step: any) => step.id === 'protocol')).toBeLessThan(helperIndex);
+    expect(fixturePackagesIndex).toBeGreaterThan(helperIndex);
+    expect(syntheticIndex).toBeGreaterThan(fixturePackagesIndex);
+    expect(job.steps[fixturePackagesIndex].if).toBe("success() && steps.helper.outcome == 'success'");
+    expect(job.steps[fixturePackagesIndex].run).toBe(
+      'sudo apt-get install --yes --no-install-recommends dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0\n' +
+      'dpkg-query -W dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0 > diagnostics/linux-keystore-synthetic-prerequisites.txt\n'
+    );
+    expect(job.steps[syntheticIndex]).toMatchObject({
+      if: "success() && steps.helper.outcome == 'success'",
+      env: { LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: '1' },
+      run: 'npx vitest run tests/linux-keystore-client-contract.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+        '--outputFile.json=diagnostics/linux-keystore-synthetic-tests.json'
+    });
+    expect(job.steps.find((step: any) => step.id === 'protocol').env?.LIFTOFF_LINUX_KEYSTORE_SYNTHETIC).toBeUndefined();
     const commands = job.steps.map((step: any) => step.run ?? '').join('\n');
     expect(commands).not.toMatch(/gnome-keyring|secret-tool|dbus-run-session|--contract|\bmeson test\b|-Dcrypto=disabled|LD_LIBRARY_PATH|gate:release|npm publish/);
     const retained = job.steps.at(-1);
     expect(retained.if).toBe('always()');
     expect(retained.with).toEqual({
       name: 'linux-keystore-compile-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}',
-      path: 'diagnostics/linux-keystore-build-report.json\ndiagnostics/linux-keystore-protocol-summary.json\ndiagnostics/build-identity.json\n',
+      path: 'diagnostics/linux-keystore-build-report.json\ndiagnostics/linux-keystore-protocol-summary.json\ndiagnostics/linux-keystore-synthetic-summary.json\ndiagnostics/build-identity.json\n',
       'if-no-files-found': 'error', 'retention-days': 7
     });
   });
@@ -268,7 +286,7 @@ describe('read-only coordinated release evidence workflow', () => {
   it('retains bounded compile/protocol evidence and rejects missing, oversized or mismatched build identities', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const job = workflow.jobs['linux-keystore-build'];
-    const step = job.steps.find((entry: any) => entry.name === 'Capture bounded compile and protocol evidence (not runtime closure)');
+    const step = job.steps.find((entry: any) => entry.name === 'Capture bounded compile and synthetic source evidence (not runtime closure)');
     expect(step.if).toBe('always()');
     const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
     expect(program).toBeTypeOf('string');
@@ -299,7 +317,7 @@ describe('read-only coordinated release evidence workflow', () => {
       await run();
       expect(JSON.parse(await readFile(path.join(root, 'diagnostics/build-identity.json'), 'utf8'))).toEqual(identity);
       expect(JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-build-report.json'), 'utf8'))).toMatchObject({
-        classification: 'compile-source-interface-only', architecture: process.arch, sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        classification: 'compile-and-native-synthetic-source-interface-only', architecture: process.arch, sourceCommit: 'a'.repeat(40), runAttempt: '2',
         helperExecution: 'not-performed', providerQualification: 'not-performed', custodyQualification: 'not-performed',
         runtimeClosure: 'not-performed', issues: []
       });
@@ -323,6 +341,81 @@ describe('read-only coordinated release evidence workflow', () => {
       await expect(readFile(path.join(root, 'diagnostics/build-identity.json'))).rejects.toThrow();
       expect(JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-build-report.json'), 'utf8')).stages)
         .toMatchObject({ protocol: 'skipped', helper: 'failure' });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('requires actual synthetic-suite execution with no failed/skipped cases and retains only bounded allowlisted outcomes', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['linux-keystore-build'];
+    const step = job.steps.find((entry: any) => entry.name === 'Capture bounded compile and synthetic source evidence (not runtime closure)');
+    expect(step.env.SYNTHETIC_OUTCOME).toBe('${{ steps.synthetic.outcome }}');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'native/linux-keystore-client/build'), { recursive: true });
+      await mkdir(path.join(root, 'diagnostics'));
+      await writeFile(path.join(root, 'native/linux-keystore-client/build/build-identity.json'), JSON.stringify({
+        platform: 'linux', architecture: process.arch, libsecretCommit: job.env.LIBSECRET_COMMIT,
+        qualification: 'compile-only-not-provider-or-runtime-admission'
+      }));
+      const suite = 'opt-in compiled client against private synthetic Secret Service, not native custody';
+      const testCase = {
+        fullName: `${suite} verifies fixture behavior`, ancestorTitles: [suite], status: 'passed',
+        failureMessages: ['DO_NOT_UPLOAD_RAW_DIAGNOSTIC'], consoleOutput: 'DO_NOT_UPLOAD_RAW_PROTOCOL'
+      };
+      const reportFile = path.join(root, 'diagnostics/linux-keystore-synthetic-tests.json');
+      const validReport = {
+        success: true, numPassedTests: 1, numFailedTests: 0, numPendingTests: 0,
+        testResults: [{ assertionResults: [testCase] }]
+      };
+      const writeReport = (value: object) => writeFile(reportFile, JSON.stringify(value));
+      const run = (overrides: Record<string, string> = {}) => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root, env: {
+          ...process.env, EXPECTED_ARCH: process.arch, LIBSECRET_COMMIT: job.env.LIBSECRET_COMMIT,
+          GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2',
+          HELPER_OUTCOME: 'success', PROTOCOL_OUTCOME: 'skipped', SYNTHETIC_OUTCOME: 'success',
+          SYNTHETIC_PREREQUISITES_OUTCOME: 'success', ...overrides
+        }
+      });
+      await expect(run()).rejects.toThrow();
+      await writeReport(validReport);
+      await run();
+      const summaryFile = path.join(root, 'diagnostics/linux-keystore-synthetic-summary.json');
+      const summary = await readFile(summaryFile, 'utf8');
+      expect(summary).not.toContain('DO_NOT_UPLOAD_RAW');
+      expect(JSON.parse(summary)).toMatchObject({
+        classification: 'native-compiled-client-private-synthetic-behavior-only',
+        architecture: process.arch, sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        success: true, passed: 1, failed: 0, pending: 0, syntheticCases: 1,
+        enrollmentQualification: 'not-performed', installedArtifactQualification: 'not-performed',
+        cases: [{ name: testCase.fullName, status: 'passed' }]
+      });
+      for (const invalid of [
+        { ...validReport, success: false },
+        { ...validReport, numFailedTests: 1 },
+        { ...validReport, numPendingTests: 1 },
+        { ...validReport, testResults: [{ assertionResults: [{ ...testCase, ancestorTitles: ['ordinary source suite'] }] }] },
+        { ...validReport, testResults: [{ assertionResults: [{ ...testCase, status: 'pending' }] }] },
+        { ...validReport, testResults: [{ assertionResults: [] }] }
+      ]) {
+        await writeReport(invalid);
+        await expect(run()).rejects.toThrow();
+      }
+      await writeReport(validReport);
+      await expect(run({ HELPER_OUTCOME: 'failure' })).rejects.toThrow();
+      await writeFile(reportFile, ' '.repeat(256 * 1024 + 1));
+      await expect(run()).rejects.toThrow();
+      await writeReport({ ...validReport, success: false, numFailedTests: 1 });
+      await run({ SYNTHETIC_OUTCOME: 'failure' });
+      expect(JSON.parse(await readFile(summaryFile, 'utf8'))).toMatchObject({ success: false, failed: 1 });
+      const buildReport = JSON.parse(await readFile(path.join(root, 'diagnostics/linux-keystore-build-report.json'), 'utf8'));
+      expect(buildReport).toMatchObject({
+        helperExecution: 'synthetic-fixture-suite-attempted', providerQualification: 'not-performed',
+        custodyQualification: 'not-performed', stages: { synthetic: 'failure' }
+      });
     } finally {
       await rm(root, { recursive: true, force: true });
     }

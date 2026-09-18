@@ -50,7 +50,8 @@ Native framework/preparation and backend-disabled OpenTofu checks, the explicit
 Windows boundary lane, per-host launcher Go coverage, telemetry checks, package
 smoke and Linux generated containers run in separate source-integration jobs.
 The two Node-template lanes and telemetry OpenTofu/container lane remain
-separate. Two additional Linux x64/arm64 keystore-helper compile checks bring
+separate. Two additional Linux x64/arm64 keystore-helper compile and synthetic
+source-behavior checks bring
 default source validation to 18 jobs, preserving all 16 existing jobs rather
 than increasing timeouts or reducing test scope.
 Linux full-suite shards also collect V8 coverage rather than repeating the
@@ -106,7 +107,7 @@ provider downloads or privileged host changes. If the arm64 runner is
 unavailable, its result remains pending or missing; an x64 success is not a
 substitute and no emulation/fallback is selected.
 
-The keystore-helper compile checks run on the same documented Linux x64/arm64
+The keystore-helper build/source checks run on the same documented Linux x64/arm64
 labels by default, or separately with `diagnostic_linux_keystore_build_only`.
 They use Node 24.20.0/npm 12.0.2 and prepare only declared C11, pkg-config,
 GLib/GIO/GObject >=2.74, Meson, Ninja, gettext and libgcrypt development
@@ -123,18 +124,38 @@ prefix with `--libdir=lib`, and `LIBSECRET_SOURCE_DIR`/`LIBSECRET_PREFIX` are
 passed to `native/linux-keystore-client/build.mjs`. System libsecret fallback
 and plain/disabled crypto are not alternatives.
 
-The 20-minute jobs run dependency-free framing/source-interface tests and
-compile the helper, but do not execute the production helper—even with
-`--contract`—or run upstream service tests. No daemon, bus, store or key is
-accessed. Bounded build/protocol reports and the original `build-identity.json`
-are retained under source SHA, actual runner architecture and run attempt;
-helper binaries are not uploaded, signed or published. This is compile/source
-interface evidence, not provider behavior, encrypted custody or runtime closure.
-Missing prerequisites or either architecture remain explicit blockers.
+The 20-minute jobs first run dependency-free framing/source-interface tests,
+then compile the helper. Only after a successful build, they install the
+declared synthetic-test dependencies: `dbus-daemon`, `python3`, `python3-dbus`,
+`python3-gi` and `gir1.2-glib-2.0`. With
+`LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1` and the same exact `LIBSECRET_SOURCE_DIR`,
+the one-worker suite invokes the compiled client against a fresh private
+no-autostart D-Bus and an in-memory synthetic service using nonsecret fixture
+values. The fixture uses hash-bound unchanged upstream mock modules, fixed
+`/usr/bin/python3` and `/usr/bin/dbus-daemon`, and mandatory actual loader/private
+dependency checks; no system-libsecret fallback is enabled by CI.
+
+No real GNOME daemon, ordinary desktop/system service, store or keys are
+accessed; production enrollment remains disabled. These tests do not provision
+encryption or ACLs and perform no cloud operations. Failed builds prevent the
+synthetic run. Successful behavior reports must contain the actual opt-in
+synthetic suite and no failed or skipped cases, without a fixed case count.
+
+The initial protocol result and final behavior result have distinct JSON paths.
+Only bounded allowlisted build/protocol/synthetic summaries and the original
+`build-identity.json` are retained under source SHA, actual runner architecture
+and run attempt. Raw helper output, protocol bytes, dependency diagnostics,
+keys and binaries are not artifact inputs; binaries are not signed or
+published. Compile evidence and native compiled-client synthetic behavior are
+separate from real-provider, custody, enrollment, installed-artifact and
+runtime-closure qualification. Missing prerequisites or either architecture
+remain explicit blockers.
 
 All four inputs default to `false`. In the table, Windows, Go, POSIX and Build
 mean `diagnostic_windows_only`, `diagnostic_native_go_only`,
 `diagnostic_native_posix_locks_only` and `diagnostic_linux_keystore_build_only`.
+For compatibility, the Build input retains its name but now selects the full
+build plus synthetic-source behavior job described above.
 
 | Windows | Go | POSIX | Build | Jobs executed |
 | --- | --- | --- | --- | --- |
@@ -146,7 +167,7 @@ mean `diagnostic_windows_only`, `diagnostic_native_go_only`,
 | `true` | `false` | `true` | `false` | Windows and POSIX lock diagnostics |
 | `false` | `true` | `true` | `false` | Native Go and POSIX lock diagnostics |
 | `true` | `true` | `true` | `false` | All three execution diagnostic lanes |
-| `false` | `false` | `false` | `true` | Linux x64 and arm64 helper compile/source-interface checks |
+| `false` | `false` | `false` | `true` | Linux x64 and arm64 helper build/synthetic-source checks |
 | `true` | `false` | `false` | `true` | Windows diagnostics and helper builds |
 | `false` | `true` | `false` | `true` | Native Go diagnostics and helper builds |
 | `true` | `true` | `false` | `true` | Windows/native Go diagnostics and helper builds |
