@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryFits, windowsWorkingDirectoryRemedy
+} from '../src/domain/execution/windows-working-directory.js';
 import {
   buildWindowsControllerHostEnvironment,
   runWindowsJobCommand,
@@ -26,34 +29,115 @@ afterEach(async () => {
   }
 });
 
+describe('Windows working-directory length contract', () => {
+  it.each(['C:\\', '\\\\server\\share\\', '\\\\?\\C:\\'])('counts the complete %s path, separator and terminator', (root) => {
+    const directory = root + 'x'.repeat(258 - root.length);
+    expect(windowsWorkingDirectoryFits(directory)).toBe(true);
+    expect(windowsWorkingDirectoryFits(`${directory}\\`)).toBe(true);
+    expect(windowsWorkingDirectoryFits(`${directory}x`)).toBe(false);
+    expect(windowsWorkingDirectoryFits(`${directory}x\\`)).toBe(false);
+    expect(windowsWorkingDirectoryFits(`${directory}/`)).toBe(true);
+  });
+
+  it('counts UTF-16 code units rather than Unicode code points', () => {
+    const directory = `C:\\${'\u{1f680}'.repeat(127)}`;
+    expect(directory.length).toBe(257);
+    expect(windowsWorkingDirectoryFits(`${directory}x`)).toBe(true);
+    expect(windowsWorkingDirectoryFits(`${directory}\u{1f680}`)).toBe(false);
+  });
+});
+
 describe.runIf(process.platform === 'win32')('native Windows working-directory admission', () => {
-  it.each([180, 320])('executes in an exact literal cwd of at least %i characters', async (minimumLength) => {
+  async function nativeCwd(length: number) {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-cwd-'));
     tempDirs.push(root);
     let cwd = path.join(root, "project's $literal [directory]");
-    while (cwd.length < minimumLength) cwd = path.join(cwd, 'nested-segment');
+    while (cwd.length + 16 < length) cwd = path.join(cwd, 'nested-segment');
+    cwd = path.join(cwd, 'x'.repeat(length - cwd.length - 1));
+    expect(cwd.length).toBe(length);
     await mkdir(cwd, { recursive: true });
+    return { root, cwd };
+  }
 
-    const observations = [];
+  it.each([180, 258])('executes in an exact literal cwd of %i UTF-16 code units', async (length) => {
+    const { root, cwd } = await nativeCwd(length);
     retainedDirs.add(root);
-    for (const [kind, target] of [['canonical', cwd], ['internal-namespace', path.toNamespacedPath(cwd)]] as const) {
-      const started = performance.now();
+    const started = performance.now();
+    const result = await runWindowsJobCommand({
+      executable: process.execPath,
+      args: ['-e', "require('node:fs').writeFileSync('effect.txt', 'exact owned effect\\n'); console.log(process.cwd());"]
+    }, { cwd, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000, maxOutputBytes: 2048 });
+    if (result.processTreeSettled === true) retainedDirs.delete(root);
+    expect({ status: result.status, settled: result.processTreeSettled }, JSON.stringify({
+      code: result.errorCode, detail: result.errorMessage, stderr: result.stderr,
+      cwdLength: cwd.length, elapsedMs: Math.round(performance.now() - started)
+    })).toEqual({ status: 0, settled: true });
+    expect(await readFile(path.join(cwd, 'effect.txt'), 'utf8')).toBe('exact owned effect\n');
+    expect(path.toNamespacedPath(result.stdout.trim())).toBe(path.toNamespacedPath(cwd));
+  }, 90_000);
+
+  it.each([259, 320])('refuses a %i-code-unit cwd before any controller or target dispatch', async (length) => {
+    const { cwd } = await nativeCwd(length);
+    const spawnController = vi.fn(() => { throw new Error('Over-limit cwd must not launch a controller.'); });
+    for (const target of [cwd, path.toNamespacedPath(cwd)]) {
       const result = await runWindowsJobCommand({
         executable: process.execPath,
-        args: ['-e', "require('node:fs').writeFileSync(process.argv[1], 'exact owned effect\\n'); console.log(process.cwd());", `${kind}.txt`]
-      }, { cwd: target, timeoutMs: 5_000, maxOutputBytes: 2048 });
-      observations.push({ kind, status: result.status, settled: result.processTreeSettled,
-        code: result.errorCode, detail: result.errorMessage, cwdLength: target.length,
-        elapsedMs: Math.round(performance.now() - started) });
-      if (result.status === 0 && result.processTreeSettled === true) {
-        expect(await readFile(path.join(cwd, `${kind}.txt`), 'utf8')).toBe('exact owned effect\n');
-        expect(path.toNamespacedPath(result.stdout.trim())).toBe(path.toNamespacedPath(cwd));
-      }
+        args: ['-e', "require('node:fs').writeFileSync('must-not-exist.txt', 'unapproved')"]
+      }, { cwd: target, timeoutMs: 5_000 }, { spawnController });
+      expect(result).toMatchObject({
+        status: null, processSpawned: false, processTreeSettled: true, timedOut: false,
+        errorCode: windowsWorkingDirectoryErrorCode, errorMessage: windowsWorkingDirectoryRemedy
+      });
     }
-    if (observations.every((result) => result.settled === true)) retainedDirs.delete(root);
-    expect(observations, JSON.stringify(observations)).toEqual([
-      expect.objectContaining({ kind: 'canonical', status: 0, settled: true }),
-      expect.objectContaining({ kind: 'internal-namespace', status: 0, settled: true })
+    expect(spawnController).not.toHaveBeenCalled();
+    expect(await readdir(cwd)).toEqual([]);
+  });
+
+  it('records native controller startup stages without extending execution deadlines', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-startup-'));
+    tempDirs.push(root);
+    let source = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    for (const [anchor, label] of [
+      ["$ErrorActionPreference = 'Stop'", 'script-entered'],
+      ['Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop', 'interop-compiled'],
+      ['$pipe.Connect(30000)', 'pipe-connected'],
+      ['# Read the spawn request from the parent', 'ready-sent'],
+      ['# Acknowledge admission success', 'root-started']
+    ]) {
+      expect(source.split(anchor)).toHaveLength(2);
+      source = source.replace(anchor, `${anchor}\n[Console]::Error.WriteLine('liftoff-startup:${label}')`);
+    }
+    const assetPath = path.join(root, 'instrumented-controller.ps1');
+    await writeFile(assetPath, source);
+    const stages: Array<{ stage: string; elapsedMs: number }> = [];
+    const start = performance.now();
+    retainedDirs.add(root);
+    const result = await runWindowsJobCommand({
+      executable: process.execPath, args: ['-e', "console.log('native-startup-probe')"]
+    }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000, maxOutputBytes: 2048 }, {
+      assetPath, expectedDigest: createHash('sha256').update(source).digest('hex'),
+      spawnController: (executable, args, options) => {
+        const child = spawn(executable, args, options);
+        let pending = '';
+        child.stderr?.on('data', (chunk: Buffer) => {
+          pending += chunk.toString('utf8');
+          const lines = pending.split(/\r?\n/u);
+          pending = lines.pop()!;
+          for (const line of lines) {
+            const match = /^liftoff-startup:([a-z-]+)$/u.exec(line);
+            if (match) stages.push({ stage: match[1]!, elapsedMs: Math.round(performance.now() - start) });
+          }
+        });
+        return child;
+      }
+    });
+    if (result.processTreeSettled === true) retainedDirs.delete(root);
+    console.info('Native controller startup stages (instrumented diagnostic, not qualification):', JSON.stringify(stages));
+    expect(result.status, JSON.stringify({ code: result.errorCode, detail: result.errorMessage, stderr: result.stderr, stages })).toBe(0);
+    expect(result.processTreeSettled).toBe(true);
+    expect(result.stdout.trim()).toBe('native-startup-probe');
+    expect(stages.map((entry) => entry.stage)).toEqual([
+      'script-entered', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
     ]);
   }, 90_000);
 });
@@ -638,6 +722,17 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
     });
     expect(prepPolicyFailure?.kind).toBe('execution-failed');
     expect(prepPolicyFailure?.message).toContain('Windows PowerShell execution policy');
+    const cwdFailure = {
+      command: { executable: 'node.exe', args: [] }, displayCommand: '',
+      status: null, signal: null, stdout: '', stderr: 'PRIVATE_DIAGNOSTIC',
+      timedOut: false, processSpawned: false, processTreeSettled: true,
+      errorCode: windowsWorkingDirectoryErrorCode, errorMessage: 'PRIVATE_PATH'
+    };
+    expect(applicationCommandFailure(dummyCommand, cwdFailure)).toEqual({
+      kind: 'execution-failed', message: windowsWorkingDirectoryRemedy, cleanupUnsafe: false
+    });
+    expect(applicationPreparationFailure(dummyPrep, dummyCommand, cwdFailure))
+      .toEqual(applicationCommandFailure(dummyCommand, cwdFailure));
   });
 
   it('resolves npm to node.exe and npm-cli.js within target environment PATH without launching shims', async () => {

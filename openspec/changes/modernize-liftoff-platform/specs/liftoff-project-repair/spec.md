@@ -81,3 +81,18 @@ Every advertised repair verification/preparation host SHALL establish process-tr
 - **WHEN** a Windows host cannot admit the packaged controller under supported execution-policy conditions
 - **THEN** repair reports the actual prerequisite before protected effects
 - **AND** it does not change policy, add bypass flags or claim an unavailable sandbox
+
+#### Scenario: A Windows execution directory exceeds the native process limit
+- **WHEN** the resolved execution cwd exceeds the Win32 process-creation length bound including the required trailing separator and terminator
+- **THEN** execution reports an explicit unsupported-path prerequisite before dispatching the controller or target command
+- **AND** it does not substitute another cwd, use a namespace prefix or path alias as a bypass, issue successful verification, or extend execution deadlines
+
+#### Scenario: A Windows execution directory fits the native process limit
+- **WHEN** the resolved execution cwd is within the supported length bound and contains spaces or shell metacharacters
+- **THEN** qualification verifies actual execution and effects in that exact literal directory under the original startup, execution and settlement deadlines
+- **AND** a separate over-limit refusal case remains in the native coverage rather than being hidden by shorter positive-test fixtures
+
+#### Scenario: Shorter user-state storage is selected for new work
+- **WHEN** an operator explicitly selects a supported shorter user-state storage location to satisfy the Windows execution prerequisite
+- **THEN** new work binds its actual storage and execution context through the existing admission and approval contracts
+- **AND** the original workspace layout, records and storage remain unchanged for their registered recovery, with no automatic move, record rewrite, cleanup authority or approval reuse

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -44,13 +44,12 @@ async function tree(root: string): Promise<Record<string, string>> {
 }
 
 async function fixture() {
-  const directory = path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
+  const directory = await mkdtemp(path.resolve('.repair-workspaces-'));
   roots.push(directory);
   const repository = path.join(directory, 'repository');
   const project = path.join(repository, 'Project with spaces');
   const staging = path.join(directory, 'patch staging');
   const home = path.join(directory, 'home');
-  await mkdir(directory);
   await Promise.all([mkdir(path.join(repository, '.git'), { recursive: true }),
     mkdir(project, { recursive: true }), mkdir(staging), mkdir(home)]);
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{invalid manifest: this service must not read it}\n');
@@ -143,6 +142,7 @@ describe('private repair workspace registration', () => {
           args: ['-e', "require('node:fs').writeFileSync('effect.txt', 'approved private effect\\n')"]
         }, {
           cwd: handle.roles.project, timeoutMs: 5_000, maxOutputBytes: 1024,
+          env: { SystemRoot: process.env.SystemRoot },
           ensureProcessTreeSettled: true
         });
         if (commandResult.processTreeSettled !== true) retained.add(f.directory);

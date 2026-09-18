@@ -30,6 +30,7 @@ coverage/
 /tests/.liftoff-mutation-*.lock
 /tests/fixtures/released-baseline/corpus-v1/
 /.reviewed-update-fixture-*/
+/.repair-workspaces-*/
 
 # Logs
 logs/

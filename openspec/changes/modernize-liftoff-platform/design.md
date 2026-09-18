@@ -88,6 +88,26 @@ The coordinated build matrix covers macOS and Windows x64/arm64 and Linux x64/ar
 
 Bundle the Windows process-controller asset as well as templates, locks, policy, skill sources and licenses. The controller still requires its documented supported Windows host conditions; bundling Liftoff does not bypass enterprise execution policy.
 
+Preserve the existing private-workspace layout and recovery identities. Native
+diagnostic run `35340320575` confirmed `CreateProcessW` error 267 for a
+333-character cwd and its extended-length namespace form; Microsoft documents
+that a cwd longer than `MAX_PATH` can prevent process creation. Admit the
+resolved Windows execution cwd against the Win32 length bound, including its
+required trailing separator and terminator, before controller dispatch. Report
+an explicit unsupported-path prerequisite instead of starting a controller,
+issuing success, or attempting a different directory.
+
+For new work, guidance may recommend explicitly selecting a supported shorter
+user-state storage location. Do not silently relocate storage, shorten recorded
+identities, substitute junctions or short-name aliases, move existing records,
+or reuse approval bound to the old location. Existing workspace records and
+their original storage remain available only through their registered recovery
+contracts; this refinement does not introduce a workspace schema migration.
+Qualification must cover supported-length literal paths and over-limit refusal
+without changing production startup, execution, or settlement deadlines. The
+separate observed startup delays and short-path child failures remain open
+investigations, not consequences proven to share this path-length cause.
+
 **Alternatives:** Bun compilation remains a possible packaging backend only after equivalent runtime, asset and subprocess qualification and a reviewed design amendment. Node 24 SEA is not the initial choice because its entrypoint/asset constraints are not transparent packaging of the existing ESM application.
 
 ### 5. Native installation has one authoritative update owner

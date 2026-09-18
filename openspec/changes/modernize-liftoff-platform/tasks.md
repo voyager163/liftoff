@@ -47,7 +47,7 @@ execution evidence remains separate and unperformed.
 
 - [ ] 3.1 Reproduce the 0.12.3 Windows application-verification timeouts with recorded host, controller and tool conditions; verify the investigation distinguishes controller startup, command execution and settlement deadlines.
 - [ ] 3.2 Diagnose and correct Windows npm/tool identity and environment-alias handling using actual supported executables; verify positive, incompatible-version, changed-file and malicious-shim cases without relaxing identity admission.
-- [ ] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; verify real native startup and bounded pre-execution failures under stock supported PowerShell/.NET conditions.
+- [ ] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; preserve the existing workspace layout and recovery records, admit the resolved Windows cwd against the Win32 length bound before controller dispatch, and document explicit shorter storage selection for new work without relocation or approval reuse; verify real native startup, supported-length literal paths and bounded over-limit/pre-execution failures under stock supported PowerShell/.NET conditions without extending production deadlines.
 - [ ] 3.4 Qualify actual Win32 Job Object assignment, root exit, descendant accounting and cancellation; verify uncertain settlement never issues success or cleans a potentially active workspace.
 - [ ] 3.5 Qualify restricted-host, AppLocker/WDAC, corrupted-asset and unsupported-controller failures; verify no policy bypass, undeclared helper download or fallback kill of unrelated processes occurs.
 - [ ] 3.6 Preserve POSIX owned-group settlement and private workspace recovery during the Windows correction; verify equivalent macOS/Linux success, timeout, interrupted-output and uncertain-owner cases.
@@ -66,6 +66,17 @@ Renderer regressions now cover native paths independently of the inspecting
 host, and repair test cleanup uses exact bigint filesystem identities instead
 of rounded Windows inode numbers. These corrections do not close native
 qualification tasks or authorize cleanup after uncertain process settlement.
+
+Diagnostic run `35339878937` passed the preview regressions but still hit native
+controller test deadlines. Follow-up `35340320575` kept the production deadlines
+unchanged and allowed the newly added paired diagnostic to report both attempts:
+333-character canonical and 337-character namespace cwd forms each returned
+`CreateProcessW` error 267. Shorter cwd attempts instead exited 134 with settled
+process trees, and total controller attempts took approximately 23-26 seconds.
+The short-path child failure and startup cost therefore require separate
+diagnosis. The approved refinement is explicit over-limit admission and shorter
+storage guidance, not a new workspace format or a claim of native success.
+Tasks 3.1-3.8 remain open.
 
 ## 4. Six-engine module boundaries
 

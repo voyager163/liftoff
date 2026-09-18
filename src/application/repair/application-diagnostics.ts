@@ -1,4 +1,7 @@
 import type { CommandResult } from '../../process-runner.js';
+import {
+  windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryRemedy
+} from '../../domain/execution/windows-working-directory.js';
 import { applicationBounds, type ApplicationVerificationCommand } from './application-types.js';
 
 export interface ApplicationCommandFailure {
@@ -72,6 +75,9 @@ export function applicationCommandFailure(
   if (typeof result.stdout !== 'string' || typeof result.stderr !== 'string') return executionFailure();
   if (result.status === 0 && !result.signal && !result.errorCode && !result.errorMessage) return null;
   if (result.errorCode === 'ENOENT') return missingExecutable();
+  if (result.errorCode === windowsWorkingDirectoryErrorCode) {
+    return failure('execution-failed', windowsWorkingDirectoryRemedy);
+  }
   if (result.errorCode === 'RESTRICTED_EXECUTION_POLICY') {
     return failure('execution-failed',
       'Windows PowerShell execution policy (Restricted or AllSigned) prevents running the controller script. Adjust execution policy (e.g. Set-ExecutionPolicy RemoteSigned -Scope CurrentUser) to permit script execution; Liftoff does not bypass execution policies.');

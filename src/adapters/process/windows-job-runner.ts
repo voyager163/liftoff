@@ -8,6 +8,9 @@ import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
+import {
+  windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryFits, windowsWorkingDirectoryRemedy
+} from '../../domain/execution/windows-working-directory.js';
 import { resolvePackageFile } from '../packaged-assets/package-root.js';
 import {
   defaultWindowsJobControllerId,
@@ -224,6 +227,15 @@ export async function runWindowsJobCommand(
   const displayCommand = [command.executable, ...command.args].join(' ');
   const timeoutMs = options.timeoutMs ?? 120_000;
   const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
+  const effectiveCwd = path.resolve(options.cwd ?? process.cwd());
+
+  if (process.platform === 'win32' && !windowsWorkingDirectoryFits(effectiveCwd)) {
+    return {
+      command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+      processTreeSettled: true, processSpawned: false,
+      errorCode: windowsWorkingDirectoryErrorCode, errorMessage: windowsWorkingDirectoryRemedy
+    };
+  }
 
   if (options.signal?.aborted) {
     return {
@@ -329,7 +341,6 @@ export async function runWindowsJobCommand(
   const session = new WindowsJobExecutionSession();
   session.onControllerReady(defaultWindowsJobControllerId);
 
-  const effectiveCwd = options.cwd ?? process.cwd();
   const resolvedTarget = resolveTargetExecutableCommand(command, options.env, effectiveCwd);
   if (!resolvedTarget) {
     return {

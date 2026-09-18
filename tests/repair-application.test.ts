@@ -696,6 +696,11 @@ describe('bounded application inventory and executable staged patch', () => {
         remedy: 'permission was denied'
       },
       {
+        name: 'Windows cwd length admission', executable: 'node', kind: 'execution-failed',
+        output: { status: null, errorCode: 'WINDOWS_CWD_TOO_LONG', errorMessage: 'PRIVATE_WORKSPACE_PATH' },
+        remedy: 'explicitly select a shorter user-state storage location'
+      },
+      {
         name: 'Node ESM package', executable: 'node', kind: 'missing-dependencies',
         output: { stderr: "Error [ERR_MODULE_NOT_FOUND]: Cannot find package 'PRIVATE_PACKAGE_NAME' imported from PRIVATE_PATH" },
         remedy: 'npm ci/install are currently rejected'

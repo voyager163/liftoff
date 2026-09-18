@@ -98,6 +98,26 @@ preserves the workspace and exact review inputs instead of deleting potentially
 active material. Use the CLI's same-project recovery action; a path prefix, PID,
 age, generic Yes, or successful root-process exit is not cleanup authority.
 
+### Windows working-directory limit
+
+Windows process creation requires the resolved execution directory to fit
+`MAX_PATH`: 260 UTF-16 code units including its trailing separator and null
+terminator (normally at most 258 code units for a path without the trailing
+separator). This applies to the complete private candidate directory plus the
+declared component/check subdirectory, not just the original project path.
+Liftoff rejects an over-limit cwd before launching its controller or target,
+with `WINDOWS_CWD_TOO_LONG`; a namespace prefix does not bypass this admission.
+The failure is not successful verification or permission for file application.
+
+For new work, explicitly select a shorter absolute `LOCALAPPDATA` location for
+Liftoff's user-state storage in the invoking terminal, then request a fresh
+review. Existing records remain in their original storage and must use that
+original setting for registered inspection and recovery. Do not move or delete
+them, use junctions or short-name aliases, or treat the new storage location as
+permission to bypass unfinished work. Liftoff does not change the workspace
+format, relocate state automatically, reuse old approval, change Windows
+execution policy, or increase command deadlines.
+
 ## What inventory means
 
 The public inventory has schema 1 and kind `liftoff-application-inventory`.
