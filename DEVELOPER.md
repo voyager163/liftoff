@@ -432,6 +432,25 @@ npm --prefix services/telemetry-ingest run test:coverage -- --maxWorkers=2
 npm run gate:coverage
 ```
 
+Source CI divides the complete root suite into three built-in Vitest 5 shards
+on every OS. Each Linux shard enables V8 and writes a blob report containing
+its actual coverage map, including unimported production sources and both
+`activation-v3-reader` and `activation-v4-policy7-reader`. The coverage job
+waits for all nine source-test shards to succeed, downloads exactly the three
+Linux blobs from the current run/source SHA/attempt, rejects missing or empty
+reports, and uses the pinned runner's own merge operation:
+
+```bash
+npx vitest run --merge-reports=source-test-blobs --coverage --reporter=default
+```
+
+Vitest merges file-level measurements, not percentages or summary totals.
+Telemetry is measured independently afterward, before the unchanged
+`npm run gate:coverage` command. Do not combine its denominator with the CLI's.
+For a workflow rerun, rerun all jobs: successful blobs from an earlier attempt
+are deliberately not accepted. The retained `source-coverage` artifact is
+source-only evidence, not native, live-provider or publication qualification.
+
 The standalone gate reads only the two canonical coverage-summary paths through
 bounded, identity-checked reads. Its `ok` covers **TypeScript/JavaScript
 measurements only**, not native helpers or release readiness. Missing reports,

@@ -2,6 +2,12 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_windows_only:
+        description: Run only Windows source diagnostics (not qualification)
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -11,11 +17,13 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Source integrations (${{ matrix.os }})
+    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
@@ -129,8 +137,8 @@ jobs:
           LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
         run: npx vitest run tests/repair-preparation-native.test.ts tests/repair-framework.test.ts
 
-      - name: Run package check
-        run: npm run check
+      - name: Check supported stack
+        run: npm run check:supported-stack
 
       - name: Run telemetry gateway check
         run: npm run check --prefix services/telemetry-ingest
@@ -142,8 +150,96 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run verify:generated-containers
 
+  test-shards:
+    name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
+    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2, 3]
+        include:
+          - os: ubuntu-latest
+            coverage: --coverage --maxWorkers=2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Harden tool permissions
+        if: runner.os == 'Linux'
+        run: |
+          sudo chmod -R o-w /opt/hostedtoolcache 2>/dev/null || true
+          chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
+
+      - name: Build package
+        run: npm run build
+
+      # Shard the entire discovered inventory, including both Windows projects.
+      # Linux's full-suite shards also measure coverage; no duplicate full run.
+      - name: Run complete source test shard
+        run: >-
+          npm test -- --shard=${{ matrix.shard }}/3 ${{ matrix.coverage }}
+          --reporter=default --reporter=blob
+          --outputFile.blob=source-test-blobs/shard-${{ matrix.shard }}.json
+
+      - name: Require CLI shard measurements
+        if: runner.os == 'Linux'
+        run: >-
+          node --input-type=module -e
+          "import { statSync } from 'node:fs';
+          for (const file of ['coverage/coverage-final.json', 'coverage/coverage-summary.json'])
+          { if (!statSync(file).size) throw new Error('Missing CLI shard measurement: ' + file); }"
+
+      - name: Retain successful same-source test shard
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-tests-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: source-test-blobs/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
   telemetry-infrastructure:
     name: Telemetry OpenTofu
+    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -189,6 +285,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
+    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -221,7 +318,9 @@ jobs:
         run: npm run verify:standard-node-templates
 
   coverage-qualification:
-    name: Coverage and Publication Gate Qualification
+    name: Source coverage gate (not native qualification)
+    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    needs: test-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -238,23 +337,6 @@ jobs:
             package-lock.json
             services/telemetry-ingest/package-lock.json
 
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
-        with:
-          python-version: "3.14.7"
-
-      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
-        with:
-          go-version: "1.27.0"
-          cache-dependency-path: assets/supported-stack.json
-
-      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
-        with:
-          tofu_version: 1.12.6
-          tofu_wrapper: false
-
-      - name: Install source qualification tools
-        run: python -m pip install uv==0.12.7 checkov==3.2.495
-
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
 
@@ -264,14 +346,36 @@ jobs:
       - name: Install telemetry gateway dependencies
         run: npm ci --prefix services/telemetry-ingest
 
-      - name: Run gate test suites
-        run: npx vitest run tests/coverage-gate.test.ts tests/release-gate.test.ts
+      # Exact names and the default current-run download scope reject missing,
+      # previous-attempt, or different-source artifacts before the strict gate.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-1
+          path: source-test-blobs
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-2
+          path: source-test-blobs
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-3
+          path: source-test-blobs
+
+      - name: Require every CLI shard report
+        run: >-
+          node --input-type=module -e
+          "import assert from 'node:assert/strict'; import { readdirSync, statSync } from 'node:fs';
+          assert.deepEqual(readdirSync('source-test-blobs').sort(), ['shard-1.json', 'shard-2.json', 'shard-3.json']);
+          for (const file of readdirSync('source-test-blobs'))
+          { assert.ok(statSync('source-test-blobs/' + file).size, 'Empty CLI shard report: ' + file); }"
+
+      - name: Merge complete CLI coverage with Vitest
+        run: npx vitest run --merge-reports=source-test-blobs --coverage --reporter=default
 
       - name: Run telemetry service coverage
         run: npm run test:coverage --prefix services/telemetry-ingest -- --maxWorkers=2
-
-      - name: Run complete CLI coverage
-        run: npm run test:coverage -- --maxWorkers=2
 
       - name: Enforce independent raw-count coverage
         run: npm run gate:coverage
@@ -286,5 +390,48 @@ jobs:
             coverage/coverage-final.json
             services/telemetry-ingest/coverage/coverage-summary.json
             services/telemetry-ingest/coverage/coverage-final.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-diagnostics:
+    name: Windows source diagnostics (not qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run isolated Windows source diagnostics (not qualification)
+        run: >-
+          npx vitest run
+          tests/windows-job-runner.test.ts tests/windows-job-protocol.test.ts
+          tests/windows-execution-qualification.test.ts tests/repair-workspaces.test.ts
+          tests/update-preview.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/windows-source-tests.json
+
+      - name: Retain diagnostic source report (not qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-source-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
+          path: diagnostics/windows-source-tests.json
           if-no-files-found: error
           retention-days: 7

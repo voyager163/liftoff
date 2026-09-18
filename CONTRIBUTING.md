@@ -40,6 +40,30 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
+CI runs three full-inventory Vitest shards on **each** of Linux, macOS and
+Windows, with at most three shard jobs running concurrently. Sharding happens
+before Windows' ordered-project scheduling, so the migration-inspection file
+still runs exactly once and after the other files in its shard. No file or
+test-name filters narrow these full-suite jobs.
+
+Native framework/preparation and backend-disabled OpenTofu checks, the explicit
+Windows boundary lane, per-host launcher Go coverage, telemetry checks, package
+smoke and Linux generated containers run in separate source-integration jobs.
+The two Node-template lanes and telemetry OpenTofu/container lane remain
+separate. This is 16 jobs in total, not a longer timeout or reduced test scope.
+Linux full-suite shards also collect V8 coverage rather than repeating the
+entire Linux suite in another job. The [coverage gate](DEVELOPER.md#focused-commands)
+merges their actual measurements before checking the two packages independently.
+
+For bounded Windows failure investigation, a manual CI dispatch can explicitly
+set `diagnostic_windows_only` to `true`. It runs only the Windows job-runner,
+protocol, execution-qualification, repair-workspaces and update-preview suites,
+with one worker and a 20-minute job limit. Verbose logs and a separately named
+JSON artifact retain failures. This diagnostic-only dispatch **does not qualify
+the source or release**, even if it is green: the complete matrix and coverage
+gate are intentionally absent. The input defaults to `false`; default manual,
+push and pull-request runs always retain the complete source workflow.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash
