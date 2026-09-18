@@ -2,6 +2,58 @@
 
 These candidate `0.13.0` implementations are **UNQUALIFIED**. Fixture tests do not authorize Azure/GitHub effects, prove a supported live provider/host combination, or authorize publication. Shared governance planning, approval, phase dispatch and lifecycle integration remain owned by the activation coordinator. No additional CLI command or blanket approval is introduced.
 
+## Native host contracts under implementation
+
+The existing private-state implementation is macOS-specific. Linux and Windows
+support is required work, not enabled by changing a platform label or supplying
+a fixture. The original macOS protocol tuple and digest remain unchanged.
+
+The source-audited lock inventory is in
+`src/domain/repair/native-state-protocols.ts`. It is not native execution or
+qualification evidence:
+
+- OpenTofu 1.12.6 uses POSIX process-associated `F_SETLK`/`F_WRLCK` locking from
+  offset zero through EOF/future growth on the registered Unix architectures.
+  Closing any descriptor for the same inode in the lock-owning process releases
+  those locks; `flock` and OFD lifetime semantics are not equivalent.
+- Its Windows implementation uses `LockFileEx` flags `3`, offset zero,
+  `lengthLow=0`, `lengthHigh=0xffffffff`, and releases by closing the locking
+  handle. Reads/writes must use that handle; a second handle or spawned child
+  does not inherit access to the locked region.
+- Both implementations mutate the existing state object in place. The
+  `.lock.info` file is metadata, not lock authority. The pinned state manager
+  logs deferred sync failures instead of propagating them, so a zero exit alone
+  is not durable-write proof. Partial writes and independent backups need their
+  own protected readback and recovery.
+
+These facts bind the immutable [Unix lock source](https://github.com/opentofu/opentofu/blob/b4305e5a5dd2fb79a27897ae30784a181d3a26cb/internal/flock/filesystem_lock_unix.go),
+[Windows lock source](https://github.com/opentofu/opentofu/blob/b4305e5a5dd2fb79a27897ae30784a181d3a26cb/internal/flock/filesystem_lock_windows.go),
+and [state manager](https://github.com/opentofu/opentofu/blob/b4305e5a5dd2fb79a27897ae30784a181d3a26cb/internal/states/statemgr/filesystem.go).
+
+The storage/key audit leaves explicit implementation gates:
+
+| Host | Audited candidate | Boundary still required |
+| --- | --- | --- |
+| Linux | Existing ext4/fscrypt-v2 policy/key-status observation through retained descriptors and anchored path resolution | This proves per-object coverage, not whole-volume encryption. A distinct coverage contract, bounded local backing topology and durable, protected external-key provider are still required. |
+| Windows | Handle-bound local volume identity, current BitLocker status methods, and read-only lookup of an existing Generic Credential | BitLocker methods require an already authorized administrator context and packet-private WMI. `CredReadW` returns protected bytes even when only a descriptor is wanted; it cannot run as unapproved metadata-only planning. |
+
+Generic [Secret Service](https://specifications.freedesktop.org/secret-service/latest/ch10.html)
+availability does not prove backend encryption or access controls, and ordinary
+kernel keyrings do not supply reboot-durable custody. They are not admitted as
+a plaintext or ephemeral fallback. See the [fscrypt API and protection limits](https://www.kernel.org/doc/html/latest/filesystems/fscrypt.html).
+
+For Windows, use the documented [BitLocker provider security requirements](https://learn.microsoft.com/en-us/windows/win32/secprov/win32-encryptablevolume#security-considerations)
+and [CredReadW semantics](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw).
+`CRED_PERSIST_LOCAL_MACHINE` means the same user's later logons on that machine,
+not a machine-wide grant. Target names are mutable lookup identities, not
+immutable key versions. No vault mutation, unlocking, elevation or real
+credential access is authorized by this source audit.
+
+The existing Windows controller's ordinary temporary stdout/stderr files are
+not private-state transport. Protected pipes/handles, bounded I/O, key snapshots,
+actual native contention/cancellation and separately authorized host fixtures
+must be implemented and qualified before either new writer is enabled.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

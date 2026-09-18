@@ -266,6 +266,19 @@ regressions pin every original field and the unchanged existing behavior.
 This is preservation groundwork for 11.17, not Linux/Windows registration or
 permission to enable either writer before its native contracts are audited.
 
+The bounded source audit has now registered distinct POSIX and Windows lock
+facts, including Windows lock blob
+`676e1318c25b9d32aa50e86dc8edfcb204bab3f4`, exact byte-range/handle lifetime and
+the pinned state manager's non-propagated sync errors. This is explicitly
+source-only evidence. Task 11.17 remains open: Linux fscrypt-v2 is a per-object
+storage candidate, not a whole-volume assertion; generic Secret Service does
+not prove durable protected key custody. Windows BitLocker observation requires
+authorized administrator/packet-private WMI access, and Credential Manager
+description itself reads protected bytes. These remaining contracts must be
+resolved without plaintext fallback, inferred authorization or mocked native
+qualification. No new platform writer, key access or privileged host effect
+has been enabled.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;
