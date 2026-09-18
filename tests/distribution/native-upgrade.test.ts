@@ -12,11 +12,13 @@ import { HomebrewAdapter } from '../../src/adapters/distribution/homebrew-adapte
 import { validateNativeBuildInfo } from '../../src/adapters/packaged-assets/build-info.js';
 import { CaptureStream } from '../helpers.js';
 import { readTree, sha, signedFixture, type SignedFixture, type SignedFixtureOptions } from './native-fixture.js';
-import { homebrewFixture } from './manager-fixture.js';
+import { homebrewFixture, signedHomebrewFixture } from './manager-fixture.js';
 
 const fixtures: SignedFixture[] = [];
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fixture.cleanup(); });
-async function fixture(name: string, options?: SignedFixtureOptions) { const value = await signedFixture(name, options); fixtures.push(value); return value; }
+async function fixture(name: string, options?: SignedFixtureOptions, create = signedFixture) {
+  const value = await create(name, options); fixtures.push(value); return value;
+}
 function request(mode: 'check' | 'apply') {
   return { mode, currentVersion: '0.13.0', stdout: new CaptureStream(), stderr: new CaptureStream(), json: true };
 }
@@ -36,7 +38,7 @@ async function newer(value: SignedFixture, entrypoint: string) {
   value.trust.stableVersion = '0.14.0';
   const admission = new NativeAdmission({
     releaseClient: new NativeReleaseClient({ trust: value.trust, source: value.source }),
-    runner: value.runner, env: value.env, cwd: value.project
+    runner: value.runner, env: value.env, cwd: value.project, host: value.admission.host
   });
   const detector = new InstallationDetector({
     admission, runner: value.runner, env: value.env, cwd: value.project, entrypoint,
@@ -235,7 +237,7 @@ describe('dedicated owner-preserving native upgrade', () => {
           await writeFile(path.join(bundleRoot, 'dist', 'cli.js'), 'process.stdout.write("Liftoff 9.9.9\\n");\n');
         }
       }
-    });
+    }, signedHomebrewFixture);
     const manager = await homebrewFixture(value);
     const plan = await planInstallationMigration({
       toOwner: 'homebrew-cask', detector: manager.detector, receiptStore: value.store, runner: value.runner,
@@ -269,7 +271,7 @@ describe('dedicated owner-preserving native upgrade', () => {
           }]
         }
       }),
-      runner: value.runner, env: value.env, cwd: value.project
+      runner: value.runner, env: value.env, cwd: value.project, host: value.admission.host
     });
     const adapter = new HomebrewAdapter({
       admission, runner: value.runner, env: value.env, cwd: value.project,

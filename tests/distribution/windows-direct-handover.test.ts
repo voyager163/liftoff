@@ -97,8 +97,8 @@ describe('Windows direct launcher byte and ABI contracts (portable source eviden
   it.each(['x64', 'arm64'] as const)('preserves all selected %s PE bytes, including bytes beyond prior script limits', (arch) => {
     const image = peBytes(arch);
     const copy = windowsDirectLauncherBytes(image, provenance(image, arch));
-    expect(copy).toEqual(image);
-    expect(copy).not.toBe(image);
+    expect(copy.equals(image)).toBe(true);
+    expect(copy === image).toBe(false);
     expect(copy.length).toBeGreaterThan(2 * 1024 * 1024);
     copy[copy.length - 1] ^= 1;
     expect(() => windowsDirectLauncherBytes(copy, provenance(image, arch))).toThrow(/every exact signed/);
@@ -161,7 +161,8 @@ describe('Windows direct launcher byte and ABI contracts (portable source eviden
   it('captures complete large PE snapshots and rejects linked files without reading the foreign target', async () => {
     const value = await transactionFixture();
     const captured = await captureNativeLauncher(value.transactionRoot, value.launcherParts);
-    expect(captured.snapshot.content).toEqual(value.image);
+    expect(Buffer.isBuffer(captured.snapshot.content)).toBe(true);
+    expect((captured.snapshot.content as Buffer).equals(value.image)).toBe(true);
     expect(captured.file?.sha256).toBe(sha(value.image));
     expect(await observeLauncher(value.launcher)).toMatchObject({ state: 'file', file: { sha256: sha(value.image) } });
     await symlink(value.launcher, path.join(value.transactionRoot, 'bin', 'other.exe'));
@@ -180,7 +181,7 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
     expect(outcome).toMatchObject({ committed: true, status: 'committed', cleanupFailures: [], rollbackFailures: [] });
     expect(stages).toEqual([0]);
     expect(await readFile(value.receipt, 'utf8')).toBe('selected receipt source fixture\n');
-    expect(await readFile(value.launcher)).toEqual(value.image);
+    expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
     const after = await lstat(value.launcher);
     expect({ device: after.dev, inode: after.ino }).toEqual({ device: before.dev, inode: before.ino });
     expect(await readFile(value.oldPayload, 'utf8')).toBe('exact old payload source fixture\n');
@@ -195,7 +196,7 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
     });
     expect(outcome).toMatchObject({ committed: true, cleanupFailures: [] });
     expect(stages).toEqual([0, 1]);
-    expect(await readFile(value.launcher)).toEqual(value.image);
+    expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
   });
 
   it('a different-image lock never succeeds; rollback preserves the usable owner and a later exact retry actually replaces all bytes', async () => {
@@ -208,10 +209,10 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
       }
     })).rejects.toThrow(/EPERM.*rolled back/);
     expect(await readFile(value.receipt, 'utf8')).toBe('original receipt source fixture\n');
-    expect(await readFile(value.launcher)).toEqual(value.image);
+    expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
     const outcome = await value.apply(next);
     expect(outcome).toMatchObject({ committed: true, cleanupFailures: [], rollbackFailures: [] });
-    expect(await readFile(value.launcher)).toEqual(next);
+    expect((await readFile(value.launcher)).equals(next)).toBe(true);
     expect(await readFile(value.oldPayload, 'utf8')).toBe('exact old payload source fixture\n');
   });
 
@@ -241,7 +242,7 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
       transactionKind: 'installation', approvalStore: value.approvalStore,
       onCommittedReadback: async () => {
         readbacks += 1;
-        expect(await readFile(value.launcher)).toEqual(value.image);
+        expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
         expect(await readFile(value.receipt, 'utf8')).toBe('selected receipt source fixture\n');
       }
     });
@@ -263,7 +264,7 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
     expect(readback).toBe(false);
     expect(recovered.cleanupFailures.length).toBeGreaterThan(0);
     expect(await readFile(value.receipt, 'utf8')).toBe('newer foreign receipt content\n');
-    expect(await readFile(value.launcher)).toEqual(value.image);
+    expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
     expect(await readFile(value.oldPayload, 'utf8')).toBe('exact old payload source fixture\n');
   });
 
@@ -286,7 +287,7 @@ describe('sealed Windows-shaped handover transaction source cases, not Windows l
     })).rejects.toThrow(/Recovery blocked/);
     const inspection = await inspectReviewedUpdateTransaction(value.transactionRoot, { transactionKind: 'installation', approvalStore });
     expect(inspection).toMatchObject({ status: 'blocked', committed: false });
-    expect(await readFile(value.launcher)).toEqual(value.image);
+    expect((await readFile(value.launcher)).equals(value.image)).toBe(true);
     expect(await readFile(value.oldPayload, 'utf8')).toBe('exact old payload source fixture\n');
     authorityAvailable = true;
     const recovered = await recoverReviewedUpdateTransaction(value.transactionRoot, { transactionKind: 'installation', approvalStore });

@@ -7,15 +7,15 @@ import { WinGetAdapter } from '../../src/adapters/distribution/winget-adapter.js
 import { NpmInstallationAdapter } from '../../src/adapters/distribution/npm-installation.js';
 import { readTree, sha, signedFixture, type SignedFixture } from './native-fixture.js';
 import path from 'node:path';
-import { homebrewFixture } from './manager-fixture.js';
+import { homebrewFixture, signedHomebrewFixture } from './manager-fixture.js';
 
 const fixtures: SignedFixture[] = [];
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fixture.cleanup(); });
-async function fixture(name: string) { const value = await signedFixture(name); fixtures.push(value); return value; }
+async function fixture(name: string, create = signedFixture) { const value = await create(name); fixtures.push(value); return value; }
 
 describe('exact registered native manager observations', () => {
   it('uses actual prefix, publisher-owned cask definition, installed records, and explicit plus PATH readback', async () => {
-    const value = await fixture('brew-cutover');
+    const value = await fixture('brew-cutover', signedHomebrewFixture);
     const manager = await homebrewFixture(value);
     const plan = await planInstallationMigration({
       toOwner: 'homebrew-cask', detector: manager.detector, receiptStore: value.store, runner: value.runner,
@@ -35,7 +35,7 @@ describe('exact registered native manager observations', () => {
   });
 
   it('rejects bare tokens, other taps, formula records, changed definitions and cask dependencies before effects', async () => {
-    const value = await fixture('brew-identity-conflicts');
+    const value = await fixture('brew-identity-conflicts', signedHomebrewFixture);
     const manager = await homebrewFixture(value);
     const candidate = await manager.admission.admitBundle(value.candidate);
     for (const patch of [
@@ -53,7 +53,7 @@ describe('exact registered native manager observations', () => {
   });
 
   it('does not report manager zero exit as successful native registration or replacement', async () => {
-    const value = await fixture('manager-false-success');
+    const value = await fixture('manager-false-success', signedHomebrewFixture);
     const manager = await homebrewFixture(value, false);
     const plan = await planInstallationMigration({
       toOwner: 'homebrew-cask', detector: manager.detector, receiptStore: value.store, runner: value.runner,

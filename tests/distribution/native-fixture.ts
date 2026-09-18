@@ -5,7 +5,7 @@ import { crc32, gzipSync } from 'node:zlib';
 import type { NativeReleaseManifest, NativeTarget, NativeTargetPayload, NativeTargetResources } from '../../src/domain/distribution/contracts.js';
 import {
   nativeTrustRootDigest, parseNativeTrustRoot,
-  type NativeArtifactProvenance, type NativeTrustRegistration
+  type NativeArtifactProvenance, type NativeHost, type NativeTrustRegistration
 } from '../../src/domain/distribution/native-trust.js';
 import { allNativeTargets, nativeTargetFloors } from '../../src/domain/distribution/contracts.js';
 import {
@@ -21,13 +21,14 @@ import { ReceiptStore } from '../../src/adapters/distribution/receipt-store.js';
 import { NodeCommandRunner, type CommandResult, type CommandRunner, type RunCommandOptions } from '../../src/process-runner.js';
 import type { ExternalCommand } from '../../src/domain/project/contracts.js';
 import { posixLauncher } from '../../scripts/distribution/assemble-native-bundle.mjs';
+import { ForeignHostRuntimeDouble } from './foreign-host-runtime-double.js';
 
 export const sha = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
 export const quote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 
 export class RecordingRunner implements CommandRunner {
   readonly calls: Array<{ command: ExternalCommand; options?: RunCommandOptions }> = [];
-  readonly runner = new NodeCommandRunner();
+  constructor(readonly runner: CommandRunner = new NodeCommandRunner()) {}
   beforeRun?: (command: ExternalCommand, options?: RunCommandOptions) => Promise<void>;
   afterRun?: (command: ExternalCommand, result: CommandResult) => Promise<CommandResult>;
   private activeCalls = 0;
@@ -82,6 +83,7 @@ export interface SignedFixture {
   manifest: NativeReleaseManifest;
   provenance: NativeArtifactProvenance;
   runner: RecordingRunner;
+  runtimeExecution: 'current-host' | 'foreign-host-test-double';
   client: NativeReleaseClient;
   admission: NativeAdmission;
   detector: InstallationDetector;
@@ -95,6 +97,8 @@ export interface SignedFixture {
 }
 
 export interface SignedFixtureOptions {
+  // Foreign targets use an explicit execution-port double, never native qualification.
+  host?: NativeHost;
   catalogSource?: 'repository';
   beforeSigning?: (bundleRoot: string, resources: Readonly<NativeTargetResources>) => Promise<void>;
 }
@@ -154,8 +158,10 @@ esac
   };
   const source = new FileArtifactSource();
   const keys = generateKeyPairSync('ed25519');
-  const host = observeNativeHost();
+  const host = options.host ?? observeNativeHost();
   const target: NativeTarget = `${host.os}-${host.arch}`;
+  const foreignRuntime = host.os !== process.platform || host.arch !== process.arch
+    ? new ForeignHostRuntimeDouble(root, target) : undefined;
   const trust: NativeTrustRegistration = {
     schemaVersion: 1, repository: 'voyager163/liftoff', stableVersion: '0.13.0',
     signers: [{ id: 'isolated-fixture-only', publicKeyPem: keys.publicKey.export({ type: 'spki', format: 'pem' }).toString() }],
@@ -168,9 +174,10 @@ esac
     const candidate = path.join(home, `unlinked ${version}`);
     await mkdir(path.join(candidate, 'runtime'), { recursive: true });
     const runtimePath = path.join(candidate, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node');
-    await copyFile(await realpath(process.execPath), runtimePath);
+    if (foreignRuntime) await writeFile(runtimePath, foreignRuntime.runtimeBytes);
+    else await copyFile(await realpath(process.execPath), runtimePath);
     await chmod(runtimePath, 0o755);
-    if (process.platform === 'darwin') {
+    if (!foreignRuntime && process.platform === 'darwin') {
       const runtimeLibraries = path.resolve(process.execPath, '..', '..', 'lib');
       for (const name of (await readdir(runtimeLibraries)).filter((entry) => /^libnode\.\d+\.dylib$/u.test(entry))) {
         const destination = path.join(candidate, 'runtime', name);
@@ -345,7 +352,7 @@ esac
     source.urls.set(publicRoot.publicationIndex.url, indexFile);
     source.urls.set(publicRoot.publicationIndex.signatureUrl, signatureFile);
   };
-  const runner = new RecordingRunner();
+  const runner = new RecordingRunner(foreignRuntime);
   const client = new NativeReleaseClient({ trust, source });
   const admission = new NativeAdmission({ releaseClient: client, runner, env, cwd: project, host });
   const store = new ReceiptStore({ env, homedir: home });
@@ -356,7 +363,9 @@ esac
   });
   return {
     root, home, project, candidate: initial.candidate, prefix, packageRoot, legacyLauncher, launcher, installRoot,
-    env, source, trust, manifest: initial.manifest, provenance: initial.provenance, runner, client, admission, detector, store,
+    env, source, trust, manifest: initial.manifest, provenance: initial.provenance, runner,
+    runtimeExecution: foreignRuntime ? 'foreign-host-test-double' : 'current-host',
+    client, admission, detector, store,
     npmAdapter, reviewNow: () => new Date('2026-09-14T00:10:00.000Z'),
     registerRelease, resignProvenance, publishIndex, cleanup: async () => {
       runner.assertSettled();

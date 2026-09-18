@@ -5,13 +5,13 @@ import { planInstallationMigration } from '../../src/application/distribution/pl
 import { executeInstallationMigration } from '../../src/application/distribution/execute-migration.js';
 import { inspectMigrationRecovery } from '../../src/application/distribution/recover-migration.js';
 import { verifyManagerReplacement } from '../../src/application/distribution/verify-manager.js';
-import { homebrewFixture } from './manager-fixture.js';
-import { readTree, sha, signedFixture, type SignedFixture } from './native-fixture.js';
+import { homebrewFixture, signedHomebrewFixture } from './manager-fixture.js';
+import { readTree, sha, type SignedFixture } from './native-fixture.js';
 
 const fixtures: SignedFixture[] = [];
 afterEach(async () => { for (const fixture of fixtures.splice(0)) await fixture.cleanup(); });
 async function fixture(name: string) {
-  const value = await signedFixture(name);
+  const value = await signedHomebrewFixture(name);
   fixtures.push(value);
   const manager = await homebrewFixture(value);
   const plan = await planInstallationMigration({
@@ -101,7 +101,7 @@ describe('manager cutover recovery with actual local launcher execution', () => 
   });
 
   it('blocks a non-PATH manager launcher conflict before legacy removal', async () => {
-    const value = await signedFixture('manager-non-path-conflict');
+    const value = await signedHomebrewFixture('manager-non-path-conflict');
     fixtures.push(value);
     const manager = await homebrewFixture(value, true, path.join(value.home, 'other manager prefix'));
     await writeFile(manager.launcherPath, 'foreign launcher\n', { mode: 0o755 });

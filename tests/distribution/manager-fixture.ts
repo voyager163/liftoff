@@ -4,7 +4,19 @@ import { NativeReleaseClient } from '../../src/adapters/distribution/native-rele
 import { NativeAdmission } from '../../src/adapters/distribution/native-admission.js';
 import { HomebrewAdapter } from '../../src/adapters/distribution/homebrew-adapter.js';
 import { InstallationDetector } from '../../src/adapters/distribution/installation-detector.js';
-import { sha, quote, writeFixtureFile, type SignedFixture } from './native-fixture.js';
+import { nativeTargetFloors } from '../../src/domain/distribution/contracts.js';
+import { sha, quote, signedFixture, writeFixtureFile, type SignedFixture, type SignedFixtureOptions } from './native-fixture.js';
+
+export function signedHomebrewFixture(name: string, options: Omit<SignedFixtureOptions, 'host'> = {}) {
+  if (process.arch !== 'x64' && process.arch !== 'arm64') throw new Error('Unsupported source-fixture architecture.');
+  return signedFixture(name, {
+    ...options,
+    host: {
+      os: 'darwin', arch: process.arch, kernelRelease: nativeTargetFloors.darwin.minimumDarwinRelease,
+      darwinRelease: nativeTargetFloors.darwin.minimumDarwinRelease, hostVersion: nativeTargetFloors.darwin.minimumHostVersion
+    }
+  });
+}
 
 export async function homebrewFixture(value: SignedFixture, installEffects = true, prefix = value.prefix) {
   const packageId = 'voyager163/liftoff/liftoff';
@@ -61,7 +73,7 @@ esac
   };
   const admission = new NativeAdmission({
     releaseClient: new NativeReleaseClient({ trust, source: value.source }),
-    runner: value.runner, env: value.env, cwd: value.project
+    runner: value.runner, env: value.env, cwd: value.project, host: value.admission.host
   });
   const adapter = new HomebrewAdapter({ admission, runner: value.runner, env: value.env, cwd: value.project, executable: tool });
   const detector = new InstallationDetector({
