@@ -259,6 +259,13 @@ Tasks 11.17-11.21 own the new native contracts, adapters and integration.
 Implementation/source-CI approval does not authorize encrypted-volume
 provisioning, ACL/policy changes, real key-store access or cloud qualification.
 
+The original native POSIX protocol tuple is now held in a pure domain module
+and re-exported through its original adapter API. Its canonical digest remains
+`fa280a11fdddfacf4d868f6d3275fd2e04630496a1dc31aba5bc75f3a81fc640`;
+regressions pin every original field and the unchanged existing behavior.
+This is preservation groundwork for 11.17, not Linux/Windows registration or
+permission to enable either writer before its native contracts are audited.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;

@@ -6,19 +6,10 @@ import {
   type NativeLocalStateTools, type StateRegisteredExecutable
 } from '../../domain/repair/stateful.js';
 import { stateAssert, stateDigest, stateObjectDigest } from '../../domain/repair/stateful-invariants.js';
+import { posixNativeStateProtocol as nativeLocalStateProtocol } from '../../domain/repair/native-state-protocols.js';
 import { OwnedPrivateStateProcessRunner, spawnOwnedStateProcess } from './owned-process.js';
 
-export const nativeLocalStateProtocol = Object.freeze({
-  version: 'opentofu-1.12.6-posix-fcntl' as const,
-  tofuVersion: '1.12.6' as const,
-  sourceCommit: 'b4305e5a5dd2fb79a27897ae30784a181d3a26cb',
-  lockSource: 'internal/flock/filesystem_lock_unix.go',
-  lockBlob: 'c396e445a0eede26b32b97068216fe3691070d9f',
-  stateSource: 'internal/states/statemgr/filesystem.go',
-  stateBlob: '3f01209ea1635c9cad5f499f4f08ce356aef9a4c',
-  lockOperation: 'F_SETLK/F_WRLCK/start=0/length=0',
-  writeOperation: 'seek/truncate/write/sync on the same open inode'
-});
+export { nativeLocalStateProtocol };
 
 export function nativeStateHostId(): string {
   return `native-host:${stateObjectDigest({ platform: process.platform, host: hostname(), uid: process.getuid?.() ?? null })}`;
