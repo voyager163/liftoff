@@ -28,7 +28,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = '0aba9a520caab631aa12235900673720d6e208b96ee546c55b02f7bc34f52e6b';
+export const windowsJobControllerAssetDigest = 'a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909';
 
 export type WindowsControllerSpawnFn = (
   executable: string,

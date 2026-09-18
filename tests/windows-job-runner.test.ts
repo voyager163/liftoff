@@ -93,12 +93,13 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     expect(await readdir(cwd)).toEqual([]);
   });
 
-  it('measures native interop lookup and compilation with explicit runtime references', async () => {
+  it('records built-in module admission and interop startup separately', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-startup-'));
     tempDirs.push(root);
     let source = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
     for (const [anchor, label] of [
       ["$ErrorActionPreference = 'Stop'", 'script-entered'],
+      ['# Define Win32 interop for Job Objects and CreateProcessW with STARTUPINFOEX', 'utility-loaded'],
       ['Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop', 'interop-compiled'],
       ['$pipe.Connect(30000)', 'pipe-connected'],
       ['# Read the spawn request from the parent', 'ready-sent'],
@@ -109,7 +110,7 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     }
     source = source.replace('Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop',
       "[void](Get-Command Add-Type -ErrorAction Stop)\n[Console]::Error.WriteLine('liftoff-startup:interop-resolved')\n" +
-      'Add-Type -TypeDefinition $win32TypeDef -ReferencedAssemblies @([object].Assembly.Location) -ErrorAction Stop');
+      'Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop');
     const assetPath = path.join(root, 'instrumented-controller.ps1');
     await writeFile(assetPath, source);
     const stages: Array<{ stage: string; elapsedMs: number }> = [];
@@ -135,17 +136,28 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
       }
     });
     if (result.processTreeSettled === true) retainedDirs.delete(root);
-    console.info('Native controller explicit-reference startup stages (instrumented diagnostic, not qualification):', JSON.stringify(stages));
+    console.info('Native controller built-in-module startup stages (instrumented diagnostic, not qualification):', JSON.stringify(stages));
     expect(result.status, JSON.stringify({ code: result.errorCode, detail: result.errorMessage, stderr: result.stderr, stages })).toBe(0);
     expect(result.processTreeSettled).toBe(true);
     expect(result.stdout.trim()).toBe('native-startup-probe');
     expect(stages.map((entry) => entry.stage)).toEqual([
-      'script-entered', 'interop-resolved', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
+      'script-entered', 'utility-loaded', 'interop-resolved', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
     ]);
   }, 90_000);
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
+  it('loads only the built-in Utility module before cmdlet use without changing execution policy', async () => {
+    const source = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    const autoload = source.indexOf("$PSModuleAutoLoadingPreference = 'None'");
+    const utility = source.indexOf("Import-Module -Name ([System.IO.Path]::Combine($PSHOME, 'Modules\\Microsoft.PowerShell.Utility\\Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop");
+    const compile = source.indexOf('Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop');
+    expect(autoload).toBeGreaterThan(0);
+    expect(utility).toBeGreaterThan(autoload);
+    expect(compile).toBeGreaterThan(utility);
+    expect(source).not.toMatch(/Set-ExecutionPolicy|-ExecutionPolicy\s+(?:Bypass|Unrestricted)/iu);
+  });
+
   it('verifies the packaged controller asset matches its exact pinned SHA-256 digest', async () => {
     const verifiedPath = await verifyWindowsJobControllerAsset();
     expect(verifiedPath).toContain(path.join('assets', 'repair', 'windows-job-controller.ps1'));

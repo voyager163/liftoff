@@ -118,6 +118,11 @@ permission to bypass unfinished work. Liftoff does not change the workspace
 format, relocate state automatically, reuse old approval, change Windows
 execution policy, or increase command deadlines.
 
+The controller loads Windows PowerShell's built-in Utility module from its own
+`PSHOME` and disables unrelated module auto-discovery in that controller
+process. It does not import user-installed modules, change execution policy,
+download a helper, or treat faster startup as process-settlement proof.
+
 ## What inventory means
 
 The public inventory has schema 1 and kind `liftoff-application-inventory`.

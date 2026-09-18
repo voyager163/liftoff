@@ -24,6 +24,10 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
+# Resolve only the built-in cmdlets; unrelated installed-module discovery can exceed the startup deadline.
+$PSModuleAutoLoadingPreference = 'None'
+Import-Module -Name ([System.IO.Path]::Combine($PSHOME, 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop
+
 # Define Win32 interop for Job Objects and CreateProcessW with STARTUPINFOEX
 $win32TypeDef = @"
 using System;

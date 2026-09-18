@@ -541,7 +541,7 @@
         "repair.windows.job-controller"
       ],
       "artifactLifecycles": {},
-      "digest": "sha256:84c8714172525f8644a09913f9432fcb1359a263c97b6f95f80a2f956d5b5efa"
+      "digest": "sha256:00f7eb366b4b6fb51605364df3f637735f125180948d850c5bf17d06bc6a3bb3"
     },
     "canonical-skills": {
       "id": "canonical-skills",
@@ -823,8 +823,8 @@
       "path": "assets/repair/windows-job-controller.ps1",
       "category": "repair",
       "componentId": "repair-windows",
-      "digest": "sha256:0aba9a520caab631aa12235900673720d6e208b96ee546c55b02f7bc34f52e6b",
-      "size": 36494,
+      "digest": "sha256:a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909",
+      "size": 36791,
       "lifecycle": "managed-core",
       "description": "Windows job object process controller script"
     },
@@ -973,5 +973,5 @@
       "reason": "Replaced by unified liftoff-setup command."
     }
   },
-  "digest": "sha256:33a8554dd98685155c41c84d93a45362ed69583734d08d4e370f33d5d4fd30da"
+  "digest": "sha256:e64fef73ea7754389267a9344e123402d39bec026dda7176af6d88d16856dbae"
 }
