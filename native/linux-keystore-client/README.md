@@ -212,3 +212,57 @@ npx vitest run tests/linux-keystore-client-contract.test.ts
 Those tests compile only dependency-free parser/framing code when a local C
 compiler is present. They never compile a fake libsecret ABI, connect to a bus,
 launch a daemon or claim native Secret Service behavior.
+
+## Explicit synthetic compiled-client behavior lane
+
+After the exact native build above, a **separately selected** source test may
+launch a fresh private message bus and an in-memory synthetic Secret Service:
+
+```sh
+LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1 \
+LIBSECRET_SOURCE_DIR=/absolute/pinned/libsecret \
+npx vitest run tests/linux-keystore-client-contract.test.ts
+```
+
+Normal runs do not register or skip this opt-in behavior suite. Test prerequisites
+are declared in `synthetic-dependencies.json`: Ubuntu 24.04 `dbus-daemon`,
+`python3`, `python3-dbus`, `python3-gi`, and `gir1.2-glib-2.0`, in addition to
+the build prerequisites. The lane expects `/usr/bin/python3` and
+`/usr/bin/dbus-daemon`; it installs nothing and does not discover substitutes.
+
+`synthetic-service.py` imports the five SHA256-bound **test-only** modules from
+the exact upstream libsecret checkout (`libsecret/mock/`, LGPL as retained in
+that checkout). The algorithms are used unchanged, not copied into a production
+implementation. In particular upstream `mock/dh.py` explicitly says it is not
+cryptographically secure/performance-qualified. No real GNOME process, keyring,
+password, protected-store fixture or real credential is involved. All values
+exist only for disposable protocol tests; creation RNG output is discarded, not
+enrolled. This lane cannot establish encryption or native custody qualification.
+
+The fixture uses an explicit private `BusConnection`, not upstream's ordinary
+`SessionBus` constructor or standard desktop objects. A fresh owned socket
+with spaces/quotes/brackets exercises encoded launch paths. The bus has no
+service directories/autostart includes. UID, PID, session ID, process start ticks,
+unique owner and address GUID come from the actual owned fixture processes.
+Audit files contain bounded counters/booleans only, never key bytes or digests.
+
+Before the source-safe `--contract` query, the lane verifies binary/source/library
+hashes, uses a fresh environment with exactly the recorded library path, and
+checks actual loader trace resolution. Every client invocation additionally
+checks `LD_DEBUG=libs` initialization observations against those same canonical
+primary library files and hashes. It rejects missing observations or a system
+libsecret substitution. This is not complete transitive runtime closure
+admission; that remains a separate gate.
+
+The real compiled client is exercised for encrypted-session creation/readback,
+plain-session rejection before key operations, owner/PID/GUID mismatch, denied
+prompts, exact project/workspace/enrollment attributes and item paths,
+non-replacement, duplicate/non-32-byte/misbound/changed results, and returned
+identity retention after a post-write validation error. Assertions only expose
+fixed issues, counters and booleans, never key buffers.
+
+All child processes use the existing owned-group primitives. Teardown settles
+client, fixture and bus handles before removing only that test's exact scratch
+root. An uncertain settlement fails and preserves the root instead of reporting
+cleanup success. No host policy, ordinary bus, external store, or provider
+authorization is created by this lane.

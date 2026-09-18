@@ -15,8 +15,32 @@ const header = await readFile(path.join(root, 'protocol.h'), 'utf8');
 const build = await readFile(path.join(root, 'build.mjs'), 'utf8');
 const parser = await readFile(path.join(root, 'parser.c'), 'utf8');
 const dependencies = JSON.parse(await readFile(path.join(root, 'dependencies.json'), 'utf8'));
+const syntheticService = await readFile(path.join(root, 'synthetic-service.py'), 'utf8');
+const syntheticTests = await readFile(path.join(root, 'synthetic-behavior-tests.ts'), 'utf8');
+const syntheticDependencies = JSON.parse(await readFile(path.join(root, 'synthetic-dependencies.json'), 'utf8'));
+
+if (process.env.LIFTOFF_LINUX_KEYSTORE_SYNTHETIC === '1') {
+  await import('../native/linux-keystore-client/synthetic-behavior-tests.js');
+}
 
 describe('Linux keystore client source/API contract, not native qualification', () => {
+  it('keeps synthetic behavior opt-in and reuses hash-bound upstream mocks rather than production crypto', () => {
+    expect(dependencies.syntheticBehaviorTests.optIn).toBe('LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1');
+    expect(syntheticDependencies.libsecretCommit).toBe(dependencies.libsecret.commit);
+    expect(Object.keys(syntheticDependencies.upstreamMocks)).toEqual([
+      'libsecret/mock/__init__.py', 'libsecret/mock/service.py', 'libsecret/mock/aes.py',
+      'libsecret/mock/dh.py', 'libsecret/mock/hkdf.py'
+    ]);
+    expect(syntheticService).toContain('hashlib.sha256(selected.read_bytes()).hexdigest() != digest');
+    expect(syntheticService).toContain('bus = dbus.bus.BusConnection(args.address)');
+    expect(syntheticService).not.toContain('dbus.SessionBus(');
+    expect(syntheticService).not.toMatch(/subprocess|os\.system|eval\(|exec\(/u);
+    expect(syntheticService).toContain('sys.pycache_prefix = str(cache)');
+    expect(syntheticTests).toContain('LD_TRACE_LOADED_OBJECTS');
+    expect(syntheticTests).toContain("LD_DEBUG: 'libs'");
+    expect(syntheticTests).toContain("verifyLoaded(Buffer.from(result.stderr).toString('utf8'), 'initialization')");
+  });
+
   it('pins the audited source rather than substituting a tag or system libsecret', () => {
     expect(dependencies.libsecret.commit).toBe('a5cd57f103038c06b64d5f6ebfd0e627bb40af4e');
     expect(dependencies.libsecret.tagEquivalent).toBeNull();

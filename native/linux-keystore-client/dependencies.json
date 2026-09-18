@@ -30,6 +30,11 @@
   ],
   "sources": ["client.c", "protocol.c", "protocol.h", "parser.c", "parser.h"],
   "cflags": ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2"],
+  "syntheticBehaviorTests": {
+    "manifest": "synthetic-dependencies.json",
+    "optIn": "LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1",
+    "qualification": "source-protocol-only-not-native-custody"
+  },
   "remainingGates": [
     "compile and link both native Linux architectures against admitted pinned build",
     "exact GLib, crypto backend, compiler, libc, runtime dependency identities",
