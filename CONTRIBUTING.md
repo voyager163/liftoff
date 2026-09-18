@@ -59,10 +59,28 @@ For bounded Windows failure investigation, a manual CI dispatch can explicitly
 set `diagnostic_windows_only` to `true`. It runs only the Windows job-runner,
 protocol, execution-qualification, repair-workspaces and update-preview suites,
 with one worker and a 20-minute job limit. Verbose logs and a separately named
-JSON artifact retain failures. This diagnostic-only dispatch **does not qualify
-the source or release**, even if it is green: the complete matrix and coverage
-gate are intentionally absent. The input defaults to `false`; default manual,
-push and pull-request runs always retain the complete source workflow.
+JSON artifact retain failures.
+
+For isolated native Go preparation investigation, set
+`diagnostic_native_go_only` to `true`. Ubuntu and macOS each run the
+`prepares actual Go module/checksum inputs` case with native preparation enabled,
+Node 24.20.0, npm 12.0.2, Go 1.27.0, one worker and a 20-minute job limit.
+The existing test deadline remains unchanged. Each host retains its diagnostic
+JSON artifact under its OS, source SHA and run attempt, including on test failure.
+
+Both inputs default to `false`. Manual dispatch routing is explicit:
+
+| `diagnostic_windows_only` | `diagnostic_native_go_only` | Jobs executed |
+| --- | --- | --- |
+| `false` | `false` | Complete 16-job source validation, including coverage |
+| `true` | `false` | Windows diagnostics only |
+| `false` | `true` | Ubuntu and macOS native Go diagnostics only |
+| `true` | `true` | Both diagnostic lanes; no full-validation jobs or gates |
+
+A diagnostic-only dispatch **does not qualify the source or release**, even if
+it is green. Selecting both flags runs both diagnostics rather than skipping
+everything or enabling qualification gates. Push and pull-request events always
+retain the complete source workflow regardless of diagnostic input values.
 
 Before a change is release-ready, also verify the packed artifact:
 

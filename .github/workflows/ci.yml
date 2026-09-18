@@ -4,7 +4,12 @@ on:
   workflow_dispatch:
     inputs:
       diagnostic_windows_only:
-        description: Run only Windows source diagnostics (not qualification)
+        description: Run Windows source diagnostics (not qualification)
+        type: boolean
+        required: false
+        default: false
+      diagnostic_native_go_only:
+        description: Run native Go source diagnostics (not qualification)
         type: boolean
         required: false
         default: false
@@ -18,7 +23,7 @@ permissions:
 jobs:
   test:
     name: Source integrations (${{ matrix.os }})
-    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -152,7 +157,7 @@ jobs:
 
   test-shards:
     name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
-    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -239,7 +244,7 @@ jobs:
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu
-    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -285,7 +290,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
-    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -319,7 +324,7 @@ jobs:
 
   coverage-qualification:
     name: Source coverage gate (not native qualification)
-    if: github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)
     needs: test-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -433,5 +438,64 @@ jobs:
         with:
           name: windows-source-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
           path: diagnostics/windows-source-tests.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native-go-diagnostics:
+    name: Native Go source diagnostics (${{ matrix.os }}, not qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Harden tool permissions
+        if: runner.os == 'Linux'
+        run: |
+          sudo chmod -R o-w /opt/hostedtoolcache 2>/dev/null || true
+          chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run isolated native Go source diagnostics (not qualification)
+        env:
+          LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
+        run: >-
+          npx vitest run tests/repair-preparation-native.test.ts
+          -t 'prepares actual Go module/checksum inputs'
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/native-go-tests.json
+
+      - name: Retain native Go diagnostic source report (not qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-go-source-diagnostics-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: diagnostics/native-go-tests.json
           if-no-files-found: error
           retention-days: 7

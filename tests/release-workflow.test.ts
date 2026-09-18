@@ -9,6 +9,8 @@ import { createRootTestConfig } from '../vitest.config.js';
 
 const execFileAsync = promisify(execFile);
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
+const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only)";
+const fullValidationJobs = ['test', 'test-shards', 'telemetry-infrastructure', 'standard-node-templates', 'coverage-qualification'];
 
 async function scratchDirectory() {
   await mkdir('.cache', { recursive: true });
@@ -30,7 +32,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -99,7 +101,7 @@ describe('read-only coordinated release evidence workflow', () => {
     const job = workflow.jobs['coverage-qualification'];
     const steps = job.steps;
     expect(job.needs).toBe('test-shards');
-    expect(job.if).toBe("github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only");
+    expect(job.if).toBe(fullValidationCondition);
     expect(job['timeout-minutes']).toBe(45);
     const cli = steps.findIndex((step: any) => step.run === 'npx vitest run --merge-reports=source-test-blobs --coverage --reporter=default');
     const service = steps.findIndex((step: any) => step.run === 'npm run test:coverage --prefix services/telemetry-ingest -- --maxWorkers=2');
@@ -125,18 +127,21 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(steps.at(-1).with.path).toContain('services/telemetry-ingest/coverage/coverage-final.json');
   });
 
-  it('allows only explicit manual Windows diagnostics without narrowing default, push or PR validation', async () => {
+  it('allows only explicit manual diagnostics without narrowing default, push or PR validation', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_windows_only).toEqual({
-      description: 'Run only Windows source diagnostics (not qualification)',
+      description: 'Run Windows source diagnostics (not qualification)',
+      type: 'boolean', required: false, default: false
+    });
+    expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_go_only).toEqual({
+      description: 'Run native Go source diagnostics (not qualification)',
       type: 'boolean', required: false, default: false
     });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    const fullJobs = ['test', 'test-shards', 'telemetry-infrastructure', 'standard-node-templates', 'coverage-qualification'];
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...fullJobs, 'windows-diagnostics'].sort());
-    for (const id of fullJobs) {
-      expect(workflow.jobs[id].if).toBe("github.event_name != 'workflow_dispatch' || !inputs.diagnostic_windows_only");
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...fullValidationJobs, 'windows-diagnostics', 'native-go-diagnostics'].sort());
+    for (const id of fullValidationJobs) {
+      expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
     const diagnostic = workflow.jobs['windows-diagnostics'];
     expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only");
@@ -154,6 +159,61 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(diagnostic.steps.at(-1).with.path).toBe('diagnostics/windows-source-tests.json');
     expect(diagnostic.steps.at(-1).with['if-no-files-found']).toBe('error');
     expect(diagnostic.steps.some((step: any) => step.run?.includes('gate:coverage') || step.run?.includes('gate:release'))).toBe(false);
+  });
+
+  it.each([
+    { windows: false, go: false, manualJobs: fullValidationJobs },
+    { windows: true, go: false, manualJobs: ['windows-diagnostics'] },
+    { windows: false, go: true, manualJobs: ['native-go-diagnostics'] },
+    { windows: true, go: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics'] }
+  ])('routes Windows=$windows and Go=$go without a diagnostic-only success pretending to be full validation', async ({ windows, go, manualJobs }) => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
+      const conditions: Record<string, boolean> = {
+        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go),
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only": event === 'workflow_dispatch' && windows,
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go
+      };
+      const selected = Object.entries(workflow.jobs).filter(([, job]: [string, any]) => {
+        expect(Object.hasOwn(conditions, job.if)).toBe(true);
+        return conditions[job.if];
+      }).map(([id]) => id);
+      expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : fullValidationJobs)].sort());
+      expect(selected.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('runs bounded native Go diagnostics on both POSIX hosts with exact pins and retained source-only reports', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['native-go-diagnostics'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only");
+    expect(job.name).toContain('not qualification');
+    expect(job['runs-on']).toBe('${{ matrix.os }}');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.needs).toBeUndefined();
+    expect(job.strategy).toEqual({
+      'fail-fast': false, 'max-parallel': 2, matrix: { os: ['ubuntu-latest', 'macos-latest'] }
+    });
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-node@')).with['node-version']).toBe('24.20.0');
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-go@')).with['go-version']).toBe('1.27.0');
+    for (const command of ['npm install --global "npm@12.0.2"', 'npm ci', 'npm run build']) {
+      expect(job.steps.slice(0, -2).some((step: any) => step.run === command)).toBe(true);
+    }
+    expect(job.steps.find((step: any) => step.name === 'Harden tool permissions'))
+      .toEqual(workflow.jobs.test.steps.find((step: any) => step.name === 'Harden tool permissions'));
+    expect(job.steps.at(-2)).toEqual({
+      name: 'Run isolated native Go source diagnostics (not qualification)',
+      env: { LIFTOFF_REPAIR_PREPARATION_NATIVE: '1' },
+      run: "npx vitest run tests/repair-preparation-native.test.ts -t 'prepares actual Go module/checksum inputs' " +
+        '--maxWorkers=1 --reporter=verbose --reporter=json --outputFile.json=diagnostics/native-go-tests.json'
+    });
+    expect(job.steps.at(-1).if).toBe('always()');
+    expect(job.steps.at(-1).uses).toMatch(/^actions\/upload-artifact@[a-f0-9]{40}$/);
+    expect(job.steps.at(-1).with).toEqual({
+      name: 'native-go-source-diagnostics-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}',
+      path: 'diagnostics/native-go-tests.json', 'if-no-files-found': 'error', 'retention-days': 7
+    });
+    expect(job.steps.some((step: any) => step.run?.includes('gate:coverage') || step.run?.includes('gate:release'))).toBe(false);
   });
 
   it('applies the diagnostic one-worker override to both Windows projects', async () => {
@@ -214,7 +274,7 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     try {
       const specifications = await context.globTestSpecifications();
-      const expected = execFileSync('git', ['ls-files', 'tests'], { encoding: 'utf8' })
+      const expected = execFileSync('git', ['ls-files', '--cached', '--others', '--exclude-standard', '--', 'tests'], { encoding: 'utf8' })
         .split('\n').filter((file) => file.endsWith('.test.ts')).sort();
       const relative = (spec: { moduleId: string }) => path.relative(process.cwd(), spec.moduleId).split(path.sep).join('/');
       expect(specifications.map(relative).sort()).toEqual(expected);
