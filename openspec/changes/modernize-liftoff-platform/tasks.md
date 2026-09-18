@@ -322,6 +322,16 @@ startup-status assertions. The specification neither starts a daemon nor
 authorizes input, and tasks 11.22-11.24 remain open for the native mechanisms,
 production coordination and independently authorized qualification.
 
+The Linux read-only process primitive now requires Landlock ABI >= 3 and
+handles content/entry mutations with exact fresh private writable subtrees.
+It preserves owned-group supervision/private stdin and explicitly excludes
+metadata, IPC/received descriptors and external writers from its guarantee.
+Native x64/arm64 tests are separate from portable contract/refusal tests and
+remain pending. Initial POSIX diagnostic run `35380872753` failed during Python
+executable admission on both architectures, before native locking; the
+production tool-permission checks remain unchanged while exact source-runner
+tool preparation is corrected.
+
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted
 definition, group/network and actual job runner identities remain distinct;

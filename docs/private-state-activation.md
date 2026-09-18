@@ -91,6 +91,21 @@ enforce persisted-store write denial rather than rely on an existence check
 or ordinary file modes. These execution and persistence gates remain
 unimplemented/unqualified until their native mechanisms pass.
 
+`LinuxReadonlyProcessGuard` now supplies a fail-closed source primitive requiring
+Landlock ABI 3 or newer, including truncation mediation. It denies newly opened
+file-content and directory-entry mutations outside three fresh, private,
+disjoint, same-mount writable trees and retains existing owned-process
+supervision. It is not an encrypted-storage observation or a keystore receipt.
+Metadata changes, network/IPC, received descriptors and external writers remain
+outside its guarantee.
+
+The complete restart coordinator must establish its bus/control/scratch state
+inside that admitted process boundary, with correct daemon environment and
+fresh identity checks. Passing an existing unqualified IPC endpoint or writable
+descriptor to a guarded child is not a supported shortcut. Native x64/arm64
+write-denial and cancellation cases remain separately required; macOS source
+tests do not establish Linux enforcement.
+
 For Windows, use the documented [BitLocker provider security requirements](https://learn.microsoft.com/en-us/windows/win32/secprov/win32-encryptablevolume#security-considerations)
 and [CredReadW semantics](https://learn.microsoft.com/en-us/windows/win32/api/wincred/nf-wincred-credreadw).
 `CRED_PERSIST_LOCAL_MACHINE` means the same user's later logons on that machine,
