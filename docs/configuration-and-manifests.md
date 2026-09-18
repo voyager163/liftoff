@@ -253,7 +253,7 @@ comparisons to infer execution safety.
 | CLI package version | 0.13.0 |
 | Activation package identity | 0.13.0 |
 | Manifest write / supported reads | 8 / historical 2-7 and strict generated/adopted 8 |
-| Normative policy | 7 |
+| Normative policy | 8 |
 | Activation contract, state, evidence header, approval envelope | 4 |
 | Compatibility metadata / supported historical input | 5 / 2-4 |
 | Governance output | 3 |
@@ -263,7 +263,7 @@ comparisons to infer execution safety.
 | Update report output | 3 |
 | Update transaction journal, preview receipt, transaction approval | 1 |
 | Preview receipt, transaction approval, history index, migration journal | 1 |
-| Phase graph / supersession / credential policy | 3 / 1 / 1 |
+| Phase graph / supersession / credential policy | 3 / 1 / 2 |
 | Assessment report and control catalog | 1 |
 
 The preserved Liftoff 0.12.3 source uses activation contract, state, evidence header, and approval
@@ -274,7 +274,8 @@ including mixed component histories; unknown releases are not automatically
 trusted or treated as compatible. The mandatory preview/approval workflow and
 schema-3 update reports remain unchanged.
 
-Known activation-v1/v2/v3 records remain diagnostic-only and historical state, not current execution
+Known activation-v1/v2/v3 records and the exact pre-amendment
+policy-7/credential-policy-schema-1 candidate remain diagnostic-only and historical state, not current execution
 proof. Compatibility metadata 5 registers exact supported successor lanes through
 `liftoff update --check` and matching approval. Migration preserves original
 manifest, historical state, and evidence bytes and links the actual successor through

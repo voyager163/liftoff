@@ -153,7 +153,12 @@ The original external Keychain key predates this artifact inventory and has no p
 
 ## Frozen-contract and qualification boundaries
 
-The current unpublished manifest/policy/activation/graph/compatibility/output/protocol identities are `8/7/4/3/5/3/1`; the computed graph hash is `d777fe314177a46ec22285781023ed829f73f258a5cee002878d863a7a86a3d2`.
+The current unpublished manifest/policy/activation/graph/compatibility/output/protocol identities are `8/8/4/3/5/3/1`, with credential-policy schema 2; the computed graph hash is `7ae2149bfe39b3983bd09c14f0b11ebb84f82ad276170f12cc2c250d780301e9`.
+The exact pre-amendment policy-7/schema-1 candidate remains historical and needs
+its reviewed successor transition. That transition grants no sensitive-state or
+credential-use authority, does not retag private custody, and cannot reset retention
+or disposal dates. Fresh credential approval binds actual provider grants and
+their broader read scope; see [credential permissions](credential-permissions.md).
 
 - The reviewed current graph declares backend read/write effects for `private-backend-proof` under exact `activation-plan` approval. Execution still requires the registered lease action, admitted target, private issuance and per-effect records; the graph alone grants no operator authority or qualification. Lease proof does not authorize backend initialization, arbitrary state writes or reuse of a past probe as a current lock. No read alias, Boolean grant or historical tuple is changed to make it pass.
 - `runner-ready` allows GitHub/network-runner operations, not Azure/backend metadata reads. Its source is strictly network-only; backend metadata belongs in a separately authorized backend phase, and TLS reachability does not prove it.

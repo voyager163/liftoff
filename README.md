@@ -44,8 +44,8 @@ through the proven installation owner; historical npm cannot discover native rel
 replaces the CLI only; generated projects use `liftoff update` separately
 for reviewed project maintenance. Run `liftoff update --check` first; automation approves with
 `--approve-plan <fingerprint>`. Current candidate writers use manifest artifact version 8.
-Application source, dependencies, schemas, containers, and infrastructure remain project-owned
-outside template replacement, including `--force`.
+Policy 8 and credential-policy schema 2 require fresh approval; [review the broader GitHub grant and remaining blockers](docs/credential-permissions.md).
+Application source, dependencies, schemas, containers, and infrastructure remain project-owned outside template replacement, including `--force`.
 
 For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
 verification**, not an OpenSpec feature change. Start with:

@@ -127,9 +127,25 @@ The generated `liftoff.manifest.json` records this as manifest `artifactVersion`
 schema version 5 in its own document, not a new required manifest field.
 Assessment report/catalog and supersession remain at version 1.
 Credential-policy schema 2 and normative policy 8 explicitly represent the
-provider's broader organization Administration read grant. The exact previous
+actual `organization_administration:read` grant, including broader organization,
+billing and Actions-settings reads, not hosted-runners-only access. The exact previous
 policy-7/schema-1 candidate is preserved by a separate immutable reader, not
 accepted as current execution authority merely because its activation number is 4.
+Its frozen graph hash is
+`00226d3a7e74b760f463e510847676b11baac432be013062cccda19fb77bcca2`;
+do not replace that historical identity with the current graph hash.
+
+Fresh exact plan-bound approval must bind the observed provider grants,
+broader-read disclosure, principal, repository/organization, workflow restrictions,
+intended operations and applicable expiry. Changed observations require new
+review. The broader grant authorizes no incidental reads or writes; Liftoff
+remains confined to the exact reviewed endpoints and resources. Original policies,
+private ownership receipts and approvals are preserved, never reused or retagged
+as schema-2 authority. See [credential permissions](docs/credential-permissions.md).
+Exact PAT bearer/lifetime proof and conditional secret creation remain blocked;
+GitHub's create-or-update API does not authorize automatic secret upsert.
+WinGet read-only inspection, native/live qualification, signing and publication
+gates remain independent blockers for this unpublished candidate.
 
 `src/domain/governance/policy/identity.ts` is the version authority;
 `src/domain/governance/activation/graph.ts` computes the canonical graph hash and

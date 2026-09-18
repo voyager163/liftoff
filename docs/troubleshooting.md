@@ -371,34 +371,48 @@ The policy prefers an existing verified selected-repository GitHub App with the
 required read permissions. Its fallback contract describes a fine-grained PAT
 with these fields: display name `<repo>-runner-preflight-read`, secret
 `RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
-repository metadata read, organization hosted-runner read and
-network-configuration read, no writes, and the recorded workflow/job allowlist
+repository `metadata:read`, organization `organization_administration:read` and
+`organization_network_configurations:read`, no writes, and the recorded workflow/job allowlist
 (`.github/workflows/bootstrap-import-preflight.yml` job
 `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job
 `private-dast-preflight` unless the generated policy records a narrower
 applicable set).
 
-This release does not expose public credential enrollment or masked input.
-Do not create or submit a credential through an invented setup channel, and do
-not hand-write state or receipts to bypass the capability blocker. Never paste
+Administration read includes broader organization, billing and Actions-settings
+metadata, not hosted-runners-only access. Policy 8 and credential-policy schema 2
+require fresh exact plan-bound approval for actual observed grants and intended
+operations. Old policy-7/schema-1 approvals and private ownership receipts
+remain historical, not new credential authority.
+
+The CLI exposes approval and protected enrollment interfaces, but PAT exact
+bearer/lifetime proof and conditional secret creation remain unresolved. The
+blocked PAT path stops before prompting or writing; neither approval nor
+`--protected-stdin` clears it. A supported existing-App workflow still needs
+independent usage/readback and fresh bound approval. Do not turn GitHub's
+create-or-update secret API into automatic secret upsert, replace a foreign
+secret, invent an input channel, or hand-write state or receipts.
+See [credential permissions](credential-permissions.md). Never paste
 or show the value in chat, argv, command arguments, logs, evidence, files, or
 screenshots. Revoke and rotate leaked credentials through their owner-controlled
 system. A payload-free policy file alone is not independent readback evidence.
 
 ## Governance identity or manifest migration is blocked
 
-Current Liftoff reads manifest v2-v7 and writes v7. It resumes only explicit
-compatible tuples: policy version 6, activation contract 2, state/evidence-header/
-approval/compatibility metadata versions 2, and a recognized phase-graph hash.
-Phase graph, supersession, and credential-policy schemas stay at 1.
+The unpublished 0.13.0 candidate reads historical manifest v2-v7 and strict v8,
+and writes v8. Its current execution tuple uses policy 8, credential-policy schema 2,
+activation contract/state/evidence-header/approval schemas 4, phase graph schema 3
+and its computed hash, compatibility metadata 5 and unchanged supersession schema 1.
 Future versions, individually
 known but unsupported combinations, unknown graph hashes, or unversioned ad hoc
 state block without rewriting files. Use the exact upgrade, import-mapping, or
 reconciliation diagnostic printed by status or update; do not downgrade the
-manifest or copy evidence between identities. Historical v1 state and evidence
-remain diagnostic-only and byte-preserved. This release has no automatic or
-public historical-state reconciliation workflow; managed-core update does not
-make that history executable.
+manifest or copy evidence between identities. Historical v1/v2/v3 records and
+the exact pre-amendment policy-7/schema-1 candidate remain diagnostic-only and
+byte-preserved. Use `liftoff update --check` to review the registered
+history-preserving successor, then separately approve its exact write set and
+local revalidation. Committed-but-incomplete revalidation retains the successor
+and history with exit 2. A migration approval or newer CLI does not authorize
+credential use, publication, sensitive-state work or provider effects.
 
 Do not run an older Liftoff release to reverse a completed baseline migration.
 Restore separately reviewed project changes through version control and reinstall

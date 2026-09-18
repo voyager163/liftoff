@@ -237,17 +237,23 @@ It does not require Git publication, provider credentials, or a deployment.
 Activation completion requires the live deployment, qualification, and
 enforcement phases. Retained bootstrap-state disposal is separate lifecycle
 work due 30 days after verified remote import, not a delay in initial activation.
-Consistent but incomplete verification exits 0 and reports `complete: false`;
-inconsistent or uninspectable selected-scope evidence exits 1.
+Consistent but incomplete verification exits 2 with `consistent: true`,
+`complete: false` and `ok: false`; consistent complete verification exits 0.
+Inconsistent or uninspectable selected-scope evidence exits 1. Status, plan and
+resume may exit 0 for successful inspection while work remains incomplete.
 
 `--inputs` selects public configuration, including exact repository, Azure
 tenant/subscription/region, bounded budget, and validated per-phase inputs.
 Never put credentials, raw state, or private plans in that file.
-Credential enrollment uses a private TTY by default; `--protected-stdin`
-explicitly selects a protected automation channel. A fingerprint is not a
-token, and approval alone neither enrolls a credential nor provisions resources.
-Actual provider permission requirements (`organization_administration` read) and
-current schema-2 permission admission and preserved schema-1 boundaries are documented in
+The credential-enrollment interface declares private TTY input by default;
+`--protected-stdin` selects a protected automation channel, not an admission
+bypass. The unresolved PAT identity/lifetime and conditional-create contracts
+block that enrollment path before prompting or writing. An existing-App path
+still needs independently verified usage and fresh exact plan-bound approval.
+A fingerprint is not a token, and approval alone neither enrolls a credential
+nor provisions resources. Actual provider permission requirements
+(`organization_administration:read`), broader organization, billing and
+Actions-settings read reach, current schema-2 admission and preserved schema-1 boundaries are documented in
 [credential permissions and policy admission](credential-permissions.md).
 Interrupted writes require a fresh `plan --recover-phase` before `recover`;
 unsupported or ambiguous external outcomes remain visible blockers.

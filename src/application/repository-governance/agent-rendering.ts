@@ -2,7 +2,7 @@ import { governanceAgentIntegrations } from '../../domain/project/catalog.js';
 import { getCanonicalSkill } from '../../adapters/packaged-assets/skill-assets.js';
 import { renderRetainedProjectSkill, renderRetainedProjectSkillHeader } from '../../adapters/skills/host-projections.js';
 import type { CodingAgentId, ProjectPlan } from '../../domain/project/contracts.js';
-import { activationContractVersion, liftoffActivationPackageVersion } from '../../domain/governance/policy/identity.js';
+import { activationContractVersion, credentialPolicySchemaVersion, liftoffActivationPackageVersion } from '../../domain/governance/policy/identity.js';
 import { runnerPreflightDisplayNameTemplate, runnerPreflightSecretName } from '../../domain/governance/activation/types.js';
 import { governancePolicyVersion } from '../../domain/governance/policy/content-validation.js';
 
@@ -218,7 +218,8 @@ rollback of remote effects.
 For an older supported activation, use \`liftoff update --check\` to review the
 exact history-preserving migration. The check changes no project bytes but
 discloses an external preview receipt. Explicitly approved update creates a
-linked v${activationContractVersion} successor from a declared v1/v2/v3 source. Old state, plans,
+linked v${activationContractVersion} successor from a declared v1/v2/v3 source or the exact
+pre-amendment policy-7/credential-policy-schema-1 candidate. Old state, plans,
 evidence, and approvals remain historical, not current authorization.
 Failed local revalidation retains blocked, resumable
 v${activationContractVersion}. Repair the named cause and approve a fresh preview rather than reset history.
@@ -231,18 +232,33 @@ verified selected-repository GitHub App with the required read permissions. If a
 fine-grained PAT is required, use display name
 \`${runnerPreflightDisplayNameTemplate}\`, secret
 \`${runnerPreflightSecretName}\`, 30-day lifetime, current repository only,
-repository metadata read, organization hosted-runner and network-configuration
-read, no writes, and the recorded workflow/job allowlist.
+repository \`metadata:read\`, organization \`organization_administration:read\`
+and \`organization_network_configurations:read\`, no writes, and the recorded
+workflow/job allowlist. Administration read includes broader organization,
+billing and Actions-settings reads, not hosted-runners-only access.
+Current policy ${governancePolicyVersion} and credential-policy schema ${credentialPolicySchemaVersion}
+require fresh exact plan-bound approval of observed grants, disclosure,
+principal, repository/organization, workflow restrictions, intended operations
+and expiry. Changed observations require renewed review. The provider grant
+does not authorize unrelated endpoints or operations. Original policies,
+private ownership receipts and approvals remain historical, never reused as new authority.
 Use the CLI-provided \`liftoff governance approve --plan <fingerprint>\` only
 after the developer explicitly approves the exact displayed plan; never
 automatically approve it. Approval persists authority but does not execute.
-Credential enrollment uses \`liftoff governance credential-enroll --plan <fingerprint>\`
-through the private operator channel. Automation must explicitly select
+The registered credential-enrollment interface is
+\`liftoff governance credential-enroll --plan <fingerprint>\`
+through the private operator channel. Exact PAT bearer/lifetime proof and
+conditional secret creation remain blocked before prompting or writing;
+GitHub's create-or-update API grants no automatic secret upsert or
+foreign-secret replacement. Existing-App usage and policy finalization retain
+their independent readback and fresh approval gates. Automation must explicitly select
 \`--protected-stdin\` and supply the value through an operator-controlled protected
 channel, never chat or argv. Observe actual permitted use/readback,
 not just a secret name. Never paste or show a credential in chat, argv,
 command arguments, logs, evidence, source files, or screenshots. A leaked value must be
 revoked and rotated through its owner-controlled system, not fabricated state.
+These candidate contracts do not qualify native hosts, live provider journeys
+or release publication.
 
 Live status must be proven from user-owned activation evidence and GitHub
 read-back, never inferred from these local files.

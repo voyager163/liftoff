@@ -8,6 +8,22 @@ stateful-migration mode. The unpublished 0.13.0 candidate still requires the
 specific native/backend/provider qualification and private capabilities described
 below; source presence does not establish deployment support.
 
+The current governance identity is policy 8 with credential-policy schema 2,
+activation/state/evidence/approval 4, graph schema 3 and compatibility metadata 5.
+This does not change the independent state-migration request, journal or custody
+contracts. Historical policy-7/schema-1 records keep their original identities;
+a reviewed activation successor neither retags private records nor authorizes
+state reads, key access, backend writes or disposal.
+
+GitHub's `organization_administration:read` includes broader organization,
+billing and Actions-settings reads, not hosted-runners-only access. Fresh exact
+plan-bound approval of observed grants and intended operations remains separate
+from every state authority below. PAT exact bearer/lifetime proof and conditional
+secret creation remain blocked; there is no automatic secret upsert or reuse
+of old credential approval. See [credential permissions](../../../docs/credential-permissions.md).
+The amendment does not qualify WinGet, other native hosts, live providers or
+release publication, or authorize host elevation or storage-policy changes.
+
 ## Coordinator integration
 
 Every function takes `StateMigrationDependencies` and a typed request.

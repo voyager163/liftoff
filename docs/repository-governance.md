@@ -575,7 +575,9 @@ When `GITHUB_TOKEN` cannot read required hosted-runner metadata, setup first
 prefers an existing verified selected-repository GitHub App installation with the
 required read permissions. Liftoff does not install or broaden an App.
 
-If no approved App is available, the narrowly scoped fallback is:
+If no approved App is available, the fallback contract is shown below. Its PAT
+bearer/lifetime proof and conditional secret creation remain blocked; this table
+is not an executable enrollment recipe:
 
 | Field | Value |
 | --- | --- |
@@ -584,14 +586,17 @@ If no approved App is available, the narrowly scoped fallback is:
 | Lifetime | 30 days |
 | Repository scope | current repository only |
 | Repository permission | metadata read |
-| Organization permissions | hosted-runner read and network-configuration read |
+| Organization permissions | `organization_administration:read` and `organization_network_configurations:read` |
 | Writes | none |
 | Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
 
-After reviewing and approving the credential-ready plan, use
-`liftoff governance credential-enroll --plan <fingerprint>`. The default input
-channel is a private TTY; `--protected-stdin` explicitly selects a protected
-automation channel. The published allowlisted workflow must prove actual
+The registered interface is
+`liftoff governance credential-enroll --plan <fingerprint>`, with a private TTY
+or explicitly selected `--protected-stdin` channel. Unresolved PAT admission
+blocks before prompting or writing; approval or a channel flag cannot bypass it.
+GitHub's create-or-update secret API is not conditional creation and grants no
+automatic secret upsert or replacement of a foreign secret.
+For a supported existing-App path, the published allowlisted workflow must prove actual
 credential use; the secret name or a policy file alone cannot establish readiness.
 Never paste or show the value in chat, argv, command arguments,
 logs, evidence, files, or screenshots. A disclosed value is
@@ -601,7 +606,7 @@ See [credential provider permissions and policy admission](credential-permission
 for documented GitHub permission requirements and policy admission boundaries.
 The actual endpoint `GET /orgs/{org}/actions/hosted-runners` requires
 `organization_administration:read`, including broader organization, billing and
-Actions-settings read reach. Policy 8 and credential-policy schema 2 represent
+Actions-settings read reach, not hosted-runners-only access. Policy 8 and credential-policy schema 2 represent
 that grant explicitly. Human previews and approval output disclose the scope and
 exact operations; fresh plan-bound approval and original usage/run/artifact
 custody are still required. Schema-1 policies and policy-7 approvals are not new
@@ -784,14 +789,15 @@ evidence-ready, approved phase. Here, approved means its approval status is
 `not-required` or `reused`. Unknown subcommands, flags, or extra positionals
 fail before project discovery or mutation. Verification reports consistency
 separately from selected-scope completion: a valid not-started or in-progress state may
-have `ok: true` and `verificationStatus: "consistent"` while `complete` remains
-false. An intact bootstrap seed awaiting baseline verification or archive is
+have `consistent: true` and `verificationStatus: "consistent"` while `complete`
+and `ok` remain false; schema-3 verify exits 2. Only consistent complete
+verification exits 0. An intact bootstrap seed awaiting baseline verification or archive is
 also incomplete rather than inconsistent. Missing or overlapping seeds, or an
 active seed contradicting recorded archive completion, still fail verification.
 
 Apply-next reports `selectedPhase` for the attempted transition and
 `executedPhase` separately from recomputed post-transition `nextReadyPhase`.
-Schema-2 results also identify `nextPlannablePhase`, separate milestone progress,
+Schema-3 results also identify `nextPlannablePhase`, separate milestone progress,
 and structured registered `nextActions`. A pending external operation is not
 completed evidence. For failed or interrupted work, obtain a fresh
 `governance plan --recover-phase <phase>` and explicitly execute its reviewed
@@ -802,9 +808,11 @@ withheld rather than copied into state or command output.
 ## Existing projects
 
 Projects without `governanceProfile` normalize to the enabled default during
-read, then `liftoff update --check` previews manifest v7 and managed-core drift.
-Plain `liftoff update` writes v7 only after preflights pass. It never provisions
-Azure or GitHub resources and never advances activation state. Setting
+read, then `liftoff update --check` previews manifest v8 and managed-core drift.
+An exact approved update writes v8 only after preflights pass. Ordinary core
+maintenance does not advance activation; a separately reviewed identity transition
+can create its linked successor and perform only the approved local revalidation.
+Managed update never provisions Azure or GitHub resources. Setting
 `"governanceProfile": "none"` stops policy/setup/assessment rendering but retains
 selected repair integrations. Previously managed governance handoff files
 become reported orphans and remain on disk for manual review.

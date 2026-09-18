@@ -7,13 +7,21 @@ import {
   canonicalPhaseGraphJson,
   currentActivationIdentity
 } from '../src/domain/governance/activation/graph.js';
-import { compatibilityMetadataSchemaVersion } from '../src/domain/governance/policy/identity.js';
+import {
+  compatibilityMetadataSchemaVersion,
+  governanceOutputSchemaVersion,
+  historicalV3ActivationIdentity,
+  historicalV4Policy7ActivationIdentity
+} from '../src/domain/governance/policy/identity.js';
 import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
 import { patterns } from '../src/application/project/catalog.js';
 import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
 import { liftoffVersion } from '../src/version.js';
 import { localMarkdownTargets } from '../scripts/distribution/native-document-links.mjs';
+import { buildProjectPlan } from '../src/application/project/planning.js';
+import { renderGeneratedUpdateGuide } from '../src/generators/common/base.js';
+import { renderGovernanceGuide } from '../src/application/repository-governance/agent-rendering.js';
 
 const repositoryRoot = process.cwd();
 const requiredDocs = [
@@ -89,6 +97,8 @@ describe('public documentation', () => {
     expect(readme).toContain('liftoff assess');
     expect(readme).toContain('liftoff adopt');
     expect(readme).toContain('manifest artifact version 8');
+    expect(readme).toContain(`Policy ${currentActivationIdentity.policyVersion} and credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+    expect(readme).toContain('docs/credential-permissions.md');
     expect(readme).toContain('docs/skills.md');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
@@ -469,7 +479,7 @@ describe('public documentation', () => {
     expect(contributing).toContain('Maintain the repository-governance profile');
     for (const phrase of [
       'single-maintainer-gitflow',
-      'manifest v7',
+      `manifest v${currentActivationIdentity.manifestArtifactVersion}`,
       'managed-core files',
       'user-owned activation state',
       'read-only Phase 0',
@@ -526,10 +536,16 @@ describe('public documentation', () => {
     const example = identitySection.match(/```json\n([\s\S]*?)\n```/);
     expect(example, 'developer guide must show the current complete activation vector').not.toBeNull();
     expect(JSON.parse(example![1])).toEqual(currentActivationIdentity);
+    const examples = [...identitySection.matchAll(/```json\n([\s\S]*?)\n```/g)];
+    expect(JSON.parse(examples[1][1])).toEqual(historicalV3ActivationIdentity);
+    expect(identitySection).toContain(historicalV4Policy7ActivationIdentity.phaseGraphHash);
+    expect(identitySection).toContain('separate immutable reader');
     expect(createHash('sha256').update(canonicalPhaseGraphJson).digest('hex')).toBe(canonicalPhaseGraphHash);
     expect(developer).toContain(`## ${liftoffVersion} release checklist`);
     expect(manifests).toContain(`| CLI package version | ${liftoffVersion} |`);
     expect(manifests).toContain(`| Activation package identity | ${currentActivationIdentity.liftoffVersion} |`);
+    expect(manifests).toContain(`| Normative policy | ${currentActivationIdentity.policyVersion} |`);
+    expect(manifests).toContain(`| Phase graph / supersession / credential policy | ${currentActivationIdentity.phaseGraphSchemaVersion} / ${currentActivationIdentity.supersessionSchemaVersion} / ${currentActivationIdentity.credentialPolicySchemaVersion} |`);
     expect(identitySection).toContain(`schema version ${compatibilityMetadataSchemaVersion} in its own document`);
     expect(developer).toContain('There is no separate `/liftoff-setup` skill version');
     expect(developer).toContain('CLI SemVer');
@@ -540,6 +556,75 @@ describe('public documentation', () => {
     expect(all).toMatch(/Never paste or show the\s+value in chat, argv, command arguments,\s+logs, evidence/);
     expect(all).not.toMatch(/gh secret set[^\n]*(?:github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)/);
     expect(all).not.toMatch(/setupSkillVersion|skillVersion/);
+  });
+
+  it('documents current credential authority without relabeling historical approval or secret upsert', async () => {
+    for (const file of [
+      'DEVELOPER.md',
+      'docs/repository-governance.md',
+      'docs/safety-and-consent.md',
+      'docs/troubleshooting.md',
+      'src/application/state-migration/README.md'
+    ]) {
+      const text = (await repositoryFile(file)).replace(/\s+/g, ' ');
+      expect(text, file).toContain('organization_administration:read');
+      expect(text, file).toContain('billing and Actions-settings');
+      expect(text, file).toContain('not hosted-runners-only');
+      expect(text, file).toMatch(/fresh (?:exact )?plan-bound approval/i);
+      expect(text, file).toContain('conditional secret creat');
+      expect(text, file).toContain('automatic secret upsert');
+      expect(text, file).toContain('policy-7');
+      expect(text, file).toContain('schema-1');
+      expect(text, file).not.toContain('organization hosted-runner read');
+    }
+    const troubleshooting = (await repositoryFile('docs/troubleshooting.md')).replace(/\s+/g, ' ');
+    expect(troubleshooting).toContain('blocked PAT path stops before prompting or writing');
+    expect(troubleshooting).toContain('retains the successor and history with exit 2');
+    expect(troubleshooting).not.toContain('Current Liftoff reads manifest v2-v7 and writes v7');
+    const cli = (await repositoryFile('docs/cli-reference.md')).replace(/\s+/g, ' ');
+    expect(cli).toContain('Consistent but incomplete verification exits 2');
+    expect(cli).not.toContain('Consistent but incomplete verification exits 0');
+    expect(cli).toContain('block that enrollment path before prompting or writing');
+    const stateGuide = await repositoryFile('docs/private-state-activation.md');
+    const vector = [
+      currentActivationIdentity.manifestArtifactVersion, currentActivationIdentity.policyVersion,
+      currentActivationIdentity.activationContractVersion, currentActivationIdentity.phaseGraphSchemaVersion,
+      compatibilityMetadataSchemaVersion, governanceOutputSchemaVersion, 1
+    ].join('/');
+    expect(stateGuide).toContain(`identities are \`${vector}\``);
+    expect(stateGuide).toContain(`credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+    expect(stateGuide).toContain(`computed graph hash is \`${canonicalPhaseGraphHash}\``);
+    const internalGuide = await repositoryFile('src/application/state-migration/README.md');
+    expect(internalGuide).toContain('does not change the independent state-migration request, journal or custody');
+    expect(internalGuide).toContain('no automatic secret upsert or reuse');
+    await expectLocalLinksToResolve('src/application/state-migration/README.md');
+  });
+
+  it.each(['openspec', 'spec-kit'] as const)('renders amended %s guidance without turning history into credential authority', (specWorkflow) => {
+    const plan = buildProjectPlan({
+      projectName: 'Documentation identity', projectType: 'standard', apiStack: 'go',
+      cloud: 'azure', agents: ['github-copilot', 'claude', 'codex'], specWorkflow,
+      ...(specWorkflow === 'spec-kit' ? { defaultAgent: 'github-copilot' } : {})
+    }, { requireProjectName: true });
+    for (const content of [renderGeneratedUpdateGuide(plan), renderGovernanceGuide(plan)]) {
+      const text = content.replace(/\s+/g, ' ');
+      expect(text).toContain(`policy ${currentActivationIdentity.policyVersion} and credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+      expect(text).toContain('organization_administration:read');
+      expect(text).toContain('broader organization, billing and Actions-settings reads');
+      expect(text).toMatch(/fresh exact plan-bound approval/i);
+      expect(text).toContain('pre-amendment policy-7/credential-policy-schema-1 candidate');
+      expect(text).toContain('PAT bearer/lifetime proof and conditional secret creation remain blocked');
+      expect(text).toContain('no automatic secret upsert or foreign-secret replacement');
+      expect(text).toContain('release publication');
+      expect(text).not.toContain('organization hosted-runner and network-configuration read');
+    }
+    const disabled = buildProjectPlan({
+      projectName: 'Disabled documentation', projectType: 'standard', apiStack: 'go',
+      cloud: 'azure', governanceProfile: 'none', agents: ['github-copilot']
+    }, { requireProjectName: true });
+    const disabledGuide = renderGeneratedUpdateGuide(disabled);
+    expect(disabledGuide).toContain('Repository governance is disabled');
+    expect(disabledGuide).not.toContain('organization_administration:read');
   });
 
   it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {

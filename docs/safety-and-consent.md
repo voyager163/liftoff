@@ -136,17 +136,18 @@ The approved transaction preflights exact managed-core and create-only
 provisioning paths separately from any explicitly authorized activation migration.
 Schema/successor changes commit consistently with their manifest and history link.
 
-Managed update may install manifest v7, policy v6, activation-contract v2,
-phase graph, compatibility metadata, credential-policy schema, setup
+Managed update may install manifest v8, policy v8, activation-contract v4,
+phase graph schema 3, compatibility metadata 5, credential-policy schema 2, setup
 integrations, and forced removal of exact retired generated setup-alias entries
 from older manifests. It preserves user-owned activation state, approvals,
 immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact known historical v1 can use the reviewed successor lane, not in-place
+Exact known historical v1/v2/v3 and the pre-amendment policy-7/schema-1 candidate
+can use their reviewed successor lanes, not in-place
 retagging. Original records are copied byte-for-byte into immutable in-project
-history before their exact active paths are retired or replaced. A linked v2
+history before their exact active paths are retired or replaced. A linked v4
 activation obtains fresh evidence; historical approvals never become current
 permission. Unavailable revalidation remains an explicit blocker.
 
@@ -158,7 +159,7 @@ Ordinary transaction backups are for failed-write recovery. Activation history
 is different: it remains after success and is never removed with disposable
 preview receipts. A durable recovery journal must match a separately persisted
 external transaction approval; a project-local claim alone cannot authorize
-recovery. Post-commit revalidation failure preserves v2 and its historical link.
+recovery. Post-commit revalidation failure preserves v4 and its historical link.
 
 Dependency execution has a different recovery boundary: installer scripts can
 write arbitrary project files, and a concurrent developer edit cannot be
@@ -250,10 +251,10 @@ the exact fields, Azure boundary, OpenTofu deployment, and 180-day retention.
 ## Credentials and external actions
 
 Generated files contain configuration boundaries, not real credentials.
-Liftoff does not:
+Initialization and ordinary managed-core update do not:
 
 - Modify `.npmrc` to bypass a managed registry.
-- Store cloud or agent credentials.
+- Enroll cloud or agent credentials.
 - Perform cloud sign-in.
 - Apply OpenTofu.
 - Restore or manage the retired Power Apps workload or Code Apps integration.
@@ -266,12 +267,22 @@ has the required read permissions. The normative fallback specifies one
 fine-grained PAT:
 display name `<repo>-runner-preflight-read`, repository secret
 `RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
-repository metadata read, organization hosted-runner read and
-network-configuration read, no writes, and only the recorded workflow/job
-allowlist. The CLI currently lacks public secure enrollment, independent
-credential readback, and approval-persistence entry points; stop at the capability
-blocker instead of creating JSON or inventing an input channel. Any future
-supported enrollment must use masked input. Never paste or
+repository `metadata:read`, organization `organization_administration:read` and
+`organization_network_configurations:read`, no writes, and only the recorded
+workflow/job allowlist. Administration read also reaches broader organization,
+billing and Actions-settings metadata; it is not hosted-runners-only access.
+Policy 8 and credential-policy schema 2 require fresh exact plan-bound approval
+for observed grants, disclosure, principal, repository/organization, intended
+operations, workflow restrictions and expiry. Earlier policies, ownership
+receipts and approvals never authorize that broader grant.
+
+Public approval and protected-input interfaces exist, but PAT exact
+bearer/lifetime proof and conditional secret creation remain blockers. The
+blocked enrollment path fails before prompting or writing. Never turn GitHub's
+create-or-update endpoint into automatic secret upsert or foreign-secret
+replacement. Existing-App usage/readback has its separate admission and fresh
+approval requirements; no policy file alone proves credential readiness.
+See [credential permissions](credential-permissions.md). Never paste or
 show it in chat, argv, command arguments, logs, evidence, generated files, or
 screenshots. If it appears there, treat it as compromised and manually revoke and
 rotate it before continuing.
