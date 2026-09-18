@@ -48,7 +48,7 @@ execution evidence remains separate and unperformed.
 - [ ] 3.1 Reproduce the 0.12.3 Windows application-verification timeouts with recorded host, controller and tool conditions; verify the investigation distinguishes controller startup, command execution and settlement deadlines.
 - [ ] 3.2 Diagnose and correct Windows npm/tool identity and environment-alias handling using actual supported executables; verify positive, incompatible-version, changed-file and malicious-shim cases without relaxing identity admission.
 - [x] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; preserve the existing workspace layout and recovery records, admit the resolved Windows cwd against the Win32 length bound before controller dispatch, and document explicit shorter storage selection for new work without relocation or approval reuse; verify real native startup, supported-length literal paths and bounded over-limit/pre-execution failures under stock supported PowerShell/.NET conditions without extending production deadlines.
-- [ ] 3.4 Qualify actual Win32 Job Object assignment, root exit, descendant accounting and cancellation; verify uncertain settlement never issues success or cleans a potentially active workspace.
+- [x] 3.4 Qualify actual Win32 Job Object assignment, root exit, descendant accounting and cancellation; verify uncertain settlement never issues success or cleans a potentially active workspace.
 - [ ] 3.5 Qualify restricted-host, AppLocker/WDAC, corrupted-asset and unsupported-controller failures; verify no policy bypass, undeclared helper download or fallback kill of unrelated processes occurs.
 - [ ] 3.6 Preserve POSIX owned-group settlement and private workspace recovery during the Windows correction; verify equivalent macOS/Linux success, timeout, interrupted-output and uncertain-owner cases.
 - [ ] 3.7 Verify native helper assets and required host contracts from the installed artifact, not the checkout; verify supported relocation, read-only installation and argument/path handling on all required platforms.
@@ -105,6 +105,17 @@ installed-artifact qualification, host restrictions and the complete boundary
 matrix remain separate open tasks. Native descendant, timeout, output-limit,
 neighbor-preservation and cancellation fixtures are being exercised separately
 for task 3.4; mocked protocol results alone do not complete it.
+
+Task 3.4 now has passing native source-host evidence in run `35353355859` at
+`36e14f5584bdade479bbb188fe14fd630f29cd52`: the inherited Job tracks a detached
+descendant after the Node root exits, timeout and output-limit termination
+settle the owned tree while an unrelated neighbor remains alive, and
+cancellation after an actual descendant starts retains an uncertain outcome
+and its fixture instead of granting cleanup. The original non-detached
+root-exit fixture was corrected because Node's own child-job teardown
+terminated that child first; no controller guarantee was weakened to pass it.
+This completes the exercised native Job Object behavior, not minimum-host,
+architecture-wide or installed-artifact qualification.
 
 ## 4. Six-engine module boundaries
 

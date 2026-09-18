@@ -119,6 +119,22 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     expect(await readdir(root)).toEqual([]);
   }, 90_000);
 
+  it('honors an actual process-scoped Restricted policy without dispatching the target', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-policy-'));
+    tempDirs.push(root);
+    const result = await runWindowsJobCommand({
+      executable: process.execPath, args: ['-e', "require('node:fs').writeFileSync('unapproved.txt', 'unapproved')"]
+    }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000 }, {
+      spawnController: (executable, args, options) => spawn(executable, args, {
+        ...options, env: { ...options.env, PSExecutionPolicyPreference: 'Restricted' }
+      })
+    });
+    expect(result, result.errorMessage).toMatchObject({
+      status: null, errorCode: 'RESTRICTED_EXECUTION_POLICY', timedOut: false, processSpawned: false
+    });
+    expect(await readdir(root)).toEqual([]);
+  }, 90_000);
+
   it('reports real missing-directory admission without executing in a substitute cwd', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-absent-'));
     tempDirs.push(root);
@@ -196,6 +212,7 @@ describe.runIf(process.platform === 'win32')('native Win32 Job Object settlement
   it('waits for an inherited descendant after the root exits', async () => {
     const root = await ownedRoot();
     const descendant = "setTimeout(() => { require('node:fs').writeFileSync('descendant.txt', 'settled'); console.log('descendant-settled'); }, 500);";
+    // Detach from Node's child-job teardown, not from the inherited supervisor Job Object.
     const result = await runWindowsJobCommand({
       executable: process.execPath,
       args: ['-e', `
