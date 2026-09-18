@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { once } from 'node:events';
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -181,6 +182,111 @@ describe.runIf(process.platform === 'win32')('native Windows working-directory a
     expect(stages.map((entry) => entry.stage)).toEqual([
       'script-entered', 'utility-loaded', 'interop-resolved', 'interop-compiled', 'pipe-connected', 'ready-sent', 'root-started'
     ]);
+  }, 90_000);
+});
+
+describe.runIf(process.platform === 'win32')('native Win32 Job Object settlement', () => {
+  async function ownedRoot() {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-native-tree-'));
+    tempDirs.push(root);
+    retainedDirs.add(root);
+    return root;
+  }
+
+  it('waits for an inherited descendant after the root exits', async () => {
+    const root = await ownedRoot();
+    const descendant = "setTimeout(() => { require('node:fs').writeFileSync('descendant.txt', 'settled'); console.log('descendant-settled'); }, 500);";
+    const result = await runWindowsJobCommand({
+      executable: process.execPath,
+      args: ['-e', `
+        const child = require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}],
+          { stdio: ['ignore', 'inherit', 'inherit'] });
+        child.once('spawn', () => {
+          require('node:fs').writeFileSync('root.txt', 'exited');
+          child.unref();
+          process.exit(0);
+        });
+      `]
+    }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 5_000, maxOutputBytes: 2048 });
+    if (result.processTreeSettled === true) retainedDirs.delete(root);
+    expect(result, result.errorMessage).toMatchObject({
+      status: 0, processSpawned: true, processTreeSettled: true, timedOut: false
+    });
+    expect(await readFile(path.join(root, 'root.txt'), 'utf8')).toBe('exited');
+    expect(await readFile(path.join(root, 'descendant.txt'), 'utf8')).toBe('settled');
+    expect(result.stdout).toContain('descendant-settled');
+  }, 90_000);
+
+  it.each(['timeout', 'output-limit'] as const)('settles the exact owned tree on %s without killing a neighbor', async (mode) => {
+    const root = await ownedRoot();
+    const neighbor = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 15000)'], {
+      cwd: root, env: { SystemRoot: process.env.SystemRoot }, stdio: 'ignore', windowsHide: true
+    });
+    const neighborExit = once(neighbor, 'exit');
+    await once(neighbor, 'spawn');
+    let settled = false;
+    try {
+      const descendant = `
+        const fs = require('node:fs');
+        fs.writeFileSync('descendant.txt', 'started');
+        setInterval(() => fs.writeFileSync('heartbeat.txt', String(Date.now())), 25);
+        ${mode === 'output-limit' ? "process.stdout.write('x'.repeat(4096));" : ''}
+      `;
+      const result = await runWindowsJobCommand({
+        executable: process.execPath,
+        args: ['-e', `
+          require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(descendant)}],
+            { stdio: ['ignore', 'inherit', 'inherit'] });
+          setInterval(() => {}, 1000);
+        `]
+      }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, timeoutMs: 2_000, maxOutputBytes: 1024 });
+      settled = result.processTreeSettled === true;
+      expect(result, result.errorMessage).toMatchObject({
+        status: null, processSpawned: true, processTreeSettled: true,
+        timedOut: mode === 'timeout', outputLimitExceeded: mode === 'output-limit'
+      });
+      expect(await readFile(path.join(root, 'descendant.txt'), 'utf8')).toBe('started');
+      const entries = await readdir(root);
+      const heartbeat = entries.includes('heartbeat.txt') ? await readFile(path.join(root, 'heartbeat.txt')) : null;
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      expect(await readdir(root)).toEqual(entries);
+      if (heartbeat) expect(await readFile(path.join(root, 'heartbeat.txt'))).toEqual(heartbeat);
+      expect(neighbor.exitCode).toBeNull();
+      expect(neighbor.signalCode).toBeNull();
+    } finally {
+      if (neighbor.exitCode === null && neighbor.signalCode === null) neighbor.kill();
+      await neighborExit;
+      if (settled) retainedDirs.delete(root);
+    }
+  }, 90_000);
+
+  it('retains uncertainty when cancellation interrupts an actually started tree', async () => {
+    const root = await ownedRoot();
+    const abort = new AbortController();
+    const execution = runWindowsJobCommand({
+      executable: process.execPath,
+      args: ['-e', `
+        require('node:child_process').spawn(process.execPath, ['-e',
+          "require('node:fs').writeFileSync('started.txt', 'started'); setInterval(() => {}, 1000);"
+        ], { stdio: ['ignore', 'inherit', 'inherit'] });
+        setInterval(() => {}, 1000);
+      `]
+    }, { cwd: root, env: { SystemRoot: process.env.SystemRoot }, signal: abort.signal, timeoutMs: 10_000 });
+    try {
+      await vi.waitFor(async () => {
+        expect(await readFile(path.join(root, 'started.txt'), 'utf8')).toBe('started');
+      }, { timeout: 5_000, interval: 25 });
+      abort.abort();
+      const result = await execution;
+      expect(result).toMatchObject({
+        status: null, errorCode: 'ABORTED', processSpawned: true, processTreeSettled: false
+      });
+      expect(retainedDirs.has(root)).toBe(true);
+      expect(await readFile(path.join(root, 'started.txt'), 'utf8')).toBe('started');
+    } finally {
+      abort.abort();
+      await execution;
+    }
   }, 90_000);
 });
 

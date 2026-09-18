@@ -47,7 +47,7 @@ execution evidence remains separate and unperformed.
 
 - [ ] 3.1 Reproduce the 0.12.3 Windows application-verification timeouts with recorded host, controller and tool conditions; verify the investigation distinguishes controller startup, command execution and settlement deadlines.
 - [ ] 3.2 Diagnose and correct Windows npm/tool identity and environment-alias handling using actual supported executables; verify positive, incompatible-version, changed-file and malicious-shim cases without relaxing identity admission.
-- [ ] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; preserve the existing workspace layout and recovery records, admit the resolved Windows cwd against the Win32 length bound before controller dispatch, and document explicit shorter storage selection for new work without relocation or approval reuse; verify real native startup, supported-length literal paths and bounded over-limit/pre-execution failures under stock supported PowerShell/.NET conditions without extending production deadlines.
+- [x] 3.3 Diagnose and correct controller launch, authentication and working-directory failures; preserve the existing workspace layout and recovery records, admit the resolved Windows cwd against the Win32 length bound before controller dispatch, and document explicit shorter storage selection for new work without relocation or approval reuse; verify real native startup, supported-length literal paths and bounded over-limit/pre-execution failures under stock supported PowerShell/.NET conditions without extending production deadlines.
 - [ ] 3.4 Qualify actual Win32 Job Object assignment, root exit, descendant accounting and cancellation; verify uncertain settlement never issues success or cleans a potentially active workspace.
 - [ ] 3.5 Qualify restricted-host, AppLocker/WDAC, corrupted-asset and unsupported-controller failures; verify no policy bypass, undeclared helper download or fallback kill of unrelated processes occurs.
 - [ ] 3.6 Preserve POSIX owned-group settlement and private workspace recovery during the Windows correction; verify equivalent macOS/Linux success, timeout, interrupted-output and uncertain-owner cases.
@@ -76,7 +76,7 @@ process trees, and total controller attempts took approximately 23-26 seconds.
 The short-path child failure and startup cost therefore require separate
 diagnosis. The approved refinement is explicit over-limit admission and shorter
 storage guidance, not a new workspace format or a claim of native success.
-Tasks 3.1-3.8 remain open.
+At that point, tasks 3.1-3.8 remained open.
 
 The approved cwd limit now rejects over-limit execution before controller or
 target dispatch, preserves cancellation precedence and uses fixed safe remedies
@@ -97,6 +97,14 @@ seconds. The pinned controller and resource catalog digests were regenerated.
 No production deadline, execution policy, Job Object requirement or workspace
 format was relaxed. Full source matrix run `35352071630` is separate and still
 pending; these focused results do not qualify installed artifacts or all hosts.
+
+Task 3.3 is complete for the exercised stock Windows source-host lane, including
+the final cancellation/deadline-reporting regression run `35352572336` at
+`58464a5f65ecc65fcc0ec56924db1397f6a5669d`. Minimum-host/architecture coverage,
+installed-artifact qualification, host restrictions and the complete boundary
+matrix remain separate open tasks. Native descendant, timeout, output-limit,
+neighbor-preservation and cancellation fixtures are being exercised separately
+for task 3.4; mocked protocol results alone do not complete it.
 
 ## 4. Six-engine module boundaries
 
