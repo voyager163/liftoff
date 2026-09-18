@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "helper": "liftoff-linux-keystore-client/1",
+  "qualification": "source-only-unqualified",
+  "platforms": ["linux-x64", "linux-arm64"],
+  "libsecret": {
+    "repository": "https://gitlab.gnome.org/GNOME/libsecret.git",
+    "commit": "a5cd57f103038c06b64d5f6ebfd0e627bb40af4e",
+    "tagEquivalent": null,
+    "crypto": "required; runtime algorithm equality checked before key operations",
+    "unstablePublicPathsApi": "explicitly acknowledged; exact source/build identity required"
+  },
+  "pkgConfig": {
+    "modules": ["libsecret-1", "gio-2.0", "glib-2.0", "gobject-2.0"],
+    "minimumGlib": "2.74",
+    "libsecretPrefix": "explicit LIBSECRET_PREFIX only; never implicit system fallback"
+  },
+  "requiredSymbols": [
+    "secret_service_open_sync",
+    "secret_service_ensure_session_sync",
+    "secret_service_get_session_algorithms",
+    "secret_collection_new_for_dbus_path_sync",
+    "secret_collection_search_for_dbus_paths_sync",
+    "secret_service_get_secrets_for_dbus_paths_sync",
+    "secret_service_create_item_dbus_path_sync",
+    "secret_value_new_full",
+    "g_dbus_connection_new_for_address_sync",
+    "g_dbus_connection_get_guid",
+    "g_cancellable_cancel"
+  ],
+  "sources": ["client.c", "protocol.c", "protocol.h", "parser.c", "parser.h"],
+  "cflags": ["-std=c11", "-O2", "-Wall", "-Wextra", "-Werror", "-fstack-protector-strong", "-D_FORTIFY_SOURCE=2"],
+  "remainingGates": [
+    "compile and link both native Linux architectures against admitted pinned build",
+    "exact GLib, crypto backend, compiler, libc, runtime dependency identities",
+    "private synthetic service protocol and hostile-response behavior",
+    "installed-artifact dependency admission and private owned-process transport",
+    "separately authorized real provider enrollment/restart/key custody"
+  ]
+}
