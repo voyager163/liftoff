@@ -329,6 +329,87 @@ inspection results, suppressing native tests, accepting ordinary writable
 storage as encrypted custody, or advertising macOS-only execution as complete
 Linux/Windows support.
 
+### 13c. Establish Linux keystore custody through controlled enrollment and restart recovery
+
+The GNOME-specific audit did not establish a complete read-only admission
+contract for an arbitrary existing daemon. Secret Service does not expose the
+actual backing file or saved generation, and GNOME's `CKA_TRUSTED` predicate
+describes a nonempty loaded master password rather than durable persistence.
+The selected direction is therefore a separately selected controlled-store
+workflow, not an exception to those evidence requirements.
+
+Keep inspection, enrollment, unlock/key-read, recovery and disposal as distinct
+registered operations with explicit identities, effects and exact plan-bound
+authority. Normal interactive authorization is default No with internal plan
+binding; machine use requires the registered exact-plan permissions. Approval
+to install Liftoff, perform activation, or use an input channel is not authority
+to create or unlock a keystore. Planning and source testing do not authorize
+real key-store or privileged host effects.
+
+Enrollment targets only a fresh, absence-bound Liftoff-owned private scope
+outside repositories and ordinary desktop keyrings. Its parent storage must
+already satisfy an independently observed registered protection contract;
+enrollment does not configure fscrypt, mount volumes, change host policy or
+repair permissions. Record pre-effect custody and exact creation identities.
+An existing or ambiguous destination is a conflict, not permission to adopt,
+overwrite, rename or reset it.
+
+Control and independently admit the daemon's executable/dependencies,
+configuration, data/control locations, local IPC endpoints, current principal
+and owned process lifetime. Do not replace the ordinary session's Secret
+Service owner, infer the daemon's data directory from the caller's environment,
+follow an alias to another collection, or silently fall back to a different
+daemon. Exact supported creation/unlock/persistence interfaces and their
+failure semantics must be audited before implementation is enabled. An
+internal unsupported provider interface, a version string alone, a label,
+`Locked=false`, or a supplied password-protection flag is not evidence.
+
+Obtain master passwords and key material only through an operator-controlled
+protected CLI channel after the relevant authorization, never chat, argv,
+environment variables, telemetry, public records or ordinary temporary files.
+No empty-password/plaintext fallback is permitted. Do not equate a nonempty
+password with a password-strength guarantee. Keep private buffers bounded and
+dispose of owned copies; do not store unlock material or a public password
+verifier for convenient unattended recovery.
+
+Before readiness, bind the actual backing object and encrypted persisted
+generation to the live collection and exact application key. Use independent
+private readback and a scoped cryptographic key binding rather than item labels
+or modification timestamps. Establish the required durability through admitted
+native operations; successful provider calls alone do not prove it. Stop and
+settle the owned daemon/session, discard cached application-key material, then
+start a fresh admitted process against that same store and verify key-bound
+readback again through the approved protected channel. Controlled launch or
+enrollment alone is not qualification.
+
+Checkpoint partial effects before dispatch and retain actual returned object
+identities and independently observed outcomes. A lost response, crash,
+changed generation, wrong password, unavailable unlock material or uncertain
+process state remains incomplete. Recovery must not redispatch ambiguous key
+creation, replace a key, reset a password, recreate missing storage under an old
+identity or claim an unobserved save. Preserve the exact registered scope for
+supported reconciliation; an unresolvable boundary stays blocked.
+
+Managed Linux enrollment/recovery receipts and key references use explicitly
+registered new identities. Future use binds the original enrollment, current
+host/principal, current storage/daemon/helper observations and unchanged key
+identity. No macOS record, preexisting external key or earlier approval is
+reinterpreted. Cross-host movement, password rotation and rekeying require
+their own registered reviewed transitions and are not implicit enrollment or
+restart recovery.
+
+Disposal is separately selected and approved, limited to demonstrably owned
+store/key objects after all dependent retained artifacts and active or
+uncertain operations are accounted for. Unknown references or ownership,
+unsettled processes and foreign material block deletion. Never sweep a user
+keyring directory, destroy an external key or infer deletion authority from
+age, filename, a stale process ID or an enrollment failure.
+
+**Alternative rejected:** auto-enrolling during readiness, trusting an existing
+desktop daemon's labels as persistence proof, writing a plaintext key sidecar,
+passing restart verification using cached keys, or treating design approval
+as permission to launch a daemon, request a password or mutate a real store.
+
 ### 14. Resolve template defects and provide honest existing-project remediation
 
 For #80, emit Redis and Service Bus `minimum_tls_version = "1.2"`, storage `min_tls_version = "TLS1_2"`, and storage `allow_nested_items_to_be_public = false`. A private container is not the account-wide rule. Qualify the cited Checkov controls and backend-disabled OpenTofu output for affected profiles; do not infer a live exposure or change unrelated networking/identity settings.

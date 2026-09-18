@@ -5,7 +5,7 @@
 - [x] 1.3 Implement the amended identity authorities from the design, including manifest 8, policy 8, credential-policy schema 2, activation/state/evidence/approval 4, graph 3, compatibility 5 and governance output 3; register the exact pre-amendment policy-7/credential-policy-schema-1 candidate and its preservation/transition readers before enabling the new writer, and verify independent protocol/update/repair identities and original records remain unchanged.
 - [x] 1.4 Capture byte-exact fixtures for supported manifests v2-v7, historical activation v1/v2/v3, retained ancestor histories and sealed update/repair journals; verify the existing readers and recovery characterization tests establish the baseline without normalizing history.
 - [ ] 1.5 Define the required macOS/Windows/Linux x64/arm64 and minimum-host/libc qualification matrix; verify every advertised artifact has an identified native runner and explicit host requirements rather than an inferred support label.
-- [ ] 1.6 Prepare separate approval-bound qualification inputs for disposable GitHub/Azure and native-host resources, identities, permitted effects, spending, lifetime and cleanup limits, including any encrypted volumes, key-store entries or ACL changes; verify missing access is a named release blocker and no credentials or live side effects enter planning artifacts.
+- [ ] 1.6 Prepare separate approval-bound qualification inputs for disposable GitHub/Azure and native-host resources, identities, permitted effects, spending, lifetime and cleanup limits, including any encrypted volumes, controlled keystore enrollment/unlock/key-read/restart/disposal or ACL changes; verify missing access is a named release blocker and no credentials or live side effects enter planning artifacts.
 - [x] 1.7 Record the historical Windows failure evidence for run 34842047858/job 103969047717 without assuming a cause; verify each observed timeout, tool-identity and settlement symptom has a reproducible qualification case.
 
 Minimum-host admission now requires separate authenticated native/minimum-host
@@ -244,10 +244,13 @@ implementation and local acceptance, not a performed live hold replacement.
 - [ ] 11.15 Implement bounded pending-operation polling and registered recovery for each external-effect producer; verify actual operation IDs, no duplicate dispatch, current preconditions and no claim of cross-provider atomic rollback.
 - [x] 11.16 Keep every required producer unqualified until its actual provider/host/recipe evidence passes the release gate; verify an injected-only adapter or removal of a blocker flag cannot qualify the coordinated release.
 - [ ] 11.17 Audit and register exact native private-state storage, key, principal, tool, lock/write and helper contracts for Linux and Windows, including x64/arm64 and minimum-host prerequisites; verify actual supported interfaces and pinned OpenTofu source semantics before enabling a new writer, and preserve existing macOS identities without a guessed global schema bump.
-- [ ] 11.18 Implement the registered Linux private-state adapters for observed encrypted local storage, private ownership/access, principal-bound key custody, exact POSIX locking/write semantics and owned-process/private-I/O lifecycle; verify unsafe storage, stale keys, changed identity, lock contention and uncertain settlement fail closed without plaintext or ambient-credential fallback.
+- [ ] 11.18 Implement the registered Linux private-state adapters for observed encrypted local storage, private ownership/access, controlled enrollment/restart-qualified key custody, exact POSIX locking/write semantics and owned-process/private-I/O lifecycle; verify unsafe storage, stale keys, changed identity, lock contention and uncertain settlement fail closed without plaintext or ambient-credential fallback.
 - [ ] 11.19 Implement the registered Windows private-state adapters for observed encrypted storage, SID/DACL ownership, native key custody, actual Windows OpenTofu locking/write semantics and owned Job Object execution with protected I/O; verify no private payload reaches ordinary temporary logs or argv and unsupported policy/host conditions fail without bypass or timeout increases.
 - [ ] 11.20 Integrate native adapter selection across all private-state producers, consumers, checkpoints and recovery, with explicit identities/readers for any new record semantics; verify original macOS bytes, keys, receipts and approvals are preserved, stale/foreign host authority rejects, and cross-host move/rekey/conversion is never implicit.
-- [ ] 11.21 After separate bounded host-fixture approval, qualify each required native private-state host/architecture combination with real encrypted-storage, key, lock, private-I/O, cancellation, descendant, no-op and recovery cases; verify portable fixtures are labeled separately, unavailable prerequisites remain named blockers and no cloud effects or release authority are inferred.
+- [ ] 11.21 After separate bounded host-fixture approval, qualify each required native private-state host/architecture combination with real encrypted-storage, key, lock, private-I/O, cancellation, descendant, no-op and recovery cases, including controlled Linux enrollment and fresh-process persisted-key recovery; verify portable fixtures are labeled separately, unavailable prerequisites remain named blockers and no cloud effects or release authority are inferred.
+- [ ] 11.22 Audit and register the exact supported controlled-GNOME daemon, dependency, IPC, creation/unlock, persisted-format and durability interfaces, plus independent enrollment/key-reference/recovery identities; verify authoritative backing-object and encrypted-generation binding without desktop-daemon assumptions, internal unsupported APIs or password-derived public verifiers before enabling enrollment.
+- [ ] 11.23 Implement separately selected default-No/exact-plan Linux keystore enrollment with absence-bound private scope, protected operator input, pre-effect checkpoints, actual owned-process and returned-object custody, and private durable readback; verify occupied/stale targets, canceled input, plaintext/empty-password fallback and ambiguous outcomes cannot create a ready key or authorize ordinary desktop-keyring changes.
+- [ ] 11.24 Implement fresh-process key-bound restart verification, interrupted enrollment recovery, later use admission and separately approved owned-store disposal; verify no cached-key substitute, duplicate creation, password reset, implicit rekey/cross-host conversion or unsafe deletion, and preserve all preexisting macOS/external-key records and dependent retained artifacts.
 
 The full cross-platform source matrix exposed a real macOS-only private-state
 foundation, not merely host-dependent fixture metadata. The user approved
@@ -285,10 +288,19 @@ exact live key to a durably saved encrypted collection. The GNOME-specific
 `CKA_TRUSTED` attribute observes a nonempty loaded password, not the backing
 file or persisted generation; encrypted Secret Service transport does not fill
 that gap. Pinned source identities, evidence and the two persistence-proof
-blockers are recorded in `docs/private-state-activation.md`. Controlled store
-admission/enrollment remains an unapproved design/effect boundary. Task 11.17
-and the dependent Linux writer remain open; independent POSIX lock work may
-proceed without accessing keys or enabling that writer.
+blockers are recorded in `docs/private-state-activation.md`. The user has now
+approved controlled-store enrollment and restart recovery as implementation
+scope in decision 13c and tasks 11.22-11.24. Real daemon/store/key operations
+remain separately unauthorized; this planning approval does not establish
+persistence proof. Task 11.17 and the dependent Linux writer remain open.
+
+Independent Linux POSIX tool/lock exports and a distinct schema-2 synthetic
+native-lock qualification entrypoint are implemented as groundwork. Existing
+Darwin script bytes, protocol/qualification digests and actual-qualification
+authority remain preserved. Focused local regressions and the actual Darwin
+synthetic qualification passed; Linux x64/arm64 native execution remains
+pending. These primitives do not supply encrypted-storage/key custody, enable
+producer writers or close tasks 11.17/11.18.
 
 Private runner creation and separately approved assignment now pass current
 engine evidence admission and original-custody consumer regressions. Hosted

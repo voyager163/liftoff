@@ -257,3 +257,26 @@ The required macOS, Linux and Windows x64/arm64 host matrix SHALL qualify each r
 - **WHEN** a native adapter, supported encrypted-storage/key interface, authorized runner or required evidence is missing
 - **THEN** the specific combination remains blocked and coordinated release completion is refused
 - **AND** platform filtering, skipped native cases or injected-only success cannot satisfy the required matrix
+
+### Requirement: Controlled Linux enrollment qualification proves restart and interruption safety
+Managed Linux keystore qualification SHALL use separately authorized disposable native store/session resources and bind the exact provider build, helper, configuration, storage protection and principal. It SHALL verify persistence and key recovery after the original owned processes and cached application-key material are gone. Source fixtures, successful D-Bus calls or an audited source version SHALL NOT establish this native outcome.
+
+#### Scenario: Qualify a fresh controlled enrollment
+- **WHEN** the approved native fixture enrolls a new store/key
+- **THEN** evidence binds actual creation, protected input, encrypted persisted generation, required sync/readback and a fresh-process key-bound recovery
+- **AND** the provider's actual source/build identity is recorded rather than equating a post-release commit with its nearest release tag
+
+#### Scenario: Interrupt each durable boundary
+- **WHEN** qualification interrupts creation, secret delivery, save, receipt publication, shutdown or restart
+- **THEN** each result truthfully distinguishes unperformed, returned, verified and uncertain effects and preserves the supported recovery scope
+- **AND** no repeated key creation, password reset, replacement, false ready receipt or unsafe cleanup occurs
+
+#### Scenario: Substitute a store or reuse cached key material
+- **WHEN** the backing object, generation, daemon, principal, endpoint or key changes, or a fixture attempts to satisfy restart using a cached key
+- **THEN** qualification fails the affected binding
+- **AND** native readiness is not inferred from labels, timestamps, supplied encryption flags or a successful decrypt outside the admitted restarted process
+
+#### Scenario: Qualification or disposal approval is absent
+- **WHEN** a source runner lacks bounded permission for store creation, unlock, key access, restart or disposal
+- **THEN** that native qualification remains unperformed and explicitly blocked
+- **AND** the workflow does not use the runner's ordinary keyring, real credentials or unrelated storage as a convenient fixture

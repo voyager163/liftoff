@@ -583,3 +583,21 @@ Guidance SHALL identify each supported macOS, Linux and Windows private-state pr
 - **WHEN** documentation describes disposable encrypted volumes, key-store entries or privileged host changes
 - **THEN** it requires bounded resource/effect and cleanup approval separate from source testing and implementation approval
 - **AND** it does not represent native fixture success as live Azure/GitHub execution or release permission
+
+### Requirement: Managed Linux keystore guidance separates setup use recovery and disposal
+Guidance SHALL describe controlled Linux enrollment as a separately reviewed native operation with its own host/storage prerequisites, protected-input channel, owned scope, persistence/readback and restart requirements. It SHALL distinguish source implementation, actual enrollment readiness, later key-use authority and native qualification. It SHALL NOT imply that an ordinary desktop collection, a nonempty password or successful Secret Service lookup proves durable custody.
+
+#### Scenario: Prepare a managed Linux store
+- **WHEN** a user follows enrollment guidance
+- **THEN** the guide explains the fresh destination, exact daemon/configuration binding and separate effect approval
+- **AND** it requests no password or key through chat, argv, environment variables, public files or a generic approval
+
+#### Scenario: Recover after interruption or lost unlock material
+- **WHEN** enrollment or subsequent restart cannot complete
+- **THEN** guidance preserves the original store/checkpoints and identifies the supported exact recovery or blocked boundary
+- **AND** it does not promise password recovery, reset protection, create a replacement key, relabel a new store as the old one or bypass retained-state references
+
+#### Scenario: Review teardown
+- **WHEN** managed-store disposal is considered
+- **THEN** guidance requires separate owned-scope approval, settled processes and dependent-artifact accounting
+- **AND** normal activation, enrollment failure or expiry does not authorize deleting a user keyring directory or external key

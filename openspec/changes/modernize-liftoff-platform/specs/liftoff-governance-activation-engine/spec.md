@@ -434,3 +434,54 @@ New platform/provider identities SHALL preserve existing macOS readers, encrypte
 - **WHEN** a new host/provider combination requests execution using an older approval
 - **THEN** admission rejects the mismatching custody and effect binding
 - **AND** schema compatibility or numeric version ordering does not grant new native authority
+
+### Requirement: Controlled Linux keystore enrollment has independent authority and custody
+Linux managed-keystore enrollment SHALL be a separately selected registered operation, not implicit readiness or activation. Its immutable review SHALL bind the project/account, host/principal, protected parent, absent destination, daemon/helper/dependency identities, configuration and intended effects. Enrollment, unlock, protected key reads, recovery and disposal SHALL retain their own declared authority. The workflow SHALL use only admitted supported provider interfaces and SHALL NOT adopt or modify ordinary desktop keyrings.
+
+#### Scenario: Plan an enrollment without execution authority
+- **WHEN** the operator inspects or plans a controlled Linux store
+- **THEN** the result describes its exact effects and unresolved prerequisites without launching a daemon, requesting a password, creating a store or reading key bytes
+- **AND** an input-channel flag, installation approval or ordinary activation request cannot supply enrollment authority
+
+#### Scenario: The selected destination is occupied
+- **WHEN** the absence-bound store destination becomes occupied or its parent identity/protection changes
+- **THEN** execution refuses the old plan before creating or replacing material
+- **AND** an empty-looking directory or matching name does not grant adoption or overwrite authority
+
+#### Scenario: Enroll into an approved fresh private scope
+- **WHEN** the exact enrollment is approved and current native prerequisites hold
+- **THEN** execution records pre-effect custody and binds its actual store, daemon, configuration, principal, IPC endpoints and returned object identities
+- **AND** it does not replace the ordinary Secret Service owner, silently change data directories or use a plaintext/empty-password fallback
+
+#### Scenario: A private input is needed
+- **WHEN** the selected approved operation needs a master password or key material
+- **THEN** only the registered operator-controlled protected CLI channel supplies it within bounded private handling
+- **AND** chat, argv, environment variables, public records, telemetry and ordinary temporary files never become input or storage channels
+
+### Requirement: Managed Linux key readiness proves persistence and fresh-process recovery
+A managed Linux key SHALL become ready only after authoritative backing-store and encrypted-generation binding, private key-bound readback, required durability verification, owned-session settlement and successful readback from a fresh admitted process. New receipts/key references SHALL have explicit registered identities; a collection label, modification time, nonempty loaded password or transport encryption SHALL NOT substitute for persisted-key custody. Existing macOS records and external keys SHALL retain their original meanings.
+
+#### Scenario: Verify restart recovery
+- **WHEN** enrollment reaches its persistence checkpoint
+- **THEN** the owned daemon/session stops with verified settlement, cached application-key material is discarded, and a fresh admitted process reads the same key from the bound persisted store
+- **AND** only matching scoped cryptographic readback can establish readiness; a cached key or unchanged item label cannot
+
+#### Scenario: A provider cannot expose the required result
+- **WHEN** an admitted interface cannot establish backing-object identity, encrypted persistence, save completion or key-bound recovery
+- **THEN** enrollment remains incomplete with the exact evidence gap
+- **AND** neither a successful call nor controlled daemon launch is promoted into readiness
+
+#### Scenario: Enrollment is interrupted after a possible effect
+- **WHEN** a response is lost, a process exits, persistence is uncertain or a returned object cannot be attributed
+- **THEN** original checkpoints and the exact registered scope are retained for supported reconciliation
+- **AND** recovery does not blindly repeat creation, reset a password, replace a key or recreate missing storage under the old identity
+
+#### Scenario: Unlock material or key identity no longer matches
+- **WHEN** restart encounters a wrong/unavailable password, changed key, changed generation or different host/principal
+- **THEN** the old operation remains blocked and original material is preserved
+- **AND** no empty-password fallback, rekeying or cross-host conversion is inferred
+
+#### Scenario: Dispose a managed store
+- **WHEN** separately reviewed disposal is requested
+- **THEN** it requires exact owned-object attribution, settled processes and complete accounting for dependent retained artifacts
+- **AND** foreign material, unknown references or uncertain work block deletion; no user keyring tree or preexisting external key is swept
