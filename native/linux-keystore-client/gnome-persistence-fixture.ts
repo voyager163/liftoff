@@ -11,6 +11,7 @@ import {
   createManagedKeystoreKeyBinding, verifyManagedKeystoreKeyBinding,
   type ManagedKeystoreKeyBinding, type ManagedKeystoreKeyContext
 } from '../../src/adapters/state/managed-keystore-key-binding.js';
+import { safeBusDiagnostic, type SafeBusDiagnostic } from './gnome-bus-diagnostics.mjs';
 
 const directory = path.resolve('native', 'linux-keystore-client');
 const sourceCommit = 'da00f9621eaf263d5ed4236df9c22798ea8021d2';
@@ -38,12 +39,38 @@ interface Report {
   daemon: { pid: number; sid: number; start: string; owner: string } | null;
   generationChecked: boolean;
   loaderVerified: boolean;
+  busDiagnostic?: SafeBusDiagnostic | null;
 }
 interface SnapshotEntry { identity: string; sha256: string | null }
 type Tree = Record<string, SnapshotEntry>;
 function observationIssue(report: Report | null, client: LinuxKeyClientOutcome | null): string {
   const issue = report?.blocked ?? client?.issue ?? 'missing-native-observation';
-  return /^[a-z-]{1,64}$/u.test(issue) ? issue : 'invalid-native-observation';
+  const code = /^[a-z-]{1,64}$/u.test(issue) ? issue : 'invalid-native-observation';
+  const bus = safeBusDiagnostic(report?.busDiagnostic);
+  return bus ? `${code}:${bus.stage}:${bus.reason}:${bus.errno}` : code;
+}
+export function assertGnomeCancellation(ready: boolean, code: string | undefined): void {
+  requireFixture(ready && ['cancelled', 'process-tree-termination-unproven'].includes(code ?? ''), 'cancellation-outcome');
+}
+
+function coordinatorMetadata(bytes: Buffer) {
+  requireFixture(bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'GNF1', 'coordinator-frame');
+  const metadata = bytes.readUInt32BE(4), payload = bytes.readUInt32BE(8);
+  requireFixture(metadata <= 4096 && payload <= 6212 && bytes.length === 12 + metadata + payload, 'coordinator-frame-size');
+  let report: Report;
+  try { report = JSON.parse(bytes.subarray(12, 12 + metadata).toString()) as Report; }
+  catch { throw new Error('gnome-source-fixture:coordinator-metadata'); }
+  requireFixture(report.kind === 'actual-gnome-generated-data-source-fixture' &&
+    typeof report.settled === 'boolean', 'coordinator-kind');
+  report.busDiagnostic = safeBusDiagnostic(report.busDiagnostic);
+  return { report, metadata, payload };
+}
+
+function reportStartupFailure(operation: string, report: Report) {
+  if (report.blocked) console.info(JSON.stringify({
+    kind: 'observed-gnome-source-startup-failure', operation,
+    issue: observationIssue(report, null), bus: safeBusDiagnostic(report.busDiagnostic), readiness: false
+  }));
 }
 export function gnomeEnrollmentFailureObservation(client: LinuxKeyClientOutcome | null, settled: boolean) {
   const creation = client?.creation ?? 'unknown';
@@ -212,7 +239,12 @@ export class GnomePersistenceFixture {
       environment: { PATH: '/usr/bin:/bin', LC_ALL: 'C', LANG: 'C', HOME: paths.scratch, TMPDIR: paths.scratch },
       stdin: selectedPassword, timeoutMs: 15000, maximumBytes: 16384, signal: controller.signal
     });
-    const outcome = task.then((result) => ({ result, error: undefined }), (error: unknown) => ({ result: undefined, error }));
+    let processFinished = false;
+    const outcome = task.then((result) => {
+      processFinished = true; return { result, error: undefined };
+    }, (error: unknown) => {
+      processFinished = true; return { result: undefined, error };
+    });
     if (cancel) {
       const deadline = Date.now() + 7000;
       let ready = false;
@@ -220,13 +252,30 @@ export class GnomePersistenceFixture {
         while (Date.now() < deadline) {
           ready = await readFile(path.join(paths.runtime, 'ready.json'), 'utf8').then((text) => JSON.parse(text).ready === true, () => false);
           if (ready) break;
+          if (processFinished) break;
           await new Promise((resolve) => setTimeout(resolve, 20));
         }
       } finally { controller.abort(); }
       const completed = await outcome;
       const code = (completed.error as { code?: string } | undefined)?.code;
       if (code === 'process-tree-termination-unproven') this.#preserve = true;
-      requireFixture(ready && ['cancelled', 'process-tree-termination-unproven'].includes(code ?? ''), 'cancellation-outcome');
+      if (!ready && completed.result) {
+        const bytes = Buffer.from(completed.result.stdout.buffer, completed.result.stdout.byteOffset, completed.result.stdout.byteLength);
+        try {
+          const { report } = coordinatorMetadata(bytes);
+          if (!report.settled) this.#preserve = true;
+          reportStartupFailure(operation, report);
+          throw new Error(`gnome-source-fixture:cancellation-startup-unavailable:${observationIssue(report, null)}`);
+        } finally {
+          bytes.fill(0);
+          if ('stderr' in completed.result) completed.result.stderr.fill(0);
+        }
+      }
+      if (completed.result) {
+        completed.result.stdout.fill(0);
+        if ('stderr' in completed.result) completed.result.stderr.fill(0);
+      }
+      assertGnomeCancellation(ready, code);
       return { report: null, client: null, cancellation: code };
     }
     const completed = await outcome;
@@ -237,13 +286,8 @@ export class GnomePersistenceFixture {
     }
     const bytes = Buffer.from(completed.result!.stdout.buffer, completed.result!.stdout.byteOffset, completed.result!.stdout.byteLength);
     try {
-      requireFixture(bytes.length >= 12 && bytes.toString('ascii', 0, 4) === 'GNF1', 'coordinator-frame');
-      const metadata = bytes.readUInt32BE(4), payload = bytes.readUInt32BE(8);
-      requireFixture(metadata <= 4096 && payload <= 6212 && bytes.length === 12 + metadata + payload, 'coordinator-frame-size');
-      let report: Report;
-      try { report = JSON.parse(bytes.subarray(12, 12 + metadata).toString()) as Report; }
-      catch { throw new Error('gnome-source-fixture:coordinator-metadata'); }
-      requireFixture(report.kind === 'actual-gnome-generated-data-source-fixture', 'coordinator-kind');
+      const { report, metadata, payload } = coordinatorMetadata(bytes);
+      reportStartupFailure(operation, report);
       if (!report.settled) {
         this.#preserve = true;
         return { report, client: null, cancellation: undefined };

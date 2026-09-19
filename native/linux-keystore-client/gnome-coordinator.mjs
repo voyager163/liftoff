@@ -1,8 +1,9 @@
 // Test-only owned coordinator. Restart runs this entire process tree inside Landlock.
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { lstat, readFile, realpath, writeFile } from 'node:fs/promises';
+import { lstat, open, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { consumeBusStartupDiagnostic, safeNativeErrno } from './gnome-bus-diagnostics.mjs';
 
 const children = [];
 let cancelled = false;
@@ -29,10 +30,11 @@ function launch(executable, args, environment, cwd, input) {
   live();
   const child = spawn(executable, args, { cwd, env: environment, shell: false,
     detached: false, stdio: ['pipe', 'pipe', 'pipe'] });
-  const entry = { child, closed: false, code: null, stdout: [], stderr: [], length: 0, overflow: false };
+  const entry = { child, closed: false, code: null, signal: null, spawnError: null,
+    stdout: [], stderr: [], length: 0, overflow: false };
   entry.done = new Promise((resolve) => {
-    child.once('error', () => { entry.code = -1; });
-    child.once('close', (code) => { entry.closed = true; entry.code = code ?? -1; resolve(); });
+    child.once('error', (error) => { entry.code = -1; entry.spawnError = safeNativeErrno(error.code); });
+    child.once('close', (code, signal) => { entry.closed = true; entry.code = code ?? -1; entry.signal = signal; resolve(); });
   });
   for (const stream of ['stdout', 'stderr']) child[stream].on('data', (bytes) => {
     entry.length += bytes.length;
@@ -161,9 +163,21 @@ async function storeMatches(config) {
   } finally { bytes.fill(0); }
 }
 
+async function observeNullReadWrite() {
+  // Same open mode required by D-Bus before it parses --nofork; no data is
+  // read or written, and the descriptor is closed before any child starts.
+  let fd;
+  try { fd = await open('/dev/null', 'r+'); }
+  catch (error) { return safeNativeErrno(error.code); }
+  try { await fd.close(); }
+  catch { check(false, 'null-device-probe-close'); }
+  return 'allowed';
+}
+
 async function main() {
   const report = { kind: 'actual-gnome-generated-data-source-fixture', blocked: null,
-    settled: false, clientExitCode: null, daemon: null, generationChecked: false, loaderVerified: false };
+    settled: false, clientExitCode: null, daemon: null, generationChecked: false, loaderVerified: false,
+    busDiagnostic: null };
   let secret, frames = Buffer.alloc(0);
   let config;
   try {
@@ -210,13 +224,23 @@ async function main() {
 <policy context="default"><allow user="${process.getuid()}"/><allow own="org.gnome.keyring"/>
 <allow own="org.freedesktop.secrets"/><allow own="org.freedesktop.impl.portal.Secret"/>
 <allow send_destination="*"/><allow receive_sender="*"/></policy><limit name="max_message_size">65536</limit></busconfig>`, { mode: 0o600 });
+    const nullReadWrite = await observeNullReadWrite();
     const bus = launch(config.tools.bus.path, ['--nofork', '--nopidfile', `--config-file=${busConfig}`, '--print-address=1'],
       environment, config.scratch);
-    await waitFor(() => bus.stdout.some((part) => part.includes(10)) || bus.closed);
-    const busOutput = collected(bus, 'stdout');
-    const guid = /(?:^|,)guid=([a-f0-9]{32})\s*$/u.exec(busOutput.toString('utf8'))?.[1];
-    busOutput.fill(0);
-    check(guid && !bus.closed, 'private-bus-startup');
+    let guid;
+    try {
+      await waitFor(() => bus.stdout.some((part) => part.includes(10)) || bus.closed);
+      const busOutput = collected(bus, 'stdout');
+      try { guid = /(?:^|,)guid=([a-f0-9]{32})\s*$/u.exec(busOutput.toString('utf8'))?.[1]; }
+      finally { busOutput.fill(0); }
+      check(guid && !bus.closed, 'private-bus-startup');
+    } catch (error) {
+      report.busDiagnostic = consumeBusStartupDiagnostic(collected(bus, 'stderr'), {
+        closed: bus.closed, spawnError: bus.spawnError, exitCode: bus.code, signal: bus.signal,
+        addressObserved: Boolean(guid), nullReadWrite
+      });
+      throw error;
+    }
     const selectedAddress = `${address},guid=${guid}`;
     const daemon = launch(config.gnome.executable.path,
       ['--foreground', '--components=secrets', '--control-directory', config.control, '--unlock'],

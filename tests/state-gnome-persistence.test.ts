@@ -3,8 +3,11 @@ import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  GnomePersistenceFixture, gnomeEnrollmentFailureObservation
+  GnomePersistenceFixture, gnomeEnrollmentFailureObservation, assertGnomeCancellation
 } from '../native/linux-keystore-client/gnome-persistence-fixture.js';
+import {
+  consumeBusStartupDiagnostic, safeBusDiagnostic
+} from '../native/linux-keystore-client/gnome-bus-diagnostics.mjs';
 import { validateGnomePrivatePrefixOptions } from '../native/linux-keystore-client/gnome-build-contract.mjs';
 import { captureStateExecutable } from '../src/adapters/state/native-system.js';
 import { stateDigest } from '../src/domain/repair/stateful-invariants.js';
@@ -16,6 +19,14 @@ const enrollmentLauncher = await readFile(path.join(directory, 'gnome-enrollment
 const declaration = JSON.parse(await readFile(path.join(directory, 'gnome-dependencies.json'), 'utf8'));
 
 describe('actual GNOME persistence fixture source boundaries', () => {
+  it('does not reinterpret startup failure as a successful cancellation', () => {
+    expect(() => assertGnomeCancellation(false, 'cancelled')).toThrow('cancellation-outcome');
+    expect(() => assertGnomeCancellation(true, undefined)).toThrow('cancellation-outcome');
+    expect(() => assertGnomeCancellation(true, 'native-command-failed')).toThrow('cancellation-outcome');
+    expect(() => assertGnomeCancellation(true, 'cancelled')).not.toThrow();
+    expect(fixtureSource).toContain('if (processFinished) break');
+    expect(fixtureSource).toContain('cancellation-startup-unavailable');
+  });
   it('distinguishes observed creation from pre-dispatch refusal without exposing key material', () => {
     const refused = gnomeEnrollmentFailureObservation({
       status: 'failed', creation: 'no-dispatch', observedItemPaths: [], issue: 'item-mismatch', key: null, readiness: false
@@ -46,6 +57,56 @@ describe('actual GNOME persistence fixture source boundaries', () => {
     expect(coordinator).not.toMatch(/['"]--(?:start|replace|daemonize|login)['"]/u);
     expect(coordinator).not.toContain('InternalUnsupported');
     expect(declaration.qualification).toContain('not-encrypted-host-custody');
+  });
+
+  describe('bounded private bus startup diagnostics', () => {
+    it('classifies the mandatory D-Bus /dev/null open failure without retaining stderr', () => {
+      const bytes = Buffer.from('dbus-daemon: fatal error setting up standard fds: Failed to open /dev/null: Permission denied\n');
+      const diagnostic = consumeBusStartupDiagnostic(bytes, {
+        closed: true, exitCode: 1, addressObserved: false, nullReadWrite: 'EACCES'
+      });
+      expect(diagnostic).toMatchObject({
+        stage: 'standard-fds', reason: 'dev-null-open', errno: 'EACCES',
+        exitCode: 1, addressObserved: false, nullReadWrite: 'EACCES'
+      });
+      expect(bytes.every((byte) => byte === 0)).toBe(true);
+      expect(coordinator.includes("fd = await open('/dev/null', 'r+')")).toBe(true);
+      expect(coordinator.includes('await fd.close()')).toBe(true);
+    });
+
+    it.each([
+      ['Failed to dup2 /dev/null onto a standard fd', 'Operation not permitted', 'dev-null-dup', 'EPERM'],
+      ['Failed to open /dev/null', 'No such file or directory', 'dev-null-open', 'ENOENT']
+    ])('preserves only allowlisted native stage/errno for %s', (operation, message, reason, errno) => {
+      const bytes = Buffer.from(`dbus-daemon[123]: fatal error setting up standard fds: ${operation}: ${message}\n`);
+      expect(consumeBusStartupDiagnostic(bytes, { closed: true, exitCode: 1 })).toMatchObject({
+        stage: 'standard-fds', reason, errno
+      });
+    });
+
+    it('separates exec failure and socket binding from standard-descriptor setup', () => {
+      expect(consumeBusStartupDiagnostic(Buffer.alloc(0), { spawnError: 'EACCES', closed: true, exitCode: -1 }))
+        .toMatchObject({ stage: 'spawn', reason: 'native-exec', errno: 'EACCES', exitCode: null });
+      const bytes = Buffer.from('dbus-daemon[123]: Failed to start message bus: Failed to bind socket "/PRIVATE_SENTINEL": Address already in use\n');
+      const result = consumeBusStartupDiagnostic(bytes, { closed: true, exitCode: 1 });
+      expect(result).toMatchObject({ stage: 'socket-bind', reason: 'unix-bind', errno: 'EADDRINUSE' });
+      expect(JSON.stringify(result)).not.toContain('PRIVATE_SENTINEL');
+      expect(bytes.every((byte) => byte === 0)).toBe(true);
+    });
+
+    it('never copies unclassified provider strings, paths, signals or additional fields into public diagnostics', () => {
+      const bytes = Buffer.from('PRIVATE_SENTINEL unexpected native diagnostics\n');
+      const result = consumeBusStartupDiagnostic(bytes, {
+        closed: true, exitCode: 9999, signal: 'PRIVATE_SENTINEL', nullReadWrite: 'PRIVATE_SENTINEL'
+      });
+      expect(JSON.stringify(result)).not.toContain('PRIVATE_SENTINEL');
+      expect(JSON.stringify(safeBusDiagnostic({
+        stage: 'PRIVATE_SENTINEL', reason: 'PRIVATE_SENTINEL', errno: 'PRIVATE_SENTINEL',
+        key: 'PRIVATE_SENTINEL', path: '/PRIVATE_SENTINEL'
+      }))).not.toContain('PRIVATE_SENTINEL');
+      expect(result).toMatchObject({ stage: 'address-output', reason: 'early-exit', errno: 'unclassified', exitCode: null, signal: null });
+      expect(bytes.every((byte) => byte === 0)).toBe(true);
+    });
   });
 
   it('creates bus/control descendants only after the restart guard, without detached children', () => {

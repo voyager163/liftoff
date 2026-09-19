@@ -112,6 +112,35 @@ actual `LD_TRACE_LOADED_OBJECTS` resolution for the daemon (`--version`) and
 client (`--contract`) under their explicit recorded library paths. It then
 requires matching loader initialization observations from the actual operations.
 
+### Guarded private-bus startup diagnostics
+
+Hosted run 35419049590 reached enrollment/persisted readback but failed before
+the restarted private bus published its address. The hosted package was
+`dbus-daemon 1.14.10-4ubuntu4.1`. Upstream
+[`bus/main.c`](https://gitlab.freedesktop.org/dbus/dbus/-/blob/dbus-1.14.10/bus/main.c)
+calls `_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, ...)` **before parsing
+`--nofork` or any other arguments**.
+[`dbus-sysdeps-unix.c`](https://gitlab.freedesktop.org/dbus/dbus/-/blob/dbus-1.14.10/dbus/dbus-sysdeps-unix.c)
+unconditionally opens `/dev/null` with `O_RDWR`, even with preexisting stdio.
+The current three-root Landlock policy does not grant that pathname write access.
+Preopened descriptors or more permissive persisted-store rules are not a repair.
+
+The coordinator now observes that same open mode without reading/writing any
+bytes, closes its probe descriptor before spawning children, and reports only
+allowlisted startup stages, errno classifications, exit/signal values, address
+presence and the null-device probe result. Raw stderr, paths and credentials
+are not returned. The native errno still requires the next hosted observation;
+the previous generic failure log did not retain it.
+
+A production-guard correction, if approved by its owner, must be a narrowly
+typed, identity-verified kernel-null-device capability (not `/dev` or an
+arbitrary path grant), while retaining store write denial and closing setup
+descriptors. This fixture does not implement or assume that exception.
+Cancellation tests still require reaching actual native readiness and an owned
+cancellation result. Early bus failure now stops their readiness wait and fails
+with the classified startup cause instead of waiting seven seconds and
+misreporting it as a cancellation-boundary failure. No deadline is extended.
+
 Normal runs register only portable source/refusal checks. The opt-in adds:
 actual enrollment plus verified restart; missing store; substituted inode;
 wrong password; changed cryptographic binding; cancellation; and a deliberately
