@@ -289,3 +289,94 @@ client, fixture and bus handles before removing only that test's exact scratch
 root. An uncertain settlement fails and preserves the root instead of reporting
 cleanup success. No host policy, ordinary bus, external store, or provider
 authorization is created by this lane.
+
+## Independent managed-Linux record and recovery identities
+
+The production source now declares a separate **metadata-only** record family
+in `src/domain/repair/managed-linux-keystore-{contract,records}.ts`, with bounded
+codecs/readers in `src/adapters/state/managed-linux-keystore-records.ts`:
+
+| Identity | Meaning |
+| --- | --- |
+| `managed-linux-gnome/1` | Explicit provider namespace, never a macOS/external-key alias |
+| `managed-linux-keystore-enrollment/1` | Immutable enrollment intent and original operation/binding identity |
+| `managed-linux-keystore-recovery-checkpoint/1` | Ordered cumulative observations tied to that enrollment and prior checkpoint |
+| `managed-linux-keystore-key-reference/1` / `managed-linux-key:<fingerprint>` | Reference to one exact recorded enrollment/checkpoint/item/generation/encrypted key binding |
+
+Inspection, enrollment, unlock, protected key read, recovery and disposal also
+have independent `managed-linux-keystore-…/1` operation identifiers. Merely
+declaring them does not register a public writer, execute an operation or issue
+approval. No global governance version, macOS schema, external-key ID, existing
+reader, encrypted envelope or approval is changed.
+
+Bindings include Linux architecture, project, host/principal, enrollment/store
+IDs, selected scope/configuration, exact daemon/libsecret pins, executable/
+dependency/client identities, and the explicit restart profile/helper. Persisted
+generation observations bind the canonical file path, device/inode/birthtime,
+owner/mode, complete byte digest and length. Checkpoints retain cumulative key
+creation uncertainty and all returned paths, including inadmissible identities
+needed for reconciliation. Missing chain entries, backwards observations,
+identity loss, repeated creation dispatch, generation replacement and changed
+restart-plan host/principal/helper/operation bindings reject rather than reset
+or normalize the history.
+
+All record versions/kinds/fields are exact. The UTF-8 codec uses the existing
+strict JSON duplicate-field parser, canonical fingerprints, a 32-KiB per-record
+limit and at most 64 checkpoint entries. Selected enrollment/checkpoint/key-ref
+fingerprints must match independently supplied current expectations. Fingerprints
+are **integrity/selection checks, not signatures, native provenance or approval**;
+callers cannot establish freshness by supplying a stale record and its own stale
+expectations.
+
+There are no supported raw-key, master-password, password-verifier or
+encrypted-storage-attestation fields. Operation/configuration/observation
+digests must refer only to their declared nonsecret inputs; these APIs never
+derive a digest from private key/password input. The encrypted AES-GCM probe stays separate and
+is selected by its exact digest. The consuming verifier reuses
+`verifyManagedKeystoreKeyBinding` with the original exact context; it clears the
+supplied snapshot and still returns only `key-binding-only`,
+`freshProcessVerified:false`, `readiness:false`. Likewise the generation adapter
+reuses `inspectControlledGnomeBinary`, clears supplied file bytes, and does not
+convert its structural inspection into custody or durable-save proof.
+
+Even a fully populated, fingerprint-valid serialized chain containing
+`restart-observed` remains `authority:"none"`,
+`nativeAuthority:"not-established"` and `readiness:false`. Observation digests
+and the serialized null-sink plan are references/data, not native capabilities.
+The readers grant no creation retry, password reset, rekey, cross-host
+conversion or disposal authority. A key reference is not a ready key provider.
+Existing `keychain:` references and `state-read`/`state-write` approval records
+are not accepted or converted by these new readers.
+
+### Exact durability boundary and remaining production work
+
+The immutable daemon source audit includes
+[`pkcs11/gkm/gkm-transaction.c`](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/pkcs11/gkm/gkm-transaction.c):
+`write_sync_close()` checks write, conditional `HAVE_FSYNC` file-sync and close
+results; `write_to_file()` writes a same-directory temporary, closes it and
+renames it, but supplies **no parent-directory fsync**. Therefore CreateItem
+success is not sufficient durable-generation evidence. The registered closure
+requires independently successful exact-file and parent-directory fsync,
+owned-process settlement/cache disposal, and fresh cryptographic readback.
+The actual generated-data run documented above exercised those observations;
+neither it nor a serialized checkpoint proves power-loss durability or encrypted
+host storage.
+
+The source/interface audit and independent record identities are registered.
+Still separate and unavailable from these readers are:
+
+- a native protected-parent storage contract and current filesystem/encryption/
+  ownership evidence (no fscrypt, volume or keystore protection is invented);
+- production default-No/exact-operation approval, protected operator-input
+  admission and custody-authenticated checkpoint persistence;
+- an owned daemon/bus coordinator that independently produces and rechecks the
+  referenced native observations and handles lost responses without redispatch;
+- later-use/recovery and separately approved disposal integration, including all
+  dependent retained artifacts and cross-host/rekey transition readers;
+- minimum-host, complete runtime closure and final installed-artifact evidence.
+
+Those gates must close before any production enrollment/readiness/writer path is
+enabled. Source checks for this new family are
+`tests/managed-linux-keystore-records.test.ts`; they use synthetic in-memory
+metadata and byte buffers only, never a daemon, store, real credential or
+encrypted-volume operation.

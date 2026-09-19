@@ -242,6 +242,18 @@ This is generated-data native source evidence only. Production enrollment,
 encrypted-host custody, minimum-host and final installed-artifact qualification
 remain open; no provider/cloud effect or release authority follows from this run.
 
+The managed-Linux contract and record readers now register independent
+enrollment, key-reference and recovery identities in
+`src/domain/repair/managed-linux-keystore-*` and the corresponding state adapter.
+They bind exact context, software, helper/profile, persisted generation, key
+binding and effect-stage metadata, reject stale/tampered or foreign records,
+and retain uncertainty without minting retry, reset or disposal permission.
+They do not reinterpret existing macOS/external-key records or approvals.
+Reading a serialized record is not a native observation: these contracts grant
+no execution authority or readiness, and production protected storage,
+authenticated checkpoints, approval/input and lifecycle coordination remain
+required before a managed Linux writer can be enabled.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

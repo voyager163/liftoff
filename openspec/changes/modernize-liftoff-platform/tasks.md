@@ -257,7 +257,7 @@ implementation and local acceptance, not a performed live hold replacement.
 - [ ] 11.19 Implement the registered Windows private-state adapters for observed encrypted storage, SID/DACL ownership, native key custody, actual Windows OpenTofu locking/write semantics and owned Job Object execution with protected I/O; verify no private payload reaches ordinary temporary logs or argv and unsupported policy/host conditions fail without bypass or timeout increases.
 - [ ] 11.20 Integrate native adapter selection across all private-state producers, consumers, checkpoints and recovery, with explicit identities/readers for any new record semantics; verify original macOS bytes, keys, receipts and approvals are preserved, stale/foreign host authority rejects, and cross-host move/rekey/conversion is never implicit.
 - [ ] 11.21 After separate bounded host-fixture approval, qualify each required native private-state host/architecture combination with real encrypted-storage, key, lock, private-I/O, cancellation, descendant, no-op and recovery cases, including controlled Linux enrollment and fresh-process persisted-key recovery; verify portable fixtures are labeled separately, unavailable prerequisites remain named blockers and no cloud effects or release authority are inferred.
-- [ ] 11.22 Audit and register the exact supported controlled-GNOME daemon, dependency, IPC, explicitly selected restart-guard profile, creation/unlock, persisted-format and durability interfaces, plus independent enrollment/key-reference/recovery identities; verify authoritative backing-object and encrypted-generation binding without desktop-daemon assumptions, internal unsupported APIs or password-derived public verifiers before enabling enrollment.
+- [x] 11.22 Audit and register the exact supported controlled-GNOME daemon, dependency, IPC, explicitly selected restart-guard profile, creation/unlock, persisted-format and durability interfaces, plus independent enrollment/key-reference/recovery identities; verify authoritative backing-object and encrypted-generation binding without desktop-daemon assumptions, internal unsupported APIs or password-derived public verifiers before enabling enrollment.
 - [ ] 11.23 Implement separately selected default-No/exact-plan Linux keystore enrollment with absence-bound private scope, protected operator input, pre-effect checkpoints, actual owned-process and returned-object custody, and private durable readback; verify occupied/stale targets, canceled input, plaintext/empty-password fallback and ambiguous outcomes cannot create a ready key or authorize ordinary desktop-keyring changes.
 - [ ] 11.24 Implement fresh-process key-bound restart verification under the exact selected guard profile, interrupted enrollment recovery, later use admission and separately approved owned-store disposal; verify no cached-key substitute, implicit profile promotion, duplicate creation, password reset, implicit rekey/cross-host conversion or unsafe deletion, and preserve all preexisting macOS/external-key records and dependent retained artifacts.
 - [x] 11.25 Register the separately selected `linux-landlock-readonly-process-null-sink/1` contract and helper identity; verify the original `linux-landlock-readonly-process/1` helper bytes, default behavior and prior authority remain unchanged and neither stale plans nor failed startup implicitly select the new profile.
@@ -478,6 +478,18 @@ specified implementation and generated-data native source scope. Tasks
 11.17-11.24 remain open for production storage/key enrollment, independent
 receipt/approval/recovery integration and the separate encrypted-host,
 minimum-host and final installed-artifact qualification gates.
+
+Task 11.22 now closes its audit/interface and independent-record registration
+scope. Exact managed-Linux enrollment, key-reference and recovery record
+contracts/readers bind the original project/host/principal, store/item,
+software/helpers, restart profile, generation, key binding and effect stage.
+Roundtrip, tamper, stale, uncertain-effect and cross-provider regressions pass
+without changing existing macOS readers, keys or approvals. Serialized records
+explicitly grant no native authority or readiness. The actual backing/generation
+and fresh-key source observations remain those of run `35421959515`, not proof
+manufactured from metadata. Protected storage, authenticated checkpoint custody,
+exact approval/input and production enrollment/recovery/disposal remain open
+under 11.17-11.21 and 11.23-11.24.
 
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
