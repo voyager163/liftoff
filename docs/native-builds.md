@@ -307,10 +307,20 @@ only requests cancellation: thread completion, root exit and kernel job
 accounting or incomplete pipe settlement remains unproven; killing a controller
 or observing root exit is not a replacement proof.
 
-Portable protocol tests and authored Windows NONSECRET source cases do not
-qualify this helper on Windows or establish encrypted custody, key access,
-minimum-host support or final signed installed-byte behavior. It is not wired
-as a public private-state producer or a fallback for missing Windows custody.
+Native source [run `35436428689`](https://github.com/voyager163/liftoff/actions/runs/35436428689)
+at commit `4a59ed49ede8df3104f839b8bcd7cb56a51c3db8` was accepted on Windows
+x64: **34 passed, zero failed, one inapplicable foreign-host refusal**, with
+all ten Windows-native NONSECRET cases passing. The safe root-before-descendant
+diagnostic recorded `rejected` / `native-command-failed`, root exit `0`,
+reason `6`, and `settled`, `processSpawned` and `quiesced` all true. Both the
+private helper and original public controller retained their exact identities.
+
+This establishes the scoped x64 source regression result, not Windows ARM64
+or minimum-host support, BitLocker/encrypted-storage observation, SID/DACL
+artifact ownership, native key custody or recovery, provider qualification,
+or final signed installed-artifact behavior. Full Windows private-state custody
+and task 11.19 remain open. The primitive is not wired as a public private-state
+producer or a fallback for missing Windows custody.
 The native inventory and release reports must independently include
 `windows-private-process`; old public-controller evidence cannot qualify it.
 
