@@ -179,6 +179,7 @@ export class NativeAdmission {
   private readonly runner: CommandRunner;
   private readonly admitted = new WeakSet<AdmittedNativeCandidate>();
   private readonly artifacts = new WeakMap<AdmittedNativeArtifact, Buffer>();
+  private readonly verifiedArchiveLayouts = new Map<string, string>();
 
   constructor(options: NativeAdmissionOptions = {}) {
     this.releaseClient = options.releaseClient ?? new NativeReleaseClient();
@@ -230,18 +231,29 @@ export class NativeAdmission {
     const archive = await this.releaseClient.readArtifact(payload.archiveUrl, 512 * 1024 * 1024);
     const archiveDigest = createHash('sha256').update(archive).digest('hex');
     if (archiveDigest !== payload.checksumSha256) throw new DistributionError('Final signed native archive checksum differs from its registered manifest.', 'artifact_mismatch');
-    const { inspectNativeArchive } = await import('./native-archive.js');
-    const archiveLayout = inspectNativeArchive(archive, provenance, payload.archiveFormat);
-    const archiveFiles = new Map(archiveLayout.files.map((file) => [file.path, file]));
-    await verifyNativeMetadata(provenance, async (relativePath) => {
-      const file = archiveFiles.get(relativePath);
-      if (!file) throw new DistributionError('Native archive omits required signed metadata.', 'artifact_mismatch');
-      return parseNativeJsonBytes(file.bytes, relativePath);
-    });
+    const provenanceDigest = createHash('sha256').update(provenanceBytes).digest('hex');
+    const layoutKey = `${payload.archiveFormat}:${archiveDigest}:${provenanceDigest}`;
+    let archiveRoot = this.verifiedArchiveLayouts.get(layoutKey);
+    // Re-read and authenticate every source above; reuse only validation of identical
+    // archive/provenance bytes, never filesystem, ownership, host or approval observations.
+    if (archiveRoot === undefined) {
+      const { inspectNativeArchive } = await import('./native-archive.js');
+      const archiveLayout = inspectNativeArchive(archive, provenance, payload.archiveFormat);
+      const archiveFiles = new Map(archiveLayout.files.map((file) => [file.path, file]));
+      await verifyNativeMetadata(provenance, async (relativePath) => {
+        const file = archiveFiles.get(relativePath);
+        if (!file) throw new DistributionError('Native archive omits required signed metadata.', 'artifact_mismatch');
+        return parseNativeJsonBytes(file.bytes, relativePath);
+      });
+      archiveRoot = archiveLayout.archiveRoot;
+    }
     await this.releaseClient.assertCurrent(release);
+    this.verifiedArchiveLayouts.delete(layoutKey);
+    this.verifiedArchiveLayouts.set(layoutKey, archiveRoot);
+    if (this.verifiedArchiveLayouts.size > 2) this.verifiedArchiveLayouts.delete(this.verifiedArchiveLayouts.keys().next().value!);
     const artifact: AdmittedNativeArtifact = freeze({
       version: provenance.version, sourceCommit: provenance.sourceCommit, target, release, provenance,
-      provenanceDigest: createHash('sha256').update(provenanceBytes).digest('hex'), archiveDigest, archiveRoot: archiveLayout.archiveRoot
+      provenanceDigest, archiveDigest, archiveRoot
     });
     this.artifacts.set(artifact, archive);
     return artifact;

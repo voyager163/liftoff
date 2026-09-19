@@ -65,10 +65,10 @@ export async function hashNativeFile(root: string, parts: readonly string[], max
     const opened = await file.stat();
     if (!same(before, opened)) throw new DistributionError('Native file changed while opening.', 'stale_plan');
     const hash = createHash('sha256');
-    const buffer = Buffer.alloc(64 * 1024);
+    const buffer = Buffer.alloc(Math.min(1024 * 1024, opened.size + 1));
     let length = 0;
     for (;;) {
-      const { bytesRead } = await file.read(buffer, 0, buffer.length, length);
+      const { bytesRead } = await file.read(buffer, 0, Math.min(buffer.length, opened.size + 1 - length), length);
       if (!bytesRead) break;
       length += bytesRead;
       if (length > maximum || length > opened.size) throw new DistributionError('Native file grew while reading.', 'stale_plan');
