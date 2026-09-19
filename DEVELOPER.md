@@ -544,6 +544,33 @@ A paired local Fastify remediation run reduced cleanup from 152.6 seconds to
 66.1 seconds with identical 1,612 scan, 7,835 unlink and 1,612 rmdir operations.
 This is local source evidence, not a claim that full hosted CI now passes.
 
+Hosted run `35453226556` still exceeded the unchanged remediation budgets:
+guarded cleanup took 251.6-264.3 seconds on Linux and 213.8-237.2 seconds on
+macOS. A subsequent local, per-call profile of the existing algorithm measured
+59.8 seconds cleanup over the same 11,059 effect guards. Its retained authority
+reads took 19.50 seconds (22,124 reads, including six checkpoints), index reads
+9.78 seconds (11,059 reads), record reads 9.89 seconds (11,059 reads), and lease
+checks 4.04 seconds. The enclosing index/record guards took 40.07 seconds total;
+their parsing, seal validation and other bookkeeping beyond those reads took
+less than one second. These nested timings must not be added twice or presented
+as hosted timing measurements.
+
+The remaining critical path is `cleanupOne.guard` in
+`src/application/repair/workspaces.ts`: lease validation, `readIndex` (fresh
+authority then index), membership admission, and `readRecord` (fresh authority
+then record), followed by `deleteRegisteredWorkspace` path/identity guards.
+Each metadata read traverses `storageFor`, `directories`, and `readText` in
+`src/adapters/filesystem/update-previews.ts`, with ancestry/type admission before
+opening and reading private bytes and directory/file rechecks afterward.
+Preparing record reads before membership succeeds changes early refusal;
+parallel descendant path checks can reach a changed parent before its admission.
+Reusing earlier authority or directory observations would omit a required fresh
+check. No substantial equivalent read batching has been established under this
+path-based store API. A reviewed read-frame/directory-handle contract would be
+needed before attempting to share these admissions safely; no such contract,
+cache, timeout increase, or guard removal is part of this optimization.
+Temporary profiling hooks were removed. The hosted cleanup failures remain open.
+
 The whole six-case Windows inspection suite passed in source run `35442938568`
 within the unchanged 90-second deadlines. This does not establish a performance
 root cause or installed qualification: both complete cases again exceeded
