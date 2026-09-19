@@ -25,6 +25,7 @@ interface DashboardPanel {
   title: string;
   type: string;
   description: string;
+  datasource: { type: string; uid: string };
   gridPos: { h: number; w: number; x: number; y: number };
   targets: DashboardTarget[];
   options: { reduceOptions?: { calcs: string[]; fields: string; values: boolean } };
@@ -127,6 +128,7 @@ describe("OpenSpec modernization task 17: Azure Monitor Grafana telemetry dashbo
 
       expect(dashboardJsonRaw).toContain("__WORKSPACE_ID__");
       expect(dashboardJsonRaw).toContain("__DASHBOARD_TITLE__");
+      expect(dashboardJsonRaw).toContain("__AZURE_MONITOR_DATASOURCE_UID__");
     });
 
     it("proposes no duplicate ingestion store, pipeline, or Managed Grafana service", async () => {
@@ -172,7 +174,7 @@ describe("OpenSpec modernization task 17: Azure Monitor Grafana telemetry dashbo
       expect(parsed.locals).toEqual([{
         dashboard_name: '${var.dashboard_name != "" ? var.dashboard_name : "liftoff-telemetry-${var.resource_suffix}"}',
         dashboard_title: "Liftoff Telemetry (${var.resource_suffix})",
-        dashboard_definition_json: '${jsonencode(jsondecode(replace(replace(file("${path.module}/dashboard.json"), "__WORKSPACE_ID__", azurerm_log_analytics_workspace.telemetry.id), "__DASHBOARD_TITLE__", local.dashboard_title)))}'
+        dashboard_definition_json: '${jsonencode(jsondecode(replace(replace(replace(file("${path.module}/dashboard.json"), "__WORKSPACE_ID__", azurerm_log_analytics_workspace.telemetry.id), "__DASHBOARD_TITLE__", local.dashboard_title), "__AZURE_MONITOR_DATASOURCE_UID__", var.dashboard_datasource_uid)))}'
       }]);
     });
 
@@ -181,20 +183,39 @@ describe("OpenSpec modernization task 17: Azure Monitor Grafana telemetry dashbo
       const testWsId = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-liftoff-prod/providers/Microsoft.OperationalInsights/workspaces/log-liftoff-telemetry-prod01";
       const rendered = dashboardJsonRaw
         .replace(/__WORKSPACE_ID__/g, testWsId)
-        .replace(/__DASHBOARD_TITLE__/g, "Liftoff Telemetry (prod01)");
+        .replace(/__DASHBOARD_TITLE__/g, "Liftoff Telemetry (prod01)")
+        .replace(/__AZURE_MONITOR_DATASOURCE_UID__/g, "observed-monitor-source");
 
       expect(rendered).not.toContain("__WORKSPACE_ID__");
       expect(rendered).not.toContain("__DASHBOARD_TITLE__");
+      expect(rendered).not.toContain("__AZURE_MONITOR_DATASOURCE_UID__");
 
       const parsed = JSON.parse(rendered) as DashboardModel;
       expect(parsed.title).toBe("Liftoff Telemetry (prod01)");
       for (const panel of parsed.panels) {
+        expect(panel.datasource).toEqual({ type: "grafana-azure-monitor-datasource", uid: "observed-monitor-source" });
         for (const target of panel.targets) {
           expect(target.azureLogAnalytics.resources[0]).toBe(testWsId);
         }
       }
       for (const variable of parsed.templating.list) {
+        expect(variable.datasource).toEqual({ type: "grafana-azure-monitor-datasource", uid: "observed-monitor-source" });
         expect(variable.query.azureLogAnalytics.resources[0]).toBe(testWsId);
+      }
+    });
+
+    it("requires an observed data-source instance identity instead of guessing it from the plugin type", async () => {
+      const variables = await parseHcl("variables.tf", await loadTofuFile("variables.tf"));
+      const input = variables.variable.dashboard_datasource_uid[0];
+      expect(input).not.toHaveProperty("default");
+      expect(input.validation[0].condition).toContain("^[a-zA-Z0-9_-]{1,40}$");
+      const dashboard = await loadDashboardJson();
+      const bindings = [...dashboard.panels, ...dashboard.templating.list].map((entry) => entry.datasource);
+      expect(bindings).toHaveLength(8);
+      for (const binding of bindings) {
+        expect(binding.type).toBe("grafana-azure-monitor-datasource");
+        expect(binding.uid).toBe("__AZURE_MONITOR_DATASOURCE_UID__");
+        expect(binding.uid).not.toBe(binding.type);
       }
     });
 

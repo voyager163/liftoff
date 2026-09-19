@@ -8,7 +8,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Accepted records matching the selected time range and filters, not people or installations. Observation text distinguishes a successful empty time range from filters matching no records. Query failures must remain native errors, not zero counts.",
       "fieldConfig": {
@@ -73,7 +73,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Timestamp and age at the last query within the selected scope. Refresh manually to recalculate age; Query observed at identifies the last successful query, including empty results. Compare it with the current time to recognize stale displayed observations. Timestamps use the selected browser timezone. The absence of events alone is not proof of service outage.",
       "fieldConfig": {
@@ -155,7 +155,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Counts and share labeled as nonzero exits; Outcome = failure also includes expected exit-2 states and is not a crash/error rate",
       "fieldConfig": {
@@ -212,7 +212,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Time-bucketed command-event counts using server-generated timestamps",
       "fieldConfig": {
@@ -265,7 +265,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Ranked counts for actual recorded command values",
       "fieldConfig": {
@@ -314,7 +314,7 @@
     {
       "datasource": {
         "type": "grafana-azure-monitor-datasource",
-        "uid": "grafana-azure-monitor-datasource"
+        "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
       },
       "description": "Observed version distribution, not an installation inventory or native-channel attribution",
       "fieldConfig": {
@@ -374,7 +374,7 @@
         },
         "datasource": {
           "type": "grafana-azure-monitor-datasource",
-          "uid": "grafana-azure-monitor-datasource"
+          "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
         },
         "definition": "All commands, or one of the first 100 observed command values in the selected time range",
         "description": "Filter events by canonical command name.",
@@ -409,7 +409,7 @@
         },
         "datasource": {
           "type": "grafana-azure-monitor-datasource",
-          "uid": "grafana-azure-monitor-datasource"
+          "uid": "__AZURE_MONITOR_DATASOURCE_UID__"
         },
         "definition": "All versions, or one of 100 observed version values in the selected time range; All is not limited to those choices",
         "description": "Filter events by CLI release version.",

@@ -691,6 +691,17 @@ source identity, export/import schema, error/layout behavior and deployment
 readback remain unqualified under the other section-17 tasks. Structural source
 success is not an operator deployment or production dashboard result.
 
+The dashboard no longer guesses its data-source instance UID from the Azure
+Monitor plugin type. All six panels and two filter variables bind the required
+operator-observed `dashboard_datasource_uid`; actual provider-free OpenTofu
+rendering and plans cover changed bindings and reject empty, oversized or
+injection-shaped values. Public ARM documentation confirms the parent/default
+definition and serialized JSON interface, not the selected portal's accepted
+Grafana schema or rendered behavior. Tasks 17.2/17.3/17.5/17.7/17.8 remain open
+for their exact query/host/provisioning acceptance criteria. Kusto emulator
+execution was proposed but its explicit license acceptance was not obtained;
+no emulator, Azure query, deployment or production telemetry mutation was run.
+
 ## 18. One coordinated publication gate
 
 - [ ] 18.1 Finalize approved native publisher/tap/cask/package identities and signing configuration through secure maintainer channels; verify manifests contain public identities only and no secret enters source, logs or planning records.

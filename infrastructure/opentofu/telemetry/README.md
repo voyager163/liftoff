@@ -24,6 +24,8 @@ Before applying, review:
 - The Container App's HTTPS-only ingress, single revision, 0.25 vCPU, 0.5 GiB,
   one minimum replica, five maximum replicas, HTTP scaling, and TCP probes.
 - The six-column `LiftoffCommandEvents_CL` table and 180-day retention.
+- The `dashboard_datasource_uid` observed in an export from the selected
+  Azure Monitor Grafana host, independently of the data-source plugin type.
 - The Log Analytics daily quota and absence of Application Insights, ingress
   diagnostics, registry credentials, storage credentials, and secret outputs.
 
@@ -153,12 +155,35 @@ built-in Grafana experience. After separately approved deployment, locate it und
 - **Data source**: Queries the existing `log-liftoff-telemetry-<resource_suffix>`
   workspace and `LiftoffCommandEvents_CL` table without creating a duplicate store,
   new collector, or paid Managed Grafana workspace.
+  Set required `dashboard_datasource_uid` from the selected host's exported
+  Azure Monitor data-source binding. Its plugin type is
+  `grafana-azure-monitor-datasource`; that type is not an instance UID.
+  There is no guessed default. All six panels and both filter variables use
+  the same validated binding, and a changed UID requires a new reviewed plan.
 - **Outputs**:
   - `telemetry_dashboard_id`: Azure Resource Manager ID of the dashboard.
   - `telemetry_dashboard_portal_url`: Direct Azure portal link to the dashboard.
 - **Zero ($0) hosting charge**: Azure Monitor's built-in Grafana carries no separate
   Grafana instance fee. Existing Log Analytics data ingestion, storage (180 days),
   and standard query charges apply.
+
+Before planning deployment, export a dashboard containing an Azure Monitor
+Logs panel from the selected built-in host and inspect its data-source `type`
+and `uid`. Put the observed UID in the same reviewed operator variable file as
+the workspace/subscription bindings; do not copy a Managed Grafana sample's UID
+or assume the plugin name is the instance identity. The UID is a nonsecret
+identifier, not a token, client secret or authority to query the workspace.
+Missing or malformed values block planning rather than selecting another source.
+
+The [documented ARM export](https://learn.microsoft.com/en-us/azure/azure-monitor/visualize/visualize-use-grafana-dashboards#manage-a-dashboard-as-an-arm-template)
+uses a dashboard parent and a `default` definition child whose `serializedData`
+is the complete Grafana JSON string. The
+[parent reference](https://learn.microsoft.com/en-us/azure/templates/microsoft.dashboard/2025-08-01/dashboards)
+and [definition reference](https://learn.microsoft.com/en-us/azure/templates/microsoft.dashboard/2025-09-01-preview/dashboards/dashboarddefinitions)
+support the separately pinned API versions here. These source contracts and
+offline rendering checks do not establish that the selected host accepts this
+model's Grafana schema, renders every panel correctly or grants the intended
+viewer access; those actual-host gates remain open.
 
 ### Current-user access and RBAC
 

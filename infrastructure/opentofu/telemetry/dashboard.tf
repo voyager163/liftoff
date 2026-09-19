@@ -1,7 +1,7 @@
 locals {
   dashboard_name            = var.dashboard_name != "" ? var.dashboard_name : "liftoff-telemetry-${var.resource_suffix}"
   dashboard_title           = "Liftoff Telemetry (${var.resource_suffix})"
-  dashboard_definition_json = jsonencode(jsondecode(replace(replace(file("${path.module}/dashboard.json"), "__WORKSPACE_ID__", azurerm_log_analytics_workspace.telemetry.id), "__DASHBOARD_TITLE__", local.dashboard_title)))
+  dashboard_definition_json = jsonencode(jsondecode(replace(replace(replace(file("${path.module}/dashboard.json"), "__WORKSPACE_ID__", azurerm_log_analytics_workspace.telemetry.id), "__DASHBOARD_TITLE__", local.dashboard_title), "__AZURE_MONITOR_DATASOURCE_UID__", var.dashboard_datasource_uid)))
 }
 
 resource "azapi_resource" "telemetry_dashboard" {
