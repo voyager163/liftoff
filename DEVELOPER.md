@@ -504,6 +504,14 @@ then requires normal release and settled exit. This correction still requires
 native execution; it is not evidence that the failed run denied access.
 Opt-in diagnostics report only the checked binding/liveness booleans and the
 actual read error code; unexpectedly readable bytes are cleared, not printed.
+Run `35442938568` failed the release protocol after 17.18 seconds and did not
+retain the read-denial diagnostic. The original finally-block error masked any
+earlier readiness/inspection failure; it is not sufficient evidence of where
+the fixture stopped. The handshake now uses bounded owned metadata files for
+readiness and post-disposal acknowledgement, explicit encoded script arguments,
+and the same 15-second readiness/two-second settlement bounds. Both the primary
+failure and teardown outcome remain visible; forced termination is never a
+successful release. No PowerShell execution-policy override is used.
 Mode-freshness fixtures
 require a real observable read-only-attribute change on Windows; that is not
 directory ACL/custody qualification. Application-patch rejection fixtures bind
@@ -513,8 +521,9 @@ Node's own kill-on-parent-exit job while retaining the enclosing Liftoff job,
 and fixture teardown requires actual settlement rather than deleting an active
 scope. All existing command/test deadlines remain unchanged.
 
-The two Windows inspection timeouts remain unresolved; local passes are not
-native timing evidence. Run `35440527651` reached seed-valid at 8.4 seconds,
+The whole six-case Windows inspection suite passed in source run `35442938568`
+within the unchanged 90-second deadlines. This does not establish a performance
+root cause or installed qualification. Earlier run `35440527651` reached seed-valid at 8.4 seconds,
 seed-verified at 29.8 seconds and seed-archived at 72.5 seconds, timing out before
 local execution completed. Opt-in logs transparently time the original retained
 input captures and history inspections: call/pending counts, total/maximum
@@ -534,6 +543,14 @@ whole files independently; it is explicitly not complete-boundary evidence.
 The continuation negative now derives the emitted action's native path format:
 a different same-platform cwd can be valid with absolute project arguments,
 so it tests an actually mixed-format cwd and a distinct project target instead.
+The same source run passed this mixed-renderer negative but exposed a separate
+installation-fixture error: Windows metadata declared ZIP while the fixture
+emitted tar.gz and POSIX entrypoints. Windows fixtures now build the existing
+Go PE launcher with the pinned source-lane compiler, retain its license, copy
+the actual host Node executable and emit a real ZIP with canonical `.exe`
+entrypoints. These generated local test artifacts are not published or installed
+qualification. Numeric NTFS identity admission remains unchanged and can still
+block subsequent candidate admission.
 
 The separate `windows_diagnostic_scope=private-io` selector, together with
 `diagnostic_windows_only=true`, exercises the independently inventoried private

@@ -424,6 +424,15 @@ describe('native installation and invocation-only upgrade actions', () => {
     const fixture = await signedFixture("machine action's $literal targets");
     const owner = { fixture, pending: 0, uncertain: false };
     native.push(owner);
+    const target = fixture.provenance.target;
+    const payload = fixture.manifest.targets[target];
+    expect(fixture.runtimeExecution).toBe('current-host');
+    expect(target).toBe(`${process.platform}-${process.arch}`);
+    expect(payload.archiveFormat).toBe(process.platform === 'win32' ? 'zip' : 'tar.gz');
+    const archive = await fixture.source.readBytes(payload.archiveUrl, 512 * 1024 * 1024);
+    const { inspectNativeArchive } = await import('../src/adapters/distribution/native-archive.js');
+    expect(inspectNativeArchive(archive, fixture.provenance, payload.archiveFormat).files.length)
+      .toBe(fixture.provenance.files.length);
     const run = fixture.runner.run.bind(fixture.runner);
     fixture.runner.run = async (command, options) => {
       owner.pending++;
@@ -462,7 +471,7 @@ describe('native installation and invocation-only upgrade actions', () => {
     expect(planned.code, planned.stderr || JSON.stringify(planned.report)).toBe(0);
     const action = machine(planned.report.nextActions[0]);
     expect(action).toMatchObject({
-      executable: path.join(f.candidate, 'bin', 'liftoff'), cwd: f.project,
+      executable: path.join(f.candidate, f.provenance.entrypoints.launcher), cwd: f.project,
       scope: 'installation', targetScope: 'installation', userInstallTarget: f.installRoot,
       requiredAuthority: ['exact-installation-plan']
     });

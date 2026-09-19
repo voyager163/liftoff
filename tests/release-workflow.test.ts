@@ -258,6 +258,8 @@ describe('read-only coordinated release evidence workflow', () => {
     }
     expect(job.steps.find((step: any) => step.uses?.startsWith('opentofu/setup-opentofu@')).with)
       .toEqual({ tofu_version: '1.12.6', tofu_wrapper: false });
+    expect(job.steps.find((step: any) => step.uses?.startsWith('actions/setup-go@')).with)
+      .toEqual({ 'go-version': '1.27.0', 'cache-dependency-path': 'assets/supported-stack.json' });
     expect(program).toContain("assert.equal(process.platform, 'win32')");
     expect(program).toContain("assert.equal(process.arch, 'x64')");
     expect(program).toContain("maxWorkers: 1, reporters: ['verbose']");

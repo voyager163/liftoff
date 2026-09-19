@@ -20,7 +20,8 @@ import { NpmInstallationAdapter } from '../../src/adapters/distribution/npm-inst
 import { ReceiptStore } from '../../src/adapters/distribution/receipt-store.js';
 import { NodeCommandRunner, type CommandResult, type CommandRunner, type RunCommandOptions } from '../../src/process-runner.js';
 import type { ExternalCommand } from '../../src/domain/project/contracts.js';
-import { posixLauncher } from '../../scripts/distribution/assemble-native-bundle.mjs';
+import { createNativeLauncher, nativeEntrypoints, posixLauncher } from '../../scripts/distribution/assemble-native-bundle.mjs';
+import { cleanBuildEnvironment } from '../../scripts/distribution/native-build-files.mjs';
 import { ForeignHostRuntimeDouble } from './foreign-host-runtime-double.js';
 
 export const sha = (bytes: string | Buffer): string => createHash('sha256').update(bytes).digest('hex');
@@ -111,7 +112,7 @@ export async function signedFixture(name: string, options: SignedFixtureOptions 
   const prefix = path.join(home, 'legacy npm prefix');
   const packageRoot = path.join(prefix, 'lib', 'node_modules', '@msn-control', 'liftoff');
   const legacyLauncher = path.join(prefix, 'bin', 'liftoff');
-  const launcher = path.join(home, 'bin', 'liftoff');
+  const launcher = path.join(home, 'bin', process.platform === 'win32' ? 'liftoff.exe' : 'liftoff');
   const installRoot = path.join(home, 'native liftoff');
   const tool = path.join(home, 'tools', 'npm');
   await mkdir(home, { recursive: true, mode: 0o700 });
@@ -160,6 +161,7 @@ esac
   const keys = generateKeyPairSync('ed25519');
   const host = options.host ?? observeNativeHost();
   const target: NativeTarget = `${host.os}-${host.arch}`;
+  const entrypoints = nativeEntrypoints(target);
   const foreignRuntime = host.os !== process.platform || host.arch !== process.arch
     ? new ForeignHostRuntimeDouble(root, target) : undefined;
   const trust: NativeTrustRegistration = {
@@ -173,7 +175,7 @@ esac
   const registerRelease = async (version: string) => {
     const candidate = path.join(home, `unlinked ${version}`);
     await mkdir(path.join(candidate, 'runtime'), { recursive: true });
-    const runtimePath = path.join(candidate, 'runtime', process.platform === 'win32' ? 'node.exe' : 'node');
+    const runtimePath = path.join(candidate, entrypoints.runtime);
     if (foreignRuntime) await writeFile(runtimePath, foreignRuntime.runtimeBytes);
     else await copyFile(await realpath(process.execPath), runtimePath);
     await chmod(runtimePath, 0o755);
@@ -186,7 +188,14 @@ esac
       }
     }
     await writeFixtureFile(path.join(candidate, 'dist', 'cli.js'), `process.stdout.write("Liftoff ${version}\\\\n".replace("\\\\n", "\\n"));\n`);
-    await writeFixtureFile(path.join(candidate, 'bin', 'liftoff'), posixLauncher(), 0o755);
+    if (host.os === 'win32') {
+      if (foreignRuntime) throw new Error('Windows execution fixtures require the actual Windows host and native runtime; use parser-only fixtures for foreign PE metadata.');
+      const work = path.join(root, 'launcher-build', version);
+      await mkdir(work, { recursive: true, mode: 0o700 });
+      await createNativeLauncher(candidate, process.cwd(), target, work, cleanBuildEnvironment(work), process.cwd());
+    } else {
+      await writeFixtureFile(path.join(candidate, entrypoints.launcher), posixLauncher(), 0o755);
+    }
     await writeFixtureFile(path.join(candidate, 'LICENSE'), 'Isolated signed fixture, not production qualification.\n');
     await writeFixtureFile(path.join(candidate, 'package.json'), JSON.stringify({ name: '@msn-control/liftoff', version, type: 'module' }));
     const license = await readFile(path.join(candidate, 'LICENSE'));
@@ -260,12 +269,13 @@ esac
     await options.beforeSigning?.(candidate, resources);
     const files = await readTree(candidate);
     const archiveRoot = `liftoff-v${version}-${target}`;
-    const archive = tarArchive(files.map((file) => ({ ...file, path: `${archiveRoot}/${file.path}` })));
+    const archiveFiles = files.map((file) => ({ ...file, path: `${archiveRoot}/${file.path}` }));
+    const archive = host.os === 'win32' ? zipArchive(archiveFiles) : tarArchive(archiveFiles);
     const provenance: NativeArtifactProvenance = {
       schemaVersion: 1, product: 'liftoff', repository: 'voyager163/liftoff', version, sourceCommit, target,
       checksumSha256: sha(archive), buildManifestSha256: sha(await readFile(path.join(candidate, 'liftoff-build-manifest.json'))),
       buildInfoSha256: sha(await readFile(path.join(candidate, 'build-info.json'))),
-      entrypoints: { launcher: 'bin/liftoff', runtime: 'runtime/node', cli: 'dist/cli.js' }, runtime, resources,
+      entrypoints, runtime, resources,
       files: files.map((file) => ({ path: file.path, sha256: sha(file.bytes), size: file.bytes.length, mode: file.mode }))
     };
     const baseUrl = `https://github.com/voyager163/liftoff/releases/download/v${version}/`;
@@ -273,7 +283,7 @@ esac
       const [os, arch] = platform.split('-');
       if ((os !== 'darwin' && os !== 'linux' && os !== 'win32') || (arch !== 'x64' && arch !== 'arm64')) throw new Error('Fixture target invalid.');
       return {
-        os, arch, archiveFormat: os === 'win32' ? 'zip' : 'tar.gz', archiveUrl: `${baseUrl}${platform}.tar.gz`,
+        os, arch, archiveFormat: os === 'win32' ? 'zip' : 'tar.gz', archiveUrl: `${baseUrl}${platform}.${os === 'win32' ? 'zip' : 'tar.gz'}`,
         checksumSha256: sha(archive), signatureUrl: `${baseUrl}${platform}.sig`, provenanceUrl: `${baseUrl}${platform}.provenance.json`,
         runtime: {
           nodeVersion: process.versions.node,
@@ -305,7 +315,7 @@ esac
     await emit(publication.manifestUrl, manifestBytes);
     await emit(publication.signatureUrl, sign(null, manifestBytes, keys.privateKey));
     const provenanceBytes = Buffer.from(JSON.stringify(provenance));
-    const archiveFile = path.join(root, 'registered artifacts', version, 'payload.tar.gz');
+    const archiveFile = path.join(root, 'registered artifacts', version, host.os === 'win32' ? 'payload.zip' : 'payload.tar.gz');
     await writeFixtureFile(archiveFile, archive);
     for (const platform of allNativeTargets) {
       const item = manifest.targets[platform];

@@ -139,6 +139,17 @@ a missing `.cache` setup dependency, and regular partitions retain identity,
 preparation and Windows baseline-validation failures. These remain failures,
 not case exclusions or complete Windows qualification.
 
+Focused run `35442938568` at
+`859853ef3abc890b3be842f2fde6a8e4615bd936` passed all six native Windows
+migration-inspection cases. The two previously timing-out complete-journal
+cases took 65,660 ms and 65,196 ms under their unchanged 90-second bounds;
+this is observed execution, not a claim that every performance cause is known.
+The actual-platform renderer mutation case also passed. The selected
+continuation file still has three failures (identity admission and native
+archive admission), and baseline validation has one owned fixture-lock release
+failure. The narrowed run is not full-boundary qualification, and tasks 2.7,
+3.2, 3.8 and 9.5 remain open.
+
 Task 3.6 has passing native POSIX source-host evidence from run `35352071630`
 at `d9783d087a905ccdb361b6b7bbb5d6f69ac48bcf`. Both Ubuntu and macOS passed
 all applicable `process-runner`, `state-migration-process` and

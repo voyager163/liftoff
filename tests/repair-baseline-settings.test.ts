@@ -120,40 +120,53 @@ async function withUnreadableInput(
   // Windows chmod does not deny reads; an owned exclusive handle supplies a real denial without ACL changes.
   const powershell = path.join(process.env.SystemRoot!, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
   const release = path.join(current.directory, `release-read-lock-${randomUUID()}`);
+  const ready = `${release}.ready`, disposed = `${release}.disposed`;
   const pathDigest = createHash('sha256').update(file, 'utf8').digest('hex');
   const script = '$ErrorActionPreference="Stop"; $f=[IO.File]::Open($env:LIFTOFF_SOURCE_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None); ' +
     'try { $h=[Security.Cryptography.SHA256]::Create(); ' +
     'try { $d=[BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($f.Name))).Replace("-","").ToLowerInvariant() } finally { $h.Dispose() }; ' +
-    '[Console]::Out.WriteLine("SOURCE_FIXTURE_LOCK_READY|"+$PID+"|"+$d); [Console]::Out.Flush(); ' +
+    '$identity=[string]$PID+"|"+$d; [IO.File]::WriteAllText($env:LIFTOFF_SOURCE_LOCK_READY,$identity); ' +
     'while (-not [IO.File]::Exists($env:LIFTOFF_SOURCE_LOCK_RELEASE)) { [GC]::KeepAlive($f); [Threading.Thread]::Sleep(20) } ' +
-    '} finally { $f.Dispose() }';
-  const child = childProcess.spawn(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
-    cwd: current.directory, env: { ...process.env, LIFTOFF_SOURCE_LOCK_FILE: file, LIFTOFF_SOURCE_LOCK_RELEASE: release },
-    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true
+    '} finally { $f.Dispose() }; [IO.File]::WriteAllText($env:LIFTOFF_SOURCE_LOCK_DISPOSED,$identity); exit 0';
+  const child = childProcess.spawn(powershell, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], {
+    cwd: current.directory, env: {
+      ...process.env, LIFTOFF_SOURCE_LOCK_FILE: file, LIFTOFF_SOURCE_LOCK_RELEASE: release,
+      LIFTOFF_SOURCE_LOCK_READY: ready, LIFTOFF_SOURCE_LOCK_DISPOSED: disposed
+    },
+    stdio: 'ignore', windowsHide: true
   });
   current.pending++;
-  child.stderr.resume();
+  let spawnFailed = false;
+  child.once('error', () => { spawnFailed = true; });
   const closed = new Promise<number | null>((resolve) => {
     child.once('close', (code) => { current.pending--; resolve(code); });
   });
+  const pause = (milliseconds: number) => new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+  async function readMarker(marker: string): Promise<string | null> {
+    try {
+      const details = await lstat(marker);
+      if (!details.isFile() || details.isSymbolicLink() || details.size > 128) throw new Error('Source lock marker is not bounded regular metadata.');
+      return (await readFile(marker, 'utf8')).replace(/^\uFEFF/u, '');
+    } catch (error) {
+      if (error && typeof error === 'object' && 'code' in error && error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+  let stage = 'readiness', primaryFailure: unknown;
+  const failures: unknown[] = [];
   try {
-    await new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => reject(new Error('Source fixture exclusive-read lock did not become ready.')), 15_000);
-      let text = '';
-      const stop = (error?: Error) => { clearTimeout(timer); error ? reject(error) : resolve(); };
-      child.once('error', () => stop(new Error('Source fixture lock process could not start.')));
-      child.once('close', () => stop(new Error('Source fixture lock process exited before readiness.')));
-      child.stdout.on('data', (chunk: Buffer) => {
-        text += chunk.toString('utf8');
-        if (text.length > 128) stop(new Error('Source fixture lock readiness exceeded its bound.'));
-        else if (text.includes('\n')) {
-          const [tag, pid, digest] = text.trim().split('|');
-          if (tag !== 'SOURCE_FIXTURE_LOCK_READY' || Number(pid) !== child.pid || digest !== pathDigest) {
-            stop(new Error('Source fixture lock readiness did not bind its actual process and selected file.'));
-          } else stop();
-        }
-      });
-    });
+    const deadline = performance.now() + 15_000;
+    for (;;) {
+      if (spawnFailed || child.exitCode !== null || child.signalCode !== null) throw new Error('Source fixture lock process failed before readiness.');
+      const identity = await readMarker(ready);
+      if (identity === `${child.pid}|${pathDigest}`) break;
+      if (identity !== null && identity.length >= `${child.pid}|${pathDigest}`.length) {
+        throw new Error('Source fixture lock readiness did not bind its actual process and selected file.');
+      }
+      if (performance.now() >= deadline) throw new Error('Source fixture exclusive-read lock did not become ready.');
+      await pause(20);
+    }
+    stage = 'read-denial';
     expect(child.exitCode).toBeNull();
     expect(child.signalCode).toBeNull();
     await expect(lstat(release)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -170,21 +183,46 @@ async function withUnreadableInput(
     }));
     expect(denial).toMatch(/^(?:EACCES|EPERM|EBUSY)$/u);
     expect(child.exitCode).toBeNull();
+    stage = 'inspection';
     await inspect();
+    stage = 'complete';
+  } catch (error) {
+    primaryFailure = error;
+    failures.push(error);
   } finally {
-    let released = false;
+    let released = false, forcedStop = false;
     try { await writeFile(release, 'release\n', { flag: 'wx', mode: 0o600 }); released = true; }
-    catch { child.kill(); }
-    const wait = (milliseconds: number) => new Promise<undefined>((resolve) => setTimeout(resolve, milliseconds));
-    let outcome = await Promise.race([closed, wait(2000)]);
-    if (outcome === undefined) {
-      child.kill();
-      outcome = await Promise.race([closed, wait(2000)]);
+    catch (error) { failures.push(error); forcedStop = true; child.kill(); }
+    async function waitForClose(): Promise<number | null | undefined> {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try { return await Promise.race([closed, new Promise<undefined>((resolve) => { timer = setTimeout(resolve, 2000); })]); }
+      finally { clearTimeout(timer); }
     }
-    if (outcome === undefined) throw new Error('Retain the fixture: its exact lock process did not settle.');
-    if (!released || outcome !== 0) throw new Error('Source fixture lock process did not complete its owned release protocol.');
-    await unlink(release);
+    let outcome = await waitForClose();
+    if (outcome === undefined) {
+      forcedStop = true;
+      child.kill();
+      outcome = await waitForClose();
+    }
+    let acknowledged = false;
+    try { acknowledged = await readMarker(disposed) === `${child.pid}|${pathDigest}`; }
+    catch (error) { failures.push(error); }
+    if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') console.info(JSON.stringify({
+      kind: 'baseline-source-read-lock-release', stage, primaryFailed: primaryFailure !== undefined,
+      spawnFailed, releaseCreated: released, disposalAcknowledged: acknowledged, forcedStop,
+      settled: outcome !== undefined, exitCode: outcome ?? null
+    }));
+    if (outcome === undefined) failures.push(new Error('Retain the fixture: its exact lock process did not settle.'));
+    else if (!released || !acknowledged || forcedStop || outcome !== 0) failures.push(new Error('Source fixture lock process did not complete its owned release protocol.'));
+    if (outcome !== undefined) {
+      for (const marker of [release, ready, disposed]) {
+        try { await rm(marker, { force: true }); }
+        catch (error) { failures.push(error); }
+      }
+    }
   }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length) throw new AggregateError(failures, `Source fixture read-lock failed during ${stage}; teardown evidence is separate.`);
 }
 
 afterEach(async () => {
