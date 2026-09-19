@@ -392,6 +392,14 @@ Linux execution remains pending. Auxiliary dotlock writes denied by the
 persisted-store guard are not exempted. Tasks 11.22-11.24 remain open for
 native evidence and production enrollment/recovery integration.
 
+Run `35417453057` built the pinned daemon on Linux x64 and arm64 but failed
+before daemon execution: the workflow configured private `share/p11-kit/modules`
+where the registered build contract required private `etc/pkcs11`. The guard
+correctly refused both. Workflow paths now match the original contract;
+regressions replay the rejected hosted values and compare workflow flags to
+the manifest without weakening exact-prefix admission. Actual persistence
+and restart evidence is still pending.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.

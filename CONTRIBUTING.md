@@ -201,6 +201,8 @@ to the established build/private-fixture dependencies. PAM, systemd, SSH-agent,
 capabilities, SELinux, debug mode and manpages are disabled. Only the
 `gnome-keyring-daemon` target is built and its exact bytes copied into a private
 prefix; upstream PAM/autostart/service files are **not installed**.
+PKCS#11 configuration and module destinations must match that prefix's
+`etc/pkcs11` and `lib/pkcs11` directories; the recorder rejects system defaults.
 
 The same pinned private libsecret/client build, actual loader/dependency checks
 and `tests/managed-keystore-key-binding.test.ts` contracts must pass before real

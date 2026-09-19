@@ -1067,7 +1067,7 @@ jobs:
             --prefix="$GNOME_PREFIX" --libdir=lib --sysconfdir=etc --localstatedir=var --buildtype=release --wrap-mode=nodownload \
             -Dssh-agent=false -Dpam=false -Dsystemd=disabled -Dlibcap-ng=disabled -Dselinux=disabled \
             -Ddebug-mode=false -Dmanpage=false \
-            -Dpkcs11-config="$GNOME_PREFIX/share/p11-kit/modules" -Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"
+            -Dpkcs11-config="$GNOME_PREFIX/etc/pkcs11" -Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"
           meson compile -C "$GNOME_BUILD_DIR" --jobs=2 gnome-keyring-daemon
           install -D -m0755 "$GNOME_BUILD_DIR/daemon/gnome-keyring-daemon" "$GNOME_PREFIX/bin/gnome-keyring-daemon"
           test "$(git -C "$GNOME_SOURCE_DIR" rev-parse HEAD)" = "$GNOME_COMMIT"
@@ -1229,6 +1229,12 @@ jobs:
               qualification: identity.qualification, executable: fileIdentity(identity.executable),
               dependencies: dependencies(identity), tools: { bus: fileIdentity(identity.tools.bus), observer: fileIdentity(identity.tools.observer) },
               libraryPath: text(identity.libraryPath), fixtureManifestSha256: digest(identity.fixtureManifestSha256),
+              privatePrefixOptions: Object.fromEntries(Object.entries({
+                'pkcs11-config': 'etc/pkcs11', 'pkcs11-modules': 'lib/pkcs11'
+              }).map(([name, relative]) => {
+                assert.equal(identity.privatePrefixOptions[name], `${process.env.GNOME_PREFIX}/${relative}`);
+                return [name, text(identity.privatePrefixOptions[name])];
+              })),
               mesonOptions: Object.fromEntries(Object.entries({
                 'ssh-agent': false, pam: false, systemd: 'disabled', 'libcap-ng': 'disabled',
                 selinux: 'disabled', 'debug-mode': false, manpage: false

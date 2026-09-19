@@ -261,7 +261,7 @@ describe('read-only coordinated release evidence workflow', () => {
     for (const option of [
       '--prefix="$GNOME_PREFIX"', '--libdir=lib', '--sysconfdir=etc', '--localstatedir=var', '--wrap-mode=nodownload',
       '-Dssh-agent=false', '-Dpam=false', '-Dsystemd=disabled', '-Dlibcap-ng=disabled', '-Dselinux=disabled',
-      '-Ddebug-mode=false', '-Dmanpage=false', '-Dpkcs11-config="$GNOME_PREFIX/share/p11-kit/modules"',
+      '-Ddebug-mode=false', '-Dmanpage=false', '-Dpkcs11-config="$GNOME_PREFIX/etc/pkcs11"',
       '-Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"'
     ]) expect(build).toContain(option);
     expect(build).toContain('meson compile -C "$GNOME_BUILD_DIR" --jobs=2 gnome-keyring-daemon');
@@ -384,6 +384,7 @@ describe('read-only coordinated release evidence workflow', () => {
           observer: { path: '/usr/bin/gdbus', sha256: sha }
         },
         libraryPath: '/fixture/lib', fixtureManifestSha256: sha,
+        privatePrefixOptions: { 'pkcs11-config': '/fixture/prefix/etc/pkcs11', 'pkcs11-modules': '/fixture/prefix/lib/pkcs11' },
         mesonOptions: { 'ssh-agent': false, pam: false, systemd: 'disabled', 'libcap-ng': 'disabled', selinux: 'disabled', 'debug-mode': false, manpage: false },
         qualification: 'gnome-persistence-source-test-not-encrypted-host-custody-or-release-readiness',
         privateKeyring: marker
@@ -396,7 +397,7 @@ describe('read-only coordinated release evidence workflow', () => {
           `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(nativePlatform)} });\n${program}`], {
           cwd: root,
           env: {
-            ...process.env, ...job.env, EXPECTED_ARCH: process.arch,
+            ...process.env, ...job.env, EXPECTED_ARCH: process.arch, GNOME_PREFIX: '/fixture/prefix',
             GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2',
             PYTHON_PREPARATION_OUTCOME: 'success', PREREQUISITES_OUTCOME: 'success', LIBSECRET_OUTCOME: 'success',
             HELPER_OUTCOME: 'success', CONTRACTS_OUTCOME: 'success', CONTRACTS_READY_OUTCOME: 'success',
@@ -448,6 +449,10 @@ describe('read-only coordinated release evidence workflow', () => {
       await writeFile(daemonFile, JSON.stringify({ ...daemon, sourceCommit: 'b'.repeat(40) }));
       await expect(run(capture)).rejects.toThrow();
       await expect(readFile(path.join(root, 'diagnostics/gnome-daemon-build-identity.json'))).rejects.toThrow();
+      await writeFile(daemonFile, JSON.stringify({
+        ...daemon, privatePrefixOptions: { ...daemon.privatePrefixOptions, 'pkcs11-config': '/etc/pkcs11' }
+      }));
+      await expect(run(capture)).rejects.toThrow();
       await writeFile(daemonFile, JSON.stringify(daemon));
       await writeFile(persistenceFile, marker.repeat(30000));
       await expect(run(capture)).rejects.toThrow();

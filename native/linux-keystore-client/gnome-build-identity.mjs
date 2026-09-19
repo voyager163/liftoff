@@ -3,6 +3,7 @@ import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { BuildFailure, runBuildCommand } from './build-tools.mjs';
+import { validateGnomePrivatePrefixOptions } from './gnome-build-contract.mjs';
 
 const directory = path.dirname(fileURLToPath(import.meta.url));
 const manifest = JSON.parse(await readFile(path.join(directory, 'gnome-dependencies.json'), 'utf8'));
@@ -23,12 +24,7 @@ try {
   const options = JSON.parse(run('meson', ['introspect', '--buildoptions', build]));
   for (const [name, expected] of Object.entries(manifest.mesonOptions))
     if (options.find((option) => option.name === name)?.value !== expected) fail('gnome-build-options-mismatch');
-  const privatePrefixOptions = {};
-  for (const [name, relative] of Object.entries(manifest.privatePrefixOptions)) {
-    const expected = path.join(prefix, relative);
-    if (options.find((option) => option.name === name)?.value !== expected) fail('gnome-private-pkcs11-path-required');
-    privatePrefixOptions[name] = expected;
-  }
+  const privatePrefixOptions = validateGnomePrivatePrefixOptions(options, prefix, manifest.privatePrefixOptions);
   if (await realpath(options.find((option) => option.name === 'prefix')?.value ?? '') !== prefix)
     fail('gnome-prefix-mismatch');
   run('pkg-config', [`--atleast-version=${manifest.minimumGlib}`, 'glib-2.0']);

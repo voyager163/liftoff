@@ -2,6 +2,7 @@ import { readFile, lstat } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GnomePersistenceFixture } from '../native/linux-keystore-client/gnome-persistence-fixture.js';
+import { validateGnomePrivatePrefixOptions } from '../native/linux-keystore-client/gnome-build-contract.mjs';
 
 const directory = path.resolve('native', 'linux-keystore-client');
 const coordinator = await readFile(path.join(directory, 'gnome-coordinator.mjs'), 'utf8');
@@ -70,6 +71,57 @@ describe('actual GNOME persistence fixture source boundaries', () => {
       await expect(GnomePersistenceFixture.create()).rejects.toThrow('explicit-native-authorization-required');
     });
   }
+});
+
+describe('exact GNOME private Meson path admission', () => {
+  // Actual Meson values printed by both hosts in run 35417453057 at d4d8210.
+  const prefix = '/home/runner/work/_temp/liftoff-gnome-persistence-build/prefix';
+  const observed = [
+    { name: 'pkcs11-config', value: `${prefix}/share/p11-kit/modules` },
+    { name: 'pkcs11-modules', value: `${prefix}/lib/pkcs11` }
+  ];
+  const corrected = [
+    { name: 'pkcs11-config', value: `${prefix}/etc/pkcs11` },
+    observed[1]!
+  ];
+
+  it('reproduces the hosted path mismatch and admits only the corrected exact CI values', () => {
+    expect(() => validateGnomePrivatePrefixOptions(observed, prefix, declaration.privatePrefixOptions))
+      .toThrow('gnome-private-pkcs11-path-required');
+    expect(validateGnomePrivatePrefixOptions(corrected, prefix, declaration.privatePrefixOptions)).toEqual({
+      'pkcs11-config': `${prefix}/etc/pkcs11`,
+      'pkcs11-modules': `${prefix}/lib/pkcs11`
+    });
+  });
+
+  it('keeps the CI command and recorder on the same exact private leaves', async () => {
+    const workflow = await readFile(path.resolve('.github', 'workflows', 'ci.yml'), 'utf8');
+    for (const [name, relative] of Object.entries(declaration.privatePrefixOptions))
+      expect(workflow.includes(`-D${name}="$GNOME_PREFIX/${relative}"`)).toBe(true);
+    const recorder = await readFile(path.join(directory, 'gnome-build-identity.mjs'), 'utf8');
+    expect(recorder).toContain('validateGnomePrivatePrefixOptions(options, prefix, manifest.privatePrefixOptions)');
+    expect(recorder.indexOf('validateGnomePrivatePrefixOptions(options')).toBeLessThan(recorder.indexOf('const executable ='));
+  });
+
+  it.each([
+    ['pkcs11-config', ''],
+    ['pkcs11-config', '/usr/share/p11-kit/modules'],
+    ['pkcs11-config', `${prefix}/share/p11-kit/modules`],
+    ['pkcs11-config', `${prefix}-other/etc/pkcs11`],
+    ['pkcs11-config', `${prefix}/../outside/etc/pkcs11`],
+    ['pkcs11-modules', '/usr/lib/pkcs11'],
+    ['pkcs11-modules', `${prefix}/lib/pkcs11/`],
+    ['pkcs11-modules', 'lib/pkcs11']
+  ])('rejects mismatched %s rather than accepting a fallback: %s', (name, value) => {
+    const changed = corrected.map((option) => option.name === name ? { ...option, value } : option);
+    expect(() => validateGnomePrivatePrefixOptions(changed, prefix, declaration.privatePrefixOptions))
+      .toThrow('gnome-private-pkcs11-path-required');
+  });
+
+  it.each(['pkcs11-config', 'pkcs11-modules'])('rejects missing %s observations', (name) => {
+    expect(() => validateGnomePrivatePrefixOptions(corrected.filter((option) => option.name !== name),
+      prefix, declaration.privatePrefixOptions)).toThrow('gnome-private-pkcs11-path-required');
+  });
 });
 
 if (process.env.LIFTOFF_GNOME_PERSISTENCE_TEST === '1') {
