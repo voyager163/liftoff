@@ -2,7 +2,9 @@ import { chmod, mkdir, readFile, lstat, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { GnomePersistenceFixture } from '../native/linux-keystore-client/gnome-persistence-fixture.js';
+import {
+  GnomePersistenceFixture, gnomeEnrollmentFailureObservation
+} from '../native/linux-keystore-client/gnome-persistence-fixture.js';
 import { validateGnomePrivatePrefixOptions } from '../native/linux-keystore-client/gnome-build-contract.mjs';
 import { captureStateExecutable } from '../src/adapters/state/native-system.js';
 import { stateDigest } from '../src/domain/repair/stateful-invariants.js';
@@ -14,6 +16,22 @@ const enrollmentLauncher = await readFile(path.join(directory, 'gnome-enrollment
 const declaration = JSON.parse(await readFile(path.join(directory, 'gnome-dependencies.json'), 'utf8'));
 
 describe('actual GNOME persistence fixture source boundaries', () => {
+  it('distinguishes observed creation from pre-dispatch refusal without exposing key material', () => {
+    const refused = gnomeEnrollmentFailureObservation({
+      status: 'failed', creation: 'no-dispatch', observedItemPaths: [], issue: 'item-mismatch', key: null, readiness: false
+    }, true);
+    expect(refused).toMatchObject({ creation: 'no-dispatch', preserveScope: false, readiness: false });
+    const created = gnomeEnrollmentFailureObservation({
+      status: 'failed', creation: 'returned-identity', observedItemPaths: ['/org/freedesktop/secrets/collection/login/1'],
+      issue: 'item-mismatch', key: null, readiness: false
+    }, true);
+    expect(created).toMatchObject({
+      creation: 'returned-identity', preserveScope: true,
+      observedItemPaths: ['/org/freedesktop/secrets/collection/login/1']
+    });
+    expect(Object.hasOwn(created, 'key')).toBe(false);
+    expect(gnomeEnrollmentFailureObservation(null, false)).toMatchObject({ creation: 'unknown', preserveScope: true });
+  });
   it('pins the source commit and disables unrelated startup components', () => {
     expect(declaration.sourceCommit).toBe('da00f9621eaf263d5ed4236df9c22798ea8021d2');
     expect(declaration.tagEquivalent).toBeNull();

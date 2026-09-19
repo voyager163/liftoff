@@ -32,6 +32,18 @@ This commit is **not interchangeable with a 0.21.8.2 tag**.
 - `secret-value.c`: `secret_value_new_full` takes ownership without copying
   and invokes the registered destroy function; decoded libsecret SecretValues
   release their library-owned secure allocation on unref.
+- The provider wire profile is specifically GNOME
+  [`da00f9621eaf263d5ed4236df9c22798ea8021d2`](https://github.com/GNOME/gnome-keyring/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/daemon/dbus/gkd-secret-secret.c#L83-L144).
+  `gkd_secret_secret_parse()` reads but does not retain the incoming content
+  type; `gkd_secret_secret_append()` unconditionally replies `text/plain`,
+  including for binary values. Creation still sends `application/octet-stream`.
+  Readback requires **only that exact pinned reply label**, never a list of
+  fallback content types, and obtains **exactly 32 opaque bytes** through
+  `secret_value_get`, not `secret_value_get_text`. NUL/non-UTF8 bytes remain
+  intact. The encrypted session algorithm check is separate and unchanged;
+  `text/plain` here does **not** permit the `plain` session algorithm.
+  The contract query identifies this daemon source pin; other provider wire
+  profiles are not admitted.
 - [GIO explicit address connection](https://docs.gtk.org/gio/ctor.DBusConnection.new_for_address_sync.html)
   and [GDBusProxy binding/autostart](https://docs.gtk.org/gio/class.DBusProxy.html)
   provide the transport and proxy primitives.
@@ -77,8 +89,9 @@ It is an attribute value, not a filesystem path to traverse or normalize.
 `create` requires `-` for the item path and zero exact attribute matches.
 Creation uses `getrandom(GRND_NONBLOCK)` for exactly 32 bytes, never input values.
 `read` requires one exact matching existing item path. Both check exact
-project/workspace/enrollment/schema attributes, unlocked status, binary
-content type, 32-byte length, metadata stability and independent readback.
+project/workspace/enrollment/schema attributes, unlocked status, the exact
+pinned GNOME reply label, opaque 32-byte length, metadata stability and
+independent readback.
 Create readback must equal the generated key; read mode reads twice.
 Non-replacing creation plus pre/post search does **not** eliminate concurrent
 creator races; duplicates block and are never deleted or automatically retried.
@@ -254,10 +267,16 @@ primary library files and hashes. It rejects missing observations or a system
 libsecret substitution. This is not complete transitive runtime closure
 admission; that remains a separate gate.
 
+The synthetic wrapper preserves upstream mock ciphertext but models the actual
+pinned GNOME `text/plain` response metadata, rather than echoing the requested
+content type. An explicit wrong-content-type case requires rejection of the
+old echoed `application/octet-stream` response; there is no generic MIME
+fallback.
+
 The real compiled client is exercised for encrypted-session creation/readback,
 plain-session rejection before key operations, owner/PID/GUID mismatch, denied
 prompts, exact project/workspace/enrollment attributes and item paths,
-non-replacement, duplicate/non-32-byte/misbound/changed results, and returned
+non-replacement, duplicate/non-32-byte/wrong-content-type/misbound/changed results, and returned
 identity retention after a post-write validation error. Assertions only expose
 fixed issues, counters and booleans, never key buffers.
 

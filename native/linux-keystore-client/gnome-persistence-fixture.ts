@@ -45,6 +45,16 @@ function observationIssue(report: Report | null, client: LinuxKeyClientOutcome |
   const issue = report?.blocked ?? client?.issue ?? 'missing-native-observation';
   return /^[a-z-]{1,64}$/u.test(issue) ? issue : 'invalid-native-observation';
 }
+export function gnomeEnrollmentFailureObservation(client: LinuxKeyClientOutcome | null, settled: boolean) {
+  const creation = client?.creation ?? 'unknown';
+  return Object.freeze({
+    schemaVersion: 1, kind: 'observed-gnome-source-enrollment-failure',
+    helperStatus: client?.status ?? 'unobserved', creation,
+    observedItemPaths: Object.freeze([...(client?.observedItemPaths ?? [])]),
+    issue: client?.issue ?? (settled ? 'persisted-observation-failed' : 'process-unsettled'),
+    preserveScope: !settled || creation !== 'no-dispatch', readiness: false
+  });
+}
 const stem: Record<string, string> = {
   'libsecret-1': 'libsecret-1.so', 'glib-2.0': 'libglib-2.0.so',
   'gio-2.0': 'libgio-2.0.so', 'gobject-2.0': 'libgobject-2.0.so'
@@ -254,8 +264,10 @@ export class GnomePersistenceFixture {
 
   async enroll(): Promise<void> {
     requireFixture((await readdir(path.dirname(this.filename))).length === 0, 'fresh-keyring-scope');
-    const { report, client } = await this.#execute('enroll');
+    let report: Report | null = null;
+    let client: LinuxKeyClientOutcome | null = null;
     try {
+      ({ report, client } = await this.#execute('enroll'));
       requireFixture(report?.settled && !report.blocked && report.daemon && client?.status === 'completed' &&
         client.key && client.observedItemPaths.length === 1, `enrollment-incomplete:${observationIssue(report, client)}`);
       this.#daemon = report.daemon;
@@ -276,6 +288,16 @@ export class GnomePersistenceFixture {
       };
       this.#binding = await createManagedKeystoreKeyBinding(client.key, this.#context);
       await writeFile(path.join(this.scope, 'encrypted-key-probe.json'), JSON.stringify(this.#binding), { mode: 0o600 });
+    } catch (error) {
+      const observation = gnomeEnrollmentFailureObservation(client, report?.settled === true);
+      this.#preserve ||= observation.preserveScope;
+      await writeFile(path.join(this.scope, 'enrollment-observation.json'), JSON.stringify(observation), { mode: 0o600 });
+      console.info(JSON.stringify({
+        kind: observation.kind, helperStatus: observation.helperStatus, creation: observation.creation,
+        observedItemCount: observation.observedItemPaths.length, issue: observation.issue,
+        preserveScope: this.#preserve, readiness: false
+      }));
+      throw error;
     } finally { client?.key?.release(); }
   }
 

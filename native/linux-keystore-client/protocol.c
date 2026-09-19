@@ -9,6 +9,12 @@ void lk_clear(void *bytes, size_t length) {
     while (length--) *cursor++ = 0;
 }
 
+/* Pinned GNOME gkd-secret-secret.c discards the supplied content type and
+ * hardcodes this reply label. It is not the encoding of the opaque key bytes. */
+int lk_gnome_secret_shape(const char *content_type, size_t length) {
+    return content_type && !strcmp(content_type, LK_GNOME_REPLY_CONTENT_TYPE) && length == LK_KEY_BYTES;
+}
+
 static int write_all(const void *bytes, size_t length) {
     const unsigned char *cursor = bytes;
     while (length) {
@@ -64,6 +70,7 @@ int lk_frame(const char *event, enum lk_effect effect, enum lk_error error,
 
 int lk_contract(void) {
     return framed("{\"protocol\":\"" LK_PROTOCOL "\",\"libsecretCommit\":\"" LK_LIBSECRET_COMMIT
+        "\",\"daemonSourceCommit\":\"" LK_GNOME_COMMIT
         "\",\"algorithm\":\"" LK_ALGORITHM "\",\"operations\":[\"read\",\"create\"],"
         "\"keyBytes\":32,\"maximumMetadataBytes\":2048,\"authorization\":false,"
         "\"readiness\":false,\"qualification\":\"required\"}", NULL);

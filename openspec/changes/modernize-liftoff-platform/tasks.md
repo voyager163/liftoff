@@ -409,6 +409,24 @@ observed group/other-write-bit removal on the runner-owned descriptor with
 unchanged identity and bytes. Production admission remains unchanged; native
 regressions reject unsafe modes without modifying the selected executable.
 
+Run `35418189185` recorded the selected Node executables as runner-owned mode
+0777 on both Linux architectures; exact-descriptor preparation changed only
+the group/other write bits to 0755, preserving inode, owner and SHA-256.
+Executable admission then passed. All seven actual native cases reached the
+enrollment path but failed with `item-mismatch`; 22 applicable source cases
+passed on each host. Persisted-key and restart qualification remain blocked,
+and the new observations do not retroactively prove the earlier run's metadata.
+
+Pinned GNOME source inspection found a concrete client incompatibility:
+secret replies always carry `text/plain`, while the helper required
+`application/octet-stream`. The client now registers the exact GNOME wire
+profile while retaining 32 opaque bytes, encrypted session, exact attributes,
+identity and non-replacement checks. Native C binary/NUL cases and the synthetic
+service contract cover that profile. Actual rebuilt-helper persistence remains
+pending; the failed run did not retain creation-stage metadata, so historical
+creation is unknown. New bounded diagnostics preserve that uncertainty and
+retain affected scopes instead of inferring safe cleanup.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.

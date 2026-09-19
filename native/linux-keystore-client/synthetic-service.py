@@ -22,7 +22,7 @@ def main():
     parser.add_argument("--address", required=True)
     parser.add_argument("--fault", choices=(
         "none", "plain", "prompt", "short-key", "duplicate-search",
-        "duplicate-secrets", "wrong-secret-path", "changed-item", "post-write",
+        "duplicate-secrets", "wrong-secret-path", "changed-item", "post-write", "wrong-content-type",
     ), required=True)
     parser.add_argument("--mode", choices=("read", "create"), required=True)
     parser.add_argument("--project", required=True)
@@ -110,6 +110,11 @@ def main():
             if len(paths) != 1 or str(paths[0]) not in self.collections[collection.path].items:
                 return forbidden()
             result = super().GetSecrets(paths, session_path, sender)
+            # Actual pinned GNOME gkd_secret_secret_append() hardcodes text/plain,
+            # including for binary values. Reuse upstream crypto bytes unchanged.
+            for item_path, value in list(result.items()):
+                response_type = "application/octet-stream" if args.fault == "wrong-content-type" else "text/plain"
+                result[item_path] = dbus.Struct((value[0], value[1], value[2], dbus.String(response_type)), signature="oayays")
             if args.fault == "duplicate-secrets":
                 result[dbus.ObjectPath(collection.path + "/unexpected")] = result[paths[0]]
             if args.fault == "wrong-secret-path":

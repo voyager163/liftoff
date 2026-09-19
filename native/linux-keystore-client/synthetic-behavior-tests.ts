@@ -237,7 +237,8 @@ describe('opt-in compiled client against private synthetic Secret Service, not n
         must(length > 0 && length <= 2048 && bytes.readUInt32BE(8) === 0 && bytes.length === length + 12, 'contract-bounds');
         const value = JSON.parse(bytes.subarray(12).toString());
         bytes.fill(0);
-        must(value.libsecretCommit === identity.libsecretCommit && value.authorization === false &&
+        must(value.libsecretCommit === identity.libsecretCommit &&
+          value.daemonSourceCommit === 'da00f9621eaf263d5ed4236df9c22798ea8021d2' && value.authorization === false &&
           value.readiness === false && value.qualification === 'required', 'contract-claims');
       } finally { contract.stdout.fill(0); contract.stderr.fill(0); }
     } finally { await runner.quiesce(); }
@@ -302,7 +303,7 @@ describe('opt-in compiled client against private synthetic Secret Service, not n
     } finally { result.key?.release(); }
   });
 
-  it.each(['short-key', 'duplicate-search', 'duplicate-secrets', 'wrong-secret-path', 'changed-item'])(
+  it.each(['short-key', 'duplicate-search', 'duplicate-secrets', 'wrong-secret-path', 'changed-item', 'wrong-content-type'])(
     'rejects synthetic %s evidence without returning key material', async (fault) => {
       const f = await fixture('read', fault);
       const result = await f.invoke();

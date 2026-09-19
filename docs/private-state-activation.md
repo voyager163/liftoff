@@ -184,6 +184,16 @@ auxiliary dotlock writes denied by the guard must remain failures, not permissio
 to make the persisted store writable. Source/refusal checks on macOS do not
 qualify Linux persistence, encrypted host storage or production enrollment.
 
+The pinned GNOME writer always emits the Secret Service secret content-type
+label `text/plain`, including for opaque binary values. The native client now
+binds that exact daemon-specific wire profile instead of requiring its submitted
+`application/octet-stream` label to be echoed. It still requires exactly 32
+raw bytes, encrypted transport and the exact item attributes and identity;
+there is no text conversion or alternate-label fallback. Failed native fixtures
+report only bounded creation-stage metadata and preserve scopes with uncertain
+application-key creation. Earlier failures without that metadata cannot prove
+whether creation occurred.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

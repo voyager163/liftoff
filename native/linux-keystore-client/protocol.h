@@ -5,7 +5,9 @@
 
 #define LK_PROTOCOL "liftoff-linux-keystore-client/1"
 #define LK_LIBSECRET_COMMIT "a5cd57f103038c06b64d5f6ebfd0e627bb40af4e"
+#define LK_GNOME_COMMIT "da00f9621eaf263d5ed4236df9c22798ea8021d2"
 #define LK_ALGORITHM "dh-ietf1024-sha256-aes128-cbc-pkcs7"
+#define LK_GNOME_REPLY_CONTENT_TYPE "text/plain"
 #define LK_COLLECTION "/org/freedesktop/secrets/collection/login"
 #define LK_MAX_METADATA 2048u
 #define LK_KEY_BYTES 32u
@@ -21,4 +23,5 @@ void lk_clear(void *bytes, size_t length);
 int lk_frame(const char *event, enum lk_effect effect, enum lk_error error,
              const char *item, const unsigned char *key);
 int lk_contract(void);
+int lk_gnome_secret_shape(const char *content_type, size_t length);
 #endif

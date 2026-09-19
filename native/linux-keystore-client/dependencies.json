@@ -10,6 +10,15 @@
     "crypto": "required; runtime algorithm equality checked before key operations",
     "unstablePublicPathsApi": "explicitly acknowledged; exact source/build identity required"
   },
+  "providerWireProfile": {
+    "daemon": "gnome-keyring",
+    "sourceCommit": "da00f9621eaf263d5ed4236df9c22798ea8021d2",
+    "source": "daemon/dbus/gkd-secret-secret.c",
+    "requestContentType": "application/octet-stream",
+    "responseContentType": "text/plain",
+    "value": "opaque exactly 32 bytes; no UTF-8/text conversion",
+    "otherProviderProfiles": "not-admitted"
+  },
   "pkgConfig": {
     "modules": ["libsecret-1", "gio-2.0", "glib-2.0", "gobject-2.0"],
     "minimumGlib": "2.74",

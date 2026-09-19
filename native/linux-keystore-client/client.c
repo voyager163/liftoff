@@ -297,10 +297,10 @@ static gboolean read_key(SecretService *service, const char *item, unsigned char
     g_autoptr(GHashTable) secrets = secret_service_get_secrets_for_dbus_paths_sync(service, paths, cancellable, &error);
     if (!secrets || error || g_hash_table_size(secrets) != 1) return FALSE;
     SecretValue *value = g_hash_table_lookup(secrets, item);
-    if (!value || g_strcmp0(secret_value_get_content_type(value), "application/octet-stream")) return FALSE;
+    if (!value) return FALSE;
     gsize length = 0;
     const char *bytes = secret_value_get(value, &length);
-    if (!bytes || length != LK_KEY_BYTES) return FALSE;
+    if (!bytes || !lk_gnome_secret_shape(secret_value_get_content_type(value), length)) return FALSE;
     memcpy(destination, bytes, LK_KEY_BYTES);
     return TRUE;
 }

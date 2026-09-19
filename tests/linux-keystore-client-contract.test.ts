@@ -44,6 +44,11 @@ describe('Linux keystore client source/API contract, not native qualification', 
   it('pins the audited source rather than substituting a tag or system libsecret', () => {
     expect(dependencies.libsecret.commit).toBe('a5cd57f103038c06b64d5f6ebfd0e627bb40af4e');
     expect(dependencies.libsecret.tagEquivalent).toBeNull();
+    expect(dependencies.providerWireProfile).toMatchObject({
+      sourceCommit: 'da00f9621eaf263d5ed4236df9c22798ea8021d2',
+      requestContentType: 'application/octet-stream', responseContentType: 'text/plain',
+      otherProviderProfiles: 'not-admitted'
+    });
     expect(header).toContain(dependencies.libsecret.commit);
     expect(dependencies.qualification).toBe('source-only-unqualified');
     expect(build).toContain("'libsecret-system-fallback-forbidden'");
@@ -90,7 +95,10 @@ describe('Linux keystore client source/API contract, not native qualification', 
     expect(client).toContain('secret_collection_search_for_dbus_paths_sync(collection, NULL, attributes');
     expect(client).toContain('secret_service_get_secrets_for_dbus_paths_sync(service, paths');
     expect(client).toContain('g_hash_table_size(secrets) != 1');
-    expect(client).toContain('length != LK_KEY_BYTES');
+    expect(client).toContain('lk_gnome_secret_shape(secret_value_get_content_type(value), length)');
+    expect(client).toContain('const char *bytes = secret_value_get(value, &length)');
+    expect(client).not.toContain('secret_value_get_text');
+    expect(client).toContain('secret_value_new_full((gchar *)key, LK_KEY_BYTES, "application/octet-stream", key_free)');
     expect(client).toContain('getrandom(key + have, LK_KEY_BYTES - have, GRND_NONBLOCK)');
     expect(client).toContain('g_variant_n_children(attributes) != 4');
     expect(client).toContain('paths[0] && !paths[1] && !strcmp(paths[0], expected)');
@@ -169,7 +177,10 @@ describe.runIf(available)('dependency-free native C framing, no libsecret or dae
 
   it('emits a source-safe bounded contract without secret bytes', () => {
     expect(frames('contract')).toMatchObject([{
-      metadata: { protocol: 'liftoff-linux-keystore-client/1', authorization: false, readiness: false, qualification: 'required' },
+      metadata: {
+        protocol: 'liftoff-linux-keystore-client/1', authorization: false, readiness: false, qualification: 'required',
+        daemonSourceCommit: 'da00f9621eaf263d5ed4236df9c22798ea8021d2'
+      },
       key: Buffer.alloc(0)
     }]);
   });
@@ -239,6 +250,33 @@ describe.runIf(available)('dependency-free native C framing, no libsecret or dae
   const encoded = (value: string) => 'unix:path=' + [...Buffer.from(value, 'utf8')].map((byte) =>
     `%${byte.toString(16).padStart(2, '0')}`).join('');
   const runParser = (...args: string[]) => execFileSync(binary, args, { timeout: 5000, maxBuffer: 8192 });
+
+  it('requires the exact pinned GNOME reply label with exactly 32 opaque bytes', () => {
+    expect(runParser('gnome-wire-accept', 'text/plain', '32')).toHaveLength(0);
+    expect(runParser('gnome-wire-null')).toHaveLength(0);
+  });
+
+  it.each([
+    ['application/octet-stream', '32'], ['TEXT/PLAIN', '32'],
+    ['text/plain; charset=utf-8', '32'], ['', '32'],
+    ['text/plain', '0'], ['text/plain', '31'], ['text/plain', '33']
+  ])('rejects an unregistered reply label or length: %s / %s', (type, length) => {
+    expect(runParser('gnome-wire-reject', type, length)).toHaveLength(0);
+  });
+
+  it('retains embedded NUL and non-UTF8 key bytes despite the GNOME MIME label', async () => {
+    const output = nativeOutput('binary-gnome-read');
+    const result = consumeLinuxKeyClientOutput(output, { operation: 'read', item: '/org/freedesktop/secrets/collection/login/42' },
+      { exitCode: 0, processTreeSettled: true });
+    try {
+      expect(result.status).toBe('completed');
+      expect(output.every((byte) => byte === 0)).toBe(true);
+      await result.key!.consume((bytes) => {
+        expect(bytes.length).toBe(32);
+        expect(bytes[0] === 0 && bytes[1] === 0xff && bytes[2] === 0xc0).toBe(true);
+      });
+    } finally { result.key?.release(); output.fill(0); }
+  });
 
   it.each([
     '/private/key store/"quoted"/[brackets]/bus',

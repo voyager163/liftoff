@@ -168,6 +168,18 @@ report preserves the exact scope; no broad sweep, PID-name kill or
 credential-bearing artifact upload is permitted. Preserved scopes contain
 only the generated disposable test material and encrypted probe.
 
+An unsuccessful enrollment also preserves the scope whenever application-key
+creation is possible, an actual created identity returned, or the helper outcome
+is unobserved. A private `enrollment-observation.json` retains only allowlisted
+status/effect/returned paths, never key bytes. A bounded console summary reports
+the creation classification and path count, not the paths or raw output.
+Known `no-dispatch` refers only to application-key creation, not the daemon's
+authorized initial creation of an empty login keyring. There is no replace/retry.
+Run 35418189185 did not retain this creation-stage observation, so its generic
+`item-mismatch` report cannot establish whether that particular run dispatched.
+The pinned source independently establishes the GNOME reply-label mismatch
+documented in the native client's README; a fresh hosted run is still required.
+
 Filesystem encryption, durability across power loss, complete installed
 runtime closure and real enrollment authority remain separate qualification
 gates. Ordinary runner storage is never presented as encrypted custody.
