@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { activationProducerFixture, producerSubscription, producerTenant } from './helpers/activation-producer-fixture.js';
 import { AzureArmError, type AzureArmRequest, type AzureArmTransport } from '../src/adapters/azure/activation-rest.js';
 import { withProjectMutationLock } from '../src/adapters/filesystem/project-lock.js';
@@ -22,7 +22,7 @@ import { providerBootstrapConfiguration } from './helpers/provider-sdk-fixture.j
 const fixtures: Awaited<ReturnType<typeof activationProducerFixture>>[] = [];
 const principal = 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const sourceRoot = ['infrastructure', 'opentofu', 'azure', 'environments', 'dev'];
-afterEach(async () => { for (const f of fixtures.splice(0)) await f.cleanup(); });
+afterEach(async () => { vi.restoreAllMocks(); for (const f of fixtures.splice(0)) await f.cleanup(); });
 
 async function fixture(
   initial = 'NotRegistered', registration = 'register-missing',
@@ -39,6 +39,7 @@ async function fixture(
   let rejected = false;
   let rejectedNamespace: string | undefined;
   let alteredBeforePost: (() => Promise<void>) | undefined;
+  let observedRequest: ((request: AzureArmRequest) => void) | undefined;
   const runner: CommandRunner = {
     async run(command) {
       processCalls.push(command.args);
@@ -62,6 +63,7 @@ async function fixture(
   const transport: AzureArmTransport = {
     async request(request, binding) {
       requests.push(structuredClone(request));
+      observedRequest?.(request);
       expect(binding).toEqual({ subscriptionId: producerSubscription, tenantId: producerTenant, principalId: principal });
       const namespace = request.resourceId.match(/\/providers\/([^/]+)/u)?.[1];
       if (!namespace) throw new Error('Expected an exact namespace endpoint.');
@@ -102,11 +104,48 @@ async function fixture(
     pendingPolls: (value: number) => { pollsToReady = value; },
     loseResponse: () => { lostResponse = true; },
     rejectRequest: (value = true, namespace?: string) => { rejected = value; rejectedNamespace = namespace; },
-    beforePost: (hook: () => Promise<void>) => { alteredBeforePost = hook; }
+    beforePost: (hook: () => Promise<void>) => { alteredBeforePost = hook; },
+    observeRequest: (hook: (request: AzureArmRequest) => void) => { observedRequest = hook; }
   };
 }
 
 describe('real bounded provider registration producer', () => {
+  it('refuses an observation returned after the exact window without issuing effects or successful proof', async () => {
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = await fixture('Registered', 'read-only');
+    const approved = await f.approve();
+    f.observeRequest(() => { monotonic.mockReturnValue(120_001); });
+    const outcome = await f.execute(approved);
+    expect(outcome).toMatchObject({ status: 'blocked', completedOperations: [] });
+    expect(outcome.blocker).toContain('reviewed two-minute window');
+    expect(outcome.evidencePayload).toBeUndefined();
+    expect(f.requests.map((request) => request.method)).toEqual(['GET']);
+  });
+
+  it('retains a submitted provider identity after a late poll and resumes without another registration', async () => {
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = await fixture();
+    const approved = await f.approve();
+    let exhausted = false;
+    f.observeRequest((request) => {
+      if (!exhausted && request.method === 'GET' && f.requests.some((entry) => entry.method === 'POST')) {
+        exhausted = true;
+        monotonic.mockReturnValue(120_001);
+      }
+    });
+    const outcome = await f.execute(approved);
+    expect(outcome).toMatchObject({
+      status: 'blocked', operation: { provider: 'azure', status: 'running', planDigest: approved.plan.planDigest }
+    });
+    expect(outcome.blocker).toContain('reviewed two-minute window');
+    const retained = await readProviderCheckpoints(approved, approved.plan.operations[0]!, 'Microsoft.Storage');
+    expect(retained?.submitted?.requestId).toBe(outcome.operation?.operationId);
+    expect(retained?.settled).toBeNull();
+    monotonic.mockReturnValue(0);
+    expect(await f.execute(approved)).toMatchObject({ status: 'completed', resultState: 'verified' });
+    expect(f.requests.filter((request) => request.method === 'POST')).toHaveLength(1);
+  });
+
   it('declares the implemented producer unqualified and keeps public execution blocked despite complete namespace observations', async () => {
     const f = await fixture('Registered', 'read-only', 'bootstrap-local');
     expect(phaseCapabilities['provider-ready']).toMatchObject({

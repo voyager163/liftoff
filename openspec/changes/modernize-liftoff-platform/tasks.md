@@ -274,6 +274,15 @@ Tasks 11.17-11.21 own the new native contracts, adapters and integration.
 Implementation/source-CI approval does not authorize encrypted-volume
 provisioning, ACL/policy changes, real key-store access or cloud qualification.
 
+Task 11.15 now enforces the provider-registration plan's two-minute window
+inside the production ARM transport, across token acquisition and HTTP/body
+observation rather than only between calls. Existing 30-second per-stage
+ceilings remain upper bounds, and late readback is refused before successful
+proof. Regressions cover undispatched expiry, retained returned identity,
+interrupted response bodies and continuation without a second registration.
+This closes a bounded source gap, not the task's complete cross-producer
+recovery or separately authorized live qualification scope.
+
 The original native POSIX protocol tuple is now held in a pure domain module
 and re-exported through its original adapter API. Its canonical digest remains
 `fa280a11fdddfacf4d868f6d3275fd2e04630496a1dc31aba5bc75f3a81fc640`;

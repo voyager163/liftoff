@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createAzureCliArmTransport, AzureProviderClient, azureArmUrl
 } from '../src/adapters/azure/activation-rest.js';
@@ -11,7 +11,9 @@ const now = Date.parse('2026-09-15T00:00:00Z');
 const binding = { subscriptionId: producerSubscription, tenantId: producerTenant, principalId: principal };
 const requestId = 'aaaaaaaa-bbbb-4ccc-8ddd-ffffffffffff';
 
-function fixture(claimChanges: Record<string, unknown> = {}) {
+afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
+
+function fixture(claimChanges: Record<string, unknown> = {}, options: { deadline?: number } = {}) {
   const calls: Parameters<CommandRunner['run']>[] = [];
   const fetches: Array<{ url: string; options?: RequestInit }> = [];
   const jwt = [
@@ -22,16 +24,20 @@ function fixture(claimChanges: Record<string, unknown> = {}) {
   const output = { status: 0, stdout: JSON.stringify({
     accessToken: jwt, tokenType: 'Bearer', subscription: producerSubscription, tenant: producerTenant
   }), stderr: '', displayCommand: 'scoped Azure token fixture' };
-  const runner: CommandRunner = { async run(command, options) { calls.push([command, options]); return output; } };
-  let response = () => new Response(JSON.stringify({
+  let tokenHook: (() => void) | undefined;
+  const runner: CommandRunner = { async run(command, options) { calls.push([command, options]); tokenHook?.(); return output; } };
+  let response: () => Response | Promise<Response> = () => new Response(JSON.stringify({
     id: `/subscriptions/${producerSubscription}/providers/Microsoft.Storage`, namespace: 'Microsoft.Storage', registrationState: 'Registered'
   }), { status: 200, headers: { 'x-ms-request-id': requestId } });
   const fetcher: typeof fetch = async (url, options) => {
     fetches.push({ url: String(url), options });
     return response();
   };
-  const transport = createAzureCliArmTransport(runner, process.cwd(), { now: () => now, fetch: fetcher });
-  return { calls, fetches, output, transport, client: new AzureProviderClient(transport, binding), respond: (fn: typeof response) => { response = fn; } };
+  const transport = createAzureCliArmTransport(runner, process.cwd(), { now: () => now, fetch: fetcher, ...options });
+  return {
+    calls, fetches, output, transport, client: new AzureProviderClient(transport, binding),
+    respond: (fn: typeof response) => { response = fn; }, beforeToken: (hook: () => void) => { tokenHook = hook; }
+  };
 }
 
 describe('production bounded ARM transport', () => {
@@ -98,5 +104,71 @@ describe('production bounded ARM transport', () => {
     const malformed = fixture();
     malformed.respond(() => new Response('private-provider-nonjson', { status: 200 }));
     await expect(malformed.client.read('Microsoft.Storage')).rejects.toThrow(/response bytes were withheld/);
+  });
+
+  it.each([100, 99, Number.NaN, Number.POSITIVE_INFINITY])('refuses an exhausted or invalid shared deadline before credentials: %s', async (deadline) => {
+    vi.spyOn(performance, 'now').mockReturnValue(100);
+    const f = fixture({}, { deadline });
+    await expect(f.client.read('Microsoft.Storage')).rejects.toMatchObject({
+      code: Number.isFinite(deadline) ? 'observation-window-ended' : 'invalid-deadline', dispatched: false
+    });
+    expect(f.calls).toEqual([]);
+    expect(f.fetches).toEqual([]);
+  });
+
+  it('does not dispatch after token acquisition consumes the remaining observation window', async () => {
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = fixture({}, { deadline: 10 });
+    f.beforeToken(() => { monotonic.mockReturnValue(11); });
+    await expect(f.client.register('Microsoft.Storage', randomUUID())).rejects.toMatchObject({
+      code: 'observation-window-ended', dispatched: false
+    });
+    expect(f.calls[0]![1]?.timeoutMs).toBe(10);
+    expect(f.output.stdout).toBe('');
+    expect(f.fetches).toEqual([]);
+  });
+
+  it('shares the reviewed budget across token acquisition and HTTP rather than restarting thirty seconds', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = fixture({}, { deadline: 5000 });
+    f.beforeToken(() => { monotonic.mockReturnValue(4000); });
+    f.respond(() => new Promise<Response>((_resolve, reject) => {
+      f.fetches.at(-1)!.options!.signal!.addEventListener('abort', () => reject(new Error('withheld HTTP diagnostics')), { once: true });
+    }));
+    const outcome = f.client.read('Microsoft.Storage').catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(999);
+    expect(f.calls[0]![1]?.timeoutMs).toBe(5000);
+    expect(f.fetches[0]!.options!.signal!.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(await outcome).toMatchObject({ code: 'request-timeout', dispatched: true });
+    expect(f.fetches[0]!.options!.signal!.aborted).toBe(true);
+    expect(f.output.stdout).toBe('');
+  });
+
+  it('retains returned provider identity when bounded response-body observation is interrupted', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = fixture({}, { deadline: 100 });
+    f.respond(() => new Response(new ReadableStream({
+      start(controller) {
+        f.fetches.at(-1)!.options!.signal!.addEventListener('abort', () => controller.error(new Error('withheld body diagnostics')), { once: true });
+      }
+    }), { status: 200, headers: { 'x-ms-request-id': requestId } }));
+    const outcome = f.client.register('Microsoft.Storage', randomUUID()).catch((error: unknown) => error);
+    await vi.advanceTimersByTimeAsync(100);
+    expect(await outcome).toMatchObject({ code: 'request-timeout', status: 200, requestId, dispatched: true });
+  });
+
+  it('refuses a late successful observation even if a transport did not act on its abort signal', async () => {
+    const monotonic = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const f = fixture({}, { deadline: 100 });
+    f.respond(() => {
+      monotonic.mockReturnValue(101);
+      return new Response('{}', { status: 200, headers: { 'x-ms-request-id': requestId } });
+    });
+    await expect(f.client.read('Microsoft.Storage')).rejects.toMatchObject({
+      code: 'observation-window-ended', requestId, status: 200, dispatched: true
+    });
   });
 });

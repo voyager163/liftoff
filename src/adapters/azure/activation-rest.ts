@@ -91,14 +91,14 @@ function responseId(value: string | null): string | undefined {
 }
 
 async function cliToken(
-  runner: CommandRunner, projectRoot: string, binding: AzureArmBinding, now: () => number
+  runner: CommandRunner, projectRoot: string, binding: AzureArmBinding, now: () => number, commandTimeoutMs: number
 ): Promise<Buffer> {
   const result = await runner.run({
     executable: 'az',
     args: ['account', 'get-access-token', '--subscription', binding.subscriptionId,
       '--tenant', binding.tenantId, '--resource', 'https://management.azure.com/', '--output', 'json', '--only-show-errors']
   }, {
-    cwd: projectRoot, timeoutMs, maxOutputBytes: 64 * 1024, stream: false,
+    cwd: projectRoot, timeoutMs: commandTimeoutMs, maxOutputBytes: 64 * 1024, stream: false,
     env: { AZURE_CORE_COLLECT_TELEMETRY: 'false', AZURE_CORE_ONLY_SHOW_ERRORS: 'true', AZURE_CORE_NO_COLOR: 'true' }
   });
   if (!commandSucceeded(result) || result.aborted || result.outputLimitExceeded) {
@@ -152,8 +152,27 @@ async function cliToken(
 export function createAzureCliArmTransport(
   runner: CommandRunner,
   projectRoot: string,
-  options: { fetch?: typeof globalThis.fetch; now?: () => number } = {}
+  options: {
+    fetch?: typeof globalThis.fetch;
+    now?: () => number;
+    /** Absolute performance.now() deadline shared by a reviewed observation window. */
+    deadline?: number;
+  } = {}
 ): AzureArmTransport {
+  const deadline = options.deadline;
+  const requestBudget = () => {
+    if (deadline === undefined) return timeoutMs;
+    if (!Number.isFinite(deadline)) {
+      throw new AzureArmError('invalid-deadline', 'The ARM observation window requires a finite monotonic deadline.', undefined, undefined, false);
+    }
+    const remaining = Math.ceil(deadline - performance.now());
+    if (remaining <= 0) {
+      throw new AzureArmError('observation-window-ended',
+        'The reviewed ARM observation window ended; retain the exact checkpoint and resume without redispatch.',
+        undefined, undefined, false);
+    }
+    return Math.min(timeoutMs, remaining);
+  };
   return {
     async request(request, requestedBinding) {
       const binding = azureArmBinding(requestedBinding);
@@ -165,16 +184,19 @@ export function createAzureCliArmTransport(
         throw new AzureArmError('invalid-request', 'ARM mutation requires its pre-recorded client correlation ID; GET cannot carry a mutation body.');
       }
       let token: Buffer;
-      try { token = await cliToken(runner, projectRoot, binding, options.now ?? Date.now); }
+      try { token = await cliToken(runner, projectRoot, binding, options.now ?? Date.now, requestBudget()); }
       catch (error) {
         if (!(error instanceof AzureArmError)) throw error;
         throw new AzureArmError(error.code, error.message, error.status, error.requestId, false);
       }
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      let dispatched = false;
       let status: number | undefined;
       let issuedRequestId: string | undefined;
       try {
+        timer = setTimeout(() => controller.abort(), requestBudget());
+        dispatched = true;
         const response = await (options.fetch ?? globalThis.fetch)(url, {
           method: request.method, redirect: 'error', signal: controller.signal,
           headers: {
@@ -212,6 +234,7 @@ export function createAzureCliArmTransport(
         if (retry !== null && (!/^\d+$/u.test(retry) || Number(retry) > 120)) {
           throw new AzureArmError('invalid-response', 'ARM returned an unsupported bounded polling interval.');
         }
+        requestBudget();
         return {
           status: response.status, data,
           ...(requestId ? { requestId } : {}),
@@ -220,10 +243,10 @@ export function createAzureCliArmTransport(
           ...(retry === null ? {} : { retryAfterSeconds: Number(retry) })
         };
       } catch (error) {
-        if (error instanceof AzureArmError) throw new AzureArmError(error.code, error.message, status, issuedRequestId, true);
+        if (error instanceof AzureArmError) throw new AzureArmError(error.code, error.message, status, issuedRequestId, dispatched);
         throw new AzureArmError(controller.signal.aborted ? 'request-timeout' : 'transport-failure',
           'The bounded ARM request did not produce a verified response; submitted effects require checkpointed readback, never blind retry.',
-          status, issuedRequestId, true);
+          status, issuedRequestId, dispatched);
       } finally {
         clearTimeout(timer);
         token.fill(0);

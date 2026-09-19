@@ -151,8 +151,14 @@ export async function executeAzureProviderReadiness(input: PhaseAdapterExecution
     }
     for (const op of operations) await assertAzurePhaseAuthority(input, op);
     const client = new AzureProviderClient(azurePorts(input).transport ?? createAzureCliArmTransport(
-      input.runner, input.inspection.projectRoot, { now: () => (input.clock?.() ?? input.now).getTime() }
+      input.runner, input.inspection.projectRoot, { now: () => (input.clock?.() ?? input.now).getTime(), deadline }
     ), { subscriptionId: bindings.subscriptionId, tenantId: bindings.tenantId, principalId: config.principalId });
+    const read = async (namespace: string) => {
+      withinBudget();
+      const observation = await client.read(namespace);
+      withinBudget();
+      return observation;
+    };
     const preflight = new Map<string, {
       observation: AzureProviderObservation;
       checkpoint: Awaited<ReturnType<typeof readProviderCheckpoints>>;
@@ -163,7 +169,7 @@ export async function executeAzureProviderReadiness(input: PhaseAdapterExecution
       await assertAzurePhaseAuthority(input, reviewed);
       const checkpoint = reviewed.mutationClass === 'azure-provider-register'
         ? await readProviderCheckpoints(input, reviewed, namespace) : null;
-      const observation = await client.read(namespace);
+      const observation = await read(namespace);
       const expected = reviewed.inputs.expected;
       if (!isRecord(expected) || !checkpoint && (observation.state !== expected.state || observation.resourceId !== expected.resourceId)) {
         return { status: 'blocked', blocker: `Provider ${namespace} changed after review without a matching private checkpoint; no new provider write was attempted.`, completedOperations };
@@ -193,7 +199,7 @@ export async function executeAzureProviderReadiness(input: PhaseAdapterExecution
         return { status: 'blocked', blocker: `Provider ${namespace} is not terminal ready after its pre-effect checkpoint; uncertain submission cannot be retried blindly.`, completedOperations, ...(operationState ? { operation: operationState } : {}) };
       }
       const expected = reviewed.inputs.expected;
-      const immediatelyBefore = await client.read(namespace);
+      const immediatelyBefore = await read(namespace);
       if (!isRecord(expected) || expected.state !== immediatelyBefore.state || expected.resourceId !== immediatelyBefore.resourceId ||
         reviewed.mutationClass !== 'azure-provider-register' || config.registration !== 'register-missing' ||
         !['NotRegistered', 'Unregistered'].includes(immediatelyBefore.state)) {
@@ -226,7 +232,7 @@ export async function executeAzureProviderReadiness(input: PhaseAdapterExecution
       for (let attempt = 0; attempt < 3; attempt++) {
         withinBudget();
         await assertAzurePhaseAuthority(input, reviewed);
-        readback = await client.read(namespace);
+        readback = await read(namespace);
         if (readback.state === 'Registered') break;
         if (readback.state !== 'Registering') {
           return { status: 'blocked', blocker: `Provider ${namespace} did not enter a supported pending or terminal registration state after submission.`, completedOperations, operation: operationState };
@@ -242,7 +248,7 @@ export async function executeAzureProviderReadiness(input: PhaseAdapterExecution
     for (const reviewed of operations) {
       withinBudget();
       await assertAzurePhaseAuthority(input, reviewed);
-      const observed = await client.read(String(reviewed.inputs.namespace));
+      const observed = await read(String(reviewed.inputs.namespace));
       if (observed.state !== 'Registered') {
         return { status: 'blocked', blocker: 'A required namespace changed before independent final provider readback.', completedOperations, ...(operationState ? { operation: operationState } : {}) };
       }

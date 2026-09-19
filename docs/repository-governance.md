@@ -133,6 +133,15 @@ silently removed or overwritten. A complete namespace inventory does not
 qualify a provider, host or deployment path; producer acceptance and separately
 authorized live qualification remain distinct gates.
 
+The reviewed two-minute provider observation window also bounds the production
+transport's token acquisition and HTTP response/body reads. Each receives only
+the remaining time, capped by its existing 30-second limit; obtaining a token
+does not restart the window. Expiry before HTTP dispatch is recorded as
+undispatched. Expiry after dispatch retains any returned provider request
+identity for recovery, and a late successful read cannot become completed
+proof. A later approved continuation observes the retained effect rather than
+registering the namespace again.
+
 `phases.state-path-selected.statePath` explicitly selects `existing-private` or
 `bootstrap-local`. Its implemented producer verifies the exact approved account
 and choice, not private backend readiness. Private reachability/state proof and
