@@ -370,6 +370,21 @@ decrypts nor promotes a format header or the provider's MD5 content checksum to
 authenticated key, durable-save or readiness evidence. Native persisted-key
 and restart binding remains outstanding under 11.22-11.24.
 
+The application-key binding primitive now consumes and clears the original
+opaque snapshot, binds the exact enrollment/store/item, host/principal,
+software and persisted-generation context with fresh-nonce AES-256-GCM, and
+verifies only a separately supplied snapshot. Tampering, malformed context,
+wrong keys and snapshot reuse reject. Its result explicitly grants neither
+fresh-process nor readiness authority; actual daemon settlement, durable
+readback and restart observations remain independent under 11.22-11.24.
+
+The user separately authorized pinned real-GNOME persistence/restart source
+fixtures only on fresh disposable GitHub-runner scopes, using generated test
+passwords/keys, private buses and owned daemons with settled cleanup. This
+does not authorize existing keyrings, user credentials, cloud resources,
+disk-encryption changes, production enrollment or publication, and cannot
+serve as encrypted-host custody qualification.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.

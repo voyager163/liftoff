@@ -164,6 +164,16 @@ no authentication, durability or readiness proof. Pairing a persisted generation
 with the actual application key still requires private readback and fresh-process
 verification, not a matching header.
 
+`createManagedKeystoreKeyBinding` consumes the original opaque application-key
+snapshot and produces a fresh-nonce AES-256-GCM binding to the exact project,
+host/principal, enrollment/store/item, software and persisted-generation context.
+`verifyManagedKeystoreKeyBinding` consumes a separately supplied snapshot and
+rejects changed context, key or binding bytes. Both dispose of owned key bytes.
+This is an application-key binding, not a master-password verifier or evidence
+that the second snapshot came from a fresh daemon or durable storage. Its result
+explicitly retains `freshProcessVerified: false` and `readiness: false`; the
+coordinator must establish those independent native observations.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:
