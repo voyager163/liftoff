@@ -150,6 +150,29 @@ archive admission), and baseline validation has one owned fixture-lock release
 failure. The narrowed run is not full-boundary qualification, and tasks 2.7,
 3.2, 3.8 and 9.5 remain open.
 
+The later `35443879517` run did not close those gates: both inspection cases
+again exceeded 90 seconds, native archives were admitted but the POSIX-shaped
+legacy fixture supplied no effective Windows Liftoff owner, and the read-lock
+fixture proved disposal but not read denial. Successful disposal is not proof
+that the earlier read was blocked.
+
+Diagnostic run `35445486472` at
+`5aacd3bd609a858d78b05bd221c7b2cdf78d0616` completed all three nonsecret native
+prerequisite observations. Actual npm 12.0.2 generated Windows shims from the
+isolated local synthetic tarball, but that setup had no installed lock or HTTPS
+origin satisfying the production owner contract. No owner observer was invoked
+and no ownership was fabricated. Both managed and direct kernel handle probes
+retained valid, matching file identities with share mode zero, yet the matching
+second open and Node reads succeeded; read denial remains unproven. The
+diagnostic's passing status means observations are complete, not owner,
+unreadability, private-custody or complete-boundary qualification.
+
+Further Windows completion remains blocked on a reviewed lossless identity
+representation, a conforming legacy-owner fixture, a proven native read-denial
+fixture and unresolved inspection runtime variance. Approval for the identity
+plan revision was requested but not obtained while the user was unavailable;
+existing record formats and unsafe-number refusal remain unchanged.
+
 Task 3.6 has passing native POSIX source-host evidence from run `35352071630`
 at `d9783d087a905ccdb361b6b7bbb5d6f69ac48bcf`. Both Ubuntu and macOS passed
 all applicable `process-runner`, `state-migration-process` and

@@ -518,6 +518,12 @@ unreadability. A bound process and file-name digest are not a held kernel-file
 identity or a sharing-mode observation. The exclusive-handle fixture remains
 blocked pending native handle/file-ID and second-open sharing evidence; no
 ACL change, simulated EACCES or acceptance of a successful read is permitted.
+The standalone source diagnostic in run `35445486472` later retained valid
+managed and kernel handles to matching file identities with requested share
+mode zero. The independently opened Node-compatible handle still succeeded
+against the same file, and both Node read paths returned the nonsecret canary.
+Its successful job status records complete observations, not read-denial or
+private-custody qualification; the failing baseline assertion remains open.
 Mode-freshness fixtures
 require a real observable read-only-attribute change on Windows; that is not
 directory ACL/custody qualification. Application-patch rejection fixtures bind
@@ -571,6 +577,12 @@ absent registered Windows shim-generator inventory are further prerequisites,
 not ownership evidence. The observed "No effective legacy Liftoff command"
 refusal precedes those identity/owner checks; it must not be relabelled as the
 uint64 blocker or bypassed by renaming a POSIX launcher or asserting ownership.
+Run `35445486472` exercised actual npm 12.0.2 and cmd-shim 9.0.2 against a fresh,
+offline, dependency-free synthetic tarball and captured the genuine generated
+Windows shims. That isolated setup supplied neither the installed lock nor an
+HTTPS origin required by the production owner observer. The diagnostic did not
+invoke that observer, forge missing metadata, establish a released-baseline
+installation or qualify owner-channel behavior.
 
 The standalone `fixture-prerequisites` diagnostic now builds an actual synthetic
 legacy fixture through the existing admitted Node/npm toolchain. It packs only
