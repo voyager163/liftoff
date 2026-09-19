@@ -441,9 +441,13 @@ frozen locks; it does not force canonical tarball hosts past mirror policy.
 
 Windows source acceptance has both focused and complete-boundary manual modes
 under `diagnostic_windows_only`. Select
-`windows_diagnostic_scope=complete-boundary` for the full original boundary plus
-the remaining repair/toolchain/continuation source cases in three conserved,
-one-worker shards. This includes the historical read-only Git metadata
+`windows_diagnostic_scope=complete-boundary` for all 60 original/added boundary
+files across ten one-worker partitions, with at most three running at once.
+Ordinary files use file sharding; the two long reviewed-update/revalidation
+files use evaluated test-ID partitions, and migration inspection runs intact
+alone. Parameter expansions, original applicability and exact case IDs are
+retained and checked, so every case is assigned once without deadline changes.
+This includes the historical read-only Git metadata
 revalidation case without increasing its deadline. The actual Windows
 Node/npm/Git acceptance suite records installed executable identities and
 rejects conflicting aliases, project shims and changed executable copies.
@@ -458,10 +462,30 @@ profile observed in the failed source run.
 Its incompatible-version negative uses a deliberately changed copy of npm's
 manifest, not a fabricated native version result.
 
-All shards must pass for complete boundary source evidence. These results do
+All partitions must pass for complete boundary source evidence. These results do
 not establish final installed bundles, minimum hosts, enterprise-policy
 coverage or a missing Windows private-state foundation; report those as
 separate blockers. See [Windows diagnostic commands](CONTRIBUTING.md#validate-a-change).
+
+The observed 90-second failures in run `35428495819` remain failures, not
+qualification: migration inspection's complete-journal and stale-proof cases,
+and migration revalidation's remaining-work retry. Metadata-only macOS profiling of the
+complete-journal case measured 696,877 `lstat`, 592,064 `realpath`, 9,656 opens,
+64,106 directory reads and 3,517 directory streams. Guarded retained-input
+capture now overlaps at most three reads, pinning each file before traversal
+advances and retaining the same path/handle/final checks, byte/count/deadline
+limits and sorted digests. The same case retained those exact observation
+counts after the change; its local instrumented time was 19.9 seconds versus
+24.4–26.8 seconds before, not a claim about Windows performance.
+Failure drains outstanding reads and clears their
+buffers before returning. This is an I/O scheduling correction, not a cached
+cross-boundary snapshot or an identity-format change; native timing acceptance
+still requires another Windows run.
+
+Exact NTFS IDs outside JavaScript's safe-number range remain a genuine
+unsupported identity boundary. Disposable-fixture refusal diagnostics retain
+fresh BigInt metadata only. Existing numeric observations, journal readers,
+receipt bytes and digest algorithms have not been expanded or reinterpreted.
 
 The separate `windows_diagnostic_scope=private-io` selector, together with
 `diagnostic_windows_only=true`, exercises the independently inventoried private

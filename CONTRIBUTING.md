@@ -77,12 +77,31 @@ The selector defaults to `focused` and applies only when the Windows diagnostic
 flag is enabled. Complete-boundary validation conserves every original Windows
 boundary selector, including migration revalidation/inspection, and adds the
 remaining repair source, workstation identity, preparation-input, continuation
-and Windows invocation cases. Three disjoint built-in shards run on separate
-Windows hosts, with one worker and the same 20-minute budget each. No file's
-cases are filtered or retimed. Each job checks its discovered and completed
-file inventory against the exact selected shard and retains source SHA/attempt
-bindings. All three jobs and their reports are required for complete-lane source
-evidence; one passing shard or the focused lane is not a substitute.
+and Windows invocation cases. Ten bounded partitions use at most three Windows
+hosts concurrently, with one worker and the same 20-minute budget each.
+The ordinary 57 files use two built-in file shards. Migration inspection runs
+intact on its own host; reviewed-update and migration-revalidation use three
+and four evaluated-case partitions respectively.
+
+Vitest actually collects parameter expansions before execution, then its
+test-ID API assigns each case exactly once across that file's partitions.
+No test body, assertion, deadline or declared applicability is changed.
+Inventories retain every case's original mode, ID and name, plus a common
+inventory digest. The result gate requires all assigned applicable cases to
+pass and verifies that cases assigned elsewhere were not executed twice.
+Those outside-partition cases are not omitted tests or passing evidence.
+All ten jobs and reports are required; one passing partition or the focused
+lane is not a substitute. The complete inventory still contains all 60 files.
+
+This follows measured run `35428495819`: reviewed-update had consumed 711
+seconds over 39 cases without finishing, and migration-revalidation 727
+seconds over 17 cases without finishing. The latter and migration inspection
+also had real 90-second case failures; partitioning does not waive those
+failures. Existing host-inapplicable cases remain explicitly distinguished.
+On disposable Windows directory-admission refusal, an additional bounded
+diagnostic records fresh exact BigInt device/inode values and safe-number
+eligibility, without paths or private values. It rethrows the original refusal
+and neither admits unsafe numeric identities nor rewrites records.
 
 The native toolchain suite uses the actual supported Node/npm executables and
 read-only Git, with real Windows process settlement and literal spaced/
@@ -133,14 +152,26 @@ The fixtures use only NONSECRET byte sequences and owned processes to exercise
 binary pipes, limits, nonzero exit, cancellation, descendant/parent loss and
 admission failure. Successful evidence requires the actual native suite, every
 applicable case passed, and no applicable skips. Only the precisely named
-non-Windows refusal case may be pending on Windows; there is no broad skip
-allowance or fixed native-case count.
+non-Windows refusal in the runner file may be `skipped` on Windows. Vitest 5
+counts this declared skip in `numPendingTests`, but labels the individual case
+`skipped`, not `pending`. Unfinished `pending` cases and native-suite skips
+remain failures; there is no broad skip allowance or fixed native-case count.
+Rejected reports include fixed, bounded blocker codes identifying the failed
+gate without copying raw error messages or payloads.
 
 The artifact contains only bounded sanitized JSON host/helper identities and
 case statuses. Raw test JSON, binary payloads/frames, private output and state
 directories are not uploaded. This is independently labeled private-I/O source
 evidence, not complete encrypted custody, minimum-host, installed-artifact,
 provider or release qualification.
+The private test command also enables
+`LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS=1`. A separately produced root-exit
+diagnostic is read through a bounded, identity-checked descriptor (at most
+1,024 bytes) and copied into the safe report only after exact schema/value
+allowlisting. Only the fixed fixture identity, PID, outcome/code, exit/reason
+and settlement/ownership booleans are retained—never commands, process
+references, frames or payloads. Missing/startup evidence remains a diagnostic
+gap, not success; the raw diagnostic file is not uploaded.
 
 For isolated native Go preparation investigation, set
 `diagnostic_native_go_only` to `true`. Ubuntu and macOS each run the

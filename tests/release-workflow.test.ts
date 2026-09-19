@@ -254,6 +254,7 @@ describe('read-only coordinated release evidence workflow', () => {
       'npm test -- tests/state-windows-private-protocol.test.ts tests/state-windows-private-runner.test.ts ' +
       '--maxWorkers=1 --reporter=json --outputFile.json=diagnostics/windows-private-io-tests.json'
     );
+    expect(job.steps[nativeIndex].env).toEqual({ LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS: '1' });
     const host = job.steps[hostIndex].run;
     expect(host).toContain("assert.equal(process.platform, 'win32')");
     expect(host).toContain("assert.equal(process.arch, 'x64')");
@@ -303,9 +304,9 @@ describe('read-only coordinated release evidence workflow', () => {
         raw: marker
       };
       const foreign = {
-        fullName: 'source refuses a foreign host while wiping transferred private input',
+        fullName: 'Windows private runner source admission, not Windows qualification refuses a foreign host while wiping transferred private input',
         title: 'refuses a foreign host while wiping transferred private input',
-        ancestorTitles: ['Windows private runner source admission, not Windows qualification'], status: 'pending'
+        ancestorTitles: ['Windows private runner source admission, not Windows qualification'], status: 'skipped'
       };
       const native = { fullName: `${nativeSuite} binary pipes`, title: 'binary pipes', ancestorTitles: [nativeSuite], status: 'passed', failureMessages: [marker], stdout: marker };
       const result = {
@@ -318,6 +319,13 @@ describe('read-only coordinated release evidence workflow', () => {
       const hostFile = path.join(root, 'diagnostics/windows-private-io-host.json');
       const resultFile = path.join(root, 'diagnostics/windows-private-io-tests.json');
       const output = path.join(root, 'diagnostics/windows-private-io-source.json');
+      const rootExitFile = path.join(root, 'diagnostics/windows-private-root-exit.json');
+      const rootExit = {
+        schemaVersion: 1, classification: 'windows-private-root-exit-nonsecret-source-only',
+        fixture: 'detached-child-ipc-ready-before-root-exit', rootPid: 123,
+        result: 'rejected', code: 'native-command-failed', exitCode: 0, reason: 6,
+        settled: true, processSpawned: true, quiesced: true
+      };
       const save = (value: object) => writeFile(resultFile, JSON.stringify(value));
       const run = (overrides: Record<string, string> = {}) => execFileAsync(process.execPath, ['--input-type=module', '-e',
         `Object.defineProperty(process, 'platform', {value:'win32'}); Object.defineProperty(process, 'arch', {value:'x64'});\n${program}`], {
@@ -327,6 +335,10 @@ describe('read-only coordinated release evidence workflow', () => {
       await writeFile(hostFile, JSON.stringify(host));
       await expect(run()).rejects.toThrow();
       await save(result);
+      await expect(run()).rejects.toThrow();
+      expect(JSON.parse(await readFile(output, 'utf8')).rootExitDiagnostic).toEqual({ availability: 'missing' });
+      expect(JSON.parse(await readFile(output, 'utf8')).blockerCode).toBe('root-exit-diagnostic-gap');
+      await writeFile(rootExitFile, JSON.stringify(rootExit));
       await run();
       const summary = await readFile(output, 'utf8');
       expect(summary).not.toContain(marker);
@@ -334,6 +346,33 @@ describe('read-only coordinated release evidence workflow', () => {
         accepted: true, nativeCases: 1, inapplicable: 1, platform: 'win32', architecture: 'x64',
         custodyQualification: 'not-performed', minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed'
       });
+      expect(JSON.parse(summary).rootExitDiagnostic).toEqual({ availability: 'present', ...rootExit });
+      await expect(run({ NATIVE_OUTCOME: 'failure' })).rejects.toThrow();
+      expect(JSON.parse(await readFile(output, 'utf8')).rootExitDiagnostic).toMatchObject({
+        availability: 'present', result: 'rejected', reason: 6, exitCode: 0
+      });
+      for (const invalid of [
+        { ...rootExit, payload: marker }, { ...rootExit, processRef: marker },
+        { ...rootExit, rootPid: 0 }, { ...rootExit, rootPid: 0x1_0000_0000 },
+        { ...rootExit, exitCode: -1 }, { ...rootExit, reason: 8 },
+        { ...rootExit, settled: 'false' }, { ...rootExit, code: marker },
+        { ...rootExit, result: 'manufactured-success' }
+      ]) {
+        await writeFile(rootExitFile, JSON.stringify(invalid));
+        await expect(run()).rejects.toThrow();
+        const blocked = await readFile(output, 'utf8');
+        expect(blocked).not.toContain(marker);
+        expect(JSON.parse(blocked).rootExitDiagnostic).toEqual({ availability: 'invalid' });
+      }
+      await writeFile(rootExitFile, ' '.repeat(1025));
+      await expect(run()).rejects.toThrow();
+      expect(JSON.parse(await readFile(output, 'utf8')).rootExitDiagnostic).toEqual({ availability: 'invalid' });
+      await writeFile(rootExitFile, JSON.stringify({ ...rootExit, result: 'not-observed' }));
+      await expect(run()).rejects.toThrow();
+      await rm(rootExitFile);
+      await expect(run({ HOST_OUTCOME: 'failure', NATIVE_OUTCOME: 'skipped' })).rejects.toThrow();
+      expect(JSON.parse(await readFile(output, 'utf8')).rootExitDiagnostic).toEqual({ availability: 'missing' });
+      await writeFile(rootExitFile, JSON.stringify(rootExit));
       for (const invalid of [
         { ...result, success: false },
         { ...result, numFailedTests: 1 },
@@ -346,6 +385,12 @@ describe('read-only coordinated release evidence workflow', () => {
           result.testResults[0], { ...result.testResults[1], assertionResults: [{ ...native, status: 'pending' }, foreign] }
         ] },
         { ...result, testResults: [
+          result.testResults[0], { ...result.testResults[1], assertionResults: [{ ...native, status: 'skipped' }, foreign] }
+        ] },
+        { ...result, testResults: [
+          result.testResults[0], { ...result.testResults[1], assertionResults: [native, { ...foreign, status: 'pending' }] }
+        ] },
+        { ...result, testResults: [
           result.testResults[0], { ...result.testResults[1], assertionResults: [native, { ...foreign, title: 'unexpected skipped case' }] }
         ] }
       ]) {
@@ -353,6 +398,12 @@ describe('read-only coordinated release evidence workflow', () => {
         await expect(run()).rejects.toThrow();
         expect(JSON.parse(await readFile(output, 'utf8')).accepted).toBe(false);
       }
+      await save(result);
+      await save({ ...result, testResults: [
+        result.testResults[0], { ...result.testResults[1], assertionResults: [native, { ...foreign, status: 'pending' }] }
+      ] });
+      await expect(run()).rejects.toThrow();
+      expect(JSON.parse(await readFile(output, 'utf8')).blockerCode).toBe('unexpected-skipped-or-pending-case');
       await save(result);
       await expect(run({ NATIVE_OUTCOME: 'skipped' })).rejects.toThrow();
       await writeFile(hostFile, JSON.stringify({ ...host, admitted: false }));
@@ -372,15 +423,54 @@ describe('read-only coordinated release evidence workflow', () => {
     }
   });
 
+  it('matches the pinned JSON skip shape observed in private-I/O run 35435527409', async () => {
+    const root = await scratchDirectory();
+    try {
+      const suite = 'Windows private runner source admission, not Windows qualification';
+      const title = 'refuses a foreign host while wiping transferred private input';
+      await writeFile(path.join(root, 'package.json'), '{"type":"module"}\n');
+      await writeFile(path.join(root, 'report-shape.test.ts'), `
+import { describe, it } from 'vitest';
+describe(${JSON.stringify(suite)}, () => {
+  it.skip(${JSON.stringify(title)}, () => {});
+  it('applicable source case', () => {});
+});
+`);
+      const { createVitest } = await import('vitest/node');
+      const context = await createVitest({
+        root, config: false, watch: false, cache: false, maxWorkers: 1,
+        include: ['report-shape.test.ts'], reporters: ['json'], outputFile: { json: path.join(root, 'report.json') }
+      });
+      try { await context.start(); } finally { await context.close(); }
+      const report = JSON.parse(await readFile(path.join(root, 'report.json'), 'utf8'));
+      expect(report).toMatchObject({ success: true, numPassedTests: 1, numFailedTests: 0, numPendingTests: 1 });
+      expect(report.testResults[0].assertionResults.find((test: any) => test.title === title)).toMatchObject({
+        title, ancestorTitles: [suite], fullName: `${suite} ${title}`, status: 'skipped'
+      });
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it('preserves every complete Windows boundary selector across bounded one-worker shards', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const job = workflow.jobs['windows-boundary-diagnostics'];
     expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'");
     expect(job['runs-on']).toBe('windows-latest');
     expect(job['timeout-minutes']).toBe(20);
-    expect(job.strategy).toEqual({ 'fail-fast': false, 'max-parallel': 3, matrix: { shard: [1, 2, 3] } });
-    expect(job.env).toEqual({ WINDOWS_BOUNDARY_SHARD: '${{ matrix.shard }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1' });
-    const runIndex = job.steps.findIndex((step: any) => step.name === 'Run a complete Windows source-boundary shard without narrowing any selected file');
+    expect(job.strategy).toEqual({
+      'fail-fast': false, 'max-parallel': 3, matrix: { include: [
+        { group: 'regular', shard: 1, count: 2 }, { group: 'regular', shard: 2, count: 2 },
+        { group: 'migration-inspection', shard: 1, count: 1 },
+        ...[1, 2, 3].map((shard) => ({ group: 'reviewed-update', shard, count: 3 })),
+        ...[1, 2, 3, 4].map((shard) => ({ group: 'migration-revalidation', shard, count: 4 }))
+      ] }
+    });
+    expect(job.env).toEqual({
+      WINDOWS_BOUNDARY_GROUP: '${{ matrix.group }}', WINDOWS_BOUNDARY_SHARD: '${{ matrix.shard }}',
+      WINDOWS_BOUNDARY_COUNT: '${{ matrix.count }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1'
+    });
+    const runIndex = job.steps.findIndex((step: any) => step.name === 'Run conserved Windows source specs and evaluated heavy-case partitions');
     for (const action of ['actions/setup-python@', 'actions/setup-go@', 'opentofu/setup-opentofu@']) {
       expect(job.steps.slice(0, runIndex).some((step: any) => step.uses?.startsWith(action))).toBe(true);
     }
@@ -390,11 +480,18 @@ describe('read-only coordinated release evidence workflow', () => {
     ]) expect(job.steps.slice(0, runIndex).some((step: any) => step.run === command)).toBe(true);
     const program = job.steps[runIndex].run;
     expect(program).toContain("assert.equal(process.platform, 'win32'");
-    expect(program).toContain("'run', ...files, `--shard=${index}/3`");
-    expect(program).toContain("'--maxWorkers=1', '--reporter=verbose', '--reporter=json'");
-    expect(program).toContain('process.exitCode = result.status ?? 1');
+    expect(program).toContain("maxWorkers: 1, reporters: ['verbose', 'json']");
+    expect(program).toContain('context.collectTests(selectedSpecs)');
+    expect(program).toContain('await context.standalone()');
+    expect(program).toContain("group === 'regular' || ordinal % count === index - 1");
+    expect(program).toContain('module.toTestSpecification(selectedCases)');
+    expect(program).toContain('context.runTestSpecifications(runSpecs)');
+    expect(program).toContain('context.config.shard = undefined');
+    expect(program).toContain("outcomes.some((test) => test.state === 'failed')) process.exitCode = 1");
+    expect(program).not.toMatch(/testNamePattern|staticParse|testTimeout|retry:/);
     const original = workflow.jobs.test.steps.find((step: any) => step.name === 'Run Windows project and packaging boundary coverage').run.trim().split(/\s+/).slice(3);
-    const additional = [...program.matchAll(/'(tests\/[\w/-]+\.test\.ts)'/gu)].map((match: RegExpMatchArray) => match[1]);
+    const declaredAdditional = /const additional = \[([\s\S]*?)\];/u.exec(program)?.[1] ?? '';
+    const additional = [...declaredAdditional.matchAll(/'(tests\/[\w/-]+\.test\.ts)'/gu)].map((match: RegExpMatchArray) => match[1]);
     expect(additional).toEqual([
       'tests/repair-baseline-settings.test.ts', 'tests/repair-manifest-v8.test.ts',
       'tests/repair-preparation.test.ts', 'tests/repair-validation.test.ts',
@@ -413,10 +510,12 @@ describe('read-only coordinated release evidence workflow', () => {
       const specifications = await context.globTestSpecifications(expected);
       const relative = (spec: { moduleId: string }) => path.relative(process.cwd(), spec.moduleId).split(path.sep).join('/');
       expect(specifications.map(relative).sort()).toEqual(expected);
-      const selected: string[] = [];
-      for (const index of [1, 2, 3]) {
-        context.config.shard = { index, count: 3 };
-        selected.push(...(await new BaseSequencer(context).shard(specifications)).map(relative));
+      const heavy = ['migration-inspection', 'reviewed-update', 'migration-revalidation'].map((name) => `tests/${name}.test.ts`);
+      const selected: string[] = [...heavy];
+      const regular = specifications.filter((spec) => !heavy.includes(relative(spec)));
+      for (const index of [1, 2]) {
+        context.config.shard = { index, count: 2 };
+        selected.push(...(await new BaseSequencer(context).shard(regular)).map(relative));
       }
       expect(selected.sort()).toEqual(expected);
       expect(new Set(selected).size).toBe(expected.length);
@@ -427,8 +526,9 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(job.steps[runIndex + 1].if).toBeUndefined();
     expect(job.steps.at(-1).if).toBe('always()');
     expect(job.steps.at(-1).with).toEqual({
-      name: 'windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}',
-      path: 'diagnostics/windows-boundary-inventory.json\ndiagnostics/windows-boundary-tests.json\ndiagnostics/windows-native-toolchain.json\n',
+      name: 'windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.group }}-${{ matrix.shard }}',
+      path: 'diagnostics/windows-boundary-inventory.json\ndiagnostics/windows-boundary-tests.json\ndiagnostics/windows-boundary-outcomes.json\n' +
+        'diagnostics/windows-native-toolchain.json\ndiagnostics/windows-directory-admission.json\n',
       'if-no-files-found': 'error', 'retention-days': 7
     });
   });
@@ -445,8 +545,14 @@ describe('read-only coordinated release evidence workflow', () => {
       const selected = ['tests/migration-revalidation.test.ts', 'tests/windows-native-toolchain.test.ts'];
       const inventory = {
         platform: 'win32', architecture: 'x64', sourceCommit: 'a'.repeat(40), runAttempt: '2',
-        shard: 1, shards: 3, selected
+        group: 'regular', shard: 1, shards: 2, selected, caseInventoryDigest: 'c'.repeat(64),
+        cases: [
+          { file: selected[0], id: 'migration-1', name: 'existing platform contract', mode: 'skip', selected: true },
+          { file: selected[1], id: 'native-1', name: 'actual tools', mode: 'run', selected: true }
+        ]
       };
+      inventory.caseInventoryDigest = createHash('sha256').update(JSON.stringify(
+        inventory.cases.map(({ selected: _selected, ...test }) => test))).digest('hex');
       const report = {
         success: true, numFailedTests: 0, numPendingTests: 1,
         testResults: selected.map((file) => ({
@@ -462,12 +568,20 @@ describe('read-only coordinated release evidence workflow', () => {
       };
       const save = (file: string, value: unknown) => writeFile(path.join(root, 'diagnostics', file), JSON.stringify(value));
       const run = () => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
-        cwd: root, env: { ...process.env, GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2', WINDOWS_BOUNDARY_SHARD: '1' }
+        cwd: root, env: {
+          ...process.env, GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2',
+          WINDOWS_BOUNDARY_GROUP: 'regular', WINDOWS_BOUNDARY_SHARD: '1', WINDOWS_BOUNDARY_COUNT: '2'
+        }
       });
       await expect(run()).rejects.toThrow();
       await save('windows-boundary-inventory.json', inventory);
       await save('windows-boundary-tests.json', report);
       await expect(run()).rejects.toThrow();
+      const outcomes = {
+        caseInventoryDigest: inventory.caseInventoryDigest, unhandledErrors: 0,
+        outcomes: inventory.cases.map((test) => ({ file: test.file, id: test.id, name: test.name, state: test.mode === 'run' ? 'passed' : 'skipped' }))
+      };
+      await save('windows-boundary-outcomes.json', outcomes);
       await save('windows-native-toolchain.json', observation);
       await run();
       await save('windows-boundary-tests.json', { ...report, testResults: report.testResults.slice(1) });
@@ -477,8 +591,65 @@ describe('read-only coordinated release evidence workflow', () => {
       await save('windows-boundary-tests.json', skipped);
       await expect(run()).rejects.toThrow();
       await save('windows-boundary-tests.json', report);
+      await save('windows-boundary-outcomes.json', { ...outcomes, outcomes: outcomes.outcomes.slice(0, 1) });
+      await expect(run()).rejects.toThrow();
+      await save('windows-boundary-outcomes.json', outcomes);
       await save('windows-native-toolchain.json', { ...observation, sourceCommit: 'c'.repeat(40) });
       await expect(run()).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('uses evaluated runner IDs to conserve parameterized and duplicate-name cases across partitions', async () => {
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'tests'));
+      await writeFile(path.join(root, 'package.json'), '{"type":"module"}\n');
+      await writeFile(path.join(root, 'tests/heavy.test.ts'), `
+import { it } from 'vitest';
+import { writeFileSync } from 'node:fs';
+it.each(['a', 'b', 'c', 'd'])('parameter %s', (value) => {
+  writeFileSync(new URL('../ran-' + value, import.meta.url), value, { flag: 'wx' });
+});
+it('duplicate name', () => writeFileSync(new URL('../ran-e', import.meta.url), 'e', { flag: 'wx' }));
+it('duplicate name', () => writeFileSync(new URL('../ran-f', import.meta.url), 'f', { flag: 'wx' }));
+it.skip('existing inapplicable case', () => { throw new Error('Not applicable'); });
+`);
+      const { createVitest } = await import('vitest/node');
+      const selectedIds: string[] = [];
+      let inventoryIds: string[] = [];
+      for (const index of [1, 2, 3]) {
+        const context = await createVitest({
+          root, config: false, watch: false, cache: false, maxWorkers: 1, reporters: ['json'],
+          outputFile: { json: path.join(root, 'result.json') }, include: ['tests/*.test.ts']
+        });
+        try {
+          await context.standalone();
+          const collected = await context.collectTests(await context.globTestSpecifications());
+          expect(collected.unhandledErrors).toEqual([]);
+          const module = collected.testModules[0];
+          const cases = [...module.children.allTests()];
+          const definitions = cases.map((test) => ({ id: test.id, mode: test.options.mode }));
+          if (index === 1) inventoryIds = definitions.map((test) => test.id);
+          else expect(definitions.map((test) => test.id)).toEqual(inventoryIds);
+          const selected = cases.filter((_, ordinal) => ordinal % 3 === index - 1);
+          selectedIds.push(...selected.map((test) => test.id));
+          const result = await context.runTestSpecifications([module.toTestSpecification(selected)]);
+          expect(result.unhandledErrors).toEqual([]);
+          for (const test of result.testModules[0].children.allTests()) {
+            const expected = definitions.find((entry) => entry.id === test.id)!;
+            const applies = selected.some((entry) => entry.id === test.id) && expected.mode === 'run';
+            expect(test.result().state).toBe(applies ? 'passed' : 'skipped');
+          }
+          const json = JSON.parse(await readFile(path.join(root, 'result.json'), 'utf8'));
+          const applicable = selected.filter((test) => definitions.find((entry) => entry.id === test.id)?.mode === 'run');
+          expect(json).toMatchObject({ success: true, numPassedTests: applicable.length, numFailedTests: 0 });
+        } finally { await context.close(); }
+      }
+      expect(selectedIds.sort()).toEqual(inventoryIds.sort());
+      expect(new Set(selectedIds).size).toBe(inventoryIds.length);
+      for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) expect(await readFile(path.join(root, `ran-${name}`), 'utf8')).toBe(name);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

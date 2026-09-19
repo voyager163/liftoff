@@ -702,7 +702,7 @@ jobs:
           retention-days: 7
 
   windows-boundary-diagnostics:
-    name: Complete Windows source boundary (${{ matrix.shard }}/3, not installed qualification)
+    name: Complete Windows source boundary (${{ matrix.group }} ${{ matrix.shard }}/${{ matrix.count }}, not installed qualification)
     if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'
     runs-on: windows-latest
     timeout-minutes: 20
@@ -710,9 +710,21 @@ jobs:
       fail-fast: false
       max-parallel: 3
       matrix:
-        shard: [1, 2, 3]
+        include:
+          - { group: regular, shard: 1, count: 2 }
+          - { group: regular, shard: 2, count: 2 }
+          - { group: migration-inspection, shard: 1, count: 1 }
+          - { group: reviewed-update, shard: 1, count: 3 }
+          - { group: reviewed-update, shard: 2, count: 3 }
+          - { group: reviewed-update, shard: 3, count: 3 }
+          - { group: migration-revalidation, shard: 1, count: 4 }
+          - { group: migration-revalidation, shard: 2, count: 4 }
+          - { group: migration-revalidation, shard: 3, count: 4 }
+          - { group: migration-revalidation, shard: 4, count: 4 }
     env:
+      WINDOWS_BOUNDARY_GROUP: ${{ matrix.group }}
       WINDOWS_BOUNDARY_SHARD: ${{ matrix.shard }}
+      WINDOWS_BOUNDARY_COUNT: ${{ matrix.count }}
       LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
     steps:
       - *native-source-checkout
@@ -747,12 +759,12 @@ jobs:
       - name: Build package
         run: npm run build
 
-      - name: Run a complete Windows source-boundary shard without narrowing any selected file
+      - name: Run conserved Windows source specs and evaluated heavy-case partitions
         shell: bash
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import { spawnSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
           import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
           import path from 'node:path';
           import { parse } from 'yaml';
@@ -761,7 +773,7 @@ jobs:
           const workflow = parse(readFileSync('.github/workflows/ci.yml', 'utf8'));
           const original = workflow.jobs.test.steps.find((step) => step.name === 'Run Windows project and packaging boundary coverage').run.trim().split(/\s+/u);
           assert.deepEqual(original.slice(0, 3), ['npx', 'vitest', 'run']);
-          const files = [...new Set([...original.slice(3),
+          const additional = [
             'tests/repair-baseline-settings.test.ts', 'tests/repair-manifest-v8.test.ts',
             'tests/repair-preparation.test.ts', 'tests/repair-validation.test.ts',
             'tests/application-preparation-input-boundaries.test.ts',
@@ -769,37 +781,75 @@ jobs:
             'tests/windows-native-toolchain.test.ts', 'tests/distribution/windows-invocation.test.ts',
             'tests/input-consistency.test.ts', 'tests/machine-action-continuation-contracts.test.ts',
             'tests/continuation-admission.test.ts'
-          ])].sort();
+          ];
+          const files = [...new Set([...original.slice(3), ...additional])].sort();
           assert.ok(files.every((file) => /^tests\/[\w/-]+\.test\.ts$/u.test(file)));
+          const group = process.env.WINDOWS_BOUNDARY_GROUP;
           const index = Number(process.env.WINDOWS_BOUNDARY_SHARD);
-          assert.ok([1, 2, 3].includes(index));
-          const context = await createVitest({ watch: false, cache: false });
-          let selected;
+          const count = Number(process.env.WINDOWS_BOUNDARY_COUNT);
+          const groups = { regular: 2, 'migration-inspection': 1, 'reviewed-update': 3, 'migration-revalidation': 4 };
+          assert.equal(count, groups[group]);
+          assert.ok(Number.isSafeInteger(index) && index >= 1 && index <= count);
+          const heavy = ['migration-inspection', 'reviewed-update', 'migration-revalidation'].map((name) => `tests/${name}.test.ts`);
+          const context = await createVitest({
+            watch: false, cache: false, maxWorkers: 1, reporters: ['verbose', 'json'],
+            outputFile: { json: 'diagnostics/windows-boundary-tests.json' }
+          });
           const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
           try {
+            await context.standalone();
             const specifications = await context.globTestSpecifications(files);
             assert.deepEqual(specifications.map((spec) => relative(spec.moduleId)).sort(), files, 'Every selected source spec must exist exactly once');
-            context.config.shard = { index, count: 3 };
-            selected = (await new BaseSequencer(context).shard(specifications)).map((spec) => relative(spec.moduleId)).sort();
-            assert.ok(selected.length > 0);
+            const groupSpecs = specifications.filter((spec) => group === 'regular'
+              ? !heavy.includes(relative(spec.moduleId)) : relative(spec.moduleId) === `tests/${group}.test.ts`);
+            assert.ok(groupSpecs.length > 0);
+            let selectedSpecs = groupSpecs;
+            if (group === 'regular') {
+              context.config.shard = { index, count };
+              selectedSpecs = await new BaseSequencer(context).shard(groupSpecs);
+              context.config.shard = undefined;
+            }
+            const collected = await context.collectTests(selectedSpecs);
+            assert.equal(collected.unhandledErrors.length, 0, 'Evaluated test collection must succeed');
+            assert.equal(collected.testModules.length, selectedSpecs.length, 'Every selected file must be evaluated');
+            const cases = [];
+            const runSpecs = [];
+            for (const module of collected.testModules) {
+              const evaluated = [...module.children.allTests()];
+              assert.ok(evaluated.length > 0);
+              const selectedCases = evaluated.filter((test, ordinal) => {
+                assert.ok(['run', 'skip', 'todo'].includes(test.options.mode), 'Focused-only tests are not admitted');
+                const selected = group === 'regular' || ordinal % count === index - 1;
+                cases.push({ file: relative(module.moduleId), id: test.id, name: test.fullName, mode: test.options.mode, selected });
+                return selected;
+              });
+              assert.ok(selectedCases.length > 0);
+              runSpecs.push(module.toTestSpecification(selectedCases));
+            }
+            assert.equal(new Set(cases.map((test) => `${test.file}\0${test.id}`)).size, cases.length);
+            const selected = selectedSpecs.map((spec) => relative(spec.moduleId)).sort();
+            const digest = createHash('sha256').update(JSON.stringify(cases.map(({ selected, ...test }) => test))).digest('hex');
+            mkdirSync('diagnostics', { recursive: true });
+            writeFileSync('diagnostics/windows-boundary-inventory.json', JSON.stringify({
+              classification: 'complete-windows-repair-process-source-boundary-only',
+              platform: process.platform, architecture: process.arch, sourceCommit: process.env.GITHUB_SHA,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT, group, shard: index, shards: count,
+              files, groupFiles: groupSpecs.map((spec) => relative(spec.moduleId)).sort(), selected, cases, caseInventoryDigest: digest,
+              installedArtifactQualification: 'not-performed', minimumHostQualification: 'not-performed',
+              privateCustodyQualification: 'not-performed'
+            }, null, 2) + '\n');
+            const result = await context.runTestSpecifications(runSpecs);
+            const outcomes = result.testModules.flatMap((module) => [...module.children.allTests()].map((test) => ({
+              file: relative(module.moduleId), id: test.id, name: test.fullName, state: test.result().state,
+              durationMs: test.diagnostic()?.duration ?? null
+            })));
+            writeFileSync('diagnostics/windows-boundary-outcomes.json', JSON.stringify({
+              caseInventoryDigest: digest, unhandledErrors: result.unhandledErrors.length, outcomes
+            }, null, 2) + '\n');
+            if (result.unhandledErrors.length || outcomes.some((test) => test.state === 'failed')) process.exitCode = 1;
           } finally {
             await context.close();
           }
-          mkdirSync('diagnostics', { recursive: true });
-          writeFileSync('diagnostics/windows-boundary-inventory.json', JSON.stringify({
-            classification: 'complete-windows-repair-process-source-boundary-only',
-            platform: process.platform, architecture: process.arch, sourceCommit: process.env.GITHUB_SHA,
-            runAttempt: process.env.GITHUB_RUN_ATTEMPT, shard: index, shards: 3, files, selected,
-            installedArtifactQualification: 'not-performed', minimumHostQualification: 'not-performed',
-            privateCustodyQualification: 'not-performed'
-          }, null, 2) + '\n');
-          const result = spawnSync(process.execPath, [
-            'node_modules/vitest/vitest.mjs', 'run', ...files, `--shard=${index}/3`,
-            '--maxWorkers=1', '--reporter=verbose', '--reporter=json',
-            '--outputFile.json=diagnostics/windows-boundary-tests.json'
-          ], { stdio: 'inherit', env: process.env });
-          if (result.error) throw result.error;
-          process.exitCode = result.status ?? 1;
           NODE
 
       - name: Require complete same-source shard results and actual tool observations
@@ -807,19 +857,40 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
           import { readFileSync } from 'node:fs';
           import path from 'node:path';
           const inventory = JSON.parse(readFileSync('diagnostics/windows-boundary-inventory.json', 'utf8'));
           const report = JSON.parse(readFileSync('diagnostics/windows-boundary-tests.json', 'utf8'));
+          const recorded = JSON.parse(readFileSync('diagnostics/windows-boundary-outcomes.json', 'utf8'));
           assert.equal(inventory.platform, 'win32');
           assert.equal(inventory.sourceCommit, process.env.GITHUB_SHA);
           assert.equal(inventory.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
           assert.equal(inventory.shard, Number(process.env.WINDOWS_BOUNDARY_SHARD));
-          assert.equal(inventory.shards, 3);
+          assert.equal(inventory.group, process.env.WINDOWS_BOUNDARY_GROUP);
+          assert.equal(inventory.shards, Number(process.env.WINDOWS_BOUNDARY_COUNT));
           assert.equal(report.success, true);
           assert.equal(report.numFailedTests, 0);
           const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
           assert.deepEqual(report.testResults.map((file) => relative(file.name)).sort(), inventory.selected);
+          assert.equal(inventory.caseInventoryDigest, createHash('sha256').update(JSON.stringify(
+            inventory.cases.map(({ selected, ...test }) => test))).digest('hex'));
+          assert.equal(recorded.caseInventoryDigest, inventory.caseInventoryDigest);
+          assert.equal(recorded.unhandledErrors, 0);
+          assert.ok(inventory.cases.length > 0 && inventory.cases.some((test) => test.selected));
+          assert.equal(recorded.outcomes.length, inventory.cases.length);
+          assert.equal(new Set(recorded.outcomes.map((test) => `${test.file}\0${test.id}`)).size, recorded.outcomes.length);
+          for (const [ordinal, expected] of inventory.cases.entries()) {
+            assert.equal(expected.selected, inventory.group === 'regular' || ordinal % inventory.shards === inventory.shard - 1);
+            const actual = recorded.outcomes.find((test) => test.id === expected.id && test.file === expected.file);
+            assert.equal(actual?.file, expected.file);
+            assert.equal(actual?.name, expected.name);
+            if (expected.selected) {
+              assert.equal(actual.state, expected.mode === 'run' ? 'passed' : 'skipped', 'Every applicable selected case must execute successfully');
+            } else {
+              assert.equal(actual.state, 'skipped', 'Cases assigned to another partition must not execute twice');
+            }
+          }
           if (inventory.selected.includes('tests/windows-native-toolchain.test.ts')) {
             const file = report.testResults.find((entry) => relative(entry.name) === 'tests/windows-native-toolchain.test.ts');
             const native = file.assertionResults.filter((test) => test.ancestorTitles?.includes('native supported Windows toolchain source acceptance'));
@@ -838,11 +909,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
-          name: windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          name: windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.group }}-${{ matrix.shard }}
           path: |
             diagnostics/windows-boundary-inventory.json
             diagnostics/windows-boundary-tests.json
+            diagnostics/windows-boundary-outcomes.json
             diagnostics/windows-native-toolchain.json
+            diagnostics/windows-directory-admission.json
           if-no-files-found: error
           retention-days: 7
 
@@ -930,6 +1003,8 @@ jobs:
 
       - name: Run actual Windows private binary I/O source fixtures only
         id: native
+        env:
+          LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS: "1"
         run: >-
           npm test -- tests/state-windows-private-protocol.test.ts tests/state-windows-private-runner.test.ts
           --maxWorkers=1 --reporter=json --outputFile.json=diagnostics/windows-private-io-tests.json
@@ -943,7 +1018,7 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+          import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
           import path from 'node:path';
           const report = {
             classification: 'windows-private-io-nonsecret-source-only',
@@ -959,6 +1034,51 @@ jobs:
             return JSON.parse(readFileSync(file, 'utf8'));
           };
           mkdirSync('diagnostics', { recursive: true });
+          report.rootExitDiagnostic = { availability: 'missing' };
+          let diagnosticFd;
+          try {
+            const file = 'diagnostics/windows-private-root-exit.json';
+            const before = lstatSync(file, { bigint: true });
+            assert.ok(before.isFile() && !before.isSymbolicLink() && before.nlink === 1n && before.size <= 1024n);
+            diagnosticFd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+            const opened = fstatSync(diagnosticFd, { bigint: true });
+            for (const key of ['dev', 'ino', 'size', 'mode', 'mtimeNs', 'ctimeNs']) assert.equal(opened[key], before[key]);
+            const bytes = Buffer.alloc(Number(opened.size));
+            for (let offset = 0; offset < bytes.length;) {
+              const count = readSync(diagnosticFd, bytes, offset, bytes.length - offset, offset);
+              assert.ok(count > 0);
+              offset += count;
+            }
+            const after = fstatSync(diagnosticFd, { bigint: true });
+            const named = lstatSync(file, { bigint: true });
+            for (const current of [after, named]) {
+              assert.ok(current.isFile() && !current.isSymbolicLink() && current.nlink === 1n);
+              for (const key of ['dev', 'ino', 'size', 'mode', 'mtimeNs', 'ctimeNs']) assert.equal(current[key], before[key]);
+            }
+            const value = JSON.parse(bytes.toString('utf8'));
+            const fields = ['schemaVersion', 'classification', 'fixture', 'rootPid', 'result', 'code', 'exitCode', 'reason', 'settled', 'processSpawned', 'quiesced'];
+            assert.deepEqual(Object.keys(value).sort(), [...fields].sort());
+            assert.equal(value.schemaVersion, 1);
+            assert.equal(value.classification, 'windows-private-root-exit-nonsecret-source-only');
+            assert.equal(value.fixture, 'detached-child-ipc-ready-before-root-exit');
+            const uint32 = (item) => Number.isSafeInteger(item) && item >= 0 && item <= 0xffffffff;
+            assert.ok(value.rootPid === null || uint32(value.rootPid) && value.rootPid > 0);
+            assert.ok(['resolved', 'rejected', 'not-observed'].includes(value.result));
+            assert.ok(value.code === null || [
+              'unsupported-host', 'helper-unavailable', 'executable-changed', 'invalid-request',
+              'working-directory-too-long', 'authentication-failed', 'invalid-protocol',
+              'cancelled', 'timeout', 'output-limit', 'native-command-failed', 'settlement-unproven', 'unclassified-error'
+            ].includes(value.code));
+            assert.ok(value.exitCode === null || uint32(value.exitCode));
+            assert.ok(value.reason === null || Number.isInteger(value.reason) && value.reason >= 0 && value.reason <= 7);
+            for (const field of ['settled', 'processSpawned', 'quiesced']) assert.ok(value[field] === null || typeof value[field] === 'boolean');
+            report.rootExitDiagnostic = { availability: 'present', ...Object.fromEntries(fields.map((field) => [field, value[field]])) };
+          } catch (error) {
+            if (error?.code !== 'ENOENT') report.rootExitDiagnostic = { availability: 'invalid' };
+          } finally {
+            if (diagnosticFd !== undefined) closeSync(diagnosticFd);
+          }
+          let blockerCode = 'host-report-unavailable-or-invalid';
           try {
             const host = bounded('diagnostics/windows-private-io-host.json', 16 * 1024);
             report.host = {
@@ -970,6 +1090,7 @@ jobs:
               } : undefined,
               helpers: host.helpers.map((helper) => ({ id: helper.id, path: helper.path, sha256: helper.sha256 }))
             };
+            blockerCode = 'host-identity-mismatch';
             assert.equal(process.platform, 'win32');
             assert.equal(process.arch, 'x64');
             assert.equal(host.platform, process.platform);
@@ -977,21 +1098,29 @@ jobs:
             assert.equal(host.sourceCommit, process.env.GITHUB_SHA);
             assert.equal(host.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
             assert.equal(host.admitted, true);
+            blockerCode = 'helper-identity-mismatch';
             assert.deepEqual(host.helpers.map((helper) => helper.id).sort(), ['windows-job-controller', 'windows-private-process']);
             for (const helper of host.helpers) assert.match(helper.sha256, /^[a-f0-9]{64}$/u);
             assert.notEqual(host.helpers[0].sha256, host.helpers[1].sha256);
+            blockerCode = 'host-runtime-unsupported';
             assert.match(host.powershell.version, /^5\.1\./u);
             assert.equal(host.powershell.languageMode, 'FullLanguage');
             assert.equal(host.powershell.systemWebExtensions, 'loaded');
+            blockerCode = 'host-stage-incomplete';
             assert.equal(report.stages.host, 'success');
+            blockerCode = 'native-report-unavailable-or-invalid';
             const result = bounded('diagnostics/windows-private-io-tests.json', 256 * 1024);
             const expectedFiles = ['tests/state-windows-private-protocol.test.ts', 'tests/state-windows-private-runner.test.ts'];
+            blockerCode = 'native-file-inventory-mismatch';
             assert.deepEqual(result.testResults.map((file) => path.relative(process.cwd(), file.name).split(path.sep).join('/')).sort(), expectedFiles);
+            blockerCode = 'native-case-inventory-invalid';
             const cases = result.testResults.flatMap((file) => file.assertionResults);
             assert.ok(cases.length > 0 && cases.length <= 128);
             const nativeSuite = 'actual Windows private binary pipes and owned jobs (NONSECRET source fixtures, not custody)';
             const native = cases.filter((test) => test.ancestorTitles?.includes(nativeSuite));
-            const inapplicable = cases.filter((test) => test.status === 'pending' &&
+            const runnerCases = result.testResults.find((file) =>
+              path.relative(process.cwd(), file.name).split(path.sep).join('/') === 'tests/state-windows-private-runner.test.ts').assertionResults;
+            const inapplicable = runnerCases.filter((test) => test.status === 'skipped' &&
               test.title === 'refuses a foreign host while wiping transferred private input' &&
               test.ancestorTitles?.includes('Windows private runner source admission, not Windows qualification'));
             report.passed = result.numPassedTests;
@@ -999,16 +1128,25 @@ jobs:
             report.inapplicable = inapplicable.length;
             report.nativeCases = native.length;
             report.cases = cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }));
+            blockerCode = 'native-stage-incomplete';
             assert.equal(report.stages.native, 'success');
+            blockerCode = 'root-exit-diagnostic-gap';
+            assert.equal(report.rootExitDiagnostic.availability, 'present', 'Missing root-exit diagnostics are a gap, not success');
+            assert.notEqual(report.rootExitDiagnostic.result, 'not-observed');
+            blockerCode = 'native-test-failure';
             assert.equal(result.success, true);
-            assert.equal(result.numPassedTests, cases.filter((test) => test.status === 'passed').length);
             assert.equal(result.numFailedTests, 0);
+            blockerCode = 'native-passed-count-mismatch';
+            assert.equal(result.numPassedTests, cases.filter((test) => test.status === 'passed').length);
+            blockerCode = 'native-suite-incomplete';
             assert.ok(native.length > 0 && native.every((test) => test.status === 'passed'));
+            blockerCode = 'unexpected-skipped-or-pending-case';
             assert.ok(inapplicable.length <= 1);
             assert.equal(result.numPendingTests, inapplicable.length);
             assert.ok(cases.every((test) => test.status === 'passed' || inapplicable.includes(test)));
             report.accepted = true;
           } catch {
+            report.blockerCode = blockerCode;
             report.blocker = 'Required actual Windows private-I/O source evidence is missing, mismatched or incomplete';
             process.exitCode = 1;
           } finally {

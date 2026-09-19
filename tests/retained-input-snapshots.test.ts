@@ -7,6 +7,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { captureRetainedInputTree } from '../src/adapters/filesystem/retained-inputs.js';
+import { AssessmentSnapshot } from '../src/adapters/filesystem/standards-assessment/snapshot.js';
+import * as observedFiles from '../src/adapters/filesystem/observed-file.js';
 import {
   boundedSourceObservationLimits, sourceObservationLimitKeys, sourceObservationLimits
 } from '../src/adapters/filesystem/source-observation-limits.js';
@@ -32,6 +34,88 @@ const collectors = [
   { name: 'general retained source', capture: captureRetainedProjectInputs },
   { name: 'migration retained source', capture: captureMigrationRetainedProjectInputs }
 ];
+
+describe('bounded retained-source read scheduling', () => {
+  it('clears an owned read buffer if the final snapshot check fails before returning it', async () => {
+    const f = await fixture();
+    await fs.writeFile(path.join(f.project, 'a.txt'), 'NONSECRET fixture');
+    const snapshot = await AssessmentSnapshot.create(f.project);
+    const pinned = await snapshot.inspect(['a.txt']);
+    if (!pinned) throw new Error('Expected the source fixture.');
+    const content = Buffer.from('NONSECRET fixture');
+    vi.spyOn(observedFiles, 'readObservedFile').mockResolvedValue({ content, metadata: pinned });
+    vi.spyOn(snapshot, 'inspect').mockRejectedValueOnce(new Error('Changed at final snapshot check'));
+    await expect(snapshot.read(['a.txt'], 100, pinned)).rejects.toThrow('Changed at final snapshot check');
+    expect(content.every((byte) => byte === 0)).toBe(true);
+  });
+
+  it('accepts only the exact pinned observation from the current snapshot and still detects byte changes', async () => {
+    const f = await fixture();
+    await fs.writeFile(path.join(f.project, 'a.txt'), 'original');
+    const snapshot = await AssessmentSnapshot.create(f.project);
+    const pinned = await snapshot.inspect(['a.txt']);
+    if (!pinned) throw new Error('Expected the source fixture.');
+    const copied = Object.assign(Object.create(Object.getPrototypeOf(pinned)), pinned);
+    await expect(snapshot.read(['a.txt'], 100, copied)).rejects.toThrow('exact observation');
+    const other = await AssessmentSnapshot.create(f.project);
+    const foreign = await other.inspect(['a.txt']);
+    await expect(snapshot.read(['a.txt'], 100, foreign!)).rejects.toThrow('exact observation');
+    const observed = await snapshot.read(['a.txt'], 100, pinned);
+    expect(observed.content.toString()).toBe('original');
+    observed.content.fill(0);
+    const current = await snapshot.inspect(['a.txt']);
+    await fs.writeFile(path.join(f.project, 'a.txt'), 'changed bytes');
+    await expect(snapshot.read(['a.txt'], 100, current!)).rejects.toThrow(/changed/);
+  });
+
+  it('overlaps at most three guarded reads while retaining exact bytes, modes and order', async () => {
+    const f = await fixture();
+    for (const name of ['a', 'b', 'c', 'd', 'e', 'f']) await fs.writeFile(path.join(f.project, `${name}.txt`), name);
+    const original = AssessmentSnapshot.prototype.read;
+    let active = 0, peak = 0, entered = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    vi.spyOn(AssessmentSnapshot.prototype, 'read').mockImplementation(async function (this: AssessmentSnapshot, ...args) {
+      active++; peak = Math.max(peak, active); entered++;
+      if (entered === 3) release();
+      try { await barrier; return await original.apply(this, args); }
+      finally { active--; }
+    });
+    const result = await captureRetainedInputTree(f.project, () => true);
+    expect(peak).toBe(3);
+    expect(active).toBe(0);
+    expect(result.map((file) => file.pathParts.join('/'))).toEqual(['a.txt', 'b.txt', 'c.txt', 'd.txt', 'e.txt', 'f.txt']);
+    for (const file of result) {
+      expect(file.digest).toBe(createHash('sha256').update(file.pathParts[0][0]).digest('hex'));
+      expect(file.mode).toBe((await fs.lstat(path.join(f.project, ...file.pathParts))).mode & 0o7777);
+    }
+  });
+
+  it('settles and clears every in-flight read before reporting a failure, without launching the remaining files', async () => {
+    const f = await fixture();
+    for (const name of ['a', 'b', 'c', 'd', 'e']) await fs.writeFile(path.join(f.project, `${name}.txt`), 'NONSECRET source');
+    const original = AssessmentSnapshot.prototype.read;
+    let active = 0, entered = 0;
+    let release!: () => void;
+    const barrier = new Promise<void>((resolve) => { release = resolve; });
+    const buffers: Buffer[] = [];
+    vi.spyOn(AssessmentSnapshot.prototype, 'read').mockImplementation(async function (this: AssessmentSnapshot, ...args) {
+      active++; entered++;
+      try {
+        if (entered === 3) { release(); throw new Error('Injected guarded read failure'); }
+        await barrier;
+        const result = await original.apply(this, args);
+        buffers.push(result.content);
+        return result;
+      } finally { active--; }
+    });
+    await expect(captureRetainedInputTree(f.project, () => true)).rejects.toThrow('Injected guarded read failure');
+    expect(entered).toBe(3);
+    expect(active).toBe(0);
+    expect(buffers.length).toBeGreaterThan(0);
+    expect(buffers.every((buffer) => buffer.every((byte) => byte === 0))).toBe(true);
+  });
+});
 
 describe.each(collectors)('$name guarded snapshots', ({ capture }) => {
   it('keeps the original byte digest, mode and ordering without pathname reads', async () => {

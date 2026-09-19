@@ -150,15 +150,23 @@ export class AssessmentSnapshot {
     return entries;
   }
 
-  async read(parts: readonly string[], maximumBytes: number): Promise<{ content: Buffer; metadata: Stats }> {
-    const before = await this.inspect(parts);
-    if (!before) throw new PathSafetyError('Assessment file disappeared before its bounded read.');
+  async read(parts: readonly string[], maximumBytes: number, pinned?: Stats): Promise<{ content: Buffer; metadata: Stats }> {
     const fullPath = path.join(this.root, ...parts);
+    if (pinned && this.observations.get(fullPath) !== pinned) {
+      throw new PathSafetyError('Assessment read requires the exact observation from this snapshot.');
+    }
+    const before = pinned ?? await this.inspect(parts);
+    if (!before) throw new PathSafetyError('Assessment file disappeared before its bounded read.');
     const result = await readObservedFile(fullPath, {
       maximumBytes, expected: before, assertPathCurrent: () => this.checkedPath(parts)
     });
-    await this.inspect(parts);
-    return result;
+    try {
+      await this.inspect(parts);
+      return result;
+    } catch (error) {
+      result.content.fill(0);
+      throw error;
+    }
   }
 
   async assertCurrent(withinBudget: () => boolean = () => true): Promise<void> {

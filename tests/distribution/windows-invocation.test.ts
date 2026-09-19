@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { nativeProbeEnvironment } from '../../src/adapters/distribution/native-admission.js';
@@ -10,6 +10,7 @@ import { requireWinGetReadOnlyBindings, type WinGetReadOnlyRecords } from '../..
 import { WinGetReadOnlyObservationError, winGetReadOnlyObservationBlocker } from '../../src/domain/distribution/errors.js';
 
 const roots: string[] = [];
+const directoryRefusals: Record<string, unknown>[] = [];
 afterEach(async () => { for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
 
 async function fixture() {
@@ -31,6 +32,64 @@ async function fixture() {
   }));
   return { root, toolRoot, cwd, packageRoot, launcher, script, node };
 }
+
+function directoryIdentityDiagnostic(details: {
+  dev: bigint; ino: bigint; isDirectory(): boolean; isSymbolicLink(): boolean;
+}) {
+  return {
+    kind: 'disposable-windows-directory-admission-refusal',
+    object: 'selected-npm-launcher-parent',
+    observedAfterRefusal: true,
+    directory: details.isDirectory(), symbolicLink: details.isSymbolicLink(),
+    device: details.dev.toString(), inode: details.ino.toString(),
+    deviceSafeNumber: details.dev >= 0n && details.dev <= BigInt(Number.MAX_SAFE_INTEGER),
+    inodeSafeNumber: details.ino > 0n && details.ino <= BigInt(Number.MAX_SAFE_INTEGER)
+  };
+}
+
+async function observedInvocation(
+  value: Awaited<ReturnType<typeof fixture>>, env: NodeJS.ProcessEnv, platform: NodeJS.Platform
+) {
+  try {
+    return await resolveNpmToolInvocation(value.launcher, env, value.cwd, platform);
+  } catch (error) {
+    if (process.platform === 'win32' && error instanceof Error && error.message.includes('stable directory identity')) {
+      let diagnostic: Record<string, unknown>;
+      try {
+        diagnostic = directoryIdentityDiagnostic(await lstat(value.toolRoot, { bigint: true }));
+      } catch {
+        diagnostic = { kind: 'disposable-windows-directory-admission-refusal', object: 'selected-npm-launcher-parent', observation: 'unavailable' };
+      }
+      try {
+        console.info(JSON.stringify(diagnostic));
+        if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1' && directoryRefusals.length < 32) {
+          directoryRefusals.push(diagnostic);
+          await mkdir('diagnostics', { recursive: true });
+          await writeFile('diagnostics/windows-directory-admission.json', JSON.stringify(directoryRefusals, null, 2) + '\n');
+        }
+      } catch { /* Diagnostic persistence must never replace or soften the original refusal. */ }
+    }
+    throw error;
+  }
+}
+
+describe('lossless refusal diagnostics, not directory admission or record migration', () => {
+  it('records exact uint64 metadata and safe-number eligibility without paths or values', async () => {
+    const value = await fixture();
+    const details = await lstat(value.toolRoot, { bigint: true });
+    const diagnostic = directoryIdentityDiagnostic({
+      ...details, dev: 123n, ino: 9007199254740993n,
+      isDirectory: () => true, isSymbolicLink: () => false
+    });
+    expect(diagnostic).toEqual({
+      kind: 'disposable-windows-directory-admission-refusal', object: 'selected-npm-launcher-parent',
+      observedAfterRefusal: true,
+      directory: true, symbolicLink: false, device: '123', inode: '9007199254740993',
+      deviceSafeNumber: true, inodeSafeNumber: false
+    });
+    expect(JSON.stringify(diagnostic)).not.toContain(value.root);
+  });
+});
 
 describe('Windows native environment boundary', () => {
   it('produces one canonical spelling for the strict Windows environment encoder', () => {
@@ -88,7 +147,7 @@ describe('Windows implementation and qualification blockers', () => {
 describe('Windows npm literal interpreter binding', () => {
   it('maps only the selected adjacent npm package to node.exe plus npm-cli.js', async () => {
     const value = await fixture();
-    const result = await resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32');
+    const result = await observedInvocation(value, { PATH: '' }, 'win32');
     expect(result.executable).toBe(value.node);
     expect(result.argsPrefix).toEqual([value.script]);
     expect(result.bindingDigest).toMatch(/^[a-f0-9]{64}$/);
@@ -98,12 +157,12 @@ describe('Windows npm literal interpreter binding', () => {
 
   it('binds script, package, launcher, and interpreter changes to the exact operation', async () => {
     const value = await fixture();
-    const initial = await resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32');
+    const initial = await observedInvocation(value, { PATH: '' }, 'win32');
     await writeFile(value.script, 'changed npm script');
-    const changed = await resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32');
+    const changed = await observedInvocation(value, { PATH: '' }, 'win32');
     expect(changed.bindingDigest).not.toBe(initial.bindingDigest);
     await writeFile(value.node, 'changed interpreter');
-    expect((await resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32')).bindingDigest).not.toBe(changed.bindingDigest);
+    expect((await observedInvocation(value, { PATH: '' }, 'win32')).bindingDigest).not.toBe(changed.bindingDigest);
   });
 
   it('does not select a cwd lookalike or substitute the CLI private runtime when Node is absent', async () => {
@@ -112,7 +171,7 @@ describe('Windows npm literal interpreter binding', () => {
     await mkdir(path.join(value.cwd, 'node_modules', 'npm', 'bin'), { recursive: true });
     await writeFile(path.join(value.cwd, 'node.exe'), 'unapproved cwd interpreter');
     await writeFile(path.join(value.cwd, 'node_modules', 'npm', 'bin', 'npm-cli.js'), 'unapproved cwd npm');
-    await expect(resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32')).rejects.toThrow(/no observed external node.exe/);
+    await expect(observedInvocation(value, { PATH: '' }, 'win32')).rejects.toThrow(/no observed external node.exe/);
   });
 
   it('uses explicit PATH precedence only when the selected npm installation lacks a paired Node', async () => {
@@ -123,7 +182,7 @@ describe('Windows npm literal interpreter binding', () => {
     await mkdir(second);
     await writeFile(path.join(first, 'node.exe'), 'selected external interpreter');
     await writeFile(path.join(second, 'node.exe'), 'later interpreter');
-    const result = await resolveNpmToolInvocation(value.launcher, { Path: `${first};${second}` }, value.cwd, 'win32');
+    const result = await observedInvocation(value, { Path: `${first};${second}` }, 'win32');
     expect(result.executable).toBe(path.join(first, 'node.exe'));
     expect(result.argsPrefix).toEqual([value.script]);
   });
@@ -132,18 +191,18 @@ describe('Windows npm literal interpreter binding', () => {
     const value = await fixture();
     const metadata = path.join(value.packageRoot, 'package.json');
     await writeFile(metadata, JSON.stringify({ name: 'other-tool', version: '11.6.2', bin: { npm: 'bin/npm-cli.js' } }));
-    await expect(resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32')).rejects.toThrow(/canonical npm-cli.js package/);
+    await expect(observedInvocation(value, { PATH: '' }, 'win32')).rejects.toThrow(/canonical npm-cli.js package/);
     await writeFile(metadata, JSON.stringify({ name: 'npm', version: '11.6.2', bin: { npm: '../outside.js' } }));
-    await expect(resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32')).rejects.toThrow(/canonical npm-cli.js package/);
+    await expect(observedInvocation(value, { PATH: '' }, 'win32')).rejects.toThrow(/canonical npm-cli.js package/);
     await writeFile(metadata, JSON.stringify({ name: 'npm', version: '11.6.2', bin: { npm: 'bin/npm-cli.js' } }));
     await unlink(value.script);
     await symlink(path.join(value.cwd, 'unapproved.js'), value.script);
-    await expect(resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'win32')).rejects.toThrow(/symlink/);
+    await expect(observedInvocation(value, { PATH: '' }, 'win32')).rejects.toThrow(/symlink/);
   });
 
   it('preserves POSIX tool invocation instead of introducing a new interpreter or shell layer', async () => {
     const value = await fixture();
-    const result = await resolveNpmToolInvocation(value.launcher, { PATH: '' }, value.cwd, 'linux');
+    const result = await observedInvocation(value, { PATH: '' }, 'linux');
     expect(result.executable).toBe(value.launcher);
     expect(result.argsPrefix).toEqual([]);
   });
