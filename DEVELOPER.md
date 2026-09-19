@@ -494,7 +494,17 @@ before review, preserving the complete registered workspace hierarchy and both
 64-character identities; no existing storage is relocated or aliased.
 
 Windows read-denial coverage uses an exclusive handle on a disposable fixture
-file, not a POSIX `chmod(0)` claim or an ACL change. Mode-freshness fixtures
+file, not a POSIX `chmod(0)` claim or an ACL change. The initial readiness-only
+fixture failed in run `35440527651`: its direct read unexpectedly succeeded.
+The replacement holds the handle until an owned release-marker file appears,
+independent of PowerShell's redirected console input lifetime. Readiness binds
+the actual child PID and a digest of the opened file's full name; the test
+checks liveness and marker absence before requiring an actual read denial,
+then requires normal release and settled exit. This correction still requires
+native execution; it is not evidence that the failed run denied access.
+Opt-in diagnostics report only the checked binding/liveness booleans and the
+actual read error code; unexpectedly readable bytes are cleared, not printed.
+Mode-freshness fixtures
 require a real observable read-only-attribute change on Windows; that is not
 directory ACL/custody qualification. Application-patch rejection fixtures bind
 actual source modes/digests so the intended infrastructure boundary is tested.
@@ -504,10 +514,26 @@ and fixture teardown requires actual settlement rather than deleting an active
 scope. All existing command/test deadlines remain unchanged.
 
 The two Windows inspection timeouts remain unresolved; local passes are not
-native timing evidence. Opt-in boundary logs now expose only stage/phase identifiers
-and elapsed times, plus safe baseline-command status/error-code/cwd-length
+native timing evidence. Run `35440527651` reached seed-valid at 8.4 seconds,
+seed-verified at 29.8 seconds and seed-archived at 72.5 seconds, timing out before
+local execution completed. Opt-in logs transparently time the original retained
+input captures and history inspections: call/pending counts, total/maximum
+durations and maximum inventory size, without changing their arguments/results.
+These nested durations are not additive wall time. Stage/phase identifiers
+and elapsed times remain available, plus safe baseline-command status/error-code/cwd-length
 metadata. No cross-invocation snapshot cache, frozen-reader change or private
 verification producer has been introduced to manufacture success.
+An isolated macOS complete-journal profile observed 81 fresh retained-input
+captures of the same 75-file maximum inventory (10.8 seconds), plus 42 history
+inspections before local execution completed (4.0 seconds). Seed-verified added
+39 captures, versus 18 for each other execution phase. The growth is repeated
+guard work, not an expanding retained file inventory. Reuse across command or
+write boundaries would omit freshness checks and has not been substituted.
+The `remaining-regressions` Windows diagnostic scope runs those three affected
+whole files independently; it is explicitly not complete-boundary evidence.
+The continuation negative now derives the emitted action's native path format:
+a different same-platform cwd can be valid with absolute project arguments,
+so it tests an actually mixed-format cwd and a distinct project target instead.
 
 The separate `windows_diagnostic_scope=private-io` selector, together with
 `diagnostic_windows_only=true`, exercises the independently inventoried private

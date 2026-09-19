@@ -13,7 +13,7 @@ on:
         type: choice
         required: false
         default: focused
-        options: [focused, complete-boundary, private-io]
+        options: [focused, complete-boundary, private-io, remaining-regressions]
       diagnostic_native_go_only:
         description: Run native Go source diagnostics (not qualification)
         type: boolean
@@ -656,7 +656,7 @@ jobs:
 
   windows-diagnostics:
     name: Windows source diagnostics (not qualification)
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'focused'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -916,6 +916,107 @@ jobs:
             diagnostics/windows-boundary-outcomes.json
             diagnostics/windows-native-toolchain.json
             diagnostics/windows-directory-admission.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-regression-diagnostics:
+    name: Windows remaining source regressions (${{ matrix.suite }}, not complete-boundary qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: [migration-inspection, repair-baseline-settings, machine-action-continuation-contracts]
+    env:
+      WINDOWS_REGRESSION_SUITE: ${{ matrix.suite }}
+      LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build package
+        run: npm run build
+      - name: Run exact whole-file Windows regressions with conserved case modes
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { createVitest } from 'vitest/node';
+          assert.equal(process.platform, 'win32');
+          assert.equal(process.arch, 'x64');
+          const suites = ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts'];
+          assert.ok(suites.includes(process.env.WINDOWS_REGRESSION_SUITE));
+          const file = `tests/${process.env.WINDOWS_REGRESSION_SUITE}.test.ts`;
+          const relative = (name) => path.relative(process.cwd(), name).split(path.sep).join('/');
+          function validateOutcomes(inventory, outcomes, unhandledErrors) {
+            assert.equal(unhandledErrors, 0);
+            assert.ok(inventory.length > 0);
+            assert.equal(new Set(inventory.map((test) => test.id)).size, inventory.length);
+            assert.equal(outcomes.length, inventory.length);
+            assert.equal(new Set(outcomes.map((test) => test.id)).size, outcomes.length);
+            for (const expected of inventory) {
+              assert.ok(['run', 'skip', 'todo'].includes(expected.mode));
+              const actual = outcomes.find((test) => test.id === expected.id);
+              assert.equal(actual?.name, expected.name);
+              assert.equal(actual?.state, expected.mode === 'run' ? 'passed' : 'skipped');
+            }
+          }
+          const context = await createVitest({ watch: false, cache: false, maxWorkers: 1, reporters: ['verbose'] });
+          const report = {
+            classification: 'targeted-windows-source-regressions-not-complete-boundary',
+            platform: process.platform, architecture: process.arch,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            file, inventory: [], outcomes: [], unhandledErrors: null, accepted: false,
+            completeBoundaryQualification: 'not-performed',
+            installedArtifactQualification: 'not-performed', privateCustodyQualification: 'not-performed'
+          };
+          try {
+            await context.standalone();
+            const specs = await context.globTestSpecifications([file]);
+            assert.deepEqual(specs.map((spec) => relative(spec.moduleId)), [file]);
+            const collected = await context.collectTests(specs);
+            assert.equal(collected.unhandledErrors.length, 0);
+            assert.deepEqual(collected.testModules.map((module) => relative(module.moduleId)), [file]);
+            report.inventory = [...collected.testModules[0].children.allTests()].map((test) => ({
+              id: test.id, name: test.fullName, mode: test.options.mode
+            }));
+            assert.ok(report.inventory.every((test) => ['run', 'skip', 'todo'].includes(test.mode)));
+            const result = await context.runTestSpecifications(specs);
+            report.unhandledErrors = result.unhandledErrors.length;
+            assert.deepEqual(result.testModules.map((module) => relative(module.moduleId)), [file]);
+            report.outcomes = [...result.testModules[0].children.allTests()].map((test) => ({
+              id: test.id, name: test.fullName, state: test.result().state, durationMs: test.diagnostic()?.duration ?? null
+            }));
+            validateOutcomes(report.inventory, report.outcomes, report.unhandledErrors);
+            report.accepted = true;
+          } finally {
+            mkdirSync('diagnostics', { recursive: true });
+            writeFileSync('diagnostics/windows-regressions-source.json', JSON.stringify(report, null, 2) + '\n');
+            await context.close();
+          }
+          NODE
+      - name: Retain bounded Windows regression metadata only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-regressions-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.suite }}
+          path: diagnostics/windows-regressions-source.json
           if-no-files-found: error
           retention-days: 7
 

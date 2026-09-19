@@ -119,14 +119,19 @@ async function withUnreadableInput(
   }
   // Windows chmod does not deny reads; an owned exclusive handle supplies a real denial without ACL changes.
   const powershell = path.join(process.env.SystemRoot!, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const release = path.join(current.directory, `release-read-lock-${randomUUID()}`);
+  const pathDigest = createHash('sha256').update(file, 'utf8').digest('hex');
   const script = '$ErrorActionPreference="Stop"; $f=[IO.File]::Open($env:LIFTOFF_SOURCE_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None); ' +
-    'try { [Console]::Out.WriteLine("SOURCE_FIXTURE_LOCK_READY"); [Console]::Out.Flush(); [void][Console]::In.ReadLine() } finally { $f.Dispose() }';
+    'try { $h=[Security.Cryptography.SHA256]::Create(); ' +
+    'try { $d=[BitConverter]::ToString($h.ComputeHash([Text.Encoding]::UTF8.GetBytes($f.Name))).Replace("-","").ToLowerInvariant() } finally { $h.Dispose() }; ' +
+    '[Console]::Out.WriteLine("SOURCE_FIXTURE_LOCK_READY|"+$PID+"|"+$d); [Console]::Out.Flush(); ' +
+    'while (-not [IO.File]::Exists($env:LIFTOFF_SOURCE_LOCK_RELEASE)) { [GC]::KeepAlive($f); [Threading.Thread]::Sleep(20) } ' +
+    '} finally { $f.Dispose() }';
   const child = childProcess.spawn(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
-    cwd: current.directory, env: { ...process.env, LIFTOFF_SOURCE_LOCK_FILE: file },
-    stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
+    cwd: current.directory, env: { ...process.env, LIFTOFF_SOURCE_LOCK_FILE: file, LIFTOFF_SOURCE_LOCK_RELEASE: release },
+    stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true
   });
   current.pending++;
-  child.stdin.on('error', () => {});
   child.stderr.resume();
   const closed = new Promise<number | null>((resolve) => {
     child.once('close', (code) => { current.pending--; resolve(code); });
@@ -141,13 +146,35 @@ async function withUnreadableInput(
       child.stdout.on('data', (chunk: Buffer) => {
         text += chunk.toString('utf8');
         if (text.length > 128) stop(new Error('Source fixture lock readiness exceeded its bound.'));
-        else if (text.trim() === 'SOURCE_FIXTURE_LOCK_READY') stop();
+        else if (text.includes('\n')) {
+          const [tag, pid, digest] = text.trim().split('|');
+          if (tag !== 'SOURCE_FIXTURE_LOCK_READY' || Number(pid) !== child.pid || digest !== pathDigest) {
+            stop(new Error('Source fixture lock readiness did not bind its actual process and selected file.'));
+          } else stop();
+        }
       });
     });
-    await expect(readFile(file)).rejects.toMatchObject({ code: expect.stringMatching(/^(?:EACCES|EPERM|EBUSY)$/u) });
+    expect(child.exitCode).toBeNull();
+    expect(child.signalCode).toBeNull();
+    await expect(lstat(release)).rejects.toMatchObject({ code: 'ENOENT' });
+    let denial: string | null = null;
+    try { (await readFile(file)).fill(0); }
+    catch (error) {
+      const code = error && typeof error === 'object' && 'code' in error ? error.code : undefined;
+      denial = typeof code === 'string' && /^[A-Z0-9_]{1,64}$/u.test(code) ? code : 'UNCLASSIFIED';
+    }
+    if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') console.info(JSON.stringify({
+      kind: 'baseline-source-read-lock', processBound: true, openedFileNameBound: true,
+      aliveBeforeRead: true, aliveAfterRead: child.exitCode === null && child.signalCode === null,
+      releaseAbsentBeforeRead: true, denialCode: denial
+    }));
+    expect(denial).toMatch(/^(?:EACCES|EPERM|EBUSY)$/u);
+    expect(child.exitCode).toBeNull();
     await inspect();
   } finally {
-    child.stdin.end('\n');
+    let released = false;
+    try { await writeFile(release, 'release\n', { flag: 'wx', mode: 0o600 }); released = true; }
+    catch { child.kill(); }
     const wait = (milliseconds: number) => new Promise<undefined>((resolve) => setTimeout(resolve, milliseconds));
     let outcome = await Promise.race([closed, wait(2000)]);
     if (outcome === undefined) {
@@ -155,6 +182,8 @@ async function withUnreadableInput(
       outcome = await Promise.race([closed, wait(2000)]);
     }
     if (outcome === undefined) throw new Error('Retain the fixture: its exact lock process did not settle.');
+    if (!released || outcome !== 0) throw new Error('Source fixture lock process did not complete its owned release protocol.');
+    await unlink(release);
   }
 }
 

@@ -32,11 +32,17 @@ import { liftoffVersion } from '../src/version.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
 import { CaptureStream } from './helpers.js';
+import * as retainedInputs from '../src/governance-activation/historical-inputs.js';
+import * as migrationHistory from '../src/governance-activation/migration-history.js';
 
 const roots: string[] = [];
+const timingIntervals = new Set<ReturnType<typeof setInterval>>();
 const subcommands = ['status', 'resume', 'verify'] as const;
 const journalOnlyBlocker = 'Local revalidation progress is unavailable; repair the journal write prerequisite before retrying.';
 afterEach(async () => {
+  for (const timer of timingIntervals) clearInterval(timer);
+  timingIntervals.clear();
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -61,12 +67,39 @@ function jsonReport(text: string): Record<string, unknown> {
 
 async function linkedFixture(status: MigrationRevalidationStatus) {
   const started = performance.now();
+  const operations = {
+    retainedInputs: { calls: 0, pending: 0, elapsedMs: 0, maximumMs: 0, maximumEntries: 0 },
+    migrationHistory: { calls: 0, pending: 0, elapsedMs: 0, maximumMs: 0, maximumEntries: 0 }
+  };
   const timing = (stage: string, phaseId?: string | null) => {
     if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') console.info(JSON.stringify({
       kind: 'migration-inspection-source-stage', requestedStatus: status, stage, phaseId: phaseId ?? null,
-      elapsedMs: Math.round(performance.now() - started)
+      elapsedMs: Math.round(performance.now() - started), operations
     }));
   };
+  if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') {
+    const measure = async <T>(name: keyof typeof operations, run: () => Promise<T>, count: (value: T) => number) => {
+      const entry = operations[name], begin = performance.now();
+      entry.calls++; entry.pending++;
+      try {
+        const result = await run();
+        entry.maximumEntries = Math.max(entry.maximumEntries, count(result));
+        return result;
+      } finally {
+        const elapsed = Math.round(performance.now() - begin);
+        entry.pending--; entry.elapsedMs += elapsed; entry.maximumMs = Math.max(entry.maximumMs, elapsed);
+      }
+    };
+    const capture = retainedInputs.captureMigrationRetainedProjectInputs;
+    const history = migrationHistory.inspectActivationMigrationHistory;
+    vi.spyOn(retainedInputs, 'captureMigrationRetainedProjectInputs').mockImplementation((...args) =>
+      measure('retainedInputs', () => capture(...args), (entries) => entries.length));
+    vi.spyOn(migrationHistory, 'inspectActivationMigrationHistory').mockImplementation((...args) =>
+      measure('migrationHistory', () => history(...args), (result) => result.status === 'committed' ? result.preconditions.length : 0));
+    const timer = setInterval(() => timing('operation-profile'), 5000);
+    timer.unref();
+    timingIntervals.add(timer);
+  }
   const base = path.resolve('.cache', `migration-inspection-${process.pid}-${randomUUID()}`);
   roots.push(base);
   const root = path.join(base, 'project with spaces');

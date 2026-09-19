@@ -517,9 +517,15 @@ describe('source-only native-path consistency', () => {
       updatePreview: f.storage(f.project), updateNow: () => f.now
     })).stdout);
     const action = machine(report.nextActions[0]);
+    const windows = /^[A-Za-z]:\\/u.test(action.cwd) || action.cwd.startsWith('\\\\');
+    const nativePath = windows ? path.win32 : path.posix;
     for (const mutation of [
-      { cwd: 'C:\\Other\\Invocation' }, { project: 'D:\\Other\\Project' },
+      { cwd: windows ? '/other/invocation' : 'C:\\Other\\Invocation' },
+      { project: nativePath.join(nativePath.dirname(action.project!), 'different-project-target') },
       { displayCommand: 'liftoff upgrade' }, { requiredAuthority: ['approval', 'approval'] }
-    ]) expect(() => validateStructuredContinuation({ ...action, ...mutation })).toThrow();
+    ]) {
+      expect(canonicalSha256({ ...action, ...mutation })).not.toBe(canonicalSha256(action));
+      expect(() => validateStructuredContinuation({ ...action, ...mutation })).toThrow();
+    }
   }));
 });

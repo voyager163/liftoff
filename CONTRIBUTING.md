@@ -126,6 +126,18 @@ private-state/custody qualification. Missing native prerequisites or uncertain
 settlement remain failures/blockers, never mock success or cleanup permission.
 The 18 default jobs and all other diagnostic selections remain unchanged.
 
+For targeted follow-up of the outstanding inspection, baseline fixture and
+continuation regressions, select `windows_diagnostic_scope=remaining-regressions`
+with `diagnostic_windows_only=true`. It runs the complete
+`migration-inspection`, `repair-baseline-settings` and
+`machine-action-continuation-contracts` files in three separate jobs, at most two
+concurrently. Every case is evaluated and its original applicability conserved;
+applicable failures or skips fail the job. It retains only case identity,
+status and timing metadata, not raw failure messages or fixture contents.
+The one-worker/20-minute budgets and existing case deadlines are unchanged.
+This targeted selector does not establish the 60-file complete boundary, resolve
+the numeric NTFS identity blocker or rerun the healthy heavy partitions.
+
 For the independent Windows private binary-I/O primitive, explicitly select
 `windows_diagnostic_scope=private-io` with `diagnostic_windows_only=true`:
 

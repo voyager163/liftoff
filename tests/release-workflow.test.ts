@@ -35,7 +35,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-regression-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -138,7 +138,7 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.workflow_dispatch.inputs.windows_diagnostic_scope).toEqual({
       description: 'Windows diagnostic scope (requires diagnostic_windows_only)',
-      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary', 'private-io']
+      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary', 'private-io', 'remaining-regressions']
     });
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_go_only).toEqual({
       description: 'Run native Go source diagnostics (not qualification)',
@@ -158,12 +158,12 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-regression-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
     const diagnostic = workflow.jobs['windows-diagnostics'];
-    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'");
+    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'focused'");
     expect(diagnostic.name).toContain('not qualification');
     expect(diagnostic['runs-on']).toBe('windows-latest');
     expect(diagnostic['timeout-minutes']).toBe(20);
@@ -205,16 +205,18 @@ describe('read-only coordinated release evidence workflow', () => {
   }))))('routes Windows=$windows, Go=$go, POSIX=$posix, build=$build and GNOME=$gnome without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, gnome, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
-      for (const windowsScope of ['focused', 'complete-boundary', 'private-io']) {
+      for (const windowsScope of ['focused', 'complete-boundary', 'private-io', 'remaining-regressions']) {
         const conditions: Record<string, boolean> = {
           [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
           [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
-          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'":
-            event === 'workflow_dispatch' && windows && windowsScope !== 'complete-boundary' && windowsScope !== 'private-io',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'focused'":
+            event === 'workflow_dispatch' && windows && windowsScope === 'focused',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'":
             event === 'workflow_dispatch' && windows && windowsScope === 'complete-boundary',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'":
             event === 'workflow_dispatch' && windows && windowsScope === 'private-io',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'":
+            event === 'workflow_dispatch' && windows && windowsScope === 'remaining-regressions',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
@@ -226,12 +228,63 @@ describe('read-only coordinated release evidence workflow', () => {
         const expected = (event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs).map((job) => {
           if (job !== 'windows-diagnostics') return job;
           if (windowsScope === 'complete-boundary') return 'windows-boundary-diagnostics';
+          if (windowsScope === 'remaining-regressions') return 'windows-regression-diagnostics';
           return windowsScope === 'private-io' ? 'windows-private-io-diagnostics' : job;
         });
         expect(selected.sort()).toEqual([...expected].sort());
         expect(selected.length).toBeGreaterThan(0);
       }
     }
+  });
+
+  it('isolates the three remaining whole-file Windows regressions without changing complete-boundary partitions or deadlines', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['windows-regression-diagnostics'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'");
+    expect(job.name).toContain('not complete-boundary qualification');
+    expect(job['runs-on']).toBe('windows-latest');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.strategy).toEqual({
+      'fail-fast': false, 'max-parallel': 2,
+      matrix: { suite: ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts'] }
+    });
+    expect(job.env).toEqual({
+      WINDOWS_REGRESSION_SUITE: '${{ matrix.suite }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1'
+    });
+    const program = job.steps.at(-2).run;
+    for (const command of ['npm ci', 'npm run build', 'npm install --global "npm@12.0.2"',
+      'python -m pip install uv==0.12.7 checkov==3.2.495']) {
+      expect(job.steps.slice(0, -2).some((step: any) => step.run === command)).toBe(true);
+    }
+    expect(job.steps.find((step: any) => step.uses?.startsWith('opentofu/setup-opentofu@')).with)
+      .toEqual({ tofu_version: '1.12.6', tofu_wrapper: false });
+    expect(program).toContain("assert.equal(process.platform, 'win32')");
+    expect(program).toContain("assert.equal(process.arch, 'x64')");
+    expect(program).toContain("maxWorkers: 1, reporters: ['verbose']");
+    expect(program).toContain("assert.deepEqual(specs.map((spec) => relative(spec.moduleId)), [file])");
+    expect(program).toContain('context.collectTests(specs)');
+    expect(program).toContain('context.runTestSpecifications(specs)');
+    expect(program).not.toMatch(/testNamePattern|shard:|testTimeout|retry:|failureMessages|stderr|stdout/);
+    expect(job.steps.at(-1).with).toEqual({
+      name: 'windows-regressions-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.suite }}',
+      path: 'diagnostics/windows-regressions-source.json', 'if-no-files-found': 'error', 'retention-days': 7
+    });
+    expect(job.steps.at(-1).if).toBe('always()');
+    const validator = /function validateOutcomes\([\s\S]*?\n\}\n/u.exec(program)?.[0];
+    expect(validator).toBeTypeOf('string');
+    const assert = await import('node:assert/strict');
+    const validate = new Function('assert', `${validator}; return validateOutcomes;`)(assert);
+    const inventory = [{ id: 'a', name: 'native check', mode: 'run' }, { id: 'b', name: 'foreign host', mode: 'skip' }];
+    const outcomes = [{ id: 'a', name: 'native check', state: 'passed' }, { id: 'b', name: 'foreign host', state: 'skipped' }];
+    expect(() => validate(inventory, outcomes, 0)).not.toThrow();
+    for (const [cases, results, errors] of [
+      [[], [], 0], [inventory, outcomes.slice(1), 0], [inventory, [...outcomes, outcomes[0]], 0],
+      [[inventory[0], inventory[0]], outcomes, 0], [inventory, [outcomes[0], outcomes[0]], 0],
+      [inventory, [{ ...outcomes[0], state: 'skipped' }, outcomes[1]], 0],
+      [inventory, [{ ...outcomes[0], state: 'failed' }, outcomes[1]], 0],
+      [inventory, [{ ...outcomes[0], name: 'different case' }, outcomes[1]], 0],
+      [[{ ...inventory[0], mode: 'only' }, inventory[1]], outcomes, 0], [inventory, outcomes, 1]
+    ]) expect(() => validate(cases, results, errors)).toThrow();
   });
 
   it('keeps independently pinned Windows private-I/O fixtures in a separate manual-only source lane', async () => {
