@@ -199,6 +199,14 @@ report only bounded creation-stage metadata and preserve scopes with uncertain
 application-key creation. Earlier failures without that metadata cannot prove
 whether creation occurred.
 
+Native run `35419980086` confirmed the next restart blocker on Linux x64 and
+arm64: D-Bus standard-descriptor setup opens `/dev/null` read/write and receives
+`EACCES` under the current guard. Bounded diagnostics identify that operation
+before bus-address publication; raw stderr remains private. The guard has not
+been widened, so successful enrollment and persisted-file inspection still do
+not establish fresh-process key recovery. Any null-device grant requires an
+explicitly reviewed contract change, not a generic writable `/dev` exception.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

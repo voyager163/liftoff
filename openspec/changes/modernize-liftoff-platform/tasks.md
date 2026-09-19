@@ -435,6 +435,15 @@ the label length by one byte. The header and independently encoded layout
 regression now match the pinned writer; neither format admission nor successful
 key creation substitutes for the still-pending guarded restart proof.
 
+Runs `35419049590` and `35419980086` advanced through enrollment and persisted
+file inspection to guarded restart. The latter captured the exact native
+failure on both architectures: D-Bus standard-descriptor initialization cannot
+open `/dev/null` read/write (`EACCES`), before publishing its private address.
+Thirty cases passed and six failed per host; the other restart negatives cannot
+be treated as qualified when startup fails first. The unchanged guard allows
+writes only in the three private trees. Adding a null-device sink is a contract
+decision requiring review; no directory/device exception has been enabled.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.
