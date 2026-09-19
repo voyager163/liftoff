@@ -427,6 +427,14 @@ pending; the failed run did not retain creation-stage metadata, so historical
 creation is unknown. New bounded diagnostics preserve that uncertainty and
 retain affected scopes instead of inferring safe cleanup.
 
+Run `35418887195` reached completed real-helper key creation/readback with one
+returned item on both architectures. Enrollment then failed structural
+persisted-byte inspection, retaining the scopes. The inspector had incorrectly
+included the implicit C terminator after GNOME's exact 16-byte header, shifting
+the label length by one byte. The header and independently encoded layout
+regression now match the pinned writer; neither format admission nor successful
+key creation substitutes for the still-pending guarded restart proof.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.

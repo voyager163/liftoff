@@ -19,7 +19,7 @@ function fixture(options: {
   label?: string | null; version?: Buffer; reserved?: number; attrs?: Buffer; ciphertext?: Buffer
 } = {}) {
   return Buffer.concat([
-    Buffer.from('GnomeKeyring\n\r\0\n\0', 'ascii'), options.version ?? Buffer.alloc(4),
+    Buffer.from('476e6f6d654b657972696e670a0d000a', 'hex'), options.version ?? Buffer.alloc(4),
     text(options.label === undefined ? 'PRIVATE_COLLECTION_LABEL' : options.label),
     Buffer.alloc(16), u32(options.flags ?? 0), u32(0), u32(options.iterations ?? 2048),
     Buffer.alloc(8, 0x32), u32(options.reserved ?? 0), Buffer.alloc(12),
@@ -31,6 +31,19 @@ function fixture(options: {
 }
 
 describe('pinned GNOME binary structural admission, synthetic bytes only', () => {
+  it('uses the pinned 16-byte header without the implicit C string terminator', () => {
+    const bytes = fixture({ label: 'Login' });
+    expect(bytes.subarray(0, 16).toString('hex')).toBe('476e6f6d654b657972696e670a0d000a');
+    expect(bytes.subarray(16, 20)).toEqual(Buffer.alloc(4));
+    expect(bytes.readUInt32BE(20)).toBe(5);
+    expect(bytes.subarray(24, 29).toString('utf8')).toBe('Login');
+    expect(inspectControlledGnomeBinary(bytes)).toMatchObject({
+      bytes: bytes.length, evidence: 'structural-only', readiness: false
+    });
+    const withTerminator = Buffer.concat([bytes.subarray(0, 16), Buffer.from([0]), bytes.subarray(16)]);
+    expect(() => inspectControlledGnomeBinary(withTerminator)).toThrow('artifact-integrity');
+  });
+
   it('binds the complete bytes while withholding labels and hashed attributes', () => {
     const bytes = fixture();
     const original = Buffer.from(bytes);

@@ -4,7 +4,7 @@ import { StateMigrationError } from '../../domain/repair/stateful.js';
 import { stateDigest } from '../../domain/repair/stateful-invariants.js';
 
 export const maximumControlledGnomeStoreBytes = 1024 * 1024;
-const magic = Buffer.from('GnomeKeyring\n\r\0\n\0', 'ascii');
+const magic = Buffer.from('GnomeKeyring\n\r\0\n', 'ascii');
 
 /**
  * Structural admission for the pinned GNOME binary writer, not decryption,

@@ -163,6 +163,11 @@ checksum, not authenticated encryption; the returned result explicitly grants
 no authentication, durability or readiness proof. Pairing a persisted generation
 with the actual application key still requires private readback and fresh-process
 verification, not a matching header.
+The writer's `KEYRING_FILE_HEADER_LEN` is exactly 16 bytes, excluding the
+implicit C string terminator. Its four version/crypto/hash bytes immediately
+follow; treating the terminator as a seventeenth header byte misaligns the label
+length. The inspector and independent byte-layout regression use that exact
+boundary from the pinned `gkm-secret-binary.c` writer.
 
 `createManagedKeystoreKeyBinding` consumes the original opaque application-key
 snapshot and produces a fresh-nonce AES-256-GCM binding to the exact project,
