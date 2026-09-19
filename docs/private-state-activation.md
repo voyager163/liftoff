@@ -141,10 +141,20 @@ of a bounded binary-pipe/owned-Job-Object transport with authenticated controlle
 binding, transferred stdin, disposable outputs and explicit settlement results.
 The original public controller asset is unchanged. The new helper is
 independently inventoried and cannot inherit the public controller's evidence.
-Local protocol and admission regressions pass, but actual Windows compilation,
-pipe inheritance, cancellation and descendant behavior remain unverified.
-It is not wired into a ready private-state producer and supplies no BitLocker,
+Native source run [35436428689](https://github.com/voyager163/liftoff/actions/runs/35436428689)
+at `4a59ed49ede8df3104f839b8bcd7cb56a51c3db8` passed all ten Windows x64
+native cases: binary input/output and separate stderr, environment isolation,
+output limits, timeout, nonzero exit, cancellation with neighbor preservation,
+root exit with a surviving descendant, parent loss, Restricted-policy refusal
+and cwd/executable admission. Its accepted report contains 34 passing cases and
+one explicitly inapplicable foreign-host refusal, not a skipped native case.
+The detached-child diagnostic records root exit 0, reason 6, rejected completion
+and settled/quiesced ownership; a root exit alone did not become success.
+The helper is not wired into a ready private-state producer and supplies no BitLocker,
 SID/DACL, native-key, encrypted-custody or installed-artifact qualification.
+Windows arm64 and minimum-host execution remain unperformed. Both controller
+asset hashes remain unchanged; the private helper is
+`c884ce3ac428ddfa29ae193bfdf3f2a9c8560aed45ba495891337ad87b881512`.
 
 The Linux key-client decoder consumes a bounded `LKC1` stream and clears its
 input. It accepts only the registered metadata fields and creation sequence,

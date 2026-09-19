@@ -297,10 +297,18 @@ Task 11.19 now has a separate Windows private-process source primitive using
 bounded binary pipes and an owned Job Object rather than the public
 controller's ordinary temporary output files. Its original controller asset
 is unchanged, and the new helper has separate artifact/inventory binding.
-Local protocol/refusal and release-inventory regressions pass; nine actual
-Windows cases, including PowerShell/C# compilation and native pipe/job behavior,
-remain unperformed. No producer is enabled and the storage, SID/DACL, native-key,
-host/architecture and installed-artifact custody requirements remain open.
+Local protocol/refusal and release-inventory regressions pass. Run
+`35436428689` at `4a59ed49ede8df3104f839b8bcd7cb56a51c3db8` then passed all
+ten actual Windows x64 cases, including PowerShell/C# compilation, binary
+pipes, environment isolation, Job ownership, limits, cancellation, parent loss,
+Restricted-policy refusal and the corrected detached-child root-exit fixture.
+The accepted safe report has 34 passes, no failures and exactly one foreign-host
+inapplicability. Earlier run `35435527409` passed the native step but failed the
+report gate because Vitest 5 reports that inapplicability as `skipped`, not
+`pending`; only that exact source case is now admitted as inapplicable. Native
+skips and unfinished pending work still reject. No producer is enabled and the
+storage, SID/DACL, native-key, remaining host/architecture and installed-artifact
+custody requirements remain open under task 11.19.
 
 The original native POSIX protocol tuple is now held in a pure domain module
 and re-exported through its original adapter API. Its canonical digest remains
