@@ -209,7 +209,9 @@ export async function validateFrameworkInitialization(
   return [...new Set([...issues, ...integrationIssues, ...cloudIssues])];
 }
 
-export function frameworkSelectionFromPlan(plan: ProjectPlan): FrameworkSelection {
+export function frameworkSelectionFromPlan(
+  plan: Pick<ProjectPlan, 'specWorkflow' | 'agents' | 'defaultAgent'>
+): FrameworkSelection {
   return {
     workflow: plan.specWorkflow.id,
     agents: plan.agents.map((agent) => agent.id),

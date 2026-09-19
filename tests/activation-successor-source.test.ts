@@ -31,6 +31,7 @@ import { projectGovernanceChangeTasks } from '../src/governance-activation/task-
 import { calculateGraphReconciliation } from '../src/governance-activation/reconciliation.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
+import { successorFixtureManifest, fixtureSubscription } from './governance-activation-fixtures.js';
 
 const roots = new Set<string>();
 const now = new Date('2026-09-12T00:00:00.000Z');
@@ -91,10 +92,7 @@ async function migrated(family: 1 | 2 = 2, workflow: 'openspec' | 'spec-kit' = '
       await writeFile(path.join(root, ...mutation.pathParts), mutation.content, { mode: mutation.mode });
     }
   }
-  const currentManifest = parseManifest({
-    ...manifest, liftoffVersion: '0.12.0',
-    governance: { ...manifest.governance, activationIdentity: currentActivationIdentity }
-  });
+  const currentManifest = await successorFixtureManifest(root);
   await put(root, ['liftoff.manifest.json'], currentManifest);
   await put(root, ['.liftoff', 'governance', 'phase-graph.json'], canonicalPhaseGraph);
   return { root, plan, result, source, pointer, historicalMetadata, oldMetadataBytes, oldTasks, manifest: currentManifest };
@@ -120,6 +118,10 @@ function phase0(state: UserActivationState) {
       adapter: 'github', actionId: 'github.phase0.discover', mutationClass: 'github-read', phaseId: phase.id,
       inputs: {}, destination: { type: 'repository', identity: 'example-org/flight-log', repository: 'example-org/flight-log' },
       remote: true, destructive: false
+    }, {
+      adapter: 'azure-opentofu', actionId: 'azure.phase0.discover', mutationClass: 'azure-read', phaseId: phase.id,
+      inputs: {}, destination: { type: 'subscription', identity: fixtureSubscription, subscriptionId: fixtureSubscription },
+      remote: true, destructive: false
     }],
     approval: {
       gateKind: 'none', required: false, envelopeId: null, envelopeHash: null,
@@ -130,19 +132,25 @@ function phase0(state: UserActivationState) {
   plan.planDigest = planDigestFor({ phase, operations: plan.operations, transitionDigest: plan.transitionDigest, approvalPlanDigest: savedPlanAuthorityDigest(plan, phase) });
   const payload = {
     kind: 'phase-0-discovery.v1', planDigest: plan.planDigest, savedPlanDigest: canonicalSha256(plan),
-    facts: [{ id: 'repository.id', value: 'R_NEW' }, { id: 'repository.nameWithOwner', value: 'example-org/flight-log' }, { id: 'repository.defaultBranch', value: 'develop' }]
+    facts: [{ id: 'repository.id', value: 'R_NEW' }, { id: 'repository.nameWithOwner', value: 'example-org/flight-log' }, { id: 'repository.defaultBranch', value: 'develop' },
+      { id: 'azure.accountReadable', value: true }, { id: 'azure.accountState', value: 'Enabled' },
+      { id: 'azure.subscriptionId', value: fixtureSubscription }, { id: 'azure.tenantId', value: fixtureSubscription }]
   };
   const liveReadback = [{
-    schemaVersion: 3, repositoryId: state.repository.id, identity: currentActivationIdentity,
+    schemaVersion: 4, repositoryId: state.repository.id, identity: currentActivationIdentity,
     phaseGraphHash: currentActivationIdentity.phaseGraphHash, phaseId: phase.id,
     baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
     observedAt: now.toISOString(), provider: 'github' as const, resourceType: 'repository', resourceId: 'example-org/flight-log',
     sourceDigest: canonicalSha256(payload.facts), readbackDigest: canonicalSha256(payload.facts), matches: true
   }];
+  liveReadback.push({
+    ...liveReadback[0], provider: 'azure' as never, resourceType: 'subscription',
+    resourceId: `/subscriptions/${fixtureSubscription}`
+  });
   const record: PhaseEvidenceRecord = {
     evidenceId: 'fresh-phase0', payload, liveReadback,
     header: {
-      schemaVersion: 3, scope: 'activation', repositoryId: state.repository.id, identity: currentActivationIdentity,
+      schemaVersion: 4, scope: 'activation', repositoryId: state.repository.id, identity: currentActivationIdentity,
       phaseGraphHash: currentActivationIdentity.phaseGraphHash, phaseId: phase.id,
       phaseContractDigest: context.phaseContractDigest, baselineSha: context.baselineSha, inputDigest: context.inputDigest,
       transition: context.transition, producedAt: now.toISOString(), producer: 'fixture-observer', result: 'verified',
@@ -224,7 +232,7 @@ describe('historical source separation and current creation', () => {
     if (inspected.status !== 'none') throw new Error('Expected current creation preview.');
     expect(creation.changeId).toBe(inspected.createPlan.changeId);
     expect(creation.metadata.activationIdentity).toEqual(currentActivationIdentity);
-    expect(creation.metadata.phaseTaskMapping).toHaveLength(29);
+    expect(creation.metadata.phaseTaskMapping).toHaveLength(35);
     expect(creation.files.find((file) => file.pathParts.at(-1) === 'tasks.md')!.content).not.toContain('[x]');
     const projection = projectGovernanceChangeTasks(
       creation.files.find((file) => file.pathParts.at(-1) === 'tasks.md')!.content, creation.metadata,
@@ -287,7 +295,7 @@ describe('historical source separation and current creation', () => {
         await writeFile(path.join(root, ...mutation.pathParts), mutation.content, { mode: mutation.mode });
       }
     }
-    const manifest = parseManifest({ ...source.manifest, governance: { ...source.manifest.governance, activationIdentity: currentActivationIdentity } });
+    const manifest = await successorFixtureManifest(root);
     await put(root, ['liftoff.manifest.json'], manifest);
     const view = await inspectGovernanceSourceOfTruth({ projectRoot: root, manifest, state: finalized.successor, evidence: [] });
     expect(view).toMatchObject({ status: 'none', candidates: [], historicalCandidates: [{ status: 'historical', changeId: original.pointer!.id }] });

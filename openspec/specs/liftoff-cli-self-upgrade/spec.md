@@ -1,11 +1,11 @@
 ## Purpose
 
-Allow developers to discover and install the current stable Liftoff CLI release safely while keeping CLI installation separate from generated-project updates.
+Allow developers to discover and install an exact qualified native Liftoff release through its proven installation owner while preserving historical npm recovery and keeping CLI installation separate from project updates.
 
 ## Requirements
 
 ### Requirement: Liftoff exposes a distinct CLI self-upgrade command
-The system SHALL provide `liftoff upgrade` to upgrade the installed Liftoff CLI and `liftoff upgrade --check` to inspect upgrade availability without mutation. The command SHALL run without a Liftoff project, SHALL NOT read or write project manifests or generated artifacts, and SHALL NOT invoke `liftoff update`.
+The system SHALL provide `liftoff upgrade` to request an owner-aware upgrade of the installed native Liftoff CLI and `liftoff upgrade --check` to inspect availability without mutation. The commands SHALL run without a Liftoff project, SHALL NOT read or write project manifests or generated artifacts, and SHALL NOT invoke `liftoff update`, `liftoff init`, project adoption, or installation migration. A legacy npm installation SHALL require the separately selected native handover rather than an implicit change of owner.
 
 #### Scenario: Upgrade outside a project
 - **WHEN** a developer runs `liftoff upgrade` from a directory with no Liftoff manifest
@@ -13,174 +13,103 @@ The system SHALL provide `liftoff upgrade` to upgrade the installed Liftoff CLI 
 - **AND** no project is created or required
 
 #### Scenario: Upgrade inside a project
-- **WHEN** a developer runs `liftoff upgrade` inside a generated project
+- **WHEN** a developer runs `liftoff upgrade` inside a generated or adopted project
 - **THEN** the command operates only on the supported installed CLI package
 - **AND** leaves every project file byte-for-byte unchanged
 
 #### Scenario: Distinguish update from upgrade
 - **WHEN** command help or completion describes `upgrade`
-- **THEN** it states that `upgrade` replaces the installed CLI
-- **AND** that `update` separately reconciles a generated project with the installed CLI's templates
-
-### Requirement: Automatic upgrade requires a supported global npm installation
-The system SHALL automatically mutate only a running canonical `@msn-control/liftoff` package that is verifiably installed beneath the effective npm global package root or a separately verified standard macOS Homebrew npm prefix. It SHALL refuse local dependencies, npm execution-cache or `npx` copies, linked development checkouts, ambiguous or escaping paths, unsupported package-manager stores, invalid package metadata, and missing or incompatible npm.
-
-#### Scenario: Running package is globally installed by npm
-- **WHEN** the canonical running package resolves to the expected scoped path beneath npm's canonical global root
-- **THEN** installation discovery classifies it as eligible for automatic upgrade
-
-#### Scenario: Command runs through npx
-- **WHEN** the running package resolves inside an npm execution cache rather than a verified global package root
-- **THEN** the command exits 1 without installing another copy
-- **AND** provides the exact manual global npm installation remedy
-
-#### Scenario: Command runs from a linked checkout
-- **WHEN** the apparent global package resolves through a symlink to a development checkout
-- **THEN** the command refuses automatic replacement
-- **AND** leaves both the checkout and global link unchanged
-
-#### Scenario: Global root path is unsafe
-- **WHEN** installation discovery encounters an unreadable root, structural collision, traversal, symlink escape, or ambiguous package identity
-- **THEN** it fails before any registry or installation mutation
-
-#### Scenario: Homebrew Node uses its Cellar prefix
-- **WHEN** macOS npm reports a Node Cellar global root but the running Liftoff package and its launcher verify at the corresponding standard Homebrew prefix
-- **THEN** upgrade targets that verified existing installation using an explicit command-local npm prefix
-- **AND** it does not create a second Liftoff installation in the Cellar
-
-#### Scenario: Homebrew fallback cannot prove the installation
-- **WHEN** the runtime, npm root, package metadata, package path, or launcher does not confirm the same standard Homebrew installation
-- **THEN** upgrade remains blocked before registry lookup or installation
-- **AND** no arbitrary installation prefix is inferred from a directory suffix
-
-#### Scenario: Windows and Linux retain their existing global-root contracts
-- **WHEN** the command runs on Windows or Linux
-- **THEN** it uses the existing platform-native global-root checks
-- **AND** it does not apply the macOS Homebrew fallback
-
-### Requirement: Canonical npm defines the stable target
-The system SHALL resolve the target from the canonical npm `latest` metadata using a bounded request and SHALL validate the canonical package name and stable semantic version. It SHALL NOT select a prerelease, arbitrary dist-tag, malformed version, or version lower than the running CLI. Timeout, transport, and malformed-metadata failures SHALL remain distinguishable outcomes.
-
-#### Scenario: Newer stable release exists
-- **WHEN** canonical npm reports a valid stable `latest` version greater than the running version
-- **THEN** that exact version becomes the sole upgrade target
-
-#### Scenario: Current release is latest
-- **WHEN** canonical `latest` equals the running version
-- **THEN** the command reports `current`, exits 0, and runs no installation
-
-#### Scenario: Canonical target is older
-- **WHEN** canonical `latest` compares lower than the running version
-- **THEN** the command refuses to downgrade and exits 1 with a stable reason
-
-#### Scenario: Canonical metadata body is malformed
-- **WHEN** canonical npm responds successfully but names another package, omits a version, returns an invalid semantic version, or returns a prerelease as `latest`
-- **THEN** the command exits 1 without invoking npm installation
-- **AND** reports malformed or invalid metadata rather than a timeout
-
-#### Scenario: Canonical metadata is unavailable or invalid
-- **WHEN** canonical metadata cannot be retrieved or does not identify a valid stable release of the canonical package
-- **THEN** upgrade exits 1 without installation
-- **AND** identifies unavailable transport, timeout, or invalid metadata according to the actual failure
-
-#### Scenario: Canonical metadata request times out
-- **WHEN** canonical lookup exceeds its bounded request time, including an abort while reading the response body
-- **THEN** the command exits 1 without invoking npm installation
-- **AND** reports the failure as a timeout rather than as malformed metadata
-
-### Requirement: Configured registry policy is preserved
-Before reporting an installable update or applying one, the system SHALL verify that the effective configured npm registry exposes the exact canonical target. Effective registry discovery SHALL honor `@msn-control:registry` before the default npm registry, SHALL run from a neutral directory so repository-local npm configuration cannot control the machine-level upgrade, and SHALL isolate canonical verification from configured-registry delivery checks without modifying persistent npm configuration. It SHALL NOT expose credentials, silently switch registries, or bypass a configured managed mirror.
-
-#### Scenario: Configured registry is canonical
-- **WHEN** effective npm configuration uses canonical npm and exposes the exact target
-- **THEN** check or apply may proceed
-
-#### Scenario: Scoped registry overrides the default registry
-- **WHEN** npm configuration sets `registry=https://mirror-a.example` and `@msn-control:registry=https://mirror-b.example`
-- **THEN** Liftoff evaluates `https://mirror-b.example` as the effective delivery registry for `@msn-control/liftoff`
-- **AND** it does not treat the default registry as authoritative for the scoped package
-
-#### Scenario: Managed mirror has reached parity
-- **WHEN** the effective managed registry exposes the exact version selected from canonical npm
-- **THEN** apply installs that version through the configured mirror
-- **AND** does not force a canonical registry override
-
-#### Scenario: Managed mirror is stale
-- **WHEN** canonical npm has a newer stable target that the configured mirror does not expose
-- **THEN** the command reports `blocked`, exits 1, and identifies mirror synchronization as the remedy
-- **AND** does not install the mirror's older `latest` version
-
-#### Scenario: Repository-local npm configuration is isolated
-- **WHEN** the current directory contains a project `.npmrc` that differs from the user's machine-level npm configuration
-- **THEN** upgrade registry discovery uses the neutral machine-level context for self-upgrade
-- **AND** the project file is neither used as authority nor modified
-
-#### Scenario: Registry URL contains credentials
-- **WHEN** effective registry configuration contains user information, a token, query data, or a private configuration path
-- **THEN** human, JSON, telemetry, and error output omit those sensitive values
+- **THEN** it states that upgrade replaces the installed CLI through its actual owner
+- **AND** update separately reconciles a project's explicitly managed artifacts through review and approval
 
 ### Requirement: Check mode is completely read-only
-`liftoff upgrade --check` SHALL perform installation-origin, canonical-target, configured-registry, and version checks without running a package installation or changing the filesystem, npm cache, npm configuration, project state, or global package state beyond unavoidable read-only command behavior.
+`liftoff upgrade --check` SHALL perform installation-owner, native release identity, supported-target, configured delivery-source and version checks without requesting installation, persistent cache/catalog refresh, telemetry notice-state writes, source reconfiguration, project writes or installation changes. Liftoff SHALL disable automatic manager refresh where supported and report source staleness rather than refresh implicitly. Unavoidable read-only manager/OS diagnostic logging and confined disposable probe scratch SHALL be distinguished from persistent product/configuration mutation and SHALL NOT authorize a source refresh. Upstream availability and the current owner's ability to deliver the same exact target SHALL remain separate.
 
 #### Scenario: Check finds an installable update
-- **WHEN** a supported global installation is older than canonical `latest` and the configured registry exposes the exact target
+- **WHEN** a verified native installation is older than the authoritative stable target and its approved owner can deliver that exact qualified target
 - **THEN** the command reports `update-available` and exits 2
-- **AND** does not invoke npm install
+- **AND** it runs no installation or source refresh
 
 #### Scenario: Check finds no update
-- **WHEN** the running version equals canonical `latest`
+- **WHEN** the running version equals the verified native stable target
 - **THEN** the command reports `current` and exits 0
 
 #### Scenario: Check is blocked
-- **WHEN** installation origin or registry parity cannot satisfy the upgrade contract
-- **THEN** the command exits 1 with an actionable reason
+- **WHEN** installation ownership, platform support, artifact verification, or configured-source readiness cannot satisfy the upgrade contract
+- **THEN** the command exits 1 with an actionable stable reason
 - **AND** performs no mutation
 
+#### Scenario: Manager knowledge may be stale
+- **WHEN** a read-only source observation cannot establish that the configured catalog is current
+- **THEN** the result distinguishes source staleness or required manual refresh from no upstream update
+- **AND** it does not run a refresh automatically
+
 ### Requirement: Apply installs one exact package version without elevation
-`liftoff upgrade` SHALL treat invocation of the dedicated command as explicit authorization to install the exact validated target through npm's global installation mechanism. It SHALL execute npm without a shell, SHALL preserve effective approved registry authentication, SHALL stream progress, and SHALL NOT invoke elevation, write npm configuration, install a floating tag, or run package lifecycle scripts.
+Invoking the dedicated `liftoff upgrade` command SHALL constitute explicit authorization for one internally bound exact verified target through the current proven installation owner. Liftoff SHALL display the target and owner-specific operation without requiring a second Liftoff confirmation or an extra plan flag for ordinary owner-preserving upgrades. It SHALL delegate only the identified Liftoff package to Homebrew or WinGet, or use the verified direct-install staged replacement protocol for a direct owner. It SHALL execute bounded literal executable/argument commands, preserve approved delivery and authentication policy, stream progress, and SHALL NOT elevate, rewrite persistent source configuration, upgrade unrelated packages, invoke npm replacement, or silently switch owners. Installation migration SHALL retain its separate exact-plan approval.
 
 #### Scenario: Apply an available update
-- **WHEN** installation and registry checks succeed and the target is newer
-- **THEN** npm receives the canonical scoped package name with the exact target version for global installation
-- **AND** installation uses the effective configured registry policy
+- **WHEN** owner, target and source checks succeed for the explicit upgrade invocation and the target is newer
+- **THEN** execution requests only the verified Liftoff package at that exact target through the identified owner
+- **AND** an owner unable to select the approved target blocks rather than installs a floating or different version
 
 #### Scenario: Global installation needs elevated permission
-- **WHEN** npm cannot write the global prefix and exits unsuccessfully
-- **THEN** Liftoff reports failure and npm's actionable result
-- **AND** does not invoke `sudo`, request an administrator password, or retry with elevation
+- **WHEN** the selected owner cannot modify its installation under the current authority
+- **THEN** Liftoff reports the permission failure and owner-specific remedy
+- **AND** it does not invoke `sudo`, request an administrator password, or retry with elevation
 
 #### Scenario: npm times out or fails
-- **WHEN** npm cannot start, times out, receives a signal, or exits nonzero
-- **THEN** the command exits 1 and does not print an upgraded completion
+- **WHEN** inspection of a legacy npm installation cannot start npm, times out, receives a signal, or observes a nonzero result
+- **THEN** the native command exits 1 with the actual ownership-inspection failure
+- **AND** it does not invoke npm installation, print an upgraded completion, or infer a different owner
+
+#### Scenario: The native owner fails
+- **WHEN** a native manager or direct replacement cannot start, times out, receives a signal, or fails
+- **THEN** upgrade exits 1 and reports the actual recorded effects and recovery state
+- **AND** it does not print a successful replacement
+
+#### Scenario: Installation facts change after selection
+- **WHEN** ownership, target, source or destination facts change after the exact operation was selected
+- **THEN** no replacement under the stale operation is executed
+- **AND** the command reports the mismatch rather than silently substituting another owner or target
+
+#### Scenario: Automation requests an ordinary upgrade
+- **WHEN** the dedicated upgrade command is explicitly invoked without a TTY for a supported current owner
+- **THEN** it can perform the exact validated owner-preserving operation without a new fingerprint flag
+- **AND** the invocation does not authorize an installation migration, elevation or project mutation
 
 ### Requirement: Upgrade success requires replacement verification
-After npm reports success, the system SHALL re-resolve the effective global installation and verify the canonical package name, exact target version, confined declared binary, and exact `Liftoff <target-version>` output from that replacement binary. It SHALL report `upgraded` only after all checks succeed.
+After the selected owner reports success, the system SHALL re-observe that same installation owner and verify the canonical product, exact target version, trusted artifact/runtime/resource identity, confined launcher, and exact `Liftoff <target-version>` output from the replacement. It SHALL verify explicit-path invocation and normal command resolution before reporting `upgraded`. It SHALL NOT claim success merely because a manager exited zero or another installation reports the target version.
 
 #### Scenario: Replacement verifies
-- **WHEN** installed metadata and the replacement binary both identify the exact target
+- **WHEN** the same owner's installed identity, explicit replacement invocation, and effective command resolution all identify the exact target
 - **THEN** the command reports `upgraded` and exits 0
-- **AND** recommends `liftoff update --check` as a separate optional project step
+- **AND** recommends `liftoff update --check` only as a separate optional project step
 
 #### Scenario: npm success installs the wrong version
-- **WHEN** npm exits zero but installed package metadata or version output differs from the target
-- **THEN** the command reports verification failure and exits 1
-- **AND** gives an exact manual reinstall remedy
+- **WHEN** a historical npm operation reports success but its installed package or version output differs from its selected historical target
+- **THEN** historical recovery remains an explicit exact-version npm repair rather than evidence of native upgrade success
+- **AND** the native command does not adopt that package as a verified native replacement
 
 #### Scenario: Replacement binary escapes its package
-- **WHEN** installed bin metadata resolves outside the verified global package root or to a non-regular file
+- **WHEN** the replacement launcher resolves outside its verified owner-controlled payload boundary or to an unsafe target
 - **THEN** verification fails before executing that target
 
 #### Scenario: Recovery after failure
 - **WHEN** installation or post-install verification fails
-- **THEN** Liftoff does not claim or attempt an automatic rollback
-- **AND** reports the previous and target versions plus an explicit exact-version npm repair command without sensitive registry data
+- **THEN** Liftoff reports previous and target identities, actual completed effects, and an exact owner-specific recovery path without credentials
+- **AND** it does not claim an automatic cross-owner rollback or blindly restore earlier bytes over changed work
+
+#### Scenario: Native manager success installs the wrong version
+- **WHEN** Homebrew, WinGet, or direct replacement reports success but the owner record, resources, or version output differs from the approved target
+- **THEN** upgrade reports verification failure and exits 1
+- **AND** it does not verify a different PATH installation to manufacture success
 
 ### Requirement: Upgrade output is stable and non-sensitive
-The command SHALL use the shared human presentation model and SHALL support byte-pure versioned JSON for both check and apply modes. Output SHALL expose only the mode, stable status, current version, applicable target version, registry kind, stable reason code, and an optional enumerated standard-Homebrew installation-target hint; it SHALL NOT expose credentials, raw registry responses, npm configuration paths, global package paths, project paths, or command arguments containing secrets.
+The command SHALL use the shared human presentation model and versioned byte-pure JSON for check and apply. The native result contract SHALL expose mode, stable status, current and applicable target versions, verified installation owner, upstream and owner availability, stable reason, and any required manual or handover action through bounded public fields. Historical npm result semantics SHALL remain distinguishable from this native contract. Output SHALL NOT expose credentials, raw source responses, private source/configuration URLs, arbitrary package/project paths, or secret-bearing command arguments; detailed local path investigation belongs to explicit installation inspection.
 
 #### Scenario: Emit JSON update availability
-- **WHEN** a developer runs `liftoff upgrade --check --json` and an installable update exists
-- **THEN** stdout contains one JSON object with `schemaVersion`, `mode`, `status`, `currentVersion`, `targetVersion`, `registryKind`, and `reasonCode`
+- **WHEN** a developer runs `liftoff upgrade --check --json` and an installable native update exists
+- **THEN** stdout contains one versioned native result with mode, status, current and target versions, owner, availability observations, and reason
 - **AND** the command exits 2
 
 #### Scenario: Stream apply output in JSON mode
@@ -190,53 +119,130 @@ The command SHALL use the shared human presentation model and SHALL support byte
 
 #### Scenario: Render human output
 - **WHEN** a developer runs upgrade without `--json`
-- **THEN** stages, status, remedy, and the exact non-sensitive package operation use the shared terminal presentation
+- **THEN** stages, status, remedy, and the exact non-sensitive owner-specific package operation use the shared terminal presentation
 
 #### Scenario: Disclose the verified Homebrew target
-- **WHEN** upgrade selects a verified standard Homebrew prefix
-- **THEN** its result identifies only the enumerated target rather than arbitrary filesystem paths
-- **AND** human install and exact-version failure guidance retain the verified prefix
+- **WHEN** upgrade selects a verified native Homebrew package
+- **THEN** the result identifies the registered public package/tap target rather than arbitrary filesystem paths
+- **AND** installation and recovery guidance retain that same owner identity
 
 ### Requirement: Upgrade behavior is cross-platform and location-independent
-Global-root discovery, package containment, temporary working directories, executable resolution, and replacement verification SHALL use platform-native path behavior on Windows, macOS, and Linux. Running from different current directories, including paths with spaces, SHALL not change registry selection, package target, or project bytes.
+Owner discovery, package containment, neutral working directories, executable resolution, and replacement verification SHALL use platform-native path and shim behavior on Windows, macOS, and Linux. Different current directories, including paths with spaces, SHALL NOT change delivery policy, installation target, or project bytes. Runtime/package paths alone SHALL NOT substitute for manager records or a direct-install receipt.
 
 #### Scenario: Upgrade on Windows
-- **WHEN** a supported npm global installation is inspected or upgraded on Windows
-- **THEN** npm and package paths use Windows semantics and the platform-correct executable adapter
+- **WHEN** a supported WinGet installation is inspected or upgraded on Windows
+- **THEN** package and launcher paths use Windows semantics and the qualified executable adapter
 - **AND** no POSIX global layout or path separator is assumed
 
 #### Scenario: Upgrade from a repository with local npm configuration
 - **WHEN** the current directory contains a project `.npmrc`
-- **THEN** CLI upgrade resolves registry policy from the neutral machine-level context
+- **THEN** native upgrade resolves owner and delivery policy independently of that project configuration
 - **AND** the project file is neither used as authority nor modified
 
 #### Scenario: Test upgrade behavior
 - **WHEN** automated tests exercise apply mode
-- **THEN** they use an isolated temporary npm prefix, cache, home, and injected registry responses
-- **AND** never mutate the host's real global Liftoff installation
+- **THEN** they use isolated native installation roots, owner/source fixtures, and isolated historical npm prefixes where migration evidence is needed
+- **AND** never mutate the host's real Liftoff installation, caches, or persistent package-manager configuration
+
+#### Scenario: Native paths collide
+- **WHEN** a Windows case collision, unsafe symlink, traversal, or ambiguous launcher prevents unique containment
+- **THEN** discovery or verification fails before executing a replacement
+- **AND** equivalent confinement checks apply on macOS and Linux
 
 ### Requirement: Homebrew upgrades retain one verified target throughout execution
-Homebrew prefix recovery SHALL bind registry probes, installation, and replacement verification to the same verified prefix. It SHALL retain the configured registry and authentication policy, execute bounded literal commands from a neutral directory, and never change persistent npm configuration. Check mode SHALL NOT install. Replacement verification SHALL reject a changed global root, escaped package, or mismatched launcher rather than report success for a different installation.
+Native Homebrew upgrades SHALL bind source observations, command-specific authorization, installation, and replacement verification to the same verified Liftoff tap/cask and owner record. Commands and owner discovery SHALL explicitly distinguish the selected cask from formulae and same-named packages. They SHALL retain approved source/authentication policy, use bounded literal commands from a neutral context, and never rewrite persistent configuration. Check mode SHALL NOT install or refresh sources. A changed owner, escaped payload, mismatched launcher, or different package source SHALL block rather than permit success for another installation. Homebrew-owned Node with npm-owned Liftoff SHALL NOT enter this native upgrade lane.
 
 #### Scenario: Check a supported Homebrew installation
-- **WHEN** check mode verifies an older Homebrew installation and registry parity
+- **WHEN** check mode verifies an older native Homebrew Liftoff installation and exact source availability
 - **THEN** it reports update availability without installation
-- **AND** existing packages, user npm configuration, and user cache remain unchanged
+- **AND** existing packages, source configuration, catalogs, and caches remain unchanged
 
 #### Scenario: Install and verify at the existing prefix
-- **WHEN** apply mode verifies the Homebrew target and exact release
-- **THEN** all target-dependent npm operations use the same explicit prefix
+- **WHEN** apply mode verifies the native Homebrew owner and exact release
+- **THEN** all target-dependent operations remain bound to that owner's package record and approved destination
 - **AND** success requires the replacement package and launcher at that target to identify the exact release
 
 #### Scenario: Registry parity is missing
-- **WHEN** the configured scoped or default registry does not expose the canonical release
-- **THEN** the Homebrew upgrade blocks without switching registries or installing
+- **WHEN** the configured Homebrew source does not expose the authoritative native target
+- **THEN** the upgrade reports upstream availability and blocked owner delivery separately
+- **AND** it does not switch sources or install directly
 
 #### Scenario: Prefix-specific configuration changes the selected registry
-- **WHEN** the active npm and the verified Homebrew prefix select different scoped or default registries
-- **THEN** upgrade reports a registry-prefix mismatch before delivery lookup or installation
-- **AND** does not expose registry credentials or silently choose a different delivery policy
+- **WHEN** the verified Homebrew installation context selects a different package source or delivery policy from the one observed for approval
+- **THEN** upgrade reports a source/owner mismatch before installation
+- **AND** it neither exposes private source credentials nor silently chooses another delivery policy
 
 #### Scenario: Target changes after discovery
-- **WHEN** the selected package, prefix, or launcher changes before installation or during replacement
-- **THEN** the affected operation fails validation and cannot report a successful upgrade of another installation
+- **WHEN** the selected package, owner record, destination, or launcher changes before installation or during replacement
+- **THEN** the affected operation fails validation
+- **AND** it cannot report a successful upgrade of another installation
+
+#### Scenario: Upgrade explicitly selects the cask
+- **WHEN** routine upgrade operates on the verified native macOS installation
+- **THEN** its displayed and executed Homebrew operation explicitly selects the registered Liftoff cask and exact admitted target
+- **AND** it does not select a formula, another tap's token or an npm-owned launcher as a substitute
+
+### Requirement: Automatic upgrade follows proven native installation ownership
+Automatic upgrade SHALL support only a verified native Homebrew owner, native WinGet owner, or registered direct-install receipt for the running Liftoff installation. It SHALL reject local dependencies, npm execution-cache copies, linked development checkouts, unlinked candidates, ambiguous ownership, unsafe paths, and unsupported owners with an explicit remedy. Legacy npm installations SHALL be identified as requiring separately approved installation migration, including when their Node runtime is Homebrew-owned.
+
+#### Scenario: Running package has a supported native owner
+- **WHEN** the manager record or direct-install receipt matches the running canonical product and launcher
+- **THEN** upgrade uses that owner and no other replacement channel
+
+#### Scenario: A native candidate is not yet registered
+- **WHEN** the developer invokes upgrade from an unlinked bundle
+- **THEN** automatic replacement remains blocked
+- **AND** guidance identifies installation inspection or explicitly selected installation migration
+
+#### Scenario: Homebrew Node does not own Liftoff
+- **WHEN** npm installed `@msn-control/liftoff` beneath a prefix associated with Homebrew Node
+- **THEN** the installation remains npm-owned and migration-required
+- **AND** native upgrade does not issue a Homebrew replacement based on that path
+
+#### Scenario: A linked checkout is discovered
+- **WHEN** a launcher resolves to a development checkout or package execution cache
+- **THEN** automatic replacement is refused
+- **AND** the checkout, link, cache, and any existing native installation are preserved
+
+### Requirement: Native release authority is separate from configured delivery
+Upgrade SHALL discover stable targets through bounded validation of the authoritative schema-1 native release manifest, not npm `latest`. The selected target SHALL match the canonical product and supported platform, identify immutable signed artifacts, and be a stable semantic version not lower than the running version. Timeout, transport failure, malformed identity, unsupported platform, and owner-source readiness SHALL remain distinguishable outcomes.
+
+#### Scenario: Newer stable release exists
+- **WHEN** the verified native manifest identifies a newer stable release for the supported host
+- **THEN** that exact release becomes the only candidate target
+- **AND** configured-owner delivery is checked separately
+
+#### Scenario: Native authority is older
+- **WHEN** the authoritative target is lower than the running version
+- **THEN** upgrade refuses a downgrade and exits 1 with a stable reason
+
+#### Scenario: Metadata is malformed or unavailable
+- **WHEN** lookup times out, fails transport, names a different product, returns an invalid version, or selects a prerelease as stable
+- **THEN** upgrade exits 1 without installation
+- **AND** the actual timeout, transport, or invalid-metadata cause remains distinguishable, including timeout while reading the body
+
+#### Scenario: npm still serves its historical latest
+- **WHEN** npm `latest` names the final historical npm version while a native release is newer
+- **THEN** the native command does not classify the historical npm tag as current release authority
+
+### Requirement: Source policy and handover blockers never authorize channel replacement
+Upgrade SHALL preserve the actual owner's approved tap, WinGet source, enterprise mirror, and authentication policy. Upstream availability, manager lag, unobservable or stale catalogs, unsupported targets, enterprise restrictions, permission failures, and Windows locks SHALL be explicit states with causal remedies. A blocked state SHALL NOT authorize automatic source reconfiguration, direct download over manager-owned files, package-manager bootstrapping, or npm-to-native migration.
+
+#### Scenario: WinGet catalog lags upstream
+- **WHEN** the signed upstream native target exists but the configured WinGet source does not offer the exact version
+- **THEN** upgrade reports the target and blocked manager availability
+- **AND** it does not replace the WinGet installation with a direct archive
+
+#### Scenario: Enterprise delivery is approved
+- **WHEN** the configured enterprise source can deliver the verified exact target under the installation owner's policy
+- **THEN** upgrade uses that source without forcing a public-source override
+
+#### Scenario: Windows replacement is locked
+- **WHEN** the owner cannot complete replacement because a relevant executable is in use
+- **THEN** upgrade reports an explicit close or handover action and preserves the usable current installation
+- **AND** it does not terminate unrelated processes or clean an active version directory
+
+#### Scenario: Direct replacement verification fails
+- **WHEN** a receipt-owned direct candidate fails verification before launcher activation
+- **THEN** the old usable version remains selected and the failed stage is reported
+- **AND** any cleanup uses the exact owned-version inventory rather than filename patterns

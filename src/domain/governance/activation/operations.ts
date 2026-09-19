@@ -76,17 +76,14 @@ export function rollbackPlanFromCompletedOperations(
       cleanupWarnings.push(`Refused to generate provider unregister rollback for ${op.actionId}.`);
       continue;
     }
-    if (op.mutationClass === 'github-ruleset-write') {
-      operations.push({
-        adapter: 'github',
-        actionId: 'github.ruleset.disable',
-        mutationClass: 'github-ruleset-write',
-        phaseId,
-        inputs: { fromOperation: op.actionId, cannotExpandScope: true },
-        destination: op.destination,
-        remote: true,
-        destructive: false
-      });
+    if (op.mutationClass === 'github-ruleset-write' || op.actionId === 'github.repository.settings.apply') {
+      retained.push(`${op.phaseId}:${op.actionId}:repository-protection`);
+      cleanupWarnings.push('Repository protection is retained; recovery requires fresh observation and separately approved exact control changes.');
+      continue;
+    }
+    if (op.actionId === 'github.workflow-source.publish') {
+      retained.push(`${op.phaseId}:${op.actionId}:published-history`);
+      cleanupWarnings.push('Published workflow commits and pull requests are retained; recovery must use their exact recorded identities.');
       continue;
     }
     if (op.mutationClass === 'azure-network-provision' || op.mutationClass === 'azure-resource-provision') {
@@ -141,28 +138,40 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
   'seed-archived': ['openspec.seed.archive', ...persistence],
   committed: ['git.init', 'git.add-reviewed', 'git.commit-reviewed', 'git.verify-existing-commit', ...persistence],
   pushed: ['github.repository.ensure', 'git.remote.bind', 'git.push-approved-ref', 'git.verify-existing-push', 'github.repository.default-branch', ...persistence],
+  'repository-discovered': ['github.repository.discover', ...persistence],
+  'repository-workflow-source-ready': ['local.workflow-source.write', 'local.ruleset-source.write', 'git.commit-reviewed', 'git.push-approved-ref', 'github.workflow-source.publish', 'github.workflow-source.verify', ...persistence],
+  'repository-checks-qualified': ['github.checks.repository-qualified', ...persistence],
+  'repository-enforcement-approved': ['governance.activation-state.write'],
+  'repository-rulesets-applied': ['github.repository.settings.apply', 'github.ruleset.apply', 'github.ruleset.readback', ...persistence],
+  'repository-live-readback': ['github.ruleset.readback', ...persistence],
   'phase-0-complete': ['github.phase0.discover', 'azure.phase0.discover', ...persistence],
   'activation-approved': ['openspec.governance.create-change', 'spec-kit.governance.create-change', 'governance.activation-state.write'],
-  'bootstrap-workflow-source-ready': ['local.workflow-source.write', 'git.commit-reviewed', 'git.push-approved-ref', 'github.bootstrap-local.configure', ...persistence],
-  'credential-ready': ['github.credential.verify-policy', 'github.credential.enroll-masked', ...persistence],
+  'bootstrap-workflow-source-ready': ['local.workflow-source.write', 'git.commit-reviewed', 'git.push-approved-ref', 'github.bootstrap-local.configure', 'github.workflow-source.publish', 'github.workflow-source.verify', ...persistence],
+  'credential-ready': ['github.credential.verify-policy', 'github.credential.enroll-masked', 'github.credential.usage-challenge', 'local.credential-policy.write', ...persistence],
   'provider-ready': ['azure.provider.ensure-ready', ...persistence],
   'state-path-selected': ['azure.state-path.select', ...persistence],
   'existing-private-path': ['azure.existing-private-path.verify', ...persistence],
   'bootstrap-local': ['azure.bootstrap-local.apply', 'github.bootstrap-local.configure', ...persistence],
-  'runner-ready': ['github.runner.ensure-ready', ...persistence],
-  'private-backend-proof': ['github.runner.backend-proof', 'azure.remote-state.read', ...persistence],
+  'runner-ready': ['github.runner.ensure-ready', 'github.runner.reachability-dispatch', ...persistence],
+  'private-backend-proof': ['github.runner.backend-proof', 'azure.remote-state.read', 'azure.private-backend.lease.acquire', 'azure.private-backend.lease.renew', 'azure.private-backend.lease.release', ...persistence],
   'remote-import-verified': ['azure.remote-import.verify', ...persistence],
   'remote-ready': ['azure.remote-ready.verify', ...persistence],
-  'application-prerequisites-ready': ['azure.prerequisites.apply', 'azure.prerequisites.verify', ...persistence],
+  'application-prerequisites-ready': ['azure.prerequisites.apply', 'azure.prerequisites.verify', 'azure.application-private.prepare', 'azure.application-private.state', 'azure.application-private.recover', 'azure.application-private.initialize', ...persistence],
   'application-artifact-ready': ['github.artifact.build-dispatch', 'azure.artifact.readback', ...persistence],
-  'application-foundation': ['azure.application-foundation.apply', 'openspec.governance.update', ...persistence],
-  'workflow-source-ready': ['local.workflow-source.write', 'local.ruleset-source.write', ...persistence],
-  'dev-proof': ['github.checks.dev-proof', ...persistence],
-  'staging-qualified': ['github.checks.staging', 'azure.staging.readback', ...persistence],
-  'production-rehearsed': ['github.checks.production-rehearsal', 'azure.production-readback', ...persistence],
+  'application-foundation': ['azure.application-foundation.apply', 'azure.application-private.prepare', 'azure.application-private.state', 'azure.application-private.recover', 'azure.application-private.initialize', 'openspec.governance.update', ...persistence],
+  'workflow-source-ready': ['local.workflow-source.write', 'local.ruleset-source.write', 'github.workflow-source.publish', 'github.workflow-source.verify', ...persistence],
+  'dev-proof': ['github.checks.dev-proof', 'azure.dev.readback', 'azure.application-private.receipt', ...persistence],
+  'staging-qualified': ['github.checks.staging', 'azure.staging.readback',
+    'azure.application-private.prepare', 'azure.application-private.state', 'azure.application-private.recover',
+    'azure.application-private.receipt', 'azure.application-staging.apply', 'azure.application-staging.target-read',
+    'github.application-staging.dev-receipt', 'azure.artifact.promote', ...persistence],
+  'production-rehearsed': ['github.checks.production-rehearsal', 'azure.production-readback',
+    'azure.application-private.prepare', 'azure.application-private.state', 'azure.application-private.recover',
+    'azure.application-rehearsal.rollout', 'azure.application-rehearsal.rollback',
+    'github.application-rehearsal.source-receipt', 'azure.application-rehearsal.receipt', 'azure.artifact.promote', ...persistence],
   'green-red-proof': ['github.checks.green-red-proof', ...persistence],
   'enforcement-approved': ['governance.activation-state.write'],
-  'rulesets-applied': ['github.ruleset.apply', 'github.ruleset.readback', ...persistence],
+  'rulesets-applied': ['github.repository.settings.apply', 'github.ruleset.apply', 'github.ruleset.readback', ...persistence],
   'live-readback': ['github.ruleset.readback', ...persistence],
   'bootstrap-state-disposed': ['local.bootstrap-state.dispose', ...persistence]
 };
@@ -170,6 +179,7 @@ const actions: Readonly<Record<PhaseId, readonly string[]>> = {
 type OperationContract = Pick<TransitionOperation, 'adapter' | 'remote'> & {
   mutations: readonly TransitionOperation['mutationClass'][];
   effects?: readonly TransitionOperation['mutationClass'][];
+  requiredEffects?: readonly TransitionOperation['mutationClass'][];
 };
 
 function operationContract(action: string): OperationContract {
@@ -194,30 +204,55 @@ function operationContract(action: string): OperationContract {
     'git.push-approved-ref': { adapter: 'git', remote: true, mutations: ['git-push'] },
     'git.verify-existing-push': { adapter: 'git', remote: true, mutations: ['github-read'] },
     'github.phase0.discover': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'github.repository.discover': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'github.workflow-source.publish': { adapter: 'github', remote: true, mutations: ['github-write'], effects: ['github-read', 'git-push'], requiredEffects: ['github-read', 'git-push'] },
+    'github.workflow-source.verify': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'github.checks.repository-qualified': { adapter: 'github', remote: true, mutations: ['github-read', 'github-workflow-dispatch'], effects: ['github-read', 'github-write', 'git-push'] },
     'azure.phase0.discover': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
     'github.credential.verify-policy': { adapter: 'github', remote: true, mutations: ['github-read'] },
     'github.credential.enroll-masked': { adapter: 'github', remote: true, mutations: ['github-secret-write'] },
-    'azure.provider.ensure-ready': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-provider-register', 'azure-read'] },
+    'github.credential.usage-challenge': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'github-write'] },
+    'local.credential-policy.write': { adapter: 'local-state', remote: false, mutations: ['write-credential-policy'] },
+    'azure.provider.ensure-ready': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-provider-register', 'azure-read'], effects: ['azure-read'] },
     'azure.state-path.select': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
     'azure.existing-private-path.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['backend-state-read'] },
     'azure.bootstrap-local.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-network-provision'], effects: ['write-local-state', 'azure-read'] },
     'github.bootstrap-local.configure': { adapter: 'github', remote: true, mutations: ['github-write'] },
-    'github.runner.ensure-ready': { adapter: 'github', remote: true, mutations: ['github-write', 'github-read'], effects: ['github-workflow-dispatch'] },
-    'github.runner.backend-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['backend-state-read', 'azure-read'] },
+    'github.runner.ensure-ready': { adapter: 'github', remote: true, mutations: ['github-write', 'github-read'], effects: ['github-read', 'github-workflow-dispatch'] },
+    'github.runner.reachability-dispatch': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read'] },
+    'github.runner.backend-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch', 'github-read'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
+    'azure.private-backend.lease.acquire': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'] },
+    'azure.private-backend.lease.renew': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'] },
+    'azure.private-backend.lease.release': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'] },
     'azure.remote-state.read': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read', 'backend-state-read'] },
     'azure.remote-import.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-state-import'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
     'azure.remote-ready.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['backend-state-read'] },
     'azure.prerequisites.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
     'azure.prerequisites.verify': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'azure.application-private.prepare': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'], effects: ['write-local-state', 'backend-state-read', 'azure-read'] },
+    'azure.application-private.initialize': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write', 'backend-state-read'], effects: ['write-local-state', 'backend-state-read', 'azure-read'] },
+    'azure.application-private.state': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'], effects: ['write-local-state', 'backend-state-read', 'azure-read'] },
+    'azure.application-private.recover': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-write'], effects: ['write-local-state', 'backend-state-read', 'azure-read'] },
+    'azure.application-private.receipt': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-read'], effects: ['read-worktree', 'azure-read'] },
+    'github.application-rehearsal.source-receipt': { adapter: 'github', remote: true, mutations: ['github-read'] },
+    'azure.application-rehearsal.receipt': { adapter: 'azure-opentofu', remote: true, mutations: ['backend-state-read'], effects: ['azure-read', 'read-worktree', 'write-local-state'] },
+    'azure.application-rehearsal.rollout': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['azure-read'] },
+    'azure.application-rehearsal.rollback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['azure-read'] },
     'github.artifact.build-dispatch': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'registry-publish'] },
     'azure.artifact.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'azure.artifact.promote': { adapter: 'azure-opentofu', remote: true, mutations: ['registry-publish'], effects: ['azure-read'] },
+    'azure.application-staging.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['azure-read'] },
+    'azure.application-staging.target-read': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'github.application-staging.dev-receipt': { adapter: 'github', remote: true, mutations: ['github-read'] },
     'azure.application-foundation.apply': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-resource-provision'], effects: ['backend-state-read', 'backend-state-write', 'azure-read'] },
     'github.checks.dev-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read'] },
+    'azure.dev.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
     'github.checks.staging': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write'] },
-    'azure.staging.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
+    'azure.staging.readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'], effects: ['azure-read'] },
     'github.checks.production-rehearsal': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write'] },
     'azure.production-readback': { adapter: 'azure-opentofu', remote: true, mutations: ['azure-read'] },
     'github.checks.green-red-proof': { adapter: 'github', remote: true, mutations: ['github-workflow-dispatch'], effects: ['github-read', 'git-push', 'github-write'] },
+    'github.repository.settings.apply': { adapter: 'github', remote: true, mutations: ['github-write'] },
     'github.ruleset.apply': { adapter: 'github', remote: true, mutations: ['github-ruleset-write'] },
     'github.ruleset.readback': { adapter: 'github', remote: true, mutations: ['github-read'] },
     'local.workflow-source.write': { adapter: 'local-state', remote: false, mutations: ['write-workflows'] },
@@ -230,7 +265,8 @@ function operationContract(action: string): OperationContract {
 
 function assertConcreteDestination(destination: TransitionOperationDestination, remote: boolean, actionId: string): void {
   if (destination.type === 'subscription' &&
-    !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(destination.subscriptionId ?? '')) {
+    (!/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(destination.subscriptionId ?? '') ||
+      destination.subscriptionId === '00000000-0000-0000-0000-000000000000')) {
     throw new Error(`Operation ${actionId} has no verified subscription destination; placeholders cannot authorize a transition.`);
   }
   if (remote && destination.type === 'repository' &&
@@ -256,6 +292,12 @@ export function assertOperationAllowed(phase: PhaseGraphNode, operation: Transit
   }
   assertConcreteDestination(operation.destination, operation.remote, operation.actionId);
   if (operation.actionId === governanceTaskProjectionAction) taskProjectionContract([operation]);
+  for (const mutationClass of contract.requiredEffects ?? []) {
+    if (!operation.effects?.some((effect) => effect.mutationClass === mutationClass &&
+      effect.remote === operation.remote && canonicalSha256(effect.destination) === canonicalSha256(operation.destination))) {
+      throw new Error(`Operation ${operation.actionId} must declare its ${mutationClass} effect at the exact approved destination.`);
+    }
+  }
   for (const effect of operation.effects ?? []) {
     const effectAllowed = effect.remote ? phase.allowedMutations.remote : phase.allowedMutations.local;
     if (!contract.effects?.includes(effect.mutationClass) || !effectAllowed.includes(effect.mutationClass) || effect.destructive) {

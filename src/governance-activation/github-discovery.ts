@@ -9,6 +9,8 @@ import { cloneState, readbackProof } from './transition-records.js';
 import { clientFor, githubOperation, repositoryConfiguration, sourceSha } from './github-config.js';
 import { inspectGitRepository, reviewedPushUrl } from './phase-publication.js';
 import { githubRepositoryFromPushUrl } from '../domain/governance/activation/inputs.js';
+import { hasGeneratedWorkload, isApiManifestWorkload } from '../domain/project/manifest/applicability.js';
+import { missingGeneratedLocalEngine } from './seed-lifecycle.js';
 
 interface DiscoveryObservation {
   status: 'observed' | 'unknown';
@@ -16,8 +18,24 @@ interface DiscoveryObservation {
   prerequisite?: string;
 }
 
-export async function classifyGitHubWorkload(inspection: GovernanceTransitionInspection): Promise<Record<string, unknown>> {
+export async function classifyGitHubWorkload(
+  inspection: Pick<GovernanceTransitionInspection, 'projectRoot' | 'manifest'> & Partial<Pick<GovernanceTransitionInspection, 'state'>>
+): Promise<Record<string, unknown>> {
   const workload = inspection.manifest.project.workload;
+  if (!isApiManifestWorkload(workload)) {
+    return {
+      kind: 'components', artifactKind: 'unknown', commandsExecutedByDiscovery: false,
+      missing: [missingGeneratedLocalEngine],
+      environments: []
+    };
+  }
+  if (!hasGeneratedWorkload(inspection.manifest)) {
+    return {
+      kind: workload.kind, stack: workload.apiStack, environments: workload.environments, frontend: workload.frontend,
+      artifactKind: 'unknown', commandsExecutedByDiscovery: false, localBaseline: 'missing-local-engine',
+      missing: [missingGeneratedLocalEngine], files: [], containers: []
+    };
+  }
   const stack = workload.apiStack;
   const paths = stack === 'node-fastify' ? ['backend/package.json', 'backend/package-lock.json'] :
     stack === 'python-fastapi' ? ['backend/pyproject.toml', 'backend/uv.lock'] : ['backend/go.mod', 'backend/go.sum'];
@@ -52,7 +70,7 @@ export async function classifyGitHubWorkload(inspection: GovernanceTransitionIns
     artifactKind: containers.length ? 'container-image' : 'unknown', stack, kind: workload.kind,
     environments: workload.environments, frontend: workload.frontend, files, containers, commands,
     commandsExecutedByDiscovery: false,
-    localBaseline: inspection.state.phases['seed-verified'].state === 'verified' ? 'verified-predecessor' : 'not-current',
+    localBaseline: inspection.state?.phases['seed-verified'].state === 'verified' ? 'verified-predecessor' : 'not-current',
     healthDepth: 'requires-deployment-probe', missing
   };
 }

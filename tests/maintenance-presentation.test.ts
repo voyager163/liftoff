@@ -1,8 +1,9 @@
 import { readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
+import { liftoffVersion } from '../src/version.js';
 import { getUpdatePreviewDirectory } from '../src/adapters/filesystem/update-previews.js';
 import {
   formatUpdateCommand, formatUpdateValidationCommands, type ResolvedUpdateGuidanceContext
@@ -19,19 +20,6 @@ import {
 } from './helpers.js';
 
 const cleanups: string[] = [];
-const previousRegistry = process.env.LIFTOFF_REGISTRY;
-
-beforeAll(() => {
-  process.env.LIFTOFF_REGISTRY = 'http://127.0.0.1:1';
-});
-
-afterAll(() => {
-  if (previousRegistry === undefined) {
-    delete process.env.LIFTOFF_REGISTRY;
-  } else {
-    process.env.LIFTOFF_REGISTRY = previousRegistry;
-  }
-});
 
 afterEach(async () => {
   while (cleanups.length > 0) {
@@ -59,20 +47,14 @@ function normalizeMaintenanceOutput(
   previewDirectory: string,
   platform: NodeJS.Platform = process.platform
 ): string {
-  const context: ResolvedUpdateGuidanceContext = {
-    state: 'resolved', projectRoot: cwd, requestedProjectRoot: cwd,
-    invocationDirectory: cwd, implicitProjectRoot: cwd
-  };
   let normalized = value.replaceAll(formatUpdateValidationCommands(cwd, platform),
-    "cd -- '<project>' && liftoff validate && liftoff doctor")
-    .replaceAll(formatUpdateValidationCommands(cwd, platform, context), 'liftoff validate && liftoff doctor');
+    "cd -- '<project>' && liftoff validate && liftoff doctor");
   for (const mode of ['check', 'force', 'normal'] as const) {
     normalized = normalized.replaceAll(formatUpdateCommand(cwd, mode, platform),
-      `liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`)
-      .replaceAll(formatUpdateCommand(cwd, mode, platform, context),
-        `liftoff update${mode === 'normal' ? '' : ` --${mode}`}`);
+      `liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`);
   }
   return normalized.replaceAll(cwd, '<project>')
+    .replaceAll(`Running CLI Node ${process.versions.node}`, 'Running CLI Node <runtime-version>')
     .replaceAll(`${previewDirectory}${path.win32.sep}`, '<preview-store>/')
     .replaceAll(`${previewDirectory}${path.posix.sep}`, '<preview-store>/')
     .replaceAll(previewDirectory, '<preview-store>')
@@ -112,9 +94,12 @@ async function run(
     stderr,
     updatePreview,
     runner: options.runner ?? new ReadyInitRunner(),
-    stableReleaseLookup: async () => {
-      throw new Error('offline');
-    },
+    nativeUpgradeCheck: async () => ({
+      schemaVersion: 1, distribution: 'native', mode: 'check', status: 'blocked',
+      currentVersion: liftoffVersion, owner: 'unknown', reasonCode: 'ownership_unknown',
+      upstreamAvailability: 'unknown', ownerAvailability: 'unknown',
+      completedEffects: [], uncertainEffects: [], recoveryRequired: false
+    }),
     terminal: {
       snapshot: options.snapshot ?? true,
       columns,
@@ -139,13 +124,13 @@ async function addDrift(projectRoot: string): Promise<void> {
 
 describe('maintenance presentation', () => {
   it.each([
-    { label: 'Windows', platform: 'win32' as const, paths: path.win32, root: 'C:\\fixture' },
-    { label: 'POSIX', platform: 'linux' as const, paths: path.posix, root: '/fixture' }
+    { label: 'Windows', platform: 'win32' as const, paths: path.win32, root: 'C:\\fixture path' },
+    { label: 'POSIX', platform: 'linux' as const, paths: path.posix, root: '/fixture path' }
   ])('normalizes native $label receipt paths and project-bound commands in snapshots', ({ paths, root, platform }) => {
     const project = paths.join(root, 'project');
     const directory = paths.join(root, 'receipt-home', 'liftoff', 'update-previews');
     const receipt = paths.join(directory, `${'b'.repeat(64)}.json`);
-    expect(normalizeMaintenanceOutput(`Location: ${receipt}`, project, directory))
+    expect(normalizeMaintenanceOutput(`Location: ${receipt}`, project, directory, platform))
       .toBe(`Location: <preview-store>/${'a'.repeat(64)}.json`);
     expect(normalizeMaintenanceOutput(formatUpdateCommand(project, 'normal', platform), project, directory, platform))
       .toBe('liftoff update --project <project>');
@@ -157,10 +142,10 @@ describe('maintenance presentation', () => {
     };
     for (const mode of ['normal', 'check', 'force'] as const) {
       expect(normalizeMaintenanceOutput(formatUpdateCommand(project, mode, platform, context), project, directory, platform))
-        .toBe(`liftoff update${mode === 'normal' ? '' : ` --${mode}`}`);
+        .toBe(`liftoff update${mode === 'normal' ? '' : ` --${mode}`} --project <project>`);
     }
     expect(normalizeMaintenanceOutput(formatUpdateValidationCommands(project, platform, context), project, directory, platform))
-      .toBe('liftoff validate && liftoff doctor');
+      .toBe("cd -- '<project>' && liftoff validate && liftoff doctor");
   });
 
   for (const [name, columns] of [['rich', 100], ['plain', 50]] as const) {
@@ -198,7 +183,7 @@ describe('maintenance presentation', () => {
 
       expect(result.code).toBe(0);
       expect(result.out).toContain('Next recommended command');
-      expect(result.out).toContain('$ liftoff validate && liftoff doctor');
+      expect(result.out).toContain("$ cd -- '<project>' && liftoff validate && liftoff doctor");
       expect(result.err).toBe('');
       expect(runner.calls).toEqual([]);
       expect(result).toMatchSnapshot();

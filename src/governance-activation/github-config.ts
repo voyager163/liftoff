@@ -1,4 +1,4 @@
-import type { PhaseId, TransitionOperation } from '../domain/governance/activation/types.js';
+import { phaseScope, type PhaseId, type TransitionOperation } from '../domain/governance/activation/types.js';
 import type { GovernanceTransitionInspection, PhaseAdapterExecutionInput, PhasePlanningInput } from './transition-ports.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { canonicalApprovalEnvelopeHash } from '../domain/governance/activation/approvals.js';
@@ -26,7 +26,10 @@ export function repositoryConfiguration(inspection: GovernanceTransitionInspecti
 } {
   const config = inspection.activationInputs?.repository;
   const fallback = inspection.state.remoteBinding?.name ?? inspection.state.repository.name;
-  const rawName = config?.name ?? (fallback.includes('/') ? fallback : `owner/${fallback}`);
+  const rawName = config?.name ?? (fallback.includes('/') ? fallback : null);
+  if (!rawName) {
+    throw new GitHubActivationError('repository-binding-required', 'Supply the actual owner/repository or establish it through independently verified publication. Placeholder owners are not executable targets.');
+  }
   const name = githubRepository(rawName);
   const bound = inspection.state.remoteBinding;
   if (bound && bound.name.toLowerCase() !== name.toLowerCase()) {
@@ -90,7 +93,7 @@ export async function assertGitHubAuthorized(input: PhaseAdapterExecutionInput, 
   const now = input.clock?.() ?? input.now;
   if (!input.plan.operations.some((planned) => canonicalSha256(planned) === canonicalSha256(operation)) ||
     operation.phaseId !== input.phase.id || input.plan.phaseId !== input.phase.id ||
-    input.plan.scope !== 'activation' || Date.parse(input.plan.expiresAt) <= now.getTime()) {
+    input.plan.scope !== phaseScope(input.phase.id) || Date.parse(input.plan.expiresAt) <= now.getTime()) {
     throw new GitHubActivationError('stale-approval', 'The exact GitHub operation is absent from the reviewed activation plan, has changed, or has expired.');
   }
   if (input.plan.configuration && canonicalSha256(input.plan.configuration) !== canonicalSha256(input.inspection.activationInputs)) {

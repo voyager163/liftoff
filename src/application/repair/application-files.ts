@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { constants, type Stats } from 'node:fs';
-import { lstat, open, opendir, realpath } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
+import { lstat, opendir, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
+import { ObservedFileError, observedFileStamp as stamp, readObservedFile } from '../../adapters/filesystem/observed-file.js';
 import { validateArtifactPathParts } from '../../domain/project/paths.js';
 import {
   applicationBounds, type ApplicationDirectoryObservation, type ApplicationEntryKind
@@ -127,9 +128,6 @@ export function applicationExclusion(
 }
 
 const missing = (error: unknown): boolean => (error as NodeJS.ErrnoException).code === 'ENOENT';
-const stamp = (details: Stats): string => [
-  details.dev, details.ino, details.mode, details.nlink, details.size, details.mtimeMs, details.ctimeMs
-].join(':');
 const entryKind = (entry: { isSymbolicLink(): boolean; isDirectory(): boolean; isFile(): boolean }): ApplicationEntryKind =>
   entry.isSymbolicLink() ? 'symlink' : entry.isDirectory() ? 'directory' : entry.isFile() ? 'file' : 'other';
 
@@ -253,32 +251,16 @@ export class ApplicationFiles {
       if (before.size > limit || this.totalBytes + before.size > applicationBounds.totalBytes) {
         throw new ApplicationInspectionError(`${key}: application file or total byte bound exceeded.`);
       }
-      const handle = await open(target, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
-      try {
-        const opened = await handle.stat();
-        if (stamp(opened) !== stamp(before) || !opened.isFile() || opened.nlink !== 1) {
-          throw new ApplicationInspectionError(`${key}: file changed before inspection.`);
-        }
-        const buffer = Buffer.alloc(before.size + 1);
-        let bytes = 0;
-        while (bytes < buffer.length) {
-          const result = await handle.read(buffer, bytes, buffer.length - bytes, bytes);
-          if (!result.bytesRead) break;
-          bytes += result.bytesRead;
-        }
-        const after = await handle.stat();
-        const current = await lstat(await this.confined(parts));
-        if (bytes !== before.size || stamp(after) !== stamp(before) || stamp(current) !== stamp(before)) {
-          throw new ApplicationInspectionError(`${key}: file changed during inspection.`);
-        }
-        snapshot.content = Buffer.from(buffer.subarray(0, bytes));
-        snapshot.mode = before.mode & 0o7777;
-        this.totalBytes += bytes;
-        this.stamps.set(key, stamp(current));
-      } finally {
-        await handle.close();
-      }
+      const observed = await readObservedFile(target, {
+        maximumBytes: limit, expected: before,
+        assertPathCurrent: () => this.confined(parts)
+      });
+      snapshot.content = observed.content;
+      snapshot.mode = before.mode & 0o7777;
+      this.totalBytes += observed.content.length;
+      this.stamps.set(key, stamp(observed.metadata));
     } catch (error) {
+      if (error instanceof ObservedFileError) throw new ApplicationInspectionError(`${key}: ${error.message}`);
       if (!missing(error)) throw error;
       if (observedPresent) throw new ApplicationInspectionError(`${key}: file disappeared during inspection.`);
     }

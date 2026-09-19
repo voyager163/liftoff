@@ -47,13 +47,17 @@ export function parseApplicationPreparation(value: unknown): ApplicationPreparat
 
 function publicUrl(value: unknown, source: ApplicationPackageSourceId): string {
   if (typeof value !== 'string' || value.length > 2048) reject('unsupported-package-source', 'Package artifact URLs must be bounded HTTPS URLs.');
+  // WHATWG parsing removes encoded dot segments and normalizes backslashes and controls.
+  if (/[\\\u0000-\u0020\u007f]/u.test(value) || /%(?:2f|5c|2e|00)/iu.test(value) ||
+      /(?:^|\/)\.{1,2}(?:\/|$)/u.test(value)) {
+    reject('unsupported-package-source', 'Escaping or noncanonical package artifact URL syntax is unsupported.');
+  }
   let url: URL;
   try { url = new URL(value); }
   catch { reject('unsupported-package-source', 'A package artifact source is not a supported URL.'); }
   const origins: readonly string[] = applicationPackageSources[source].artifactOrigins;
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
-      !origins.includes(url.origin) || /%(?:2f|5c|2e|00)/iu.test(url.pathname) ||
-      /(?:^|\/)\.{1,2}(?:\/|$)/u.test(value) ||
+      !origins.includes(url.origin) ||
       url.pathname.split('/').some((part) => part === '..' || part === '.')) {
     reject('unsupported-package-source', 'Authenticated, queried, escaping, local, VCS, and unregistered package URLs are unsupported.');
   }
@@ -325,7 +329,7 @@ function goInputs(manifest: Buffer, lock: Buffer) {
 }
 
 export function resolveApplicationPreparationInputs(
-  candidate: ApplicationPatchCandidate, requests: readonly ApplicationPreparationRequest[]
+  candidate: import('./application-types.js').ApplicationCandidate, requests: readonly ApplicationPreparationRequest[]
 ): ApplicationResolvedPreparation[] {
   const files = new Map(applicationCandidateFiles(candidate).filter((item) => item.content !== undefined)
     .map((item) => [applicationPathKey(item.pathParts), item]));

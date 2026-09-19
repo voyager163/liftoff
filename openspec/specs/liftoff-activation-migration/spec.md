@@ -5,13 +5,23 @@ Provide a reviewed, history-preserving path from explicitly supported historical
 ## Requirements
 
 ### Requirement: Migration eligibility is an explicit contract distinct from execution compatibility
-The system SHALL recognize activation-record migration only through exact source and target identities declared by the installed release. It SHALL provide reviewed successor lanes from the supported historical v1 family and v2 family to activation package `0.12.0`, manifest artifact 7, policy 6, activation contract 3, graph schema 2, state/evidence/approval schemas 3, and compatibility metadata 4. Unchanged supersession and credential-policy representations SHALL remain schema 1. Source tuples and graph hashes SHALL match their actual published contracts; target graph hashes SHALL be computed from the implemented graph, not invented or inferred from CLI SemVer. Eligibility SHALL not make historical state, evidence, or approval executable.
+The system SHALL recognize activation-record migration only through exact source and target identities declared by the installed release. It SHALL provide reviewed successor lanes from the supported historical v1, v2 and v3 families and the exact pre-amendment policy-7/credential-policy-schema-1 candidate to the coordinated activation family with manifest artifact 8, policy 8, activation contract 4, graph schema 3, state/evidence/approval schemas 4, compatibility metadata 5 and credential-policy schema 2. Unchanged supersession representation SHALL remain schema 1. Source tuples and graph hashes SHALL match actual published contracts or the explicitly retained pre-amendment candidate identity; the target activation package identity SHALL be declared explicitly and its graph hash computed from the implemented graph, not invented or inferred from CLI SemVer. Eligibility SHALL NOT make historical state, evidence or approval executable.
 
 Unknown, mixed-active, future, malformed, unversioned, or unsupported sources SHALL remain blocked without conversion. Project-edited compatibility metadata SHALL not add migration lanes. A valid retained history from an earlier migration SHALL not be mistaken for a mixed active identity.
 
+#### Scenario: The prior policy-7 candidate requests the amended target
+- **WHEN** a project matches the exact registered pre-amendment candidate tuple and schema-1 credential policy
+- **THEN** preview identifies a separate history-preserving identity/policy transition with its exact writes and broader-read disclosure
+- **AND** matching activation-contract number 4, original approval or ordinary core maintenance cannot authorize the broader provider grant
+
+#### Scenario: Credential policy transitions without inherited authority
+- **WHEN** the identity transition is separately approved
+- **THEN** original policy, approval and ownership records remain byte-preserved and new credential use still requires independently observed grants and fresh exact credential approval
+- **AND** publication is not repeated, retention obligations are not reset and a schema-1 receipt is not relabeled as schema-2 proof
+
 #### Scenario: Known v1 has a supported successor
 - **WHEN** a supported project's historical records satisfy the exact packaged v1 source contract
-- **THEN** `liftoff update --check` identifies the source and declared v3 successor
+- **THEN** `liftoff update --check` identifies the source and declared v4 successor
 - **AND** v1 execution remains blocked until an approved successor is established
 - **AND** no executable v2 intermediate or retagged v1 proof is required to reach the declared target
 
@@ -26,22 +36,32 @@ Unknown, mixed-active, future, malformed, unversioned, or unsupported sources SH
 - **AND** force cannot bypass that boundary
 
 #### Scenario: Current v2 does not need historical migration
-- **WHEN** a v2 project receives same-contract managed-core maintenance rather than a requested v3 execution upgrade
+- **WHEN** a supported v2 project requests explicitly registered same-contract managed-core maintenance rather than a new execution contract
 - **THEN** maintenance does not create a successor solely because the CLI patch version changed
-- **AND** execution under the new v3 contract still requires its declared approved successor
+- **AND** execution under v4 still requires its declared approved successor
 
 #### Scenario: Known v2 upgrades to the revised execution contract
 - **WHEN** the source matches the supported `0.11.0` activation family, contract 2, graph schema 1, and state/evidence/approval schemas 2
-- **THEN** preview offers the exact declared v2-to-v3 lane after validating the complete source identity and records
+- **THEN** preview offers the exact declared v2-to-v4 lane after validating the complete source identity and records
 - **AND** the old active graph, receipts, approvals, and history remain non-executable source data for that migration
 
+#### Scenario: Known v3 upgrades to the revised execution contract
+- **WHEN** the source matches the published 0.12.0 activation package family used by CLI 0.12.x, contract/state/evidence/approval 3 and graph 2
+- **THEN** preview offers the explicit v3-to-v4 lane after validating its exact tuple and records
+- **AND** an unrelated native CLI installation does not itself authorize the migration
+
 #### Scenario: Current v3 needs only core maintenance
-- **WHEN** the active project already uses the exact supported v3 identity and has only ordinary managed-core drift
-- **THEN** the existing reviewed core-update lane applies without a duplicate activation successor or history snapshot
+- **WHEN** the active v3 project requests maintenance that is explicitly registered as compatible with its existing identity rather than a v4 execution upgrade
+- **THEN** check distinguishes that maintenance from successor creation without duplicating activation history
+- **AND** a current write that requires v4 remains blocked until its separate declared migration is approved
+
+#### Scenario: Current v4 needs only core maintenance
+- **WHEN** the active project already uses the exact supported v4 identity and has ordinary managed-core drift
+- **THEN** the reviewed core-update lane applies without a duplicate successor or history snapshot
 
 #### Scenario: No activation has started
 - **WHEN** a supported project has no activation state, evidence, approvals, or other active execution records
-- **THEN** it is not presented as an existing v1/v2 activation requiring invented historical state
+- **THEN** it is not presented as an existing historical activation requiring invented source state
 - **AND** managed metadata can follow its supported update path while new execution state is created only by an explicit current-contract operation
 
 #### Scenario: Activation state is absent but active receipts remain
@@ -52,12 +72,14 @@ Unknown, mixed-active, future, malformed, unversioned, or unsupported sources SH
 ### Requirement: The normal update preview describes the complete migration
 Activation-record migration SHALL remain exposed through `liftoff update --check` and explicitly approved `liftoff update`, not a new activation-migration command. Preview SHALL show exact source/target identities, required managed changes, historical records to preserve and retire from active collections, local successor writes, finite revalidation, known gaps, and the next separately authorized stage. It SHALL preserve project bytes and disclose any external preview receipt. Missing tools or incomplete current proof SHALL remain distinct from invalid source format.
 
+Preview SHALL also disclose publication revalidation eligibility and subsequent separately authorized scopes. Installation migration and provider work SHALL NOT join the approved migration fingerprint, and identity migration SHALL NOT be an implicit installer action or destructive alias for project adoption.
+
 The approved fingerprint SHALL bind the resolved project, source record digests, target graph/contract, exact write inventory, and local verification scope. A configuration request to add an agent, change its default, or provision another component SHALL not silently become part of the identity migration.
 
 #### Scenario: User reviews the human-first path
-- **WHEN** an eligible v1 or v2 project is checked
-- **THEN** a readable preview identifies the declared v3 successor, preserved history, fresh-proof work, and exact approval/apply sequence
-- **AND** JSON is not required to review or proceed
+- **WHEN** an eligible historical project is checked
+- **THEN** a readable preview identifies the declared v4 successor, preserved history, fresh-proof work, and exact approval/apply sequence
+- **AND** JSON or manual fingerprint entry is not required for normal interactive review
 
 #### Scenario: A known revalidation gap exists
 - **WHEN** source metadata can be migrated but a required local prerequisite or proof cannot currently be established
@@ -75,7 +97,7 @@ The approved fingerprint SHALL bind the resolved project, source record digests,
 - **AND** formatting or force flags do not supply missing authorization
 
 ### Requirement: Historical snapshots preserve exact bytes through a portable explicit inventory
-Before replacing active v1/v2 records, an approved migration SHALL create and verify a durable activation-history snapshot inside the project's registered governance history namespace. The index SHALL identify original identity, original and stored-copy portable paths, raw-byte digests, and recorded modes for the exact reviewed manifests, activation state, evidence, plans, approvals, and source/migration metadata. Reads, copies, replacements, and retirements SHALL use explicit recorded inventories, never broad directory ownership or deletion patterns.
+Before replacing active historical records, an approved migration SHALL create and verify a durable activation-history snapshot inside the project's registered governance history namespace. The index SHALL identify original identity, original and stored-copy portable paths, raw-byte digests, and recorded modes for the exact reviewed manifests, activation state, evidence, plans, approvals, and source/migration metadata. Reads, copies, replacements, and retirements SHALL use explicit recorded inventories, never broad directory ownership or deletion patterns.
 
 Existing referenced histories SHALL be validated and retained without rewriting their bytes. Activation-history storage SHALL not become a destination for OpenTofu state, credential values, encryption keys, or sensitive provider plans. Unsafe source payloads SHALL produce a sanitized preservation blocker rather than be silently rewritten or copied into public history.
 
@@ -110,8 +132,13 @@ Existing referenced histories SHALL be validated and retained without rewriting 
 
 #### Scenario: A v2 source already retains v1 history
 - **WHEN** a valid v2 source references an earlier preserved v1 snapshot
-- **THEN** the v3 successor retains verifiable source-history relationships without rewriting or merging that earlier snapshot into active proof
+- **THEN** the v4 successor retains verifiable source-history relationships without rewriting or merging that earlier snapshot into active proof
 - **AND** a damaged ancestor link is reported rather than replaced with a clean invented lineage
+
+#### Scenario: A v3 source retains earlier migration history
+- **WHEN** a supported v3 source references verified v1 or v2 ancestor history
+- **THEN** its v4 successor preserves the complete validated ancestry without rewriting or merging historical proof
+- **AND** a damaged ancestor remains an explicit blocker
 
 #### Scenario: A source record contains an unsafe payload
 - **WHEN** a purported activation record includes a credential value, OpenTofu state payload, or other prohibited sensitive content
@@ -119,14 +146,14 @@ Existing referenced histories SHALL be validated and retained without rewriting 
 - **AND** it does not sanitize the bytes and call the result a byte-preserving migration
 
 ### Requirement: A successor is created by a narrow recoverable local transaction
-The system SHALL require a matching preview and explicit approval before creating the v3 successor. The local transaction SHALL bind and preflight the exact managed-core, history, active-state, manifest, and migration-record inventory, preserve source history before retiring originals, and commit a strict target identity linked to that history. Links SHALL identify source/target contracts, approved plan, snapshot, and local execution identity without relabeling source records.
+The system SHALL require a matching preview and explicit approval before creating the v4 successor. The local transaction SHALL bind and preflight the exact managed-core, history, active-state, manifest, and migration-record inventory, preserve source history before retiring originals, and commit a strict target identity linked to that history. Links SHALL identify source/target contracts, approved plan, snapshot, and local execution identity without relabeling source records.
 
 New or changed phases SHALL not inherit verified or approved status from old checkboxes or receipts. Unknown applicability SHALL remain unknown. A valid source-local anchor SHALL be preserved according to the declared mapping, or a new local anchor SHALL be established without trusting a historical remote identifier. Concurrent changes SHALL invalidate protected preconditions.
 
 #### Scenario: Migration commits coherently
 - **WHEN** an approved eligible transaction commits
-- **THEN** active manifest, v3 state, managed graph, and migration record agree with the declared target
-- **AND** preserved v1/v2 snapshots remain separate from current execution proof
+- **THEN** active manifest, v4 state, managed graph, and migration record agree with the declared target
+- **AND** preserved v1/v2/v3 snapshots remain separate from current execution proof
 
 #### Scenario: Required target managed files conflict
 - **WHEN** required target metadata cannot be safely installed under the approved plan
@@ -149,7 +176,7 @@ New or changed phases SHALL not inherit verified or approved status from old che
 - **AND** the metadata migration does not contact or mutate that remote destination
 
 #### Scenario: The target graph adds or reorders phases
-- **WHEN** v3 introduces bootstrap workflow, artifact, approval, or lifecycle behavior absent from the source contract
+- **WHEN** v4 introduces repository-only scope or changes bootstrap workflow, artifact, phase-input/proof, approval, or lifecycle behavior absent from the source contract
 - **THEN** target progress is initialized according to its declared mapping and current proof requirements
 - **AND** a similarly named historical phase is not treated as proof of the new behavior
 
@@ -158,19 +185,21 @@ After the local successor commits, migration SHALL execute only the finite local
 
 Identity migration SHALL NOT implicitly install tools or application dependencies, replace project templates, recreate archives/resources, publish Git history, enroll credentials, access providers or sensitive OpenTofu state, migrate backends, or perform live mutations. If completion needs another effect scope, it SHALL name the separately authorized action and stop automatic migration revalidation at that boundary.
 
+Publication readback for an affected v3 project SHALL use the separate reviewed revalidation scope rather than expand automatic local migration authority.
+
 #### Scenario: Existing local work remains valid
 - **WHEN** approved current checks validate existing seed, baseline, or archived artifacts
-- **THEN** fresh v3 evidence records the actual result without regenerating the application or replaying completed archival work
+- **THEN** fresh v4 evidence records the actual result without regenerating the application or replaying completed archival work
 
 #### Scenario: Historical success cannot be established now
-- **WHEN** a v1/v2 phase was marked verified but current checks cannot establish its required proof
+- **WHEN** a historical phase was marked verified but current checks cannot establish its required proof
 - **THEN** the target remains incomplete or blocked
 - **AND** a translated flag, copied receipt, or new header hash is not accepted instead
 
 #### Scenario: Old approval exists for a later action
 - **WHEN** source history contains publication, credential, billed, destructive, stateful, or enforcement approval
 - **THEN** it remains audit data
-- **AND** v3 effects require the applicable current approval rather than expanded historical consent
+- **AND** v4 effects require the applicable current approval rather than expanded historical consent
 
 #### Scenario: A live resource already exists
 - **WHEN** further progress requires current provider observation, adoption, or mutation
@@ -188,10 +217,10 @@ Identity migration SHALL NOT implicitly install tools or application dependencie
 - **AND** the expired approval cannot authorize target execution
 
 ### Requirement: Committed migration and revalidation readiness have separate outcomes
-The local commit outcome SHALL be persisted separately from revalidation. If post-commit checks fail, lack prerequisites, or are interrupted, the v3 successor SHALL remain active and resumable with its source history intact. Update SHALL return exit 2 for committed-but-incomplete revalidation rather than claim completed setup/activation or automatically restore v1/v2.
+The local commit outcome SHALL be persisted separately from revalidation. If post-commit checks fail, lack prerequisites, or are interrupted, the v4 successor SHALL remain active and resumable with its source history intact. Update SHALL return exit 2 for committed-but-incomplete revalidation rather than claim completed setup/enforcement/activation or automatically restore historical active records.
 
 #### Scenario: A local check fails after migration
-- **WHEN** history and the v3 successor commit but an approved local check fails
+- **WHEN** history and the v4 successor commit but an approved local check fails
 - **THEN** output identifies the committed migration, actual failed phase/operation, and supported remedy
 - **AND** original history and valid target progress are retained
 
@@ -210,7 +239,7 @@ The local commit outcome SHALL be persisted separately from revalidation. If pos
 - **AND** it does not offer source retirement or successor creation as if they had not occurred
 
 ### Requirement: Resume identifies the first genuinely incomplete supported phase
-After migration, current proof and validated applicability SHALL determine the next incomplete or plannable operation under the requested scope. Status, resume, and verify SHALL remain read-only and distinguish identity migration, local completion, full activation, OpenTofu-state migration, and lifecycle work. Automatic update continuation SHALL end at its finite approved local boundary, changed inputs, or work requiring separate authority.
+After migration, current proof and validated applicability SHALL determine the next incomplete or plannable operation under the requested scope. Status, resume, and verify SHALL remain read-only and distinguish identity migration, local completion, repository enforcement, full activation, OpenTofu-state migration, and lifecycle work. Automatic update continuation SHALL end at its finite approved local boundary, changed inputs, or work requiring separate authority.
 
 #### Scenario: Earlier phases have fresh evidence
 - **WHEN** revalidation establishes valid current proof for earlier work
@@ -228,14 +257,14 @@ After migration, current proof and validated applicability SHALL determine the n
 
 #### Scenario: Local revalidation completes during the full setup journey
 - **WHEN** the native setup integration finishes the identity-upgrade boundary and local requirements
-- **THEN** it can present the next separately approved activation or stateful-repair stage
+- **THEN** it can present the next separately approved repository, activation, or stateful-repair stage
 - **AND** the update operation does not execute that stage implicitly
 
 ### Requirement: Historical records remain separate from current proof across consumers
-Update, doctor, governance status/readiness/verify, and assessment SHALL use the same validated relationship between source history, migration records, and the active v3 successor. Preserved v1/v2 history SHALL be informational, not executable proof and not a blanket reason to reject valid current progress. Invalid links, malformed active data, and contradictory equally authoritative proof SHALL remain explicit errors; no consumer SHALL reset the project or fall back to history as current state.
+Update, doctor, governance status/readiness/verify, and assessment SHALL use the same validated relationship between source history, migration records, and the active v4 successor. Preserved v1/v2/v3 history SHALL be informational, not executable proof and not a blanket reason to reject valid current progress. Invalid links, malformed active data, and contradictory equally authoritative proof SHALL remain explicit errors; no consumer SHALL reset the project or fall back to history as current state.
 
 #### Scenario: Valid history coexists with current evidence
-- **WHEN** a v3 project retains valid v1/v2 source history and current target evidence
+- **WHEN** a v4 project retains valid v1/v2/v3 source history and current target evidence
 - **THEN** consumers evaluate current readiness from target proof and report history separately
 
 #### Scenario: A declared history link is corrupt
@@ -243,13 +272,13 @@ Update, doctor, governance status/readiness/verify, and assessment SHALL use the
 - **THEN** consumers report the broken relationship without manufacturing replacement history or accessing an unsafe path
 
 #### Scenario: Current evidence is malformed
-- **WHEN** active v3 proof is malformed or contradicts equally authoritative current records
+- **WHEN** active v4 proof is malformed or contradicts equally authoritative current records
 - **THEN** dependent readiness remains blocked even if source history reports success
 
 #### Scenario: Manifest writer differs from activation identity
 - **WHEN** the source manifest's last-writing CLI version differs from its activation package family
 - **THEN** consumers use the exact activation contract and source records to select the lane
-- **AND** a CLI version label alone does not establish the source or target execution identity
+- **AND** a CLI version label or installation channel alone does not establish the source or target execution identity
 
 ### Requirement: Identity migration preserves protective lifecycle obligations
 Migration SHALL preserve validated source-local identity relationships and historical safety obligations without promoting them into current execution authority. Retained/frozen/disposed material, original retention start or due timestamps, and referenced ownership restrictions SHALL not be reset, relaxed, or recreated merely by changing activation versions. Current lifecycle execution SHALL require its own validated scope and approval; uncertainty SHALL retain the protective restriction.
@@ -280,3 +309,48 @@ The CLI SHALL state that the successor transaction changes Liftoff control recor
 - **WHEN** a subsequent repair needs sensitive OpenTofu state to establish mappings
 - **THEN** the existing identity-migration approval does not authorize the read
 - **AND** the CLI presents the separate exact protected-inspection scope
+
+### Requirement: Affected v3 publication has an explicit reviewed revalidation path
+An affected schema-3 project whose completed publication was invalidated by later Azure-only inputs SHALL have a supported plan that preserves historical records, declares the new input-binding semantics and identifies finite publication readback. After explicit approval of required read scopes, the engine SHALL verify the actual recorded local commit, repository and remote ref, then append current linked evidence only for established facts. It SHALL NOT recommit, repush, fabricate receipts or silently accept old hashes under the new algorithm.
+
+#### Scenario: Published facts are unchanged after Azure inputs are added
+- **WHEN** a valid historical v3 project has completed local setup and matching actual local/remote publication but Azure configuration made its old evidence stale
+- **THEN** the public preview exposes an executable reviewed migration/revalidation path with its exact effects and configuration binding
+- **AND** successful revalidation permits Phase 0 planning with the real Azure inputs without another commit or push solely to repair that mismatch
+
+#### Scenario: The real remote ref changed
+- **WHEN** readback no longer matches the reviewed publication
+- **THEN** revalidation refuses to certify that publication
+- **AND** it neither force-pushes nor edits old receipts to hide the change
+
+#### Scenario: Local migration bookkeeping is not published
+- **WHEN** the compatibility transaction writes new local control metadata while the recorded Git commit remains unchanged
+- **THEN** the report distinguishes verified historical publication facts from unpushed new local changes
+- **AND** later publication of actual new content requires its own plan and approval
+
+#### Scenario: Readback permission is unavailable
+- **WHEN** the required repository/ref cannot be observed within authorized scope
+- **THEN** migration reports the revalidation blocker and preserves all history
+- **AND** a stored verified flag or inferred repository name does not substitute for readback
+
+#### Scenario: Revalidation is repeated after success
+- **WHEN** the same successor and current publication evidence remain valid
+- **THEN** the engine reports the established result without duplicate writes or publication
+
+#### Scenario: Input path or project context changes
+- **WHEN** an approved revalidation was bound to an input file or project with spaces on Windows, macOS or Linux
+- **THEN** its structured continuation resolves the same canonical target and configuration
+- **AND** changed input bytes or ambiguous path aliases require new review
+
+### Requirement: Repository-only migration preserves full-activation obligations
+Selecting repository scope during or after migration SHALL NOT erase historical activation, state-retention or disposal obligations, grant cloud authority, or transform incomplete production phases into success. Repository enforcement and its main hold SHALL be recorded independently from full-activation progress.
+
+#### Scenario: Historical retained state exists
+- **WHEN** a migrated project completes only repository enforcement while historical state-retention obligations remain
+- **THEN** the original ownership and due-time restrictions remain visible and unchanged
+- **AND** no state is used, disposed or declared unnecessary merely because repository scope was selected
+
+#### Scenario: Full activation is requested later
+- **WHEN** repository-only enforcement is already verified
+- **THEN** full activation requires its own current inputs, qualification and approvals
+- **AND** lifting the main hold requires real qualifying evidence and a separately reviewed reconciliation

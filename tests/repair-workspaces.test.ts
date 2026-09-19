@@ -1,8 +1,6 @@
-import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   createRepairVerificationWorkspace, inspectRepairVerificationWorkspaces, recoverRepairVerificationWorkspaces,
@@ -19,9 +17,10 @@ import {
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
+import { NodeCommandRunner, type CommandResult } from '../src/process-runner.js';
 
-const execute = promisify(execFile);
 const roots: string[] = [];
+const retained = new Set<string>();
 const activity = {
   kind: 'verification' as const, commandDigest: canonicalSha256('reviewed command'),
   network: false, lifecycle: false
@@ -29,7 +28,9 @@ const activity = {
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  for (const root of roots.splice(0)) {
+    if (!retained.has(root)) await rm(root, { recursive: true, force: true });
+  }
 });
 
 async function tree(root: string): Promise<Record<string, string>> {
@@ -43,13 +44,12 @@ async function tree(root: string): Promise<Record<string, string>> {
 }
 
 async function fixture() {
-  const directory = path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
+  const directory = await mkdtemp(path.resolve('.repair-workspaces-'));
   roots.push(directory);
   const repository = path.join(directory, 'repository');
   const project = path.join(repository, 'Project with spaces');
   const staging = path.join(directory, 'patch staging');
   const home = path.join(directory, 'home');
-  await mkdir(directory);
   await Promise.all([mkdir(path.join(repository, '.git'), { recursive: true }),
     mkdir(project, { recursive: true }), mkdir(staging), mkdir(home)]);
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{invalid manifest: this service must not read it}\n');
@@ -130,15 +130,30 @@ describe('private repair workspace registration', () => {
       device: expect.any(String), inode: expect.any(String), birthtime: expect.any(String)
     }));
     await handle.checkpoint('copying');
-    const value = await handle.runOwned(activity, async () => {
-      const registered = await recordFor(f, handle);
-      expect(registered.record.activities).toMatchObject({ started: 1, settled: 0 });
-      expect(registered.record.activities.inFlight).toHaveLength(1);
-      await execute(process.execPath, ['-e', "require('node:fs').writeFileSync('effect.txt', 'approved private effect\\n')"], {
-        cwd: handle.roles.project, timeout: 5_000, maxBuffer: 1024
+    let commandResult: CommandResult | undefined;
+    let value: number;
+    try {
+      value = await handle.runOwned(activity, async () => {
+        const registered = await recordFor(f, handle);
+        expect(registered.record.activities).toMatchObject({ started: 1, settled: 0 });
+        expect(registered.record.activities.inFlight).toHaveLength(1);
+        commandResult = await new NodeCommandRunner().run({
+          executable: process.execPath,
+          args: ['-e', "require('node:fs').writeFileSync('effect.txt', 'approved private effect\\n')"]
+        }, {
+          cwd: handle.roles.project, timeoutMs: 5_000, maxOutputBytes: 1024,
+          env: { SystemRoot: process.env.SystemRoot },
+          ensureProcessTreeSettled: true
+        });
+        if (commandResult.processTreeSettled !== true) retained.add(f.directory);
+        return { value: 42, allKnownCommandsSettled: commandResult.processTreeSettled === true };
       });
-      return { value: 42, allKnownCommandsSettled: true };
-    });
+    } catch (error) {
+      if (commandResult?.processTreeSettled !== true) retained.add(f.directory);
+      throw new Error(`Native workspace execution failed; cwd length=${handle.roles.project.length}, code=${commandResult?.errorCode ?? 'no-result'}, retained=${retained.has(f.directory)}; ${commandResult?.errorMessage ?? 'No runner diagnostic.'}`, { cause: error });
+    }
+    expect(commandResult?.status, `${commandResult?.errorCode ?? ''}: ${commandResult?.errorMessage ?? ''}; cwd length=${handle.roles.project.length}`).toBe(0);
+    expect(await readFile(path.join(handle.roles.project, 'effect.txt'), 'utf8')).toBe('approved private effect\n');
     expect(value).toBe(42);
     await handle.checkpoint('verified');
     await handle.releaseOwner();
@@ -169,6 +184,33 @@ describe('private repair workspace registration', () => {
       status: 'absent', cleanupComplete: true, results: [], issues: []
     });
     expect(await tree(f.directory)).toEqual(before);
+  });
+
+  it.runIf(process.platform === 'win32')('preserves over-limit workspace records and recovers only through their original storage', async () => {
+    const f = await fixture();
+    const originalStorage = {
+      ...f.storage, env: { LOCALAPPDATA: path.join(f.home, 'long-state-location-'.repeat(3)) }
+    };
+    const handle = await createRepairVerificationWorkspace(f.project, f.request, originalStorage);
+    expect(handle.roles.project.length).toBeGreaterThan(258);
+    const originalBytes = await tree(f.home);
+    const result = await new NodeCommandRunner().run({
+      executable: process.execPath,
+      args: ['-e', "require('node:fs').writeFileSync('must-not-exist.txt', 'unapproved')"]
+    }, { cwd: handle.roles.project, ensureProcessTreeSettled: true, timeoutMs: 5_000 });
+    expect(result).toMatchObject({
+      status: null, errorCode: 'WINDOWS_CWD_TOO_LONG', processSpawned: false, processTreeSettled: true
+    });
+    expect(await tree(f.home)).toEqual(originalBytes);
+    const shorterStorage = { ...f.storage, env: { LOCALAPPDATA: path.join(f.home, 'state') } };
+    expect((await inspectRepairVerificationWorkspaces(f.project, shorterStorage)).status).toBe('absent');
+    expect((await recoverRepairVerificationWorkspaces(f.project, shorterStorage)).status).toBe('absent');
+    expect(await tree(f.home)).toEqual(originalBytes);
+    expect((await inspectRepairVerificationWorkspaces(f.project, originalStorage)).workspaces[0])
+      .toMatchObject({ workspaceId: handle.workspaceId, owner: 'active', commandsStarted: 0 });
+    await handle.releaseOwner();
+    expect((await recoverRepairVerificationWorkspaces(f.project, originalStorage)).cleanupComplete).toBe(true);
+    await expect(lstat(handle.directory)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.each(['project', 'staging'])('rejects storage overlapping %s before private metadata writes', async (which) => {
@@ -491,6 +533,34 @@ describe('record and creation-identity confinement', () => {
 });
 
 describe('cleanup progress and safe recovery', () => {
+  it('stops at the first failed effect and records only completed removals before exact recovery', async () => {
+    const f = await fixture();
+    const effects: string[] = [];
+    let stopAt = '';
+    const handle = await createRepairVerificationWorkspace(f.project, f.request, {
+      ...f.storage,
+      beforeWorkspaceOperation: async (operation, target) => {
+        if (operation !== 'unlink' && operation !== 'rmdir') return;
+        effects.push(target);
+        if (target === stopAt) throw Object.assign(new Error('stop owned deletion'), { code: 'EIO' });
+      }
+    });
+    const files = ['a', 'b', 'c'].map((name) => path.join(handle.roles.cache, name));
+    for (const file of files) await writeFile(file, 'owned bytes retained until deletion succeeds\n');
+    stopAt = files[1];
+    await handle.releaseOwner();
+    const result = await handle.cleanup();
+    expect(result).toMatchObject({ status: 'incomplete', cleanupComplete: false, retained: true, removedEntries: 1 });
+    expect(effects).toEqual(files.slice(0, 2));
+    await expect(lstat(files[0])).rejects.toMatchObject({ code: 'ENOENT' });
+    for (const file of files.slice(1)) expect(await readFile(file, 'utf8')).toBe('owned bytes retained until deletion succeeds\n');
+    expect((await recordFor(f, handle)).record.cleanup).toEqual({ complete: false, removedEntries: 1 });
+    const recovered = await recoverRepairVerificationWorkspaces(f.project, f.storage);
+    expect(recovered).toMatchObject({ cleanupComplete: true, retained: [] });
+    expect((await recordFor(f, handle)).record.cleanup).toEqual({ complete: true, removedEntries: 8 });
+    expect(effects).toEqual(files.slice(0, 2));
+  });
+
   it('cleans a nontrivial private dependency/output inventory without persisting its bytes in records', async () => {
     const f = await fixture();
     const handle = await createRepairVerificationWorkspace(f.project, f.request, f.storage);

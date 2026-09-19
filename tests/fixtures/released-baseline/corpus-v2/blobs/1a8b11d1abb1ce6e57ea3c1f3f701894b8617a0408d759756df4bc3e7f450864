@@ -1,0 +1,77 @@
+{
+	"schemaVersion": 1,
+	"policy": {
+		"profile": "single-maintainer-gitflow",
+		"version": "6",
+		"state": "handoff-generated",
+		"liveEnforcement": "not-active"
+	},
+	"project": {
+		"name": "Flight Log",
+		"safeName": "flight-log",
+		"workload": "standard",
+		"artifactForm": "containerized-api"
+	},
+	"supportedStack": {
+		"id": "historical-stack",
+		"verifiedOn": "2026-08-30",
+		"node": "24.20.0",
+		"npm": "11.9.0",
+		"framework": {
+			"id": "spec-kit",
+			"version": "1.0.0"
+		}
+	},
+	"agents": [
+		"github-copilot"
+	],
+	"framework": {
+		"id": "spec-kit",
+		"version": "1.0.0"
+	},
+	"discovery": {
+		"githubRepository": "undiscovered",
+		"defaultBranch": "undiscovered",
+		"providerStatus": "undiscovered"
+	},
+	"commands": [
+		{
+			"id": "backend-tests",
+			"executable": "npm",
+			"args": [
+				"test"
+			],
+			"cwdPathParts": [
+				"backend"
+			]
+		}
+	],
+	"generatedBoundaries": {
+		"backend": {
+			"state": "generated",
+			"pathParts": [
+				"backend"
+			]
+		},
+		"frontend": {
+			"state": "inapplicable"
+		}
+	},
+	"environments": [
+		"dev",
+		"staging",
+		"prod"
+	],
+	"deployment": {
+		"provider": "azure",
+		"region": "eastus",
+		"liveState": "undiscovered"
+	},
+	"health": [
+		{
+			"component": "backend",
+			"path": "/health",
+			"depth": "shallow"
+		}
+	]
+}

@@ -24,6 +24,12 @@ export const repairRecipes = {
     sourceLayouts: ['azure-flat-root-v1', 'azure-partial-independent-v1'],
     targetLayout: 'azure-independent-roots-v1'
   },
+  'azure-baseline-settings': {
+    id: 'azure-baseline-settings',
+    version: 1,
+    sourceLayouts: ['azure-independent-roots-v1'],
+    targetLayout: 'azure-independent-roots-v1'
+  },
   'application-layout-patch': {
     id: 'application-layout-patch',
     version: 1,
@@ -57,7 +63,7 @@ export function validateRepairExecutionIdentity(value: unknown): RepairExecution
   const recipe = Object.values(repairRecipes).find((entry) =>
     isRecord(value.recipe) && canonicalSha256(entry) === canonicalSha256(value.recipe));
   if (!recipe) {
-    throw new Error('Unsupported repair recipe/layout identity; supported azure-local-layout v1 or application-layout-patch v1 with their exact registered layouts. Use a compatible CLI or request a new preview; do not retag history.');
+    throw new Error('Unsupported repair recipe/layout identity; supported azure-local-layout v1, azure-baseline-settings v1 or application-layout-patch v1 with their exact registered layouts. Use a compatible CLI or request a new preview; do not retag history.');
   }
   return { cliVersion: value.cliVersion, repairContractVersion, recipe };
 }

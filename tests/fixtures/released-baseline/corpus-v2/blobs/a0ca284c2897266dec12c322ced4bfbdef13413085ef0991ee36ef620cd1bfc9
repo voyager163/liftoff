@@ -1,0 +1,10 @@
+module "application" {
+  source                    = "../../modules/application"
+  environment               = var.environment
+  location                  = var.location
+  resource_suffix           = var.resource_suffix
+  backend_image             = var.backend_image
+  backend_target_port       = var.backend_target_port
+  postgres_admin_password   = var.postgres_admin_password
+  enable_private_networking = var.enable_private_networking
+}

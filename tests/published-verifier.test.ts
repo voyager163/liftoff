@@ -5,11 +5,13 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   CANONICAL_NPM_REGISTRY,
+  parseHistoricalVerifierArguments,
   verifyPublishedPackage,
   type PublishedVerifierDependencies
 } from '../src/published-verifier.js';
 
 interface HarnessOptions {
+  packageName?: string;
   packageVersion?: string;
   observedVersion?: string;
   registryUnavailable?: boolean;
@@ -70,14 +72,18 @@ function verifierHarness(options: HarnessOptions = {}): {
         };
       }
       if (command === 'version') {
-        return { status: 0, stdout: 'Liftoff 0.3.3\n', stderr: '' };
+        return {
+          status: 0,
+          stdout: `Liftoff ${options.installedVersion ?? options.packageVersion ?? '0.3.3'}\n`,
+          stderr: ''
+        };
       }
       return { status: 0, stdout: 'Project type: Standard application\n', stderr: '' };
     },
     now: () => state.time,
     wait: async (milliseconds) => { state.time += milliseconds; },
     readJson: async (filePath) => filePath === path.join(process.cwd(), 'package.json')
-      ? { name: '@msn-control/liftoff', version: options.packageVersion ?? '0.3.3' }
+      ? { name: options.packageName ?? '@msn-control/liftoff', version: options.packageVersion ?? '0.3.3' }
       : {
           name: '@msn-control/liftoff',
           version: options.installedVersion ?? options.packageVersion ?? '0.3.3'
@@ -104,7 +110,167 @@ function verifierHarness(options: HarnessOptions = {}): {
   return { dependencies, state };
 }
 
+describe('historical npm verifier arguments', () => {
+  it('selects an immutable historical version rather than a moving tag', () => {
+    expect(parseHistoricalVerifierArguments(['0.12.3'])).toEqual({
+      tag: '0.12.3',
+      historicalVersion: '0.12.3',
+      allowLegacyVersionCommand: false
+    });
+  });
+
+  it.each([
+    ['0.3.3', '--allow-legacy-version-command'],
+    ['--allow-legacy-version-command', '0.3.3']
+  ])('retains the explicit historical compatibility opt-in (%s %s)', (...args) => {
+    expect(parseHistoricalVerifierArguments(args)).toEqual({
+      tag: '0.3.3',
+      historicalVersion: '0.3.3',
+      allowLegacyVersionCommand: true
+    });
+  });
+
+  it.each([
+    { args: [] },
+    { args: ['latest'] },
+    { args: ['next'] },
+    { args: ['0.12.4'] },
+    { args: ['0.13.0'] },
+    { args: ['1.0.0'] },
+    { args: ['0.12.3-beta.1'] },
+    { args: ['0.12.3+build'] },
+    { args: ['v0.12.3'] },
+    { args: ['0.12'] },
+    { args: ['0.012.3'] },
+    { args: ['0.0.9007199254740992'] },
+    { args: ['0.12.3\n'] },
+    { args: [' 0.12.3'] },
+    { args: ['0.12.3', 'latest'] },
+    { args: ['0.12.3', '--unknown'] },
+    { args: ['0.3.3', '--allow-legacy-version-command', '--allow-legacy-version-command'] }
+  ])('rejects unsupported or ambiguous arguments $args', ({ args }) => {
+    expect(() => parseHistoricalVerifierArguments(args)).toThrow();
+  });
+});
+
 describe('published package verifier', () => {
+  it.each(['-latest', 'latest\n', ' latest', 'latest --global'])('rejects invalid retained npm reference %j before effects', async (tag) => {
+    const { dependencies, state } = verifierHarness();
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag
+    }, dependencies)).rejects.toThrow('Invalid npm dist-tag');
+    expect(state.npmCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
+  });
+
+  it('verifies the requested historical release independently of current native source metadata', async () => {
+    const { dependencies, state } = verifierHarness({
+      packageVersion: '0.13.0',
+      observedVersion: '0.12.3',
+      installedVersion: '0.12.3'
+    });
+    const result = await verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      ...parseHistoricalVerifierArguments(['0.12.3'])
+    }, dependencies);
+
+    expect(result).toMatchObject({
+      version: '0.12.3',
+      tag: '0.12.3',
+      legacyVersionCommandAllowed: false
+    });
+    expect(state.npmCalls[0].slice(0, 3)).toEqual([
+      'view', '@msn-control/liftoff@0.12.3', 'version'
+    ]);
+    expect(state.npmCalls[1]).toContain('@msn-control/liftoff@0.12.3');
+    expect(state.npmCalls.flat()).not.toContain('latest');
+    expect(state.nodeCalls.map((args) => args[1])).toEqual(['help', 'upgrade', '--version', 'plan']);
+    expect(state.removed).toBe(true);
+  });
+
+  it('applies the 0.3.3 exception to the requested release, not the verifier checkout', async () => {
+    const { dependencies, state } = verifierHarness({
+      packageVersion: '0.13.0',
+      observedVersion: '0.3.3',
+      installedVersion: '0.3.3'
+    });
+    const result = await verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      ...parseHistoricalVerifierArguments(['0.3.3', '--allow-legacy-version-command'])
+    }, dependencies);
+    expect(result.legacyVersionCommandAllowed).toBe(true);
+    expect(state.nodeCalls.map((args) => args[1])).toEqual(['help', 'plan']);
+  });
+
+  it.each([
+    { tag: 'latest', historicalVersion: '0.12.3' },
+    { tag: '0.3.3', historicalVersion: '0.12.3' },
+    { tag: '0.13.0', historicalVersion: '0.13.0' },
+    { tag: '0.12.4', historicalVersion: '0.12.4' },
+    { tag: '0.12.3-beta.1', historicalVersion: '0.12.3-beta.1' },
+    { tag: '0.12.3', historicalVersion: 'latest' }
+  ])('rejects the mixed or nonhistorical selection $tag/$historicalVersion before effects', async (options) => {
+    const { dependencies, state } = verifierHarness();
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      ...options
+    }, dependencies)).rejects.toThrow(/Historical npm verification/);
+    expect(state.npmCalls).toEqual([]);
+    expect(state.nodeCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
+  });
+
+  it('rejects a mutable historical selection before constructing real process dependencies', async () => {
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag: 'latest',
+      historicalVersion: '0.12.3'
+    })).rejects.toThrow('must select the exact version');
+  });
+
+  it('does not let the retained source-version API treat the native candidate as an npm release', async () => {
+    const { dependencies, state } = verifierHarness({ packageVersion: '0.13.0' });
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag: 'latest'
+    }, dependencies)).rejects.toThrow('Native releases are not published to npm.');
+    expect(state.npmCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
+  });
+
+  it('retains canonical source package validation with an explicit historical selection', async () => {
+    const { dependencies, state } = verifierHarness({
+      packageName: '@other/liftoff',
+      packageVersion: '0.13.0'
+    });
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      ...parseHistoricalVerifierArguments(['0.12.3'])
+    }, dependencies)).rejects.toThrow('Published package identity must be @msn-control/liftoff');
+    expect(state.npmCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
+  });
+
+  it.each([
+    { timeoutMs: -1 },
+    { timeoutMs: Number.NaN },
+    { timeoutMs: Number.POSITIVE_INFINITY },
+    { retryIntervalMs: 0 },
+    { retryIntervalMs: Number.NaN },
+    { retryIntervalMs: Number.POSITIVE_INFINITY }
+  ])('rejects invalid timeout bounds $timeoutMs/$retryIntervalMs before effects', async (options) => {
+    const { dependencies, state } = verifierHarness();
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(),
+      tag: '0.12.3',
+      historicalVersion: '0.12.3',
+      ...options
+    }, dependencies)).rejects.toThrow('must be finite');
+    expect(state.npmCalls).toEqual([]);
+    expect(state.tempRoot).toBeUndefined();
+  });
+
   it('verifies the canonical dist-tag, installed version, and representative commands', async () => {
     const { dependencies, state } = verifierHarness();
     const result = await verifyPublishedPackage({ packageRoot: process.cwd(), tag: 'latest' }, dependencies);

@@ -1,0 +1,394 @@
+{
+  "artifactVersion": 6,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.9.9",
+  "project": {
+    "name": "Frozen v0.9.9 standard",
+    "workload": {
+      "kind": "standard",
+      "apiStack": "node-fastify",
+      "cloud": "azure",
+      "region": "eastus",
+      "frontend": false,
+      "environments": [
+        "dev"
+      ]
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.11.0"
+  },
+  "governance": {
+    "profile": "none",
+    "state": "disabled"
+  },
+  "managedArtifacts": [],
+  "projectArtifacts": [
+    {
+      "logicalName": "root-readme",
+      "category": "documentation",
+      "pathParts": [
+        "README.md"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:5f0929b17ee39fdd508605848e310df6693e03527ee634aa5f915c496f61ce7a",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "root-gitignore",
+      "category": "project",
+      "pathParts": [
+        ".gitignore"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:950b1cd8ee12f7f1cd9e6b96cecced438012a3c78fafe3a9100c9b864b71ea95",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "env-example",
+      "category": "configuration",
+      "pathParts": [
+        ".env.example"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:92178e895da246092c3ac48099fbd11833040ee80b75d37ff76af564552ded55",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "backend-dockerfile",
+      "category": "runtime",
+      "pathParts": [
+        "Dockerfile"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:52dde30943fcca989f159a6b7e8c0f9bfc284f7c04431f450aa81eddcb1f2fb0",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "package.json"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:88207207cf58a34117d5a6ded688b867c37af01913bff70e4e019f40f628b916",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-lock",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "package-lock.json"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:da4a7f8f689282e057ee25fb56985381906ec663635ef96ebd0ee46ba3ddac2e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-tsconfig",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "tsconfig.json"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:1bb4e3c6af1cc9e56bb2d4e5a30b0724c95a2cf62ca22114730cc7cf6dc65011",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-drizzle-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "drizzle.config.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:374434a7b6ad97a0446e91df4c637d55fc594cbbe48a5406ee2c71f78ce825c6",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "config.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:2bdf6a6aaa84ab60f2efbfd108d945d26d65c2ac6c2288ced8a7e77cf85f77de",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-app",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "app.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:566973162684a55e8d9a82153ca6ffb000db6fbfb3839be2d5913e764febe22e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-server",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "server.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:25f16f459969a1c080a16aae44a2b7655948e7e48900aed1e86e24c69ceee4c8",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-database",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "database.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:c1795a2fa77d0bc4750998bd6beb6fb9cd19c41c3291ed24953d937157dd506f",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-schema",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "db",
+        "schema.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:82712a0154203358c3df4c27297f98c49e0afa384341000b5827ac2038c6e969",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "node-backend-test-health",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "test",
+        "health.test.ts"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:5163449f8a0a14056e78bc1adde129b856782891f2796047a7bef389d70956bf",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-node-migration",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "0000_initial.sql"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:94c5097fe3e55ada20eaf508cacd00056cf1299677d9ea85994ee32d4204dddc",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-node-migration-journal",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "meta",
+        "_journal.json"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:40300fbc9ab9ccd6dacd6a07d55805e6d6c0a8a7ea3c270dd3dd6e08257900e1",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-node-migration-snapshot",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "meta",
+        "0000_snapshot.json"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:f51ee8ee0b9b3fdd539a0e875418f17f32f1303447ef6faac8942d8019c6efb5",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "database-schema",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "models",
+        "schema.sql"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:395f24a41a20cfc7dbc8e333c8a34c2bd06c5070ad01219d6a397230cf5bb08e",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "environment-dev-backend",
+      "category": "environment",
+      "pathParts": [
+        "environments",
+        "dev",
+        "backend.env"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:92178e895da246092c3ac48099fbd11833040ee80b75d37ff76af564552ded55",
+      "provisioningGroup": "environment:dev"
+    },
+    {
+      "logicalName": "docker-compose",
+      "category": "local-development",
+      "pathParts": [
+        "docker-compose.yml"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:3734d2be1aa4e89e55f7445a67805116a442b763675b4e763861767fb6e02ade",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-versions",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "versions.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-provider-lock",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        ".terraform.lock.hcl"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-providers",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "providers.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:86f53e037a5b8c98f06133e05ce13f7f213f451d1c529e08780ef875abcd012f",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-variables",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "variables.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:7f43ec789e4c25e28a2d7db420a6a58d044be4754f0c13932c9f894280ab46aa",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-main",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "main.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:1bccbbc74d98d43f9d1f51fc9c31a2d6b3cf2ac8d1e7290b44ca6d0756296bed",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-outputs",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "outputs.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:128efc261af4d3060166cb467242eddba2a901cc64df6bb4a3a1089ca8cf636b",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-local-state",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.local.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:f8ce688a69f00cddea7c7427713e4f3cc094fd073d2848629f1dd1ca547a9a8d",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-remote-state-example",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.remote.example.tf"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:af9457a84a1373665ccd17821a81fd4697de67038ae618d4b21227fcda965127",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-readme",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "README.md"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:5903cc0d06b029e9115468ad03a7e7bbc8715c817adcd3455b0ac9be4b270ca6",
+      "provisioningGroup": "base"
+    },
+    {
+      "logicalName": "opentofu-dev-tfvars",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev.tfvars"
+      ],
+      "generatedBy": "0.9.9",
+      "generationHash": "sha256:7847f02f834ffabc2243314d84e9cffd3c738cd91a3eb09019196f87d0c77581",
+      "provisioningGroup": "environment:dev"
+    }
+  ]
+}

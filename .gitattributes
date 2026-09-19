@@ -1,5 +1,9 @@
 # Preserve release-owned asset bytes on every host.
+/assets/** text=auto eol=lf
 /assets/governance/** text eol=lf
 /assets/locks/** text eol=lf
 /assets/repair/** text eol=lf
 /assets/supported-stack.json text eol=lf
+
+# Historical fixtures include byte-exact CRLF, BOM and binary payloads.
+/tests/fixtures/** -text

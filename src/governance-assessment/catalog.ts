@@ -2,10 +2,8 @@ import { readFileSync } from 'node:fs';
 import { canonicalSha256, sha256Hex } from '../domain/governance/activation/canonical-json.js';
 import { canonicalPhaseGraphHash, currentActivationIdentity } from '../domain/governance/activation/graph.js';
 import { liftoffVersion } from '../version.js';
-import {
-  governancePolicyVersion,
-  renderCanonicalGovernancePolicy
-} from '../repository-governance.js';
+import { governancePolicyVersion } from '../domain/governance/policy/content-validation.js';
+import { renderCanonicalGovernancePolicy } from '../application/repository-governance/policy-rendering.js';
 import {
   validateAssessmentCatalog as validateDomainAssessmentCatalog
 } from '../domain/governance/assessment/catalog.js';

@@ -16,18 +16,21 @@ import { addSpecWorkflowArtifacts } from './generators/common/spec-workflow.js';
 import { addStandardStackArtifacts } from './generators/standard/index.js';
 import type { ApiProjectPlan } from './domain/project/contracts.js';
 import { assertImmutableGeneratedContainerReferences } from './container-validation.js';
-import { buildRepositoryGovernanceArtifacts } from './repository-governance.js';
+import { buildRepositoryGovernanceArtifacts } from './application/repository-governance/artifacts.js';
 import { createArtifactAdder } from './generators/common/artifacts.js';
 import { createHash } from 'node:crypto';
-import { currentActivationIdentity } from './governance-activation/graph.js';
+import { currentActivationIdentity } from './domain/governance/activation/graph.js';
 import { ensureTrailingNewline } from './generators/common/artifacts.js';
 import type { GenAiProjectPlan } from './domain/project/contracts.js';
 import type { GeneratedArtifact } from './domain/project/contracts.js';
-import { governancePolicyVersion } from './repository-governance.js';
-import type { LiftoffManifest } from './domain/project/contracts.js';
+import { governancePolicyVersion } from './domain/governance/policy/content-validation.js';
+import type { LiftoffManifest, LiftoffManifestV8, ManifestProvenance, ManifestStandards } from './domain/project/contracts.js';
 import { liftoffVersion } from './version.js';
 import type { ManifestWorkload } from './domain/project/contracts.js';
+import { assertArtifactsSafeBeforeWrite } from './domain/standards/resource-catalog-schema.js';
+import { loadPackagedTemplateCatalog, verifyComponentResourceClosure } from './adapters/packaged-assets/resource-catalog.js';
 import type { ProjectPlan } from './domain/project/contracts.js';
+import { generatedManifestStandards } from './application/project/manifest-provenance.js';
 
 const contentHash = (content: string) => `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 export { AZURE_NAME_LIMITS, buildAzureResourceNames } from './generators/infrastructure/names.js';
@@ -40,7 +43,38 @@ export function resolveGeneratorContext(
   return createGeneratorContext(plan, assets, packagedSupportedStack);
 }
 
-export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = resolveGeneratorContext(plan)): GeneratedArtifact[] {
+export function selectedComponentsForPlan(plan: ProjectPlan): string[] {
+  const selected: string[] = ['common-base'];
+  if (plan.workload === 'standard') {
+    selected.push(`backend-${plan.apiStack.id}`);
+  } else if (plan.workload === 'genai') {
+    selected.push('genai-common');
+    selected.push(`genai-${plan.pattern.id}`);
+  }
+  if (plan.includeFrontend) {
+    selected.push('frontend-vue');
+  }
+  selected.push('infrastructure-azure-opentofu');
+  if (plan.specWorkflow.id === 'openspec') {
+    selected.push('workflow-openspec');
+  } else if (plan.specWorkflow.id === 'spec-kit') {
+    selected.push('workflow-speckit');
+  }
+  if (plan.governanceProfile.id !== 'none') {
+    selected.push('governance-single-maintainer-gitflow');
+  }
+  return selected;
+}
+
+export function composeProjectArtifacts(
+  plan: ProjectPlan,
+  context: GeneratorContext = resolveGeneratorContext(plan)
+): GeneratedArtifact[] {
+  const selectedComponents = selectedComponentsForPlan(plan);
+  verifyComponentResourceClosure(selectedComponents);
+
+  const catalog = loadPackagedTemplateCatalog();
+
   const artifacts: GeneratedArtifact[] = [];
   const addProject = createArtifactAdder(artifacts, 'project', 'base');
   const addDesiredState = createArtifactAdder(artifacts, 'desired-state');
@@ -62,10 +96,47 @@ export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = re
   if (plan.includeFrontend) {
     addFrontendArtifacts(
       createArtifactAdder(artifacts, 'project', 'frontend'),
-      plan
-    , context);
+      plan,
+      context
+    );
   }
   assertImmutableGeneratedContainerReferences(artifacts);
+
+  for (const artifact of artifacts) {
+    const owners = selectedComponents.filter((id) =>
+      Object.hasOwn(catalog.components[id]?.artifactLifecycles ?? {}, artifact.logicalName));
+    if (owners.length !== 1) {
+      throw new Error(`Artifact ${artifact.logicalName} requires exactly one declared selected component owner; found ${owners.length}.`);
+    }
+    const owningComp = owners[0]!;
+    const declaredLifecycle = catalog.components[owningComp]!.artifactLifecycles[artifact.logicalName];
+    if (declaredLifecycle !== artifact.lifecycle) {
+      throw new Error(`Artifact ${artifact.logicalName} lifecycle mismatch: catalog declared ${declaredLifecycle}, but emitted ${artifact.lifecycle}.`);
+    }
+    Object.defineProperty(artifact, 'component', {
+      value: owningComp,
+      enumerable: false,
+      writable: false,
+      configurable: false
+    });
+  }
+
+  // Enforce collision and link safety across all outputs including manifest boundary
+  assertArtifactsSafeBeforeWrite([
+    ...artifacts,
+    {
+      logicalName: 'manifest',
+      category: 'manifest',
+      lifecycle: 'manifest',
+      pathParts: ['liftoff.manifest.json']
+    }
+  ]);
+
+  return artifacts;
+}
+
+export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = resolveGeneratorContext(plan)): GeneratedArtifact[] {
+  const artifacts = composeProjectArtifacts(plan, context);
 
   const manifest = buildManifest(plan, artifacts);
   artifacts.push({
@@ -145,9 +216,20 @@ export function buildManifest(
   options: {
     frameworkState?: 'initialized' | 'legacy';
     projectArtifacts?: LiftoffManifest['projectArtifacts'];
+    provenance?: ManifestProvenance;
+    standards?: ManifestStandards;
   } = {}
-): LiftoffManifest {
+): LiftoffManifestV8 {
   const frameworkState = options.frameworkState ?? 'initialized';
+  if (frameworkState === 'legacy' && !options.provenance) {
+    throw new Error('Legacy framework uncertainty requires preserved original manifest provenance, not a new generation claim.');
+  }
+  if (plan.governanceProfile.id !== 'none' &&
+    (currentActivationIdentity.manifestArtifactVersion !== 8 || currentActivationIdentity.policyVersion !== '8' ||
+      currentActivationIdentity.credentialPolicySchemaVersion !== 2)) {
+    throw new Error('Current manifest generation requires the explicitly registered manifest-8/policy-7 activation family.');
+  }
+  const standards = options.standards ?? generatedManifestStandards(plan);
   const agents = frameworkState === 'initialized' ? plan.agents.map((agent) => agent.id) : [];
   const workload: ManifestWorkload = plan.workload === 'genai'
       ? {
@@ -168,9 +250,15 @@ export function buildManifest(
           environments: plan.environments.map((environment) => environment.id)
         };
   return {
-    artifactVersion: 7,
+    artifactVersion: 8,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
+    standards,
+    provenance: options.provenance ?? {
+      kind: 'generated',
+      origin: { kind: 'catalog', cliVersion: liftoffVersion, standards: structuredClone(standards) },
+      repairs: []
+    },
     project: {
       name: plan.projectName,
       workload,

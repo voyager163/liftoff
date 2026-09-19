@@ -84,7 +84,7 @@ describe('v3 local setup boundary', () => {
       const executed = await cli(root, runner, 'apply-next', ['--execute']);
       expect(executed.code, executed.text).toBe(0);
       expect(executed.value).toMatchObject({
-        schemaVersion: 2, scope: 'local', applied: true,
+        schemaVersion: 3, scope: 'local', applied: true,
         executedPhase: phase, nextReadyPhase: phases[index + 1] ?? null
       });
     }
@@ -128,7 +128,7 @@ describe('v3 local setup boundary', () => {
     await writeFile(path.join(root, 'governance', 'activation-state.json'), '{"schemaVersion":3,"schemaVersion":3}');
     const failed = await cli(root, runner, 'verify');
     expect(failed.code).toBe(1);
-    expect(failed.value).toMatchObject({ schemaVersion: 2, scope: 'local', complete: false, consistent: false, nextActions: [] });
+    expect(failed.value).toMatchObject({ schemaVersion: 3, scope: 'local', complete: false, consistent: false, nextActions: [] });
   });
 
   it('withholds sensitive diagnostics from a failed local command', async () => {
@@ -143,7 +143,7 @@ describe('v3 local setup boundary', () => {
     expect(await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8')).not.toContain('private-fixture-value');
   });
 
-  it('defaults direct governance inspection to activation and returns an explicit local prerequisite action', async () => {
+  it('defaults to activation while exposing its shared local prerequisite without narrowing the journey', async () => {
     const { root, runner } = await fixture('spec-kit');
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
@@ -151,8 +151,8 @@ describe('v3 local setup boundary', () => {
     expect(code, stdout.text() + stderr.text()).toBe(0);
     const status = JSON.parse(stdout.text());
     expect(status.scope).toBe('activation');
-    expect(status.nextReadyPhase).toBeNull();
-    expect(status.nextActions[0]).toMatchObject({ scope: 'local', approvalRequired: false });
-    expect(status.nextActions[0].command.args).toContain('local');
+    expect(status.nextReadyPhase).toBe('seed-valid');
+    expect(status.nextActions[0]).toMatchObject({ scope: 'activation', approvalRequired: false });
+    expect(status.nextActions[0].command.args).toContain('activation');
   });
 });

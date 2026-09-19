@@ -1,4 +1,4 @@
-import type { LiftoffManifest } from '../contracts.js';
+import type { HistoricalLiftoffManifest, LiftoffManifest, ManifestGeneratedWorkload } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
 import type { ManifestContractContext } from './context.js';
 import { assertOnlyFields, isRecord, optionalString, requiredBoolean, requiredString, SEMVER_PATTERN } from './fields.js';
@@ -7,7 +7,7 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
   const { getApiStack, canonicalizeCodingAgents, getEnvironment, getCodingAgent, getPattern,
     getProvider, getProjectType, getSpecWorkflow, listRegions } = catalog;
 
-  function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
+  function normalizeManifestProject(project: unknown, artifactVersion: number): HistoricalLiftoffManifest['project'] {
     if (!isRecord(project)) {
       throw new FileSystemError('Manifest.project must be a JSON object.');
     }
@@ -136,7 +136,7 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
     };
   }
 
-  function normalizeV4ManifestProject(project: Record<string, unknown>): LiftoffManifest['project'] {
+  function normalizeV4ManifestProject(project: Record<string, unknown>): HistoricalLiftoffManifest['project'] {
     assertOnlyFields(
       project,
       ['name', 'workload', 'specWorkflow', 'agents', 'defaultAgent'],
@@ -189,7 +189,7 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
 
   function normalizeV4ManifestWorkload(
     workload: Record<string, unknown>
-  ): LiftoffManifest['project']['workload'] {
+  ): ManifestGeneratedWorkload {
     const kind = requiredString(workload, 'kind', 'Manifest.project.workload');
     if (kind !== 'genai' && kind !== 'standard') {
       throw new FileSystemError(`Manifest project workload kind ${JSON.stringify(kind)} is invalid.`);
@@ -251,7 +251,7 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
     value: unknown,
     artifactVersion: number,
     project: LiftoffManifest['project']
-  ): LiftoffManifest['framework'] {
+  ): HistoricalLiftoffManifest['framework'] {
     if (artifactVersion === 2) {
       return { state: 'legacy', adapter: project.specWorkflow };
     }

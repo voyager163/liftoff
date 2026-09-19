@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { lstat, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, inspectApplicationPatch, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { applicationVerificationFixtureContext } from './fixtures/repair-application.js';
 import { createPreparationFixture } from './fixtures/repair-preparation.js';
+import * as preparation from '../src/application/repair/application-preparation.js';
+import * as toolchain from '../src/application/repair/application-toolchain.js';
 
 const roots: string[] = [];
 async function fixture(options: Parameters<typeof createPreparationFixture>[1]) {
@@ -14,6 +16,7 @@ async function fixture(options: Parameters<typeof createPreparationFixture>[1]) 
   return createPreparationFixture(directory, options);
 }
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 2 })));
 });
 const native = process.env.LIFTOFF_REPAIR_PREPARATION_NATIVE === '1';
@@ -76,8 +79,49 @@ describe('native locked application preparation qualification', () => {
   it.skipIf(!native)('prepares actual Go module/checksum inputs with the local toolchain and runs generated tests from private caches', async () => {
     const f = await fixture({ stack: 'go-huma' });
     const before = await inspectApplicationLayout(f.root, f.manifest);
+    const stages: Array<{ stage: string; state: string; errorKind?: string; code?: string; frames?: string[] }> = [];
+    const failureStage = (stage: string, error: unknown) => {
+      const kinds = ['Error', 'TypeError', 'RangeError', 'SyntaxError', 'ApplicationInspectionError'];
+      const codes = ['ENOENT', 'ENOTDIR', 'EACCES', 'EPERM', 'ELOOP', 'EMFILE', 'ENFILE', 'ENOSPC'];
+      const code = error instanceof Error && 'code' in error && typeof error.code === 'string' ? error.code : '';
+      const frames = error instanceof Error ? [...(error.stack ?? '').matchAll(
+        /(?:src[\\/]application[\\/]repair[\\/])(application-(?:toolchain|preparation|files|patch-inspection)\.ts:\d+:\d+)/gu
+      )].map((match) => match[1]!) : [];
+      stages.push({
+        stage, state: 'failed',
+        errorKind: error instanceof Error && kinds.includes(error.constructor.name) ? error.constructor.name : 'unknown',
+        ...(codes.includes(code) ? { code } : {}), frames
+      });
+    };
+    const resolveTools = toolchain.resolveApplicationPreparationTools;
+    const toolsSpy = vi.spyOn(toolchain, 'resolveApplicationPreparationTools').mockImplementation(async (...args) => {
+      stages.push({ stage: 'toolchain', state: 'started' });
+      try {
+        const result = await resolveTools(...args);
+        stages.push({ stage: 'toolchain', state: 'completed' });
+        return result;
+      } catch (error) { failureStage('toolchain', error); throw error; }
+    });
+    const resolvePreparation = preparation.resolveApplicationPreparation;
+    const preparationSpy = vi.spyOn(preparation, 'resolveApplicationPreparation').mockImplementation(async (...args) => {
+      stages.push({ stage: 'preparation', state: 'started' });
+      try {
+        await resolvePreparation(...args);
+        stages.push({ stage: 'preparation', state: 'completed' });
+      } catch (error) { failureStage('preparation', error); throw error; }
+    });
     const candidate = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
-    expect(candidate.blockers).toEqual([]);
+    toolsSpy.mockRestore();
+    preparationSpy.mockRestore();
+    expect(candidate.blockers, JSON.stringify({
+      blockers: candidate.blockers,
+      inventoryComplete: candidate.report.inventory.complete,
+      mappings: candidate.scope.mappings.length,
+      stagedFiles: candidate.scope.staging.files.length,
+      preparations: candidate.scope.preparation.map((entry) => entry.provider),
+      tools: candidate.scope.toolchain.map((entry) => ({ id: entry.id, version: entry.version })),
+      stages
+    })).toEqual([]);
     const result = await verifyApplicationPatch(f.root, candidate, new NodeCommandRunner(),
       await applicationVerificationFixtureContext(f.root, candidate, { projectCode: true, dependencyPreparation: true, network: true }));
     expect(result.status, result.blockers.join('\n')).toBe('passed');

@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readFile, readdir, rm, writeFile, stat, realpath } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile, stat, realpath } from 'node:fs/promises';
 import { Readable } from 'node:stream';
 import path from 'node:path';
 import os from 'node:os';
-import { runCommand } from '../src/commands.js';
+import { runCommand as runProjectCommand } from '../src/commands.js';
 import { parseArgs } from '../src/args.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
@@ -16,28 +16,80 @@ import {
 import { captureProjectFileSnapshot } from '../src/adapters/filesystem/project-transaction.js';
 import type { ProjectFileMutation } from '../src/adapters/filesystem/project-transaction.js';
 import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
-import type { ExternalCommand } from '../src/domain/project/contracts.js';
+import type { ExternalCommand, LiftoffManifest } from '../src/domain/project/contracts.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 import { repairCommandAction } from '../src/application/repair/guidance.js';
+import { inspectRepairVerificationWorkspaces } from '../src/application/repair/workspaces.js';
+import { baselineValidationPolicy } from '../src/application/repair/baseline-validation.js';
 import { createLegacyInfrastructureFixture, repairRoot } from './fixtures/repair-infrastructure.js';
 import { renderOpenTofuProviderLock, renderOpenTofuVersions } from '../src/opentofu-template-assets.js';
 
-const roots: string[] = [];
+interface OwnedFixtureRoot {
+  path: string;
+  device: bigint;
+  inode: bigint;
+  birthtimeNs: bigint;
+  mode: bigint;
+}
+
+const roots: OwnedFixtureRoot[] = [];
+const nativeRunners = new Set<NativeRunner>();
+let activeInvocations = 0;
 const subscription = '11111111-2222-3333-4444-555555555555';
 const oldMain = ['infrastructure', 'opentofu', 'azure', 'main.tf'];
 const now = new Date('2026-09-13T01:00:00Z');
+async function cleanupOwnedFixtures(
+  current: readonly OwnedFixtureRoot[], owners: readonly Pick<NativeRunner, 'pending' | 'uncertain'>[], invocations: number
+): Promise<void> {
+  if (invocations || owners.some((runner) => runner.pending || runner.uncertain)) {
+    throw new Error(`Retaining exact infrastructure-repair fixtures with active or uncertain owned work: ${current.map((root) => root.path).join(', ')}`);
+  }
+  for (const root of current) {
+    const identity = await lstat(root.path, { bigint: true });
+    if (!identity.isDirectory() || identity.isSymbolicLink() || await realpath(root.path) !== root.path ||
+        identity.dev !== root.device || identity.ino !== root.inode ||
+        identity.birthtimeNs !== root.birthtimeNs || identity.mode !== root.mode) {
+      throw new Error(`Infrastructure-repair fixture creation identity changed; preserving ${root.path}`);
+    }
+    await rm(root.path, { recursive: true });
+  }
+}
+
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  const current = roots.splice(0), owners = [...nativeRunners];
+  nativeRunners.clear();
+  if (owners.some((runner) => !runner.completed)) {
+    throw new Error(`Retaining incomplete native repair fixtures: ${JSON.stringify({
+      exactPaths: current.map((root) => root.path), activeInvocations,
+      nativeOwners: owners.map((runner) => ({ pending: runner.pending, uncertain: runner.uncertain }))
+    })}`);
+  }
+  await cleanupOwnedFixtures(current, owners, activeInvocations);
+  if (owners.length) console.info('Native repair fixture cleanup:', JSON.stringify({
+    removedExactPaths: current.map((root) => root.path), activeInvocations,
+    pendingNativeCommands: owners.reduce((count, runner) => count + runner.pending, 0),
+    uncertain: owners.some((runner) => runner.uncertain)
+  }));
 });
+
+async function runCommand(...args: Parameters<typeof runProjectCommand>): Promise<number> {
+  activeInvocations++;
+  try { return await runProjectCommand(...args); }
+  finally { activeInvocations--; }
+}
+
 const hash = (bytes: string | Buffer) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 async function folder(prefix: string) {
-  const value = await realpath(await mkdtemp(path.join(os.tmpdir(), prefix)));
-  roots.push(value); return value;
+  const value = await realpath(await mkdtemp(path.join(process.platform === 'win32' ? process.cwd() : os.tmpdir(), prefix)));
+  const identity = await lstat(value, { bigint: true });
+  roots.push({ path: value, device: identity.dev, inode: identity.ino, birthtimeNs: identity.birthtimeNs, mode: identity.mode });
+  return value;
 }
 async function fixture() {
   const root = await folder('liftoff-repair-project with spaces-');
   const home = await folder('liftoff-repair-receipts-');
+  await mkdir(path.join(root, '.git'));
   const plan = buildProjectPlan({
     projectName: 'Repair fixture', projectType: 'standard', apiStack: 'node',
     agents: ['copilot'], environments: ['dev'], governanceProfile: 'none'
@@ -85,6 +137,7 @@ class Runner implements CommandRunner {
   calls: { command: ExternalCommand; options?: RunCommandOptions }[] = [];
   onValidation?: () => Promise<void>;
   failValidation = false;
+  settled = true;
   exists = false;
   async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
     this.calls.push({ command, options });
@@ -98,23 +151,94 @@ class Runner implements CommandRunner {
       await this.onValidation?.();
       stdout = JSON.stringify({ valid: !this.failValidation, error_count: this.failValidation ? 1 : 0 });
     }
-    return { command, displayCommand: '', stdout, stderr: '', status: 0, signal: null, timedOut: false };
+    return { command, displayCommand: '', stdout, stderr: '', status: 0, signal: null, timedOut: false, processTreeSettled: this.settled };
+  }
+}
+class NativeRunner extends Runner {
+  readonly native = new NodeCommandRunner();
+  readonly nativeResults: { command: ExternalCommand; options?: RunCommandOptions; result: CommandResult }[] = [];
+  pending = 0;
+  uncertain = false;
+  completed = false;
+
+  constructor() { super(); nativeRunners.add(this); }
+
+  override async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
+    if (command.executable === 'az') return super.run(command, options);
+    this.calls.push({ command, options });
+    this.pending++;
+    try {
+      const result = await this.native.run(command, options);
+      this.uncertain ||= result.processTreeSettled !== true;
+      this.nativeResults.push({ command, options, result });
+      return result;
+    } catch (error) {
+      this.uncertain = true;
+      throw error;
+    } finally { this.pending--; }
   }
 }
 async function command(project: { root: string; home: string }, args: string[], runner = new Runner(), cwd = project.root) {
   const stdout = new CaptureStream(), stderr = new CaptureStream();
+  const explicitProject = args.indexOf('--project');
+  const selectedProject = explicitProject >= 0 ? path.resolve(cwd, args[explicitProject + 1]!) : project.root;
   const exitCode = await runCommand(parseArgs(['repair', ...args, '--json']), {
     cwd, stdout, stderr, runner, updateNow: () => now,
-    updatePreview: { homedir: project.home, env: {} }
+    updatePreview: { homedir: project.home, env: {}, repositoryRoot: selectedProject }
   });
   return { exitCode, report: JSON.parse(stdout.text()), stderr: stderr.text(), runner };
 }
+
+async function upgradeRepairFixtureMetadata(root: string, home: string, manifest: LiftoffManifest) {
+  const workload = manifest.project.workload;
+  if (workload.kind === 'components') throw new Error('Expected historical API fixture.');
+  await mkdir(path.join(root, '.git'));
+  await writeFile(path.join(root, 'liftoff.config.json'), `${JSON.stringify({
+    projectName: manifest.project.name, projectType: workload.kind, apiStack: workload.apiStack,
+    ...(workload.kind === 'genai' ? { pattern: workload.pattern } : {}),
+    cloud: workload.cloud, region: workload.region, includeFrontend: workload.frontend, environments: workload.environments,
+    specWorkflow: manifest.project.specWorkflow, agents: manifest.project.agents, governanceProfile: 'none'
+  }, null, 2)}\n`);
+  const run = async (flags: string[]) => {
+    const stdout = new CaptureStream(), stderr = new CaptureStream();
+    const code = await runCommand(parseArgs(['update', '--project', root, '--json', ...flags]), {
+      cwd: root, stdout, stderr, updateNow: () => now, updatePreview: { homedir: home, env: {}, repositoryRoot: root }
+    });
+    return { code, report: JSON.parse(stdout.text()) as { plans: Array<{ mode: string; fingerprint: string }>; message?: string } };
+  };
+  const preview = await run(['--check']);
+  expect(preview.code, preview.report.message).toBe(2);
+  const apply = await run(['--approve-plan', preview.report.plans.find((plan) => plan.mode === 'normal')!.fingerprint]);
+  expect(apply.code, apply.report.message).toBe(0);
+}
+
 const check = ['--check', '--live', '--subscription', subscription];
+describe('infrastructure-repair fixture cleanup ownership', () => {
+  it.each([
+    { invocations: 1, pending: 0, uncertain: false },
+    { invocations: 0, pending: 1, uncertain: false },
+    { invocations: 0, pending: 0, uncertain: true }
+  ])('retains exact fixture roots while owned work is active or uncertain: %j', async (state) => {
+    const root = await folder('liftoff-repair-cleanup-');
+    const owner = roots.at(-1)!;
+    await expect(cleanupOwnedFixtures([owner], [state], state.invocations)).rejects.toThrow(/active or uncertain/);
+    expect((await lstat(root)).isDirectory()).toBe(true);
+  });
+
+  it('does not delete a path with mismatching creation identity', async () => {
+    const root = await folder('liftoff-repair-cleanup-');
+    const owner = roots.at(-1)!;
+    await expect(cleanupOwnedFixtures([{ ...owner, inode: owner.inode + 1n }], [], 0)).rejects.toThrow(/creation identity changed/);
+    expect((await lstat(root)).isDirectory()).toBe(true);
+  });
+});
+
 describe('reviewed repair command coordinator', () => {
   it.runIf(process.env.LIFTOFF_REPAIR_NATIVE === '1')('validates a repaired candidate with native backend-disabled OpenTofu and no Azure calls', async () => {
     const root = await folder('liftoff-repair-native-'), home = await folder('liftoff-repair-home-');
     const manifest = await createLegacyInfrastructureFixture(root, ['dev']);
     await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    await upgradeRepairFixtureMetadata(root, home, manifest);
     await writeFile(path.join(root, ...repairRoot, '.terraform.lock.hcl'), renderOpenTofuProviderLock());
     await writeFile(path.join(root, ...repairRoot, 'versions.tf'), renderOpenTofuVersions());
     await writeFile(path.join(root, ...repairRoot, 'main.tf'), `resource "azurerm_resource_group" "main" {
@@ -126,39 +250,73 @@ describe('reviewed repair command coordinator', () => {
   value = azurerm_resource_group.main.name
 }
 `);
-    const native = new NodeCommandRunner();
-    const formatted = await native.run({ executable: 'tofu', args: ['fmt', '-recursive'] }, {
-      cwd: path.join(root, ...repairRoot), timeoutMs: 30_000, maxOutputBytes: 65536
-    });
-    expect(formatted.status).toBe(0);
-    class NativeRunner extends Runner {
-      native = new NodeCommandRunner();
-      override async run(command: ExternalCommand, options?: RunCommandOptions) {
-        if (command.executable === 'az') return super.run(command, options);
-        this.calls.push({ command, options });
-        return this.native.run(command, options);
+    const runner = new NativeRunner();
+    const bound = (await baselineValidationPolicy(root)).tool;
+    const nativeExecutable = bound.file.path;
+    const scratch = await folder('liftoff-repair-native-scratch-');
+    const configuration = path.join(home, 'native-tofu.rc');
+    await writeFile(configuration, '', { flag: 'wx', mode: 0o600 });
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const name of Object.keys(env)) {
+      if (['TF_', 'TOFU_', 'OTF_', 'ARM_', 'AZURE_', 'AWS_', 'GOOGLE_'].some((prefix) => name.startsWith(prefix))) {
+        env[name] = undefined;
       }
     }
-    const runner = new NativeRunner();
+    Object.assign(env, {
+      HOME: home, USERPROFILE: home, APPDATA: home, XDG_CONFIG_HOME: home,
+      TF_CLI_CONFIG_FILE: configuration, TF_IN_AUTOMATION: '1', TF_INPUT: '0', CHECKPOINT_DISABLE: '1',
+      TMPDIR: scratch, TMP: scratch, TEMP: scratch
+    });
+    const formatted = await runner.run({ executable: nativeExecutable, args: ['fmt', '-recursive'] }, {
+      cwd: path.join(root, ...repairRoot), timeoutMs: 30_000, maxOutputBytes: 65536,
+      env, ensureProcessTreeSettled: true, stream: false
+    });
+    expect(formatted.status).toBe(0);
+    expect(formatted.processTreeSettled).toBe(true);
+    const beforeValidation = runner.nativeResults.length;
     const first = await command({ root, home }, check, runner);
     expect(first.report.blockers).toEqual([]);
+    expect(first.report.validationSummary).toContain(`Installed OpenTofu: ${nativeExecutable}; SHA-256 ${bound.file.digest}.`);
     const applied = await command({ root, home }, ['--approve-plan', first.report.fingerprint], runner);
     expect(applied.report.blockers).toEqual([]);
     expect(applied.report.status).toBe('applied');
     expect(applied.exitCode).toBe(0);
-    expect(runner.calls.filter((entry) => entry.command.executable === 'tofu').map((entry) => entry.command.args[0]))
-      .toEqual(['--version', 'fmt', 'init', 'validate']);
-    const formatting = await native.run({ executable: 'tofu', args: ['fmt', '-check', '-recursive'] }, {
-      cwd: path.join(root, ...repairRoot), timeoutMs: 30_000, maxOutputBytes: 65536
+    const validation = runner.nativeResults.slice(beforeValidation);
+    expect(validation.map((entry) => entry.command.args[0])).toEqual(['--version', 'fmt', 'init', 'validate']);
+    expect(validation.every((entry) => entry.command.executable === nativeExecutable &&
+      entry.options?.ensureProcessTreeSettled === true && entry.result.processTreeSettled === true)).toBe(true);
+    expect(validation[2]!.command.args).toContain('-backend=false');
+    expect(validation[2]!.command.args).toContain('-lockfile=readonly');
+    expect(JSON.parse(validation[3]!.result.stdout)).toMatchObject({ valid: true, error_count: 0 });
+    const formatting = await runner.run({ executable: nativeExecutable, args: ['fmt', '-check', '-recursive'] }, {
+      cwd: path.join(root, ...repairRoot), timeoutMs: 30_000, maxOutputBytes: 65536,
+      env, ensureProcessTreeSettled: true, stream: false
     });
     expect(formatting.stdout).toBe('');
     expect(formatting.status).toBe(0);
+    expect(formatting.processTreeSettled).toBe(true);
+    const workspaces = await inspectRepairVerificationWorkspaces(root, { homedir: home, env: {}, repositoryRoot: root });
+    expect(workspaces.status).toBe('absent');
+    expect(runner.pending).toBe(0);
+    expect(runner.uncertain).toBe(false);
+    runner.completed = true;
+    console.info('Native repair validation evidence:', JSON.stringify({
+      executable: nativeExecutable, digest: bound.file.digest,
+      version: validation[0]!.result.stdout.trim(), committed: applied.report.committed,
+      verification: applied.report.verification, registeredWorkspaces: workspaces.status,
+      nativeCommands: runner.nativeResults.map((entry) => ({
+        args: entry.command.args, status: entry.result.status, processTreeSettled: entry.result.processTreeSettled,
+        timedOut: entry.result.timedOut
+      })),
+      mockedAzureCalls: runner.calls.filter((entry) => entry.command.executable === 'az').map((entry) => entry.command.args)
+    }));
   }, 180_000);
 
   it('connects real legacy HCL inspection through approval and manifest publication', async () => {
     const root = await folder('liftoff-repair-real-source-'), home = await folder('liftoff-repair-home-');
     const manifest = await createLegacyInfrastructureFixture(root, ['dev']);
     await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify(manifest, null, 2)}\n`);
+    await upgradeRepairFixtureMetadata(root, home, manifest);
     const source = await readFile(path.join(root, ...repairRoot, 'main.tf'));
     const first = await command({ root, home }, check);
     expect(first.report.blockers).toEqual([]);
@@ -189,7 +347,7 @@ describe('reviewed repair command coordinator', () => {
     });
     await expect(stat(path.join(project.root, ...oldMain))).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(path.join(project.root, 'developer-notes.txt'), 'utf8')).toBe('preserve business customizations');
-    expect(runner.calls.filter((entry) => entry.command.executable === 'az' && entry.command.args[0] === 'group')).toHaveLength(3);
+    expect(runner.calls.filter((entry) => entry.command.executable === 'az' && entry.command.args[0] === 'group')).toHaveLength(4);
     const repeat = await command(project, ['--check']);
     expect(repeat.exitCode).toBe(0);
     expect(repeat.report.status).toBe('current');
@@ -220,6 +378,26 @@ describe('reviewed repair command coordinator', () => {
     const result = await command(project, ['--approve-plan', first.report.fingerprint], runner);
     expect(result.exitCode).toBe(1);
     expect(result.report.committed).toBe(false);
+    expect(await readFile(path.join(project.root, 'liftoff.manifest.json'))).toEqual(project.before);
+  });
+  it('retains registered infrastructure workspaces when even a zero-exit tool has uncertain settlement', async () => {
+    const project = await fixture(), runner = new Runner();
+    const first = await command(project, check, runner);
+    runner.settled = false;
+    const result = await command(project, ['--approve-plan', first.report.fingerprint], runner);
+    expect(result.exitCode).toBe(1);
+    expect(result.report).toMatchObject({
+      committed: false, status: 'partial', verification: 'incomplete',
+      verificationEffects: { attempted: true, outcome: 'incomplete' }
+    });
+    const storage = { homedir: project.home, env: {}, repositoryRoot: project.root };
+    const workspaces = await inspectRepairVerificationWorkspaces(project.root, storage);
+    expect(workspaces.status).toBe('blocked');
+    expect(workspaces.workspaces[0]).toMatchObject({ owner: 'uncertain', cleanupComplete: false, commandsStarted: 1 });
+    const retained = workspaces.workspaces[0]!.directory;
+    expect((await stat(retained)).isDirectory()).toBe(true);
+    expect((await command(project, ['--recover'], runner)).report.status).toBe('blocked');
+    expect((await stat(retained)).isDirectory()).toBe(true);
     expect(await readFile(path.join(project.root, 'liftoff.manifest.json'))).toEqual(project.before);
   });
   it('reobserves deployment and source changes under lock before commit', async () => {
@@ -300,12 +478,12 @@ describe('interactive repair and truthful command surfaces', () => {
       expect(config.default).toBe(false);
       expect(config.message).not.toMatch(/[a-f0-9]{64}/u);
       expect(stdout.text()).toContain('Exact project file changes');
-      expect(runner.calls.some((entry) => entry.command.executable === 'tofu')).toBe(false);
+      expect(runner.calls.some((entry) => entry.command.executable !== 'az')).toBe(false);
       return answer;
     });
     const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription]), {
       cwd: project.root, stdin: scriptedTtyInput(''), stdout, stderr, runner, approveRepairPlan,
-      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {}, repositoryRoot: project.root }
     });
     expect(approveRepairPlan).toHaveBeenCalledTimes(1);
     expect(code).toBe(answer ? 0 : 2);
@@ -321,7 +499,7 @@ describe('interactive repair and truthful command surfaces', () => {
     const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription]), {
       cwd: project.root, stdin: scriptedTtyInput(''), stdout, stderr, runner,
       approveRepairPlan: async () => { await writeFile(path.join(project.root, ...oldMain), 'concurrent developer edit'); return true; },
-      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {}, repositoryRoot: project.root }
     });
     expect(code).toBe(1);
     expect(stdout.text()).toContain('changed after preview');
@@ -340,7 +518,7 @@ describe('interactive repair and truthful command surfaces', () => {
     });
     const code = await runCommand(parseArgs(['repair', project.root, '--live', '--subscription', subscription, ...(mode === 'json' ? ['--json'] : [])]), {
       cwd: project.root, stdin, stdout, stderr, runner, approveRepairPlan,
-      updateNow: () => now, updatePreview: { homedir: project.home, env: {} }
+      updateNow: () => now, updatePreview: { homedir: project.home, env: {}, repositoryRoot: project.root }
     });
     expect(code).toBe(2);
     expect(approveRepairPlan).toHaveBeenCalledTimes(mode === 'cancel' ? 1 : 0);

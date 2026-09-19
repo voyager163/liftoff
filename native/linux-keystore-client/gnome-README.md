@@ -1,0 +1,280 @@
+# Actual pinned GNOME persistence fixture — generated test data only
+
+This opt-in uses the separately authorized **actual GNOME daemon** against fresh
+disposable runner-owned test keyrings. It is not the in-memory mock fixture.
+There is no production enrollment registration, existing-keyring adoption,
+operator credential access, cloud activity, disk-encryption setup, host-policy
+change, publication or encrypted-host custody/release-readiness claim.
+
+## Verified bounded native source result
+
+[Run **35421959515**](https://github.com/voyager163/liftoff/actions/runs/35421959515)
+at source commit
+[`440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20`](https://github.com/voyager163/liftoff/commit/440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20)
+passed on actual Linux **x64 and arm64**: **78 cases per host, zero failed,
+zero pending**, with all **14 required native GNOME/guard cases** present and
+passing in the retained reports.
+
+The observed scope includes real fresh-process key recovery with generated
+test data, unchanged persisted-store write denial, missing/substituted stores,
+wrong passwords, cancellation, changed key-binding context, and deliberately
+withheld/unknown settlement handling. It also covers the separate strict and
+null-sink guard profiles; success is not inferred from mock or compile-only
+results.
+
+Helper identities recorded for this successful source:
+
+| Profile | Helper SHA256 |
+| --- | --- |
+| Original strict `linux-landlock-readonly-process/1` (preserved) | `bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2` |
+| Explicit `linux-landlock-readonly-process-null-sink/1` | `7e0ebdbf36d10add6e17501ca2cb22bcd3b833821f82ec89131bcc62a8b2c9d9` |
+
+This closes tasks **11.25–11.27** within their approved source-contract,
+implementation and native-fixture scope. Tasks **11.17–11.24** retain separate
+production enrollment/integration, encrypted-host custody, minimum-host and
+installed-artifact gates. No existing user keyring, real credential, cloud
+resource or release was qualified. This result grants no new execution
+permission and does not change `readiness:false`.
+
+## Audited source boundary
+
+Daemon source is exactly
+[`da00f9621eaf263d5ed4236df9c22798ea8021d2`](https://gitlab.gnome.org/GNOME/gnome-keyring/-/tree/da00f9621eaf263d5ed4236df9c22798ea8021d2)
+(post-51.0, **not** a tag equivalence).
+
+- `daemon/gkd-main.c`: `--foreground` avoids its fork/setsid path; `--unlock`
+  consumes stdin, may create a missing login collection, and failed unlock can
+  leave the daemon running. No `--start`, `--replace`, `--daemonize` or `--login`.
+- `daemon/login/gkd-login.c`: `unlock_or_create_login` creates a missing login
+  collection and successful unlock may initialize other native slots.
+- `daemon/gkd-pkcs11.c`: secrets startup initializes the built-in Secret Store,
+  SSH, legacy GNOME2 and XDG modules, even without their public remoting
+  components. HOME/XDG locations must therefore all remain fixture-owned.
+- `pkcs11/gkm/gkm-util.c`, `pkcs11/xdg-store/gkm-xdg-module.c`: the keyrings and
+  XDG keystore locations derive from the selected HOME/XDG directories.
+- `pkcs11/secret-store/gkm-secret-collection.c::gkm_secret_collection_real_unlock`
+  loads/decrypts the existing collection without an unconditional save.
+  However, `pkcs11/gnome2-store/gkm-gnome2-storage.c::lock_and_open_file`
+  uses `O_CREAT` and sibling dotlocks even on its auxiliary legacy-store read
+  path. Landlock intentionally denies those store-entry writes. The fixture
+  neither grants an exception nor claims every auxiliary slot initialized:
+  actual guarded primary-key readback must still succeed, otherwise the native
+  lane remains blocked. Do not suppress that failure to manufacture readiness.
+- `daemon/gkd-main.c` still uses native syslog and ordinary OS facilities.
+  Landlock is **not** IPC/network isolation or protection against external
+  writers, metadata changes, passed FDs or every future filesystem operation.
+  Debug mode is disabled; private process diagnostics are bounded and discarded.
+
+## Exact build interface (Linux x64 and arm64)
+
+Reuse the already pinned libsecret native client build and
+`build/build-identity.json`. Additional daemon dependencies are declared in
+`gnome-dependencies.json`: GNOME requires **GLib/GIO >=2.80**,
+`gck-1 >=3.3.4`, `gcr-base-3 >=3.27.90`, libgcrypt and p11-kit.
+Ubuntu 24.04 additional development packages are `libgcr-3-dev` and
+`libp11-kit-dev`, on top of the existing compiler, Meson/Ninja, gettext,
+GLib/GIO, libgcrypt and pkg-config build prerequisites. Runtime needs the
+already installed `dbus-daemon`, `/usr/bin/gdbus` (libglib2.0-bin), Node and
+registered native **CPython 3.14** for the existing Landlock guard.
+
+The coordinator executable is the test runner's actual canonical
+`process.execPath` (Node), not an ambient substitute. Both it and CPython must
+pass the unchanged production executable admission: regular executable file,
+no group/other write bits, exact current byte identity. On an ephemeral CI
+runner, any preparation must first record actual path, owner, mode,
+device/inode, size, modification time and SHA256. Only an observed writable
+file owned by that runner may have `0o022` cleared on the exact retained FD;
+all other identity/byte fields must remain unchanged. Unknown/foreign ownership
+blocks. No sudo, recursive chmod, binary replacement, alternate Node or
+production permission-check relaxation is a valid repair.
+
+Run 35417746388 identified the failing Node admission, but its retained
+preparation artifact recorded only Python. It therefore does **not** establish
+the historical Node mode/UID/hash. Each runner's Node preparation must
+observe and retain those values before deciding whether a change is allowed;
+later successful runs do not retroactively fill that historical evidence gap.
+
+CI prepares a clean exact source checkout, a job-owned build directory and a
+job-owned prefix, all outside ordinary desktop state:
+
+```sh
+meson setup "$GNOME_BUILD_DIR" "$GNOME_SOURCE_DIR" \
+  --prefix="$GNOME_PREFIX" --libdir=lib \
+  -Dssh-agent=false -Dpam=false -Dsystemd=disabled \
+  -Dlibcap-ng=disabled -Dselinux=disabled -Ddebug-mode=false -Dmanpage=false \
+  -Dpkcs11-config="$GNOME_PREFIX/etc/pkcs11" \
+  -Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"
+meson compile -C "$GNOME_BUILD_DIR" gnome-keyring-daemon
+install -D -m 0755 "$GNOME_BUILD_DIR/daemon/gnome-keyring-daemon" \
+  "$GNOME_PREFIX/bin/gnome-keyring-daemon"
+node native/linux-keystore-client/gnome-build-identity.mjs
+```
+
+The last command requires `GNOME_SOURCE_DIR`, `GNOME_BUILD_DIR`, and
+`GNOME_PREFIX` in its environment. It validates exact Git HEAD/clean tracked
+source and Meson options, matches the private daemon copy against the actual
+built target, and records primary library and observer/bus tool paths/hashes.
+Both PKCS#11 directory options must resolve to the declared private prefix
+locations; default system p11-kit paths are rejected.
+It writes `build/gnome-build-identity.json` without executing the daemon.
+No upstream install phase, PAM modules, desktop autostart entries, service
+files or systemd units are installed on the runner.
+
+## Opt-in command and budgets
+
+Only the expressly authorized source job enables:
+
+```sh
+LIFTOFF_GNOME_PERSISTENCE_TEST=1 \
+LIFTOFF_STATE_PYTHON=/absolute/registered/python3.14 \
+npx vitest run tests/state-gnome-persistence.test.ts --maxWorkers=1
+```
+
+The successful combined native run also selected the independent guard suite:
+
+```sh
+LIFTOFF_GNOME_PERSISTENCE_TEST=1 \
+LIFTOFF_LINUX_READONLY_NULL_TEST=1 \
+LIFTOFF_STATE_PYTHON=/absolute/registered/python3.14 \
+npx vitest run tests/state-gnome-persistence.test.ts \
+  tests/state-linux-null-process.test.ts --maxWorkers=1
+```
+
+The job remains **20 minutes**. Each coordinator has a 12-second overall
+budget, its outer plan-and-execute operation 15 seconds, native startup/client work
+5 seconds, and bounded direct-child termination attempts. Tests retain the
+existing 30-second per-test limit. Inputs are at most 4096 private password
+bytes; private coordinator output is at most 16384 bytes. Runtime loader
+diagnostics are separately bounded, observed for exact recorded primary
+library paths/hashes, then cleared. Missing tools, APIs, encrypted sessions,
+loader matches or kernel restrictions block rather than choosing fallbacks.
+Before consuming the private password channel, the owned coordinator verifies
+actual `LD_TRACE_LOADED_OBJECTS` resolution for the daemon (`--version`) and
+client (`--contract`) under their explicit recorded library paths. It then
+requires matching loader initialization observations from the actual operations.
+
+### Guarded private-bus startup diagnostics
+
+Hosted run 35419049590 reached enrollment/persisted readback but failed before
+the restarted private bus published its address. The hosted package was
+`dbus-daemon 1.14.10-4ubuntu4.1`. Upstream
+[`bus/main.c`](https://gitlab.freedesktop.org/dbus/dbus/-/blob/dbus-1.14.10/bus/main.c)
+calls `_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, ...)` **before parsing
+`--nofork` or any other arguments**.
+[`dbus-sysdeps-unix.c`](https://gitlab.freedesktop.org/dbus/dbus/-/blob/dbus-1.14.10/dbus/dbus-sysdeps-unix.c)
+unconditionally opens `/dev/null` with `O_RDWR`, even with preexisting stdio.
+The original three-root Landlock policy does not grant that pathname write access.
+Preopened descriptors or more permissive persisted-store rules are not a repair.
+
+The coordinator now observes that same open mode without reading/writing any
+bytes, closes its probe descriptor before spawning children, and reports only
+allowlisted startup stages, errno classifications, exit/signal values, address
+presence and the null-device probe result. Raw stderr, paths and credentials
+are not returned. Subsequent authorized native run `35419980086` confirmed the
+standard-descriptor `/dev/null` open was denied with `EACCES` on both Linux
+architectures.
+
+Approved design 13d now selects the distinct
+`linux-landlock-readonly-process-null-sink/1` profile for this fixture's
+restart operation. `LinuxReadonlyNullProcessGuard.plan()` observes the current
+fixed root-owned null character device (major 1/minor 3); `.run(request, plan)`
+must revalidate that bound profile/helper/host/principal/device plan.
+The only additional right is `WRITE_FILE` on that exact kernel device.
+There is no `/dev` grant, truncation, device creation, inherited-FD exception
+or permission repair. Original `LinuxReadonlyProcessGuard` behavior remains
+unchanged and is not tried first or widened after a failure.
+
+`gnome-restart-guard.ts` hashes the exact nonsecret coordinator arguments,
+configuration, executable identities, scope paths and limits together with
+the selected profile. The master password is a separate argument: it is
+absent from planning and excluded from all operation digests/verifiers.
+Private stdin is supplied only to the planned run. Planning is included in
+the original 15-second outer budget. Either planning or execution failure
+propagates once, with no retry or profile fallback. A plan describes admission
+inputs; it grants no approval or readiness. Authorization remains the
+explicit generated-data source-test scope, not the plan.
+
+Cancellation tests still require reaching actual native readiness and an owned
+cancellation result. Early bus failure now stops their readiness wait and fails
+with the classified startup cause instead of waiting seven seconds and
+misreporting it as a cancellation-boundary failure. No deadline is extended.
+
+Normal runs register only portable source/refusal checks. The opt-in adds:
+actual enrollment plus verified restart; missing store; substituted inode;
+wrong password; changed cryptographic binding; cancellation; and a deliberately
+withheld settlement-report fault. The latter is a **lost observation test**, not
+a claim that an unkillable kernel task was manufactured.
+
+## Execution and evidence
+
+Every test creates an absence-bound `.cache/gkr-*` scope. The generated
+48-byte printable master password is carried only through private stdin.
+The enrollment launcher disables core files and execs the owned coordinator
+without reading that channel. No password appears in argv, environment,
+ordinary files, test assertions or logs.
+
+The coordinator creates its private bus **inside its own process tree**,
+without service directories/autostart. It sets the daemon's HOME, XDG
+data/config, runtime, control, cache and scratch explicitly; the system-bus
+address points at a nonexistent owned socket. `GNOME_KEYRING_PARANOID=1` is
+mandatory. Foreground daemon and all client/observer/bus descendants stay in
+the coordinator's inherited process group; none uses nested detached mode.
+UID, unique owner, actual PID/session/start ticks and the control socket/
+announced directory are checked. Only public bus/Secret Service APIs are used.
+
+Enrollment creates exactly one 32-byte application key through the existing
+non-replacing client. After **all owned processes settle**, the fixture reads
+the actual `login.keyring`, structurally inspects it through
+`inspectControlledGnomeBinary`, binds its creation identity/digest and
+independently fsyncs the file and parent directory. It retains only an
+AES-GCM key-binding probe from `createManagedKeystoreKeyBinding`, consumes and
+clears the application-key snapshot, and never writes raw key bytes.
+
+Restart explicitly plans and invokes `LinuxReadonlyNullProcessGuard` around
+the coordinator. The original strict profile remains separately tested by the
+parent's guard suite; this fixture never auto-retries with another profile.
+Its three writable roots are new and empty when rules are installed. Only
+then does the coordinator create bus/control IPC inside those roots and set
+the daemon's real store HOME/XDG environment. Existing store identity/digest
+is checked before launch. The explicit missing-store source probe intentionally
+exercises actual `--unlock` creation behavior under enforced write denial;
+it cannot recreate the missing file. A substituted inode is rejected before
+daemon launch. All cases independently recheck the whole store tree's bytes,
+identities, modes, ownership and modification metadata (access time excluded).
+
+A successful fresh process must return the original cryptographically bound
+key and leave the persisted generation unchanged. Labels/Modified timestamps,
+an old key cache, version strings or daemon startup alone never pass.
+The source report printed **only after those checks pass** identifies
+generated-data GNOME persistence, explicitly `encryptedHostCustody:
+"not-performed"` and `readiness:false`. No native results are fabricated on
+macOS.
+
+Cleanup stops/reaps the exact direct children and uses the existing outer
+owned-group settlement proof for the whole tree. Only settled owned scopes
+are removed. Unproven process settlement or a deliberately lost settlement
+report preserves the exact scope; no broad sweep, PID-name kill or
+credential-bearing artifact upload is permitted. Preserved scopes contain
+only the generated disposable test material and encrypted probe.
+
+An unsuccessful enrollment also preserves the scope whenever application-key
+creation is possible, an actual created identity returned, or the helper outcome
+is unobserved. A private `enrollment-observation.json` retains only allowlisted
+status/effect/returned paths, never key bytes. A bounded console summary reports
+the creation classification and path count, not the paths or raw output.
+Known `no-dispatch` refers only to application-key creation, not the daemon's
+authorized initial creation of an empty login keyring. There is no replace/retry.
+Run 35418189185 did not retain this creation-stage observation, so its generic
+`item-mismatch` report cannot establish whether that particular run dispatched.
+The pinned source independently establishes the GNOME reply-label mismatch
+documented in the native client's README. Subsequent run 35418887195 did
+observe completed helper creation/readback with a returned identity, but then
+failed the format inspector's label parse: it had counted the implicit C
+terminator as a seventeenth header byte instead of the writer's explicit
+16-byte header. That inspector correction and the separately approved guard
+profile were validated together by successful run 35421959515. Neither later
+result changes what the earlier failed runs actually retained.
+
+Filesystem encryption, durability across power loss, complete installed
+runtime closure and real enrollment authority remain separate qualification
+gates. Ordinary runner storage is never presented as encrypted custody.

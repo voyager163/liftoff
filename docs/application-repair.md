@@ -3,11 +3,17 @@
 `application-layout-patch` version 1 moves or edits explicitly identified existing
 application files. It is **not** a historical-layout detector, a recursive folder
 mover, or permission to replace customized source with generated starters. The
-recorded manifest workload selects the current target identities; this lane
+recorded manifest workload or adopted component profile selects the current target identities; this lane
 cannot change the stack, manifest, desired configuration, framework, or activation
 proof.
 These application-patch restrictions do not remove the deterministic Azure
 recipe's separately registered, reviewed manifest and history writes.
+An uninitialized supported application uses [reviewed adoption](project-adoption.md),
+not a fabricated manifest or `init` merely to satisfy a repair prerequisite.
+Application patches still cannot add arbitrary files or write protected metadata.
+New manifest-writing infrastructure repairs require the separately reviewed
+manifest-8 transition first; they retain original provenance and link the real
+unchanged schema-2 repair receipt. Historical recovery never performs that upgrade.
 
 ## Normal interactive flow
 
@@ -75,19 +81,69 @@ policy requires fresh inspection/review. Changes while any prompt is open must
 refuse the old approval: an explicit Yes does not authorize a silently refreshed
 or substituted plan.
 
+### Shared transaction and recovery boundary
+
+Update and file-applying repair reuse the released sealed file transaction, with
+the cooperating target lease held through byte/mode readback and finalization.
+Repair reports remain schema 2 and update reports remain schema 3; historical
+journals and their external approval seals are not converted or retagged.
+Unfinished transactions and authenticated private verification workspaces block
+conflicting writers, regardless of the command name.
+
+Current `azure-local-layout` reviews also bind the installed OpenTofu executable.
+Changed tool bytes, mode or resolution require a fresh check. Its existing
+backend-disabled validation and provider preparation now run in registered private
+workspaces with explicit owned-process settlement checks. Uncertain settlement
+preserves the workspace and exact review inputs instead of deleting potentially
+active material. Use the CLI's same-project recovery action; a path prefix, PID,
+age, generic Yes, or successful root-process exit is not cleanup authority.
+
+### Windows working-directory limit
+
+Windows process creation requires the resolved execution directory to fit
+`MAX_PATH`: 260 UTF-16 code units including its trailing separator and null
+terminator (normally at most 258 code units for a path without the trailing
+separator). This applies to the complete private candidate directory plus the
+declared component/check subdirectory, not just the original project path.
+Liftoff rejects an over-limit cwd before launching its controller or target,
+with `WINDOWS_CWD_TOO_LONG`; a namespace prefix does not bypass this admission.
+The failure is not successful verification or permission for file application.
+
+For new work, explicitly select a shorter absolute `LOCALAPPDATA` location for
+Liftoff's user-state storage in the invoking terminal, then request a fresh
+review. Existing records remain in their original storage and must use that
+original setting for registered inspection and recovery. Do not move or delete
+them, use junctions or short-name aliases, or treat the new storage location as
+permission to bypass unfinished work. Liftoff does not change the workspace
+format, relocate state automatically, reuse old approval, change Windows
+execution policy, or increase command deadlines.
+
+The controller loads Windows PowerShell's built-in Utility module from its own
+`PSHOME` and disables unrelated module auto-discovery in that controller
+process. It does not import user-installed modules, change execution policy,
+download a helper, or treat faster startup as process-settlement proof.
+Startup/authentication and supervisory admission/settlement deadline failures
+are reported separately from a declared project-command timeout; none
+authorizes an automatic retry or a larger timeout.
+
 ## What inventory means
 
 The public inventory has schema 1 and kind `liftoff-application-inventory`.
 `projectRoot` is canonical. `inspectionDigest` binds the bounded observation and
-the supplied manifest. `target.digest` binds layout
+the supplied manifest, or adoption's explicit reviewed profile context.
+`target.digest` binds the complete target body (excluding the digest) for layout
 `liftoff-application-artifacts-v1`, version 1, the recorded workload, and the
-current generator's exact artifact identities.
+current registered artifact identities. Adopted targets also include their
+selected `standards` identity and actual component roots.
 
-Targets come from the real current generator, including the selected standard
+Generated-project targets come from the real current generator, including the selected standard
 Node/Python/Go or GenAI backend, applicable Functions worker, optional frontend,
 database, and containers. Each has `logicalName`, `category`, `pathParts`,
 `provisioningGroup`, `component`, and `componentRootPathParts`. Target identities
 are not generated replacement bytes.
+Adopted-component targets come from the installed profile catalog and recorded
+component boundary. They do not synthesize a backend, cloud, pattern, framework
+history or starter layout for a standalone Vue component.
 
 `files` contains paths, byte digests, modes, lengths, current exact target matches,
 and any recorded provenance. `recorded-only` provenance is not a recognized
@@ -102,9 +158,10 @@ dependency graph. Dynamic imports, aliases, templates, code generation, external
 packages, and runtime behavior require actual developer review. Binary assets
 are byte-bound but have no reference scan.
 
-Exclusions include VCS internals, `.liftoff`, infrastructure/state anywhere,
-live dotenv and recognized credential/configuration files, known protected
-Liftoff/framework/seed/native-agent control files, and dependency/cache/build
+Exclusions include VCS internals, `.liftoff`, infrastructure/state anywhere
+(infrastructure remediation is handled separately through the `azure-local-layout`
+and `azure-baseline-settings` recipes), live dotenv and recognized credential/configuration files,
+known protected Liftoff/framework/seed/native-agent control files, and dependency/cache/build
 output trees. Excluded content is neither opened nor copied. Known generated
 non-live examples, such as a selected `.env.example`, are distinct from live
 dotenv files. Broad exclusions are restrictions, never ownership grants.
@@ -306,6 +363,11 @@ global package-manager configurations, tokens, credential helpers, hooks, and
 ambient credentials are not inherited. Lifecycle and build hooks remain
 strictly suppressed (`lifecycle: "disabled"`). If a candidate requires
 unsupported hooks or unregistered sources, preparation is blocked.
+
+Artifact URLs are checked before URL normalization: literal or encoded dot-path
+segments, encoded separators, backslashes, and raw ASCII whitespace/control characters
+are rejected. HTTPS origin, credential, query/fragment, and integrity checks still
+apply; safe encoded path data does not grant a different package source.
 
 Preparation requires separate action-specific consent: in the interactive flow,
 an explicit default-No question precedes preparation and check commands; in

@@ -15,10 +15,15 @@ import {
 import { PresentationSession } from './terminal.js';
 import type { ParsedArgs } from './domain/project/contracts.js';
 import { liftoffVersion } from './version.js';
-import { isTelemetryExcludedCommand } from './telemetry/contract.js';
+import { canPersistTelemetryNotice, type TelemetryCommand } from './telemetry/contract.js';
+import { hasUsableApprovalTerminal } from './application/update/approval.js';
 
 export interface CliTelemetryHooks {
-  beforeCommand(stderr: NodeJS.WritableStream, env: NodeJS.ProcessEnv): Promise<boolean>;
+  beforeCommand(
+    stderr: NodeJS.WritableStream,
+    env: NodeJS.ProcessEnv,
+    policy: { persistNotice: boolean }
+  ): Promise<boolean>;
   afterCommand(parsed: ParsedArgs, exitCode: number, env: NodeJS.ProcessEnv): Promise<void>;
 }
 
@@ -35,15 +40,16 @@ export interface RunCliOptions {
   telemetry?: CliTelemetryHooks;
 }
 
-const defaultTelemetryHooks: CliTelemetryHooks = {
-  beforeCommand: (stderr, env) => maybeShowTelemetryNotice({ stderr, env }),
-  afterCommand: async (parsed, exitCode, env) => {
-    const command = telemetryCommandFor(parsed);
-    if (command) {
-      await trackCommand(command, liftoffVersion, exitCode, { env });
+function defaultTelemetryHooks(command: TelemetryCommand | undefined): CliTelemetryHooks {
+  return {
+    beforeCommand: (stderr, env, policy) => maybeShowTelemetryNotice({ stderr, env, ...policy }),
+    afterCommand: async (_parsed, exitCode, env) => {
+      if (command) {
+        await trackCommand(command, liftoffVersion, exitCode, { env });
+      }
     }
-  }
-};
+  };
+}
 
 function renderEntrypointError(
   error: unknown,
@@ -80,11 +86,11 @@ async function safelyRunTelemetry(action: () => Promise<void>): Promise<void> {
 export async function runCli(options: RunCliOptions = {}): Promise<number> {
   const stdout = options.stdout ?? process.stdout;
   const stderr = options.stderr ?? process.stderr;
+  const stdin = options.stdin ?? process.stdin;
   const env = options.env ?? process.env;
   const runtimeError = options.runtimeError ?? nodeRuntimeError;
   const parse = options.parse ?? parseArgs;
   const execute = options.execute ?? runCommand;
-  const telemetry = options.telemetry ?? defaultTelemetryHooks;
 
   let parsed: ParsedArgs;
   try {
@@ -98,15 +104,20 @@ export async function runCli(options: RunCliOptions = {}): Promise<number> {
     return 1;
   }
 
-  const telemetryReady = !isTelemetryExcludedCommand(parsed) && await safelyPrepareTelemetry(
-    () => telemetry.beforeCommand(stderr, env)
+  const interactive = hasUsableApprovalTerminal({ stdin, stderr });
+  const command = telemetryCommandFor(parsed, interactive);
+  const telemetry = options.telemetry ?? defaultTelemetryHooks(command);
+  const telemetryReady = command !== undefined && await safelyPrepareTelemetry(
+    () => telemetry.beforeCommand(stderr, env, {
+      persistNotice: canPersistTelemetryNotice({ ...parsed, interactive })
+    })
   );
 
   let exitCode: number;
   try {
     exitCode = await execute(parsed, {
       cwd: options.cwd ?? process.cwd(),
-      stdin: options.stdin ?? process.stdin,
+      stdin,
       stdout,
       stderr,
       env

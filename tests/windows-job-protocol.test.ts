@@ -345,10 +345,14 @@ describe('Windows Job control message protocol and framing', () => {
 describe('Fail-before-target-spawn admission guard on Windows', () => {
   it('blocks in NodeCommandRunner immediately without spawning when PowerShell 5.1 is missing on Windows', async () => {
     const originalPlatform = process.platform;
-    const originalSystemRoot = process.env.SystemRoot;
+    const originalSystemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows';
+    const originalWindir = process.env.WINDIR ?? process.env.windir ?? 'C:\\Windows';
     try {
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       process.env.SystemRoot = 'C:\\NonExistentSystemRoot';
+      process.env.SYSTEMROOT = 'C:\\NonExistentSystemRoot';
+      process.env.WINDIR = 'C:\\NonExistentSystemRoot';
+      process.env.windir = 'C:\\NonExistentSystemRoot';
       const runner = new NodeCommandRunner();
       const command = { executable: 'node.exe', args: ['--test', 'test.js'] };
       const result = await runner.run(command, { ensureProcessTreeSettled: true });
@@ -358,17 +362,17 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
       expect(result.errorCode).toBe('UNSUPPORTED_PROCESS_SETTLEMENT');
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-      if (originalSystemRoot !== undefined) {
-        process.env.SystemRoot = originalSystemRoot;
-      } else {
-        delete process.env.SystemRoot;
-      }
+      process.env.SystemRoot = originalSystemRoot;
+      process.env.SYSTEMROOT = originalSystemRoot;
+      process.env.WINDIR = originalWindir;
+      process.env.windir = originalWindir;
     }
   });
 
   it('fails closed in assertAdmission before creating a workspace or running commands when PowerShell 5.1 is missing on Windows', async () => {
     const originalPlatform = process.platform;
-    const originalSystemRoot = process.env.SystemRoot;
+    const originalSystemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows';
+    const originalWindir = process.env.WINDIR ?? process.env.windir ?? 'C:\\Windows';
     const rootDir = path.resolve(`.test-win-admission-${randomUUID()}`);
     try {
       const f = await createPreparationFixture(rootDir, { frontend: false });
@@ -384,6 +388,9 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
 
       Object.defineProperty(process, 'platform', { value: 'win32', configurable: true });
       process.env.SystemRoot = 'C:\\NonExistentSystemRoot';
+      process.env.SYSTEMROOT = 'C:\\NonExistentSystemRoot';
+      process.env.WINDIR = 'C:\\NonExistentSystemRoot';
+      process.env.windir = 'C:\\NonExistentSystemRoot';
 
       const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
       expect(verified.status).toBe('blocked');
@@ -393,11 +400,10 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
       expect(verified.workspaceId).toBeUndefined();
     } finally {
       Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true });
-      if (originalSystemRoot !== undefined) {
-        process.env.SystemRoot = originalSystemRoot;
-      } else {
-        delete process.env.SystemRoot;
-      }
+      process.env.SystemRoot = originalSystemRoot;
+      process.env.SYSTEMROOT = originalSystemRoot;
+      process.env.WINDIR = originalWindir;
+      process.env.windir = originalWindir;
       await rm(rootDir, { recursive: true, force: true });
     }
   });

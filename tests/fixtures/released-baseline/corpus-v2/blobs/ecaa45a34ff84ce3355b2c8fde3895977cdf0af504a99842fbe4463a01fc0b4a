@@ -1,0 +1,51 @@
+{
+	"schemaVersion": 1,
+	"id": "initial-baseline-publish",
+	"phaseId": "committed",
+	"gateKind": "repository-publish",
+	"identity": {
+		"liftoffVersion": "0.10.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 1,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+		"activationStateSchemaVersion": 1,
+		"evidenceHeaderSchemaVersion": 1,
+		"approvalEnvelopeSchemaVersion": 1,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+	"planDigest": "513e7fa8cc2ea3f328dd5a0bb484020271f1d513ca7fad27bda94a5fe6bcf7d5",
+	"resources": [
+		{
+			"type": "git-commit",
+			"identity": "committed:git-commit"
+		}
+	],
+	"destinations": [
+		{
+			"type": "repository",
+			"identity": "example-org/flight-log",
+			"repository": "example-org/flight-log",
+			"subscriptionId": null
+		}
+	],
+	"permissions": [
+		"git-commit",
+		"read-worktree",
+		"write-activation-state",
+		"write-evidence"
+	],
+	"costCeiling": {
+		"currency": "USD",
+		"fixedMonthlyCents": 0,
+		"usageMonthlyCents": 0
+	},
+	"policyExceptions": [],
+	"destructiveScope": [],
+	"approvedAt": "2026-08-30T09:15:00.000Z",
+	"expiresAt": "2026-08-30T10:15:00.000Z",
+	"approver": "historical-fixture-maintainer"
+}

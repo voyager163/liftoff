@@ -1,0 +1,285 @@
+{
+  "schemaVersion": 1,
+  "product": "@msn-control/liftoff",
+  "repository": "voyager163/liftoff",
+  "change": "modernize-liftoff-platform",
+  "baseline": {
+    "version": "0.12.3",
+    "tag": "v0.12.3",
+    "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0"
+  },
+  "candidate": {
+    "version": "0.13.0",
+    "state": "development",
+    "publicationAuthorized": false
+  },
+  "engines": [
+    "standards-assessment",
+    "project-generation",
+    "project-evolution",
+    "repository-governance",
+    "azure-activation",
+    "distribution"
+  ],
+  "qualificationOwners": [
+    "cli-contracts",
+    "generated-applications",
+    "historical-compatibility",
+    "native-platforms",
+    "github-provider",
+    "azure-provider",
+    "agent-hosts",
+    "telemetry-service",
+    "telemetry-operator",
+    "documentation",
+    "release"
+  ],
+  "capabilities": [
+    { "id": "liftoff-activation-migration", "engine": "project-evolution", "taskGroups": [1, 7, 9, 15], "qualificationOwners": ["historical-compatibility", "github-provider"] },
+    { "id": "liftoff-agent-skills", "engine": "distribution", "taskGroups": [2, 5, 14, 15], "qualificationOwners": ["agent-hosts", "cli-contracts"] },
+    { "id": "liftoff-cli-self-upgrade", "engine": "distribution", "taskGroups": [2, 12, 13, 15], "qualificationOwners": ["native-platforms", "release"] },
+    { "id": "liftoff-cli-telemetry", "engine": "distribution", "taskGroups": [15, 16, 17], "qualificationOwners": ["telemetry-service", "telemetry-operator"] },
+    { "id": "liftoff-cli-workflow", "engine": "project-generation", "taskGroups": [2, 4, 6, 7, 9, 12, 13, 14, 16], "qualificationOwners": ["cli-contracts", "native-platforms"] },
+    { "id": "liftoff-engine-platform", "engine": "project-evolution", "taskGroups": [2, 3, 4, 15], "qualificationOwners": ["cli-contracts", "historical-compatibility", "native-platforms"] },
+    { "id": "liftoff-governance-activation-engine", "engine": "azure-activation", "taskGroups": [4, 9, 10, 11, 15], "qualificationOwners": ["github-provider", "azure-provider", "historical-compatibility"] },
+    { "id": "liftoff-governance-assessment", "engine": "standards-assessment", "taskGroups": [9, 10, 15], "qualificationOwners": ["cli-contracts", "github-provider", "historical-compatibility"] },
+    { "id": "liftoff-infrastructure-governance", "engine": "azure-activation", "taskGroups": [5, 8, 11, 15], "qualificationOwners": ["generated-applications", "azure-provider"] },
+    { "id": "liftoff-manifest-contract", "engine": "project-evolution", "taskGroups": [1, 5, 7, 8, 9, 15], "qualificationOwners": ["historical-compatibility", "cli-contracts"] },
+    { "id": "liftoff-native-distribution", "engine": "distribution", "taskGroups": [1, 3, 5, 12, 13, 15, 18], "qualificationOwners": ["native-platforms", "release"] },
+    { "id": "liftoff-npm-distribution", "engine": "distribution", "taskGroups": [12, 13, 16, 18], "qualificationOwners": ["historical-compatibility", "release"] },
+    { "id": "liftoff-project-adoption", "engine": "project-evolution", "taskGroups": [2, 3, 5, 6, 7, 15], "qualificationOwners": ["cli-contracts", "generated-applications", "historical-compatibility"] },
+    { "id": "liftoff-project-assessment", "engine": "standards-assessment", "taskGroups": [2, 5, 6, 15], "qualificationOwners": ["cli-contracts", "generated-applications"] },
+    { "id": "liftoff-project-doctor", "engine": "standards-assessment", "taskGroups": [7, 9, 12, 16], "qualificationOwners": ["cli-contracts", "historical-compatibility", "native-platforms"] },
+    { "id": "liftoff-project-migration", "engine": "project-evolution", "taskGroups": [5, 7, 15], "qualificationOwners": ["generated-applications", "historical-compatibility"] },
+    { "id": "liftoff-project-repair", "engine": "project-evolution", "taskGroups": [2, 3, 7, 8, 15], "qualificationOwners": ["cli-contracts", "historical-compatibility", "native-platforms", "generated-applications"] },
+    { "id": "liftoff-project-scaffold", "engine": "project-generation", "taskGroups": [5, 7, 8, 14, 15], "qualificationOwners": ["generated-applications", "native-platforms"] },
+    { "id": "liftoff-project-update", "engine": "project-evolution", "taskGroups": [2, 7, 8, 9, 14, 15], "qualificationOwners": ["historical-compatibility", "cli-contracts", "native-platforms"] },
+    { "id": "liftoff-release-qualification", "engine": "distribution", "taskGroups": [1, 3, 12, 15, 17, 18], "qualificationOwners": ["release", "native-platforms", "telemetry-operator"] },
+    { "id": "liftoff-repository-governance-profile", "engine": "repository-governance", "taskGroups": [4, 9, 10, 11, 15], "qualificationOwners": ["github-provider", "historical-compatibility"] },
+    { "id": "liftoff-source-repository", "engine": "distribution", "taskGroups": [1, 12, 13, 16, 18], "qualificationOwners": ["release", "documentation"] },
+    { "id": "liftoff-standard-projects", "engine": "project-generation", "taskGroups": [5, 7, 8, 15], "qualificationOwners": ["generated-applications"] },
+    { "id": "liftoff-supported-stack-baselines", "engine": "project-generation", "taskGroups": [1, 3, 5, 12, 15], "qualificationOwners": ["generated-applications", "native-platforms"] },
+    { "id": "liftoff-template-ownership", "engine": "project-evolution", "taskGroups": [2, 5, 7, 8, 13, 14, 15], "qualificationOwners": ["historical-compatibility", "cli-contracts", "agent-hosts"] },
+    { "id": "liftoff-user-documentation", "engine": "distribution", "taskGroups": [12, 13, 14, 16, 17, 18], "qualificationOwners": ["documentation", "native-platforms", "telemetry-operator"] },
+    { "id": "liftoff-workstation-bootstrap", "engine": "project-generation", "taskGroups": [3, 5, 7, 12, 15], "qualificationOwners": ["native-platforms", "generated-applications"] }
+  ],
+  "issues": [
+    { "number": 78, "taskGroups": [9, 11, 15, 18], "engines": ["azure-activation", "project-evolution"], "qualificationOwners": ["github-provider", "azure-provider", "historical-compatibility"] },
+    { "number": 79, "taskGroups": [10, 15, 18], "engines": ["repository-governance"], "qualificationOwners": ["github-provider"] },
+    { "number": 80, "taskGroups": [8, 15, 18], "engines": ["project-generation", "project-evolution"], "qualificationOwners": ["generated-applications", "azure-provider"] },
+    { "number": 81, "taskGroups": [8, 15, 18], "engines": ["project-generation", "project-evolution"], "qualificationOwners": ["generated-applications"] },
+    { "number": 82, "taskGroups": [10, 15, 18], "engines": ["standards-assessment", "repository-governance"], "qualificationOwners": ["github-provider", "cli-contracts"] }
+  ],
+  "operatorDashboard": {
+    "implementationOwner": "telemetry-operator",
+    "qualificationOwners": ["telemetry-operator", "release"],
+    "taskGroups": [17, 18],
+    "resourceType": "Microsoft.Dashboard/dashboards",
+    "apiVersion": "2025-08-01",
+    "table": "LiftoffCommandEvents_CL",
+    "separateDeploymentApprovalRequired": true
+  },
+  "requiredProductionExecutors": [
+    { "id": "bootstrap-workflow-source-ready", "engine": "repository-governance", "qualificationOwner": "github-provider" },
+    { "id": "workflow-source-ready", "engine": "repository-governance", "qualificationOwner": "github-provider" },
+    { "id": "credential-ready", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "provider-ready", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "state-path-selected", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "existing-private-path", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "bootstrap-local", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "runner-ready", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "private-backend-proof", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "remote-import-verified", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "application-prerequisites-ready", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "application-artifact-ready", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "application-foundation", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "dev-proof", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "staging-qualified", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "production-rehearsed", "engine": "azure-activation", "qualificationOwner": "azure-provider" },
+    { "id": "green-red-proof", "engine": "azure-activation", "qualificationOwner": "github-provider" },
+    { "id": "rulesets-applied", "engine": "repository-governance", "qualificationOwner": "github-provider" },
+    { "id": "live-readback", "engine": "repository-governance", "qualificationOwner": "github-provider" }
+  ],
+  "requiredNativeTargets": [
+    "darwin-x64",
+    "darwin-arm64",
+    "win32-x64",
+    "win32-arm64",
+    "linux-x64",
+    "linux-arm64"
+  ],
+  "nativeQualificationMatrix": [
+    {
+      "target": "darwin-x64",
+      "os": "darwin",
+      "arch": "x64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "macOS 13.5.0 (Darwin 22.6.0)",
+      "libcFloor": null,
+      "deliveryChannel": "Homebrew Cask (voyager163/liftoff/liftoff)",
+      "runnerLabel": "macos-15-intel",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed release payload, tap approval and separate minimum-host qualification; macOS 15 does not qualify the macOS 13.5 floor"
+    },
+    {
+      "target": "darwin-arm64",
+      "os": "darwin",
+      "arch": "arm64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "macOS 13.5.0 (Darwin 22.6.0)",
+      "libcFloor": null,
+      "deliveryChannel": "Homebrew Cask (voyager163/liftoff/liftoff)",
+      "runnerLabel": "macos-14",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed release payload, tap approval and separate minimum-host qualification; macOS 14 does not qualify the macOS 13.5 floor"
+    },
+    {
+      "target": "win32-x64",
+      "os": "win32",
+      "arch": "x64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "Windows 10 1809 (Build 17763)",
+      "libcFloor": null,
+      "deliveryChannel": "WinGet Portable (voyager163.liftoff)",
+      "runnerLabel": "windows-2022",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed ZIP payload, publisher approval and separate minimum-host qualification; Windows Server 2022 does not qualify build 17763"
+    },
+    {
+      "target": "win32-arm64",
+      "os": "win32",
+      "arch": "arm64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "Windows 10 1809 (Build 17763)",
+      "libcFloor": null,
+      "deliveryChannel": "WinGet Portable (voyager163.liftoff)",
+      "runnerLabel": "windows-11-arm",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed ZIP payload, publisher approval and separate minimum-host qualification; Windows 11 does not qualify build 17763"
+    },
+    {
+      "target": "linux-x64",
+      "os": "linux",
+      "arch": "x64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "Linux kernel 4.18+",
+      "libcFloor": "glibc 2.31",
+      "deliveryChannel": "Direct Archive (liftoff-receipt.json)",
+      "runnerLabel": "ubuntu-22.04",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed archive, final checksum binding and separate minimum-host qualification for kernel 4.18, glibc 2.31 and libstdc++/GLIBCXX floors"
+    },
+    {
+      "target": "linux-arm64",
+      "os": "linux",
+      "arch": "arm64",
+      "nodeEngineFloor": "24.20.0",
+      "hostFloor": "Linux kernel 4.18+",
+      "libcFloor": "glibc 2.31",
+      "deliveryChannel": "Direct Archive (liftoff-receipt.json)",
+      "runnerLabel": "ubuntu-24.04-arm",
+      "runnerStatus": "available",
+      "qualified": false,
+      "blockerReason": "Requires signed archive, final checksum binding and separate minimum-host qualification for kernel 4.18, glibc 2.31 and libstdc++/GLIBCXX floors"
+    }
+  ],
+  "externalQualification": {
+    "state": "approval-inputs-required",
+    "requiredPublicInputs": [
+      "exact source commit and final artifact or dashboard definition digest",
+      "provider, host and recipe identity",
+      "explicit disposable repository or Azure resource inventory",
+      "acting public principal identity and permitted effects",
+      "independently approved private credential reference",
+      "maximum spending with currency and maximum elapsed time",
+      "approval expiry and exact approved plan binding",
+      "retention, cleanup and separately approved recovery boundaries"
+    ],
+    "releaseBlockers": [
+      "approved native publisher, tap/cask and WinGet package identities",
+      "signing and provenance identities supplied through secure maintainer channels",
+      "actual final-artifact qualification on each required native target and host floor",
+      "separately approved disposable GitHub and Azure qualification inputs",
+      "operator-approved telemetry dashboard deployment and viewer qualification",
+      "qualified deployed telemetry gateway revision and immutable image admitting the exact released and candidate event contracts",
+      "independent raw-count coverage evidence for both packages",
+      "same-source, final-byte evidence and verified owner-channel availability",
+      "explicit coordinated publication approval"
+    ],
+    "credentialsInPublicArtifacts": false,
+    "mockEvidenceQualifiesProduction": false
+  },
+  "verification": {
+    "schemaVersion": 1,
+    "collectionWorkflow": null,
+    "workflows": {},
+    "nativeSigning": null,
+    "minimumNativeHosts": null,
+    "qualificationRegistry": null,
+    "reportProducers": {
+      "approvalRequest": null,
+      "executionQualification": null
+    },
+    "telemetryGateway": null,
+    "authorities": {
+      "publication": null,
+      "liveQualification": null,
+      "dashboard": null,
+      "telemetryGateway": null
+    },
+    "qualificationPlans": {
+      "liveQualification": [],
+      "dashboard": [],
+      "telemetryGateway": []
+    },
+    "channels": {
+      "homebrewCask": null,
+      "winget": null,
+      "linuxDirect": null
+    }
+  },
+  "historicalWindowsFailure": {
+    "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+    "runId": "34842047858",
+    "jobId": "103969047717",
+    "jobUrl": "https://github.com/voyager163/liftoff/actions/runs/34842047858/job/103969047717",
+    "jobName": "Test (windows-latest)",
+    "runnerLabels": ["windows-latest"],
+    "conclusion": "failure",
+    "startedAt": "2026-09-14T12:11:20Z",
+    "completedAt": "2026-09-14T12:28:03Z",
+    "failedStep": "Run Windows project and packaging boundary coverage",
+    "qualificationOwner": "native-platforms",
+    "taskGroups": [1, 3, 15, 18],
+    "reportedSymptoms": [
+      "application verification and controller timeouts",
+      "npm tool identity rejection",
+      "uncertain private workspace settlement"
+    ],
+    "observations": [
+      {
+        "id": "timeout-classification",
+        "message": "SUPERVISOR_TIMEOUT was returned where AUTHENTICATION_FAILED was expected; controller tests also exceeded their test deadlines.",
+        "cases": ["tests/windows-job-runner.test.ts", "tests/windows-job-protocol.test.ts", "tests/windows-execution-qualification.test.ts"]
+      },
+      {
+        "id": "npm-admission",
+        "message": "Installed npm was rejected by the exact 12.0.2+ release-line-12 identity requirement; the error alone does not establish which identity check failed.",
+        "cases": ["tests/repair-preparation.test.ts", "tests/repair-framework.test.ts", "tests/windows-execution-qualification.test.ts"]
+      },
+      {
+        "id": "spawn-and-settlement",
+        "message": "A toolcache node.exe spawn returned ENOENT; RepairWorkspaceError required retaining a workspace because command settlement was not proven.",
+        "cases": ["tests/repair-workspaces.test.ts", "tests/repair-application-command.test.ts", "tests/windows-execution-qualification.test.ts"]
+      }
+    ],
+    "rootCauseStatus": "not-established-by-native-reproduction",
+    "requiredEvidence": "Run baseline and corrected controller/tool cases on actual supported Windows hosts, recording startup, authenticated dispatch, command and settlement timing separately.",
+    "observationEstablishesCause": false
+  }
+}

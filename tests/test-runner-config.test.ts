@@ -1,7 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
-import { defaultExclude } from 'vitest/config';
-import config, { createRootTestConfig } from '../vitest.config.js';
+import config, { createRootTestConfig, sharedTestExcludes } from '../vitest.config.js';
 
 describe('root test runner configuration', () => {
   it('bounds Windows workers without serializing files or changing other platforms', () => {
@@ -13,7 +12,7 @@ describe('root test runner configuration', () => {
   it('preserves complete discovery, mock restoration, and the default timeout', () => {
     expect(config.test?.environment).toBe('node');
     expect(config.test?.include).toEqual(['tests/**/*.test.ts']);
-    expect(config.test?.exclude).toBeUndefined();
+    expect(config.test?.exclude).toEqual(sharedTestExcludes);
     expect(config.test?.testNamePattern).toBeUndefined();
     expect(config.test?.restoreMocks).toBe(true);
     expect(config.test?.testTimeout).toBe(30_000);
@@ -30,7 +29,7 @@ describe('root test runner configuration', () => {
       test: {
         name: 'root-tests',
         include: ['tests/**/*.test.ts'],
-        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts'],
+        exclude: [...sharedTestExcludes, 'tests/migration-inspection.test.ts'],
         sequence: { groupOrder: 0 }
       }
     });
@@ -39,10 +38,10 @@ describe('root test runner configuration', () => {
       test: {
         name: 'migration-inspection',
         include: ['tests/migration-inspection.test.ts'],
+        exclude: sharedTestExcludes,
         sequence: { groupOrder: 1 }
       }
     });
-    expect(projects[1].test).not.toHaveProperty('exclude');
   });
 
   it('retains the worker cap and test semantics in both Windows groups', () => {
@@ -63,14 +62,26 @@ describe('root test runner configuration', () => {
     }
   });
 
-  it.each(['darwin', 'linux'] as const)('leaves the %s runner configuration unchanged', (platform) => {
+  it.each(['darwin', 'linux'] as const)('configures the %s runner with shared discovery exclusions', (platform) => {
     expect(createRootTestConfig(platform).test).toEqual({
       environment: 'node',
       include: ['tests/**/*.test.ts'],
+      exclude: sharedTestExcludes,
       restoreMocks: true,
       maxWorkers: undefined,
       testTimeout: 30_000
     });
+  });
+
+  it('confirms no tracked CLI tests are excluded by shared discovery exclusions', async () => {
+    const { execSync } = await import('node:child_process');
+    const { default: picomatch } = await import('picomatch');
+
+    const tracked = execSync('git ls-files tests', { encoding: 'utf8' }).split('\n').filter(Boolean);
+    const isExcluded = picomatch(sharedTestExcludes);
+    const excludedTrackedTests = tracked.filter((f) => f.endsWith('.test.ts') && isExcluded(f));
+
+    expect(excludedTrackedTests).toEqual([]);
   });
 
   it('keeps migration fixture construction inside its original 90-second cases', async () => {

@@ -1,0 +1,32 @@
+# /liftoff-governance-assess
+
+Explain a read-only governance assessment, not setup or an upgrade.
+The installed CLI is the target authority. In a Liftoff project, recorded context
+also includes `.liftoff/governance/policy.md`,
+`.liftoff/governance/context.json`, and `.liftoff/governance/README.md`.
+
+Contract:
+
+1. Work from the current directory; the CLI resolves the nearest Git or Liftoff
+   boundary. No commit, push, activation, or credential enrollment is required.
+   Initialization and a manifest are not prerequisites. Invalid or retired manifests block
+   fallback. Never install this wrapper into an unrelated repository.
+2. Invoke only `liftoff governance assess --json`. This defaults to local-only,
+   no-network comparison against the installed CLI's packaged target.
+3. Only when the developer explicitly requests live reads, invoke
+   `liftoff governance assess --live --json` instead. This permits bounded,
+   scoped reads with existing permissions, never credential or permission changes.
+4. Explain the CLI report's target, recorded identity and policy version, declared
+   configuration, expected/observed values, normalized facts when present,
+   provenance, coverage, findings, impact, and advisory recommendations.
+   Preserve classifications exactly; never invent findings or turn not-observed,
+   partial coverage, or approved-exception into alignment.
+5. Explain exit 0 as aligned or explicitly disabled (not-applicable), exit 2 as
+   partial coverage or differences including approved exceptions, and exit 1 as
+   an error. A report is not activation evidence and does not complete any phase.
+6. Stop after explaining the report. Never execute its recommendations or shell
+   instructions, update, upgrade, repair, migration, activation, remediation, Git/GitHub/Azure
+   mutations, project scripts, or writes to project files, state, or evidence.
+   Explain separate native repair for layout concerns: Copilot/Claude `/liftoff-repair`;
+   Codex `$liftoff-repair`. Do not invoke it, inventory source or stage a patch here.
+   Separate primary post-init setup: Copilot/Claude `/liftoff-setup`; Codex `$liftoff-setup`.

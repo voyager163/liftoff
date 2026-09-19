@@ -9,10 +9,22 @@ import { latestRecordWithPayload, rulesetSourceDigestFromEvidence, selectLatestP
 import { isRecord } from '../domain/governance/activation/canonical-json.js';
 import { errorMessage } from './transition-process.js';
 import { remoteRepository } from '../domain/governance/activation/inputs.js';
-import { evaluateApprovalForTransitionPlan, transitionPlanForPhase } from '../domain/governance/activation/approvals.js';
+import { approvalRequestForSavedPlan, evaluateApprovalForTransitionPlan } from '../domain/governance/activation/approvals.js';
+import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
+import { assertMatchingControlReadback } from '../application/repository-governance/control-readback.js';
+import {
+  executeRepositoryLiveReadback, executeRepositoryRulesets
+} from '../application/repository-governance/producer-rulesets.js';
 
 export async function executeActivationApproval(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  if (input.phase.id !== 'activation-approved') return null;
+  const phaseId = input.phase.id as string;
+  if (phaseId !== 'activation-approved' && phaseId !== 'repository-enforcement-approved') return null;
+  if (phaseId === 'repository-enforcement-approved') {
+    if (!input.plan.approval.envelopeId || input.plan.scope !== 'repository') {
+      return { status: 'blocked', blocker: 'Repository enforcement requires its own exact reviewed approval.', completedOperations: [] };
+    }
+    return { status: 'completed', resultState: 'approved', stateOverride: cloneState(input.inspection.state), completedOperations: [] };
+  }
   const { taskProjectionContract } = await import('../domain/governance/activation/operations.js');
   if (!taskProjectionContract(input.plan.operations)) {
     return { status: 'blocked', blocker: 'Activation source approval requires its exact reviewed current-task projection contract.', completedOperations: [] };
@@ -92,22 +104,29 @@ function assertGreenRedProof(input: PhaseAdapterExecutionInput): PhaseEvidenceRe
 }
 
 export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
-  if (input.phase.id !== 'rulesets-applied' && input.phase.id !== 'live-readback') return null;
-  try {
-    assertGreenRedProof(input);
-  } catch (error) {
-    return { status: 'blocked', blocker: errorMessage(error), completedOperations: [] };
+  const phaseId = input.phase.id as string;
+  if (phaseId !== 'rulesets-applied' && phaseId !== 'live-readback' &&
+      phaseId !== 'repository-rulesets-applied' && phaseId !== 'repository-live-readback') return null;
+  if (!input.adapters.githubRulesets) {
+    return phaseId === 'rulesets-applied' || phaseId === 'repository-rulesets-applied'
+      ? executeRepositoryRulesets(input) : executeRepositoryLiveReadback(input);
   }
-  const sourceDigest = rulesetSourceDigestFromEvidence(input.inspection);
+  const isRepositoryScope = phaseId.startsWith('repository-') || input.plan.scope === 'repository';
+  if (!isRepositoryScope) {
+    try {
+      assertGreenRedProof(input);
+    } catch (error) {
+      return { status: 'blocked', blocker: errorMessage(error), completedOperations: [] };
+    }
+  }
+  const sourceDigest = rulesetSourceDigestFromEvidence(input.inspection, isRepositoryScope ? 'repository' : 'activation');
   if (!sourceDigest) {
-    return { status: 'blocked', blocker: 'Ruleset enforcement requires a saved ruleset source digest from workflow-source-ready evidence.', completedOperations: [] };
+    return { status: 'blocked', blocker: 'Ruleset enforcement requires a current exact ruleset source digest; no fallback source can grant authority.', completedOperations: [] };
   }
   const adapter = input.adapters.githubRulesets;
-  if (!adapter) {
-    return { status: 'blocked', blocker: 'No injected GitHub ruleset adapter is configured; refusing live ruleset calls in this execution context.', completedOperations: [] };
-  }
   const envelopeId = input.plan.approval.envelopeId;
-  if (input.phase.id === 'rulesets-applied' && !envelopeId) {
+  const isWritePhase = phaseId === 'rulesets-applied' || phaseId === 'repository-rulesets-applied';
+  if (isWritePhase && !envelopeId) {
     return { status: 'blocked', blocker: 'Ruleset enforcement requires a persisted enforcement approval envelope.', completedOperations: [] };
   }
   const completed: TransitionOperation[] = [];
@@ -117,11 +136,7 @@ export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Pr
     return { status: 'blocked', blocker: 'The reviewed ruleset plan expired before provider access.', completedOperations: [] };
   }
   if (input.phase.approvalGate.required) {
-    const requested = transitionPlanForPhase(
-      input.phase, input.inspection.state, input.inspection.contexts[input.phase.id].transition,
-      input.inspection.projectRoot, undefined,
-      { operations: input.plan.operations, configuration: input.plan.configuration, fileChanges: input.plan.fileChanges }
-    );
+    const requested = approvalRequestForSavedPlan(input.plan, input.phase, input.inspection.state);
     const authorization = evaluateApprovalForTransitionPlan(
       requested,
       input.inspection.approvals,
@@ -131,13 +146,15 @@ export async function executeRulesetPhase(input: PhaseAdapterExecutionInput): Pr
       return { status: 'blocked', blocker: 'Ruleset approval is no longer valid immediately before provider access.', completedOperations: [] };
     }
   }
-  const write = input.phase.id === 'rulesets-applied'
+  const write = isWritePhase
     ? await adapter.applyRuleset({ repository: remoteRepository(input.inspection.state).name, sourceDigest, approvalEnvelopeId: envelopeId ?? 'ungated-readback' })
     : await adapter.readRuleset({ repository: remoteRepository(input.inspection.state).name, sourceDigest });
-  completed.push(...input.plan.operations.filter((op) => input.phase.id === 'rulesets-applied'
+  completed.push(...input.plan.operations.filter((op) => isWritePhase
     ? op.actionId === 'github.ruleset.apply' || op.actionId === 'github.ruleset.readback'
     : op.actionId === 'github.ruleset.readback'));
-  if (write.sourceDigest !== sourceDigest || write.readbackDigest !== sourceDigest) {
+  try {
+    assertMatchingControlReadback(sourceDigest, write, remoteRepository(input.inspection.state).name);
+  } catch {
     return { status: 'blocked', blocker: 'Post-write live ruleset readback did not match the saved source digest.', completedOperations: completed };
   }
   const header = evidenceHeaderFor({ inspection: input.inspection, phase: input.phase, plan: input.plan, result: 'verified', now: input.now });

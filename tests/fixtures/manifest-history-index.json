@@ -1,0 +1,122 @@
+{
+  "schemaVersion": 1,
+  "implementationBaseline": {
+    "release": "v0.12.3",
+    "commit": "70d10881b46d873118d825735696f39b6d35ebe0"
+  },
+  "generation": "Exact tagged source and assets, compiled with the existing TypeScript toolchain; each released writer was rendered twice with identical plans.",
+  "entries": [
+    {
+      "path": "manifest-v2.json",
+      "artifactVersion": 2,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "d815b7350c06ccba30929dc557c4af1ff4dceb35102dfce229c6ace0fa54b48a",
+      "negative": false
+    },
+    {
+      "path": "manifest-v3.json",
+      "artifactVersion": 3,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "6ea6f238aaf0cd43ec543ea1858cb7d8d5b3aa43f14cb67c8e578e1d523dbba0",
+      "negative": false
+    },
+    {
+      "path": "manifest-v4-standard.json",
+      "artifactVersion": 4,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "da918816577d04e14db483aa21f6a927481ba0a9f3930077d50ac4f110177a67",
+      "negative": false
+    },
+    {
+      "path": "manifest-v4-genai.json",
+      "artifactVersion": 4,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "c92ad4cd94e6f05f75570f80d0ce9a78084ce010610f81d5342f966e269119c2",
+      "negative": false
+    },
+    {
+      "path": "manifest-v4-power-apps.json",
+      "artifactVersion": 4,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "8daefb6279fcf80e8daf2a58363f16bcde8a7b522c89f5e6e2777957d26026ad",
+      "negative": true
+    },
+    {
+      "path": "manifest-v5-standard-released.json",
+      "artifactVersion": 5,
+      "sourceRelease": "v0.8.0",
+      "sourceCommit": "8e33555cc4df977f583be513372a9e0356f4af51",
+      "sha256": "062e09da918d2c1b57ba011448823832ce892389436f5d18f8ec34dde756d976",
+      "negative": false
+    },
+    {
+      "path": "manifest-v5-genai-released.json",
+      "artifactVersion": 5,
+      "sourceRelease": "v0.8.0",
+      "sourceCommit": "8e33555cc4df977f583be513372a9e0356f4af51",
+      "sha256": "fb0a7ef7a1194e857f965cc9674ccd397baed09c6ac0ecd21dc8306b682b7fe0",
+      "negative": false
+    },
+    {
+      "path": "manifest-v6-standard-released.json",
+      "artifactVersion": 6,
+      "sourceRelease": "v0.9.9",
+      "sourceCommit": "1565b73848a4e0dc544b94d979129af930ee9490",
+      "sha256": "74f1b3caf3b94fd471367e8762b2550c1ee946d7155fcf153d44e45ae8248099",
+      "negative": false
+    },
+    {
+      "path": "manifest-v6-genai-released.json",
+      "artifactVersion": 6,
+      "sourceRelease": "v0.9.9",
+      "sourceCommit": "1565b73848a4e0dc544b94d979129af930ee9490",
+      "sha256": "eedca2c468eb3a1c2a5e57eedb55e5e19829ff935a1488da9ce944d7fd28bde8",
+      "negative": false
+    },
+    {
+      "path": "manifest-v7-standard-released.json",
+      "artifactVersion": 7,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "640fc48c58857404b813a9261f444ca640b607e67051940db4eac3234aa5903c",
+      "negative": false
+    },
+    {
+      "path": "manifest-v7-genai-released.json",
+      "artifactVersion": 7,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "75d255ff38ec19c11f164f1ac4a7afb8f72abb25b9311b1364d2324d62e861e4",
+      "negative": false
+    },
+    {
+      "path": "manifest-v5-governed-released.json",
+      "artifactVersion": 5,
+      "sourceRelease": "v0.8.0",
+      "sourceCommit": "8e33555cc4df977f583be513372a9e0356f4af51",
+      "sha256": "a3e809901469cc7c2e3842ccf8f03e5433cec457c452059c7ac0e9e458ce8ff5",
+      "negative": false
+    },
+    {
+      "path": "manifest-v6-governed-released.json",
+      "artifactVersion": 6,
+      "sourceRelease": "v0.9.9",
+      "sourceCommit": "1565b73848a4e0dc544b94d979129af930ee9490",
+      "sha256": "84f4769e22f27a1ad69fae386ea4170596a01ed7b136d4184783090c2d003cd8",
+      "negative": false
+    },
+    {
+      "path": "manifest-v7-governed-released.json",
+      "artifactVersion": 7,
+      "sourceRelease": "v0.12.3",
+      "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+      "sha256": "fbdb859cbac6d7ea8477ca1802527de008d0c9be04808d37156ed8b2baa129a1",
+      "negative": false
+    }
+  ]
+}

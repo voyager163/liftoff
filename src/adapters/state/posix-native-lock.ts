@@ -6,7 +6,7 @@ import {
 } from '../../domain/repair/stateful.js';
 import { stateAssert } from '../../domain/repair/stateful-invariants.js';
 import { startPrivateStateProcess, nativeLocalStateProtocol } from './native-system.js';
-import { posixStateLockProgram } from './posix-lock-program.js';
+import { linuxPosixStateLockProgram, posixStateLockProgram } from './posix-lock-program.js';
 import { stopOwnedStateProcess } from './owned-process.js';
 
 interface Reply { ok: boolean; code?: StateFailureCode; version?: string; digest?: string }
@@ -74,23 +74,30 @@ class PrivateLockSession {
   }
 }
 
-export class DarwinPosixStateLockProvider implements NativeLocalStateLockProvider {
+interface PosixStateLockOptions {
+  python: StateRegisteredExecutable;
+  timeoutMs?: number;
+}
+
+class PosixStateLockProvider implements NativeLocalStateLockProvider {
   readonly capabilities = Object.freeze({
     protocol: nativeLocalStateProtocol.version, existingInPlace: true as const, createAbsent: false as const, remove: false as const
   });
-  constructor(private readonly options: {
-    python: StateRegisteredExecutable;
-    timeoutMs?: number;
-  }) {}
+  constructor(
+    private readonly options: PosixStateLockOptions,
+    private readonly platform: 'darwin' | 'linux',
+    private readonly program: string
+  ) {}
 
   async acquire(request: Parameters<NativeLocalStateLockProvider['acquire']>[0]): ReturnType<NativeLocalStateLockProvider['acquire']> {
-    stateAssert(process.platform === 'darwin', 'unsupported-native-platform');
+    stateAssert(process.platform === this.platform, 'unsupported-native-platform');
+    if (this.platform === 'linux') stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
     stateAssert((this.options.timeoutMs ?? 15_000) > 0 && (this.options.timeoutMs ?? 15_000) <= 120_000, 'invalid-binding');
     stateAssert(request.expectedVersion !== null, 'unsupported-local-state-operation');
     stateAssert(/^[a-f0-9]{64}$/.test(request.expectedVersion) && /^[a-f0-9-]{36}$/.test(request.operationId), 'invalid-binding');
     stateAssert(!request.signal?.aborted, 'cancelled');
     const child = await startPrivateStateProcess(this.options.python,
-      ['-I', '-S', '-B', '-u', '-c', posixStateLockProgram], path.dirname(request.path), undefined, 'lease');
+      ['-I', '-S', '-B', '-u', '-c', this.program], path.dirname(request.path), undefined, 'lease');
     const session = new PrivateLockSession(child, this.options.timeoutMs ?? 15_000);
     const abort = (): void => session.cancel();
     request.signal?.addEventListener('abort', abort, { once: true });
@@ -105,6 +112,7 @@ export class DarwinPosixStateLockProvider implements NativeLocalStateLockProvide
       await session.release();
       throw error;
     }
+
     // Cancellation of the native operation is not release authority. The
     // coordinator releases this lease only after native descendants stop.
     request.signal?.removeEventListener('abort', abort);
@@ -120,5 +128,17 @@ export class DarwinPosixStateLockProvider implements NativeLocalStateLockProvide
         await session.release();
       }
     };
+  }
+}
+
+export class DarwinPosixStateLockProvider extends PosixStateLockProvider {
+  constructor(options: PosixStateLockOptions) {
+    super(options, 'darwin', posixStateLockProgram);
+  }
+}
+
+export class LinuxPosixStateLockProvider extends PosixStateLockProvider {
+  constructor(options: PosixStateLockOptions) {
+    super(options, 'linux', linuxPosixStateLockProgram);
   }
 }

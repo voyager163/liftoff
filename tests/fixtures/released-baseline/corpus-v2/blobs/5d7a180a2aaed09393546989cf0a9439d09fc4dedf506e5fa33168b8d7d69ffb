@@ -1,0 +1,7 @@
+---
+schemaVersion: 1
+profile: single-maintainer-gitflow
+policyVersion: "6"
+---
+
+Historical policy fixture; no provider permissions are supplied.

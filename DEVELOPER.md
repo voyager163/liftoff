@@ -49,10 +49,58 @@ Production executors, public approval/credential enrollment, and missing GenAI
 specializations remain deferred. Local baseline evidence, read-only assessment,
 and successful generated-file checks must not be described as those capabilities.
 
+## Canonical capability metadata
+
+Each of the six engines defines capability metadata once in
+`src/application/<engine>/capabilities.ts`. Its `index.ts` re-exports those
+descriptors, and `src/application/engine-composition.ts` registers the same
+objects. Update supported profiles, command flags, effect classes, and
+qualification states in the canonical file, never in a parallel barrel copy.
+Registry presence alone is not implementation or qualification evidence:
+execution must still reach the owning use case and its actual approval,
+transaction, verification, and recovery machinery.
+
+Each ownership entrypoint also exports a frozen runtime object containing its
+concrete use cases. `composeApplicationEngines()` lazily assembles those six
+objects; it does not execute a supplied callback or infer permission from a
+capability descriptor. The main CLI dispatcher uses `composeExecutionContext()`
+for operational commands, and command adapters call the selected owner's real
+use case. Help, version and capability discovery do not initialize that runtime.
+Existing direct command callers without a composed context use the same default
+composition.
+
+The composed context preserves the runner, consent hooks and original
+`updatePreview` object. Governance's `storage` defaults to that existing private
+boundary only when an explicit `storage` was not supplied. Repository/Azure
+provider bindings travel through the existing governance adapter context, not
+the custom `phases` override; capability, exact-plan, provider ordering,
+verification and recovery gates remain in the shared coordinator.
+
+Runtime consumers import governance rendering and policy definitions from their
+owning application/domain modules, not the retained `repository-governance.ts`
+compatibility facade. Import-boundary checks enforce that separation.
+
 ## Activation version vector
 
-Current deterministic setup contract, published by Liftoff 0.12.0:
+Unpublished candidate 0.13.0 deterministic setup contract, as implemented by the current source (activation contract 4, policy 8, credential policy 2, graph 3):
 
+```json
+{
+  "liftoffVersion": "0.13.0",
+  "manifestArtifactVersion": 8,
+  "policyVersion": "8",
+  "activationContractVersion": 4,
+  "phaseGraphSchemaVersion": 3,
+  "phaseGraphHash": "7ae2149bfe39b3983bd09c14f0b11ebb84f82ad276170f12cc2c250d780301e9",
+  "activationStateSchemaVersion": 4,
+  "evidenceHeaderSchemaVersion": 4,
+  "approvalEnvelopeSchemaVersion": 4,
+  "supersessionSchemaVersion": 1,
+  "credentialPolicySchemaVersion": 2
+}
+```
+
+The published historical 0.12.0 activation vector (retained in historical reader fixtures):
 ```json
 {
   "liftoffVersion": "0.12.0",
@@ -70,16 +118,34 @@ Current deterministic setup contract, published by Liftoff 0.12.0:
 ```
 
 `phaseGraphHash` is the lowercase SHA-256 hex digest of the canonical packaged
-29-phase graph bytes, spanning from local readiness through `bootstrap-workflow-source-ready`
-to final lifecycle disposal. When documenting unreleased work before the final graph is
-known, use a clear placeholder such as `<sha256-of-canonical-phase-graph-json>`;
-do not fabricate a historical value.
+phase graph bytes, spanning from local readiness through repository and Azure
+phases to final lifecycle disposal. When documenting unreleased work before the
+final graph is known, use a clear placeholder; do not fabricate a historical value.
 
 The generated `liftoff.manifest.json` records this as manifest `artifactVersion`
-7 plus the activation identity fields shown above. Compatibility metadata uses
-schema version 4 in its own document, not a new required manifest field.
-Assessment report/catalog, graph, supersession, and credential-policy schemas
-remain at version 1; normative policy remains 6.
+8 plus the activation identity fields shown above. Compatibility metadata uses
+schema version 5 in its own document, not a new required manifest field.
+Assessment report/catalog and supersession remain at version 1.
+Credential-policy schema 2 and normative policy 8 explicitly represent the
+actual `organization_administration:read` grant, including broader organization,
+billing and Actions-settings reads, not hosted-runners-only access. The exact previous
+policy-7/schema-1 candidate is preserved by a separate immutable reader, not
+accepted as current execution authority merely because its activation number is 4.
+Its frozen graph hash is
+`00226d3a7e74b760f463e510847676b11baac432be013062cccda19fb77bcca2`;
+do not replace that historical identity with the current graph hash.
+
+Fresh exact plan-bound approval must bind the observed provider grants,
+broader-read disclosure, principal, repository/organization, workflow restrictions,
+intended operations and applicable expiry. Changed observations require new
+review. The broader grant authorizes no incidental reads or writes; Liftoff
+remains confined to the exact reviewed endpoints and resources. Original policies,
+private ownership receipts and approvals are preserved, never reused or retagged
+as schema-2 authority. See [credential permissions](docs/credential-permissions.md).
+Exact PAT bearer/lifetime proof and conditional secret creation remain blocked;
+GitHub's create-or-update API does not authorize automatic secret upsert.
+WinGet read-only inspection, native/live qualification, signing and publication
+gates remain independent blockers for this unpublished candidate.
 
 `src/domain/governance/policy/identity.ts` is the version authority;
 `src/domain/governance/activation/graph.ts` computes the canonical graph hash and
@@ -88,7 +154,7 @@ rather than blessing an obsolete hardcoded tuple.
 
 | Axis | Tracks |
 | --- | --- |
-| CLI SemVer | Published implementation and npm package behavior. |
+| CLI SemVer | Published implementation and native package behavior; npm distribution is historical-only. |
 | Policy version | Normative GitFlow, governance, security, infrastructure, and documentation rules. |
 | Activation contract | Phase order, gates, approvals, evidence meaning, invalidation, rollback, and transition semantics. |
 | Schema versions | JSON serialization for graph, activation state, evidence headers, approval envelopes, supersession records, credential policy, and manifest artifacts. |
@@ -107,10 +173,10 @@ schema identify read-only data contracts, not a new policy or activation identit
 Repair has an independent authority in `src/domain/repair/identity.ts`, exposed
 by `liftoff repair --capabilities --json`. Repair contract 1 records eligibility,
 interactive/exact approval, validation, completion and recovery guarantees.
-It is not part of the activation version vector above. The package remains at 0.12.3;
-new application repair and locked preparation capabilities are unreleased. There is
-no released minimum version yet: tools and integrations must negotiate the actual
-capability contract and preparation matrix directly rather than fabricating a release version.
+It is not part of the activation version vector above. Repair contract 1 was released
+in 0.12.3. Tools and integrations negotiate the actual capability contract and preparation
+matrix directly (`liftoff repair --capabilities --json`) rather than fabricating capability
+support from package SemVer alone.
 
 | Document or behavior | Current identity |
 | --- | --- |
@@ -118,8 +184,44 @@ capability contract and preparation matrix directly rather than fabricating a re
 | Repair result, expiring approval preview, new history receipt, repair transaction journal | independent schemas 2 |
 | Application inventory, patch input/nested report, verification result/receipt, private backup index/chunks | independent schemas 1 |
 | Azure local transformation | recipe `azure-local-layout`, version 1; sources `azure-flat-root-v1` / `azure-partial-independent-v1`, target `azure-independent-roots-v1` |
+| Azure baseline settings | recipe `azure-baseline-settings`, version 1; sources `azure-independent-roots-v1`, target `azure-independent-roots-v1` |
 | Reviewed application-file patch | recipe `application-layout-patch`, version 1; source `explicit-project-file-mapping-v1`, target `liftoff-application-artifacts-v1` plus exact workload/artifact-inventory digest |
-| Shared update transaction | schema 1, unchanged |
+| Shared update transaction journal | schema 1 (unchanged) |
+
+## Contract identity and evolution
+
+Liftoff maintains explicit contract versions across each independent axis. Historical
+records are preserved byte-for-byte; newer releases do not retag historical receipts or
+fabricate unreleased graph hashes.
+
+| Axis | Current contract | Historical contracts / readers | Scope and notes |
+| --- | --- | --- | --- |
+| Manifest writer | 8 | Readers accept 2 through 8 | Manifest v8 records explicit profile and adoption provenance; v2-v7 readers preserve original receipts/hashes |
+| Governance policy | 8 | 5, 6; pre-amendment candidate 7 | Normative GitFlow, security, ruleset, verification and disclosed provider-grant rules |
+| Credential policy | 2 | 1 | Actual provider grants and broader-read disclosure; original records and approvals remain unchanged |
+| Activation contract | 4 | 1, 2, 3 | Phase order, gates, evidence headers (v4), approval envelopes (v4), and transition semantics |
+| Phase graph schema | 3 | 1, 2 | Canonical phase graph serialization schema |
+| Compatibility metadata | 5 | 1, 2, 3, 4 | Activation compatibility metadata schema in its own document |
+| Governance output | 3 | 1, 2 | Deterministic governance status and verify output schema 3 (exit 0 complete, 2 consistent incomplete) |
+| Public protocol | 1 | — | Public capability envelopes and typed command protocol (`src/protocol/`) |
+| Repair contract | 1 | 1 | Contract 1 was released in 0.12.3; the candidate adds `azure-baseline-settings` v1 alongside the retained recipe identities |
+| Repair report / preview / journal | 2 | 1 (journals) | Independent schema-2 repair reports, approval previews, and transaction journals |
+| Update report / output | 3 | 1, 2 | Deterministic project update report output schema 3 |
+| Update transaction journal | 1 | 1 | Unchanged schema-1 `.liftoff/reviewed-update-transaction.json` journal serializer |
+| Update preview receipt | 1 | 1 | Schema-1 external preview receipt stored under user state directory |
+| Update transaction approval | 1 | 1 | Schema-1 external transaction approval record |
+| Adoption records | 1 | — | Schema-1 in-place adoption provenance and journal |
+| Native release manifest | 1 | — | Schema-1 native release manifest binding immutable final signed bytes |
+| Native auxiliary build-info | 1 | — | Exact CLI/target/runtime identity; `resourcesDigest` binds the full template catalog and `profilesDigest` binds the full profiles catalog |
+| Installation inspection / migration | 1 | — | Non-mutating inspection and legacy npm-to-native handover plan/checkpoint |
+
+Build-info's two semantic catalog digests are not interchangeable with the
+native release manifest's resource-byte `inventoryHash`. Metadata readers
+recheck bounded current bytes and path identity before using a cached parse.
+Only confirmed absent metadata in a non-native development layout yields the
+explicit unqualified development form; malformed, linked, replaced, or missing
+native metadata cannot silently downgrade. These checks do not establish
+native signature, ownership, or host qualification.
 
 The application target is derived from current explicit generator declarations,
 not an invented legacy version. Source provenance remains historical.
@@ -134,6 +236,11 @@ immutable fingerprint internally; optional exact flags retain the same gates.
 Check/JSON/non-TTY never implicitly execute or consume piped consent. Preserve
 update's original prompt wording and JSON stdout/stderr behavior when extending
 the shared approval helper.
+
+Continuation arguments are checked before resolving them against their recorded
+working directory. Ordinary relative paths remain supported; drive-relative
+Windows paths, incomplete UNC shares, and device paths are rejected before
+normalization can hide their ambiguous target.
 
 Application verification is independently authorized and occurs in a bounded
 copy, **not a security sandbox**. Obtain script and any declared network consent
@@ -311,7 +418,7 @@ npx vitest run tests/seed-lifecycle.test.ts
 npx vitest run tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts
 npx vitest run tests/commands.test.ts tests/file-system.test.ts tests/contract.test.ts tests/update.test.ts
 npm run build
-openspec validate stabilize-and-modularize-liftoff --strict
+openspec validate modernize-liftoff-platform --strict
 ```
 
 Before release, run:
@@ -324,60 +431,463 @@ npm run verify:generated-containers
 npm run verify:release-identity
 ```
 
-## 0.12.3 release checklist
+The native routing and Azure configuration cases require uv, Go, OpenTofu and
+Checkov on the contributor host. `UV_PATH`, `GO_PATH`, `PYTHON_PATH` and
+`CHECKOV_PATH` select existing tools without changing global installations.
+CI pins Checkov 3.2.495 for the five cited Azure controls; a newer tool that no
+longer executes `CKV2_AZURE_47` is not equivalent qualification. Dependency
+restoration honors the operator's approved package registry and still uses
+frozen locks; it does not force canonical tarball hosts past mirror policy.
+
+Windows source acceptance has both focused and complete-boundary manual modes
+under `diagnostic_windows_only`. Select
+`windows_diagnostic_scope=complete-boundary` for all 60 original/added boundary
+files across ten one-worker partitions, with at most three running at once.
+Ordinary files use file sharding; the two long reviewed-update/revalidation
+files use evaluated test-ID partitions, and migration inspection runs intact
+alone. Parameter expansions, original applicability and exact case IDs are
+retained and checked, so every case is assigned once without deadline changes.
+This includes the historical read-only Git metadata
+revalidation case without increasing its deadline. The actual Windows
+Node/npm/Git acceptance suite records installed executable identities and
+rejects conflicting aliases, project shims and changed executable copies.
+Undefined case aliases cannot shadow canonical child-environment variables.
+Case-insensitive Windows overrides and explicit clears also replace inherited
+aliases rather than leaving an ambient alternative in the final child block.
+Pinned Node 24.20/libuv reinserts missing required environment variables;
+explicit clears of that declared set are therefore emitted as empty strings.
+Optional variables are still omitted. The native regression checks an empty
+`USERPROFILE` and absent optional `APPDATA`, never acceptance of the ambient
+profile observed in the failed source run.
+Its incompatible-version negative uses a deliberately changed copy of npm's
+manifest, not a fabricated native version result.
+
+All partitions must pass for complete boundary source evidence. These results do
+not establish final installed bundles, minimum hosts, enterprise-policy
+coverage or a missing Windows private-state foundation; report those as
+separate blockers. See [Windows diagnostic commands](CONTRIBUTING.md#validate-a-change).
+
+The observed 90-second failures in run `35428495819` remain failures, not
+qualification: migration inspection's complete-journal and stale-proof cases,
+and migration revalidation's remaining-work retry. Metadata-only macOS profiling of the
+complete-journal case measured 696,877 `lstat`, 592,064 `realpath`, 9,656 opens,
+64,106 directory reads and 3,517 directory streams. Guarded retained-input
+capture now overlaps at most three reads, pinning each file before traversal
+advances and retaining the same path/handle/final checks, byte/count/deadline
+limits and sorted digests. The same case retained those exact observation
+counts after the change; its local instrumented time was 19.9 seconds versus
+24.4–26.8 seconds before, not a claim about Windows performance.
+Failure drains outstanding reads and clears their
+buffers before returning. This is an I/O scheduling correction, not a cached
+cross-boundary snapshot or an identity-format change; native timing acceptance
+still requires another Windows run.
+
+Exact NTFS IDs outside JavaScript's safe-number range remain a genuine
+unsupported identity boundary. Disposable-fixture refusal diagnostics retain
+fresh BigInt metadata only. Existing numeric observations, journal readers,
+receipt bytes and digest algorithms have not been expanded or reinterpreted.
+
+Fresh Windows boundary partitions must not inherit fixture setup from another
+file. Revalidation fixtures create their `.cache` parent explicitly before
+canonicalization. Repair fixtures choose short, newly owned source-test storage
+before review, preserving the complete registered workspace hierarchy and both
+64-character identities; no existing storage is relocated or aliased.
+
+Windows read-denial coverage uses an exclusive handle on a disposable fixture
+file, not a POSIX `chmod(0)` claim or an ACL change. The initial readiness-only
+fixture failed in run `35440527651`: its direct read unexpectedly succeeded.
+The replacement holds the handle until an owned release-marker file appears,
+independent of PowerShell's redirected console input lifetime. Readiness binds
+the actual child PID and a digest of the opened file's full name; the test
+checks liveness and marker absence before requiring an actual read denial,
+then requires normal release and settled exit. This correction still requires
+native execution; it is not evidence that the failed run denied access.
+Opt-in diagnostics report only the checked binding/liveness booleans and the
+actual read error code; unexpectedly readable bytes are cleared, not printed.
+Run `35442938568` failed the release protocol after 17.18 seconds and did not
+retain the read-denial diagnostic. The original finally-block error masked any
+earlier readiness/inspection failure; it is not sufficient evidence of where
+the fixture stopped. The handshake now uses bounded owned metadata files for
+readiness and post-disposal acknowledgement, explicit encoded script arguments,
+and the same 15-second readiness/two-second settlement bounds. Both the primary
+failure and teardown outcome remain visible; forced termination is never a
+successful release. No PowerShell execution-policy override is used.
+Run `35443879517` proved the marker handshake and clean disposal/exit, but the
+actual Node read still succeeded (`denialCode: null`). It did not establish
+unreadability. A bound process and file-name digest are not a held kernel-file
+identity or a sharing-mode observation. The exclusive-handle fixture remains
+blocked pending native handle/file-ID and second-open sharing evidence; no
+ACL change, simulated EACCES or acceptance of a successful read is permitted.
+The standalone source diagnostic in run `35445486472` later retained valid
+managed and kernel handles to matching file identities with requested share
+mode zero. The independently opened Node-compatible handle still succeeded
+against the same file, and both Node read paths returned the nonsecret canary.
+Its successful job status records complete observations, not read-denial or
+private-custody qualification; the failing baseline assertion remains open.
+Mode-freshness fixtures
+require a real observable read-only-attribute change on Windows; that is not
+directory ACL/custody qualification. Application-patch rejection fixtures bind
+actual source modes/digests so the intended infrastructure boundary is tested.
+The unref-descendant fixture waits for child IPC readiness; Windows omits only
+Node's own kill-on-parent-exit job while retaining the enclosing Liftoff job,
+and fixture teardown requires actual settlement rather than deleting an active
+scope. All existing command/test deadlines remain unchanged.
+
+Guarded verification-workspace cleanup indexes the already captured directory
+names once per cleanup instead of filtering the complete directory map before
+each effect. The index preserves NFC/case-folded ancestor selection, original
+snapshot order, exact identity objects and live membership after directory
+removal. It caches no filesystem observation: all lease, authority, path,
+identity, permission, link-count and peer-link checks still run before each
+serial effect. Failure stops further effects and retains actual partial progress.
+A paired local Fastify remediation run reduced cleanup from 152.6 seconds to
+66.1 seconds with identical 1,612 scan, 7,835 unlink and 1,612 rmdir operations.
+This is local source evidence, not a claim that full hosted CI now passes.
+
+Hosted run `35453226556` still exceeded the unchanged remediation budgets:
+guarded cleanup took 251.6-264.3 seconds on Linux and 213.8-237.2 seconds on
+macOS. A subsequent local, per-call profile of the existing algorithm measured
+59.8 seconds cleanup over the same 11,059 effect guards. Its retained authority
+reads took 19.50 seconds (22,124 reads, including six checkpoints), index reads
+9.78 seconds (11,059 reads), record reads 9.89 seconds (11,059 reads), and lease
+checks 4.04 seconds. The enclosing index/record guards took 40.07 seconds total;
+their parsing, seal validation and other bookkeeping beyond those reads took
+less than one second. These nested timings must not be added twice or presented
+as hosted timing measurements.
+
+The remaining critical path is `cleanupOne.guard` in
+`src/application/repair/workspaces.ts`: lease validation, `readIndex` (fresh
+authority then index), membership admission, and `readRecord` (fresh authority
+then record), followed by `deleteRegisteredWorkspace` path/identity guards.
+Each metadata read traverses `storageFor`, `directories`, and `readText` in
+`src/adapters/filesystem/update-previews.ts`, with ancestry/type admission before
+opening and reading private bytes and directory/file rechecks afterward.
+Preparing record reads before membership succeeds changes early refusal;
+parallel descendant path checks can reach a changed parent before its admission.
+Reusing earlier authority or directory observations would omit a required fresh
+check. No substantial equivalent read batching has been established under this
+path-based store API. A reviewed read-frame/directory-handle contract would be
+needed before attempting to share these admissions safely; no such contract,
+cache, timeout increase, or guard removal is part of this optimization.
+Temporary profiling hooks were removed. The hosted cleanup failures remain open.
+
+The whole six-case Windows inspection suite passed in source run `35442938568`
+within the unchanged 90-second deadlines. This does not establish a performance
+root cause or installed qualification: both complete cases again exceeded
+90 seconds in run `35443879517`. Timing remains unresolved, not fixed by that
+single passing run. At 85 seconds the latter run had started 72 retained-input
+captures (one pending), spending about 72 seconds in completed captures, with
+the same 75-file maximum inventory. This locates cost but does not establish
+a safe optimization or explain host variance. Earlier run `35440527651` reached seed-valid at 8.4 seconds,
+seed-verified at 29.8 seconds and seed-archived at 72.5 seconds, timing out before
+local execution completed. Opt-in logs transparently time the original retained
+input captures and history inspections: call/pending counts, total/maximum
+durations and maximum inventory size, without changing their arguments/results.
+These nested durations are not additive wall time. Stage/phase identifiers
+and elapsed times remain available, plus safe baseline-command status/error-code/cwd-length
+metadata. No cross-invocation snapshot cache, frozen-reader change or private
+verification producer has been introduced to manufacture success.
+An isolated macOS complete-journal profile observed 81 fresh retained-input
+captures of the same 75-file maximum inventory (10.8 seconds), plus 42 history
+inspections before local execution completed (4.0 seconds). Seed-verified added
+39 captures, versus 18 for each other execution phase. The growth is repeated
+guard work, not an expanding retained file inventory. Reuse across command or
+write boundaries would omit freshness checks and has not been substituted.
+The `remaining-regressions` Windows diagnostic scope runs those three affected
+whole files independently; it is explicitly not complete-boundary evidence.
+The continuation negative now derives the emitted action's native path format:
+a different same-platform cwd can be valid with absolute project arguments,
+so it tests an actually mixed-format cwd and a distinct project target instead.
+The same source run passed this mixed-renderer negative but exposed a separate
+installation-fixture error: Windows metadata declared ZIP while the fixture
+emitted tar.gz and POSIX entrypoints. Windows fixtures now build the existing
+Go PE launcher with the pinned source-lane compiler, retain its license, copy
+the actual host Node executable and emit a real ZIP with canonical `.exe`
+entrypoints. These generated local test artifacts are not published or installed
+qualification. Numeric NTFS identity admission remains unchanged and can still
+block subsequent candidate admission.
+Run `35443879517` admitted those archives, then refused the legacy-owner
+selection. The shared legacy fixture still has the POSIX `prefix/bin/liftoff`
+symlink and `prefix/lib/node_modules` layout, whereas Windows PATH discovery
+uses PATHEXT (default `.COM;.EXE;.BAT;.CMD`) and the npm adapter expects
+`prefix/liftoff.cmd` with `prefix/node_modules`. Its shell-based npm stub and
+absent registered Windows shim-generator inventory are further prerequisites,
+not ownership evidence. The observed "No effective legacy Liftoff command"
+refusal precedes those identity/owner checks; it must not be relabelled as the
+uint64 blocker or bypassed by renaming a POSIX launcher or asserting ownership.
+Run `35445486472` exercised actual npm 12.0.2 and cmd-shim 9.0.2 against a fresh,
+offline, dependency-free synthetic tarball and captured the genuine generated
+Windows shims. That isolated setup supplied neither the installed lock nor an
+HTTPS origin required by the production owner observer. The diagnostic did not
+invoke that observer, forge missing metadata, establish a released-baseline
+installation or qualify owner-channel behavior.
+
+The standalone `fixture-prerequisites` diagnostic now builds an actual synthetic
+legacy fixture through the existing admitted Node/npm toolchain. It packs only
+the locally generated manifest and CLI, verifies the tarball's SHA-512 integrity
+and installed CLI bytes, isolates all prefix/home/cache/config paths, disables
+scripts/audit/fund/network, and records generated shim digests plus the observed
+npm `cmd-shim` generator identity. It never modifies the installed lock record,
+registers an owner, invokes retirement or claims a released baseline.
+
+Local npm 12.0.2 execution on macOS proved a more fundamental observer boundary:
+the actual global install did **not** produce the hidden `.package-lock.json`
+required by `NpmInstallationAdapter`. If a tool does produce that record, a
+local tarball's `file:` origin still cannot satisfy the observer's HTTPS registry
+origin contract. The diagnostic reports these blockers separately and does not
+wire fabricated registry metadata or an asserted Windows generator contract into
+the original continuation tests. Windows shim generation still requires actual
+execution of the standalone native case.
+
+The same diagnostic's managed/kernel cases are independent of the baseline
+read-denial fixture. They retain the actual `SafeFileHandle`, collect volume/file
+IDs using `GetFileInformationByHandle`, compare the final handle name and Node's
+BigInt file identity, and perform a second `CreateFileW` using pinned libuv's read
+access/share/backup-semantics flags. Node `readFile` and separately opened-handle
+reads are both measured against a fixed NONSECRET canary; only error codes,
+counts, identity comparisons and booleans are exported. Held identity is checked
+again before disposal and cleanup requires proven public-runner settlement.
+These observations may explain an ineffective denial but never replace the
+original denial assertion. The earlier baseline and timing failures remain open.
+
+The separate `windows_diagnostic_scope=private-io` selector, together with
+`diagnostic_windows_only=true`, exercises the independently inventoried private
+Windows binary-pipe helper on actual x64 with stock supported PowerShell/.NET.
+It builds first, then selects only the private protocol/runner test files and
+requires their native NONSECRET cases to execute successfully. It neither
+modifies the public controller nor extends the complete-boundary inventory.
+Only sanitized bounded JSON identities/statuses are retained, not raw payloads
+or state. Source success does not establish encrypted custody, minimum-host or
+installed qualification, and no host policy/ACL change is an allowed remedy.
+
+Collect CLI and telemetry coverage independently, then validate both complete
+source inventories and exact raw counts:
+
+```bash
+npm run test:coverage -- --maxWorkers=2
+npm --prefix services/telemetry-ingest run test:coverage -- --maxWorkers=2
+npm run gate:coverage
+```
+
+Source CI divides the complete root suite into three built-in Vitest 5 shards
+on every OS. Each Linux shard enables V8 and writes a blob report containing
+its actual coverage map, including unimported production sources and both
+`activation-v3-reader` and `activation-v4-policy7-reader`. The coverage job
+waits for all nine source-test shards to succeed, downloads exactly the three
+Linux blobs from the current run/source SHA/attempt, rejects missing or empty
+reports, and uses the pinned runner's own merge operation:
+
+```bash
+npx vitest run --merge-reports=source-test-blobs --coverage --reporter=default
+```
+
+Vitest merges file-level measurements, not percentages or summary totals.
+Telemetry is measured independently afterward, before the unchanged
+`npm run gate:coverage` command. Do not combine its denominator with the CLI's.
+For a workflow rerun, rerun all jobs: successful blobs from an earlier attempt
+are deliberately not accepted. The retained `source-coverage` artifact is
+source-only evidence, not native, live-provider or publication qualification.
+
+The optional `diagnostic_native_posix_locks_only` dispatch exercises only native
+Linux x64/arm64 POSIX locking on synthetic local state with explicitly selected
+Python/OpenTofu binaries, plus nonsecret per-process Linux read-only guard
+fixtures. Exact selected-file preparation may remove group/other write bits
+only from runner-owned executables; before/after UID, GID, mode, file identity
+and byte digests are retained, with failure closed on unauthorized or changed
+inputs. It never copies Python alone, changes broader toolcache permissions or
+relaxes production admission. Actual host architecture metadata accompanies each
+test report; configured runner labels alone are not execution evidence, and an
+unavailable arm64 result remains pending. This lane does not establish encrypted
+storage, key-store custody, enrollment or release readiness. It may combine with
+the Windows and native Go diagnostic flags, but any diagnostic selection omits
+the full source matrix and coverage gate. Default, push and PR coverage stays
+unchanged; see the [diagnostic routing table](CONTRIBUTING.md#validate-a-change).
+
+Default source CI also builds `native/linux-keystore-client` on native Linux
+x64 and arm64 from exact libsecret commit
+`a5cd57f103038c06b64d5f6ebfd0e627bb40af4e`, with the crypto-enabled library in an
+explicit private prefix. These two jobs supplement rather than replace the
+complete suite and separate coverage gates. The
+`diagnostic_linux_keystore_build_only` input selects those build/synthetic-source
+checks, or combines them with explicitly selected diagnostics. The initial
+dependency-free protocol run remains separate. After a successful pinned build,
+the explicit `LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1` run exercises the compiled client
+against a fresh private no-autostart bus and an in-memory synthetic service with
+nonsecret fixtures. Its loader/private dependency checks remain required.
+No real GNOME, ordinary desktop/system service or keystore is used; production
+enrollment is not enabled. Distinct bounded JSON summaries and the original
+`build-identity.json` separate compile identity from synthetic behavior; no raw
+helper output or binary is uploaded. Real provider, custody, enrollment,
+installed-artifact, runtime closure and release admission remain unqualified.
+
+Actual GNOME restart/persistence testing is a separate, default-false manual
+`diagnostic_linux_gnome_persistence_only` lane, never part of ordinary push/PR
+or default full-source execution. It builds exact clean daemon commit
+`da00f9621eaf263d5ed4236df9c22798ea8021d2`, reuses the pinned private libsecret
+client and admitted CPython, and first requires compiled-client loader and
+managed-key-binding contract tests. The daemon target alone is copied into
+the private test prefix; no upstream service/PAM/autostart installation occurs.
+Its exact-file runtime preparation also observes canonical `process.execPath`
+for the Node coordinator: retained metadata precedes any runner-owned
+group/other-write-bit correction, with identity and byte verification afterward.
+No unknown historical permissions are assumed and production admission stays
+unchanged.
+Fresh owned processes, private buses/stores and generated test passwords/keys
+exercise actual persistence/restart without using existing keyrings or user
+credentials. Sanitized JSON outcomes retain source/architecture bindings and
+leave host encryption, provider/cloud/release qualification explicitly
+`not-performed`. Uncertain process settlement does not become cleanup proof.
+The same manual native step also selects
+`LIFTOFF_LINUX_READONLY_NULL_TEST=1` for the separately bound null-sink profile
+tests. Both the actual GNOME persistence suite and
+`opt-in Linux null-sink profile nonsecret fixtures` must run with zero failed
+or skipped applicable cases. Fixed-device 1:3 admission, strict-profile refusal,
+continued write/device denial and cancellation remain source-fixture checks,
+not permission to widen the original helper or alter a host device/ACL.
+Reports separately leave minimum-host and installed-artifact qualification
+`not-performed`.
+The 18 default jobs and their independent coverage denominators are unchanged;
+see the [manual routing and build prerequisites](CONTRIBUTING.md#validate-a-change).
+
+The standalone gate reads only the two canonical coverage-summary paths through
+bounded, identity-checked reads. Its `ok` covers **TypeScript/JavaScript
+measurements only**, not native helpers or release readiness. Missing reports,
+source roots, unimported production files, and caller-selected smaller
+inventories cannot pass. All four metrics must satisfy
+`covered * 100 > total * 80` separately in each package.
+
+Native helpers remain explicitly unqualified here even when a supplied report
+claims success, zero active processes, or a native run ID. The coordinated
+release gate independently verifies final signed bytes, registered host runs,
+helper behavior, provenance, and the other required qualification. A standalone
+V8 pass never promotes those claims into release proof.
+The current helper inventory contains the Windows controller, Windows PE
+launcher and POSIX launcher. Historical npm command shims remain installation
+handover inputs, not an additional shipped native batch launcher.
+
+The three-OS source CI lane measures the Go launcher's existing filesystem and
+receipt fixtures separately with Go's statement coverage and retains each
+host's `.coverprofile`. Run the same source tests locally with:
+
+```bash
+go test -count=1 -cover scripts/distribution/windows-launcher.go scripts/distribution/windows-launcher_test.go
+```
+
+This measurement includes unexecuted launcher branches but does not measure the
+PowerShell controller or POSIX launcher, run a signed PE, or establish Windows
+image-lock, cancellation, policy, or minimum-host qualification. Its percentages
+are never merged with either package's V8 counts.
+
+Each native target also requires a separately authenticated minimum-host report,
+with measured OS/kernel/libc values and an exact registered execution job.
+Copied policy floors or successful execution on a newer hosted image cannot
+qualify the minimum; see [native host evidence](docs/native-builds.md#runtime-and-target-facts).
+
+## 0.13.0 release checklist
 
 - Package metadata, lockfile metadata, `liftoff --version`, and tag agree on
-  `0.12.3`. Preparing these files is not publication or permission to create a tag.
-- Activation package identity remains `0.12.0`; no phase semantics or graph
-  identity change is introduced by patch-release preparation.
-- Release notes identify reviewed `liftoff repair` for supported undeployed Azure
-  infrastructure, exact project-bound approval, preserved source/provenance,
-  recoverable transactions, and the update/native setup handoff. Deployed or
-  unknown infrastructure remains plan-only; no public stateful cutover is claimed.
-- Manifest writes use artifactVersion 7; readers accept v2-v7.
-- Policy version is `"6"`; activation contract/state/evidence-header/approval
-  remain v3. Compatibility metadata is v4; preview receipts,
-  transaction approvals, history indexes, and migration journals are v1. Graph,
-  supersession, credential-policy, assessment report, and assessment catalog
-  schemas remain v1.
-- Independent infrastructure provenance explicitly admits generation versions
-  `0.11.0`, `0.11.1`, `0.11.2`, `0.11.3`, `0.12.0`, `0.12.1`, `0.12.2`, and `0.12.3`, including mixed component histories.
-  Unknown releases remain blocked rather than being accepted through a version range.
-- No setup-skill version exists in manifests, JSON status, docs, or generated
-  integrations.
+  candidate `0.13.0` against exact baseline v0.12.3 commit `70d10881b46d873118d825735696f39b6d35ebe0`.
+  Preparing these files is not publication or permission to create a tag.
+- The historical baseline retains activation package identity `0.12.0`; current
+  candidate code uses `0.13.0`. No phase semantics or graph identity change is introduced
+  without independent contract/graph bump review.
+- Release notes identify native distribution cutover, candidate/unqualified status
+  until signed releases and verified channels are available, and one-time legacy npm handover.
+- Manifest writes use artifactVersion 8; readers accept v2 through v8, preserving historical
+  v2-v7 records and source receipts.
+- Policy version is 8; credential-policy schema 2; activation contract 4; phase graph schema 3; compatibility metadata 5;
+  governance output schema 3; public protocol schema 1; repair contract 1 (released in 0.12.3).
+- Strict test coverage requires lines, branches, functions, and statements strictly above 80%
+  independently for CLI and telemetry service, evaluated from actual numerator/denominator counts.
+- Source-only qualification ≠ real native/provider/dashboard qualification; missing credentials,
+  signing, or live infrastructure remain explicit blockers.
+- Branch policy preserves only `main` and `develop` as permanent branches while active
+  temporary PR branches remain valid. Two active worktrees are checked out with no deletions
+  authorized; `assets/qualification/source-preservation.json` records the preservation plan.
 - Doctor states and remedies cover seed-incomplete, phase-blocked,
   evidence-stale, credential-expiring, reconciliation-required,
   identity-incompatible, enforcement-incomplete, and disposal-pending.
 - Package contents include `DEVELOPER.md`, docs, assets, governance artifacts,
   schemas, compatibility metadata, and setup templates.
 
-## Trusted npm publishing overview
+## Historical npm publishing and native cutover
 
-The `Release Liftoff` workflow builds, tests, packs, verifies release identity,
-publishes with npm trusted publishing and provenance, then verifies the canonical
-dist-tag. Do not place npm tokens, registry credentials, PATs, cloud secrets, or
-signing material in repository files, workflow logs, chat, screenshots, or
-evidence. Failed post-publish verification requires a dist-tag correction when
-the immutable package is correct, or a corrected patch release; do not unpublish
-as routine recovery.
+The v0.12.3-and-earlier npm artifacts and provenance remain historical recovery
+inputs. Contributor package smoke checks do not authorize a new npm publication,
+bridge package, or mutable npm-latest discovery for native installations. The
+candidate package is private; future delivery uses the separately approved
+native artifacts and owner channels behind the coordinated release gate.
+
+Do not place npm tokens, registry credentials, PATs, cloud secrets, or signing
+material in repository files, workflow logs, chat, screenshots, or evidence.
+Historical npm recovery is explicit-version and owner-specific. A native
+handover does not rewrite projects, and a failed publication never authorizes
+unpublishing historical packages or replacing another installation owner.
 
 ## Functional engines and implementation boundaries
 
-Liftoff remains one npm package and a modular monolith. It has eight functional
-responsibility groups, not eight separately deployed services or classes named
-`Engine`. Workloads, patterns, activation phases, and assessment controls are
-different dimensions; adding a template does not create another engine.
+Liftoff remains one package and a modular monolith. It identifies six capability
+engines and one shared execution kernel (`application/execution`), which is not a
+seventh capability engine. Workloads, patterns, activation phases, and assessment
+controls are different dimensions; adding a template does not create another engine.
 
-| Subsystem | Current implementation |
-| --- | --- |
-| Project planning and generation | `domain/project/`, `application/project/`, `generators/`, resolved packaged template assets |
-| Workstation/framework bootstrap | `application/initialize/`, workstation registry, framework adapters, `init-filesystem.ts`, dependency setup |
-| Source migration | `domain/migration/`, `scan.ts`, `migrate-plan.ts`, `application/migrate/` |
-| Managed project maintenance | `application/update/{planning,reporting,use-case}.ts`, `reconcile.ts`, filesystem transactions |
-| CLI self-upgrade | `application/upgrade/use-case.ts`, `self-upgrade.ts`, stable release lookup and installed-package verification |
-| Diagnostics | `application/diagnose/`, pure manifest contracts, shared runtime/framework/governance checks |
-| Governance activation | `domain/governance/{policy,activation}/` rules and `governance-activation/` execution composition |
-| Governance assessment | `domain/governance/assessment/` comparison/report contracts and `governance-assessment/` read-only collection |
+| Capability engine | Application ownership | Principal responsibility | Current implementation |
+| --- | --- | --- | --- |
+| Standards and Assessment | `application/standards-assessment` | Profile selection, bounded inventory, standards findings and evidence coverage | Runtime entrypoint binds actual assessment and `application/diagnose/` use cases |
+| Project Generation | `application/project-generation` | Compose and stage approved new-project artifacts | Runtime entrypoint binds project preview and `application/initialize/`; generation keeps its existing catalog/resource composition |
+| Project Evolution | `application/project-evolution` | Adoption, existing fresh-target migration, managed update and reviewed repair | Runtime entrypoint binds adoption and `application/migrate/`, `application/update/`, `application/repair/` |
+| Repository Governance | `application/repository-governance` | GitFlow, source workflows, checks, approved settings/rulesets and repository readback | Runtime entrypoint binds governance assessment and the existing GitHub phase planner/executor |
+| Azure Activation | `application/azure-activation` | Explicit environment discovery, approved provisioning/deployment and qualification | Runtime entrypoint binds the existing Azure and composite phase planners/executors; individual producers retain their authority checks |
+| Distribution and CLI Upgrade | `application/distribution` | Installation ownership, release discovery, native upgrades and installation handover | Runtime entrypoint binds owner-preserving upgrade, installation inspection/migration/recovery and skill delivery |
+
+The shared kernel belongs in `application/execution`; it is not a seventh capability engine.
+Pure rules, identities, schemas and compatibility maps remain in `domain`. `cli`
+parses, routes, and presents. `protocol` owns versioned external request/result schemas.
+I/O stays in explicit adapters.
+
+The packaged profile/template catalogs bind their semantic metadata and actual
+resource bytes. `scripts/generate-catalogs.mjs` reads canonical GenAI pattern
+declarations with the existing TypeScript-capable AST parser instead of keeping
+a second maturity/worker inventory. Pattern names never imply completed retrieval
+or streaming features. Composition requires exactly one selected component
+owner for each emitted logical artifact; shared content belongs to its common
+component, and pattern-specific content belongs to the selected pattern.
+
+Catalog reads recheck bounded regular-file bytes even when a parsed object is
+cached. Missing, damaged, linked, or malformed dependencies block actual artifact
+generation. A caller-rehashed catalog cannot register arbitrary deletions:
+retirement identity, category, path and replacement must agree with the supported
+reader's canonical retirement registry. Native installed-artifact qualification
+remains separate from these source-level catalog and composition checks.
+
+`application/azure-activation/component-role-mapping.ts` is metadata-only
+(`authority: "none"`). It uses actual manifest component identities and canonical
+worker selection to distinguish generated image, API, frontend and function
+source defaults. Adopted components remain unbound: no inferred build directory,
+port, endpoint, hosting or worker absence. Generated function triggers are
+skeletons, not processing proof. Source, artifact, native/runtime and provider
+readers must independently establish the actual bindings and qualification;
+this module is not another HTTP-response or deployment verifier.
+
+Public schema validation rejects malformed nested data, duplicate identities,
+inconsistent qualification claims, and mismatched engine ownership. Human-only
+`init`/`migrate` descriptors have no JSON result schema. Typed command payloads
+require their command-specific decoder; framing alone grants no execution
+authority and never changes retained report bodies.
+
+Continuation arguments, native paths, configuration digests, scope and rendered
+command must agree. A reference without a digest, a dropped scope/configuration,
+or a different target fails admission. The shared literal shell implementation
+lives in `domain/execution/shell-command.ts`; the existing process adapter
+re-exports it, preserving released formatting without a parallel quoting path.
+Project-scoped skills metadata is checked against the parsed `--project` target,
+or canonical `cwd` when explicit `--scope project` omits that selector. Dropping
+selectors cannot reinterpret project metadata as the CLI's default personal scope;
+installation migration metadata is checked against the parsed `--destination`.
+These are context-consistency checks, not execution permission: actual private
+plans, command-specific consent and native ownership admission remain authoritative.
+`requiresInput` templates and unaddressable personal targets are nonexecuting
+guidance. Native-path string tests on one host do not qualify another host or shell.
 
 Telemetry, terminal presentation, process execution, catalogs, and filesystem
 access support those subsystems rather than constituting additional business
@@ -472,22 +982,35 @@ and facade use. Packed smoke covers runtime asset lookup outside this checkout.
 ## Activation completeness and separate follow-up plan
 
 The activation engine is not yet an end-to-end production provisioning engine.
-Of its 29 declared phases, 11 have built-in handler paths, 2 require an injected
-GitHub ruleset adapter that the public CLI does not currently supply, and 16
-fall back to an explicit missing-production-adapter blocker.
+The canonical graph and `domain/governance/activation/capabilities.ts` enumerate
+every phase and distinguish built-in implementation, missing implementation,
+and unqualified provider execution. Do not freeze an implementation count in
+documentation or treat a newly registered handler as completed qualification.
 
-The missing production phase handlers are `bootstrap-workflow-source-ready`,
-`provider-ready`, `state-path-selected`, `existing-private-path`, `bootstrap-local`,
-`runner-ready`, `private-backend-proof`, `remote-import-verified`,
+Required producer and qualification lanes include `bootstrap-workflow-source-ready`,
+`credential-ready`, `provider-ready`, `state-path-selected`, `existing-private-path`,
+`bootstrap-local`, `runner-ready`, `private-backend-proof`, `remote-import-verified`,
 `application-prerequisites-ready`, `application-artifact-ready`,
 `application-foundation`, `workflow-source-ready`, `dev-proof`,
-`staging-qualified`, `production-rehearsed`, and `green-red-proof`.
-`rulesets-applied` and `live-readback` have adapter contracts but need production wiring.
+`staging-qualified`, `production-rehearsed`, `green-red-proof`, `rulesets-applied`,
+`live-readback`, `repository-workflow-source-ready`, `repository-checks-qualified`,
+`repository-rulesets-applied`, and `repository-live-readback`.
 
-Built-in handler presence does not establish a complete user journey:
-approval envelopes are read from disk but no public approval-persistence
-command is exposed; secure credential enrollment helpers are not wired into
-the command-only setup flow. Current activation inspection now binds real
+Full-enforcement readback consumes the original same-scope enforcement authority
+and source-check custody; a readback plan does not acquire new mutation authority.
+Renewed approvals are selected by the exact envelope recorded in the saved plan,
+not by whichever matching phase approval is found first.
+
+Private rehearsal checkpoints use bounded chunks when their original records
+exceed one private-store entry. Preserve original record identities and the
+shared 64 KiB entry limit; chunking is transport, not permission to rewrite proof.
+Pending dispatch, lost responses and rollback retain their original operation
+identity and separately reviewed recovery authority.
+
+Built-in handler presence does not establish a complete user journey.
+Approval, private credential enrollment, provider effects, and independent
+readback remain separate authority boundaries. Missing implementations and
+unqualified lanes stay explicit blockers. Current activation inspection binds real
 baseline/input snapshots, reviewed plans, state references, and evidence bodies.
 Historical placeholder-bound records remain diagnostic-only, never current
 proof. Do not fabricate state, approvals, or evidence to get past capability gaps.

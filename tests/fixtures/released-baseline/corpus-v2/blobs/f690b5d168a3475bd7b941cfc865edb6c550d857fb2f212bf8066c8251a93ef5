@@ -1,0 +1,26 @@
+## 1. Bootstrap Scope
+
+- [ ] 1.1 Confirm generated baseline files, `liftoff.manifest.json`, OpenSpec configuration, and the `node-fastify-application-baseline` delta spec are present.
+- [ ] 1.2 Confirm domain-specific product behavior is deferred to follow-up OpenSpec changes; do not replace generated placeholders in this bootstrap change.
+
+## 2. Local Baseline Checks
+
+- [ ] 2.1 Run Liftoff manifest validation: `liftoff validate`.
+- [ ] 2.2 Run backend tests from `backend`: `npm test`.
+- [ ] 2.3 Record worker tests as inapplicable: inapplicable because no generated worker boundary is present.
+- [ ] 2.4 Record frontend build as inapplicable: inapplicable because no generated frontend is present.
+- [ ] 2.5 Validate Docker Compose configuration without startup: `docker compose config -q`.
+- [ ] 2.6 Check OpenTofu formatting from `infrastructure/opentofu/azure`: `tofu fmt -check -recursive`.
+- [ ] 2.7.1 Initialize dev OpenTofu without a backend from `infrastructure/opentofu/azure/environments/dev`: `tofu init -backend=false`.
+- [ ] 2.8.1 Validate dev OpenTofu without plan or apply from `infrastructure/opentofu/azure/environments/dev`: `tofu validate`.
+- [ ] 2.7.2 Initialize staging OpenTofu without a backend from `infrastructure/opentofu/azure/environments/staging`: `tofu init -backend=false`.
+- [ ] 2.8.2 Validate staging OpenTofu without plan or apply from `infrastructure/opentofu/azure/environments/staging`: `tofu validate`.
+- [ ] 2.7.3 Initialize prod OpenTofu without a backend from `infrastructure/opentofu/azure/environments/prod`: `tofu init -backend=false`.
+- [ ] 2.8.3 Validate prod OpenTofu without plan or apply from `infrastructure/opentofu/azure/environments/prod`: `tofu validate`.
+- [ ] 2.9 Run strict OpenSpec validation: `openspec validate bootstrap-flight-log --strict`.
+
+## 3. Completion
+
+- [ ] 3.1 After every applicable local check succeeds and every absent component is recorded inapplicable, archive with `openspec archive bootstrap-flight-log --yes`, then require `openspec validate --all --strict` to pass. OpenSpec archive updates the main specs as part of archive; do not pass `--skip-specs`.
+
+No task in this bootstrap seed starts containers, runs cloud plan/apply, mutates GitHub, or implements domain-specific product behavior.

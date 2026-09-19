@@ -1,9 +1,11 @@
 import path from 'node:path';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
+import type { AdoptionInspectionContext } from '../project-evolution/adoption/context.js';
+import { getStandardsProfile } from '../../adapters/packaged-assets/resource-catalog.js';
 import { isManagedCoreLogicalName, retiredManagedCoreIdentities } from '../../domain/project/artifact-lifecycle.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { applicationTargetLayoutId, repairContractVersion } from '../../domain/repair/identity.js';
-import { buildArtifacts } from '../../templates.js';
+import { composeProjectArtifacts } from '../../templates.js';
 import { buildProjectPlan } from '../project/planning.js';
 import {
   ApplicationFiles, ApplicationInspectionError, applicationDigest, applicationExclusion, applicationFailure,
@@ -22,11 +24,53 @@ export const applicationInventoryLimitations = [
   'Inspection and preview execute no project code, Git commands, filters, hooks, network operations or file mutations.'
 ];
 
-export function currentApplicationTargets(manifest: LiftoffManifest): {
+export type ApplicationSourceContext = LiftoffManifest | AdoptionInspectionContext;
+
+export function isAdoptionInspectionContext(context: ApplicationSourceContext): context is AdoptionInspectionContext {
+  return 'kind' in context && context.kind === 'liftoff-adoption-inspection-context';
+}
+
+function adoptedApplicationTargets(context: ApplicationSourceContext): ReturnType<typeof currentApplicationTargets> {
+  const standards = isAdoptionInspectionContext(context) ? context.standards :
+    context.artifactVersion === 8 ? context.standards : undefined;
+  if (!standards) throw new ApplicationInspectionError('Adopted application inspection requires its explicit profile/component context.');
+  const artifacts = standards.components.map((component): ApplicationTargetArtifact => {
+    const profile = getStandardsProfile(component.profile.id);
+    if (!profile || profile.digest !== component.profile.digest || profile.revision !== component.profile.revision) {
+      throw new ApplicationInspectionError('Adoption inspection profile is not an exact installed target.');
+    }
+    const frontend = profile.id === 'vue-component';
+    const [logicalName, fileName] = frontend ? ['frontend-package', 'package.json'] :
+      profile.id === 'node-fastify' ? ['node-backend-package', 'package.json'] :
+        profile.id === 'go-huma' ? ['go-backend-module', 'go.mod'] : ['backend-pyproject', 'pyproject.toml'];
+    return {
+      logicalName: logicalName!, category: frontend ? 'frontend' : 'backend',
+      pathParts: [...component.rootPathParts, fileName!], provisioningGroup: frontend ? 'frontend' : 'base',
+      component: frontend ? 'frontend' : 'backend', componentRootPathParts: [...component.rootPathParts]
+    };
+  });
+  const body = {
+    id: applicationTargetLayoutId, version: 1 as const,
+    workload: isAdoptionInspectionContext(context) ? { kind: 'components' as const } : structuredClone(context.project.workload),
+    artifacts, standards: structuredClone(standards)
+  };
+  const managed = isAdoptionInspectionContext(context) ? [] : context.managedArtifacts;
+  return {
+    target: { ...body, digest: canonicalSha256(body) },
+    protectedPaths: new Set(managed.map((entry) => applicationPathFold(applicationPathKey(entry.pathParts)))),
+    examplePaths: new Set()
+  };
+}
+
+export function currentApplicationTargets(manifest: ApplicationSourceContext): {
   target: ApplicationTargetLayout;
   protectedPaths: Set<string>;
   examplePaths: Set<string>;
 } {
+  if (isAdoptionInspectionContext(manifest) || manifest.project.workload.kind === 'components' ||
+    manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted') {
+    return adoptedApplicationTargets(manifest);
+  }
   const workload = manifest.project.workload;
   const fallbackAgents = manifest.project.agents.length ? manifest.project.agents : ['github-copilot'];
   const plan = buildProjectPlan({
@@ -47,7 +91,7 @@ export function currentApplicationTargets(manifest: LiftoffManifest): {
     plan.agents = [];
     plan.defaultAgent = undefined;
   }
-  const generated = buildArtifacts(plan);
+  const generated = composeProjectArtifacts(plan);
   const foldedKey = (parts: readonly string[]) => parts.map(applicationPathFold).join('/');
   const protectedPaths = new Set([
     ...generated.filter((item) => item.lifecycle !== 'project').map((item) => foldedKey(item.pathParts)),
@@ -87,7 +131,7 @@ export function currentApplicationTargets(manifest: LiftoffManifest): {
 }
 
 export async function inspectApplicationLayout(
-  root: string, manifest: LiftoffManifest
+  root: string, manifest: ApplicationSourceContext
 ): Promise<ApplicationLayoutInspection> {
   const report: ApplicationInventoryReport = {
     schemaVersion: 1, kind: 'liftoff-application-inventory', projectRoot: path.resolve(root),
@@ -96,6 +140,9 @@ export async function inspectApplicationLayout(
     referenceCoverage: 'bounded-literals-only', limitations: [...applicationInventoryLimitations],
     blockers: [], bounds: applicationBounds
   };
+  if (isAdoptionInspectionContext(manifest) || manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted') {
+    report.limitations[0] = 'Targets identify installed supported profiles at the actual reviewed component roots. They do not claim generation, starter-byte equivalence or application-wide conformance.';
+  }
   let reader: ApplicationFiles | undefined;
   try {
     report.projectRoot = await canonicalApplicationRoot(root);
@@ -118,16 +165,16 @@ export async function inspectApplicationLayout(
     const key = applicationPathKey(snapshot.pathParts);
     const digest = applicationDigest(snapshot.content!);
     const target = report.target?.artifacts.find((item) => applicationPathKey(item.pathParts) === key);
-    const recorded = manifest.projectArtifacts.find((item) => applicationPathKey(item.pathParts) === key);
+    const recorded = isAdoptionInspectionContext(manifest) ? undefined :
+      manifest.projectArtifacts.find((item) => applicationPathKey(item.pathParts) === key);
     const identityMatches = recorded && target && recorded.logicalName === target.logicalName &&
       recorded.category === target.category && recorded.provisioningGroup === target.provisioningGroup;
     return {
       pathParts: [...snapshot.pathParts], digest, mode: snapshot.mode!, bytes: snapshot.content!.byteLength,
       text: applicationText(snapshot.content!) !== null, currentTargetLogicalName: target?.logicalName ?? null,
       provenance: recorded ? {
-        logicalName: recorded.logicalName, category: recorded.category, pathParts: [...recorded.pathParts],
-        generatedBy: recorded.generatedBy, generationHash: recorded.generationHash, provisioningGroup: recorded.provisioningGroup,
-        contentMatchesRecordedHash: recorded.generationHash === `sha256:${digest}`,
+        ...structuredClone(recorded),
+        contentMatchesRecordedHash: (recorded.adoption?.observedHash ?? recorded.addition?.contentHash ?? recorded.generationHash) === `sha256:${digest}`,
         identity: identityMatches ? 'current-artifact' as const : 'recorded-only' as const
       } : null
     };

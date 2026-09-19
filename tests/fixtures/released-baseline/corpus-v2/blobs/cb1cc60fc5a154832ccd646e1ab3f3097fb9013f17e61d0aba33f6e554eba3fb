@@ -1,0 +1,243 @@
+{
+	"schemaVersion": 1,
+	"identity": {
+		"liftoffVersion": "0.10.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 1,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+		"activationStateSchemaVersion": 1,
+		"evidenceHeaderSchemaVersion": 1,
+		"approvalEnvelopeSchemaVersion": 1,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"repository": {
+		"id": "R_HISTORICAL_FLIGHT_LOG",
+		"name": "example-org/flight-log",
+		"defaultBranch": "develop"
+	},
+	"activeChange": null,
+	"applicability": {
+		"statePath": "bootstrap-local",
+		"privateStagingDast": true,
+		"credentialRequired": true
+	},
+	"phases": {
+		"seed-valid": {
+			"state": "verified",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [
+				{
+					"phaseId": "seed-valid",
+					"evidenceId": "seed-valid-20260830T090000000Z",
+					"headerDigest": "ab790430278a485d3e312abd50feb91e6a7936fbc788467591e29a3265e21e64",
+					"result": "verified"
+				}
+			],
+			"approvals": [],
+			"blockers": []
+		},
+		"seed-verified": {
+			"state": "verified",
+			"updatedAt": "2026-08-30T09:05:00.000Z",
+			"evidence": [
+				{
+					"phaseId": "seed-verified",
+					"evidenceId": "seed-verified-20260830T090500000Z",
+					"headerDigest": "f2369bb1ac0f3721e2a8809d78db4ed8864b43dd11ebb8c6554946b696536034",
+					"result": "verified"
+				}
+			],
+			"approvals": [],
+			"blockers": []
+		},
+		"seed-archived": {
+			"state": "verified",
+			"updatedAt": "2026-08-30T09:10:00.000Z",
+			"evidence": [
+				{
+					"phaseId": "seed-archived",
+					"evidenceId": "seed-archived-20260830T091000000Z",
+					"headerDigest": "93980c59e187a03303faf82a495534ea6057d74ce5099b33c0a076d36da2a473",
+					"result": "verified"
+				}
+			],
+			"approvals": [],
+			"blockers": []
+		},
+		"committed": {
+			"state": "verified",
+			"updatedAt": "2026-08-30T09:15:00.000Z",
+			"evidence": [
+				{
+					"phaseId": "committed",
+					"evidenceId": "committed-20260830T091500000Z",
+					"headerDigest": "032654e15f562090f2a26336af21d1c384fcb1f5d4d5e635736a7e722217a8fe",
+					"result": "verified"
+				}
+			],
+			"approvals": [
+				"initial-baseline-publish"
+			],
+			"blockers": []
+		},
+		"pushed": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"phase-0-complete": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"activation-approved": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"credential-ready": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"provider-ready": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"state-path-selected": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"existing-private-path": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-local": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"runner-ready": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"private-backend-proof": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"remote-import-verified": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"remote-ready": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"application-foundation": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"workflow-source-ready": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"dev-proof": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"staging-qualified": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"production-rehearsed": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"green-red-proof": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"enforcement-approved": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"rulesets-applied": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"live-readback": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-state-disposed": {
+			"state": "pending",
+			"updatedAt": "2026-08-30T09:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		}
+	},
+	"createdAt": "2026-08-30T09:00:00.000Z",
+	"updatedAt": "2026-08-30T09:30:00.000Z"
+}

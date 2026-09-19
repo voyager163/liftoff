@@ -40,10 +40,10 @@ export function describeUpdateMigration(inspection: UpdateInspection): UpdateMig
         { type: 'write', path: manifestDisplayPath([...migrationStateFilePathParts]) }
       ],
       issues: [
-        `Preserve original v${history.index.sourceIdentity.activationContractVersion} bytes and approvals, create a linked v3 successor, and establish fresh local proof.`,
+        `Preserve original v${history.index.sourceIdentity.activationContractVersion} bytes and approvals, create a linked v${history.semanticPlan.targetIdentity.activationContractVersion} successor, and establish fresh local proof.`,
         'This upgrades Liftoff control records only. It does not read, copy, or migrate OpenTofu state, contact providers, install dependencies, publish Git history, or authorize deployment.',
         ...(history.semanticPlan.ancestorHistory.length
-          ? ['Previously preserved v1 history is verified and retained in place through its original migration link.'] : []),
+          ? ['Previously preserved ancestor history is verified and retained in place through its original migration links.'] : []),
         ...history.semanticPlan.lifecycleObligations.map((obligation) => obligation.retention.status === 'disposed'
           ? 'Historical disposal is retained; migration does not recreate state or keys. Current lifecycle verification requires separate authority.'
           : `Original bootstrap retention remains in force from ${obligation.retention.retainedAt} through ${obligation.retention.disposeAfter}; ownership verification and disposal are separate lifecycle work.`)
@@ -140,7 +140,7 @@ export async function runUpdateRevalidation(
     let journalSnapshot = await captureProjectFileSnapshot(inspection.projectRoot, [...migrationStateFilePathParts]);
     if (!journalSnapshot.content) {
       throw new UpdatePlanError('The committed migration journal is missing.',
-        'migration-journal-missing', 'Preserve the v3 successor and investigate the declared migration history before retrying.');
+        'migration-journal-missing', `Preserve the v${prepared.preview.targetIdentity.activationContractVersion} successor and investigate the declared migration history before retrying.`);
     }
     let journal = validateMigrationJournal(parseHistoryJson(journalSnapshot.content, 'governance/migration-state.json'));
     const snapshotId = journal.snapshotId;
@@ -169,7 +169,10 @@ export async function runUpdateRevalidation(
           return { ...phase, status: 'complete' as const, evidenceIds: [evidenceId], blockers: [] };
         }
         if (result?.status === 'blocked') {
-          return { ...phase, status: 'blocked' as const, evidenceIds: [], blockers: [...result.blockers] };
+          return {
+            ...phase, status: 'blocked' as const,
+            evidenceIds: result.evidence ? [result.evidence.evidenceId] : [], blockers: [...result.blockers]
+          };
         }
         if (activePhase === phase.phaseId) {
           return {
@@ -208,6 +211,7 @@ export async function runUpdateRevalidation(
       protectedInputs,
       runner: context.runner,
       clock: now,
+      storage: context.updatePreview,
       onProgress: recordProgress
     });
     return {

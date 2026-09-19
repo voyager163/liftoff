@@ -8,15 +8,22 @@ import {
   type UpdatePreviewOptions
 } from '../../adapters/filesystem/update-previews.js';
 import {
-  applyReviewedUpdateTransaction,
-  inspectReviewedUpdateTransaction,
-  recoverReviewedUpdateTransaction
-} from '../../adapters/filesystem/reviewed-update-transaction.js';
+  applyReviewedExecution, assertReviewedFileApprovalCurrent, requestReviewedFileApproval
+} from '../execution/kernel.js';
+import { assertReviewedReadback } from '../execution/plan-binding.js';
+import { withCooperatingExecutionLock } from '../execution/cross-writers.js';
+import { reviewedPlanMatches } from '../../domain/execution/immutable-plan.js';
+import { operationFailureOutcome } from '../../domain/execution/operation-outcome.js';
+import { ProjectFileTransactionError } from '../../adapters/filesystem/project-transaction.js';
+import {
+  inspectExecutionJournal,
+  recoverExecutionJournal
+} from '../execution/journal-adapter.js';
 import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js';
 import { manifestDisplayPath } from '../../domain/project/paths.js';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
-import { requestUpdateApproval } from './approval.js';
+import type { UpdateApprovalResult } from './approval.js';
 import {
   formatUpdateCommand, formatUpdateValidationCommands, type UpdateCommandMode, type UpdateGuidanceContext
 } from './command-guidance.js';
@@ -86,6 +93,10 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
   let committed = false;
   let migration: UpdateMigrationSummary | undefined;
   let revalidation: UpdateRevalidationSummary | undefined;
+  let approval: UpdateApprovalResult | undefined;
+  let receipt: UpdateReportInput['receipt'];
+  const cleanupFailures: string[] = [];
+  let fileReadbackFailed = false;
   try {
     if (check && (force || request.approvePlan !== undefined)) {
       throw new UpdatePlanError(
@@ -102,7 +113,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       );
     }
     projectRoot = discovered;
-    const repairRecovery = await inspectReviewedUpdateTransaction(projectRoot, { transactionKind: 'repair' });
+    const repairRecovery = await inspectExecutionJournal(projectRoot, 'repair');
     if (repairRecovery.status !== 'absent') {
       emit(context, jsonMode, {
         mode: check ? 'check' : 'apply', status: 'blocked',
@@ -126,7 +137,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     }
     const initialOptions = storeOptions(context);
     const approvalStore = createUpdateTransactionApprovalStore(projectRoot, initialOptions);
-    const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
+    const recovery = await inspectExecutionJournal(projectRoot, 'update', { approvalStore });
     if (recovery.status !== 'absent') {
       if (check || recovery.status === 'blocked') {
         emit(context, jsonMode, {
@@ -137,7 +148,7 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         });
         return 1;
       }
-      const outcome = await recoverReviewedUpdateTransaction(projectRoot, { approvalStore });
+      const outcome = await recoverExecutionJournal(projectRoot, 'update', { approvalStore });
       emit(context, jsonMode, {
         mode: 'apply', status: outcome.status === 'blocked' ? 'failed' : 'partial',
         reasonCode: 'transaction-recovery', projectRoot, committed: outcome.committed,
@@ -150,10 +161,10 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       return outcome.status === 'blocked' ? 1 : 2;
     }
 
-    inspection = await inspectProjectUpdate(projectRoot, { runner: context.runner });
+    inspection = await inspectProjectUpdate(projectRoot, { runner: context.runner, storage: storeOptions(context) });
     projectRoot = inspection.projectRoot;
     const options = storeOptions(context, inspection);
-    const reviewOptions = { runner: context.runner, now: context.updateNow?.() ?? new Date() };
+    const reviewOptions = { runner: context.runner, now: context.updateNow?.() ?? new Date(), storage: options };
     const normal = await prepareUpdateReview(inspection, false, reviewOptions);
     const forced = await prepareUpdateReview(inspection, true, reviewOptions);
     const variants = [normal, forced];
@@ -221,15 +232,16 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
     const location = await resolveUpdatePreviewLocation(projectRoot, options);
     const stored = await loadUpdatePreviewReceipt(projectRoot, options);
     matchUpdatePreviewReceipt(stored.receipt, selected.descriptor);
+    receipt = { status: 'matched', path: location.receiptPath };
     if (inspection.repositoryRoot) {
       const warning = 'If this worktree has uncommitted changes, consider committing or copying them before applying. Liftoff does not commit automatically.';
       if (jsonMode) presentation.rawStderr(`Warning: ${warning}\n`);
       else presentation.warning(warning);
     }
     renderUpdateApprovalScope(presentation, jsonMode, selected.summary, selected.writePlan, migration, revalidation);
-    const approval = await requestUpdateApproval({
-      fingerprint: selected.descriptor.fingerprint, approvePlan: request.approvePlan
-    }, context);
+    approval = await requestReviewedFileApproval({
+      kind: 'update', projectRoot, fingerprint: selected.descriptor.fingerprint, approvePlan: request.approvePlan
+    }, { stdin: context.stdin, stderr: context.stderr, approvePlan: context.approveUpdatePlan });
     if (approval.status !== 'approved') {
       emit(context, jsonMode, {
         ...base, status: 'blocked', reasonCode: `approval-${approval.status}`,
@@ -258,59 +270,75 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       : [];
     assertAuthorizedUpdateMutations(materialized.mutations, inspection.entries, inspection.provisioningPlans, [
       ...inspection.stateMigration.mutations.map((mutation) => mutation.pathParts),
+      ...inspection.manifestHistoryMutations.map((mutation) => mutation.pathParts),
       ...migrationPaths
     ]);
     const approvedFingerprint = selected.descriptor.fingerprint;
+    const approvedDescriptor = selected.descriptor;
+    const activeApproval = approval;
     const validateReview = async () => {
+      const currentReceipt = await loadUpdatePreviewReceipt(projectRoot, options);
+      if (currentReceipt.receipt.receiptId !== stored.receipt.receiptId) {
+        throw new UpdatePlanError('The reviewed update receipt changed after approval.', 'preview-mismatch', `Run ${updateCommand('check')} again.`);
+      }
       const current = await prepareUpdateReview(
-        await inspectProjectUpdate(projectRoot, { runner: context.runner }), force,
-        { runner: context.runner, now: context.updateNow?.() ?? new Date() }
+        await inspectProjectUpdate(projectRoot, { runner: context.runner, storage: storeOptions(context, inspection) }), force,
+        { runner: context.runner, now: context.updateNow?.() ?? new Date(), storage: options }
       );
-      if (!current.summary.eligible || current.descriptor.fingerprint !== approvedFingerprint) {
+      matchUpdatePreviewReceipt(currentReceipt.receipt, current.descriptor);
+      if (!current.summary.eligible || !reviewedPlanMatches(approvedDescriptor, current.descriptor)) {
         throw new UpdatePlanError(
           'The effective update plan changed after review.',
           'preview-mismatch', `Run ${updateCommand('check')} again.`
         );
       }
     };
-    const cleanupFailures: string[] = [];
-    if (materialized.mutations.length) {
-      const activeInspection = inspection;
-      const outcome = await applyReviewedUpdateTransaction(projectRoot, materialized.mutations, {
-        planFingerprint: approvedFingerprint,
-        approvalStore: createUpdateTransactionApprovalStore(projectRoot, options),
-        preconditions: selected.preconditions,
-        validatePlan: validateReview,
-        onBeforeMutation: async (mutation, index) => {
-          maybeInjectUpdateFailure(context.env, `before-mutation:${index}`);
-          maybeInjectUpdateFailure(context.env, `before-path:${mutation.pathParts.join('/')}`);
-          await verifyHistoryBeforeReplacement(activeInspection, mutation);
+    const activeInspection = inspection;
+    const activeSelected = selected;
+    await withCooperatingExecutionLock(projectRoot, async () => {
+      await assertReviewedFileApprovalCurrent(projectRoot, 'update', approvedFingerprint, activeApproval);
+      if (materialized.mutations.length) {
+        const outcome = await applyReviewedExecution(projectRoot, materialized.mutations, {
+          approval: activeApproval, planFingerprint: approvedFingerprint,
+          approvalStore: createUpdateTransactionApprovalStore(projectRoot, options),
+          preconditions: activeSelected.preconditions, storage: options,
+          validatePlan: validateReview,
+          verifyCommitted: () => assertReviewedReadback(projectRoot, materialized.mutations, activeSelected.preconditions),
+          onBeforeMutation: async (mutation, index) => {
+            maybeInjectUpdateFailure(context.env, `before-mutation:${index}`);
+            maybeInjectUpdateFailure(context.env, `before-path:${mutation.pathParts.join('/')}`);
+            await verifyHistoryBeforeReplacement(activeInspection, mutation);
+          }
+        });
+        committed ||= outcome.committed;
+        fileReadbackFailed ||= outcome.committed && outcome.operation.verification !== 'passed';
+        cleanupFailures.push(...outcome.cleanupFailures);
+        if (!outcome.committed) {
+          throw new UpdatePlanError(
+            outcome.rollbackFailures.join('; ') || 'The approved update did not commit.',
+            'transaction-failed', 'Review the recovery details before running a new check.'
+          );
         }
-      });
-      committed = outcome.committed;
-      cleanupFailures.push(...outcome.cleanupFailures);
-      if (!committed) {
-        throw new UpdatePlanError(
-          outcome.rollbackFailures.join('; ') || 'The approved update did not commit.',
-          'transaction-failed', 'Review the recovery details before running a new check.'
-        );
+        if (migration?.status === 'available') migration = { ...migration, status: 'committed' };
       }
-      if (migration.status === 'available') migration = { ...migration, status: 'committed' };
-    }
-    if (selected.needsRevalidation && !cleanupFailures.length) {
-      revalidation = await runUpdateRevalidation(inspection, selected, context,
-        materialized.mutations.length ? undefined : validateReview);
-    }
-    await consumeUpdatePreviewReceipt(projectRoot, stored.receipt, options);
+      if (activeSelected.needsRevalidation && !cleanupFailures.length) {
+        revalidation = await runUpdateRevalidation(activeInspection, activeSelected, { ...context, updatePreview: options },
+          materialized.mutations.length ? undefined : validateReview);
+      }
+      if (!cleanupFailures.length) {
+        await consumeUpdatePreviewReceipt(projectRoot, stored.receipt, options);
+        receipt = { status: 'consumed', path: location.receiptPath };
+      }
+    }, { currentCommand: 'update', storage: options });
     const revalidationBlocked = revalidation.status === 'blocked';
     const partial = revalidationBlocked || agentRepairPending || selected.writePlan.skipped.length > 0 ||
       inspection.provisioningPlans.some((group) => group.blocked);
     emit(context, jsonMode, {
       ...base, migration, revalidation,
       status: cleanupFailures.length ? 'failed' : partial ? 'partial' : 'applied',
-      reasonCode: cleanupFailures.length ? 'transaction-cleanup' :
+      reasonCode: fileReadbackFailed ? 'transaction-readback' : cleanupFailures.length ? 'transaction-cleanup' :
         revalidationBlocked ? 'revalidation-blocked' : 'approved-update-applied',
-      receipt: { status: 'consumed', path: location.receiptPath }, approval, committed,
+      receipt, approval, committed,
       warnings: cleanupFailures
     }, inspection, selected);
     if (!jsonMode) {
@@ -326,10 +354,10 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
       renderDeferredAgentRepair(presentation, inspection);
       renderInfrastructureRepair(presentation, inspection, guidance);
       if (migration.status === 'committed') {
-        presentation.status('success', 'Activation migration committed', 'Original v1/v2 history remains preserved; active v3 readiness is reported separately from OpenTofu state migration.');
+        presentation.status('success', 'Activation migration committed', 'Original activation history remains preserved; active successor readiness is reported separately from OpenTofu state migration.');
       }
       if (revalidationBlocked) {
-        presentation.bullets('V3 local baseline verification is blocked and resumable', [
+        presentation.bullets('Current local baseline verification is blocked and resumable', [
           ...revalidation.issues,
           'seed-verified means Local baseline verification, not an OpenSpec feature change to complete manually.',
           ...(revalidation.nextPhase ? [`Next incomplete phase: ${revalidation.nextPhase} (${localSeedPhaseLabel(revalidation.nextPhase)})`] : []),
@@ -357,8 +385,13 @@ export async function updateProject(request: UpdateRequest, context: ExecutionCo
         ? formatUpdatePreviewRemedy(error.code, projectRoot, guidance, force ? 'force' : 'normal')
         : `Review the reported failure. Preserve concurrent edits and run ${updateCommand('check')} after repair.`;
     emit(context, jsonMode, {
-      mode: check ? 'check' : 'apply', status: 'failed', reasonCode, projectRoot,
-      committed, message, remedy, migration, revalidation
+      mode: check ? 'check' : 'apply', status: operationFailureOutcome({
+        committed, rollbackFailures: error instanceof ProjectFileTransactionError ? error.rollbackFailures : undefined
+      }).status, reasonCode, projectRoot,
+      committed, message, remedy, migration, revalidation, approval, receipt,
+      selectedPlanFingerprint: selected?.descriptor.fingerprint,
+      ...(selected ? { plans: [selected.summary] } : {}),
+      warnings: [...cleanupFailures, ...(error instanceof ProjectFileTransactionError ? error.rollbackFailures : [])]
     }, inspection, selected);
     return 1;
   }

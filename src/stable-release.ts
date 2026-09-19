@@ -33,10 +33,9 @@ export interface StableReleaseLookupOptions {
   timeoutMs?: number;
 }
 
-export function isStableSemver(value: unknown): value is string {
-  return typeof value === 'string' &&
-    /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(value);
-}
+import { isStableSemver } from './semver.js';
+export { isStableSemver };
+
 
 function packageMetadataUrl(registry: string): URL {
   const base = new URL(registry);

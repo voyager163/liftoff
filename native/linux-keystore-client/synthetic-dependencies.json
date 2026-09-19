@@ -1,0 +1,16 @@
+{
+  "kind": "synthetic-secret-service-source-fixture-only",
+  "libsecretCommit": "a5cd57f103038c06b64d5f6ebfd0e627bb40af4e",
+  "packagesUbuntu2404": ["dbus-daemon", "python3", "python3-dbus", "python3-gi", "gir1.2-glib-2.0"],
+  "python": "/usr/bin/python3",
+  "busDaemon": "/usr/bin/dbus-daemon",
+  "upstreamMocks": {
+    "libsecret/mock/__init__.py": "1a6594ee5736bbe87274412791c81c141988b84474c6ebc87a7795a217978ee6",
+    "libsecret/mock/service.py": "cdf5d87224289b363cd4e3397fc01d7b2746cd9ccb8053eab628178a61a42a5b",
+    "libsecret/mock/aes.py": "60dce0707f2518ce95d6ca8af4d5c9778257bdc3a9e48c3b04f590071f7e9a9f",
+    "libsecret/mock/dh.py": "03681190fc8110dae53fd35529a2430e3c41000eaaba3833a22542bae8abe059",
+    "libsecret/mock/hkdf.py": "8635971ed158f6724e94060ecc98293a5153bcf091623b5de5aff959d0b9134b"
+  },
+  "qualification": "not-a-native-provider-encryption-or-custody-fixture",
+  "crypto": "Reuse upstream test-only mock algorithms unchanged; never production cryptography."
+}

@@ -7,12 +7,21 @@ import {
   canonicalPhaseGraphJson,
   currentActivationIdentity
 } from '../src/domain/governance/activation/graph.js';
-import { compatibilityMetadataSchemaVersion } from '../src/domain/governance/policy/identity.js';
+import {
+  compatibilityMetadataSchemaVersion,
+  governanceOutputSchemaVersion,
+  historicalV3ActivationIdentity,
+  historicalV4Policy7ActivationIdentity
+} from '../src/domain/governance/policy/identity.js';
 import { phaseCapabilities } from '../src/domain/governance/activation/capabilities.js';
 import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/infrastructure-layout.js';
 import { patterns } from '../src/application/project/catalog.js';
 import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
 import { liftoffVersion } from '../src/version.js';
+import { localMarkdownTargets } from '../scripts/distribution/native-document-links.mjs';
+import { buildProjectPlan } from '../src/application/project/planning.js';
+import { renderGeneratedUpdateGuide } from '../src/generators/common/base.js';
+import { renderGovernanceGuide } from '../src/application/repository-governance/agent-rendering.js';
 
 const repositoryRoot = process.cwd();
 const requiredDocs = [
@@ -29,20 +38,19 @@ const requiredDocs = [
   'docs/project-structure.md',
   'docs/configuration-and-manifests.md',
   'docs/azure-deployment.md',
-  'docs/troubleshooting.md'
+  'docs/troubleshooting.md',
+  'docs/native-installation.md',
+  'docs/assessment.md',
+  'docs/skills.md',
+  'docs/application-repair.md',
+  'docs/project-adoption.md',
+  'docs/private-state-activation.md',
+  'docs/credential-permissions.md',
+  'docs/private-application-activation.md'
 ] as const;
 
 async function repositoryFile(name: string): Promise<string> {
   return (await readFile(path.join(repositoryRoot, name), 'utf8')).replace(/\r\n/g, '\n');
-}
-
-function localMarkdownTargets(markdown: string): string[] {
-  return [...markdown.matchAll(/!?\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g)]
-    .map((match) => match[1].replace(/^<|>$/g, ''))
-    .filter((target) =>
-      !target.startsWith('#') &&
-      !/^[a-z][a-z0-9+.-]*:/i.test(target)
-    );
 }
 
 async function expectLocalLinksToResolve(file: string): Promise<void> {
@@ -77,13 +85,21 @@ function contrast(left: string, right: string): number {
 describe('public documentation', () => {
   it('keeps the root README concise and puts the interactive first-use path first', async () => {
     const readme = await repositoryFile('README.md');
-    const install = 'npm install -g @msn-control/liftoff@latest';
+    const install = 'npm install -g @msn-control/liftoff@0.12.3';
     const init = 'liftoff init my-project';
     const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(165);
+    expect(readme.split('\n').length).toBeLessThan(135);
     expect(readme).not.toContain('Status: implemented');
+    expect(readme).toContain('unpublished native-only candidate');
+    expect(readme).toContain('channels remain release blockers');
+    expect(readme).toContain('liftoff assess');
+    expect(readme).toContain('liftoff adopt');
+    expect(readme).toContain('manifest artifact version 8');
+    expect(readme).toContain(`Policy ${currentActivationIdentity.policyVersion} and credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+    expect(readme).toContain('docs/credential-permissions.md');
+    expect(readme).toContain('docs/skills.md');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
     expect(readme.indexOf(init)).toBeLessThan(workloadSection);
@@ -116,6 +132,27 @@ describe('public documentation', () => {
     expect(bashExamples).not.toContain('liftoff create');
   });
 
+  it('documents installation-scoped continuations without replaying a legacy PATH launcher', async () => {
+    const guide = await repositoryFile('docs/native-installation.md');
+    const start = guide.indexOf('## 4. One-Time Legacy npm-to-Native Handover');
+    expect(start).toBeGreaterThan(-1);
+    const migration = guide.slice(start);
+    const text = migration.replace(/\s+/g, ' ');
+    const commands = [...migration.matchAll(/```(?:bash|powershell)\n([\s\S]*?)```/g)]
+      .map((match) => match[1]).join('\n');
+    expect(commands).not.toMatch(/^\s*liftoff\s+installation/m);
+    expect(commands).toContain('"/absolute/path/to/verified-native/bin/liftoff" installation');
+    expect(commands).toContain("& 'C:\\absolute\\verified-native\\bin\\liftoff.exe' installation");
+    for (const field of ['nextActions', 'executable', 'args', 'cwd', 'targetScope',
+      'userInstallTarget', 'compatibilityIdentity', 'requiredAuthority', 'exact-installation-plan']) {
+      expect(migration).toContain(`\`${field}\``);
+    }
+    expect(text).toContain('merely receiving it does not grant approval');
+    expect(text).toContain('Failed apply output contains no executable retry');
+    expect(text).toContain('Do not append targeting or approval flags to `--recover`');
+    expect(text).toContain('It does not invent a project update');
+  });
+
   it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
     const docs = await Promise.all([
       repositoryFile('README.md'), repositoryFile('docs/cli-reference.md'),
@@ -129,7 +166,7 @@ describe('public documentation', () => {
       expect(text).toContain('--subscription <UUID>');
       expect(text).toContain('state/backend metadata');
       expect(text).toContain('plan-only');
-      expect(text).toMatch(/Agent installation[\s\S]*public stateful migration coordinator[\s\S]*not implemented|public stateful migration coordinator[\s\S]*\*\*not implemented\*\*/);
+      expect(text).toMatch(/Agent installation[\s\S]*public stateful migration coordinator[\s\S]*not implemented|public stateful migration coordinator[\s\S]*\*\*not implemented\*\*|Repair does not install agent hosts or provide the public stateful migration coordinator/);
       expect(text).toContain('liftoff setup');
       expect(content).not.toMatch(/liftoff repair[^`\n]*--(?:force|yes|add-agents|project)/);
     }
@@ -152,10 +189,10 @@ describe('public documentation', () => {
       repositoryFile('docs/assets/liftoff-terminal.svg')
     ]);
 
-    expect(readme).toContain('img.shields.io/npm/v/');
     expect(readme).toContain('actions/workflows/ci.yml/badge.svg');
     expect(readme).toContain('img.shields.io/github/license/');
-    expect(readme).toContain('img.shields.io/node/v/');
+    expect(readme).not.toContain('img.shields.io/npm/v/');
+    expect(readme).not.toContain('img.shields.io/node/v/');
     expect(readme).toMatch(/!\[[^\]]{20,}]\(docs\/assets\/liftoff-terminal\.svg\)/);
     expect(visual).toContain('<title id="title">');
     expect(visual).toContain('<desc id="description">');
@@ -381,8 +418,9 @@ describe('public documentation', () => {
     );
     expect(safety).toContain('CLI self-upgrade boundary');
     expect(safety).toMatch(/does not\s+claim automatic rollback/);
-    expect(contributing).toContain('first release containing `liftoff upgrade`');
-    expect(contributing).toContain(
+    expect(contributing).toMatch(/Before the native cutover, releases predating npm self-upgrade required a manual\s+npm upgrade/);
+    expect(contributing).toContain('cannot discover native-only releases');
+    expect(contributing).not.toContain(
       'npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org'
     );
   });
@@ -441,7 +479,7 @@ describe('public documentation', () => {
     expect(contributing).toContain('Maintain the repository-governance profile');
     for (const phrase of [
       'single-maintainer-gitflow',
-      'manifest v7',
+      `manifest v${currentActivationIdentity.manifestArtifactVersion}`,
       'managed-core files',
       'user-owned activation state',
       'read-only Phase 0',
@@ -456,7 +494,7 @@ describe('public documentation', () => {
     expect(policy).toContain('GitHub Secret Protection');
     expect(policy).toContain('Trivy');
     expect(policy).toContain('DORA');
-    expect(policy).toContain('policyVersion: "6"');
+    expect(policy).toContain('policyVersion: "8"');
     expect(governance).toContain('GitHub-hosted larger runner');
     expect(governance).toMatch(/Azure\s+VNet injection/);
     expect(governance).toContain('selected-repository GitHub App');
@@ -498,10 +536,16 @@ describe('public documentation', () => {
     const example = identitySection.match(/```json\n([\s\S]*?)\n```/);
     expect(example, 'developer guide must show the current complete activation vector').not.toBeNull();
     expect(JSON.parse(example![1])).toEqual(currentActivationIdentity);
+    const examples = [...identitySection.matchAll(/```json\n([\s\S]*?)\n```/g)];
+    expect(JSON.parse(examples[1][1])).toEqual(historicalV3ActivationIdentity);
+    expect(identitySection).toContain(historicalV4Policy7ActivationIdentity.phaseGraphHash);
+    expect(identitySection).toContain('separate immutable reader');
     expect(createHash('sha256').update(canonicalPhaseGraphJson).digest('hex')).toBe(canonicalPhaseGraphHash);
     expect(developer).toContain(`## ${liftoffVersion} release checklist`);
     expect(manifests).toContain(`| CLI package version | ${liftoffVersion} |`);
     expect(manifests).toContain(`| Activation package identity | ${currentActivationIdentity.liftoffVersion} |`);
+    expect(manifests).toContain(`| Normative policy | ${currentActivationIdentity.policyVersion} |`);
+    expect(manifests).toContain(`| Phase graph / supersession / credential policy | ${currentActivationIdentity.phaseGraphSchemaVersion} / ${currentActivationIdentity.supersessionSchemaVersion} / ${currentActivationIdentity.credentialPolicySchemaVersion} |`);
     expect(identitySection).toContain(`schema version ${compatibilityMetadataSchemaVersion} in its own document`);
     expect(developer).toContain('There is no separate `/liftoff-setup` skill version');
     expect(developer).toContain('CLI SemVer');
@@ -512,6 +556,75 @@ describe('public documentation', () => {
     expect(all).toMatch(/Never paste or show the\s+value in chat, argv, command arguments,\s+logs, evidence/);
     expect(all).not.toMatch(/gh secret set[^\n]*(?:github_pat_|ghp_|gho_|ghu_|ghs_|ghr_)/);
     expect(all).not.toMatch(/setupSkillVersion|skillVersion/);
+  });
+
+  it('documents current credential authority without relabeling historical approval or secret upsert', async () => {
+    for (const file of [
+      'DEVELOPER.md',
+      'docs/repository-governance.md',
+      'docs/safety-and-consent.md',
+      'docs/troubleshooting.md',
+      'src/application/state-migration/README.md'
+    ]) {
+      const text = (await repositoryFile(file)).replace(/\s+/g, ' ');
+      expect(text, file).toContain('organization_administration:read');
+      expect(text, file).toContain('billing and Actions-settings');
+      expect(text, file).toContain('not hosted-runners-only');
+      expect(text, file).toMatch(/fresh (?:exact )?plan-bound approval/i);
+      expect(text, file).toContain('conditional secret creat');
+      expect(text, file).toContain('automatic secret upsert');
+      expect(text, file).toContain('policy-7');
+      expect(text, file).toContain('schema-1');
+      expect(text, file).not.toContain('organization hosted-runner read');
+    }
+    const troubleshooting = (await repositoryFile('docs/troubleshooting.md')).replace(/\s+/g, ' ');
+    expect(troubleshooting).toContain('blocked PAT path stops before prompting or writing');
+    expect(troubleshooting).toContain('retains the successor and history with exit 2');
+    expect(troubleshooting).not.toContain('Current Liftoff reads manifest v2-v7 and writes v7');
+    const cli = (await repositoryFile('docs/cli-reference.md')).replace(/\s+/g, ' ');
+    expect(cli).toContain('Consistent but incomplete verification exits 2');
+    expect(cli).not.toContain('Consistent but incomplete verification exits 0');
+    expect(cli).toContain('block that enrollment path before prompting or writing');
+    const stateGuide = await repositoryFile('docs/private-state-activation.md');
+    const vector = [
+      currentActivationIdentity.manifestArtifactVersion, currentActivationIdentity.policyVersion,
+      currentActivationIdentity.activationContractVersion, currentActivationIdentity.phaseGraphSchemaVersion,
+      compatibilityMetadataSchemaVersion, governanceOutputSchemaVersion, 1
+    ].join('/');
+    expect(stateGuide).toContain(`identities are \`${vector}\``);
+    expect(stateGuide).toContain(`credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+    expect(stateGuide).toContain(`computed graph hash is \`${canonicalPhaseGraphHash}\``);
+    const internalGuide = await repositoryFile('src/application/state-migration/README.md');
+    expect(internalGuide).toContain('does not change the independent state-migration request, journal or custody');
+    expect(internalGuide).toContain('no automatic secret upsert or reuse');
+    await expectLocalLinksToResolve('src/application/state-migration/README.md');
+  });
+
+  it.each(['openspec', 'spec-kit'] as const)('renders amended %s guidance without turning history into credential authority', (specWorkflow) => {
+    const plan = buildProjectPlan({
+      projectName: 'Documentation identity', projectType: 'standard', apiStack: 'go',
+      cloud: 'azure', agents: ['github-copilot', 'claude', 'codex'], specWorkflow,
+      ...(specWorkflow === 'spec-kit' ? { defaultAgent: 'github-copilot' } : {})
+    }, { requireProjectName: true });
+    for (const content of [renderGeneratedUpdateGuide(plan), renderGovernanceGuide(plan)]) {
+      const text = content.replace(/\s+/g, ' ');
+      expect(text).toContain(`policy ${currentActivationIdentity.policyVersion} and credential-policy schema ${currentActivationIdentity.credentialPolicySchemaVersion}`);
+      expect(text).toContain('organization_administration:read');
+      expect(text).toContain('broader organization, billing and Actions-settings reads');
+      expect(text).toMatch(/fresh exact plan-bound approval/i);
+      expect(text).toContain('pre-amendment policy-7/credential-policy-schema-1 candidate');
+      expect(text).toContain('PAT bearer/lifetime proof and conditional secret creation remain blocked');
+      expect(text).toContain('no automatic secret upsert or foreign-secret replacement');
+      expect(text).toContain('release publication');
+      expect(text).not.toContain('organization hosted-runner and network-configuration read');
+    }
+    const disabled = buildProjectPlan({
+      projectName: 'Disabled documentation', projectType: 'standard', apiStack: 'go',
+      cloud: 'azure', governanceProfile: 'none', agents: ['github-copilot']
+    }, { requireProjectName: true });
+    const disabledGuide = renderGeneratedUpdateGuide(disabled);
+    expect(disabledGuide).toContain('Repository governance is disabled');
+    expect(disabledGuide).not.toContain('organization_administration:read');
   });
 
   it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {
@@ -528,11 +641,15 @@ describe('public documentation', () => {
     expect(contributing).not.toContain('npm run refresh:power-apps-starter');
     expect(contributing).toContain('rich, compact, plain,');
     expect(contributing).toContain('tests/__snapshots__');
-    expect(contributing).toContain('Correct the dist-tag');
-    expect(contributing).toContain('publish a corrected patch release');
+    expect(contributing).toContain('npm run verify:published -- 0.12.3');
+    expect(contributing).toContain('npm run verify:published -- 0.3.3 --allow-legacy-version-command');
+    expect(contributing).toContain('mixed tag/version inputs are rejected');
+    expect(contributing).toContain('not proof of');
+    expect(contributing).not.toContain('Correct the dist-tag');
+    expect(contributing).not.toContain('publish a corrected patch release');
     expect(contributing).toContain('Do not unpublish');
     expect(contributing).toContain("npm deprecate '@msn-control/liftoff@<0.3.0'");
-    expect(contributing).toContain('withhold internal installation guidance');
+    expect(contributing).toMatch(/withhold internal installation\s+guidance/);
     expect(contributing).toContain('Liftoff must not silently downgrade');
     expect(contributing).toContain('approval v2 and compatibility metadata v3');
     expect(contributing).not.toContain('compatibility metadata v2');
@@ -621,13 +738,14 @@ describe('public documentation', () => {
     expect(telemetry).toContain('writes no disclosure state');
   });
 
-  it('describes the implemented eight responsibility groups and current canonical ports', async () => {
+  it('describes the implemented six capability engines, execution kernel, and current canonical ports', async () => {
     const developer = await repositoryFile('DEVELOPER.md');
     const architecture = developer.split('## Functional engines and implementation boundaries')[1]
       .split('## Activation completeness')[0];
-    const systems = architecture.split('| Subsystem | Current implementation |')[1]
-      .split('Telemetry, terminal presentation')[0];
-    expect([...systems.matchAll(/^\| (?!-)([^|]+)\|/gm)]).toHaveLength(8);
+    const systems = architecture.split('| Capability engine | Application ownership | Principal responsibility | Current implementation |')[1]
+      .split('The shared kernel belongs in')[0];
+    expect([...systems.matchAll(/^\| (?!-)([^|]+)\|/gm)]).toHaveLength(6);
+    expect(architecture).toContain('The shared kernel belongs in `application/execution`; it is not a seventh capability engine.');
     for (const file of [
       'src/cli/args/parser.ts',
       'src/cli/commands/dispatch.ts',
@@ -666,8 +784,12 @@ describe('public documentation', () => {
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'unavailable')).toHaveLength(16);
-    expect(Object.values(phaseCapabilities).filter(({ executor }) => executor === 'injected-only')).toHaveLength(2);
+    const graph = JSON.parse(canonicalPhaseGraphJson) as { phases: Array<{ id: string }> };
+    expect(Object.keys(phaseCapabilities).sort()).toEqual(graph.phases.map((phase) => phase.id).sort());
+    for (const capability of Object.values(phaseCapabilities)) {
+      expect(['built-in', 'injected-only', 'unavailable']).toContain(capability.executor);
+      if (capability.executor !== 'built-in') expect(capability.blocker?.length).toBeGreaterThan(0);
+    }
     expect(developer).not.toContain('activation inspection still uses');
     expect(developer).not.toContain('finish RAG publisher configuration');
     expect(developer).not.toContain('strengthen shared mutation locking');
@@ -769,6 +891,29 @@ describe('public documentation', () => {
     expect(developer).toContain('validateReadableActivationIdentity');
     expect(developer).toContain('scope use strict current validation');
     expect(configuration).toMatch(/readable historical record never authorizes current provider scope/);
+  });
+
+  it('packages and validates the explicit tracked and generated README inventory', async () => {
+    const raw = await repositoryFile('assets/documentation/readme-inventory.json');
+    const inventory = JSON.parse(raw);
+    expect(inventory.schemaVersion).toBe(1);
+    expect(inventory.trackedReadmes.map((r: { path: string }) => r.path)).toEqual([
+      'README.md',
+      'infrastructure/opentofu/bootstrap/README.md',
+      'infrastructure/opentofu/telemetry/README.md',
+      'src/application/state-migration/README.md'
+    ]);
+    expect(inventory.generatedReadmes.map((r: { logicalId: string }) => r.logicalId)).toEqual([
+      'root-readme',
+      'opentofu-readme',
+      'functions-readme',
+      'function-worker-readme',
+      'pattern-prompt-readme',
+      'repository-governance-guide'
+    ]);
+    for (const tracked of inventory.trackedReadmes) {
+      await access(path.join(repositoryRoot, tracked.path));
+    }
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

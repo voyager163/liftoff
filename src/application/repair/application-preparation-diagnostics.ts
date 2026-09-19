@@ -1,4 +1,5 @@
 import type { CommandResult } from '../../process-runner.js';
+import { windowsWorkingDirectoryErrorCode } from '../../domain/execution/windows-working-directory.js';
 import {
   applicationCommandFailure, applicationDiagnosticMatches, type ApplicationCommandFailure
 } from './application-diagnostics.js';
@@ -11,7 +12,8 @@ export function applicationPreparationFailure(
   const ordinary = applicationCommandFailure(command, result);
   if (!ordinary) return null;
   if (['timed-out', 'output-limit', 'interrupted', 'termination-unconfirmed', 'missing-executable'].includes(ordinary.kind) ||
-      ['RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED'].includes(result.errorCode ?? '')) {
+      ['RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED',
+        'CONTROLLER_STARTUP_TIMEOUT', windowsWorkingDirectoryErrorCode].includes(result.errorCode ?? '')) {
     return ordinary;
   }
   const matches = (pattern: RegExp) => applicationDiagnosticMatches(result, command.maxOutputBytes, pattern);

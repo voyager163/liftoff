@@ -21,6 +21,7 @@ import { phaseContractDigests } from '../domain/governance/activation/graph.js';
 import type { BootstrapStateRetention, ManagedPhaseGraph, PhaseId, UserActivationState } from '../domain/governance/activation/types.js';
 import { toSafeProjectName } from '../domain/project/planning.js';
 import { validateArtifactPathParts } from '../domain/project/paths.js';
+import { hasGeneratedWorkload } from '../domain/project/manifest/applicability.js';
 
 export * from '../domain/governance/activation/inputs.js';
 
@@ -122,29 +123,32 @@ export async function readActivationInputSnapshot(
     const values = normalizedPublicEnvironment(localEnvironment.toString('utf8'));
     if (Object.keys(values).length > 0) files.set('public-local-environment', canonicalSha256(values));
   }
-  const seedName = `bootstrap-${toSafeProjectName(manifest.project.name)}`;
   let workflowSpecDigest: string | undefined;
-  if (manifest.project.specWorkflow === 'spec-kit') {
-    await walk(['specs', '000-liftoff-bootstrap'], 'seed', true);
-  } else {
-    await walk(['openspec', 'changes', seedName], 'seed', true);
-    const archive = await resolveProjectPath(projectRoot, ['openspec', 'changes', 'archive']);
-    let entries: Dirent[];
-    try { entries = await readdir(archive, { withFileTypes: true }); }
-    catch (error) { if (code(error) !== 'ENOENT') throw error; entries = []; }
-    for (const entry of entries) {
-      if (entry.name === seedName || entry.name.endsWith(`-${seedName}`)) {
-        await walk(['openspec', 'changes', 'archive', entry.name], 'seed', true);
+  const generated = hasGeneratedWorkload(manifest);
+  if (generated) {
+    const seedName = `bootstrap-${toSafeProjectName(manifest.project.name)}`;
+    if (manifest.project.specWorkflow === 'spec-kit') {
+      await walk(['specs', '000-liftoff-bootstrap'], 'seed', true);
+    } else {
+      await walk(['openspec', 'changes', seedName], 'seed', true);
+      const archive = await resolveProjectPath(projectRoot, ['openspec', 'changes', 'archive']);
+      let entries: Dirent[];
+      try { entries = await readdir(archive, { withFileTypes: true }); }
+      catch (error) { if (code(error) !== 'ENOENT') throw error; entries = []; }
+      for (const entry of entries) {
+        if (entry.name === seedName || entry.name.endsWith(`-${seedName}`)) {
+          await walk(['openspec', 'changes', 'archive', entry.name], 'seed', true);
+        }
       }
+      const workload = manifest.project.workload;
+      const capability = `${workload.kind === 'standard' ? workload.apiStack : workload.pattern}-application-baseline`;
+      const mainSpecParts = ['openspec', 'specs', capability, 'spec.md'];
+      const mainSpec = isSensitiveActivationPath(mainSpecParts, sensitivePathExclusions)
+        ? undefined : await readProjectFile(projectRoot, mainSpecParts);
+      if (mainSpec !== undefined) workflowSpecDigest = canonicalSha256(mainSpec.toString('utf8').replace(/\r\n/g, '\n'));
     }
-    await include(['openspec', 'config.yaml']);
-    const workload = manifest.project.workload;
-    const capability = `${workload.kind === 'standard' ? workload.apiStack : workload.pattern}-application-baseline`;
-    const mainSpecParts = ['openspec', 'specs', capability, 'spec.md'];
-    const mainSpec = isSensitiveActivationPath(mainSpecParts, sensitivePathExclusions)
-      ? undefined : await readProjectFile(projectRoot, mainSpecParts);
-    if (mainSpec !== undefined) workflowSpecDigest = canonicalSha256(mainSpec.toString('utf8').replace(/\r\n/g, '\n'));
   }
+  if (manifest.project.specWorkflow === 'openspec') await include(['openspec', 'config.yaml']);
   async function git(args: string[], allowedMissing = false): Promise<string | null> {
     const result = await runner.run({ executable: 'git', args }, { cwd: projectRoot });
     if (result.status === 0 && !result.errorCode && !result.timedOut) return result.stdout.trim() || null;
@@ -166,7 +170,8 @@ export async function readActivationInputSnapshot(
   const remotes = root ? (await git(['remote']))?.split(/\r?\n/).filter(Boolean) ?? [] : [];
   const pushUrls = remotes.includes('origin') ? (await git(['remote', 'get-url', '--push', '--all', 'origin']))?.split(/\r?\n/).filter(Boolean).sort() ?? [] : [];
   if (pushUrls.some((url) => /https?:\/\/[^/]*@/i.test(url))) throw new Error('Credential-bearing Git remote URLs cannot be activation inputs.');
-  const project = { project: manifest.project, framework: manifest.framework, governance: manifest.governance.profile };
+  const project = { project: manifest.project, framework: manifest.framework, governance: manifest.governance.profile,
+    ...(!generated ? { generatedSeedAuthority: false } : {}) };
   const inventory: ActivationInputFile[] = [...files].sort(([a], [b]) => a.localeCompare(b, 'en')).map(([path, digest]) => ({ path, digest }));
   return { schemaVersion: 2, project, files: inventory, git: { head, branch, pushUrls }, baselineSha: activationBaselineDigest(project, inventory),
     ...(sensitivePathExclusions.length ? { sensitivePathExclusions } : {}),

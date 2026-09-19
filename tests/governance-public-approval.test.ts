@@ -10,6 +10,7 @@ import { assertGovernanceApprovalIssued } from '../src/governance-activation/aut
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
 import { runCommand } from '../src/commands.js';
 import { parseArgs } from '../src/args.js';
+import { validateStructuredContinuation } from '../src/protocol/continuation.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -85,6 +86,38 @@ describe('public exact governance approval', () => {
     })).rejects.toThrow(/changed after preview/);
   });
 
+  it('carries an explicitly selected private approval store through execution and every replan', async () => {
+    const { root, runner, inspect } = await fixture();
+    const home = await mkdtemp(path.join(os.tmpdir(), 'liftoff-execution-approval-home-'));
+    roots.push(home);
+    const storage = { homedir: home, env: {} };
+    const saved = await saveGovernancePreview(await inspect(), { runner, storage });
+    const approved = await approveGovernancePreview({
+      projectRoot: root, fingerprint: saved!.preview.fingerprint, inspect, runner, storage
+    });
+    await assertGovernanceApprovalIssued(root, approved.envelope, storage);
+    await expect(assertGovernanceApprovalIssued(root, approved.envelope)).rejects.toThrow(/no project-bound authority/);
+    let executed = false;
+    const result = await executeApplyNext({
+      inspection: await inspect(), reinspect: inspect, runner, storage, reviewedPlan: approved.plan,
+      adapters: { phases: { committed: {
+        phaseId: 'committed',
+        async execute(input) {
+          executed = true;
+          expect(input.adapters.githubActivation?.storage?.homedir).toBe(home);
+          expect(input.adapters.azureActivation?.storage).toBe(input.adapters.githubActivation?.storage);
+          return { status: 'blocked', blocker: 'The context reached the exact adapter without publishing.', completedOperations: [] };
+        }
+      } } }
+    });
+    expect(executed).toBe(true);
+    expect(result).toMatchObject({
+      applied: false, reason: 'blocked', message: 'The context reached the exact adapter without publishing.'
+    });
+    expect(runner.calls.some((command) => command.executable === 'git' &&
+      ['init', 'add', 'commit', 'push'].includes(command.args[0]))).toBe(false);
+  });
+
   it('exposes the public plan and approve commands with scoped actionable output', async () => {
     const { root, runner } = await fixture();
     const invoke = async (args: string[]) => {
@@ -98,14 +131,19 @@ describe('public exact governance approval', () => {
     };
     const planned = await invoke(['plan']);
     expect(planned).toMatchObject({
-      schemaVersion: 2, scope: 'activation', projectWrites: false,
+      schemaVersion: 3, scope: 'activation', projectWrites: false,
       externalPreviewWritten: true, plan: { phaseId: 'committed' }
     });
     expect(planned.nextActions[0]).toMatchObject({ scope: 'activation', approvalRequired: true });
+    expect(validateStructuredContinuation(planned.nextActions[0].continuation).requiredAuthority)
+      .toEqual(['exact-governance-plan']);
     const approved = await invoke(['approve', '--plan', planned.preview.fingerprint]);
-    expect(approved).toMatchObject({ schemaVersion: 2, scope: 'activation', approved: true, executed: false });
+    expect(approved).toMatchObject({ schemaVersion: 3, scope: 'activation', approved: true, executed: false });
     expect(approved.nextActions[0].command.args).toContain('apply-next');
     expect(approved.nextActions[0].approvalRequired).toBe(false);
+    const action = validateStructuredContinuation(approved.nextActions[0].continuation);
+    expect(action.requiredAuthority).toEqual(['exact-governance-plan-execution']);
+    expect(parseArgs([...action.args]).flags).toMatchObject({ execute: true, plan: planned.preview.fingerprint });
     expect(runner.calls.some((command) => command.executable === 'git' &&
       ['init', 'add', 'commit', 'push'].includes(command.args[0]))).toBe(false);
   });

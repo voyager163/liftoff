@@ -34,7 +34,7 @@ export function formatUpdatePreviewRemedy(
   projectRoot: string,
   context?: UpdateGuidanceContext,
   mode: UpdatePreviewMode = 'normal',
-  platform: NodeJS.Platform = process.platform
+  platform?: NodeJS.Platform
 ): string {
   const check = formatUpdateCommand(projectRoot, 'check', platform, context);
   const apply = formatUpdateCommand(projectRoot, mode, platform, context);

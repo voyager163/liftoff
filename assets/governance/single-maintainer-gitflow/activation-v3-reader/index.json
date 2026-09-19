@@ -1,0 +1,57 @@
+{
+  "baseline": "70d10881b46d873118d825735696f39b6d35ebe0",
+  "sourceDigests": {
+    "src/domain/governance/activation/validators.ts": "c1fbedbd45c09d10d73c1db335acfec497e8b9584ac9dc0152b94261ece07c0b",
+    "src/domain/governance/activation/graph.ts": "9fff5edc11ad56d6296b9e100cbe90a99544a288f62188b8be98741ba4421594",
+    "src/domain/governance/activation/canonical-json.ts": "1f17d9af130216dacedc01476fb5a0de2ead2ce2b9a1cf398e4b9aae0c74e78b",
+    "src/domain/governance/policy/identity.ts": "c06b70c5adf54e384985c9469e315f731a7fec59803dcff1f9182cfeb8aac323",
+    "src/domain/governance/activation/types.ts": "f4b18b5bda3b8549cbad1fe825d8e70ff041d1e97893270387d79e1fcaae4eab",
+    "src/domain/governance/activation/approvals.ts": "84001ad7f921b9093fa4c281e1414cce76092d97551cf1e1f33038464b2f859f",
+    "src/domain/governance/activation/inputs.ts": "a99bef3aae818608cf34681925620029cc4b7987e5d9f60b8bcced5c1b00f03f",
+    "src/domain/project/paths.ts": "6bf286dff5403102485fb2de5d2bb6469fe017335540e2896ab20ecea9450281",
+    "src/domain/project/errors.ts": "281b8c6f3b0a783b19ec0d48a227e6cdb01065498c5abb91823bee3d49d364d5",
+    "src/domain/governance/activation/operations.ts": "191d6643e7b656278ad62c0eadbd2941502eca4be48924b248fdf62450b9f716"
+  },
+  "files": [
+    {
+      "path": "domain/governance/activation/validators.js",
+      "digest": "5fb69e6310bbe48b5c29753966b125263d5e23ff5d095247857d162004731a6f"
+    },
+    {
+      "path": "domain/governance/activation/graph.js",
+      "digest": "f07bf43c86b316731da074d11db73dc4f0e2ff7ab4cfcca8231236efcd1d3648"
+    },
+    {
+      "path": "domain/governance/activation/canonical-json.js",
+      "digest": "1a8c1f98721be9eb17e505185bb5f0597ddaa334e25f7f26c6e5a35079e6a6c4"
+    },
+    {
+      "path": "domain/governance/policy/identity.js",
+      "digest": "26481e5a1fda171a86900ed39d3b61efb44b6360f565b2ebfe594c530d7f1de0"
+    },
+    {
+      "path": "domain/governance/activation/types.js",
+      "digest": "64b299e53ccf3ae653a6f2f232f49fb42211f2738c531998ee538fa449e61192"
+    },
+    {
+      "path": "domain/governance/activation/approvals.js",
+      "digest": "8bce515740e70a5fd1548df0a8c22854a96101b94ce3637d6e35b34a3967f65f"
+    },
+    {
+      "path": "domain/governance/activation/inputs.js",
+      "digest": "b3005c04bb72265efb0976d0326e283dfbb65c15bc10fa8fc7245f91b4fa2c99"
+    },
+    {
+      "path": "domain/project/paths.js",
+      "digest": "3f20dc787e79281916ac9ee96b4fb17a5af104c1fbd3c809ceb63d336f0147b5"
+    },
+    {
+      "path": "domain/project/errors.js",
+      "digest": "fe711f175c93b639e9a586d9ed1b79bcb222d0d45aa8894d4cdc013048c6859b"
+    },
+    {
+      "path": "domain/governance/activation/operations.js",
+      "digest": "e0d690c6de2533fb2fca1f1f719675d0095a2658142cba4c4987222b55ae2b00"
+    }
+  ]
+}

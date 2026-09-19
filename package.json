@@ -1,6 +1,7 @@
 {
   "name": "@msn-control/liftoff",
-  "version": "0.12.3",
+  "version": "0.13.0",
+  "private": true,
   "description": "Interactive CLI for governed GenAI applications and APIs.",
   "type": "module",
   "license": "GPL-3.0-only",
@@ -33,19 +34,29 @@
     "assets/locks",
     "assets/governance",
     "assets/repair",
+    "assets/skills",
+    "assets/templates",
+    "assets/profiles",
+    "assets/distribution",
     "assets/supported-stack.json",
     "docs",
+    "infrastructure/opentofu/bootstrap/README.md",
+    "infrastructure/opentofu/telemetry/README.md",
     "README.md",
     "DEVELOPER.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md",
     "LICENSE"
   ],
-  "publishConfig": {
-    "access": "public",
-    "provenance": true
-  },
   "scripts": {
     "build": "node scripts/clean-build.mjs && tsc -p tsconfig.json",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "test:distribution": "vitest run tests/distribution/",
+    "bundle:native": "node scripts/distribution/assemble-native-bundle.mjs",
+    "manifests:channel": "node scripts/distribution/generate-channel-manifests.mjs",
+    "gate:coverage": "node scripts/coverage-gate.mjs",
+    "gate:release": "node scripts/release-gate.mjs",
     "audit:template-dependencies": "node scripts/audit-template-dependencies.mjs",
     "refresh:supported-stack": "node scripts/refresh-supported-stack-baseline.mjs --write",
     "check:supported-stack": "node scripts/refresh-supported-stack-baseline.mjs",
@@ -64,6 +75,7 @@
   "devDependencies": {
     "@types/cross-spawn": "^6.0.6",
     "@types/node": "^24.6.0",
+    "@vitest/coverage-v8": "5.0.0",
     "typescript": "^7.0.2",
     "vite": "8.2.2",
     "vitest": "5.0.0"

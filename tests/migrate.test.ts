@@ -152,10 +152,10 @@ describe('migrate command', () => {
     expect(validate.code).toBe(0);
 
     const manifest = JSON.parse(await readFile(path.join(target, 'liftoff.manifest.json'), 'utf8'));
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: '8',
       activationIdentity: expect.any(Object),
       state: 'handoff-generated'
     });

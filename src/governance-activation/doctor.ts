@@ -1,4 +1,5 @@
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 import type { LiftoffManifest } from '../domain/project/contracts.js';
 import {
   activationStateFilePathParts,
@@ -174,20 +175,22 @@ async function credentialExpiringCheck(
 export async function governanceDoctorChecks(
   projectRoot: string,
   manifest: LiftoffManifest,
-  now = new Date()
+  now = new Date(),
+  storage?: UpdatePreviewOptions
 ): Promise<GovernanceDoctorCheck[]> {
   if (manifest.governance.profile === 'none' || manifest.governance.profile === 'unspecified') {
     return [];
   }
   const checks: GovernanceDoctorCheck[] = [];
-  const migration = await planHistoricalActivationStateMigration(projectRoot, now.toISOString());
+  const migration = await planHistoricalActivationStateMigration(projectRoot, now.toISOString(), undefined, storage);
   if (migration.status === 'blocked') {
     let history = migration.report.diagnosticOnly === true
-      ? await planActivationHistoryMigration(projectRoot) : undefined;
+      ? await planActivationHistoryMigration(projectRoot, { storage }) : undefined;
     if (history?.status === 'blocked' && history.reasonCode === 'unreviewed-historical-records' &&
       history.unreviewedPathParts) {
       history = await planActivationHistoryMigration(projectRoot, {
-        reviewedUnreferencedPathParts: history.unreviewedPathParts
+        reviewedUnreferencedPathParts: history.unreviewedPathParts,
+        storage
       });
     }
     const supported = history?.status === 'eligible';
@@ -197,11 +200,11 @@ export async function governanceDoctorChecks(
       severity: 'fail',
       state: supported ? 'migration-available' : 'identity-incompatible',
       detail: supported
-        ? 'Historical activation v1/v2 has a supported history-preserving v3 successor; existing history is not current execution proof.'
+        ? 'Historical activation v1/v2/v3 has a supported history-preserving v4 successor; existing history is not current execution proof.'
         : history?.status === 'blocked' ? history.issues.join('; ')
           : migration.report.issues[0] ?? 'activation state is not compatible with this Liftoff version',
       remedy: 'Preserve user-owned state and evidence bytes. ' + (migration.report.diagnosticOnly === true
-        ? 'Historical activation v1/v2 requires liftoff update --check followed by explicit approval of a supported plan; do not reset or retag history.'
+        ? 'Historical activation v1/v2/v3 requires liftoff update --check followed by explicit approval of a supported plan; do not reset or retag history.'
         : 'The recorded activation format or identity is unsupported or invalid. Use a compatible Liftoff version or restore original state from a trusted backup; do not rewrite identity fields to bypass validation.')
     });
     return checks;
@@ -220,7 +223,7 @@ export async function governanceDoctorChecks(
 
   let loaded;
   try {
-    loaded = await loadActivationState(projectRoot);
+    loaded = await loadActivationState(projectRoot, storage);
   } catch (error) {
     checks.push({
       id: 'governance-identity-incompatible',
@@ -232,7 +235,7 @@ export async function governanceDoctorChecks(
     });
     return checks;
   }
-  const history = await inspectActivationMigrationHistory(projectRoot);
+  const history = await inspectActivationMigrationHistory(projectRoot, storage);
   const journal = history.status === 'committed' ? history.journal : null;
   const historicalLifecycleObligations = history.status === 'committed' ? history.lifecycleObligations : [];
   if (journal) {
@@ -243,9 +246,9 @@ export async function governanceDoctorChecks(
       severity: blocked ? 'fail' : 'ok',
       state: blocked ? 'revalidation-blocked' : 'migration-committed',
       detail: blocked
-        ? `Local v3 migration committed; revalidation is ${journal.revalidation.status}: ${journal.revalidation.nextAction}`
-        : 'Local v3 migration and its approved local revalidation are complete; preserved v1/v2 history is informational, not live governance proof.',
-      ...(blocked ? { remedy: 'Repair the named blocker, run liftoff update --check, and approve the remaining local work. Keep v3 and its preserved history.' } : {})
+        ? `Local v4 migration committed; revalidation is ${journal.revalidation.status}: ${journal.revalidation.nextAction}`
+        : 'Local v4 migration and its approved local revalidation are complete; preserved v1/v2/v3 history is informational, not live governance proof.',
+      ...(blocked ? { remedy: 'Repair the named blocker, run liftoff update --check, and approve the remaining local work. Keep v4 and its preserved history.' } : {})
     });
   }
   for (const obligation of historicalLifecycleObligations) {
@@ -277,6 +280,7 @@ export async function governanceDoctorChecks(
     const source = await inspectGovernanceSourceOfTruth({
       projectRoot,
       manifest,
+      storage,
       state: {
         schemaVersion: currentActivationIdentity.activationStateSchemaVersion,
         identity: currentActivationIdentity,
@@ -331,7 +335,7 @@ export async function governanceDoctorChecks(
     await readActivationInputSnapshot(projectRoot, manifest, undefined, { sensitivePathExclusions }), now);
   const reviewedPlans = await readReviewedTransitionPlans(projectRoot);
   for (const phase of phaseIds) contexts[phase].reviewedPlans = reviewedPlans;
-  const source = await inspectGovernanceSourceOfTruth({ projectRoot, manifest, state, evidence, contexts });
+  const source = await inspectGovernanceSourceOfTruth({ projectRoot, manifest, state, evidence, contexts, storage });
   if (source.status === 'seed-blocked') {
     checks.push({
       id: 'governance-seed-incomplete',
@@ -387,6 +391,17 @@ export async function governanceDoctorChecks(
       id: 'governance-local-ready', label: 'local setup', severity: 'ok', state: 'local-ready',
       detail: 'The current local seed validation, application baseline, and workflow-specific finalization are complete.',
       remedy: 'Use liftoff governance plan --scope activation for separately approved publication, cloud, and governance work.'
+    });
+  }
+  if (Object.entries(state.phases).some(([id, phase]) => id.startsWith('repository-') && phase.state !== 'pending')) {
+    checks.push({
+      id: 'governance-repository-enforcement', label: 'repository enforcement',
+      severity: readiness.completion.repository ? 'ok' : 'warn',
+      state: readiness.completion.repository ? 'repository-complete' : 'repository-incomplete',
+      detail: readiness.completion.repository
+        ? 'Current repository-only evidence is complete. This is not cloud activation, production qualification or disposal proof.'
+        : 'Repository-only enforcement remains incomplete under its current evidence and exact control plan.',
+      remedy: 'Inspect liftoff governance verify --scope repository --json. Full activation and main-hold replacement require their own current qualification and approval.'
     });
   }
 

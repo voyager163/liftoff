@@ -2,7 +2,7 @@ import type { LiftoffManifest } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
 import {
   isRetiredManagedCoreArtifactIdentity, isRetiredManagedCoreLogicalName,
-  managedCoreArtifactPaths, repairManagedCoreLogicalNames
+  managedCoreArtifactPaths, repairManagedCoreLogicalNames, retiredManagedCoreIdentities
 } from '../artifact-lifecycle.js';
 import { governanceAgentIntegrations } from '../catalog.js';
 import type { ManifestContractContext } from './context.js';
@@ -49,7 +49,7 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     }
     assertOnlyFields(
       value,
-      artifactVersion === 7
+      artifactVersion >= 7
         ? ['profile', 'policyVersion', 'state', 'activationIdentity']
         : ['profile', 'policyVersion', 'state'],
       'Manifest.governance'
@@ -65,20 +65,22 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       );
     }
     const supportedPolicyVersions = artifactVersion === 7
-      ? [governancePolicyVersion]
-      : ['1', '2', '3', '4', '5', governancePolicyVersion];
+      ? ['6']
+      : artifactVersion === 8
+        ? ['1', '2', '3', '4', '5', '6', '7', governancePolicyVersion]
+        : ['1', '2', '3', '4', '5', '6'];
     if (!supportedPolicyVersions.includes(policyVersion)) {
       throw new FileSystemError(
-        `Manifest governance policyVersion cannot be newer than ${governancePolicyVersion}. ` +
+        `Manifest governance policyVersion cannot be newer than ${artifactVersion < 8 ? '6' : governancePolicyVersion}. ` +
           `Unsupported Manifest.governance.policyVersion: found ${JSON.stringify(policyVersion)}; ` +
           `supported values for artifactVersion ${artifactVersion} are ${supportedPolicyVersions.map((value) => JSON.stringify(value)).join(', ')}. ` +
           `Minimum Liftoff ${context.minimumLiftoffVersion} is required for policy ${governancePolicyVersion}; ` +
           'upgrade the CLI for future policy identities or restore a supported manifest without writing.'
       );
     }
-    if (artifactVersion === 7 && policyVersion !== governancePolicyVersion) {
+    if (artifactVersion === 7 && policyVersion !== '6') {
       throw new FileSystemError(
-        `Manifest governance policyVersion must be ${governancePolicyVersion} for artifactVersion 7.`
+        'Manifest governance policyVersion must be 6 for historical artifactVersion 7.'
       );
     }
     if (state !== 'handoff-generated' && state !== 'handoff-partial') {
@@ -86,7 +88,7 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         'Enabled manifest governance requires handoff-generated or handoff-partial state.'
       );
     }
-    if (artifactVersion === 7) {
+    if (artifactVersion === 7 || artifactVersion === 8 && Number(policyVersion) >= 6) {
       let activationIdentity;
       try {
         activationIdentity = validateActivationIdentity(value.activationIdentity);
@@ -99,6 +101,11 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
         throw new FileSystemError(
           'Manifest governance activationIdentity.policyVersion must match policyVersion.'
         );
+      }
+      if (artifactVersion === 7 && activationIdentity.manifestArtifactVersion !== 7 ||
+        artifactVersion === 8 && policyVersion === governancePolicyVersion &&
+          activationIdentity.manifestArtifactVersion !== 8) {
+        throw new FileSystemError('Manifest governance identity does not match its registered manifest/policy family.');
       }
       return {
         profile: profile.id,
@@ -180,10 +187,21 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
       }
       return;
     }
-    const required = [
+    const staticHandoffNames = [
       'repository-governance-policy',
       'repository-governance-context',
-      'repository-governance-guide',
+      'repository-governance-guide'
+    ];
+    const legacyStaticHandoff = [5, 6].includes(manifest.artifactVersion) &&
+      ['1', '2', '3', '4', '5'].includes(manifest.governance.policyVersion) &&
+      manifest.project.agents.every((agent) => agent !== 'codex') &&
+      governanceArtifacts.every((artifact) => staticHandoffNames.includes(artifact.logicalName));
+    const legacyRequiredAliases = legacyStaticHandoff ? manifest.project.agents.map((agent) =>
+      retiredManagedCoreIdentities.find((identity) =>
+        identity.replacementLogicalName === governanceAgentIntegrations[agent].setup.logicalName)!.logicalName
+    ) : [];
+    const required = legacyStaticHandoff ? staticHandoffNames : [
+      ...staticHandoffNames,
       'repository-governance-phase-graph',
       'repository-governance-compatibility',
       'repository-governance-credential-policy-schema',
@@ -220,11 +238,13 @@ export function createManifestGovernanceReader(context: ManifestContractContext)
     }
     // Complete historical inventories can predate either additive integration.
     const missingRequired = missing.filter((logicalName) =>
-      required.includes(logicalName) ||
+      manifest.artifactVersion === 8 || required.includes(logicalName) ||
       (applicableAssessment.includes(logicalName) && (hasAssessmentInventory ||
         logicalName === governanceAgentIntegrations.codex.assessment.logicalName)) ||
       (isRepair(logicalName) && hasRepairInventory)
     );
+    missingRequired.push(...legacyRequiredAliases.filter((logicalName) =>
+      !retiredGovernanceArtifacts.some((artifact) => artifact.logicalName === logicalName)));
     if (manifest.governance.state === 'handoff-generated' && missingRequired.length > 0) {
       throw new FileSystemError(
         `Enabled manifest governance is missing artifact ${missingRequired[0]}.`

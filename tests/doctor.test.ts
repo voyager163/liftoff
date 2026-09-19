@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import {
   createFixtureProject,
@@ -25,31 +25,26 @@ import type {
   RunCommandOptions
 } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
+import * as nativeUpgrade from '../src/application/distribution/native-upgrade.js';
+import type { NativeUpgradeResult } from '../src/application/distribution/native-upgrade.js';
+import { requiredCredentialProviderPermissions } from '../src/domain/governance/activation/types.js';
 
 const cleanups: string[] = [];
-const previousRegistry = process.env.LIFTOFF_REGISTRY;
-const unreachableRegistry = 'http://127.0.0.1:1';
-
-beforeAll(() => {
-  // unreachable registry: freshness lookup must soft-fail silently
-  process.env.LIFTOFF_REGISTRY = unreachableRegistry;
-});
-
-afterAll(() => {
-  if (previousRegistry === undefined) {
-    delete process.env.LIFTOFF_REGISTRY;
-  } else {
-    process.env.LIFTOFF_REGISTRY = previousRegistry;
-  }
-});
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  process.env.LIFTOFF_REGISTRY = unreachableRegistry;
   while (cleanups.length > 0) {
     await rm(cleanups.pop()!, { recursive: true, force: true });
   }
 });
+
+function nativeResult(changes: Partial<NativeUpgradeResult> = {}): NativeUpgradeResult {
+  return {
+    schemaVersion: 1, distribution: 'native', mode: 'check', status: 'current', currentVersion: liftoffVersion,
+    owner: 'direct', upstreamAvailability: 'current', ownerAvailability: 'current', reasonCode: 'current',
+    completedEffects: [], uncertainEffects: [], recoveryRequired: false, ...changes
+  };
+}
 
 async function fixtureProject(pattern = 'prompt'): Promise<string> {
   const projectRoot = await createFixtureProject({
@@ -102,13 +97,26 @@ class TimedOutStackRunner extends ReadyInitRunner {
   }
 }
 
+class MissingAmbientNodeRunner extends ReadyInitRunner {
+  override async run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult> {
+    if (command.executable !== 'node') return super.run(command, options);
+    this.calls.push(command);
+    this.callDetails.push({ command, options });
+    return {
+      command, displayCommand: 'node', status: null, signal: null, stdout: '', stderr: '',
+      timedOut: false, errorCode: 'ENOENT'
+    };
+  }
+
+}
+
 async function run(
   args: string[],
   cwd: string,
   runner = new ReadyInitRunner(),
   context: Partial<Pick<
     CommandContext,
-    'configuredRegistryTargetLookup' | 'stableReleaseLookup'
+    'configuredRegistryTargetLookup' | 'stableReleaseLookup' | 'nativeUpgradeCheck'
   >> = {}
 ): Promise<{ code: number; out: string; err: string }> {
   const stdout = new CaptureStream();
@@ -118,8 +126,8 @@ async function run(
     stdout,
     stderr,
     runner,
-    stableReleaseLookup: async () => {
-      throw new Error('offline');
+    nativeUpgradeCheck: async () => {
+      throw new Error('Native discovery unavailable in this fixture.');
     },
     ...context
   });
@@ -198,9 +206,9 @@ describe('doctor command', () => {
     const result = await run(['doctor'], elsewhere);
     expect(result.out).toContain('CLI');
     expect(result.out).toContain(`version: Liftoff ${liftoffVersion}`);
-    expect(result.out).not.toContain('cli freshness');
+    expect(result.out).toContain('cli freshness: Native installation and release availability could not be verified');
     expect(result.out).toContain('Environment');
-    expect(result.out).toContain('node:');
+    expect(result.out).toContain(`CLI runtime: Running CLI Node ${process.versions.node}`);
     expect(result.out).not.toContain('Project');
     expect(result.out).not.toContain('Runtime');
     expect(result.out).not.toContain('Cloud -');
@@ -223,7 +231,7 @@ describe('doctor command', () => {
     );
     expect(result.out).toContain('repository governance');
     expect(result.out).toContain('live enforcement is not inferred');
-    expect(result.out).not.toContain('cli freshness');
+    expect(result.out).toContain('cli freshness: Native installation and release availability could not be verified');
   }, 30_000);
 
   it('reports local governance integrity without claiming live enforcement', async () => {
@@ -340,6 +348,7 @@ describe('doctor command', () => {
       state.applicability.credentialRequired = true;
     }));
     const credential = buildFineGrainedPatCredentialPolicy({
+      providerPermissions: requiredCredentialProviderPermissions('fine-grained-pat'),
       repository: {
         id: 'R_doctor',
         owner: 'owner',
@@ -409,7 +418,7 @@ describe('doctor command', () => {
     });
   }, 30_000);
 
-  it('reports current and newer authoritative registry versions outside a project', async () => {
+  it('reports current and available owner-verified native versions outside a project', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-freshness-'));
     cleanups.push(elsewhere);
 
@@ -418,22 +427,19 @@ describe('doctor command', () => {
       elsewhere,
       new ReadyInitRunner(),
       {
-        stableReleaseLookup: async () => ({
-          name: '@msn-control/liftoff',
-          version: liftoffVersion
-        })
+        nativeUpgradeCheck: async () => nativeResult()
       }
     );
-    expect(current.out).toContain(`cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`);
+    expect(current.out).toContain(`cli freshness: running ${liftoffVersion}; verified native release and current owner agree`);
 
     const newer = await run(
       ['doctor', '--json'],
       elsewhere,
       new ReadyInitRunner(),
       {
-        stableReleaseLookup: async () => ({
-          name: '@msn-control/liftoff',
-          version: '99.0.0'
+        nativeUpgradeCheck: async () => nativeResult({
+          status: 'update-available', targetVersion: '99.0.0', reasonCode: 'update_available',
+          upstreamAvailability: 'available', ownerAvailability: 'available'
         })
       }
     );
@@ -442,12 +448,120 @@ describe('doctor command', () => {
     const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
     expect(freshness).toMatchObject({
       severity: 'warn',
-      detail: `Liftoff 99.0.0 is published, this CLI is ${liftoffVersion}`
+      state: 'native-update-available',
+      detail: `Native Liftoff 99.0.0 is available through the current owner; running ${liftoffVersion}`
     });
-    expect(freshness.remedy).toContain('@msn-control/liftoff@99.0.0');
-    expect(freshness.remedy).toContain('--registry=https://registry.npmjs.org');
+    expect(freshness.remedy).toContain('liftoff upgrade --check');
+    expect(freshness.remedy).not.toContain('npm install');
+    expect(freshness.nativeUpgrade).toMatchObject({ upstreamAvailability: 'available', ownerAvailability: 'available' });
     expect(report.summary.warnings).toBeGreaterThanOrEqual(1);
   }, 30_000);
+
+  it('reports native observation failure instead of silently falling back to npm freshness', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-native-failure-'));
+    cleanups.push(root);
+    const legacy = vi.fn(async () => { throw new Error('Unexpected legacy registry access.'); });
+    const result = await run(['doctor', '--json'], root, new ReadyInitRunner(), {
+      nativeUpgradeCheck: async () => { throw new Error('private diagnostic payload'); },
+      stableReleaseLookup: legacy, configuredRegistryTargetLookup: legacy
+    });
+    const cli = JSON.parse(result.out).layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: 'warn', state: 'native-observation-error', detail: expect.stringContaining('could not be verified')
+    });
+    expect(legacy).not.toHaveBeenCalled();
+    expect(result.out + result.err).not.toContain('private diagnostic payload');
+    expect(result.out).not.toMatch(/\bnpm\s+install\b/u);
+  });
+
+  it('observes its running CLI runtime without requiring an ambient Node installation', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-private-runtime-'));
+    cleanups.push(root);
+    const runner = new MissingAmbientNodeRunner();
+    const result = await run(['doctor', '--json'], root, runner, {
+      nativeUpgradeCheck: async () => nativeResult()
+    });
+    expect(result.code, result.out + result.err).toBe(0);
+    const report = JSON.parse(result.out);
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { id: string }) => check.id === 'cli-runtime-node')).toMatchObject({
+      severity: 'ok', observedVersion: process.versions.node,
+      executable: { executable: process.execPath, resolvedPath: process.execPath, evidence: 'documented-location' }
+    });
+    expect(runner.calls.some((command) => command.executable === 'node')).toBe(false);
+  });
+
+  it('does not substitute its running runtime for a missing project/framework Node toolchain', async () => {
+    const root = await standardFixtureProject('node');
+    const result = await run(['doctor', '--json'], root, new MissingAmbientNodeRunner(), {
+      nativeUpgradeCheck: async () => nativeResult()
+    });
+    const report = JSON.parse(result.out);
+    const environment = report.layers.find((layer: { title: string }) => layer.title === 'Environment');
+    expect(environment.checks.find((check: { id: string }) => check.id === 'node')).toMatchObject({
+      severity: 'fail', reasonCode: 'missing-executable'
+    });
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { id: string }) => check.id === 'cli-runtime-node').severity).toBe('ok');
+    expect(result.code).toBe(1);
+  });
+
+  it('keeps legacy npm handover distinct without inferring a target owner or installation command', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-legacy-'));
+    cleanups.push(root);
+    const legacy = vi.fn(async () => { throw new Error('No npm native-release lookup.'); });
+    const result = await run(['doctor', '--json'], root, new ReadyInitRunner(), {
+      nativeUpgradeCheck: async () => nativeResult({
+        owner: 'npm', currentVersion: '0.12.3', status: 'blocked', reasonCode: 'migration_required',
+        upstreamAvailability: 'unknown', ownerAvailability: 'unknown'
+      }),
+      stableReleaseLookup: legacy, configuredRegistryTargetLookup: legacy
+    });
+    const cli = JSON.parse(result.out).layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: 'warn', state: 'migration-required', detail: 'Historical npm does not discover current native releases.'
+    });
+    expect(legacy).not.toHaveBeenCalled();
+    expect(result.out).not.toMatch(/\bnpm\s+install\b/u);
+    expect(result.out).not.toContain('--to');
+  });
+
+  it('preserves earlier native effects and uncertain recovery as an incomplete observation', async () => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-native-recovery-'));
+    cleanups.push(root);
+    const observed = nativeResult({
+      status: 'blocked', reasonCode: 'recovery_required', recoveryRequired: true,
+      upstreamAvailability: 'unknown', ownerAvailability: 'unknown',
+      completedEffects: ['Previously approved payload staging'],
+      uncertainEffects: ['Original launcher activation requires readback']
+    });
+    const result = await run(['doctor', '--json'], root, new ReadyInitRunner(), {
+      nativeUpgradeCheck: async () => observed
+    });
+    const cli = JSON.parse(result.out).layers.find((layer: { title: string }) => layer.title === 'CLI');
+    const freshness = cli.checks.find((check: { label: string }) => check.label === 'cli freshness');
+    expect(freshness).toMatchObject({ severity: 'warn', state: 'recovery_required', nativeUpgrade: observed });
+    expect(freshness.remedy).toContain('preserve prior effects');
+    expect(result.out).not.toContain('nothing happened');
+  });
+
+  it.each([
+    { result: nativeResult({ owner: 'unknown', upstreamAvailability: 'unknown', ownerAvailability: 'unknown' }),
+      state: 'native-observation-incomplete', severity: 'warn' },
+    { result: nativeResult({ currentVersion: '0.0.1' }), state: 'installation-version-mismatch', severity: 'warn' },
+    { result: nativeResult({ mode: 'apply', status: 'upgraded' }), state: 'unexpected-native-operation', severity: 'fail' }
+  ])('refuses a current/success claim for $state', async (fixture) => {
+    const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-native-identity-'));
+    cleanups.push(root);
+    const result = await run(['doctor', '--json'], root, new ReadyInitRunner(), {
+      nativeUpgradeCheck: async () => fixture.result
+    });
+    const cli = JSON.parse(result.out).layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: fixture.severity, state: fixture.state
+    });
+    expect(result.out).not.toContain('verified native release and current owner agree');
+  });
 
   it('reports shared requirement identifiers, states, severities, and authentication health', async () => {
     const root = await fixtureProject();
@@ -625,37 +739,36 @@ describe('doctor command', () => {
     expect(await readFile(manifestPath, 'utf8')).toBe(before);
   }, 30_000);
 
-  it('keeps canonical freshness lookup independent from registry overrides', async () => {
+  it('uses the native read-only checker without reading npm freshness or registry overrides', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-mirror-'));
     cleanups.push(elsewhere);
     const npmrcPath = path.join(elsewhere, '.npmrc');
     const npmrc = 'registry=https://stale.example.invalid/npm/\n';
     await writeFile(npmrcPath, npmrc, 'utf8');
-    const fetch = vi.spyOn(globalThis, 'fetch').mockResolvedValue(
-      new Response(JSON.stringify({
-        name: '@msn-control/liftoff',
-        version: liftoffVersion
-      }), { status: 200 })
-    );
+    const fetch = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('Unexpected registry request.'));
+    const legacy = vi.fn(async () => { throw new Error('Historical npm lookup must not run.'); });
+    const native = vi.spyOn(nativeUpgrade, 'runNativeOwnerUpgrade').mockResolvedValue(nativeResult());
     const stdout = new CaptureStream();
     const code = await runCommand(parseArgs(['doctor']), {
       cwd: elsewhere,
       stdout,
       stderr: new CaptureStream(),
       runner: new ReadyInitRunner(),
-      env: { LIFTOFF_REGISTRY: 'https://malicious.example.test/npm/' }
+      env: { LIFTOFF_REGISTRY: 'https://malicious.example.test/npm/' },
+      stableReleaseLookup: legacy, configuredRegistryTargetLookup: legacy
     });
     expect(code).toBe(0);
-    expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      'https://registry.npmjs.org/%40msn-control%2Fliftoff/latest'
-    );
+    expect(native).toHaveBeenCalledWith(expect.objectContaining({ mode: 'check', currentVersion: liftoffVersion, json: true }),
+      expect.objectContaining({ cwd: elsewhere }));
+    expect(fetch).not.toHaveBeenCalled();
+    expect(legacy).not.toHaveBeenCalled();
     expect(stdout.text()).toContain(
-      `cli freshness: running ${liftoffVersion}, latest stable ${liftoffVersion}`
+      `cli freshness: running ${liftoffVersion}; verified native release and current owner agree`
     );
     expect(await readFile(npmrcPath, 'utf8')).toBe(npmrc);
   }, 30_000);
 
-  it('distinguishes a stale configured mirror from canonical freshness', async () => {
+  it('distinguishes native owner-source lag from upstream availability without npm fallback', async () => {
     const elsewhere = await mkdtemp(path.join(os.tmpdir(), 'liftoff-doctor-stale-mirror-'));
     cleanups.push(elsewhere);
     const result = await run(
@@ -663,18 +776,17 @@ describe('doctor command', () => {
       elsewhere,
       new ReadyInitRunner(),
       {
-        stableReleaseLookup: async () => ({
-          name: '@msn-control/liftoff',
-          version: '99.0.0'
-        }),
-        configuredRegistryTargetLookup: async () => ({ status: 'stale' })
+        nativeUpgradeCheck: async () => nativeResult({
+          status: 'blocked', owner: 'homebrew-cask', targetVersion: '99.0.0',
+          upstreamAvailability: 'available', ownerAvailability: 'blocked', reasonCode: 'source_stale'
+        })
       }
     );
     expect(result.out).toContain(
-      'configured npm registry does not expose it'
+      'upstream: available, owner source: blocked'
     );
-    expect(result.out).toContain('managed registry owner');
-    expect(result.out).toContain('liftoff upgrade --check');
+    expect(result.out).toContain('owner-source lag');
+    expect(result.out).toContain('liftoff installation inspect --json');
     expect(result.out).not.toContain('npm install --global');
   });
 
@@ -736,13 +848,9 @@ describe('doctor command', () => {
       root,
       new ReadyInitRunner(),
       {
-        stableReleaseLookup: async () => ({
-          name: '@msn-control/liftoff',
-          version: '99.0.0'
-        }),
-        configuredRegistryTargetLookup: async () => ({
-          status: 'available',
-          registryKind: 'canonical'
+        nativeUpgradeCheck: async () => nativeResult({
+          status: 'update-available', targetVersion: '99.0.0', reasonCode: 'update_available',
+          upstreamAvailability: 'available', ownerAvailability: 'available'
         })
       }
     );
@@ -752,6 +860,23 @@ describe('doctor command', () => {
     expect(result.out).toMatch(
       /managed core: \d+ core maintenance action\(s\) available - run liftoff update/
     );
+  }, 30_000);
+
+  it('offers only native owner discovery when the project writer is newer than the running CLI', async () => {
+    const root = await fixtureProject();
+    const manifestPath = path.join(root, 'liftoff.manifest.json');
+    const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
+    manifest.liftoffVersion = '99.0.0';
+    await writeFile(manifestPath, JSON.stringify(manifest), 'utf8');
+    const before = await readFile(manifestPath);
+    const result = await run(['doctor', '--json'], root);
+    const project = JSON.parse(result.out).layers.find((layer: { title: string }) => layer.title === 'Project');
+    const version = project.checks.find((check: { label: string }) => check.label === 'version');
+    expect(version).toMatchObject({ severity: 'warn', detail: expect.stringContaining('99.0.0') });
+    expect(version.remedy).toContain('liftoff upgrade --check');
+    expect(version.remedy).not.toMatch(/\bnpm\s+install\b/u);
+    expect(version.remedy).toContain('Preserve the project');
+    expect(await readFile(manifestPath)).toEqual(before);
   }, 30_000);
 
   it('discovers the project from a subdirectory', async () => {
@@ -791,7 +916,10 @@ describe('doctor command', () => {
     expect(report.layers.map((layer: { title: string }) => layer.title)).toContain('Project');
     expect(typeof report.summary.failures).toBe('number');
     expect(typeof report.summary.warnings).toBe('number');
-    expect(result.out).not.toContain('cli freshness');
+    const cli = report.layers.find((layer: { title: string }) => layer.title === 'CLI');
+    expect(cli.checks.find((check: { label: string }) => check.label === 'cli freshness')).toMatchObject({
+      severity: 'warn', state: 'native-observation-error'
+    });
   }, 30_000);
 });
 

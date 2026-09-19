@@ -10,6 +10,12 @@ import {
   templateDependencyInventory,
   validateTemplateDependencyInventory
 } from './template-dependency-security.mjs';
+import {
+  assertCurrentUpgradeHelp,
+  assertInfrastructureDocumentation,
+  assertPrivateSourcePackageSize,
+  assertSourcePackageUpgradeRefusal
+} from './package-smoke-contracts.mjs';
 
 const packageRoot = process.cwd();
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
@@ -54,6 +60,17 @@ function runFailure(command, args, options = {}) {
 
 function runNpm(args, options = {}) {
   return run(process.execPath, [npmCliPath, ...args], options);
+}
+
+function initializeFixtureRepository(directory, env) {
+  run('git', ['init', '--quiet', '--template=', '--initial-branch=develop', directory], {
+    cwd: tempRoot,
+    env: {
+      ...env,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null'
+    }
+  });
 }
 
 function firstPackResult(value) {
@@ -172,6 +189,13 @@ try {
   assertPackageContains(packResult, 'dist/supported-stack.js');
   assertPackageContains(packResult, 'assets/supported-stack.json');
   assertPackageContains(packResult, 'assets/repair/windows-job-controller.ps1');
+  assertPackageContains(packResult, 'assets/skills/catalog.json');
+  assertPackageContains(packResult, 'assets/templates/catalog.json');
+  assertPackageContains(packResult, 'assets/profiles/catalog.json');
+  for (const skill of ['setup', 'assess', 'init', 'adopt', 'update', 'repair', 'migrate', 'governance-assess', 'governance', 'azure', 'cli-upgrade']) {
+    assertPackageContains(packResult, `assets/skills/${skill}/SKILL.md`);
+  }
+  assertPackageExcludes(packResult, 'assets/qualification');
   assertPackageContains(
     packResult,
     'assets/governance/single-maintainer-gitflow/policy.md'
@@ -196,16 +220,14 @@ try {
   assertPackageExcludes(packResult, 'scripts');
   assertPackageExcludes(packResult, 'security');
   assertPackageExcludes(packResult, 'services');
-  assertPackageExcludes(packResult, 'infrastructure');
+  assertInfrastructureDocumentation(packResult);
   assertPackageExcludes(packResult, 'node_modules');
   await validateTemplateDependencyInventory(
     packageRoot,
     templateDependencyInventory,
     packResult.files.map((file) => file.path)
   );
-  if (packResult.unpackedSize > 8 * 1024 * 1024) {
-    throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
-  }
+  assertPrivateSourcePackageSize(packResult);
 
   const tarballPath = path.join(packDirectory, packResult.filename);
   const npmEnv = {
@@ -231,6 +253,11 @@ try {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
   const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  const installedMetadata = JSON.parse(await readFile(path.join(installedPackageRoot, 'package.json'), 'utf8'));
+  if (installedMetadata.private !== true || installedMetadata.name !== packResult.name ||
+      installedMetadata.version !== packResult.version || installedMetadata.publishConfig !== undefined) {
+    throw new Error('Installed source-test archive lost its private package identity; it is not an npm release channel.');
+  }
 
   const help = run(process.execPath, [liftoffEntrypoint, 'help'], {
     cwd: outsideDirectory,
@@ -309,55 +336,51 @@ try {
     cwd: outsideDirectory,
     env: npmEnv
   });
-  if (
-    !upgradeHelp.stdout.includes('supported global npm Liftoff CLI') ||
-    !upgradeHelp.stdout.includes('--check') ||
-    !upgradeHelp.stdout.includes('--json') ||
-    !upgradeHelp.stdout.includes('project templates use update separately')
-  ) {
-    throw new Error('Installed liftoff upgrade help did not expose the self-upgrade contract');
+  assertCurrentUpgradeHelp(upgradeHelp.stdout);
+
+  // The private archive transports current source for testing; it grants no installation-owner authority.
+  const beforeUpgrade = await treeDigest(outsideDirectory);
+  const beforeUpgradeHome = await treeDigest(homeDirectory);
+  const installedMetadataBefore = await readFile(path.join(installedPackageRoot, 'package.json'));
+  for (const mode of ['check', 'apply']) {
+    const refusal = runFailure(process.execPath, [
+      liftoffEntrypoint, 'upgrade', ...(mode === 'check' ? ['--check'] : []), '--json'
+    ], { cwd: outsideDirectory, env: npmEnv });
+    if (refusal.status !== 1 || refusal.stderr !== '') {
+      throw new Error('Installed source-package upgrade did not return a clean unsupported-ownership refusal');
+    }
+    assertSourcePackageUpgradeRefusal(JSON.parse(refusal.stdout), mode, packResult.version);
   }
 
-  const isolatedGlobalRoot = process.platform === 'win32'
-    ? path.join(installPrefix, 'node_modules')
-    : path.join(installPrefix, 'lib', 'node_modules');
   const injectedCheckScript = `
-    import { runSelfUpgrade } from ${JSON.stringify(
-      pathToFileURL(path.join(installedPackageRoot, 'dist', 'self-upgrade.js')).href
+    import { runNativeOwnerUpgrade } from ${JSON.stringify(
+      pathToFileURL(path.join(installedPackageRoot, 'dist', 'application', 'distribution', 'native-upgrade.js')).href
     )};
     const calls = [];
-    const result = await runSelfUpgrade({
+    const result = await runNativeOwnerUpgrade({
       mode: 'check',
       currentVersion: ${JSON.stringify(packResult.version)},
       stdout: process.stdout,
       stderr: process.stderr,
-      json: true,
-      runningPackageRoot: ${JSON.stringify(installedPackageRoot)}
+      json: true
     }, {
+      entrypoint: ${JSON.stringify(liftoffEntrypoint)},
+      cwd: process.cwd(),
+      env: process.env,
       runner: {
         run: async (command) => {
           calls.push(command);
-          if (command.args.join(' ') !== 'root --global') {
-            throw new Error('Injected current-version check attempted an unexpected command.');
-          }
-          return {
-            command,
-            displayCommand: command.executable + ' ' + command.args.join(' '),
-            status: 0,
-            signal: null,
-            stdout: ${JSON.stringify(`${isolatedGlobalRoot}\n`)},
-            stderr: '',
-            timedOut: false
-          };
+          throw new Error('Unsupported source-package ownership cannot authorize an external command.');
         }
       },
-      lookupStableRelease: async () => ({
-        name: '@msn-control/liftoff',
-        version: ${JSON.stringify(packResult.version)}
-      }),
-      environment: { LIFTOFF_TELEMETRY: '0' }
+      releaseClient: {
+        fetchVerifiedRelease: async () => {
+          calls.push('release lookup');
+          throw new Error('Unsupported source-package ownership cannot authorize release lookup.');
+        }
+      }
     });
-    if (result.status !== 'current' || calls.length !== 1) process.exit(1);
+    if (calls.length !== 0) process.exit(1);
     process.stdout.write(JSON.stringify(result));
   `;
   const injectedCheck = run(
@@ -365,12 +388,11 @@ try {
     ['--input-type=module', '-e', injectedCheckScript],
     { cwd: outsideDirectory, env: npmEnv }
   );
-  const injectedResult = JSON.parse(injectedCheck.stdout);
-  if (
-    injectedResult.status !== 'current' ||
-    injectedResult.currentVersion !== packResult.version
-  ) {
-    throw new Error('Installed self-upgrade module failed its isolated injected check');
+  assertSourcePackageUpgradeRefusal(JSON.parse(injectedCheck.stdout), 'check', packResult.version);
+  if (await treeDigest(outsideDirectory) !== beforeUpgrade ||
+      await treeDigest(homeDirectory) !== beforeUpgradeHome ||
+      !(await readFile(path.join(installedPackageRoot, 'package.json'))).equals(installedMetadataBefore)) {
+    throw new Error('Unsupported source-package upgrade changed project, home/receipt state, or package identity');
   }
 
   const removedApply = runFailure(process.execPath, [liftoffEntrypoint, 'update', '--apply'], {
@@ -489,14 +511,7 @@ try {
     throw new Error('Installed governance assessment help does not expose local/live scope.');
   }
   const ordinaryRepository = path.join(tempRoot, 'ordinary git repository');
-  run('git', ['init', '--quiet', '--template=', '--initial-branch=develop', ordinaryRepository], {
-    cwd: tempRoot,
-    env: {
-      ...npmEnv,
-      GIT_CONFIG_NOSYSTEM: '1',
-      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null'
-    }
-  });
+  initializeFixtureRepository(ordinaryRepository, npmEnv);
   const nestedDirectory = path.join(ordinaryRepository, 'nested directory');
   await mkdir(nestedDirectory);
   const ordinaryBefore = await treeDigest(ordinaryRepository);
@@ -543,6 +558,8 @@ try {
     }
   }
   await installedWrite(repairProject, repairArtifacts);
+  // Keep the fixture's repository boundary disjoint from private state even under a checkout-local TMPDIR.
+  initializeFixtureRepository(repairProject, npmEnv);
   await mkdir(path.join(repairProject, 'legacy-code'));
   await mkdir(path.join(repairProject, 'checks'));
   const customSource = 'export const calculate = value => value * 4 + 5;\n';

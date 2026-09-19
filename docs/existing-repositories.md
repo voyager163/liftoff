@@ -116,33 +116,38 @@ and explicit approval, update safely adopts collision-free policy, context,
 guide, phase graph, compatibility
 metadata, credential-policy schema, and selected-agent setup integrations
 without rewriting a configuration that omitted `governanceProfile`.
-Existing different files remain unowned conflicts and the v7 manifest records
+Existing different files remain unowned conflicts and the current v8 manifest records
 `handoff-partial`.
 Resolving every conflict promotes a later update to `handoff-generated`.
 Selecting `none` leaves previously managed handoff files as undeleted orphans
 while unrecorded conflicts remain user-owned. No update mode runs an agent or
 activates GitHub settings.
 
-Projects carrying governance policy versions 2 through 5 preview policy version
-6, manifest v7, and activation-contract v2 as managed-core drift. Review the
+Historical policy-only handoffs can preview a manifest-v8/policy-8 managed
+handoff without inventing activation history. Current execution uses activation
+contract 4 and credential-policy schema 2. Review the
 canonical phase graph, private-runner credential contract, bootstrap-state
 retention/disposal contract, and active-change reconciliation before
 replacement. Updating the handoff never provisions Azure or GitHub resources;
 active downstream work must have supported identity and current evidence before
-it can execute. Exact supported activation-v1 migration is previewed through
+it can execute. Exact supported activation-v1/v2/v3 and pre-amendment
+policy-7/schema-1 migration is previewed through
 `liftoff update --check` and requires approval of that plan. Original state,
 receipts, plans, approvals, and source metadata are retained in in-project
-history before a linked v2 successor is created. Historical records stay
+history before a linked v4 successor is created. Historical records stay
 non-executable; updating a core file does not make them current proof.
-Post-commit revalidation failure leaves v2 blocked and resumable. Unsupported
+Post-commit revalidation failure leaves v4 blocked and resumable. Fresh credential
+approval remains separate from migration approval; original policy, ownership
+and approval records cannot authorize the broader provider grant. Unsupported
 source formats and independent infrastructure migrations remain separate blockers.
 
-The manifest-v7 transition releases every legacy non-core artifact into project
+The reviewed current manifest transition releases legacy non-core ownership into project
 provenance without writing, restoring, moving, or deleting its path.
 Intentionally removed infrastructure stays absent and production source stays
 byte-for-byte unchanged.
 
-Supported readers normalize manifest v2-v6 and write only v7 after all
+Supported readers retain historical manifest v2-v7 and current generated/adopted
+v8 forms; approved writers emit v8 after all
 preflights pass. Future versions, unsupported policy/contract/schema tuples,
 unknown graph hashes, unversioned activation state, or prose-only task history
 block with explicit upgrade, import-mapping, or reconciliation remedies. Liftoff
@@ -168,6 +173,23 @@ When its specialization becomes clear, migrate the project-owned routes,
 orchestration, data, and infrastructure through a reviewed project change.
 Changing the configuration to RAG, chatbot, or another pattern and running
 `liftoff update` is intentionally rejected.
+
+## Whole-project assessment and adoption
+
+Liftoff distinguishes read-only whole-project assessment (`liftoff assess`), reviewed
+in-place adoption (`liftoff adopt`), fresh-target migration (`liftoff migrate`),
+managed update (`liftoff update`), recipe-bound repair (`liftoff repair`), and new-project
+scaffolding (`liftoff init`) as distinct operations:
+
+- `liftoff assess`: Read-only, bounded inventory and standards findings against
+  standards profiles (`fastapi`, `fastify`, `go-huma`, `vue`, `genai`) without creating
+  metadata, executing project code, or contacting network providers. See [assessment](assessment.md).
+- `liftoff adopt`: Reviewed, explicitly mapped in-place adoption of existing supported
+  codebases. Preserves custom business logic, application code, dependencies, and Git
+  history, generating manifest artifact version 8 with explicit adopted provenance rather
+  than overwriting the application with a starter.
+- `liftoff migrate`: Creates a fresh sibling scaffold with a filtered source copy.
+- `liftoff update`: Maintains managed-core control-plane files only.
 
 ## Existing non-Liftoff application
 

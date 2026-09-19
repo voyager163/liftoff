@@ -1,0 +1,153 @@
+{
+  "artifactVersion": 7,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.12.3",
+  "project": {
+    "name": "Flight Log",
+    "workload": {
+      "kind": "standard",
+      "apiStack": "node-fastify",
+      "cloud": "azure",
+      "region": "eastus",
+      "frontend": false,
+      "environments": [
+        "dev",
+        "staging",
+        "prod"
+      ]
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.0.0"
+  },
+  "governance": {
+    "profile": "single-maintainer-gitflow",
+    "policyVersion": "6",
+    "activationIdentity": {
+      "liftoffVersion": "0.12.0",
+      "manifestArtifactVersion": 7,
+      "policyVersion": "6",
+      "activationContractVersion": 3,
+      "phaseGraphSchemaVersion": 2,
+      "phaseGraphHash": "2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703",
+      "activationStateSchemaVersion": 3,
+      "evidenceHeaderSchemaVersion": 3,
+      "approvalEnvelopeSchemaVersion": 3,
+      "supersessionSchemaVersion": 1,
+      "credentialPolicySchemaVersion": 1
+    },
+    "state": "handoff-generated"
+  },
+  "managedArtifacts": [
+    {
+      "logicalName": "repository-governance-policy",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "policy.md"
+      ],
+      "contentHash": "sha256:9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149"
+    },
+    {
+      "logicalName": "repository-governance-context",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "context.json"
+      ],
+      "contentHash": "sha256:5fabe1a4b3a09307e9d5518a086942bd9c885a87b796a08306c6edccb8efc38f"
+    },
+    {
+      "logicalName": "repository-governance-guide",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "README.md"
+      ],
+      "contentHash": "sha256:6ee79acd388e4ea1aa215e19997b94cd2ca351957890eef3a6e7ec010be9dd7e"
+    },
+    {
+      "logicalName": "repository-governance-phase-graph",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "phase-graph.json"
+      ],
+      "contentHash": "sha256:2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703"
+    },
+    {
+      "logicalName": "repository-governance-compatibility",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "compatibility.json"
+      ],
+      "contentHash": "sha256:2626c6e5e7deefa0e58eb323d9b08bdae160e360fe4ad22507969971df9d3ae4"
+    },
+    {
+      "logicalName": "repository-governance-credential-policy-schema",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "credential-policy.schema.json"
+      ],
+      "contentHash": "sha256:cc7b329e41727a3ee7097ca5476638d146f49c5f815dd0ea93bc4ed0675349ce"
+    },
+    {
+      "logicalName": "liftoff-setup-copilot",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-setup.prompt.md"
+      ],
+      "contentHash": "sha256:543776af9bc3ecc1dc98d56af7667f5f93bc7af7bc850d03bd922c1fc9ec31e5"
+    },
+    {
+      "logicalName": "liftoff-governance-assess-copilot",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-governance-assess.prompt.md"
+      ],
+      "contentHash": "sha256:b33500eb7546e62fa5f15a063ba882ab555e2561c84ba44a9f4fb6cf7f204fc0"
+    },
+    {
+      "logicalName": "liftoff-repair-copilot",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-repair.prompt.md"
+      ],
+      "contentHash": "sha256:af7fdd31f2791d90afd2743a7564450307d7eefc7114b2c2772068358fbb6cb1"
+    }
+  ],
+  "projectArtifacts": [
+    {
+      "logicalName": "backend-entrypoint",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "index.ts"
+      ],
+      "generatedBy": "0.10.0",
+      "generationHash": "sha256:b47988237a92384a81d5e059520e12bd12f32a2c452110a9e953d1d5190686c0",
+      "provisioningGroup": "base"
+    }
+  ]
+}

@@ -38,7 +38,8 @@ export const compatibleIndependentInfrastructureGenerationVersions = [
   '0.12.0',
   '0.12.1',
   '0.12.2',
-  '0.12.3'
+  '0.12.3',
+  '0.13.0'
 ] as const;
 
 export const sharedApplicationModuleIdentities = [
@@ -126,6 +127,7 @@ function isRecordedIdentity(
   supportedGenerations?: readonly string[]
 ): boolean {
   return artifacts.some((artifact) =>
+    typeof artifact.generatedBy === 'string' && typeof artifact.generationHash === 'string' &&
     artifact.logicalName === identity.logicalName &&
     artifact.category === identity.category &&
     artifact.provisioningGroup === identity.provisioningGroup &&
@@ -142,6 +144,12 @@ function isRecordedIdentity(
 export function assessInfrastructureLayout(
   manifest: LiftoffManifest
 ): InfrastructureLayoutAssessment {
+  if (manifest.project.workload.kind === 'components') {
+    return {
+      kind: 'unknown', canProvisionEnvironment: false,
+      reason: 'The adopted component profile declares no generated infrastructure or cloud environment; infrastructure execution is not applicable without a separate supported configuration.'
+    };
+  }
   const artifacts = manifest.projectArtifacts;
   if (
     retiredFlatRootInfrastructureIdentities.some((identity) =>

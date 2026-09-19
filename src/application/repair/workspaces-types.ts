@@ -1,5 +1,6 @@
 import type { UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 import type { RepairExecutionIdentity } from '../../domain/repair/identity.js';
+import type { AdoptionExecutionIdentity } from '../../domain/project-evolution/adoption/identity.js';
 
 export const repairWorkspaceSchemaVersion = 1 as const;
 export const repairWorkspaceRoleNames = ['project', 'home', 'cache', 'scratch'] as const;
@@ -29,7 +30,21 @@ export interface CreateRepairVerificationWorkspaceOptions {
   patchStagingRoot: string;
   bindings: RepairWorkspaceBindings;
   approvedScopes: RepairWorkspaceApprovedScopes;
+  adoptionIdentity?: never;
 }
+
+export interface CreateAdoptionVerificationWorkspaceOptions {
+  planFingerprint: string;
+  adoptionIdentity: AdoptionExecutionIdentity;
+  patchStagingRoot: string;
+  bindings: RepairWorkspaceBindings;
+  approvedScopes: RepairWorkspaceApprovedScopes;
+  repairIdentity?: never;
+}
+
+export type CreateVerificationWorkspaceOptions =
+  | CreateRepairVerificationWorkspaceOptions
+  | CreateAdoptionVerificationWorkspaceOptions;
 
 export interface RepairWorkspaceActivity {
   kind: 'preparation' | 'verification';
@@ -60,9 +75,8 @@ export interface RepairWorkspaceFileIdentity {
   birthtime: string;
 }
 
-export interface RepairWorkspaceRecord {
+interface VerificationWorkspaceRecord {
   schemaVersion: 1;
-  kind: 'liftoff-repair-workspace';
   workspaceId: string;
   revision: number;
   projectRoot: string;
@@ -70,7 +84,6 @@ export interface RepairWorkspaceRecord {
   patchStagingRoot: string;
   patchStagingIdentity: RepairWorkspaceFileIdentity;
   planFingerprint: string;
-  repairIdentity: RepairExecutionIdentity;
   bindings: RepairWorkspaceBindings;
   approvedScopes: RepairWorkspaceApprovedScopes;
   directory: string;
@@ -94,6 +107,11 @@ export interface RepairWorkspaceRecord {
   createdAt: string;
   updatedAt: string;
 }
+
+export type RepairWorkspaceRecord = VerificationWorkspaceRecord & (
+  | { kind: 'liftoff-repair-workspace'; repairIdentity: RepairExecutionIdentity; adoptionIdentity?: never }
+  | { kind: 'liftoff-adoption-workspace'; adoptionIdentity: AdoptionExecutionIdentity; repairIdentity?: never }
+);
 
 export interface RepairWorkspaceSummary {
   workspaceId: string;

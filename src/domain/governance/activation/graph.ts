@@ -18,7 +18,7 @@ import type {
   LiveReadbackProvider,
   TerminalPhaseState
 } from './types.js';
-import { activationPhaseIds, lifecyclePhaseIds, localSetupPhaseIds } from './types.js';
+import { activationPhaseIds, lifecyclePhaseIds, localSetupPhaseIds, repositoryPhaseIds, sharedPublicationPhaseIds } from './types.js';
 
 const terminalVerified = ['verified', 'failed'] as const satisfies readonly TerminalPhaseState[];
 const terminalApproved = ['approved', 'failed'] as const satisfies readonly TerminalPhaseState[];
@@ -129,12 +129,84 @@ const rawPhases: readonly PhaseGraphNode[] = [
       terminalStates: terminalVerified
     },
     {
+      id: 'repository-discovered',
+      label: 'Repository identity, source refs and governance capabilities are observed',
+      dependencies: [dep(['pushed'], 'The actual reviewed publication must be independently verified.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['write-evidence'], ['github-read']),
+      evidence: evidence('repository-discovered.v1', true, ['github']),
+      approvalGate: approval('none', false),
+      invalidationInputs: ['baseline-sha', 'policy', 'live-readback'],
+      rollback: rollback('none', null, 'Repository discovery cannot access Azure or change provider controls.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'repository-workflow-source-ready',
+      label: 'Reviewed source-validation workflows are published through permitted GitFlow PRs',
+      dependencies: [dep(['repository-discovered'], 'Workflow publication requires exact repository/ref/control discovery.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['read-worktree', 'write-workflows', 'write-ruleset-source', 'git-commit', 'write-evidence'], ['github-read', 'github-write', 'git-push']),
+      evidence: evidence('repository-workflow-source-ready.v1', true, ['github']),
+      approvalGate: approval('repository-publish', true),
+      invalidationInputs: ['workflow-source', 'baseline-sha', 'approval-envelope', 'live-readback'],
+      rollback: rollback('retain', null, 'Retain unmerged reviewed PRs and published commits; never bypass or force protected branches.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'repository-checks-qualified',
+      label: 'Real source-validation checks pass and reject controlled unmerged negative fixtures',
+      dependencies: [dep(['repository-workflow-source-ready'], 'Qualification binds the published workflow, source, actor, ref and exact jobs.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'github-write', 'git-push']),
+      evidence: evidence('repository-checks-qualified.v1', true, ['github']),
+      approvalGate: approval('repository-publish', true),
+      invalidationInputs: ['workflow-source', 'baseline-sha', 'approval-envelope', 'security-evidence'],
+      rollback: rollback('retain', null, 'Keep exact operation IDs and unmerged fixtures; infrastructure failure is not controlled negative proof.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'repository-enforcement-approved',
+      label: 'Exact repository controls and any separately selected main hold are approved',
+      dependencies: [dep(['repository-checks-qualified'], 'Actual repository-only check evidence precedes enforcement review.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['write-activation-state', 'write-evidence']),
+      evidence: evidence('repository-enforcement-approved.v1', false),
+      approvalGate: approval('enforcement', true),
+      invalidationInputs: ['approval-envelope', 'ruleset-readback', 'baseline-sha', 'policy'],
+      rollback: rollback('none', null, 'Approval cannot authorize production qualification or removal of foreign controls.'),
+      terminalStates: terminalApproved
+    },
+    {
+      id: 'repository-rulesets-applied',
+      label: 'Approved owned repository controls are reconciled and individually read back',
+      dependencies: [dep(['repository-enforcement-approved'], 'A current exact repository enforcement approval precedes each write.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['write-evidence'], ['github-ruleset-write', 'github-write', 'github-read']),
+      evidence: evidence('repository-rulesets-applied.v1', true, ['github']),
+      approvalGate: approval('enforcement', true),
+      invalidationInputs: ['approval-envelope', 'ruleset-readback', 'baseline-sha'],
+      rollback: rollback('retain', null, 'Retain protections after partial failure; recovery never automatically disables or deletes them.'),
+      terminalStates: terminalVerified
+    },
+    {
+      id: 'repository-live-readback',
+      label: 'Repository enforcement is independently verified without production activation',
+      dependencies: [dep(['repository-rulesets-applied'], 'Readback must observe the approved owned controls and unchanged main baseline.')],
+      applicability: { kind: 'always' },
+      allowedMutations: mutations(['write-evidence'], ['github-read']),
+      evidence: evidence('repository-live-readback.v1', true, ['github']),
+      approvalGate: approval('none', false),
+      invalidationInputs: ['ruleset-readback', 'live-readback', 'baseline-sha'],
+      rollback: rollback('retain', null, 'A mismatch blocks repository completion without removing protection.'),
+      terminalStates: terminalVerified
+    },
+    {
       id: 'phase-0-complete',
       label: 'Read-only Phase 0 discovery is complete',
       dependencies: [dep(['pushed'], 'Remote repository identity must be resolvable.')],
       applicability: { kind: 'always' },
       allowedMutations: mutations(['write-evidence'], ['github-read', 'azure-read']),
-      evidence: evidence('phase-0-complete.v1', true, ['github']),
+      evidence: evidence('phase-0-complete.v1', true, ['github', 'azure']),
       approvalGate: approval('none', false),
       invalidationInputs: ['baseline-sha', 'policy', 'live-readback'],
       rollback: rollback('none', null, 'Discovery is read-only and can be refreshed.'),
@@ -175,7 +247,7 @@ const rawPhases: readonly PhaseGraphNode[] = [
         inapplicableWhen: 'credentialRequired=false',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-credential-policy', 'write-evidence'], ['github-secret-write', 'github-read', 'github-workflow-dispatch']),
+      allowedMutations: mutations(['write-credential-policy', 'write-evidence'], ['github-secret-write', 'github-read', 'github-workflow-dispatch', 'github-write']),
       evidence: evidence('credential-ready.v1', true, ['github']),
       approvalGate: approval('credential-enrollment', true),
       invalidationInputs: ['credentials', 'approval-envelope', 'activation-identity'],
@@ -274,7 +346,7 @@ const rawPhases: readonly PhaseGraphNode[] = [
     },
     {
       id: 'private-backend-proof',
-      label: 'Private backend is reachable from runner',
+      label: 'Private backend identity and exclusive lease protocol are proven from the assigned runner',
       dependencies: [dep(['runner-ready'], 'Runner readiness precedes private backend proof.')],
       applicability: {
         kind: 'conditional',
@@ -283,11 +355,11 @@ const rawPhases: readonly PhaseGraphNode[] = [
         inapplicableWhen: 'statePath!=bootstrap-local',
         exclusiveWith: []
       },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'backend-state-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'backend-state-read', 'backend-state-write']),
       evidence: evidence('private-backend-proof.v1', true, ['github', 'azure']),
       approvalGate: approval('activation-plan', true),
-      invalidationInputs: ['runner-inventory', 'remote-state', 'live-readback'],
-      rollback: rollback('reverse-to', 'runner-ready', 'Failed proof keeps remote import blocked.'),
+      invalidationInputs: ['runner-inventory', 'remote-state', 'live-readback', 'approval-envelope'],
+      rollback: rollback('retain', null, 'Only the exact accepted probe lease may be released within its reviewed cleanup window; retain unknown outcomes and never break a lease or mutate state content.'),
       terminalStates: terminalConditional
     },
     {
@@ -331,7 +403,7 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Application registry and workload identity prerequisites are ready',
       dependencies: [dep(['remote-ready'], 'Registry and identity prerequisites require verified backend readiness.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['read-worktree', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
+      allowedMutations: mutations(['read-worktree', 'write-local-state', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
       evidence: evidence('application-prerequisites-ready.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['project-files', 'remote-state', 'approval-envelope'],
@@ -340,14 +412,14 @@ const rawPhases: readonly PhaseGraphNode[] = [
     },
     {
       id: 'workflow-source-ready',
-      label: 'Workflow source and ruleset payloads are ready',
+      label: 'Application workflow source and ruleset payloads are published through reviewed GitFlow PRs',
       dependencies: [dep(['application-prerequisites-ready'], 'Workflow source binds the verified registry and workload identities.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['read-worktree', 'write-workflows', 'write-ruleset-source', 'write-evidence']),
-      evidence: evidence('workflow-source-ready.v1'),
-      approvalGate: approval('none', false),
-      invalidationInputs: ['project-files', 'policy'],
-      rollback: rollback('reverse-to', 'application-prerequisites-ready', 'Repair only approved workflow/ruleset changes without rewriting Git history.'),
+      allowedMutations: mutations(['read-worktree', 'write-workflows', 'write-ruleset-source', 'write-evidence'], ['github-read', 'github-write', 'git-push']),
+      evidence: evidence('workflow-source-ready.v1', true, ['github']),
+      approvalGate: approval('repository-publish', true),
+      invalidationInputs: ['project-files', 'workflow-source', 'approval-envelope', 'policy'],
+      rollback: rollback('retain', null, 'Retain reviewed PRs and published commits; recovery never bypasses protected refs or rewrites Git history.'),
       terminalStates: terminalVerified
     },
     {
@@ -367,7 +439,7 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Application infrastructure is deployed with the verified immutable artifact',
       dependencies: [dep(['application-artifact-ready'], 'Deployment requires real source-bound immutable application artifacts.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['read-worktree', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
+      allowedMutations: mutations(['read-worktree', 'write-local-state', 'write-evidence', 'write-openspec-governance'], ['azure-resource-provision', 'azure-read', 'backend-state-read', 'backend-state-write']),
       evidence: evidence('application-foundation.v1', true, ['azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['project-files', 'remote-state', 'approval-envelope'],
@@ -379,8 +451,8 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Development proof is green',
       dependencies: [dep(['application-foundation'], 'The real application deployment precedes development proof.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch']),
-      evidence: evidence('dev-proof.v1', true, ['github']),
+      allowedMutations: mutations(['read-worktree', 'write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'backend-state-read']),
+      evidence: evidence('dev-proof.v1', true, ['github', 'azure']),
       approvalGate: approval('activation-plan', true),
       invalidationInputs: ['workflow-source', 'project-files'],
       rollback: rollback('none', null, 'A failed check blocks descendants until fixed.'),
@@ -391,7 +463,7 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Staging release qualification is complete',
       dependencies: [dep(['dev-proof'], 'Development proof precedes staging qualification.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-write']),
+      allowedMutations: mutations(['read-worktree', 'write-local-state', 'write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write', 'registry-publish']),
       evidence: evidence('staging-qualified.v1', true, ['github', 'azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['workflow-source', 'security-evidence', 'live-readback'],
@@ -403,11 +475,11 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Production promotion and rollback are rehearsed',
       dependencies: [dep(['staging-qualified'], 'Only a staging-qualified candidate may be rehearsed.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-write']),
+      allowedMutations: mutations(['read-worktree', 'write-local-state', 'write-evidence'], ['github-read', 'github-workflow-dispatch', 'azure-read', 'azure-resource-provision', 'backend-state-read', 'backend-state-write', 'registry-publish']),
       evidence: evidence('production-rehearsed.v1', true, ['github', 'azure']),
       approvalGate: approval('infrastructure-cost', true),
       invalidationInputs: ['live-readback', 'workflow-source'],
-      rollback: rollback('none', null, 'Rollback remains ungated and documented.'),
+      rollback: rollback('retain', null, 'Execute only the exact separately approved bounded rollback plan; retain partial or uncertain rollout/rollback effects without cross-provider atomicity claims.'),
       terminalStates: terminalVerified
     },
     {
@@ -415,11 +487,11 @@ const rawPhases: readonly PhaseGraphNode[] = [
       label: 'Required checks are proven green and deliberately red',
       dependencies: [dep(['production-rehearsed'], 'Promotion rehearsal precedes final context proof.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch']),
+      allowedMutations: mutations(['write-evidence'], ['github-read', 'github-workflow-dispatch', 'github-write', 'git-push']),
       evidence: evidence('green-red-proof.v1', true, ['github']),
-      approvalGate: approval('activation-plan', true),
-      invalidationInputs: ['security-evidence', 'workflow-source'],
-      rollback: rollback('none', null, 'Missing red proof prevents enforcement.'),
+      approvalGate: approval('repository-publish', true),
+      invalidationInputs: ['security-evidence', 'workflow-source', 'approval-envelope', 'baseline-sha'],
+      rollback: rollback('retain', null, 'Retain exact unmerged controlled fixture refs and provider operation IDs; never bypass protected branches or replace production proof with repository-only checks.'),
       terminalStates: terminalVerified
     },
     {
@@ -436,14 +508,14 @@ const rawPhases: readonly PhaseGraphNode[] = [
     },
     {
       id: 'rulesets-applied',
-      label: 'Repository rulesets are applied idempotently last',
+      label: 'Approved owned repository settings and rulesets are applied idempotently last',
       dependencies: [dep(['enforcement-approved'], 'Final enforcement approval precedes ruleset mutation.')],
       applicability: { kind: 'always' },
-      allowedMutations: mutations(['write-evidence'], ['github-ruleset-write', 'github-read']),
+      allowedMutations: mutations(['write-evidence'], ['github-ruleset-write', 'github-write', 'github-read']),
       evidence: evidence('rulesets-applied.v1', true, ['github']),
       approvalGate: approval('enforcement', true),
       invalidationInputs: ['approval-envelope', 'ruleset-readback'],
-      rollback: rollback('reverse-to', 'green-red-proof', 'Rulesets can be disabled or repaired without approval-gating rollback.'),
+      rollback: rollback('retain', null, 'Keep protections and recorded partial effects; changing controls requires a fresh exact approval.'),
       terminalStates: terminalVerified
     },
     {
@@ -488,6 +560,7 @@ export const canonicalPhaseGraph = {
   },
   completionGroups: {
     local: localSetupPhaseIds,
+    repository: [...sharedPublicationPhaseIds, ...repositoryPhaseIds],
     activation: activationPhaseIds,
     lifecycle: lifecyclePhaseIds
   },

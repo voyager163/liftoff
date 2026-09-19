@@ -1,286 +1,202 @@
 ## Purpose
 
-Define Liftoff npm package distribution behavior, including public package publication, global installation, release verification, and documentation expectations.
+Define retained historical npm distribution, immutable artifacts and provenance, and version-specific verification and recovery for Liftoff. npm is not a current delivery channel: new releases use qualified native distribution, with no new npm edition or migration bridge.
 
 ## Requirements
 
-### Requirement: Liftoff is published as an npm CLI package
-The system SHALL publish the Liftoff CLI as the public npm package `@msn-control/liftoff` with a `liftoff` binary entrypoint.
-
-#### Scenario: Latest package is available
-- **WHEN** a developer queries npm for `@msn-control/liftoff@latest`
-- **THEN** npm resolves a published stable version of the Liftoff CLI package
-
-#### Scenario: Public scoped package installation
-- **WHEN** a developer runs `npm install -g @msn-control/liftoff@latest`
-- **THEN** npm installs the package without requiring private registry credentials
-- **AND** npm links a `liftoff` command into the developer's global npm binary location
-
 ### Requirement: Published package contains runtime assets
-The system SHALL publish compiled runtime assets, packaged governance data, and licensing required to execute and redistribute Liftoff without repository source files or TypeScript compilation on the user's machine. The packed package SHALL exclude retired Power Apps assets, retired refresh or CI helper jobs, and contributor-only tools not required at runtime. Installed runtime asset lookup SHALL resolve from the installed package root rather than the caller's current working directory.
+Historical npm artifacts SHALL retain their originally published compiled runtime assets, packaged governance data, README/documentation, package metadata, and licensing needed to execute and redistribute the selected historical release without repository source or user-side TypeScript compilation. Verification SHALL use that release's explicit package inventory and command contract, including its applicable exclusions for retired Power Apps assets, contributor-only tools, caches, and retired release helpers. Installed historical resource lookup SHALL remain package-root-relative and cwd-independent; this requirement SHALL NOT create a duty to pack or publish a new npm edition.
 
 #### Scenario: Package contents are inspected before publish
-- **WHEN** release automation prepares the Liftoff package for publishing
-- **THEN** the packed package contains `package.json`, `README.md`, `LICENSE`, and compiled `dist` files including the CLI entrypoint
-- **AND** the packed package excludes contributor-only source, tests, local caches, generated tarballs, retired Power Apps assets, and retired release helpers not required at runtime
+- **WHEN** the retained pre-publication evidence for a historical npm release is inspected or its exact tarball is verified
+- **THEN** the evidence identifies its `package.json`, `README.md`, `LICENSE`, compiled `dist` entrypoint, and required runtime assets
+- **AND** exclusions are evaluated against that release's inventory rather than retroactively modifying the tarball
 
 #### Scenario: Installed CLI runs outside the repository
-- **WHEN** the packed or published package is installed into an isolated environment outside the public Liftoff repository
-- **THEN** running `liftoff help` exits successfully
-- **AND** the command does not require access to the repository's `src`, `tests`, or development configuration files
+- **WHEN** an explicit historical package is installed into an isolated environment with its supported external Node runtime
+- **THEN** the release's supported help command runs outside the public Liftoff repository
+- **AND** it does not require the repository's `src`, tests, or development configuration
 
 #### Scenario: Installed asset lookup is cwd-independent
-- **WHEN** the installed CLI resolves packaged governance or template assets from a working directory that is not the package directory, including paths with spaces on Windows, macOS, or Linux
-- **THEN** asset resolution uses the installed package root
-- **AND** it does not depend on the process current working directory or a repository-relative path
-
-### Requirement: Release automation verifies package integrity before publishing
-The system SHALL verify the standalone Liftoff package before publishing it to npm.
-
-#### Scenario: Release checks pass before publish
-- **WHEN** the release workflow is triggered for a stable Liftoff release
-- **THEN** it installs the standalone lockfile, builds the Liftoff package, runs the package test suite, inspects the packed package contents, and smoke-tests the installed CLI before publishing
-
-#### Scenario: Release verification is cross-platform safe
-- **WHEN** package smoke tests resolve the installed `liftoff` executable on macOS, Linux, or Windows
-- **THEN** they use Node.js or npm path handling for the isolated global executable path
-- **AND** they do not rely on hardcoded POSIX path separators
-
-#### Scenario: Packaged assets resolve after installation
-- **WHEN** release automation smoke-tests an installed package from an arbitrary working directory
-- **THEN** representative commands that need packaged assets resolve them from the installed package root
-- **AND** the smoke test fails before publish if relocated assets are missing or resolved through repository-relative paths
-
-#### Scenario: Failed verification blocks publish
-- **WHEN** build, tests, package inspection, license verification, or install smoke testing fails during release
-- **THEN** the system does not publish a new npm version
+- **WHEN** a historical CLI resolves its packaged assets from an arbitrary working directory, including paths with spaces on Windows, macOS, or Linux
+- **THEN** asset resolution uses that installed package's verified root
+- **AND** it does not use the current native bundle or a repository-relative replacement
 
 ### Requirement: Published releases are verified from canonical npm
-The system SHALL verify an authenticated npm publication against `https://registry.npmjs.org` after publishing by comparing the selected dist-tag with the version declared in root `package.json` and by installing that dist-tag into an isolated global prefix. The verification SHALL use an isolated npm cache and home directory, SHALL resolve installed paths portably on Windows, macOS, and Linux, and SHALL fail the release workflow when the observed dist-tag or installed version differs from the expected version.
+Historical npm publications SHALL remain verifiable against `https://registry.npmjs.org` using their explicit published version, immutable tarball identity, and retained source/provenance. Historical dist-tag claims SHALL be checked against the corresponding retained publication evidence, not required to match the current native release or a tag's former value today. Verification SHALL use isolated prefix, cache, and home paths with native Windows, macOS, and Linux semantics and SHALL report expected/observed identity mismatches. It SHALL NOT publish, move a tag, or change persistent npm configuration.
 
 #### Scenario: Stable publication satisfies the canonical registry postcondition
-- **WHEN** release automation publishes a stable Liftoff version using the `latest` dist-tag
-- **THEN** canonical npm reports that version for `@msn-control/liftoff@latest`
-- **AND** a clean isolated canonical-registry installation of `@latest` contains that version
+- **WHEN** the retained evidence of a historical stable npm publication is verified
+- **THEN** it shows the expected version on the selected tag at publication time
+- **AND** an isolated explicit-version canonical installation verifies the same historical package identity
 
 #### Scenario: Published package executes from the canonical installation
-- **WHEN** post-publish verification installs the selected dist-tag from canonical npm
-- **THEN** the installed CLI successfully reports its version and runs representative help and standard-project plan commands outside the repository
+- **WHEN** verification installs the selected explicit historical version from canonical npm
+- **THEN** version, help, and standard-project planning are checked only where supported by that release's registered command surface
+- **AND** all supported commands run outside the repository
 
 #### Scenario: Canonical registry publication mismatch fails release verification
-- **WHEN** canonical npm reports or installs a version different from the version declared by the release commit after the bounded propagation window
-- **THEN** the release workflow fails with the expected and observed versions
-- **AND** it does not report the release as successfully verified
-
-### Requirement: Stable releases use the latest npm dist-tag
-The system SHALL make stable Liftoff releases installable through the `latest` dist-tag on the canonical public npm registry and SHALL verify that the tag resolves to the version being released.
-
-#### Scenario: Stable release published
-- **WHEN** a stable Liftoff version is published successfully
-- **THEN** `npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org` installs that stable version
-
-#### Scenario: Prerelease release published
-- **WHEN** a prerelease Liftoff version is published
-- **THEN** the release process does not move the canonical npm `latest` dist-tag to that prerelease version
-- **AND** post-publish verification checks the prerelease dist-tag selected by the workflow
+- **WHEN** canonical npm serves different bytes or package/version metadata from the selected immutable historical release
+- **THEN** historical verification fails with the expected and observed identities
+- **AND** it does not report the historical package verified or treat native availability as registry parity
 
 ### Requirement: Unsupported releases are deprecated non-destructively
-The system SHALL mark unsupported npm release lines as deprecated with an upgrade message while retaining their published tarballs, provenance, and explicit-version availability.
+Unsupported historical npm release lines SHALL retain non-destructive deprecation guidance, published tarballs, provenance, and explicit-version availability. Deprecation and migration guidance SHALL explain the native-only cutover and lack of an npm bridge without altering historical executable bytes or implying that npm can update to a native-only version.
 
 #### Scenario: Developer requests an unsupported pre-0.3 release
 - **WHEN** a synchronized npm registry installs an explicitly requested pre-0.3 Liftoff version
-- **THEN** npm displays a deprecation warning directing the developer to the current stable release
+- **THEN** npm presents deprecation guidance
+- **AND** current migration guidance directs the developer to the native installation journey rather than promising another npm release
 
 #### Scenario: Historical package remains reproducible
 - **WHEN** a lockfile or diagnostic workflow explicitly resolves a deprecated historical Liftoff version
 - **THEN** the package remains available
-- **AND** the release process does not unpublish it
-
-### Requirement: npm publishing is explicit and authenticated
-The system SHALL publish the scoped Liftoff package from the public Liftoff repository root through npm trusted publishing with public package access and provenance.
-
-#### Scenario: Publish public scoped package
-- **WHEN** release automation publishes `@msn-control/liftoff`
-- **THEN** it publishes the standalone package at the public repository root
-- **AND** it uses public access configuration appropriate for a scoped npm package
-
-#### Scenario: Publish with trusted credentials
-- **WHEN** release automation authenticates to npm
-- **THEN** npm trusted publishing authorizes the identified public repository workflow through short-lived identity credentials
-- **AND** the publish emits provenance for the public source commit
-
-#### Scenario: Release metadata reads from repository root
-- **WHEN** release automation reads the Liftoff package version or package metadata
-- **THEN** it reads `package.json` from the public repository root
+- **AND** the release process does not unpublish or replace it
 
 ### Requirement: Liftoff distribution metadata identifies the public source repository
-The system SHALL publish npm metadata that identifies `voyager163/liftoff` as the package source, homepage, and issue-reporting location without a nested repository directory.
+Historical post-extraction npm metadata and provenance SHALL retain `voyager163/liftoff` as source, homepage, and issue-reporting authority, without a nested repository directory. The native cutover SHALL preserve those historical public-source and short-lived trusted-publication attestations rather than rewriting npm provenance to represent the new distribution.
 
 #### Scenario: Developer inspects published metadata
-- **WHEN** a developer queries the metadata for the current `@msn-control/liftoff` release
+- **WHEN** a developer queries a historical post-extraction `@msn-control/liftoff` release
 - **THEN** the repository URL points to `https://github.com/voyager163/liftoff`
-- **AND** the homepage and issue links resolve to public Liftoff repository resources
-- **AND** no `tools/liftoff-cli` repository directory is declared
+- **AND** homepage and issue links resolve to public Liftoff resources without a `tools/liftoff-cli` repository directory
 
 #### Scenario: Developer inspects source provenance
-- **WHEN** a developer inspects provenance for a Liftoff version published after the split
-- **THEN** the attestation identifies the public Liftoff repository and its release workflow
-
-### Requirement: Documentation presents the global install path
-The system SHALL document global npm installation as the primary user setup path for Liftoff, SHALL identify `https://registry.npmjs.org` as the authoritative release registry, SHALL identify the supported Node.js 24 LTS baseline required by the current release, and SHALL distinguish canonical installation from installation through a managed registry whose synchronization is externally controlled.
-
-#### Scenario: Developer reads install instructions
-- **WHEN** a developer opens the Mission Control or Liftoff README
-- **THEN** the documentation shows `npm install -g @msn-control/liftoff@latest` as the user installation command
-- **AND** it shows how to target canonical npm explicitly where policy permits
-- **AND** it distinguishes global user installation from repository-local contributor commands
-
-#### Scenario: Developer uses a managed registry
-- **WHEN** a developer's npm configuration routes packages through a managed registry
-- **THEN** the documentation requires confirming that the managed registry exposes the current stable Liftoff version before installation
-- **AND** it directs stale-registry remediation to the mirror operator rather than changing npm configuration automatically
-
-#### Scenario: Contributor reads source instructions
-- **WHEN** a contributor follows source or development guidance
-- **THEN** the documentation directs them to `voyager163/liftoff`
-- **AND** contributor commands run from that repository root without npm workspace selectors
-
-#### Scenario: Developer verifies the installed version
-- **WHEN** a developer completes a global Liftoff installation
-- **THEN** the documentation directs them to run `liftoff --version`
-- **AND** the reported version can be compared with the current stable version exposed by the selected registry
-
-#### Scenario: Developer reads first-use instructions
-- **WHEN** a developer reviews the Liftoff installation documentation
-- **THEN** the documentation shows `liftoff help`, `liftoff plan`, and `liftoff init`
-- **AND** it does not present `liftoff create` as a supported command
-
-#### Scenario: Developer reads runtime requirements
-- **WHEN** a developer reviews the Liftoff installation documentation
-- **THEN** it states the exact Node.js 24 LTS minimum recorded by the current Liftoff baseline before global installation
+- **WHEN** a developer inspects provenance for a Liftoff npm version published after the split
+- **THEN** the attestation identifies the public repository, historical release workflow, and original source commit
+- **AND** native distribution does not delete or relabel that attestation
 
 ### Requirement: Release version identity is coherent before publication
-The system SHALL require root package metadata, root lockfile metadata, a tag-triggered release's Git tag, packed package metadata, and the installed CLI version output to identify the same semantic version before publishing a new Liftoff package. A mismatch in any required identity SHALL fail the release workflow before `npm publish`.
+Historical npm verification SHALL retain the original coherence requirement among root package metadata, root lockfile metadata, the historical Git tag where applicable, packed metadata, and installed version output. It SHALL compare against the selected historical source revision, not today's native release metadata, and SHALL NOT use this historical verification path to publish a new package.
 
 #### Scenario: Prepare the first version-reporting release
-- **WHEN** release automation prepares Liftoff `0.3.4`, the first published release containing `liftoff --version`
-- **THEN** root `package.json` and root `package-lock.json` metadata identify version `0.3.4`
-- **AND** an isolated installation of the packed package prints `Liftoff 0.3.4` for `liftoff --version`
+- **WHEN** the retained pre-publication evidence for Liftoff `0.3.4`, the first version-reporting npm release, is verified
+- **THEN** its recorded root package and lockfile metadata identify `0.3.4`
+- **AND** its isolated historical installation prints `Liftoff 0.3.4`
 
 #### Scenario: Tag-triggered release matches package metadata
-- **WHEN** the release workflow is triggered by Git tag `v0.3.4`
-- **THEN** the workflow confirms that root package and lockfile metadata identify `0.3.4` before publication
-- **AND** packed package metadata identifies `0.3.4`
+- **WHEN** historical verification selects Git tag `v0.3.4`
+- **THEN** the package, lockfile, and packed metadata from that tag all identify `0.3.4`
 
 #### Scenario: Release identity mismatch blocks publication
-- **WHEN** the Git release tag, root package version, root lockfile version, packed version, or installed `liftoff --version` output does not match another required identity
-- **THEN** release verification fails with the expected and observed identities
-- **AND** no new npm package is published by that workflow run
+- **WHEN** a historical tag, root package version, lockfile version, packed version, or required installed version result disagrees
+- **THEN** historical verification fails with the expected and observed identities
+- **AND** neither that failure nor its remedy authorizes a new npm publication
 
 ### Requirement: Registry onboarding preserves release version identity
-The system SHALL treat a registry path as ready for version-command-based onboarding only when its stable dist-tag and explicit package version resolve to the intended release and a clean installation through that registry reports the same version through `liftoff --version`. Canonical publication success and managed-registry readiness SHALL remain independently observable states.
+Historical npm onboarding and recovery SHALL identify the explicit intended npm version and verify that the approved registry delivers it unchanged. Historical stable-tag onboarding claims SHALL remain bound to their original publication evidence; current npm `latest` SHALL NOT be required to equal an earlier historical release or the native stable release. Canonical historical availability and managed-registry readiness SHALL remain independently observable, with no automatic configuration change or registry bypass.
 
 #### Scenario: Canonical npm exposes Liftoff 0.3.4
-- **WHEN** canonical publication and post-publish verification of Liftoff `0.3.4` succeed
-- **THEN** canonical npm resolves both `@msn-control/liftoff@latest` and `@msn-control/liftoff@0.3.4` to version `0.3.4`
-- **AND** a clean canonical installation prints `Liftoff 0.3.4` for `liftoff --version`
+- **WHEN** canonical availability of historical Liftoff `0.3.4` is verified
+- **THEN** explicit `@msn-control/liftoff@0.3.4` metadata and isolated installation identify `0.3.4`
+- **AND** its original `latest` publication claim is evaluated against retained evidence rather than moving today's tag
 
 #### Scenario: Approved managed registry reaches parity
-- **WHEN** an organization presents its approved managed registry as ready for Liftoff `0.3.4` onboarding
-- **THEN** that registry resolves both `@latest` and explicit `@0.3.4` metadata to version `0.3.4`
-- **AND** a clean installation through that registry prints `Liftoff 0.3.4` for `liftoff --version`
+- **WHEN** an organization approves its managed registry for explicit historical `0.3.4` recovery
+- **THEN** that registry exposes the expected explicit package/version identity
+- **AND** a clean installation through that registry prints `Liftoff 0.3.4`
 
 #### Scenario: Managed registry remains stale
-- **WHEN** an approved managed registry resolves `@latest` to an older release, rejects explicit `@0.3.4`, or installs a CLI that does not report `Liftoff 0.3.4`
-- **THEN** version-command-based onboarding through that registry remains blocked
-- **AND** Liftoff does not modify npm configuration or silently install from another registry
+- **WHEN** the approved registry rejects the intended historical version or serves different metadata, bytes, or executable identity
+- **THEN** recovery through that registry remains blocked with the actual mismatch
+- **AND** Liftoff does not modify npm configuration or silently use another registry
 
 ### Requirement: Package smoke testing verifies the init command surface
-The system SHALL smoke-test the installed package's renamed initialization surface without changing the test workstation. The smoke test SHALL verify `init` help and planning behavior, SHALL verify that `create` is rejected with migration guidance, and SHALL preserve the supported public `liftoff` entrypoint after internal module relocation.
+Historical package smoke verification SHALL use the selected release's registered command surface in an isolated installation without changing the workstation. For historical releases supporting the renamed initialization and self-upgrade surfaces, it SHALL retain init help, side-effect-free planning, create rejection, and public-entrypoint checks. Native installed-command qualification SHALL be performed under the native release contract, not by requiring a new npm tarball.
 
 #### Scenario: Installed init command is available
-- **WHEN** release automation installs the packed package in an isolated location
-- **THEN** `liftoff init --help` exits 0 and documents the init-specific arguments and consent flags
+- **WHEN** an explicit historical release supporting `init` is installed for verification
+- **THEN** `liftoff init --help` exits 0 and documents that release's init arguments and consent flags
 
 #### Scenario: Installed create command is absent
-- **WHEN** release automation runs `liftoff create` from the isolated installation
-- **THEN** the command exits 1, recommends `liftoff init`, and creates no project files
+- **WHEN** verification invokes `liftoff create` on a historical release in which it was retired
+- **THEN** it exits 1, recommends `liftoff init`, and creates no project files
 
 #### Scenario: Installed plan remains side-effect free
-- **WHEN** release automation runs a fully specified `liftoff plan`
+- **WHEN** verification runs a fully specified supported `liftoff plan`
 - **THEN** it exits successfully without installing tools or creating a project directory
 
 #### Scenario: Public entrypoint remains stable after refactoring
-- **WHEN** release automation invokes the packed CLI through the published `liftoff` binary outside the repository
-- **THEN** help, plan, and upgrade-help commands succeed through that entrypoint
+- **WHEN** a selected historical release is invoked through its published `liftoff` binary outside the repository
+- **THEN** its supported help, plan, and upgrade-help commands run through that entrypoint
 - **AND** no source-import-only entrypoint is required
 
 ### Requirement: Published Liftoff requires the supported Node.js LTS baseline
-The system SHALL declare the Node.js 24 LTS floor recorded by the supported-stack baseline in published package engine metadata and SHALL fail startup with concise upgrade guidance when the running Node.js version is unsupported.
+Historical npm packages SHALL retain the external Node.js engine and startup requirements of their own published release. For v0.12.3, verification SHALL enforce the recorded Node.js 24 LTS floor and its concise unsupported-runtime guidance. Historical runtime constraints SHALL NOT impose global Node/npm as a prerequisite for the self-contained native CLI or retroactively change older package metadata.
 
 #### Scenario: Install with a supported Node.js runtime
-- **WHEN** a developer installs and runs the published package with a Node.js version satisfying the recorded Node.js 24 LTS floor
-- **THEN** the Liftoff command can start and render help
+- **WHEN** a developer installs and runs historical npm v0.12.3 with a runtime satisfying its recorded Node.js 24 LTS floor
+- **THEN** the command can start and render help
 
 #### Scenario: Run with an unsupported Node.js runtime
-- **WHEN** a developer starts Liftoff with a Node.js version below the recorded Node.js 24 LTS floor
-- **THEN** Liftoff exits 1 before parsing project commands or performing side effects
+- **WHEN** historical npm v0.12.3 starts below its recorded floor
+- **THEN** it exits 1 before project commands or side effects
 - **AND** it reports the observed and minimum supported versions
 
 #### Scenario: Release package and runtime catalog disagree
-- **WHEN** package engine metadata, startup validation, workflow setup, or documentation does not match the named Node.js baseline entry
-- **THEN** release verification fails before publication
+- **WHEN** historical verification finds that selected package engine metadata, startup behavior, retained workflow setup, or release-specific documentation disagrees with that release's baseline
+- **THEN** historical verification fails with the discrepancy
+- **AND** the current native runtime is not used to hide it
 
 ### Requirement: A global npm installation can replace itself with a verified stable release
-The published Liftoff package SHALL contain all runtime code needed for a supported global npm installation to discover canonical stable release metadata, verify configured-registry parity, invoke an exact global npm replacement, and verify the replacement outside the source repository.
+Historical npm versions with self-upgrade support SHALL retain their published ability to discover a newer historical npm stable target, verify configured-registry parity, replace the exact global npm package, and verify its replacement outside the source repository. That historical mechanism SHALL NOT be described as discovering or installing native-only releases. Current native migration guidance SHALL remain necessary even for npm installations whose `upgrade` command reports current.
 
 #### Scenario: Upgrade a canonical global installation
-- **WHEN** a published global npm installation invokes `liftoff upgrade` and a newer stable version is available through its effective registry
-- **THEN** the effective global package is replaced with that exact published version
-- **AND** the replacement command reports the same version
+- **WHEN** a historical global npm CLI supports upgrade and a newer published npm stable target exists through its effective registry
+- **THEN** its historical contract replaces the exact global package and verifies the same npm version
+- **AND** that result makes no claim about native release availability or native ownership
 
 #### Scenario: Inspect a packed package
-- **WHEN** release verification inspects and installs the packed Liftoff artifact in an isolated global prefix
+- **WHEN** historical verification installs a self-upgrade-capable npm artifact into an isolated global prefix
 - **THEN** `liftoff upgrade --help` works outside the repository
-- **AND** self-upgrade runtime modules are included in the published package
+- **AND** the artifact retains the self-upgrade runtime modules it originally published
+
+#### Scenario: Last npm release reports current
+- **WHEN** the historical updater reaches the last npm stable target
+- **THEN** native migration guidance explicitly states that a newer native release may still exist
+- **AND** no additional npm bridge is required or promised
 
 ### Requirement: Self-upgrade preserves canonical and managed registry boundaries
-Canonical npm SHALL remain the authority for the stable target, while the user's effective npm registry SHALL remain the delivery path. Self-upgrade SHALL require exact-version parity before installation and SHALL not rewrite npm configuration, bypass a stale managed mirror, or install a mirror-specific version not selected by canonical `latest`.
+For historical npm self-upgrade and recovery only, canonical npm SHALL remain the authority for the selected historical npm stable target while the user's effective approved npm registry remains its delivery path. Historical inspection SHALL preserve scoped-registry precedence over the default registry, neutral machine-level configuration, exact-version parity, and credential protection, including a verified npm-owned Liftoff package beneath Homebrew Node. It SHALL NOT infer native owner authority from an npm prefix, rewrite configuration, bypass a managed mirror, or select a different mirror-specific version.
 
 #### Scenario: Approved mirror exposes canonical target
-- **WHEN** a managed registry exposes the exact canonical stable version
-- **THEN** a supported global installation may upgrade through that mirror
+- **WHEN** the effective managed registry exposes the exact selected historical npm target
+- **THEN** a supported historical global npm installation can use its historical upgrade behavior through that mirror
 
 #### Scenario: Approved mirror is stale
-- **WHEN** a managed registry does not expose the canonical target
-- **THEN** self-upgrade remains blocked until the mirror synchronizes
+- **WHEN** the managed registry lacks the selected historical npm target
+- **THEN** historical self-upgrade remains blocked until approved delivery reaches parity
 - **AND** canonical availability alone does not authorize bypassing it
 
+#### Scenario: Scoped registry and prefix policy disagree
+- **WHEN** the verified npm prefix selects a different scoped/default registry policy from the observed approved machine-level context
+- **THEN** historical recovery or migration planning reports the mismatch before mutation
+- **AND** it neither exposes private URLs or credentials nor guesses a different prefix
+
 ### Requirement: Release verification covers the self-upgrade surface safely
-Release automation SHALL verify command help, stable metadata parsing, installation-origin detection, and replacement verification through committed fixtures and isolated temporary global prefixes. It SHALL never invoke self-upgrade apply mode against the release runner's actual global prefix.
+Historical self-upgrade verification SHALL retain help, stable metadata parsing, installation-origin detection, and replacement checks through registered fixtures and isolated temporary global prefixes. It SHALL never apply an upgrade to the runner's actual global installation. Native release qualification SHALL independently cover the new owner-aware command and handover without publishing npm.
 
 #### Scenario: Smoke-test the published command
-- **WHEN** the packed package is installed under an isolated global prefix
-- **THEN** its upgrade help and injected check behavior execute with platform-correct paths
+- **WHEN** a supported historical package is installed under an isolated prefix
+- **THEN** its upgrade help and injected check behavior execute with platform-correct Windows, macOS, and Linux paths
 - **AND** the host installation remains unchanged
 
 #### Scenario: Missing self-upgrade runtime asset
-- **WHEN** the packed package omits a module required by upgrade
-- **THEN** package smoke verification fails before publication
+- **WHEN** a selected historical self-upgrade-capable artifact omits a required runtime module
+- **THEN** historical smoke verification fails
+- **AND** native qualification or a fabricated npm rebuild does not replace the missing historical evidence
 
 ### Requirement: Release identity is canonical before publication
-Release identity validation SHALL require the canonical Liftoff package name
-and a valid npm semantic version in addition to agreement between package,
-lockfile, installed package, and release tag metadata. A consistently renamed
-package SHALL fail before publication.
+Historical npm identity verification SHALL require the canonical name `@msn-control/liftoff` and valid npm semantic version as well as agreement among the selected historical package, lockfile, installed metadata, and tag. A consistently renamed package SHALL fail verification. Native release identity SHALL be verified separately against the native release manifest and coordinated publication contract.
 
 #### Scenario: All metadata uses the wrong package name
-- **WHEN** package and lock metadata agree on a noncanonical name
-- **THEN** release identity validation fails rather than accepting internal consistency
+- **WHEN** the selected historical package and lock metadata agree on a noncanonical name
+- **THEN** verification fails rather than accepting internal consistency
 
 #### Scenario: Version is not valid SemVer
-- **WHEN** release metadata contains an invalid or noncanonical semantic version
-- **THEN** the release gate fails before publication
+- **WHEN** selected historical metadata contains an invalid or noncanonical semantic version
+- **THEN** historical verification fails
+- **AND** no npm publication is attempted
 
 ### Requirement: Historical version-command compatibility cannot exempt modern releases
 The published-package verifier SHALL allow its legacy version-command exception only for the historical immutable `0.3.3` release. Other release targets SHALL not bypass installed `--version` verification through that option, and the `0.3.3` verifier SHALL expect only the commands that release actually supported.
@@ -298,3 +214,21 @@ The published-package verifier SHALL allow its legacy version-command exception 
 - **WHEN** release verification targets `0.3.3`
 - **THEN** it does not require `liftoff upgrade`, `liftoff init`, or `liftoff --version` behavior that release did not support
 - **AND** it verifies only the historically supported command surface declared by the compatibility exception
+
+### Requirement: npm is a retained historical distribution rather than a current channel
+The system SHALL retain public explicit-version availability of historical `@msn-control/liftoff` packages, their `liftoff` binary entrypoint, immutable tarballs, licensing, source provenance, and applicable historical verification exceptions. The coordinated release and later native-only release process SHALL NOT publish another npm package or final bridge, advance npm tags to claim native availability, or unpublish historical releases. A frozen npm tag SHALL identify only a historical npm package.
+
+#### Scenario: Public historical installation
+- **WHEN** a developer explicitly installs an available historical `@msn-control/liftoff` version from public npm under its supported external runtime
+- **THEN** public installation requires no private-registry credentials and links the historical `liftoff` entrypoint
+- **AND** that path is labeled historical rather than the current setup recommendation
+
+#### Scenario: Native release is prepared
+- **WHEN** the coordinated native version passes its release gates
+- **THEN** only the approved native artifacts and channel metadata are published
+- **AND** there is no npm publish step, compatibility edition, or bridge release
+
+#### Scenario: Historical recovery would collide with a native launcher
+- **WHEN** exact-version npm recovery is considered after a native owner has acquired the launcher
+- **THEN** recovery requires a new owner-aware conflict plan and approval
+- **AND** the historical npm recipe is not executed blindly over native-owned files

@@ -1,0 +1,26 @@
+## Context
+
+This standard project was generated with Liftoff using Node.js / Fastify / TypeScript, Azure, OpenTofu, and OpenSpec.
+
+## Goals / Non-Goals
+
+**Goals:**
+
+- Keep the generated baseline aligned to the approved Mission Control stack.
+- Verify only deterministic local scaffold checks before archiving this bootstrap change.
+
+**Non-Goals:**
+
+- Define domain-specific product behavior in the bootstrap change.
+- Deploy infrastructure, start containers, mutate GitHub, or perform cloud plan/apply operations.
+
+## Decisions
+
+- Use Fastify with TypeScript for backend APIs.
+- Use Drizzle for PostgreSQL integration.
+- Use OpenTofu for Azure infrastructure.
+- Use Docker Compose for local development.
+
+## Risks / Trade-offs
+
+- Follow-up product changes own real business behavior; this seed only proves the generated local baseline is coherent.

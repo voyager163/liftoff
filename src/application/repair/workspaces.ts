@@ -24,6 +24,7 @@ import {
   type RepairWorkspaceIssue, type RepairWorkspaceRecord, type RepairWorkspaceRecoveryResult,
   type RepairWorkspaceStorageOptions, type RepairWorkspaceSummary
 } from './workspaces-types.js';
+import type { CreateAdoptionVerificationWorkspaceOptions, CreateVerificationWorkspaceOptions } from './workspaces-types.js';
 
 export * from './workspaces-types.js';
 export { getRepairWorkspaceRoot } from '../../adapters/filesystem/repair-workspaces.js';
@@ -272,8 +273,21 @@ async function cleanupOne(context: Context, workspaceId: string): Promise<Repair
 export async function createRepairVerificationWorkspace(
   root: string, request: CreateRepairVerificationWorkspaceOptions, storage: RepairWorkspaceStorageOptions = {}
 ): Promise<RepairVerificationWorkspace> {
+  return createVerificationWorkspace(root, request, storage, 'repair');
+}
+
+export async function createAdoptionVerificationWorkspace(
+  root: string, request: CreateAdoptionVerificationWorkspaceOptions, storage: RepairWorkspaceStorageOptions = {}
+): Promise<RepairVerificationWorkspace> {
+  return createVerificationWorkspace(root, request, storage, 'adoption');
+}
+
+async function createVerificationWorkspace(
+  root: string, request: CreateVerificationWorkspaceOptions, storage: RepairWorkspaceStorageOptions,
+  kind: 'repair' | 'adoption'
+): Promise<RepairVerificationWorkspace> {
   try {
-    const input = validateWorkspaceRequest(request);
+    const input = validateWorkspaceRequest(request, kind);
     const project = await canonicalWorkspaceBoundary(root);
     const staging = await canonicalWorkspaceBoundary(input.patchStagingRoot);
     const intended = await repairWorkspaceLocation(project.directory, storage);
@@ -290,10 +304,13 @@ export async function createRepairVerificationWorkspace(
     const directory = repairWorkspaceDirectory(context.location, workspaceId);
     const timestamp = now(context);
     const value: RepairWorkspaceRecord = {
-      schemaVersion: 1, kind: 'liftoff-repair-workspace', workspaceId, revision: 1,
+      schemaVersion: 1, workspaceId, revision: 1,
+      ...(input.adoptionIdentity
+        ? { kind: 'liftoff-adoption-workspace', adoptionIdentity: input.adoptionIdentity } as const
+        : { kind: 'liftoff-repair-workspace', repairIdentity: input.repairIdentity } as const),
       projectRoot: project.directory, projectIdentity: project.identity,
       patchStagingRoot: staging.directory, patchStagingIdentity: staging.identity,
-      planFingerprint: input.planFingerprint, repairIdentity: input.repairIdentity,
+      planFingerprint: input.planFingerprint,
       bindings: input.bindings, approvedScopes: input.approvedScopes, directory,
       creationIdentity: null,
       roles: Object.fromEntries(repairWorkspaceRoleNames.map((role) =>

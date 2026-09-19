@@ -40,6 +40,357 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
+CI runs three full-inventory Vitest shards on **each** of Linux, macOS and
+Windows, with at most three shard jobs running concurrently. Sharding happens
+before Windows' ordered-project scheduling, so the migration-inspection file
+still runs exactly once and after the other files in its shard. No file or
+test-name filters narrow these full-suite jobs.
+
+Native framework/preparation and backend-disabled OpenTofu checks, the explicit
+Windows boundary lane, per-host launcher Go coverage, telemetry checks, package
+smoke and Linux generated containers run in separate source-integration jobs.
+The two Node-template lanes and telemetry OpenTofu/container lane remain
+separate. Two additional Linux x64/arm64 keystore-helper compile and synthetic
+source-behavior checks bring
+default source validation to 18 jobs, preserving all 16 existing jobs rather
+than increasing timeouts or reducing test scope.
+Linux full-suite shards also collect V8 coverage rather than repeating the
+entire Linux suite in another job. The [coverage gate](DEVELOPER.md#focused-commands)
+merges their actual measurements before checking the two packages independently.
+
+For bounded Windows failure investigation, a manual CI dispatch can explicitly
+set `diagnostic_windows_only` to `true`. It runs only the Windows job-runner,
+protocol, execution-qualification, repair-workspaces and update-preview suites,
+plus the actual Windows toolchain acceptance cases, with one worker and a
+20-minute job limit. Verbose logs and separately named JSON artifacts retain
+failures and observed Node/npm/Git identities.
+
+For the complete Windows repair/process source boundary, also select
+`windows_diagnostic_scope=complete-boundary`:
+
+```bash
+gh workflow run ci.yml --ref <source-branch> \
+  -f diagnostic_windows_only=true -f windows_diagnostic_scope=complete-boundary
+```
+
+The selector defaults to `focused` and applies only when the Windows diagnostic
+flag is enabled. Complete-boundary validation conserves every original Windows
+boundary selector, including migration revalidation/inspection, and adds the
+remaining repair source, workstation identity, preparation-input, continuation
+and Windows invocation cases. Ten bounded partitions use at most three Windows
+hosts concurrently, with one worker and the same 20-minute budget each.
+The ordinary 57 files use two built-in file shards. Migration inspection runs
+intact on its own host; reviewed-update and migration-revalidation use three
+and four evaluated-case partitions respectively.
+
+Vitest actually collects parameter expansions before execution, then its
+test-ID API assigns each case exactly once across that file's partitions.
+No test body, assertion, deadline or declared applicability is changed.
+Inventories retain every case's original mode, ID and name, plus a common
+inventory digest. The result gate requires all assigned applicable cases to
+pass and verifies that cases assigned elsewhere were not executed twice.
+Those outside-partition cases are not omitted tests or passing evidence.
+All ten jobs and reports are required; one passing partition or the focused
+lane is not a substitute. The complete inventory still contains all 60 files.
+
+This follows measured run `35428495819`: reviewed-update had consumed 711
+seconds over 39 cases without finishing, and migration-revalidation 727
+seconds over 17 cases without finishing. The latter and migration inspection
+also had real 90-second case failures; partitioning does not waive those
+failures. Existing host-inapplicable cases remain explicitly distinguished.
+On disposable Windows directory-admission refusal, an additional bounded
+diagnostic records fresh exact BigInt device/inode values and safe-number
+eligibility, without paths or private values. It rethrows the original refusal
+and neither admits unsafe numeric identities nor rewrites records.
+
+The native toolchain suite uses the actual supported Node/npm executables and
+read-only Git, with real Windows process settlement and literal spaced/
+metacharacter paths. It exercises mixed-case environment aliases, conflicting
+alias refusal, incompatible **copied npm metadata** rejected before execution,
+a project shim reached through a real junction, and changed copied Node bytes.
+It does not pretend a copied metadata version is a qualified older npm release,
+modify installed executables or manufacture Windows results on another OS.
+Canonical environment selection rejects conflicting Windows aliases and
+removes undefined aliases that could shadow valid variables in a child.
+Windows command-environment merging also replaces or clears inherited aliases
+case-insensitively, rather than resurrecting ambient values under another case.
+For the variables that pinned Node/libuv automatically restores when absent
+(including `USERPROFILE`), an explicit clear is represented by an empty value,
+not omission. Optional variables remain absent. This prevents inherited values
+from returning; it is not an OS sandbox or a claim that account metadata cannot
+be observed through other APIs.
+
+Existing separately enabled native-preparation/provider lanes remain separate;
+this boundary is not installed-artifact, minimum-host or complete Windows
+private-state/custody qualification. Missing native prerequisites or uncertain
+settlement remain failures/blockers, never mock success or cleanup permission.
+The 18 default jobs and all other diagnostic selections remain unchanged.
+
+For targeted follow-up of the outstanding inspection, baseline fixture and
+continuation regressions, select `windows_diagnostic_scope=remaining-regressions`
+with `diagnostic_windows_only=true`. It runs the complete
+`migration-inspection`, `repair-baseline-settings` and
+`machine-action-continuation-contracts` files in three separate jobs, at most two
+concurrently. Every case is evaluated and its original applicability conserved;
+applicable failures or skips fail the job. It retains only case identity,
+status and timing metadata, not raw failure messages or fixture contents.
+The one-worker/20-minute budgets and existing case deadlines are unchanged.
+This targeted selector does not establish the 60-file complete boundary, resolve
+the numeric NTFS identity blocker or rerun the healthy heavy partitions.
+
+For standalone NONSECRET fixture prerequisite evidence, select
+`diagnostic_windows_only=true` and `windows_diagnostic_scope=fixture-prerequisites`.
+This runs only `tests/windows-source-fixture-diagnostics.test.ts` on one Windows
+x64 host, not the three regression files. The equivalent local Windows command
+after `npm run build` is:
+
+```powershell
+$env:LIFTOFF_WINDOWS_FIXTURE_DIAGNOSTICS = '1'
+npx vitest run tests/windows-source-fixture-diagnostics.test.ts --maxWorkers=1 --reporter=verbose
+```
+
+It uses the admitted actual Node/npm tools to pack and install a dependency-free,
+script-free synthetic package offline into a fresh owned prefix/cache, observing
+the real generated shims without registering ownership. It also compares a held
+.NET `FileShare.None` handle with an explicit Win32 exclusive handle, records
+lossless kernel file identity and independent second-open/Node-read outcomes,
+and requires process-tree settlement. Stock Windows PowerShell 5.1 FullLanguage
+and .NET Framework are required; execution policy is never bypassed.
+Only bounded scalar metadata/digests are retained. A complete diagnostic can
+report that reads succeeded or that owner evidence is unavailable: neither is
+passing baseline-unreadability, released-package or owner-channel qualification.
+
+For the independent Windows private binary-I/O primitive, explicitly select
+`windows_diagnostic_scope=private-io` with `diagnostic_windows_only=true`:
+
+```bash
+gh workflow run ci.yml --ref <source-branch> \
+  -f diagnostic_windows_only=true -f windows_diagnostic_scope=private-io
+```
+
+This separate x64 job runs only
+`tests/state-windows-private-protocol.test.ts` and
+`tests/state-windows-private-runner.test.ts`, after the normal package build.
+It does not add them to the 60-suite complete-boundary selector or add an
+automatic default job; full-suite discovery and all 18 default jobs remain
+unchanged. The job retains the existing 20-minute budget and uses one worker.
+
+Admission observes Windows >=17763, actual x64, stock Windows PowerShell 5.1
+FullLanguage and System.Web.Extensions from the existing .NET Framework.
+Both the independent private helper and the unchanged public controller must
+match their own canonical inventory digests. No execution-policy bypass,
+policy/ACL mutation, keystore access or extra host installations are performed.
+Missing or restricted-host support remains a blocker.
+
+The fixtures use only NONSECRET byte sequences and owned processes to exercise
+binary pipes, limits, nonzero exit, cancellation, descendant/parent loss and
+admission failure. Successful evidence requires the actual native suite, every
+applicable case passed, and no applicable skips. Only the precisely named
+non-Windows refusal in the runner file may be `skipped` on Windows. Vitest 5
+counts this declared skip in `numPendingTests`, but labels the individual case
+`skipped`, not `pending`. Unfinished `pending` cases and native-suite skips
+remain failures; there is no broad skip allowance or fixed native-case count.
+Rejected reports include fixed, bounded blocker codes identifying the failed
+gate without copying raw error messages or payloads.
+
+The artifact contains only bounded sanitized JSON host/helper identities and
+case statuses. Raw test JSON, binary payloads/frames, private output and state
+directories are not uploaded. This is independently labeled private-I/O source
+evidence, not complete encrypted custody, minimum-host, installed-artifact,
+provider or release qualification.
+The private test command also enables
+`LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS=1`. A separately produced root-exit
+diagnostic is read through a bounded, identity-checked descriptor (at most
+1,024 bytes) and copied into the safe report only after exact schema/value
+allowlisting. Only the fixed fixture identity, PID, outcome/code, exit/reason
+and settlement/ownership booleans are retained—never commands, process
+references, frames or payloads. Missing/startup evidence remains a diagnostic
+gap, not success; the raw diagnostic file is not uploaded.
+
+For isolated native Go preparation investigation, set
+`diagnostic_native_go_only` to `true`. Ubuntu and macOS each run the
+`prepares actual Go module/checksum inputs` case with native preparation enabled,
+Node 24.20.0, npm 12.0.2, Go 1.27.0, one worker and a 20-minute job limit.
+The existing test deadline remains unchanged. Each host retains its diagnostic
+JSON artifact under its OS, source SHA and run attempt, including on test failure.
+
+For real cross-process POSIX locking against synthetic `terraform_data` local
+state, set `diagnostic_native_posix_locks_only` to `true`. The two Linux lanes use
+the [documented public GitHub-hosted runner labels](https://docs.github.com/en/actions/reference/runners/github-hosted-runners#standard-github-hosted-runners-for-public-repositories)
+`ubuntu-24.04` (x64) and `ubuntu-24.04-arm` (arm64), with Node 24.20.0, npm 12.0.2,
+Python 3.14.7 and OpenTofu 1.12.6 without its wrapper. Each lane resolves only
+the selected Python and OpenTofu executables to canonical absolute paths, enables
+`LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION=1` and
+`LIFTOFF_LINUX_READONLY_PROCESS_TEST=1`, and runs
+`tests/state-posix-platform.test.ts` alongside
+`tests/state-linux-readonly-process.test.ts` with one worker and a 20-minute job
+budget. Existing test and production deadlines are unchanged. The read-only
+guard exercises nonsecret fixtures with per-process Landlock restrictions;
+its actual assertion outcomes remain in the same retained test JSON report.
+
+Before testing, the lane records each selected regular executable's UID, GID,
+mode, device/inode identity and SHA-256 digest. Only when the runner owns the
+selected executable and can modify its mode does preparation remove that file's
+group/other write bits through its open descriptor. It verifies unchanged
+identity, ownership and bytes afterward, preserving all other mode bits.
+Already admitted executables are left unchanged. Ownership or permission
+denial, changed bytes/identity, links and non-executable inputs produce an
+explicit fixture-preparation blocker with retained metadata. This correction
+is limited to those ephemeral source-test tools: no sudo, recursive permission
+changes, broad toolcache edits, copied Python binary or relaxed production
+admission is permitted.
+
+Host metadata records the actual Node and runner architectures and rejects a
+platform/architecture mismatch before testing. The host record, tool-preparation
+metadata and test JSON report are retained under the runner label, actual
+runner architecture, source SHA and run attempt, including on test failure. These are synthetic
+local-state lock source runs, not encryption, key-store custody or release
+qualification. The native exercise uses no credentials, external providers,
+provider downloads or privileged host changes. If the arm64 runner is
+unavailable, its result remains pending or missing; an x64 success is not a
+substitute and no emulation/fallback is selected.
+
+The keystore-helper build/source checks run on the same documented Linux x64/arm64
+labels by default, or separately with `diagnostic_linux_keystore_build_only`.
+They use Node 24.20.0/npm 12.0.2 and prepare only declared C11, pkg-config,
+GLib/GIO/GObject >=2.74, Meson, Ninja, gettext and libgcrypt development
+prerequisites on the ephemeral runner. No keystore daemon package is needed.
+Installed prerequisite versions are retained rather than invented pins.
+
+The workflow fetches the exact clean libsecret commit
+[`a5cd57f103038c06b64d5f6ebfd0e627bb40af4e`](https://gitlab.gnome.org/GNOME/libsecret/-/tree/a5cd57f103038c06b64d5f6ebfd0e627bb40af4e),
+not a release tag, into a new runner-owned directory. Its
+[pinned Meson options](https://gitlab.gnome.org/GNOME/libsecret/-/blob/a5cd57f103038c06b64d5f6ebfd0e627bb40af4e/meson_options.txt)
+select `crypto=libgcrypt`; documentation, introspection, PAM, TPM2 and automatic
+test-service setup are disabled. Libsecret installs into an explicit private
+prefix with `--libdir=lib`, and `LIBSECRET_SOURCE_DIR`/`LIBSECRET_PREFIX` are
+passed to `native/linux-keystore-client/build.mjs`. System libsecret fallback
+and plain/disabled crypto are not alternatives.
+
+The 20-minute jobs first run dependency-free framing/source-interface tests,
+then compile the helper. Only after a successful build, they install the
+declared synthetic-test dependencies: `dbus-daemon`, `python3`, `python3-dbus`,
+`python3-gi` and `gir1.2-glib-2.0`. With
+`LIFTOFF_LINUX_KEYSTORE_SYNTHETIC=1` and the same exact `LIBSECRET_SOURCE_DIR`,
+the one-worker suite invokes the compiled client against a fresh private
+no-autostart D-Bus and an in-memory synthetic service using nonsecret fixture
+values. The fixture uses hash-bound unchanged upstream mock modules, fixed
+`/usr/bin/python3` and `/usr/bin/dbus-daemon`, and mandatory actual loader/private
+dependency checks; no system-libsecret fallback is enabled by CI.
+
+No real GNOME daemon, ordinary desktop/system service, store or keys are
+accessed; production enrollment remains disabled. These tests do not provision
+encryption or ACLs and perform no cloud operations. Failed builds prevent the
+synthetic run. Successful behavior reports must contain the actual opt-in
+synthetic suite and no failed or skipped cases, without a fixed case count.
+
+The initial protocol result and final behavior result have distinct JSON paths.
+Only bounded allowlisted build/protocol/synthetic summaries and the original
+`build-identity.json` are retained under source SHA, actual runner architecture
+and run attempt. Raw helper output, protocol bytes, dependency diagnostics,
+keys and binaries are not artifact inputs; binaries are not signed or
+published. Compile evidence and native compiled-client synthetic behavior are
+separate from real-provider, custody, enrollment, installed-artifact and
+runtime-closure qualification. Missing prerequisites or either architecture
+remain explicit blockers.
+
+All five diagnostic inputs default to `false`. In the table, Windows, Go, POSIX and Build
+mean `diagnostic_windows_only`, `diagnostic_native_go_only`,
+`diagnostic_native_posix_locks_only` and `diagnostic_linux_keystore_build_only`.
+For compatibility, the Build input retains its name but now selects the full
+build plus synthetic-source behavior job described above. This table applies
+when `diagnostic_linux_gnome_persistence_only` is `false`.
+
+| Windows | Go | POSIX | Build | Jobs executed |
+| --- | --- | --- | --- | --- |
+| `false` | `false` | `false` | `false` | Complete 18-job source validation, including coverage and helper builds |
+| `true` | `false` | `false` | `false` | Windows diagnostics |
+| `false` | `true` | `false` | `false` | Ubuntu and macOS native Go diagnostics |
+| `true` | `true` | `false` | `false` | Windows and native Go diagnostics |
+| `false` | `false` | `true` | `false` | Linux x64 and arm64 POSIX lock diagnostics |
+| `true` | `false` | `true` | `false` | Windows and POSIX lock diagnostics |
+| `false` | `true` | `true` | `false` | Native Go and POSIX lock diagnostics |
+| `true` | `true` | `true` | `false` | All three execution diagnostic lanes |
+| `false` | `false` | `false` | `true` | Linux x64 and arm64 helper build/synthetic-source checks |
+| `true` | `false` | `false` | `true` | Windows diagnostics and helper builds |
+| `false` | `true` | `false` | `true` | Native Go diagnostics and helper builds |
+| `true` | `true` | `false` | `true` | Windows/native Go diagnostics and helper builds |
+| `false` | `false` | `true` | `true` | POSIX lock diagnostics and helper builds |
+| `true` | `false` | `true` | `true` | Windows/POSIX lock diagnostics and helper builds |
+| `false` | `true` | `true` | `true` | Native Go/POSIX lock diagnostics and helper builds |
+| `true` | `true` | `true` | `true` | All selected diagnostics, including helper builds |
+
+The separate `diagnostic_linux_gnome_persistence_only` option is **manual-only**.
+It runs actual pinned GNOME persistence/restart source tests on Linux x64 and
+arm64 with generated test passwords/keys, new private buses and disposable
+runner-owned stores. It never selects an existing keyring, ordinary
+desktop/system service, user credential or cloud resource, and does not change
+host disk encryption, ACLs or policy. Normal push/PR/default runs remain at
+18 jobs and never enable this native fixture.
+
+| GNOME persistence flag | Other four diagnostic flags | Manual jobs executed |
+| --- | --- | --- |
+| `false` | Any combination | Exactly the preceding routing table |
+| `true` | All `false` | Only the Linux x64/arm64 GNOME persistence jobs |
+| `true` | Any selected | GNOME persistence plus exactly those selected diagnostics; no unrelated full jobs/gates |
+
+The lane builds exact clean GNOME commit
+[`da00f9621eaf263d5ed4236df9c22798ea8021d2`](https://gitlab.gnome.org/GNOME/gnome-keyring/-/tree/da00f9621eaf263d5ed4236df9c22798ea8021d2),
+not an equivalent version/tag or system daemon. Its
+[pinned Meson requirements](https://gitlab.gnome.org/GNOME/gnome-keyring/-/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/meson.build)
+include GLib/GIO >=2.80, GCK >=3.3.4, GCR-base >=3.27.90, libgcrypt and p11-kit.
+Ubuntu prerequisites add `libgcr-3-dev`, `libp11-kit-dev` and `libglib2.0-bin`
+to the established build/private-fixture dependencies. PAM, systemd, SSH-agent,
+capabilities, SELinux, debug mode and manpages are disabled. Only the
+`gnome-keyring-daemon` target is built and its exact bytes copied into a private
+prefix; upstream PAM/autostart/service files are **not installed**.
+PKCS#11 configuration and module destinations must match that prefix's
+`etc/pkcs11` and `lib/pkcs11` directories; the recorder rejects system defaults.
+
+The same pinned private libsecret/client build, actual loader/dependency checks,
+`tests/managed-keystore-key-binding.test.ts` contracts and null-profile source
+tests must pass before real
+GNOME fixture effects. The Landlock wrapper uses selected CPython 3.14.7, and the coordinator uses the
+canonical executable obtained from Node's actual `process.execPath`. Only this
+manual lane includes Node in the existing exact-FD preparation. The retained
+`gnome-python-preparation.json` now records both runtimes' live pre/post
+UID/GID, mode, device/inode, size, mtime and byte digest. Only observed
+group/other write bits on a runner-owned file may be removed; inability to
+modify safely remains a blocker. No historical Node mode/owner is inferred,
+and no sudo, tree permission changes, executable copy/replacement or production
+admission bypass is used. Only the native step sets both
+`LIFTOFF_GNOME_PERSISTENCE_TEST=1` and `LIFTOFF_LINUX_READONLY_NULL_TEST=1`,
+running `tests/state-gnome-persistence.test.ts` alongside
+`tests/state-linux-null-process.test.ts`. Both architectures retain one worker,
+the 20-minute job budget and unchanged operation/test deadlines.
+
+Completion requires **both** actual opt-in suite titles: the pinned GNOME
+persistence suite and `opt-in Linux null-sink profile nonsecret fixtures`.
+Neither a missing suite nor failed/skipped applicable cases can pass; there is
+no fixed case count. The distinct null-sink profile exercises actual fixed
+`/dev/null` character device 1:3 read/write, original strict-profile refusal,
+continued store/other-device denial, plan/identity mismatch and cancellation.
+The original strict helper/default is not widened, and no device, host ACL or
+encryption setting is changed to make tests pass.
+
+Only bounded allowlisted JSON identities, case
+outcomes and process/persistence summaries are uploaded. No daemon binary,
+keyring, password, key, raw loader/protocol output or private fixture directory
+is an artifact input. Uncertain settlement remains explicit and its fixture
+scope is preserved rather than claimed cleaned. Reports explicitly state
+`hostEncryptionQualification`, provider, cloud and release qualification are
+`not-performed`; minimum-host and installed-artifact qualification are also
+explicitly `not-performed`. Actual generated-data GNOME/null-profile behavior
+is not encrypted-host custody or production enrollment qualification. Missing native hosts, build
+dependencies or identity/permission admission remain blockers, not fallbacks.
+
+A diagnostic-only dispatch **does not qualify the source or release**, even if
+it is green. Any selected diagnostic flag excludes unrelated full-validation
+jobs and gates; helper builds run during diagnostic dispatch only if their own
+flag is selected. Multiple flags run all selected diagnostics rather than
+skipping everything or enabling qualification gates. Push and pull-request events always
+retain the complete source workflow regardless of diagnostic input values.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash
@@ -63,25 +414,23 @@ tofu -chdir=infrastructure/opentofu/telemetry validate
 The container smoke test requires a running Docker daemon. Standard hosted CI
 performs these static and local checks but never plans or applies production.
 
-On a Microsoft-managed device, pass the approved registries into generated
-container verification:
-
-```bash
-npm_config_registry=https://packagefeedproxy.microsoft.io/npm/ \
-npm_config_allow_remote=all \
-UV_DEFAULT_INDEX=https://packagefeedproxy.microsoft.io/pypi/simple \
-  npm --replace-registry-host=never run verify:generated-containers
-```
-
-The npm proxy returns approved backing-feed tarball URLs. Disabling registry-host
-replacement prevents a user-level `replace-registry-host=always` setting from
-rewriting those URLs into invalid proxy paths; npm 12 requires the command-local
-remote opt-in for that redirect. Do not persist either override globally.
+Generated container verification uses public npm and PyPI defaults; a particular
+device, employer, or Docker installation does not by itself require a proxy.
+Only when an explicit organizational policy requires another approved registry,
+pass its credential-free URL through command-local `npm_config_registry` or
+`UV_DEFAULT_INDEX`. Review any registry-host rewriting or remote redirect
+requirements for that specific feed instead of enabling broad overrides by
+default. Do not persist verification overrides globally or commit workstation
+registry preferences.
 
 The package smoke test builds, runs `npm pack`, checks the explicit package
-surface and size budget, installs the tarball into an isolated prefix, and
-executes the installed CLI, upgrade help, and an injected read-only self-upgrade
-check without selecting the host global prefix. The standard template verifier generates a Node.js
+surface and the approved 20 MiB unpacked-size budget, installs the tarball into
+an isolated prefix, and executes the installed CLI, native-owner upgrade help
+and effect-free unsupported-ownership refusal without selecting the host global
+prefix. This private archive is source-test transport, not an npm release or
+migration bridge; the budget does not change native-release requirements.
+Only the two explicitly packaged infrastructure READMEs are allowed, not
+deployment files or state. The standard template verifier generates a Node.js
 backend with its Vue frontend, runs both locked installs, builds both projects,
 and runs the generated backend tests without permitting package metadata
 changes.
@@ -108,8 +457,8 @@ short landing page. Static README assets live under `docs/assets/`. No
 documentation generator is required.
 
 Release-owned compatibility, deterministic setup version vectors, bump rules,
-graph integrity, credential leak tests, cross-agent equivalence, and npm trusted
-publishing requirements live in [DEVELOPER.md](DEVELOPER.md).
+graph integrity, credential leak tests, cross-agent equivalence, native release
+qualification, and historical npm recovery live in [DEVELOPER.md](DEVELOPER.md).
 
 When editing documentation:
 
@@ -142,13 +491,10 @@ workflow runs the same command weekly and through manual dispatch. Ordinary
 pull-request CI uses committed fixtures so new registry advisories or registry
 outages do not make unrelated test runs nondeterministic.
 
-The command defaults to canonical npm. On a Microsoft-managed device where
-public registries are blocked, use the approved feed for local verification:
-
-```bash
-LIFTOFF_NPM_AUDIT_REGISTRY=https://packagefeedproxy.microsoft.io/npm/ \
-  npm run audit:template-dependencies
-```
+The command defaults to canonical npm. If an explicit organizational policy
+requires an approved mirror, select its credential-free URL with the command-local
+`LIFTOFF_NPM_AUDIT_REGISTRY` override. Do not infer a registry restriction from the
+workstation or persist a machine-specific preference in project documentation.
 
 GitHub-hosted workflows leave this override unset and continue to audit against
 `https://registry.npmjs.org`.
@@ -271,10 +617,16 @@ openspec validate <change-name> --strict
 ## Pull requests
 
 - Keep changes focused and include tests for changed behavior.
+- Only `main` and `develop` are permanent source branches; temporary feature,
+  repair, release, and Dependabot PR branches remain valid while active.
+  Branch preservation requires live ref inventory and owner release;
+  `assets/qualification/source-preservation.json` records the preservation plan.
 - Update user and contributor documentation when commands, generated output,
   or workflows change.
 - Confirm generated projects contain no real credentials or unreviewed live
   resource bindings; nonsecret environment defaults must be explicit.
+- Source-only qualification is not real native, provider, or dashboard qualification;
+  missing credentials, signing, or live infrastructure remain explicit blockers.
 - Do not change persisted manifest identity, activation version vectors, graph
   hashes, schema versions, compatibility maps, or stable identifiers without an
   explicit main-spec decision and migration or rejection-remedy tests.
@@ -283,22 +635,26 @@ openspec validate <change-name> --strict
 
 ## Release verification
 
-The public release authority is `https://registry.npmjs.org`. The `Release
-Liftoff` workflow runs package checks, package smoke, a pack inspection, and
-release-identity validation before publishing. It uses npm trusted publishing
-with provenance and verifies the published dist-tag from canonical npm
-afterward.
+Historical npm publications used `https://registry.npmjs.org` with npm trusted publishing.
+Current candidate 0.13.0 and future distributions cut over to the coordinated native
+release workflow (`.github/workflows/release.yml`), validating self-contained bundles,
+candidate owner channels (Homebrew cask, WinGet portable, direct archive), and signed
+evidence without publishing an npm package or bridge.
+These are target channels, not claims of published artifacts, native qualification,
+or package-manager availability.
 
 Before tagging, update package and lockfile metadata together and run:
 
 ```bash
 npm run verify:release-identity
-npm run verify:release-identity -- v0.12.3
+npm run verify:release-identity -- v0.13.0
 ```
 
 Replace the example tag with the intended release. The Git tag, root package
-metadata, root lockfile metadata, packed package version, and installed
+metadata, root lockfile metadata, native bundle version, and installed
 `liftoff --version` output must all identify the same release.
+This source check does not replace signed-artifact, native-host, owner-channel,
+or separately authorized publication qualification.
 
 When a release raises runtime floors or adopts generated-stack majors, label it
 as breaking and direct existing projects to `liftoff update --check` before
@@ -308,46 +664,61 @@ core update never applies them. The release rollback boundary is a source revert
 before publication. Project owners recover separately applied template changes
 through version control; Liftoff must not silently downgrade their dependencies.
 
-The first release containing `liftoff upgrade` must retain the one-time bootstrap
-command for users on older versions:
+### Historical npm verification
+
+Before the native cutover, releases predating npm self-upgrade required a manual
+npm upgrade to a then-published version. That historical bootstrap is not the
+current setup path. Even an npm installation whose `upgrade` reports current
+cannot discover native-only releases; use the separately approved
+[native installation handover](docs/native-installation.md).
+
+The retained verifier selects one exact stable historical version no newer than
+`0.12.3`, independently of this checkout's native candidate version:
 
 ```bash
-npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org
+npm run verify:published -- 0.12.3
+npm run verify:published -- 0.3.3 --allow-legacy-version-command
 ```
 
-That explicit canonical default is reference material for approved canonical
-delivery. Managed installations retain their configured
-`@msn-control:registry` before the default registry; do not override a scoped
-mirror to bypass policy. Canonical verification isolates the scope only for its
-read-only comparison.
+It installs only the selected version from canonical npm into a disposable
+prefix, cache, and home, then checks its package identity and supported commands
+outside the checkout. The second invocation retains only the immutable `0.3.3`
+command exception; no native artifact may use it. Mutable `latest`/`next` tags,
+newer versions, and mixed tag/version inputs are rejected.
 
-All upgrade apply tests use temporary prefixes, homes, caches, and injected
-registry responses. Never run self-upgrade apply against a developer or release
-runner's actual global prefix.
+This is an isolated historical command/identity smoke check, not proof of
+original tarball/source provenance or current native qualification. Verify
+retained immutable tarball, source, lockfile, and publication evidence separately.
+Historical dist-tag claims refer to the tag at publication time; today's tag
+need not equal an earlier release and must never represent native availability.
 
-Stable versions publish with `latest`; prereleases publish with `next`. The
-post-publish verifier must remain after `npm publish`, receive the selected
-dist-tag, and must not use `continue-on-error` or legacy compatibility mode.
+Managed installations retain their configured `@msn-control:registry` before
+the default registry. Never bypass a scoped mirror to recover a historical
+installation; the explicit canonical verification above is a separate comparison,
+not installation authority. All upgrade apply tests use temporary prefixes,
+homes, caches, and injected registry responses. Never apply against a developer
+or release runner's actual global prefix.
 
 ## Release recovery
 
-If canonical post-publish verification fails, do not announce the release as
-complete. Compare the expected and observed dist-tag versions.
+If native release qualification or publication fails, retain the exact artifact,
+source, approval, and per-effect evidence and report the incomplete state. Do not
+announce a partial stable release, publish an npm bridge, move npm tags, or use
+an unsigned or unqualified rebuild as recovery. Reconcile any already-published
+native effects through the separately reviewed release procedure.
 
-- Correct the dist-tag when the expected immutable package already exists.
-- Otherwise publish a corrected patch release.
-- Do not unpublish a released package as routine recovery.
+Historical npm recovery likewise compares the explicit expected version with
+the observed package and executable identity. Do not unpublish or replace a
+released package as routine recovery. A successful canonical historical check
+does not make an external managed mirror ready: withhold internal installation
+guidance until that approved mirror exposes the exact historical version and
+an isolated mirrored installation reports the expected identity.
 
-A successful canonical release does not make an external managed mirror ready.
-Teams using a managed registry must withhold internal installation guidance
-until the mirror exposes both the canonical stable dist-tag and explicit
-version and a clean mirrored install reports the expected version.
-
-Pre-0.3 releases remain available for reproducibility. An authorized npm
-release owner applies the warning without unpublishing:
+Pre-0.3 releases remain available for reproducibility. Updating a registry warning
+is separate authorized historical maintenance, not part of current publication:
 
 ```bash
-npm deprecate '@msn-control/liftoff@<0.3.0' 'Liftoff versions before 0.3.0 are unsupported. Upgrade to @msn-control/liftoff@latest.' --registry=https://registry.npmjs.org
+npm deprecate '@msn-control/liftoff@<0.3.0' 'Liftoff versions before 0.3.0 are unsupported. Current releases are native-only; see https://github.com/voyager163/liftoff/blob/main/docs/native-installation.md.' --registry=https://registry.npmjs.org
 ```
 
 Verify that an old explicit version retains both the warning and tarball:

@@ -31,6 +31,8 @@ import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
 import type { CommandRunner, CommandResult, RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/types.js';
+import { currentGovernanceManifest } from './governance-activation-fixtures.js';
+import { requiredCredentialProviderPermissions } from '../src/domain/governance/activation/types.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-credential-tests-${process.pid}`);
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
@@ -58,6 +60,7 @@ function app(overrides: Partial<DiscoveredGitHubAppInstallation> = {}): Discover
     selection: 'selected-repository',
     repositories: [repository()],
     permissions: runnerPreflightPermissions(),
+    observedPermissions: requiredCredentialProviderPermissions('github-app'),
     permissionsVerifiedAt: now.toISOString(),
     readbackDigest: digest,
     token: { canGenerate: true, ttlSeconds: 3600 },
@@ -120,6 +123,7 @@ function patPolicy(overrides: Partial<CredentialPolicy> = {}): CredentialPolicy 
       repository: repository(),
       allowedWorkflows: allowlist(),
       createdAt: now,
+      providerPermissions: requiredCredentialProviderPermissions('fine-grained-pat'),
       proof: {
         verifiedAt: now.toISOString(),
         readbackDigest: digest,
@@ -136,7 +140,9 @@ async function writeProject(name = 'credential-project'): Promise<string> {
   await mkdir(path.join(root, '.liftoff', 'governance'), { recursive: true });
   await writeFile(path.join(root, '.liftoff', 'governance', 'policy.md'), renderCanonicalGovernancePolicy(), 'utf8');
   await writeFile(path.join(root, 'liftoff.manifest.json'), `${JSON.stringify({
-    artifactVersion: 7,
+    artifactVersion: 8,
+    standards: currentGovernanceManifest(name).standards,
+    provenance: currentGovernanceManifest(name).provenance,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion,
     project: {
@@ -148,7 +154,7 @@ async function writeProject(name = 'credential-project'): Promise<string> {
     framework: { state: 'initialized', adapter: 'openspec', contractVersion: '1.11.0' },
     governance: {
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: currentActivationIdentity.policyVersion,
       activationIdentity: currentActivationIdentity,
       state: 'handoff-partial'
     },
@@ -173,6 +179,7 @@ async function run(args: string[], cwd: string): Promise<{ code: number; out: st
 beforeEach(async () => {
   await rm(scratchRoot, { recursive: true, force: true });
   await mkdir(scratchRoot, { recursive: true });
+  await mkdir(path.join(scratchRoot, '.git'));
 });
 
 describe('governance credential discovery and policy validation', () => {
@@ -213,7 +220,7 @@ describe('governance credential discovery and policy validation', () => {
       selectedRepositoryOnly: true,
       permissions: {
         repository: ['metadata:read'],
-        organization: ['hosted-runners:read', 'network-configurations:read']
+        organization: ['organization_administration:read', 'organization_network_configurations:read']
       },
       writes: []
     });
@@ -240,26 +247,19 @@ describe('governance credential discovery and policy validation', () => {
     })).toThrow(/exactly equal/);
   });
 
-  it('accepts PAT value only through masked prompt and hands it to secret adapter in memory', async () => {
+  it('blocks legacy PAT enrollment before prompting or writing when current independent proof is unavailable', async () => {
     const adapter = new FixtureCredentialAdapter();
-    const root = path.join(scratchRoot, 'masked-handoff');
-    await mkdir(root, { recursive: true });
-    const stdout = '';
-    const policy = await enrollFineGrainedPatCredential({
+    let prompted = false;
+    await expect(enrollFineGrainedPatCredential({
       adapter,
       repository: repository(),
       allowedWorkflows: allowlist(),
       now,
-      prompt: async () => SensitiveCredentialValue.fromMaskedInput(syntheticToken)
-    });
-    expect(adapter.captured).toBe(syntheticToken);
-    expect(JSON.stringify(adapter.secretArgs)).not.toContain(syntheticToken);
-    expect(JSON.stringify(policy)).not.toContain(syntheticToken);
-    const policyFile = path.join(root, 'policy.json');
-    await writeFile(policyFile, `${JSON.stringify(policy, null, 2)}\n`, 'utf8');
-    expect(await readFile(policyFile, 'utf8')).not.toContain(syntheticToken);
-    expect(stdout).not.toContain(syntheticToken);
-    expect(() => policy.pat).not.toThrow();
+      prompt: async () => { prompted = true; return SensitiveCredentialValue.fromMaskedInput(syntheticToken); }
+    })).rejects.toThrow(/exact PAT identity.*conditional secret creation/);
+    expect(prompted).toBe(false);
+    expect(adapter.captured).toBeNull();
+    expect(adapter.secretArgs).toEqual([]);
   });
 
   it('builds a gh secret-set handoff that keeps PAT bytes out of argv and output', async () => {
@@ -354,6 +354,7 @@ describe('credential leak detection and fixtures', () => {
       { source: 'generated-artifact', label: 'dast', text: dast }
     ]).status).toBe('clear');
     const policies = allowlist().map((entry) => buildFineGrainedPatCredentialPolicy({
+      providerPermissions: requiredCredentialProviderPermissions('fine-grained-pat'),
       repository: repository(),
       allowedWorkflows: [entry],
       createdAt: now,

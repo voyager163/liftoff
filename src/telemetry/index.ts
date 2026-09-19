@@ -30,6 +30,7 @@ export interface TelemetryRuntimeOptions {
   timeoutMs?: number;
   config?: TelemetryConfigOptions;
   stderr?: NodeJS.WritableStream;
+  persistNotice?: boolean;
 }
 
 export function isTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -40,8 +41,8 @@ export function isTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolea
   );
 }
 
-export function telemetryCommandFor(parsed: ParsedArgs): TelemetryCommand | undefined {
-  return canonicalTelemetryCommand(parsed);
+export function telemetryCommandFor(parsed: ParsedArgs, interactive = false): TelemetryCommand | undefined {
+  return canonicalTelemetryCommand({ ...parsed, interactive });
 }
 
 export async function maybeShowTelemetryNotice(
@@ -52,14 +53,17 @@ export async function maybeShowTelemetryNotice(
   }
 
   try {
-    const seenVersion = await readTelemetryNoticeVersion(options.config);
+    const config = { env: options.env, ...options.config };
+    const seenVersion = await readTelemetryNoticeVersion(config);
     if (seenVersion !== undefined && seenVersion >= telemetryNoticeVersion) {
       return true;
     }
     if (!(await writeTelemetryNotice(options.stderr ?? process.stderr))) {
       return false;
     }
-    await recordTelemetryNotice(options.config);
+    if (options.persistNotice !== false) {
+      await recordTelemetryNotice(config);
+    }
     return true;
   } catch {
     // Telemetry disclosure state must never affect command execution.

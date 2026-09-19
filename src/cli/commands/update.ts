@@ -4,15 +4,13 @@ import type {
 import type {
   ExecutionContext
 } from '../../application/context.js';
-import {
-  updateProject
-} from '../../application/update/use-case.js';
+import { getApplicationEngines } from '../../application/engine-composition.js';
 import { readBooleanFlag, readStringFlag } from '../args/readers.js';
 
-export const updateCommand = (
+export const updateCommand = async (
   parsed: ParsedArgs,
   context: ExecutionContext
-): Promise<number> => updateProject({
+): Promise<number> => (await getApplicationEngines(context))['project-evolution'].updateProject({
   check: readBooleanFlag(parsed.flags, 'check') ?? false,
   approvePlan: readStringFlag(parsed.flags, 'approve-plan'),
   force: readBooleanFlag(parsed.flags, 'force') ?? false,

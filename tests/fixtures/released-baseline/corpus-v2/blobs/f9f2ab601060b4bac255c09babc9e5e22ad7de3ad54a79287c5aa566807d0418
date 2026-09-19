@@ -1,0 +1,57 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      APP_ENV: ${APP_ENV-dev}
+      APP_NAME: ${APP_NAME-flight-log}
+      CLOUD_PROVIDER: azure
+      AZURE_REGION: ${AZURE_REGION-eastus}
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/flight_log
+      REDIS_URL: redis://redis:6379/0
+      MESSAGING_TRANSPORT: ${MESSAGING_TRANSPORT-redis-streams}
+      BLOB_ENDPOINT: http://azurite:10000/devstoreaccount1
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS-http://localhost:5173}
+      API_STACK: node-fastify
+
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+      - redis
+      - azurite
+      - mailpit
+
+  postgres:
+    image: postgres:18-alpine@sha256:d3e1620b530c944afa6e887d22eb899824da68e19c52024bf98f5220c88a65b2
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: flight_log
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine@sha256:becdda6c7f4b3fb42e42fd7f120bbf5c54c4caaaf16f26da24e4563d2c1f0576
+    ports:
+      - "6379:6379"
+
+  azurite:
+    image: mcr.microsoft.com/azure-storage/azurite:3.37.0@sha256:830430c1da1a2d537e08f3e6764dd1f5ae00cf0346bcaf625b968ec3f0971fd5
+    command: azurite --blobHost 0.0.0.0
+    ports:
+      - "10000:10000"
+
+  mailpit:
+    image: axllent/mailpit:v1.31.0@sha256:c96991d9bef73594c246d89ca81411d4e916f03e76a7d2d72fa2ab5dd3c9ce24
+    ports:
+      - "8025:8025"
+
+
+

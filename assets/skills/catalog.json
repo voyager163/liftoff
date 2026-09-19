@@ -1,0 +1,216 @@
+{
+  "schemaVersion": 1,
+  "catalogVersion": "1.0.0",
+  "skills": [
+    {
+      "id": "setup",
+      "name": "Liftoff Setup",
+      "description": "Guide capability-negotiated project readiness and post-init governance; workstation preparation remains a separate scope.",
+      "owningEngine": "Repository Governance",
+      "requiredCapability": "repository-governance",
+      "commandOutput": "json",
+      "commandResultSchema": 3,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-setup",
+        "claude": "/liftoff-setup",
+        "codex": "$liftoff-setup"
+      },
+      "entrypoint": "setup/SKILL.md",
+      "effectClass": "inspection-and-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "assess",
+      "name": "Liftoff Project Assessment",
+      "description": "Read-only inspection and assessment of existing codebase, standards conformance, and stack compatibility.",
+      "owningEngine": "Standards and Assessment",
+      "requiredCapability": "standards-assessment",
+      "commandOutput": "json",
+      "commandResultSchema": 1,
+      "authorizationMechanism": "read-only",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-assess",
+        "claude": "/liftoff-assess",
+        "codex": "$liftoff-assess"
+      },
+      "entrypoint": "assess/SKILL.md",
+      "effectClass": "read-only",
+      "authorizationRequired": false
+    },
+    {
+      "id": "init",
+      "name": "Liftoff Project Initialization",
+      "description": "Scaffold a new Liftoff project with selected stack, pattern, cloud provider, and agent integrations.",
+      "owningEngine": "Project Generation",
+      "requiredCapability": "project-generation",
+      "commandOutput": "human",
+      "commandResultSchema": null,
+      "authorizationMechanism": "flag-consent",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-init",
+        "claude": "/liftoff-init",
+        "codex": "$liftoff-init"
+      },
+      "entrypoint": "init/SKILL.md",
+      "effectClass": "inspection-and-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "adopt",
+      "name": "Liftoff Project Adoption",
+      "description": "Adopt an existing supported codebase in-place with minimal managed core and explicit per-file mappings.",
+      "owningEngine": "Project Evolution",
+      "requiredCapability": "project-adoption",
+      "commandOutput": "json",
+      "commandResultSchema": 1,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-adopt",
+        "claude": "/liftoff-adopt",
+        "codex": "$liftoff-adopt"
+      },
+      "entrypoint": "adopt/SKILL.md",
+      "effectClass": "reviewed-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "update",
+      "name": "Liftoff Project Update",
+      "description": "Reconcile managed-core template artifacts with safe drift detection and guarded transactions.",
+      "owningEngine": "Project Evolution",
+      "requiredCapability": "project-update",
+      "commandOutput": "json",
+      "commandResultSchema": 3,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-update",
+        "claude": "/liftoff-update",
+        "codex": "$liftoff-update"
+      },
+      "entrypoint": "update/SKILL.md",
+      "effectClass": "reviewed-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "repair",
+      "name": "Liftoff Application Repair",
+      "description": "Execute targeted application code repair and baseline remediation under staged validation and contract 1 / report schema 2.",
+      "owningEngine": "Project Evolution",
+      "requiredCapability": "project-repair",
+      "commandOutput": "json",
+      "commandResultSchema": 2,
+      "contractVersion": 1,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-repair",
+        "claude": "/liftoff-repair",
+        "codex": "$liftoff-repair"
+      },
+      "entrypoint": "repair/SKILL.md",
+      "effectClass": "reviewed-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "migrate",
+      "name": "Liftoff Project Migration",
+      "description": "Create a fresh migration scaffold from supported source facts while preserving the source; semantic application conversion remains separate.",
+      "owningEngine": "Project Evolution",
+      "requiredCapability": "project-migration",
+      "commandOutput": "human",
+      "commandResultSchema": null,
+      "authorizationMechanism": "flag-consent",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-migrate",
+        "claude": "/liftoff-migrate",
+        "codex": "$liftoff-migrate"
+      },
+      "entrypoint": "migrate/SKILL.md",
+      "effectClass": "inspection-and-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "governance-assess",
+      "name": "Liftoff Governance Assessment",
+      "description": "Read-only assessment of Git repository configuration against single-maintainer-gitflow controls.",
+      "owningEngine": "Repository Governance",
+      "requiredCapability": "governance-assessment",
+      "commandOutput": "json",
+      "commandResultSchema": 1,
+      "authorizationMechanism": "read-only",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-governance-assess",
+        "claude": "/liftoff-governance-assess",
+        "codex": "$liftoff-governance-assess"
+      },
+      "entrypoint": "governance-assess/SKILL.md",
+      "effectClass": "read-only",
+      "authorizationRequired": false
+    },
+    {
+      "id": "governance",
+      "name": "Liftoff Repository Governance",
+      "description": "Repository governance activation, GitHub controls application, rulesets, and phase transitions under schema 3.",
+      "owningEngine": "Repository Governance",
+      "requiredCapability": "repository-governance",
+      "commandOutput": "json",
+      "commandResultSchema": 3,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-governance",
+        "claude": "/liftoff-governance",
+        "codex": "$liftoff-governance"
+      },
+      "entrypoint": "governance/SKILL.md",
+      "effectClass": "reviewed-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "azure",
+      "name": "Liftoff Azure Activation",
+      "description": "Azure cloud resource activation, provider registration, remote state bootstrapping, and deployment readiness.",
+      "owningEngine": "Azure Activation",
+      "requiredCapability": "azure-activation",
+      "commandOutput": "json",
+      "commandResultSchema": 3,
+      "authorizationMechanism": "reviewed-plan",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-azure",
+        "claude": "/liftoff-azure",
+        "codex": "$liftoff-azure"
+      },
+      "entrypoint": "azure/SKILL.md",
+      "effectClass": "reviewed-mutation",
+      "authorizationRequired": true
+    },
+    {
+      "id": "cli-upgrade",
+      "name": "Liftoff CLI Upgrade",
+      "description": "Routine owner-preserving CLI self-upgrade; inspects release catalog and upgrades without extra confirmation.",
+      "owningEngine": "Distribution and CLI Upgrade",
+      "requiredCapability": "cli-upgrade",
+      "commandOutput": "json",
+      "commandResultSchema": 1,
+      "authorizationMechanism": "command-invocation",
+      "supportedHosts": ["github-copilot", "claude", "codex"],
+      "defaultInvocations": {
+        "github-copilot": "/liftoff-cli-upgrade",
+        "claude": "/liftoff-cli-upgrade",
+        "codex": "$liftoff-cli-upgrade"
+      },
+      "entrypoint": "cli-upgrade/SKILL.md",
+      "effectClass": "routine-upgrade",
+      "authorizationRequired": false
+    }
+  ]
+}

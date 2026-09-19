@@ -28,6 +28,8 @@ import type { CommandRunner } from '../src/process-runner.js';
 import type { GeneratedArtifact, LiftoffManifest } from '../src/types.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { formatUpdateCommand } from '../src/application/update/command-guidance.js';
+import { isRecord } from '../src/domain/governance/activation/canonical-json.js';
+import { historicalV3ActivationIdentity } from '../src/domain/governance/policy/identity.js';
 import { resolveUpdateGuidanceContext } from '../src/application/update/guidance-context.js';
 import { readMigrationJournal } from '../src/governance-activation/migration-history.js';
 import {
@@ -161,7 +163,22 @@ async function editJson(
 ): Promise<void> {
   const value = JSON.parse(await readFile(filePath, 'utf8'));
   mutate(value);
+  if (typeof value.artifactVersion === 'number' && value.artifactVersion < 8) {
+    delete value.standards;
+    delete value.provenance;
+  }
   await writeFile(filePath, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+}
+
+function historicalManifestHeader(manifest: Record<string, unknown>, version: 5 | 6 | 7): void {
+  manifest.artifactVersion = version;
+  delete manifest.standards;
+  delete manifest.provenance;
+  if (isRecord(manifest.governance) && manifest.governance.profile !== 'none') {
+    if (manifest.governance.policyVersion === currentActivationIdentity.policyVersion) manifest.governance.policyVersion = '6';
+    if (version === 7) manifest.governance.activationIdentity = structuredClone(historicalV3ActivationIdentity);
+    else delete manifest.governance.activationIdentity;
+  }
 }
 
 const governancePathPartArrays = [
@@ -215,6 +232,7 @@ async function removeAssessmentInventory(
   });
   const compatibilityHash = sha(await readFile(compatibilityPath, 'utf8'));
   await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    if (manifest.governance.profile !== 'none') manifest.governance.state = 'handoff-partial';
     manifest.managedArtifacts = manifest.managedArtifacts.filter(
       (entry: { logicalName: string }) => !names.has(entry.logicalName)
     );
@@ -262,6 +280,7 @@ async function addRetiredAliasOwnership(
     }
   }
   await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    historicalManifestHeader(manifest, 7);
     for (const identity of selected) {
       manifest.managedArtifacts.push({
         logicalName: identity.logicalName,
@@ -274,7 +293,7 @@ async function addRetiredAliasOwnership(
 }
 
 function convertV6ToV5(manifest: any): void {
-  manifest.artifactVersion = 5;
+  historicalManifestHeader(manifest, 5);
   manifest.artifacts = [
     ...manifest.managedArtifacts,
     ...manifest.projectArtifacts.map((artifact: any) => ({
@@ -467,7 +486,12 @@ async function installDiagnosticActivationV1(
   evidencePath: string;
 }> {
   const identity = historicalActivationIdentities[0]!;
+  const contextValue: unknown = JSON.parse(await readFile(path.join(root, ...governanceArtifactPaths.context), 'utf8'));
+  if (!isRecord(contextValue) || !isRecord(contextValue.policy)) throw new Error('Expected source context fixture.');
+  contextValue.policy.version = identity.policyVersion;
+  await simulateCoreUpgrade(root, 'repository-governance-context', governanceArtifactPaths.context, `${JSON.stringify(contextValue, null, 2)}\n`);
   await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    historicalManifestHeader(manifest, 7);
     manifest.governance.policyVersion = identity.policyVersion;
     manifest.governance.activationIdentity = identity;
     if (governanceState) manifest.governance.state = governanceState;
@@ -777,7 +801,7 @@ describe('core-only update command', () => {
     const policyPath = path.join(root, ...governanceArtifactPaths.policy);
     const currentPolicy = renderCanonicalGovernancePolicy();
     const previousPolicy = currentPolicy.replace(
-      'policyVersion: "6"',
+      'policyVersion: "8"',
       'policyVersion: "2"'
     );
 
@@ -818,7 +842,7 @@ describe('core-only update command', () => {
     const upgradedManifest = JSON.parse(await readFile(manifestPath, 'utf8'));
     expect(upgradedManifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: '8',
       activationIdentity: expect.any(Object),
       state: 'handoff-generated'
     });
@@ -844,7 +868,7 @@ describe('core-only update command', () => {
     const manifest = JSON.parse(
       await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
     );
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.managedArtifacts.every((artifact: { logicalName: string }) =>
       isManagedCoreLogicalName(artifact.logicalName)
     )).toBe(true);
@@ -853,10 +877,13 @@ describe('core-only update command', () => {
     )).toBe(true);
   });
 
-  it.each([5, 6, 7])('installs assessment integrations as safe drift from a supported v%s inventory', async (version) => {
+  it.each([5, 6, 7] as const)('installs assessment integrations as safe drift from a supported v%s inventory', async (version) => {
     const root = await fixtureProject();
     const identity = assessmentIdentities[0];
     await removeAssessmentInventory(root);
+    await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+      historicalManifestHeader(manifest, version);
+    });
     if (version === 5) {
       await downgradeToV5(root);
     } else if (version === 6) {
@@ -887,9 +914,9 @@ describe('core-only update command', () => {
     expect(applied.code).toBe(0);
     expect(JSON.parse(applied.out).written).toContain(identity.pathParts.join('/'));
     const manifest = await loadManifest(root);
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.governance).toMatchObject({
-      policyVersion: '6',
+      policyVersion: '8',
       activationIdentity: currentActivationIdentity,
       state: 'handoff-generated'
     });
@@ -1476,7 +1503,7 @@ describe('core-only update command', () => {
     expect(await readFile(apiPath, 'utf8')).toBe(production);
     await expect(access(infrastructurePath)).rejects.toMatchObject({ code: 'ENOENT' });
     const manifest = JSON.parse(await readFile(manifestPath, 'utf8'));
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.projectArtifacts.find((artifact: { logicalName: string }) =>
       artifact.logicalName === 'go-backend-api'
     )).toMatchObject({
@@ -1512,7 +1539,7 @@ describe('core-only update command', () => {
       const manifest = JSON.parse(
         await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8')
       );
-      expect(manifest.artifactVersion).toBe(7);
+      expect(manifest.artifactVersion).toBe(8);
       expect(manifest.projectArtifacts.some((artifact: { logicalName: string }) =>
         artifact.logicalName === 'backend-main'
       )).toBe(true);
@@ -1816,6 +1843,7 @@ describe('core-only update command', () => {
     const evidencePath = path.join(root, 'governance', 'evidence', 'historical-v1.json');
     const historicalIdentity = historicalActivationIdentities[0]!;
     await editJson(manifestPath, (manifest) => {
+      historicalManifestHeader(manifest, 7);
       manifest.governance.policyVersion = historicalIdentity.policyVersion;
       manifest.governance.activationIdentity = historicalIdentity;
     });

@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import path from 'node:path';
 import {
   readStringFlag
@@ -43,13 +44,55 @@ export async function helperCommand(
   } | undefined;
   if (projectRoot) {
     const manifest = await loadManifest(projectRoot);
-    const infrastructureLayout = assessInfrastructureLayout(manifest);
-    infraProject = {
-      root: projectRoot,
-      environments: manifest.project.workload.environments,
-      layout: infrastructureLayout.kind,
-      layoutReason: infrastructureLayout.reason
-    };
+    const isDev = parsed.command === 'dev' || tool === 'docker compose';
+    if (manifest.project.workload.kind === 'components' ||
+      isDev && manifest.artifactVersion === 8 && manifest.provenance.kind === 'adopted') {
+      if (isDev) {
+        const hasCompose = ['compose.yaml', 'compose.yml', 'docker-compose.yml', 'docker-compose.yaml']
+          .some((file) => existsSync(path.join(projectRoot, file)));
+        if (!hasCompose) {
+          context.presentation.commandIdentity(
+            parsed.command ?? 'dev',
+            'Docker Compose helper command'
+          );
+          context.presentation.error(
+            'Docker Compose operations are inapplicable for adopted components without Compose configuration.',
+            'Run `liftoff assess` for read-only project evaluation.'
+          );
+          return 1;
+        }
+      } else {
+        const hasTofu = existsSync(path.join(projectRoot, 'infrastructure', 'opentofu'));
+        if (!hasTofu) {
+          context.presentation.commandIdentity(
+            parsed.command ?? 'infra',
+            'OpenTofu helper command'
+          );
+          context.presentation.error(
+            'OpenTofu operations are inapplicable for component-only projects without OpenTofu configuration.',
+            'Run `liftoff assess` for read-only project evaluation.'
+          );
+          return 1;
+        }
+        context.presentation.commandIdentity(
+          parsed.command ?? 'infra',
+          'OpenTofu helper command'
+        );
+        context.presentation.error(
+          'Infrastructure helper command is unsupported for component-only projects without declared environments.',
+          'Run `liftoff assess` for read-only project evaluation.'
+        );
+        return 1;
+      }
+    } else {
+      const infrastructureLayout = assessInfrastructureLayout(manifest);
+      infraProject = {
+        root: projectRoot,
+        environments: manifest.project.workload.environments,
+        layout: infrastructureLayout.kind,
+        layoutReason: infrastructureLayout.reason
+      };
+    }
   }
 
   if (

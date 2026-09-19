@@ -1,0 +1,41 @@
+{
+	"evidenceId": "published-v2-seed-valid",
+	"header": {
+		"schemaVersion": 2,
+		"identity": {
+			"liftoffVersion": "0.11.0",
+			"manifestArtifactVersion": 7,
+			"policyVersion": "6",
+			"activationContractVersion": 2,
+			"phaseGraphSchemaVersion": 1,
+			"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+			"activationStateSchemaVersion": 2,
+			"evidenceHeaderSchemaVersion": 2,
+			"approvalEnvelopeSchemaVersion": 2,
+			"supersessionSchemaVersion": 1,
+			"credentialPolicySchemaVersion": 1
+		},
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"phaseId": "seed-valid",
+		"baselineSha": "152ee65754af56819de71c86667fce366013384868f4f5f7ad4b27fae3ad8c13",
+		"inputDigest": "8067ad02b0341c1547bd65c8e10a7977ecb848b0df4ca57776c024a1df87d5d1",
+		"transition": {
+			"phaseId": "seed-valid",
+			"baselineSha": "152ee65754af56819de71c86667fce366013384868f4f5f7ad4b27fae3ad8c13",
+			"inputDigest": "8067ad02b0341c1547bd65c8e10a7977ecb848b0df4ca57776c024a1df87d5d1",
+			"transitionDigest": "2d496c668c063b082fce8d10f0aa62c804edd85b7c75eb8ac91b68a1971bdfb9"
+		},
+		"repositoryId": "local:00000000-0000-4000-8000-000000000002",
+		"phaseContractDigest": "8b0109f7a9d886e6e0c1c92d4aab7f1af51283580f0fc00ca73339aa82f38d7d",
+		"result": "verified",
+		"producedAt": "2026-09-01T08:00:00.000Z",
+		"producer": "liftoff-governance-transition-engine",
+		"bodyDigest": "e084d575ffa00ba0692280f0b6537c27a10d0e261bea65b7f8158ff9ea2ee1b0"
+	},
+	"payload": {
+		"kind": "seed-valid.v1",
+		"status": "passed",
+		"planDigest": "08a388ffffbfab6c4d54ecd8955fee2c4daa70eac5b50a23966ec1deaf89599b",
+		"savedPlanDigest": "daf4acd49ff96e0b6d283cd137ffb815de37fca70353f0dcbf4b2860799ba90a"
+	}
+}

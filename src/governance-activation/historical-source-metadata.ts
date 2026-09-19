@@ -1,5 +1,8 @@
 import type { HistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
 import { historicalPhaseIds, type HistoricalPhaseId } from './historical-v1-phase-contracts.js';
+import { historicalV3PhaseIds } from './historical-v3.js';
+import { historicalV4Policy7PhaseGraph } from './historical-v4-policy7.js';
+import type { PhaseId } from '../domain/governance/activation/types.js';
 import {
   historicalIdentity, historyArray, historyDigest, historyEnum, historyExact, historyFail, historyLiteral,
   historyRecordId, historyString, historyStrings, historyTimestamp
@@ -15,7 +18,7 @@ export interface HistoricalGovernanceChangeMetadata {
   phaseGraphHash: string;
   baselineSha: string;
   phaseTaskMapping: readonly {
-    phaseId: HistoricalPhaseId; taskId: string; marker: string; policy: 'evidence-projection-v1';
+    phaseId: PhaseId; taskId: string; marker: string; policy: 'evidence-projection-v1';
   }[];
   currentPolicy: {
     phaseAuthority: 'managed-phase-graph';
@@ -27,7 +30,6 @@ export interface HistoricalGovernanceChangeMetadata {
   owner: string;
 }
 
-/** The published schema-1 metadata used the same 26-phase mapping in both historical families. */
 export function validateHistoricalGovernanceChangeMetadata(value: unknown): HistoricalGovernanceChangeMetadata {
   const label = 'historicalGovernanceChange';
   assertSafeHistoricalRecord(value, label);
@@ -36,12 +38,14 @@ export function validateHistoricalGovernanceChangeMetadata(value: unknown): Hist
     'baselineSha', 'phaseTaskMapping', 'currentPolicy', 'createdFrom', 'acknowledgedAt', 'owner'
   ], label);
   const identity = historicalIdentity(item.activationIdentity, `${label}.activationIdentity`);
+  const sourcePhaseIds = identity.activationContractVersion === 4 ? historicalV4Policy7PhaseGraph().phases.map((phase) => phase.id) :
+    identity.activationContractVersion === 3 ? historicalV3PhaseIds : historicalPhaseIds;
   historyLiteral(item.phaseGraphHash, identity.phaseGraphHash, `${label}.phaseGraphHash`);
   const phases = new Set<string>();
   const tasks = new Set<string>();
   const mappings = historyArray(item.phaseTaskMapping, `${label}.phaseTaskMapping`).map((entry) => {
     const mapping = historyExact(entry, ['phaseId', 'taskId', 'marker', 'policy'], `${label}.phaseTaskMapping`);
-    const phaseId = historyEnum(mapping.phaseId, historicalPhaseIds, `${label}.phaseId`);
+    const phaseId = historyEnum(mapping.phaseId, sourcePhaseIds, `${label}.phaseId`);
     const taskId = historyString(mapping.taskId, `${label}.taskId`);
     if (phases.has(phaseId) || tasks.has(taskId)) historyFail(label, 'contains duplicate phase or task mappings.');
     phases.add(phaseId);
@@ -52,7 +56,7 @@ export function validateHistoricalGovernanceChangeMetadata(value: unknown): Hist
       policy: historyLiteral(mapping.policy, 'evidence-projection-v1', `${label}.policy`)
     };
   });
-  if (phases.size !== historicalPhaseIds.length) historyFail(label, 'requires every published historical phase mapping.');
+  if (phases.size !== sourcePhaseIds.length) historyFail(label, 'requires every phase of the exact published historical family.');
   const policy = historyExact(item.currentPolicy, ['phaseAuthority', 'taskCompletion', 'approvalPolicy'], `${label}.currentPolicy`);
   const created = historyExact(item.createdFrom, ['kind', 'approvedFactDigest', 'evidenceIds'], `${label}.createdFrom`);
   return {

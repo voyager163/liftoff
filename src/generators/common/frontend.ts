@@ -12,18 +12,20 @@ import { renderFrontendDockerfile } from '../containers/images.js';
 import { scriptSourceString } from './values.js';
 import { renderDockerignore } from '../containers/context.js';
 
+import { resolvePackagedResource } from '../../adapters/packaged-assets/resource-catalog.js';
+
 export function addFrontendArtifacts(add: AddArtifact, plan: ApiProjectPlan, context: GeneratorContext): void {
   add('frontend-package', 'frontend', ['frontend', 'package.json'], renderFrontendPackage(plan, context));
   add('frontend-lock', 'frontend', ['frontend', 'package-lock.json'], context.npm["frontend"].lock);
   add('frontend-index', 'frontend', ['frontend', 'index.html'], renderFrontendIndex(plan));
   add('frontend-main', 'frontend', ['frontend', 'src', 'main.ts'], renderFrontendMain());
   add('frontend-app', 'frontend', ['frontend', 'src', 'App.vue'], renderFrontendApp(plan));
-  add('frontend-env-example', 'frontend', ['frontend', '.env.example'], 'VITE_API_BASE_URL=http://localhost:8000');
+  add('frontend-env-example', 'frontend', ['frontend', '.env.example'], resolvePackagedResource('templates.frontend.env-example').content);
   add('frontend-styles', 'frontend', ['frontend', 'src', 'styles.css'], renderFrontendStyles());
   add('frontend-vite-config', 'frontend', ['frontend', 'vite.config.ts'], renderFrontendViteConfig());
   add('frontend-tailwind-config', 'frontend', ['frontend', 'tailwind.config.ts'], renderFrontendTailwindConfig());
   add('frontend-dockerfile', 'frontend', ['frontend', 'Dockerfile'], renderFrontendDockerfile(context));
-  add('frontend-dockerignore', 'frontend', ['frontend', '.dockerignore'], renderDockerignore());
+  add('frontend-dockerignore', 'frontend', ['frontend', '.dockerignore'], resolvePackagedResource('templates.frontend.dockerignore').content);
 }
 
 export function renderFrontendPackage(plan: ApiProjectPlan, context: GeneratorContext): string {
@@ -35,12 +37,7 @@ export function renderFrontendIndex(plan: ApiProjectPlan): string {
 }
 
 export function renderFrontendMain(): string {
-  return `import { createApp } from 'vue';
-import App from './App.vue';
-import './styles.css';
-
-createApp(App).mount('#app');
-`;
+  return resolvePackagedResource('templates.frontend.main').content;
 }
 
 export function renderFrontendApp(plan: ApiProjectPlan): string {
@@ -156,26 +153,13 @@ ${plan.workload === 'genai' ? '        <p class="mt-2 text-sm text-slate-600">{{
 }
 
 export function renderFrontendStyles(): string {
-  return `@import "tailwindcss";
-`;
+  return resolvePackagedResource('templates.frontend.styles').content;
 }
 
 export function renderFrontendViteConfig(): string {
-  return `import { defineConfig } from 'vite';
-  import tailwindcss from '@tailwindcss/vite';
-  import vue from '@vitejs/plugin-vue';
-
-  export default defineConfig({ plugins: [vue(), tailwindcss()] });
-`;
+  return resolvePackagedResource('templates.frontend.vite-config').content;
 }
 
 export function renderFrontendTailwindConfig(): string {
-  return `import type { Config } from 'tailwindcss';
-
-export default {
-  content: ['./index.html', './src/**/*.{vue,ts}'],
-  theme: { extend: {} },
-  plugins: []
-} satisfies Config;
-`;
+  return resolvePackagedResource('templates.frontend.tailwind-config').content;
 }

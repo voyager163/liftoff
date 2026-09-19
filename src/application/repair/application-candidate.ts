@@ -1,10 +1,10 @@
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import { ApplicationInspectionError, applicationPathKey } from './application-files.js';
 import {
-  applicationBounds, type ApplicationDirectoryObservation, type ApplicationPatchCandidate
+  applicationBounds, type ApplicationDirectoryObservation, type ApplicationCandidate
 } from './application-types.js';
 
-export function applicationCandidateFiles(candidate: ApplicationPatchCandidate): ProjectFileSnapshot[] {
+export function applicationCandidateFiles(candidate: ApplicationCandidate): ProjectFileSnapshot[] {
   const files = new Map(candidate.snapshots.map((snapshot) => [applicationPathKey(snapshot.pathParts), snapshot]));
   for (const mutation of candidate.mutations) {
     files.set(applicationPathKey(mutation.pathParts), mutation.type === 'delete'
@@ -17,7 +17,7 @@ export function applicationCandidateFiles(candidate: ApplicationPatchCandidate):
   return [...files.values()];
 }
 
-export function applicationCandidateDirectories(candidate: ApplicationPatchCandidate): ApplicationDirectoryObservation[] {
+export function applicationCandidateDirectories(candidate: ApplicationCandidate): ApplicationDirectoryObservation[] {
   const directories = new Map(candidate.scope.directoryInventory.filter((item) => item.exists)
     .map((item) => [applicationPathKey(item.pathParts), structuredClone(item)]));
   for (const mutation of candidate.mutations) {
@@ -41,7 +41,7 @@ export function applicationCandidateDirectories(candidate: ApplicationPatchCandi
   return [...directories.values()];
 }
 
-export function assertApplicationCandidateBounds(candidate: ApplicationPatchCandidate): void {
+export function assertApplicationCandidateBounds(candidate: ApplicationCandidate): void {
   const files = applicationCandidateFiles(candidate).filter((item) => item.content !== undefined);
   const directories = applicationCandidateDirectories(candidate);
   if (files.length > applicationBounds.files ||

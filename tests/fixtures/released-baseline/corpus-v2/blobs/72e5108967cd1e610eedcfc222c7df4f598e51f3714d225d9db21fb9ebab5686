@@ -1,0 +1,41 @@
+{
+	"evidenceId": "committed-20260830T091500000Z",
+	"header": {
+		"schemaVersion": 1,
+		"repositoryId": "R_HISTORICAL_FLIGHT_LOG",
+		"identity": {
+			"liftoffVersion": "0.10.0",
+			"manifestArtifactVersion": 7,
+			"policyVersion": "6",
+			"activationContractVersion": 1,
+			"phaseGraphSchemaVersion": 1,
+			"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+			"activationStateSchemaVersion": 1,
+			"evidenceHeaderSchemaVersion": 1,
+			"approvalEnvelopeSchemaVersion": 1,
+			"supersessionSchemaVersion": 1,
+			"credentialPolicySchemaVersion": 1
+		},
+		"phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+		"phaseId": "committed",
+		"phaseContractDigest": "3b730de92254aa0e6d669fca5c8365dc0e6a2fefc6cd3d4630ca7d585dfa7714",
+		"inputDigest": "b44a1c59789ddfc424fa6eeba55c9c0d77f050300aa97d564cd89e197abc4696",
+		"baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+		"transition": {
+			"phaseId": "committed",
+			"baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+			"inputDigest": "b44a1c59789ddfc424fa6eeba55c9c0d77f050300aa97d564cd89e197abc4696",
+			"transitionDigest": "8af06d6ffd3d927eeacdb8eb448b01a0178417cfe6d809d817a990e4d1a63cec"
+		},
+		"producedAt": "2026-08-30T09:15:00.000Z",
+		"producer": "liftoff-governance-transition-engine",
+		"result": "verified"
+	},
+	"payload": {
+		"kind": "committed.v1",
+		"changeName": "bootstrap-flight-log",
+		"head": "cccccccccccccccccccccccccccccccccccccccc",
+		"branch": "develop",
+		"status": "verified-existing-commit"
+	}
+}

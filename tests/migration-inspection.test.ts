@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
 import { loadManifest } from '../src/application/project/manifest.js';
+import { preserveManifestProvenance } from '../src/application/project/manifest-provenance.js';
 import { buildProjectPlan } from '../src/application/project/planning.js';
 import { createUpdatePreviewDescriptor } from '../src/application/update/preview.js';
 import { executeLocalRevalidation, previewLocalRevalidation, type LocalRevalidationProgress } from '../src/application/update/revalidation.js';
@@ -13,12 +15,11 @@ import { writeProjectFile } from '../src/adapters/filesystem/project-files.js';
 import { commandShellForPlatform, formatShellCommand } from '../src/adapters/process/shell-command.js';
 import { canonicalSha256, isRecord } from '../src/domain/governance/activation/canonical-json.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
-import type { LiftoffManifest } from '../src/domain/project/contracts.js';
 import { assessGovernance } from '../src/governance-assessment/engine.js';
 import { loadActivationState } from '../src/governance-activation/activation-state.js';
 import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
 import {
-  migrationRevalidationPhaseIds, migrationStateFilePathParts, rawHistoryDigest,
+  migrationRevalidationPhaseIds, migrationStateFilePathParts,
   validateMigrationJournal, type MigrationRevalidationStatus
 } from '../src/governance-activation/history-contracts.js';
 import {
@@ -26,16 +27,22 @@ import {
 } from '../src/governance-activation/migration-history.js';
 import { readActivationEvidence } from '../src/governance-activation/read-only.js';
 import { formatCommand, type CommandRunner } from '../src/process-runner.js';
-import { buildArtifacts } from '../src/templates.js';
+import { buildArtifacts, buildManifest } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
 import { writeIndependentInfrastructureFixture } from './governance-activation-fixtures.js';
 import { CaptureStream } from './helpers.js';
+import * as retainedInputs from '../src/governance-activation/historical-inputs.js';
+import * as migrationHistory from '../src/governance-activation/migration-history.js';
 
 const roots: string[] = [];
+const timingIntervals = new Set<ReturnType<typeof setInterval>>();
 const subcommands = ['status', 'resume', 'verify'] as const;
 const journalOnlyBlocker = 'Local revalidation progress is unavailable; repair the journal write prerequisite before retrying.';
 afterEach(async () => {
+  for (const timer of timingIntervals) clearInterval(timer);
+  timingIntervals.clear();
+  vi.restoreAllMocks();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -59,12 +66,47 @@ function jsonReport(text: string): Record<string, unknown> {
 }
 
 async function linkedFixture(status: MigrationRevalidationStatus) {
+  const started = performance.now();
+  const operations = {
+    retainedInputs: { calls: 0, pending: 0, elapsedMs: 0, maximumMs: 0, maximumEntries: 0 },
+    migrationHistory: { calls: 0, pending: 0, elapsedMs: 0, maximumMs: 0, maximumEntries: 0 }
+  };
+  const timing = (stage: string, phaseId?: string | null) => {
+    if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') console.info(JSON.stringify({
+      kind: 'migration-inspection-source-stage', requestedStatus: status, stage, phaseId: phaseId ?? null,
+      elapsedMs: Math.round(performance.now() - started), operations
+    }));
+  };
+  if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') {
+    const measure = async <T>(name: keyof typeof operations, run: () => Promise<T>, count: (value: T) => number) => {
+      const entry = operations[name], begin = performance.now();
+      entry.calls++; entry.pending++;
+      try {
+        const result = await run();
+        entry.maximumEntries = Math.max(entry.maximumEntries, count(result));
+        return result;
+      } finally {
+        const elapsed = Math.round(performance.now() - begin);
+        entry.pending--; entry.elapsedMs += elapsed; entry.maximumMs = Math.max(entry.maximumMs, elapsed);
+      }
+    };
+    const capture = retainedInputs.captureMigrationRetainedProjectInputs;
+    const history = migrationHistory.inspectActivationMigrationHistory;
+    vi.spyOn(retainedInputs, 'captureMigrationRetainedProjectInputs').mockImplementation((...args) =>
+      measure('retainedInputs', () => capture(...args), (entries) => entries.length));
+    vi.spyOn(migrationHistory, 'inspectActivationMigrationHistory').mockImplementation((...args) =>
+      measure('migrationHistory', () => history(...args), (result) => result.status === 'committed' ? result.preconditions.length : 0));
+    const timer = setInterval(() => timing('operation-profile'), 5000);
+    timer.unref();
+    timingIntervals.add(timer);
+  }
   const base = path.resolve('.cache', `migration-inspection-${process.pid}-${randomUUID()}`);
   roots.push(base);
   const root = path.join(base, 'project with spaces');
   const userState = path.join(base, 'user-state');
   await writeHistoricalV1Fixture(root);
   await writeIndependentInfrastructureFixture(root);
+  timing('historical-fixture-created');
   const project = buildProjectPlan({
     projectName: 'Flight Log', projectType: 'standard', apiStack: 'node-fastify',
     cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'],
@@ -78,21 +120,20 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
     await mkdir(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', environment, '.terraform'), { recursive: true });
   }
   const migration = await planActivationHistoryMigration(root);
+  timing('historical-migration-inspected');
   if (migration.status !== 'eligible') throw new Error(`Expected frozen v1 eligibility: ${JSON.stringify(migration)}`);
   const sourceBytes = await bytes(root);
   const core = buildArtifacts(project).filter((artifact) => artifact.lifecycle === 'managed-core');
-  const targetManifest: LiftoffManifest = {
-    ...migration.inventory.manifest,
-    liftoffVersion,
-    governance: {
-      profile: 'single-maintainer-gitflow', policyVersion: '6', state: 'handoff-generated',
-      activationIdentity: currentActivationIdentity
-    },
-    managedArtifacts: core.map((artifact) => ({
-      logicalName: artifact.logicalName, category: artifact.category, pathParts: [...artifact.pathParts],
-      contentHash: `sha256:${rawHistoryDigest(Buffer.from(artifact.content))}`
-    }))
-  };
+  const originalManifest = await readFile(path.join(root, 'liftoff.manifest.json'));
+  const preserved = preserveManifestProvenance(migration.inventory.manifest, originalManifest);
+  const historicalFramework = migration.inventory.manifest.framework;
+  if (historicalFramework.state === 'uninitialized') throw new Error('Expected a released framework identity.');
+  const targetManifest = buildManifest(project, core, {
+    frameworkState: historicalFramework.state,
+    projectArtifacts: migration.inventory.manifest.projectArtifacts,
+    provenance: preserved.provenance
+  });
+  targetManifest.framework = historicalFramework;
   let ticks = 0;
   const startedAt = Date.now() - 60_000;
   const clock = () => new Date(startedAt + ticks++);
@@ -106,17 +147,18 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   });
   const receipt = await issueUpdatePreviewReceipt(root, [descriptor], updatePreview);
   const finalized = finalizeActivationHistoryMigration(migration, descriptor.fingerprint, clock());
-  for (const mutation of finalized.mutations) {
+  for (const mutation of [...finalized.mutations, ...(preserved.history ? [preserved.history] : [])]) {
     const destination = path.join(root, ...mutation.pathParts);
     if (mutation.type === 'delete') await rm(destination);
     else {
       await mkdir(path.dirname(destination), { recursive: true });
       await writeFile(destination, mutation.content, { mode: mutation.mode });
-      await chmod(destination, mutation.mode);
+      if (mutation.mode !== undefined) await chmod(destination, mutation.mode);
     }
   }
   for (const artifact of core) await writeProjectFile(root, [...artifact.pathParts], artifact.content);
   await writeProjectFile(root, ['liftoff.manifest.json'], JSON.stringify(targetManifest));
+  timing('successor-fixture-written');
   let journal = finalized.journal;
   async function recordProgress(progress: LocalRevalidationProgress): Promise<void> {
     const activePhase = progress.phaseId ?? (progress.status === 'blocked' ? 'seed-valid' : null);
@@ -140,6 +182,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
       }
     });
     await writeProjectFile(root, [...migrationStateFilePathParts], JSON.stringify(journal));
+    timing(`progress-${progress.status}`, progress.phaseId);
   }
   if (status === 'running') {
     await recordProgress({
@@ -149,6 +192,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   } else if (status === 'blocked' || status === 'complete') {
     const binding = canonicalSha256('Reviewed local fixture inputs');
     const preview = await previewLocalRevalidation({ projectRoot: root, targetManifest, protectedInputBinding: binding });
+    timing('local-preview-complete');
     const approvedCommands = new Set(preview.phases.flatMap((phase) =>
       phase.commands.map((entry) => formatCommand(entry.command))
     ));
@@ -172,8 +216,10 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
       runner, clock, onProgress: recordProgress
     });
     expect(result, JSON.stringify(result)).toMatchObject({ status });
+    timing('local-execution-complete');
   }
   expect(await inspectActivationMigrationHistory(root)).toMatchObject({ status: 'committed', journal });
+  timing('committed-history-rechecked');
   for (const file of migration.index.files) {
     expect(await readFile(path.join(root, ...file.copyPathParts))).toEqual(sourceBytes.get(file.originalPathParts.join('/')));
   }
@@ -186,12 +232,14 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
     throw new Error('Read-only inspection must not execute validation commands or contact a provider.');
   }) };
   async function inspect(command: typeof subcommands[number], json: boolean) {
+    timing(`inspection-start-${command}-${json ? 'json' : 'human'}`);
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
     const code = await runCommand(parseArgs(['governance', command, '--project', root, ...(json ? ['--json'] : [])]), {
       cwd: base, stdout, stderr, runner: inspectionRunner, updatePreview,
       terminal: { layout: 'plain', color: false }
     });
+    timing(`inspection-end-${command}-${json ? 'json' : 'human'}`);
     return { code, stdout: stdout.text(), stderr: stderr.text() };
   }
   return { root, userState, journal, receipt, inspect, inspectionRunner };
@@ -223,10 +271,10 @@ describe('linked migration inspection', {
       let sharedSummary: unknown;
       for (const command of subcommands) {
         const structured = await inspect(command, true);
-        expect(structured.code, structured.stdout + structured.stderr).toBe(0);
+        expect(structured.code, structured.stdout + structured.stderr).toBe(command === 'verify' ? 2 : 0);
         expect(structured.stderr).toBe('');
         const report = jsonReport(structured.stdout);
-        expect(report).toMatchObject({ schemaVersion: 2, command: `governance ${command}`, readOnly: true, migration: journal });
+        expect(report).toMatchObject({ schemaVersion: 3, command: `governance ${command}`, readOnly: true, migration: journal });
         expect(report.migrationSummary).toMatchObject({
           localCommit: journal.transaction,
           snapshot: {
@@ -238,6 +286,11 @@ describe('linked migration inspection', {
           currentProofRequired: true,
           remedy: status === 'complete' ? null : expect.stringContaining(checkCommand)
         });
+        if (status !== 'complete') {
+          expect(report.migrationSummary).toMatchObject({
+            remedy: expect.stringContaining(`Keep the committed v${journal.targetIdentity.activationContractVersion} successor`)
+          });
+        }
         if (sharedSummary === undefined) sharedSummary = report.migrationSummary;
         else expect(report.migrationSummary).toEqual(sharedSummary);
         if (command === 'verify') {
@@ -245,14 +298,14 @@ describe('linked migration inspection', {
         } else {
           expect(report.approvals).toEqual([]);
           expect(report.remoteBinding).toBeNull();
-          expect(report.nextReadyPhase).toBe(status === 'complete' || report.scope === 'activation' ? null : 'seed-valid');
+          expect(report.nextReadyPhase).toBe(status === 'complete' ? null : 'seed-valid');
           expect(report.phases).toEqual(expect.arrayContaining(migrationRevalidationPhaseIds.map((id) => expect.objectContaining({
             id, storedState: status === 'complete' ? 'verified' : 'pending',
             evidence: expect.objectContaining({ freshness: expect.objectContaining({ status: status === 'complete' ? 'fresh' : 'missing' }) })
           }))));
         }
         const human = await inspect(command, false);
-        expect(human.code, human.stdout + human.stderr).toBe(0);
+        expect(human.code, human.stdout + human.stderr).toBe(command === 'verify' ? 2 : 0);
         expect(human.stderr).toBe('');
         expect(human.stdout).toContain('Migration progress (journal)');
         expect(human.stdout).toContain(`Local migration: committed at ${journal.transaction.committedAt}`);

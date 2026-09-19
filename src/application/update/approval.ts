@@ -45,6 +45,19 @@ function isPromptCancellation(error: unknown): boolean {
   );
 }
 
+export function hasUsableApprovalTerminal<T extends Pick<UpdateApprovalContext, 'stdin' | 'stderr'>>(
+  context: T
+): context is T & { stdin: Readable } {
+  const input = context.stdin as (Readable & { isTTY?: boolean }) | undefined;
+  const output = context.stderr as NodeJS.WritableStream & {
+    isTTY?: boolean;
+    destroyed?: boolean;
+    writableEnded?: boolean;
+  };
+  return !!input && input.isTTY === true && !input.destroyed && !input.readableEnded && input.readable &&
+    output.isTTY === true && !output.destroyed && !output.writableEnded && output.writable;
+}
+
 // Consent only: the caller must match a preview first and recheck the plan under the project lock before writes.
 export async function requestUpdateApproval(
   { fingerprint, approvePlan, message }: UpdateApprovalRequest,
@@ -62,18 +75,11 @@ export async function requestUpdateApproval(
       : { status: 'mismatch', fingerprint, requestedFingerprint: approvePlan };
   }
 
-  const input = context.stdin as (Readable & { isTTY?: boolean }) | undefined;
-  const output = context.stderr as NodeJS.WritableStream & {
-    isTTY?: boolean;
-    destroyed?: boolean;
-    writableEnded?: boolean;
-  };
-  if (
-    !input || input.isTTY !== true || input.destroyed || input.readableEnded || !input.readable ||
-    output.isTTY !== true || output.destroyed || output.writableEnded || !output.writable
-  ) {
+  if (!hasUsableApprovalTerminal(context)) {
     return { status: 'required', fingerprint };
   }
+  const input = context.stdin;
+  const output = context.stderr;
 
   try {
     const prompt = context.approveUpdatePlan ?? (await import('@inquirer/prompts')).confirm;

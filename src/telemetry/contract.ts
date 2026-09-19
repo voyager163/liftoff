@@ -30,6 +30,12 @@ export const telemetryCommands = [
   'update',
   'repair',
   'upgrade',
+  'installation:migrate',
+  'adopt',
+  'skills:install',
+  'skills:update',
+  'skills:remove',
+  'skills:migrate',
   'migrate',
   'doctor',
   'governance',
@@ -53,7 +59,17 @@ export const telemetryCommands = [
   'infra:output'
 ] as const;
 
-export const telemetryExcludedCommands = ['governance:assess'] as const;
+export const telemetryExcludedCommands = [
+  'governance:assess',
+  'assess',
+  'capabilities',
+  'installation',
+  'installation:inspect',
+  'skills',
+  'skills:list',
+  'skills:plan',
+  'skills:inspect'
+] as const;
 
 export type TelemetryCommand = (typeof telemetryCommands)[number];
 export type TelemetryOutcome = 'success' | 'failure';
@@ -78,6 +94,8 @@ export interface TelemetryStorageRecord {
 export interface TelemetryCommandInput {
   command?: string;
   subcommand?: string;
+  positional?: readonly string[];
+  interactive?: boolean;
   flags: Readonly<Record<string, unknown>>;
 }
 
@@ -96,8 +114,40 @@ export function isTelemetryCliVersion(value: unknown): value is string {
 export function isTelemetryExcludedCommand(input: TelemetryCommandInput): boolean {
   if (input.command === 'repair' &&
       ['capabilities', 'inspect-layout'].some((flag) => input.flags[flag] === true)) return true;
+  if (input.command === 'help' && ['installation', 'skills', 'adopt', 'assess', 'capabilities'].includes(input.positional?.[0] ?? '')) return true;
+  if (input.command === 'installation' &&
+      (input.flags.help === true || input.flags.check === true || input.flags.recover === true ||
+       (input.subcommand === 'migrate' && typeof input.flags['approve-plan'] !== 'string' &&
+        (input.interactive !== true || input.flags.json === true)))) return true;
+  if (input.command === 'skills' &&
+      (input.flags.help === true || input.flags.check === true ||
+       (typeof input.flags['approve-plan'] !== 'string' &&
+        (input.interactive !== true || input.flags.json === true)))) return true;
+  if (input.command === 'adopt' &&
+      (input.flags.help === true || input.flags.check === true ||
+       (input.flags.recover !== true && typeof input.flags['approve-plan'] !== 'string' &&
+        typeof input.flags['verify-plan'] !== 'string' &&
+        (input.interactive !== true || input.flags.json === true)))) return true;
   const candidate = input.subcommand ? `${input.command}:${input.subcommand}` : input.command;
   return telemetryExcludedCommands.some((command) => command === candidate);
+}
+
+export function canPersistTelemetryNotice(input: TelemetryCommandInput): boolean {
+  if (isTelemetryExcludedCommand(input) || input.flags.help === true ||
+      input.flags.check === true || input.command === undefined) {
+    return false;
+  }
+  if (['help', 'version', 'plan', 'patterns', 'providers', 'regions', 'validate', 'doctor', 'dev', 'infra']
+    .includes(input.command)) {
+    return false;
+  }
+  if (input.command === 'governance') {
+    if (input.subcommand === undefined || ['status', 'plan', 'resume', 'verify'].includes(input.subcommand)) {
+      return false;
+    }
+    if (input.subcommand === 'apply-next' && input.flags.execute !== true) return false;
+  }
+  return true;
 }
 
 export function canonicalTelemetryCommand(input: TelemetryCommandInput): TelemetryCommand | undefined {

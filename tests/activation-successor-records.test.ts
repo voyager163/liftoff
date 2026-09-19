@@ -1,11 +1,13 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, mkdir, readFile, readdir, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { canonicalPhaseGraph, currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
 import {
-  historicalV1ActivationIdentity, historicalV2ActivationIdentity, resolveActivationCompatibility, buildActivationCompatibilityMap
+  historicalV1ActivationIdentity, historicalV2ActivationIdentity, historicalV3ActivationIdentity, historicalV4Policy7ActivationIdentity,
+  resolveActivationCompatibility, buildActivationCompatibilityMap
 } from '../src/domain/governance/policy/identity.js';
 import { validateApprovalEnvelope, validateEvidenceHeader, validateUserActivationState } from '../src/domain/governance/activation/validators.js';
 import {
@@ -34,6 +36,19 @@ import { historicalFixtureGraph } from './fixtures/activation-v1/graph.js';
 import { buildHistoricalV2Fixture, writeHistoricalV2Fixture } from './fixtures/activation-v2/fixture.js';
 import { historicalV1PhaseContractDigests } from '../src/governance-activation/historical-v1-phase-contracts.js';
 import { loadActivationState } from '../src/governance-activation/activation-state.js';
+import { fixturePlan, successorFixtureManifest } from './governance-activation-fixtures.js';
+import { approvalRequestForSavedPlan, canonicalApprovalEnvelopeHash } from '../src/domain/governance/activation/approvals.js';
+import { writeGovernanceApprovalAuthority } from '../src/governance-activation/authority-records.js';
+import { inspectCurrentActivationEvidence } from '../src/governance-activation/read-only.js';
+import { inspectGovernance } from '../src/application/repository-governance/inspection.js';
+import { inspectProjectUpdate } from '../src/application/update/inspection.js';
+import { governanceCommand } from '../src/governance-activation/commands.js';
+import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
+import { runCommand } from '../src/commands.js';
+import { parseArgs } from '../src/args.js';
+import { PresentationSession } from '../src/terminal.js';
+import type { CommandRunner } from '../src/process-runner.js';
+import { CaptureStream } from './helpers.js';
 
 const roots = new Set<string>();
 const now = new Date('2026-09-12T00:00:00.000Z');
@@ -99,22 +114,90 @@ async function commit(directory: string, sourceManifest: ReturnType<typeof build
   const plan = await eligible(directory);
   const finalized = finalizeActivationHistoryMigration(plan, approved, now);
   await install(directory, finalized.mutations);
-  await writeJson(directory, ['liftoff.manifest.json'], {
-    ...sourceManifest, liftoffVersion: '0.12.0',
-    governance: { ...sourceManifest.governance, activationIdentity: currentActivationIdentity }
-  });
+  await writeJson(directory, ['liftoff.manifest.json'], await successorFixtureManifest(directory));
   await writeJson(directory, ['.liftoff', 'governance', 'phase-graph.json'], canonicalPhaseGraph);
   return { plan, finalized };
 }
 
 describe('exact published source readers and successor declarations', () => {
-  it.each([1, 2])('rejects valid historical v%s through its strict reader with a v3 diagnostic', async (family) => {
+  it('retains the selected private authority namespace through migrated-project readers and public inspections', async () => {
+    const project = await fixture();
+    await commit(project.root, project.source.manifest);
+    const home = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-migrated-authority-')));
+    roots.add(home);
+    const storage = { homedir: home, repositoryRoot: project.root, env: {}, clock: () => now };
+    const runner: CommandRunner = {
+      async run(command) {
+        if (command.executable !== 'git') throw new Error('This metadata fixture cannot execute project or provider commands.');
+        return { status: 128, stdout: '', stderr: 'not a git repository', displayCommand: 'fixture Git metadata' };
+      }
+    };
+    const original = await inspectGovernance(project.root, runner, now, { storage });
+    const phase = canonicalPhaseGraph.phases.find((entry) => entry.id === 'committed')!;
+    const plan = fixturePlan(original.contexts[phase.id], original.state, now.toISOString(), {}, project.root);
+    const approval = validateApprovalEnvelope({
+      ...approvalRequestForSavedPlan(plan, phase, original.state),
+      schemaVersion: 4, id: plan.approval.envelopeId!, approver: 'fixture-owner',
+      approvedAt: plan.createdAt, expiresAt: plan.expiresAt
+    });
+    expect(canonicalApprovalEnvelopeHash(approval)).toBe(plan.approval.envelopeHash);
+    await writeGovernanceApprovalAuthority(project.root, canonicalSha256(plan), approval, storage);
+    await writeJson(project.root, ['governance', 'approvals', `${approval.id}.json`], approval);
+    const before = await bytes(project.root);
+
+    expect(await loadActivationState(project.root, storage)).toMatchObject({ state: { identity: currentActivationIdentity } });
+    expect(await inspectActivationMigrationHistory(project.root, storage)).toMatchObject({ status: 'committed' });
+    expect(await planActivationHistoryMigration(project.root, { storage })).toMatchObject({ status: 'current' });
+    expect(await planHistoricalActivationStateMigration(project.root, now.toISOString(), {}, storage)).toMatchObject({ status: 'current' });
+    expect(await inspectCurrentActivationEvidence(project.root, original.manifest, { runner, now, storage })).toMatchObject({ status: 'inspected' });
+    expect(await inspectProjectUpdate(project.root, { runner, storage })).toMatchObject({
+      stateMigration: { status: 'current' }, historyMigration: { status: 'current' }
+    });
+    expect((await governanceDoctorChecks(project.root, original.manifest, now, storage))
+      .some((check) => check.id === 'governance-identity-incompatible')).toBe(false);
+    const updateOut = new CaptureStream();
+    const updateErr = new CaptureStream();
+    const updateCode = await runCommand(parseArgs(['update', '--check', '--json']), {
+      cwd: project.root, runner, stdout: updateOut, stderr: updateErr,
+      updatePreview: storage, updateNow: () => now, env: {}
+    });
+    expect(updateCode, updateOut.text() + updateErr.text()).toBe(2);
+    expect(JSON.parse(updateOut.text())).toMatchObject({ activationMigration: { status: 'committed' } });
+
+    for (const subcommand of ['status', 'plan', 'resume', 'verify']) {
+      const stdout = new CaptureStream();
+      const stderr = new CaptureStream();
+      const code = await governanceCommand(parseArgs(['governance', subcommand, '--json']), {
+        cwd: project.root, runner, storage, presentation: new PresentationSession({ stdout, stderr, json: true })
+      });
+      expect(code, stdout.text() + stderr.text()).toBe(subcommand === 'verify' ? 2 : 0);
+      expect(JSON.parse(stdout.text())).toMatchObject({
+        command: `governance ${subcommand}`, activationIdentity: currentActivationIdentity
+      });
+    }
+    const assessmentOut = new CaptureStream();
+    const assessmentErr = new CaptureStream();
+    await governanceCommand(parseArgs(['governance', 'assess', '--json']), {
+      cwd: project.root, runner, storage,
+      presentation: new PresentationSession({ stdout: assessmentOut, stderr: assessmentErr, json: true })
+    });
+    const assessment = JSON.parse(assessmentOut.text());
+    expect(assessment).toMatchObject({
+      projectIdentity: { availability: 'known', stateSource: 'user' },
+      snapshot: { inputsStable: true }
+    });
+    expect(assessment.diagnostics).toContainEqual(expect.objectContaining({ code: 'activation-revalidation-blocked' }));
+    await expect(loadActivationState(project.root, { ...storage, homedir: await root() })).rejects.toThrow(/no project-bound authority/);
+    expect(await bytes(project.root)).toEqual(before);
+  });
+
+  it.each([1, 2])('rejects valid historical v%s through its strict reader with a v4 diagnostic', async (family) => {
     const directory = await root();
     if (family === 1) await writeHistoricalV1Fixture(directory);
     else await writeHistoricalV2Fixture(directory);
     const before = await bytes(directory);
     await expect(loadActivationState(directory)).rejects.toThrow(new RegExp(
-      `Historical activation v${family} state is diagnostic-only.*v3 successor`
+      `Historical activation v${family} state is diagnostic-only.*v4 successor`
     ));
     expect(await bytes(directory)).toEqual(before);
   });
@@ -151,14 +234,14 @@ describe('exact published source readers and successor declarations', () => {
     expect(() => validateApprovalEnvelope(v2.approvals[0])).toThrow();
   });
 
-  it('declares only direct v1/v2-to-v3 lanes and diagnostic source readability', () => {
+  it('declares only exact registered successor lanes and diagnostic source readability', () => {
     const lanes = packagedActivationSuccessorMigrations();
-    expect(lanes.map((lane) => lane.id)).toEqual(['activation-v1-to-v3', 'activation-v2-to-v3']);
-    expect(lanes.map((lane) => lane.fromIdentity)).toEqual([historicalV1ActivationIdentity, historicalV2ActivationIdentity]);
+    expect(lanes.map((lane) => lane.id)).toEqual(['activation-v1-to-v4', 'activation-v2-to-v4', 'activation-v3-to-v4', 'activation-v4-policy7-to-policy8']);
+    expect(lanes.map((lane) => lane.fromIdentity)).toEqual([historicalV1ActivationIdentity, historicalV2ActivationIdentity, historicalV3ActivationIdentity, historicalV4Policy7ActivationIdentity]);
     expect(lanes.every((lane) => canonicalSha256(lane.toIdentity) === canonicalSha256(currentActivationIdentity))).toBe(true);
     const metadata = buildGovernanceCompatibilityMetadata([], [], []);
-    expect(metadata.schemaVersion).toBe(4);
-    expect(metadata.activation.historicalReadability.readers).toEqual(['activation-v1', 'activation-v2']);
+    expect(metadata.schemaVersion).toBe(5);
+    expect(metadata.activation.historicalReadability.readers).toEqual(['activation-v1', 'activation-v2', 'activation-v3', 'activation-v4-policy7']);
     expect(validateGovernanceCompatibilityMetadata(metadata)).toEqual(metadata);
     for (const identity of [historicalV1ActivationIdentity, historicalV2ActivationIdentity]) {
       expect(resolveActivationCompatibility(identity, buildActivationCompatibilityMap([identity]))).toMatchObject({ compatible: false });
@@ -192,7 +275,7 @@ describe('exact published source readers and successor declarations', () => {
     await writeFile(path.join(project.root, 'backend', 'src', 'index.ts'), 'changed application; old proof is historical\n');
     expect(project.source.manifest.liftoffVersion).toBe('0.11.3');
     const plan = await eligible(project.root);
-    expect(plan.semanticPlan.laneId).toBe('activation-v2-to-v3');
+    expect(plan.semanticPlan.laneId).toBe('activation-v2-to-v4');
     expect(plan.index.sourceIdentity.liftoffVersion).toBe('0.11.0');
     expect(Date.parse(project.source.approvals[0].expiresAt)).toBeLessThan(now.getTime());
     expect(validateHistoricalV2ApprovalEnvelope(project.source.approvals[0])).toEqual(project.source.approvals[0]);
@@ -301,24 +384,24 @@ describe('not-started versus orphaned execution records', () => {
 });
 
 describe('byte-preserving successor commits and immutable history', () => {
-  it('creates a strict 29-phase v3 successor with no copied evidence, approvals, remote binding, or state', async () => {
+  it('creates a strict 35-phase v4 successor with no copied evidence, approvals, remote binding, or state', async () => {
     const project = await fixture();
     const before = await bytes(project.root);
     const plan = await eligible(project.root);
     expect(await bytes(project.root)).toEqual(before);
     const result = finalizeActivationHistoryMigration(plan, approved, now);
     expect(result.successor.identity).toEqual(currentActivationIdentity);
-    expect(result.successor.schemaVersion).toBe(3);
+    expect(result.successor.schemaVersion).toBe(4);
     expect(result.successor.repository.id).toBe(project.source.state.repository.id);
     expect(result.successor.remoteBinding).toBeUndefined();
     expect(result.successor.bootstrapState).toBeUndefined();
-    expect(Object.keys(result.successor.phases)).toHaveLength(29);
+    expect(Object.keys(result.successor.phases)).toHaveLength(35);
     expect(Object.values(result.successor.phases).every((phase) =>
       phase.state === 'pending' && !phase.evidence.length && !phase.approvals.length)).toBe(true);
     for (const phase of ['bootstrap-workflow-source-ready', 'application-prerequisites-ready', 'application-artifact-ready'] as const) {
       expect(result.successor.phases[phase].state).toBe('pending');
     }
-    expect(result.journal.laneId).toBe('activation-v2-to-v3');
+    expect(result.journal.laneId).toBe('activation-v2-to-v4');
     expect(validateMigrationJournal(result.journal)).toEqual(result.journal);
     for (const file of plan.index.files) {
       const copy = result.mutations.find((mutation) => mutation.type === 'write' && mutation.pathParts.join('/') === file.copyPathParts.join('/'));

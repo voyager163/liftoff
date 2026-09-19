@@ -8,6 +8,10 @@ import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
+import { environmentValue } from '../../domain/workstation/executables.js';
+import {
+  windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryFits, windowsWorkingDirectoryRemedy
+} from '../../domain/execution/windows-working-directory.js';
 import { resolvePackageFile } from '../packaged-assets/package-root.js';
 import {
   defaultWindowsJobControllerId,
@@ -25,21 +29,36 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'c91996e7d63b20fe3a571eb2100357f3f2e5018a909f8af818c39c183ba99ec6';
+export const windowsJobControllerAssetDigest = 'a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909';
+
+export type WindowsControllerSpawnFn = (
+  executable: string,
+  args: readonly string[],
+  options: {
+    cwd?: string;
+    env?: NodeJS.ProcessEnv;
+    shell?: boolean | string;
+    windowsHide?: boolean;
+    stdio?: ['ignore', 'pipe', 'pipe'];
+  }
+) => ChildProcess;
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
+  expectedDigest?: string;
   powershellPath?: string;
   skipAssetVerification?: boolean;
+  spawnController?: WindowsControllerSpawnFn;
 }
 
-export async function verifyWindowsJobControllerAsset(customPath?: string): Promise<string> {
+export async function verifyWindowsJobControllerAsset(customPath?: string, expectedDigest?: string): Promise<string> {
   const assetPath = customPath ?? resolvePackageFile(...windowsJobControllerAssetPathParts);
   const bytes = await readFile(assetPath);
   const digest = createHash('sha256').update(bytes).digest('hex');
-  if (digest !== windowsJobControllerAssetDigest) {
+  const targetDigest = expectedDigest ?? windowsJobControllerAssetDigest;
+  if (digest !== targetDigest) {
     throw new Error(
-      `Windows Job Object controller asset integrity failure: found ${digest}; expected ${windowsJobControllerAssetDigest}.`
+      `Windows Job Object controller asset integrity failure: found ${digest}; expected ${targetDigest}.`
     );
   }
   return assetPath;
@@ -61,7 +80,7 @@ export function resolveTargetExecutableCommand(
   env: NodeJS.ProcessEnv = {},
   cwd: string = process.cwd()
 ): ResolvedTargetCommand | null {
-  const targetPath = env.PATH ?? env.Path ?? '';
+  const targetPath = environmentValue(env, 'PATH', 'win32') ?? '';
   const searchDirs = [cwd, ...targetPath.split(path.delimiter).filter(Boolean)];
 
   if (command.executable === 'npm' || command.executable === 'npm.cmd') {
@@ -115,7 +134,7 @@ export function resolveTargetExecutableCommand(
 
   const isWin = process.platform === 'win32';
   const pathext = isWin
-    ? (env.PATHEXT ?? env.PathExt ?? '.EXE;.COM;.CMD;.BAT').split(';').filter(Boolean)
+    ? (environmentValue(env, 'PATHEXT', 'win32') ?? '.EXE;.COM;.CMD;.BAT').split(';').filter(Boolean)
     : [''];
   // On Windows, prioritize binary executables (.exe, .com)
   const extensions = path.extname(command.executable)
@@ -137,7 +156,7 @@ export function resolveTargetExecutableCommand(
 export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
   const systemRoot = process.env.SystemRoot ?? process.env.SYSTEMROOT ?? 'C:\\Windows';
   const windir = process.env.WINDIR ?? process.env.windir ?? systemRoot;
-  const systemDrive = process.env.SystemDrive ?? process.env.SYSTEMDRIVE ?? 'C:';
+  const systemDrive = process.env.SystemDrive ?? process.env.SYSTEMDRIVE ?? (systemRoot.slice(0, 2) || 'C:');
   const comspec = process.env.COMSPEC ?? process.env.ComSpec ?? path.join(systemRoot, 'System32', 'cmd.exe');
   const controllerPathDirs = [
     path.dirname(process.execPath),
@@ -151,14 +170,10 @@ export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
 
   const env: NodeJS.ProcessEnv = {
     SystemRoot: systemRoot,
-    SYSTEMROOT: systemRoot,
     WINDIR: windir,
-    windir: windir,
     SystemDrive: systemDrive,
     COMSPEC: comspec,
-    ComSpec: comspec,
     PATH: controllerPath,
-    Path: controllerPath,
     PATHEXT: process.env.PATHEXT ?? '.COM;.EXE;.BAT;.CMD;.VBS;.JS;.WS'
   };
   const tempDir = process.env.TEMP ?? process.env.TMP ?? tmpdir();
@@ -176,20 +191,30 @@ export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
   return env;
 }
 
-async function readBoundedFile(filePath: string, maxBytes: number): Promise<Buffer> {
+async function readBoundedLogFile(filePath: string, maxBytes: number, requiredAfterDispatch: boolean): Promise<Buffer> {
   if (maxBytes <= 0) return Buffer.alloc(0);
   let fileHandle;
   try {
     fileHandle = await open(filePath, 'r');
     const stat = await fileHandle.stat();
+    if (!stat.isFile()) {
+      throw new Error(`Execution log "${filePath}" is not a regular file; concurrent replacement or directory link detected.`);
+    }
     const bytesToRead = Math.min(stat.size, maxBytes);
     const buffer = Buffer.alloc(bytesToRead);
     if (bytesToRead > 0) {
-      await fileHandle.read(buffer, 0, bytesToRead, 0);
+      const { bytesRead } = await fileHandle.read(buffer, 0, bytesToRead, 0);
+      if (bytesRead !== bytesToRead) {
+        throw new Error(`Incomplete read of execution log "${filePath}": expected ${bytesToRead} bytes, got ${bytesRead}.`);
+      }
     }
     return buffer;
-  } catch {
-    return Buffer.alloc(0);
+  } catch (err) {
+    const code = err && typeof err === 'object' && 'code' in err ? (err as { code: unknown }).code : undefined;
+    if (code === 'ENOENT' && !requiredAfterDispatch) {
+      return Buffer.alloc(0);
+    }
+    throw err instanceof Error ? err : new Error(String(err));
   } finally {
     await fileHandle?.close().catch(() => {});
   }
@@ -203,6 +228,7 @@ export async function runWindowsJobCommand(
   const displayCommand = [command.executable, ...command.args].join(' ');
   const timeoutMs = options.timeoutMs ?? 120_000;
   const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
+  const effectiveCwd = path.resolve(options.cwd ?? process.cwd());
 
   if (options.signal?.aborted) {
     return {
@@ -220,11 +246,19 @@ export async function runWindowsJobCommand(
     };
   }
 
+  if (process.platform === 'win32' && !windowsWorkingDirectoryFits(effectiveCwd)) {
+    return {
+      command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+      processTreeSettled: true, processSpawned: false,
+      errorCode: windowsWorkingDirectoryErrorCode, errorMessage: windowsWorkingDirectoryRemedy
+    };
+  }
+
   let scriptPath: string;
   try {
     scriptPath = runnerOptions.skipAssetVerification
       ? (runnerOptions.assetPath ?? resolvePackageFile(...windowsJobControllerAssetPathParts))
-      : await verifyWindowsJobControllerAsset(runnerOptions.assetPath);
+      : await verifyWindowsJobControllerAsset(runnerOptions.assetPath, runnerOptions.expectedDigest);
   } catch (error) {
     return {
       command,
@@ -258,7 +292,7 @@ export async function runWindowsJobCommand(
   }
 
   const powershellPath = resolveWindowsPowerShellPath(runnerOptions.powershellPath);
-  if (!existsSync(powershellPath)) {
+  if (!runnerOptions.spawnController && !existsSync(powershellPath)) {
     return {
       command,
       displayCommand,
@@ -308,7 +342,6 @@ export async function runWindowsJobCommand(
   const session = new WindowsJobExecutionSession();
   session.onControllerReady(defaultWindowsJobControllerId);
 
-  const effectiveCwd = options.cwd ?? process.cwd();
   const resolvedTarget = resolveTargetExecutableCommand(command, options.env, effectiveCwd);
   if (!resolvedTarget) {
     return {
@@ -352,7 +385,9 @@ export async function runWindowsJobCommand(
     let spawnRequestDispatched = false;
     let settled = false;
     let incomingBuffer = Buffer.alloc(0);
-    let supervisorTimer: NodeJS.Timeout | null = null;
+    let startupTimer: NodeJS.Timeout | null = null;
+    let dispatchAckTimer: NodeJS.Timeout | null = null;
+    let commandTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
 
     const safeUnlink = async (file: string): Promise<boolean> => {
@@ -372,9 +407,17 @@ export async function runWindowsJobCommand(
       if (settled) return;
       settled = true;
 
-      if (supervisorTimer) {
-        clearTimeout(supervisorTimer);
-        supervisorTimer = null;
+      if (startupTimer) {
+        clearTimeout(startupTimer);
+        startupTimer = null;
+      }
+      if (dispatchAckTimer) {
+        clearTimeout(dispatchAckTimer);
+        dispatchAckTimer = null;
+      }
+      if (commandTimer) {
+        clearTimeout(commandTimer);
+        commandTimer = null;
       }
       if (abortHandler && options.signal) {
         options.signal.removeEventListener('abort', abortHandler);
@@ -393,38 +436,50 @@ export async function runWindowsJobCommand(
 
       let capturedStdout = result.stdout ?? '';
       let capturedStderr = result.stderr ?? '';
+      let logReadError: Error | null = null;
 
       if (!capturedStdout && !capturedStderr) {
         try {
-          const stdoutBuf = await readBoundedFile(stdoutFile, maxOutputBytes);
+          const stdoutBuf = await readBoundedLogFile(stdoutFile, maxOutputBytes, spawnRequestDispatched);
           const remainingBytes = Math.max(0, maxOutputBytes - stdoutBuf.length);
-          const stderrBuf = await readBoundedFile(stderrFile, remainingBytes);
+          const stderrBuf = await readBoundedLogFile(stderrFile, remainingBytes, spawnRequestDispatched);
 
           const stdoutDecoder = new StringDecoder('utf8');
           capturedStdout = stdoutDecoder.write(stdoutBuf) + stdoutDecoder.end();
 
           const stderrDecoder = new StringDecoder('utf8');
           capturedStderr = stderrDecoder.write(stderrBuf) + stderrDecoder.end();
-        } catch { /* ignore */ }
+        } catch (err) {
+          logReadError = err instanceof Error ? err : new Error(String(err));
+        }
       }
 
-      const stdoutCleaned = await safeUnlink(stdoutFile);
-      const stderrCleaned = await safeUnlink(stderrFile);
-      const cleanupFailed = !stdoutCleaned || !stderrCleaned;
+      // Preserve potentially active output files on uncertain settlement.
+      // Only delete exact attributable owned files after safe settlement.
+      let cleanupFailed = false;
+      const initialSettled = Boolean(result.processTreeSettled) && logReadError === null;
+      if (initialSettled) {
+        const stdoutCleaned = await safeUnlink(stdoutFile);
+        const stderrCleaned = await safeUnlink(stderrFile);
+        cleanupFailed = !stdoutCleaned || !stderrCleaned;
+      }
 
-      const determinedSpawned = result.processSpawned ?? (
+      const determinedSpawned = spawnRequestDispatched || (result.processSpawned ?? (
         session.getState() === 'root-started' ||
-        session.getState() === 'settled' ||
-        spawnRequestDispatched
-      );
+        session.getState() === 'settled'
+      ));
 
-      const effectiveSettled = cleanupFailed ? false : result.processTreeSettled;
-      const effectiveErrorCode = cleanupFailed
-        ? (result.errorCode ?? 'LOG_CLEANUP_FAILED')
-        : result.errorCode;
-      const effectiveErrorMessage = cleanupFailed
-        ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to clean up temporary execution log files.`
-        : result.errorMessage;
+      const effectiveSettled = (cleanupFailed || logReadError !== null) ? false : result.processTreeSettled;
+      const effectiveErrorCode = logReadError !== null
+        ? (result.errorCode ?? 'LOG_READ_FAILED')
+        : cleanupFailed
+          ? (result.errorCode ?? 'LOG_CLEANUP_FAILED')
+          : result.errorCode;
+      const effectiveErrorMessage = logReadError !== null
+        ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to read execution logs: ${logReadError.message}`
+        : cleanupFailed
+          ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to clean up temporary execution log files.`
+          : result.errorMessage;
 
       resolve({
         command,
@@ -455,17 +510,16 @@ export async function runWindowsJobCommand(
       options.signal.addEventListener('abort', abortHandler, { once: true });
     }
 
-    if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
-      supervisorTimer = setTimeout(() => {
-        void finish({
-          timedOut: true,
-          processTreeSettled: false,
-          processSpawned: spawnRequestDispatched,
-          errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement.`
-        });
-      }, timeoutMs + 5000);
-    }
+    const startupTimeoutMs = 30_000;
+    startupTimer = setTimeout(() => {
+      void finish({
+        timedOut: true,
+        processTreeSettled: false,
+        processSpawned: false,
+        errorCode: 'CONTROLLER_STARTUP_TIMEOUT',
+        errorMessage: `Supervisor timeout: Windows PowerShell controller failed to start and authenticate within ${startupTimeoutMs}ms.`
+      });
+    }, startupTimeoutMs);
 
     const server = net.createServer((socket) => {
       if (connected) {
@@ -537,6 +591,10 @@ export async function runWindowsJobCommand(
         try {
           session.authenticateControllerReady(r);
           authenticated = true;
+          if (startupTimer) {
+            clearTimeout(startupTimer);
+            startupTimer = null;
+          }
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -553,6 +611,17 @@ export async function runWindowsJobCommand(
           const framed = frameControlMessage(spawnReq);
           clientSocket?.write(framed);
           spawnRequestDispatched = true;
+
+          const dispatchAckTimeoutMs = timeoutMs > 0 && Number.isFinite(timeoutMs) ? Math.min(timeoutMs, 15_000) : 15_000;
+          dispatchAckTimer = setTimeout(() => {
+            void finish({
+              timedOut: true,
+              processTreeSettled: false,
+              processSpawned: true,
+              errorCode: 'SUPERVISOR_TIMEOUT',
+              errorMessage: `Supervisor timeout: Controller did not acknowledge root process start within ${dispatchAckTimeoutMs}ms.`
+            });
+          }, dispatchAckTimeoutMs);
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -569,8 +638,23 @@ export async function runWindowsJobCommand(
           errorMessage: 'Control pipe client sent message before authenticating with ready frame.'
         });
       } else if (r.kind === 'ack') {
+        if (dispatchAckTimer) {
+          clearTimeout(dispatchAckTimer);
+          dispatchAckTimer = null;
+        }
         try {
           session.onRootStartAcknowledged(r as unknown as WindowsJobControlAck);
+          const settlementGraceMs = options.settlementWaitMs ?? 5_000;
+          const commandDeadlineMs = (timeoutMs > 0 && Number.isFinite(timeoutMs) ? timeoutMs : 120_000) + settlementGraceMs;
+          commandTimer = setTimeout(() => {
+            void finish({
+              timedOut: true,
+              processTreeSettled: false,
+              processSpawned: true,
+              errorCode: 'SUPERVISOR_TIMEOUT',
+              errorMessage: `Supervisor timeout: Command execution in Windows Job Object exceeded ${timeoutMs}ms without reporting settlement within ${settlementGraceMs}ms grace.`
+            });
+          }, commandDeadlineMs);
         } catch (err) {
           if (err instanceof WindowsJobAdmissionDeniedError) {
             void finish({
@@ -589,6 +673,10 @@ export async function runWindowsJobCommand(
           }
         }
       } else if (r.kind === 'response') {
+        if (commandTimer) {
+          clearTimeout(commandTimer);
+          commandTimer = null;
+        }
         try {
           const validated = session.ingestResponse(r);
           const outputLimitExceeded = Boolean(validated.outputLimitExceeded);
@@ -641,7 +729,8 @@ export async function runWindowsJobCommand(
       ];
 
       const hostEnv = buildWindowsControllerHostEnvironment();
-      psProcess = spawn(powershellPath, psArgs, {
+      const spawnFn = runnerOptions.spawnController ?? spawn;
+      psProcess = spawnFn(powershellPath, psArgs, {
         cwd: process.cwd(),
         env: hostEnv,
         shell: false,

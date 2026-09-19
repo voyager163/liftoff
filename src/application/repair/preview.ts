@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import path from 'node:path';
 import {
   createScopedUserLocalRecordStore, type UpdatePreviewOptions
@@ -12,20 +11,15 @@ import {
   type RepairExecutionIdentity, type RepairRecipeId
 } from '../../domain/repair/identity.js';
 import { repairValidationPolicy } from './validation.js';
+import {
+  reviewedBytesDigest as byteDigest, reviewedSnapshotDescriptors as snapshotDescriptors, reviewLifetimeIsCurrent
+} from '../../domain/execution/immutable-plan.js';
+
+export { byteDigest, snapshotDescriptors };
 
 export const repairPreviewTtlMs = 15 * 60_000;
 export const repairHistoryRoot = ['.liftoff', 'repair-history'] as const;
 export const repairHistoryFiles = ['manifest.json', 'receipt.json'] as const;
-export const byteDigest = (content: string | Buffer): string =>
-  createHash('sha256').update(content).digest('hex');
-
-export function snapshotDescriptors(snapshots: readonly ProjectFileSnapshot[]) {
-  return snapshots.map((snapshot) => ({
-    pathParts: snapshot.pathParts, digest: snapshot.content === undefined ? null : byteDigest(snapshot.content),
-    mode: snapshot.mode ?? null
-  })).sort((a, b) => a.pathParts.join('/').localeCompare(b.pathParts.join('/'), 'en'));
-}
-
 export function mutationDescriptors(mutations: readonly ProjectFileMutation[]) {
   return mutations.map((mutation) => ({
     type: mutation.type, pathParts: mutation.pathParts,
@@ -64,7 +58,8 @@ export function buildRepairPreview(input: {
   const recipe = input.recipe ?? 'azure-local-layout';
   if (!Object.hasOwn(repairRecipes, recipe) ||
       (recipe === 'application-layout-patch') !== Boolean(input.applicationPatchPath) ||
-      recipe === 'application-layout-patch' && (input.live || input.subscription || input.verificationPolicy === undefined)) {
+      recipe === 'application-layout-patch' && (input.live || input.subscription || input.verificationPolicy === undefined) ||
+      recipe === 'azure-baseline-settings' && (input.live || input.subscription !== undefined || input.applicationPatchPath !== undefined)) {
     throw new Error('Repair preview must bind one registered recipe and its exact discovery, staging and verification scope.');
   }
   const body = {
@@ -107,14 +102,13 @@ export async function loadRepairPreview(
         path.isAbsolute(value.applicationPatchPath) && path.resolve(value.applicationPatchPath) === value.applicationPatchPath) ||
       (identity.recipe.id === 'application-layout-patch') !== (value.applicationPatchPath !== null) ||
       identity.recipe.id === 'application-layout-patch' && value.live ||
+      identity.recipe.id === 'azure-baseline-settings' && (value.live || value.subscription !== null || value.applicationPatchPath !== null) ||
       typeof value.inputDigest !== 'string' || typeof value.effectsDigest !== 'string' ||
       typeof value.verificationDigest !== 'string' ||
       ![value.inputDigest, value.effectsDigest, value.verificationDigest].every((digest) => /^[a-f0-9]{64}$/u.test(digest))) {
     throw new Error('Repair preview is invalid or belongs to another project, recipe or CLI. Request a new check.');
   }
-  const created = Date.parse(value.createdAt), expires = Date.parse(value.expiresAt);
-  if (!Number.isFinite(created) || !Number.isFinite(expires) || created > now.getTime() ||
-      expires <= now.getTime() || expires - created !== repairPreviewTtlMs) {
+  if (!reviewLifetimeIsCurrent(value.createdAt, value.expiresAt, now, repairPreviewTtlMs)) {
     throw new Error('Repair preview expired or has invalid dates; request a new check.');
   }
   return {

@@ -2,6 +2,38 @@ name: CI
 
 on:
   workflow_dispatch:
+    inputs:
+      diagnostic_windows_only:
+        description: Run Windows source diagnostics (not qualification)
+        type: boolean
+        required: false
+        default: false
+      windows_diagnostic_scope:
+        description: Windows diagnostic scope (requires diagnostic_windows_only)
+        type: choice
+        required: false
+        default: focused
+        options: [focused, complete-boundary, private-io, remaining-regressions, fixture-prerequisites]
+      diagnostic_native_go_only:
+        description: Run native Go source diagnostics (not qualification)
+        type: boolean
+        required: false
+        default: false
+      diagnostic_native_posix_locks_only:
+        description: Run Linux POSIX lock source diagnostics (not custody or release qualification)
+        type: boolean
+        required: false
+        default: false
+      diagnostic_linux_keystore_build_only:
+        description: Build and test Linux keystore synthetic source behavior (not provider or custody qualification)
+        type: boolean
+        required: false
+        default: false
+      diagnostic_linux_gnome_persistence_only:
+        description: Test pinned GNOME persistence with generated data (not encrypted-host custody)
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -11,15 +43,20 @@ permissions:
 
 jobs:
   test:
-    name: Test (${{ matrix.os }})
+    name: Source integrations (${{ matrix.os }})
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
+      max-parallel: 3
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
@@ -43,8 +80,8 @@ jobs:
           tofu_version: 1.12.6
           tofu_wrapper: false
 
-      - name: Install uv
-        run: python -m pip install uv==0.12.7
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
 
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
@@ -54,6 +91,21 @@ jobs:
 
       - name: Install telemetry gateway dependencies
         run: npm ci --prefix services/telemetry-ingest
+
+      - name: Measure Windows launcher source fixtures (not native qualification)
+        shell: bash
+        run: >-
+          go test -count=1 -coverprofile="$RUNNER_TEMP/liftoff-windows-launcher-source.coverprofile"
+          scripts/distribution/windows-launcher.go scripts/distribution/windows-launcher_test.go
+
+      - name: Retain separate launcher source coverage
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-launcher-source-coverage-${{ matrix.os }}
+          path: ${{ runner.temp }}/liftoff-windows-launcher-source.coverprofile
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Install isolated pinned framework smoke tools
         if: runner.os == 'Linux'
@@ -84,7 +136,7 @@ jobs:
           tests/repair-identity.test.ts tests/repair-approval.test.ts tests/repair-application-command.test.ts
           tests/repair-application.test.ts tests/repair-integrations.test.ts
           tests/repair-workspaces.test.ts tests/repair-framework.test.ts
-          tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
+          tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts tests/windows-execution-qualification.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts tests/governance-assessment-history.test.ts
@@ -111,8 +163,8 @@ jobs:
           LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
         run: npx vitest run tests/repair-preparation-native.test.ts tests/repair-framework.test.ts
 
-      - name: Run package check
-        run: npm run check
+      - name: Check supported stack
+        run: npm run check:supported-stack
 
       - name: Run telemetry gateway check
         run: npm run check --prefix services/telemetry-ingest
@@ -124,8 +176,96 @@ jobs:
         if: runner.os == 'Linux'
         run: npm run verify:generated-containers
 
+  test-shards:
+    name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2, 3]
+        include:
+          - os: ubuntu-latest
+            coverage: --coverage --maxWorkers=2
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Harden tool permissions
+        if: runner.os == 'Linux'
+        run: |
+          sudo chmod -R o-w /opt/hostedtoolcache 2>/dev/null || true
+          chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
+
+      - name: Build package
+        run: npm run build
+
+      # Shard the entire discovered inventory, including both Windows projects.
+      # Linux's full-suite shards also measure coverage; no duplicate full run.
+      - name: Run complete source test shard
+        run: >-
+          npm test -- --shard=${{ matrix.shard }}/3 ${{ matrix.coverage }}
+          --reporter=default --reporter=blob
+          --outputFile.blob=source-test-blobs/shard-${{ matrix.shard }}.json
+
+      - name: Require CLI shard measurements
+        if: runner.os == 'Linux'
+        run: >-
+          node --input-type=module -e
+          "import { statSync } from 'node:fs';
+          for (const file of ['coverage/coverage-final.json', 'coverage/coverage-summary.json'])
+          { if (!statSync(file).size) throw new Error('Missing CLI shard measurement: ' + file); }"
+
+      - name: Retain successful same-source test shard
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-tests-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: source-test-blobs/shard-${{ matrix.shard }}.json
+          if-no-files-found: error
+          retention-days: 7
+
   telemetry-infrastructure:
     name: Telemetry OpenTofu
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -171,6 +311,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -201,3 +342,1552 @@ jobs:
         env:
           npm_config_engine_strict: "false"
         run: npm run verify:standard-node-templates
+
+  coverage-qualification:
+    name: Source coverage gate (not native qualification)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
+    needs: test-shards
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      # Exact names and the default current-run download scope reject missing,
+      # previous-attempt, or different-source artifacts before the strict gate.
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-1
+          path: source-test-blobs
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-2
+          path: source-test-blobs
+
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: source-tests-ubuntu-latest-${{ github.sha }}-${{ github.run_attempt }}-3
+          path: source-test-blobs
+
+      - name: Require every CLI shard report
+        run: >-
+          node --input-type=module -e
+          "import assert from 'node:assert/strict'; import { readdirSync, statSync } from 'node:fs';
+          assert.deepEqual(readdirSync('source-test-blobs').sort(), ['shard-1.json', 'shard-2.json', 'shard-3.json']);
+          for (const file of readdirSync('source-test-blobs'))
+          { assert.ok(statSync('source-test-blobs/' + file).size, 'Empty CLI shard report: ' + file); }"
+
+      - name: Merge complete CLI coverage with Vitest
+        run: npx vitest run --merge-reports=source-test-blobs --coverage --reporter=default
+
+      - name: Run telemetry service coverage
+        run: npm run test:coverage --prefix services/telemetry-ingest -- --maxWorkers=2
+
+      - name: Enforce independent raw-count coverage
+        run: npm run gate:coverage
+
+      - name: Retain independent coverage measurements
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: source-coverage
+          path: |
+            coverage/coverage-summary.json
+            coverage/coverage-final.json
+            services/telemetry-ingest/coverage/coverage-summary.json
+            services/telemetry-ingest/coverage/coverage-final.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-keystore-build:
+    name: Linux keystore compile/synthetic-source (${{ matrix.arch }}, not provider or custody qualification)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only) || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    env:
+      LIBSECRET_COMMIT: a5cd57f103038c06b64d5f6ebfd0e627bb40af4e
+      EXPECTED_ARCH: ${{ matrix.arch }}
+    steps:
+      - &native-source-checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - &native-source-node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - &verify-native-linux-host
+        name: Verify actual compile host
+        run: >-
+          node --input-type=module -e
+          "import assert from 'node:assert/strict';
+          assert.equal(process.platform, 'linux');
+          assert.equal(process.arch, process.env.EXPECTED_ARCH);
+          assert.equal(process.arch, process.env.RUNNER_ARCH.toLowerCase());"
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare declared compile prerequisites (no keystore daemon)
+        id: prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libglib2.0-dev libgcrypt20-dev meson ninja-build gettext
+          pkg-config --atleast-version=2.74 glib-2.0 gio-2.0 gobject-2.0
+          mkdir -p diagnostics
+          dpkg-query -W build-essential pkg-config libglib2.0-dev libgcrypt20-dev meson ninja-build gettext > diagnostics/linux-keystore-prerequisites.txt
+
+      - name: Run dependency-free framing and source-interface tests
+        id: protocol
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/linux-keystore-protocol-tests.json
+
+      - &fetch-pinned-libsecret
+        name: Fetch and verify exact clean libsecret source (not a release tag)
+        id: source
+        run: |
+          root="$RUNNER_TEMP/liftoff-libsecret-build"
+          mkdir -m 700 "$root"
+          mkdir -m 700 "$root/source" "$root/prefix"
+          git -C "$root/source" init --quiet
+          git -C "$root/source" -c credential.helper= -c core.hooksPath=/dev/null fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/libsecret.git "$LIBSECRET_COMMIT"
+          git -C "$root/source" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$root/source" rev-parse HEAD)" = "$LIBSECRET_COMMIT"
+          test -z "$(git -C "$root/source" status --porcelain=v1 --untracked-files=all)"
+          printf 'LIBSECRET_SOURCE_DIR=%s\nLIBSECRET_PREFIX=%s\nLIBSECRET_BUILD_DIR=%s\n' "$root/source" "$root/prefix" "$root/build" >> "$GITHUB_ENV"
+
+      - &build-pinned-libsecret
+        name: Build crypto-enabled pinned libsecret into the private prefix
+        id: libsecret
+        run: |
+          meson setup "$LIBSECRET_BUILD_DIR" "$LIBSECRET_SOURCE_DIR" \
+            --prefix="$LIBSECRET_PREFIX" --libdir=lib --buildtype=release --wrap-mode=nodownload \
+            -Dcrypto=libgcrypt -Dmanpage=false -Dgtk_doc=false -Dintrospection=false -Dvapi=false \
+            -Dpam=false -Dtpm2=false -Dbash_completion=disabled -Dtest_setup=disabled
+          meson compile -C "$LIBSECRET_BUILD_DIR" --jobs=2
+          meson install -C "$LIBSECRET_BUILD_DIR" --no-rebuild
+          test "$(git -C "$LIBSECRET_SOURCE_DIR" rev-parse HEAD)" = "$LIBSECRET_COMMIT"
+          test -z "$(git -C "$LIBSECRET_SOURCE_DIR" status --porcelain=v1 --untracked-files=all)"
+          test "$(PKG_CONFIG_PATH="$LIBSECRET_PREFIX/lib/pkgconfig" pkg-config --variable=prefix libsecret-1)" = "$LIBSECRET_PREFIX"
+
+      - &build-linux-keystore-client
+        name: Compile helper only (do not execute helper or connect to a service)
+        id: helper
+        run: node native/linux-keystore-client/build.mjs
+
+      - name: Prepare declared private synthetic service test prerequisites
+        id: synthetic-prerequisites
+        if: success() && steps.helper.outcome == 'success'
+        run: |
+          sudo apt-get install --yes --no-install-recommends dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0
+          dpkg-query -W dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0 > diagnostics/linux-keystore-synthetic-prerequisites.txt
+
+      - name: Test compiled client against private synthetic service (not real provider or custody)
+        id: synthetic
+        if: success() && steps.helper.outcome == 'success'
+        env:
+          LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: "1"
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/linux-keystore-synthetic-tests.json
+
+      - name: Capture bounded compile and synthetic source evidence (not runtime closure)
+        if: always()
+        env:
+          PREREQUISITES_OUTCOME: ${{ steps.prerequisites.outcome }}
+          SOURCE_OUTCOME: ${{ steps.source.outcome }}
+          LIBSECRET_OUTCOME: ${{ steps.libsecret.outcome }}
+          PROTOCOL_OUTCOME: ${{ steps.protocol.outcome }}
+          HELPER_OUTCOME: ${{ steps.helper.outcome }}
+          SYNTHETIC_PREREQUISITES_OUTCOME: ${{ steps.synthetic-prerequisites.outcome }}
+          SYNTHETIC_OUTCOME: ${{ steps.synthetic.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+          const report = {
+            schemaVersion: 1, classification: 'compile-and-native-synthetic-source-interface-only',
+            platform: process.platform, architecture: process.arch, expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            libsecretCommit: process.env.LIBSECRET_COMMIT,
+            stages: Object.fromEntries(['prerequisites', 'source', 'libsecret', 'protocol', 'helper', 'synthetic_prerequisites', 'synthetic'].map(
+              (stage) => [stage, process.env[`${stage.toUpperCase()}_OUTCOME`] ?? 'not-run'])),
+            helperExecution: ['success', 'failure'].includes(process.env.SYNTHETIC_OUTCOME) ? 'synthetic-fixture-suite-attempted' : 'not-performed',
+            providerQualification: 'not-performed', custodyQualification: 'not-performed',
+            enrollmentQualification: 'not-performed', installedArtifactQualification: 'not-performed', runtimeClosure: 'not-performed',
+            issues: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          for (const file of ['diagnostics/build-identity.json', 'diagnostics/linux-keystore-protocol-summary.json', 'diagnostics/linux-keystore-synthetic-summary.json']) {
+            rmSync(file, { force: true });
+          }
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).size <= limit, `Report exceeds byte limit: ${file}`);
+            return readFileSync(file);
+          };
+          const capture = (label, operation) => {
+            try { operation(); } catch (error) {
+              report.issues.push(`${label}: ${String(error.message).slice(0, 512)}`);
+              process.exitCode = 1;
+            }
+          };
+          const prerequisites = 'diagnostics/linux-keystore-prerequisites.txt';
+          if (existsSync(prerequisites)) capture('prerequisites', () => {
+            report.prerequisites = bounded(prerequisites, 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const syntheticPrerequisites = 'diagnostics/linux-keystore-synthetic-prerequisites.txt';
+          if (existsSync(syntheticPrerequisites)) capture('synthetic-prerequisites', () => {
+            report.syntheticPrerequisites = bounded(syntheticPrerequisites, 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const protocolFile = 'diagnostics/linux-keystore-protocol-tests.json';
+          if (existsSync(protocolFile)) capture('protocol', () => {
+            const protocol = JSON.parse(bounded(protocolFile, 256 * 1024));
+            const cases = protocol.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256, 'Protocol case inventory is missing or oversized');
+            if (report.stages.protocol === 'success') {
+              assert.equal(protocol.success, true);
+              assert.equal(protocol.numFailedTests, 0);
+              assert.equal(protocol.numPendingTests, 0, 'Required dependency-free protocol cases must execute');
+            }
+            writeFileSync('diagnostics/linux-keystore-protocol-summary.json', JSON.stringify({
+              classification: 'dependency-free-framing-and-source-interface-only',
+              success: protocol.success, passed: protocol.numPassedTests, failed: protocol.numFailedTests,
+              pending: protocol.numPendingTests,
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+          });
+          else if (report.stages.protocol === 'success') capture('protocol', () => {
+            throw new Error('Successful protocol step has no test report');
+          });
+          const syntheticFile = 'diagnostics/linux-keystore-synthetic-tests.json';
+          if (existsSync(syntheticFile)) capture('synthetic', () => {
+            const synthetic = JSON.parse(bounded(syntheticFile, 256 * 1024));
+            const cases = synthetic.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256, 'Synthetic case inventory is missing or oversized');
+            const suite = 'opt-in compiled client against private synthetic Secret Service, not native custody';
+            const syntheticCases = cases.filter((test) => test.ancestorTitles?.includes(suite));
+            writeFileSync('diagnostics/linux-keystore-synthetic-summary.json', JSON.stringify({
+              classification: 'native-compiled-client-private-synthetic-behavior-only',
+              platform: process.platform, architecture: process.arch,
+              sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              success: synthetic.success, passed: synthetic.numPassedTests, failed: synthetic.numFailedTests,
+              pending: synthetic.numPendingTests, syntheticCases: syntheticCases.length,
+              providerQualification: 'not-performed', custodyQualification: 'not-performed',
+              enrollmentQualification: 'not-performed', installedArtifactQualification: 'not-performed',
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+            if (report.stages.synthetic === 'success') {
+              assert.equal(report.stages.helper, 'success', 'Synthetic behavior requires the successful exact native build');
+              assert.equal(synthetic.success, true);
+              assert.equal(synthetic.numFailedTests, 0);
+              assert.equal(synthetic.numPendingTests, 0, 'Required synthetic behavior cannot be skipped');
+              assert.ok(syntheticCases.length > 0, 'Compiled-client synthetic suite did not execute');
+              assert.ok(cases.every((test) => test.status === 'passed'), 'Every reported synthetic/source case must pass');
+            }
+          });
+          else if (report.stages.synthetic === 'success') capture('synthetic', () => {
+            throw new Error('Successful synthetic step has no test report');
+          });
+          if (report.stages.helper === 'success') capture('build-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.architecture, process.env.EXPECTED_ARCH);
+            assert.equal(identity.libsecretCommit, process.env.LIBSECRET_COMMIT);
+            assert.equal(identity.qualification, 'compile-only-not-provider-or-runtime-admission');
+            writeFileSync('diagnostics/build-identity.json', bytes);
+          });
+          writeFileSync('diagnostics/linux-keystore-build-report.json', JSON.stringify(report, null, 2) + '\n');
+          NODE
+
+      - name: Retain separate compile and synthetic JSON reports only (no helper binary or raw output)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: linux-keystore-compile-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/linux-keystore-build-report.json
+            diagnostics/linux-keystore-protocol-summary.json
+            diagnostics/linux-keystore-synthetic-summary.json
+            diagnostics/build-identity.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-diagnostics:
+    name: Windows source diagnostics (not qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'focused'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run isolated Windows source diagnostics (not qualification)
+        env:
+          LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+        run: >-
+          npx vitest run
+          tests/windows-job-runner.test.ts tests/windows-job-protocol.test.ts
+          tests/windows-execution-qualification.test.ts tests/repair-workspaces.test.ts
+          tests/update-preview.test.ts tests/windows-native-toolchain.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/windows-source-tests.json
+
+      - name: Retain diagnostic source report (not qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-source-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/windows-source-tests.json
+            diagnostics/windows-native-toolchain.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-boundary-diagnostics:
+    name: Complete Windows source boundary (${{ matrix.group }} ${{ matrix.shard }}/${{ matrix.count }}, not installed qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        include:
+          - { group: regular, shard: 1, count: 2 }
+          - { group: regular, shard: 2, count: 2 }
+          - { group: migration-inspection, shard: 1, count: 1 }
+          - { group: reviewed-update, shard: 1, count: 3 }
+          - { group: reviewed-update, shard: 2, count: 3 }
+          - { group: reviewed-update, shard: 3, count: 3 }
+          - { group: migration-revalidation, shard: 1, count: 4 }
+          - { group: migration-revalidation, shard: 2, count: 4 }
+          - { group: migration-revalidation, shard: 3, count: 4 }
+          - { group: migration-revalidation, shard: 4, count: 4 }
+    env:
+      WINDOWS_BOUNDARY_GROUP: ${{ matrix.group }}
+      WINDOWS_BOUNDARY_SHARD: ${{ matrix.shard }}
+      WINDOWS_BOUNDARY_COUNT: ${{ matrix.count }}
+      LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run conserved Windows source specs and evaluated heavy-case partitions
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { parse } from 'yaml';
+          import { BaseSequencer, createVitest } from 'vitest/node';
+          assert.equal(process.platform, 'win32', 'Actual Windows is required');
+          const workflow = parse(readFileSync('.github/workflows/ci.yml', 'utf8'));
+          const original = workflow.jobs.test.steps.find((step) => step.name === 'Run Windows project and packaging boundary coverage').run.trim().split(/\s+/u);
+          assert.deepEqual(original.slice(0, 3), ['npx', 'vitest', 'run']);
+          const additional = [
+            'tests/repair-baseline-settings.test.ts', 'tests/repair-manifest-v8.test.ts',
+            'tests/repair-preparation.test.ts', 'tests/repair-validation.test.ts',
+            'tests/application-preparation-input-boundaries.test.ts',
+            'tests/workstation-executables.test.ts', 'tests/workstation-compatibility.test.ts',
+            'tests/windows-native-toolchain.test.ts', 'tests/distribution/windows-invocation.test.ts',
+            'tests/input-consistency.test.ts', 'tests/machine-action-continuation-contracts.test.ts',
+            'tests/continuation-admission.test.ts'
+          ];
+          const files = [...new Set([...original.slice(3), ...additional])].sort();
+          assert.ok(files.every((file) => /^tests\/[\w/-]+\.test\.ts$/u.test(file)));
+          const group = process.env.WINDOWS_BOUNDARY_GROUP;
+          const index = Number(process.env.WINDOWS_BOUNDARY_SHARD);
+          const count = Number(process.env.WINDOWS_BOUNDARY_COUNT);
+          const groups = { regular: 2, 'migration-inspection': 1, 'reviewed-update': 3, 'migration-revalidation': 4 };
+          assert.equal(count, groups[group]);
+          assert.ok(Number.isSafeInteger(index) && index >= 1 && index <= count);
+          const heavy = ['migration-inspection', 'reviewed-update', 'migration-revalidation'].map((name) => `tests/${name}.test.ts`);
+          const context = await createVitest({
+            watch: false, cache: false, maxWorkers: 1, reporters: ['verbose', 'json'],
+            outputFile: { json: 'diagnostics/windows-boundary-tests.json' }
+          });
+          const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
+          try {
+            await context.standalone();
+            const specifications = await context.globTestSpecifications(files);
+            assert.deepEqual(specifications.map((spec) => relative(spec.moduleId)).sort(), files, 'Every selected source spec must exist exactly once');
+            const groupSpecs = specifications.filter((spec) => group === 'regular'
+              ? !heavy.includes(relative(spec.moduleId)) : relative(spec.moduleId) === `tests/${group}.test.ts`);
+            assert.ok(groupSpecs.length > 0);
+            let selectedSpecs = groupSpecs;
+            if (group === 'regular') {
+              context.config.shard = { index, count };
+              selectedSpecs = await new BaseSequencer(context).shard(groupSpecs);
+              context.config.shard = undefined;
+            }
+            const collected = await context.collectTests(selectedSpecs);
+            assert.equal(collected.unhandledErrors.length, 0, 'Evaluated test collection must succeed');
+            assert.equal(collected.testModules.length, selectedSpecs.length, 'Every selected file must be evaluated');
+            const cases = [];
+            const runSpecs = [];
+            for (const module of collected.testModules) {
+              const evaluated = [...module.children.allTests()];
+              assert.ok(evaluated.length > 0);
+              const selectedCases = evaluated.filter((test, ordinal) => {
+                assert.ok(['run', 'skip', 'todo'].includes(test.options.mode), 'Focused-only tests are not admitted');
+                const selected = group === 'regular' || ordinal % count === index - 1;
+                cases.push({ file: relative(module.moduleId), id: test.id, name: test.fullName, mode: test.options.mode, selected });
+                return selected;
+              });
+              assert.ok(selectedCases.length > 0);
+              runSpecs.push(module.toTestSpecification(selectedCases));
+            }
+            assert.equal(new Set(cases.map((test) => `${test.file}\0${test.id}`)).size, cases.length);
+            const selected = selectedSpecs.map((spec) => relative(spec.moduleId)).sort();
+            const digest = createHash('sha256').update(JSON.stringify(cases.map(({ selected, ...test }) => test))).digest('hex');
+            mkdirSync('diagnostics', { recursive: true });
+            writeFileSync('diagnostics/windows-boundary-inventory.json', JSON.stringify({
+              classification: 'complete-windows-repair-process-source-boundary-only',
+              platform: process.platform, architecture: process.arch, sourceCommit: process.env.GITHUB_SHA,
+              runAttempt: process.env.GITHUB_RUN_ATTEMPT, group, shard: index, shards: count,
+              files, groupFiles: groupSpecs.map((spec) => relative(spec.moduleId)).sort(), selected, cases, caseInventoryDigest: digest,
+              installedArtifactQualification: 'not-performed', minimumHostQualification: 'not-performed',
+              privateCustodyQualification: 'not-performed'
+            }, null, 2) + '\n');
+            const result = await context.runTestSpecifications(runSpecs);
+            const outcomes = result.testModules.flatMap((module) => [...module.children.allTests()].map((test) => ({
+              file: relative(module.moduleId), id: test.id, name: test.fullName, state: test.result().state,
+              durationMs: test.diagnostic()?.duration ?? null
+            })));
+            writeFileSync('diagnostics/windows-boundary-outcomes.json', JSON.stringify({
+              caseInventoryDigest: digest, unhandledErrors: result.unhandledErrors.length, outcomes
+            }, null, 2) + '\n');
+            if (result.unhandledErrors.length || outcomes.some((test) => test.state === 'failed')) process.exitCode = 1;
+          } finally {
+            await context.close();
+          }
+          NODE
+
+      - name: Require complete same-source shard results and actual tool observations
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+          const inventory = JSON.parse(readFileSync('diagnostics/windows-boundary-inventory.json', 'utf8'));
+          const report = JSON.parse(readFileSync('diagnostics/windows-boundary-tests.json', 'utf8'));
+          const recorded = JSON.parse(readFileSync('diagnostics/windows-boundary-outcomes.json', 'utf8'));
+          assert.equal(inventory.platform, 'win32');
+          assert.equal(inventory.sourceCommit, process.env.GITHUB_SHA);
+          assert.equal(inventory.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+          assert.equal(inventory.shard, Number(process.env.WINDOWS_BOUNDARY_SHARD));
+          assert.equal(inventory.group, process.env.WINDOWS_BOUNDARY_GROUP);
+          assert.equal(inventory.shards, Number(process.env.WINDOWS_BOUNDARY_COUNT));
+          assert.equal(report.success, true);
+          assert.equal(report.numFailedTests, 0);
+          const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
+          assert.deepEqual(report.testResults.map((file) => relative(file.name)).sort(), inventory.selected);
+          assert.equal(inventory.caseInventoryDigest, createHash('sha256').update(JSON.stringify(
+            inventory.cases.map(({ selected, ...test }) => test))).digest('hex'));
+          assert.equal(recorded.caseInventoryDigest, inventory.caseInventoryDigest);
+          assert.equal(recorded.unhandledErrors, 0);
+          assert.ok(inventory.cases.length > 0 && inventory.cases.some((test) => test.selected));
+          assert.equal(recorded.outcomes.length, inventory.cases.length);
+          assert.equal(new Set(recorded.outcomes.map((test) => `${test.file}\0${test.id}`)).size, recorded.outcomes.length);
+          for (const [ordinal, expected] of inventory.cases.entries()) {
+            assert.equal(expected.selected, inventory.group === 'regular' || ordinal % inventory.shards === inventory.shard - 1);
+            const actual = recorded.outcomes.find((test) => test.id === expected.id && test.file === expected.file);
+            assert.equal(actual?.file, expected.file);
+            assert.equal(actual?.name, expected.name);
+            if (expected.selected) {
+              assert.equal(actual.state, expected.mode === 'run' ? 'passed' : 'skipped', 'Every applicable selected case must execute successfully');
+            } else {
+              assert.equal(actual.state, 'skipped', 'Cases assigned to another partition must not execute twice');
+            }
+          }
+          if (inventory.selected.includes('tests/windows-native-toolchain.test.ts')) {
+            const file = report.testResults.find((entry) => relative(entry.name) === 'tests/windows-native-toolchain.test.ts');
+            const native = file.assertionResults.filter((test) => test.ancestorTitles?.includes('native supported Windows toolchain source acceptance'));
+            assert.ok(native.length > 0 && native.every((test) => test.status === 'passed'), 'Actual Windows tool acceptance cases must all execute and pass');
+            const observed = JSON.parse(readFileSync('diagnostics/windows-native-toolchain.json', 'utf8'));
+            assert.equal(observed.platform, 'win32');
+            assert.equal(observed.architecture, inventory.architecture);
+            assert.equal(observed.sourceCommit, process.env.GITHUB_SHA);
+            assert.equal(observed.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+            assert.deepEqual(observed.tools.map((tool) => tool.id).sort(), ['node', 'npm']);
+            assert.match(observed.git.file.digest, /^[a-f0-9]{64}$/u);
+          }
+          NODE
+
+      - name: Retain Windows source-boundary inventory and results (not installed qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.group }}-${{ matrix.shard }}
+          path: |
+            diagnostics/windows-boundary-inventory.json
+            diagnostics/windows-boundary-tests.json
+            diagnostics/windows-boundary-outcomes.json
+            diagnostics/windows-native-toolchain.json
+            diagnostics/windows-directory-admission.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-regression-diagnostics:
+    name: Windows targeted source diagnostics (${{ matrix.suite }}, not complete-boundary qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && (inputs.windows_diagnostic_scope == 'remaining-regressions' || inputs.windows_diagnostic_scope == 'fixture-prerequisites')
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        suite: ${{ fromJSON(inputs.windows_diagnostic_scope == 'fixture-prerequisites' && '["windows-source-fixture-diagnostics"]' || '["migration-inspection","repair-baseline-settings","machine-action-continuation-contracts"]') }}
+    env:
+      WINDOWS_REGRESSION_SUITE: ${{ matrix.suite }}
+      LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+      LIFTOFF_WINDOWS_FIXTURE_DIAGNOSTICS: ${{ inputs.windows_diagnostic_scope == 'fixture-prerequisites' && '1' || '0' }}
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build package
+        run: npm run build
+      - name: Run exact whole-file Windows regressions with conserved case modes
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { createVitest } from 'vitest/node';
+          assert.equal(process.platform, 'win32');
+          assert.equal(process.arch, 'x64');
+          const suites = ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts', 'windows-source-fixture-diagnostics'];
+          assert.ok(suites.includes(process.env.WINDOWS_REGRESSION_SUITE));
+          const file = `tests/${process.env.WINDOWS_REGRESSION_SUITE}.test.ts`;
+          const relative = (name) => path.relative(process.cwd(), name).split(path.sep).join('/');
+          function validateOutcomes(inventory, outcomes, unhandledErrors) {
+            assert.equal(unhandledErrors, 0);
+            assert.ok(inventory.length > 0);
+            assert.equal(new Set(inventory.map((test) => test.id)).size, inventory.length);
+            assert.equal(outcomes.length, inventory.length);
+            assert.equal(new Set(outcomes.map((test) => test.id)).size, outcomes.length);
+            for (const expected of inventory) {
+              assert.ok(['run', 'skip', 'todo'].includes(expected.mode));
+              const actual = outcomes.find((test) => test.id === expected.id);
+              assert.equal(actual?.name, expected.name);
+              assert.equal(actual?.state, expected.mode === 'run' ? 'passed' : 'skipped');
+            }
+          }
+          const context = await createVitest({ watch: false, cache: false, maxWorkers: 1, reporters: ['verbose'] });
+          const report = {
+            classification: 'targeted-windows-source-regressions-not-complete-boundary',
+            platform: process.platform, architecture: process.arch,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            file, inventory: [], outcomes: [], unhandledErrors: null, accepted: false,
+            completeBoundaryQualification: 'not-performed',
+            installedArtifactQualification: 'not-performed', privateCustodyQualification: 'not-performed'
+          };
+          try {
+            await context.standalone();
+            const specs = await context.globTestSpecifications([file]);
+            assert.deepEqual(specs.map((spec) => relative(spec.moduleId)), [file]);
+            const collected = await context.collectTests(specs);
+            assert.equal(collected.unhandledErrors.length, 0);
+            assert.deepEqual(collected.testModules.map((module) => relative(module.moduleId)), [file]);
+            report.inventory = [...collected.testModules[0].children.allTests()].map((test) => ({
+              id: test.id, name: test.fullName, mode: test.options.mode
+            }));
+            assert.ok(report.inventory.every((test) => ['run', 'skip', 'todo'].includes(test.mode)));
+            if (process.env.WINDOWS_REGRESSION_SUITE === 'windows-source-fixture-diagnostics') {
+              for (const name of [
+                'uses actual admitted npm to pack/install a local dependency-free fixture and observes its real generated shims',
+                'observes actual managed handle identity and independent read-sharing outcomes',
+                'observes actual kernel handle identity and independent read-sharing outcomes'
+              ]) {
+                const native = report.inventory.filter((test) => test.name.endsWith(name));
+                assert.equal(native.length, 1);
+                assert.equal(native[0].mode, 'run', 'Every required native fixture diagnostic must actually execute');
+              }
+            }
+            const result = await context.runTestSpecifications(specs);
+            report.unhandledErrors = result.unhandledErrors.length;
+            assert.deepEqual(result.testModules.map((module) => relative(module.moduleId)), [file]);
+            report.outcomes = [...result.testModules[0].children.allTests()].map((test) => ({
+              id: test.id, name: test.fullName, state: test.result().state, durationMs: test.diagnostic()?.duration ?? null
+            }));
+            validateOutcomes(report.inventory, report.outcomes, report.unhandledErrors);
+            assert.equal(result.testModules[0].state(), 'passed', 'Suite hooks and diagnostic persistence must also succeed');
+            if (process.env.WINDOWS_REGRESSION_SUITE === 'windows-source-fixture-diagnostics') {
+              const metadataPath = 'diagnostics/windows-fixture-prerequisites.json';
+              const details = statSync(metadataPath);
+              assert.ok(details.isFile() && details.size > 0 && details.size <= 16384);
+              const diagnostic = JSON.parse(readFileSync(metadataPath, 'utf8'));
+              assert.equal(diagnostic.classification, 'native-nonsecret-fixture-diagnostics-not-owner-or-custody-qualification');
+              assert.equal(diagnostic.platform, 'win32');
+              assert.equal(diagnostic.architecture, 'x64');
+              assert.equal(diagnostic.sourceCommit, process.env.GITHUB_SHA);
+              assert.equal(diagnostic.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+              assert.equal(diagnostic.observationsComplete, true);
+              assert.equal(diagnostic.productionQualified, false);
+              assert.equal(diagnostic.observations.length, 3);
+              const sharing = diagnostic.observations.filter((entry) => entry.classification === 'native-nonsecret-file-sharing-observation-not-custody-proof');
+              assert.deepEqual(sharing.map((entry) => entry.before.mode).sort(), ['kernel', 'managed']);
+              assert.ok(sharing.every((entry) => entry.settlement === 'proven'));
+              const npm = diagnostic.observations.filter((entry) => entry.classification === 'synthetic-local-npm-source-fixture-not-owner-qualification');
+              assert.equal(npm.length, 1);
+              assert.equal(npm[0].ownerObserverInvoked, false);
+              assert.deepEqual(Object.keys(npm[0].shimDigests).sort(), ['liftoff', 'liftoff.cmd', 'liftoff.ps1']);
+            }
+            report.accepted = true;
+          } finally {
+            mkdirSync('diagnostics', { recursive: true });
+            writeFileSync('diagnostics/windows-regressions-source.json', JSON.stringify(report, null, 2) + '\n');
+            await context.close();
+          }
+          NODE
+      - name: Retain bounded Windows regression metadata only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-regressions-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.suite }}
+          path: |
+            diagnostics/windows-regressions-source.json
+            diagnostics/windows-fixture-prerequisites.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-private-io-diagnostics:
+    name: Windows private I/O NONSECRET source fixtures (not custody qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Observe stock Windows x64 host and independently pinned private helper
+        id: host
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import { release } from 'node:os';
+          import path from 'node:path';
+          import { NATIVE_HELPER_INVENTORY } from './scripts/native-helper-inventory.mjs';
+          const report = {
+            classification: 'windows-private-io-nonsecret-source-only',
+            platform: process.platform, architecture: process.arch, runnerArchitecture: process.env.RUNNER_ARCH,
+            windowsRelease: release(), nodeVersion: process.versions.node,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            admitted: false, helpers: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          try {
+            assert.equal(process.platform, 'win32');
+            assert.equal(process.arch, 'x64');
+            assert.equal(process.env.RUNNER_ARCH?.toLowerCase(), 'x64');
+            assert.ok(Number(report.windowsRelease.split('.')[2]) >= 17763, 'Unsupported source host');
+            for (const [id, file] of [
+              ['windows-private-process', 'assets/repair/windows-private-process.ps1'],
+              ['windows-job-controller', 'assets/repair/windows-job-controller.ps1']
+            ]) {
+              const declared = NATIVE_HELPER_INVENTORY.find((entry) => entry.id === id);
+              assert.equal(declared?.path, file);
+              const stat = lstatSync(file);
+              assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 1024 * 1024);
+              const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
+              assert.equal(sha256, declared.expectedDigest);
+              report.helpers.push({ id, path: file, sha256 });
+            }
+            assert.notEqual(report.helpers[0].sha256, report.helpers[1].sha256);
+            const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+            const script = '$ErrorActionPreference="Stop"; Add-Type -AssemblyName System.Web.Extensions; ' +
+              '$s=New-Object System.Web.Script.Serialization.JavaScriptSerializer; ' +
+              '$s.Serialize(@{version=$PSVersionTable.PSVersion.ToString();languageMode=$ExecutionContext.SessionState.LanguageMode.ToString();framework=[Environment]::Version.ToString()})';
+            const observed = JSON.parse(execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+              encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 8192, stdio: ['ignore', 'pipe', 'pipe']
+            }));
+            for (const field of ['version', 'languageMode', 'framework']) {
+              assert.ok(typeof observed[field] === 'string' && observed[field].length <= 128);
+            }
+            report.powershell = {
+              path: powershell, version: observed.version, languageMode: observed.languageMode,
+              framework: observed.framework, systemWebExtensions: 'loaded'
+            };
+            assert.match(observed.version, /^5\.1\./u);
+            assert.equal(observed.languageMode, 'FullLanguage');
+            assert.match(observed.framework, /^4\./u);
+            report.admitted = true;
+          } catch {
+            report.blocker = 'Stock supported host or independent helper identity admission failed; no host policy change is authorized';
+            process.exitCode = 1;
+          } finally {
+            writeFileSync('diagnostics/windows-private-io-host.json', JSON.stringify(report, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Run actual Windows private binary I/O source fixtures only
+        id: native
+        env:
+          LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS: "1"
+        run: >-
+          npm test -- tests/state-windows-private-protocol.test.ts tests/state-windows-private-runner.test.ts
+          --maxWorkers=1 --reporter=json --outputFile.json=diagnostics/windows-private-io-tests.json
+
+      - name: Require native private I/O outcomes and retain only bounded safe metadata
+        if: always()
+        env:
+          HOST_OUTCOME: ${{ steps.host.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readFileSync, readSync, statSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          const report = {
+            classification: 'windows-private-io-nonsecret-source-only',
+            platform: process.platform, architecture: process.arch,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            stages: { host: process.env.HOST_OUTCOME, native: process.env.NATIVE_OUTCOME },
+            accepted: false, custodyQualification: 'not-performed',
+            minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed',
+            providerQualification: 'not-performed', releaseQualification: 'not-performed'
+          };
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).isFile() && statSync(file).size <= limit);
+            return JSON.parse(readFileSync(file, 'utf8'));
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          report.rootExitDiagnostic = { availability: 'missing' };
+          let diagnosticFd;
+          try {
+            const file = 'diagnostics/windows-private-root-exit.json';
+            const before = lstatSync(file, { bigint: true });
+            assert.ok(before.isFile() && !before.isSymbolicLink() && before.nlink === 1n && before.size <= 1024n);
+            diagnosticFd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+            const opened = fstatSync(diagnosticFd, { bigint: true });
+            for (const key of ['dev', 'ino', 'size', 'mode', 'mtimeNs', 'ctimeNs']) assert.equal(opened[key], before[key]);
+            const bytes = Buffer.alloc(Number(opened.size));
+            for (let offset = 0; offset < bytes.length;) {
+              const count = readSync(diagnosticFd, bytes, offset, bytes.length - offset, offset);
+              assert.ok(count > 0);
+              offset += count;
+            }
+            const after = fstatSync(diagnosticFd, { bigint: true });
+            const named = lstatSync(file, { bigint: true });
+            for (const current of [after, named]) {
+              assert.ok(current.isFile() && !current.isSymbolicLink() && current.nlink === 1n);
+              for (const key of ['dev', 'ino', 'size', 'mode', 'mtimeNs', 'ctimeNs']) assert.equal(current[key], before[key]);
+            }
+            const value = JSON.parse(bytes.toString('utf8'));
+            const fields = ['schemaVersion', 'classification', 'fixture', 'rootPid', 'result', 'code', 'exitCode', 'reason', 'settled', 'processSpawned', 'quiesced'];
+            assert.deepEqual(Object.keys(value).sort(), [...fields].sort());
+            assert.equal(value.schemaVersion, 1);
+            assert.equal(value.classification, 'windows-private-root-exit-nonsecret-source-only');
+            assert.equal(value.fixture, 'detached-child-ipc-ready-before-root-exit');
+            const uint32 = (item) => Number.isSafeInteger(item) && item >= 0 && item <= 0xffffffff;
+            assert.ok(value.rootPid === null || uint32(value.rootPid) && value.rootPid > 0);
+            assert.ok(['resolved', 'rejected', 'not-observed'].includes(value.result));
+            assert.ok(value.code === null || [
+              'unsupported-host', 'helper-unavailable', 'executable-changed', 'invalid-request',
+              'working-directory-too-long', 'authentication-failed', 'invalid-protocol',
+              'cancelled', 'timeout', 'output-limit', 'native-command-failed', 'settlement-unproven', 'unclassified-error'
+            ].includes(value.code));
+            assert.ok(value.exitCode === null || uint32(value.exitCode));
+            assert.ok(value.reason === null || Number.isInteger(value.reason) && value.reason >= 0 && value.reason <= 7);
+            for (const field of ['settled', 'processSpawned', 'quiesced']) assert.ok(value[field] === null || typeof value[field] === 'boolean');
+            report.rootExitDiagnostic = { availability: 'present', ...Object.fromEntries(fields.map((field) => [field, value[field]])) };
+          } catch (error) {
+            if (error?.code !== 'ENOENT') report.rootExitDiagnostic = { availability: 'invalid' };
+          } finally {
+            if (diagnosticFd !== undefined) closeSync(diagnosticFd);
+          }
+          let blockerCode = 'host-report-unavailable-or-invalid';
+          try {
+            const host = bounded('diagnostics/windows-private-io-host.json', 16 * 1024);
+            report.host = {
+              admitted: host.admitted, windowsRelease: host.windowsRelease, nodeVersion: host.nodeVersion,
+              powershell: host.powershell ? {
+                path: host.powershell.path, version: host.powershell.version,
+                languageMode: host.powershell.languageMode, framework: host.powershell.framework,
+                systemWebExtensions: host.powershell.systemWebExtensions
+              } : undefined,
+              helpers: host.helpers.map((helper) => ({ id: helper.id, path: helper.path, sha256: helper.sha256 }))
+            };
+            blockerCode = 'host-identity-mismatch';
+            assert.equal(process.platform, 'win32');
+            assert.equal(process.arch, 'x64');
+            assert.equal(host.platform, process.platform);
+            assert.equal(host.architecture, process.arch);
+            assert.equal(host.sourceCommit, process.env.GITHUB_SHA);
+            assert.equal(host.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+            assert.equal(host.admitted, true);
+            blockerCode = 'helper-identity-mismatch';
+            assert.deepEqual(host.helpers.map((helper) => helper.id).sort(), ['windows-job-controller', 'windows-private-process']);
+            for (const helper of host.helpers) assert.match(helper.sha256, /^[a-f0-9]{64}$/u);
+            assert.notEqual(host.helpers[0].sha256, host.helpers[1].sha256);
+            blockerCode = 'host-runtime-unsupported';
+            assert.match(host.powershell.version, /^5\.1\./u);
+            assert.equal(host.powershell.languageMode, 'FullLanguage');
+            assert.equal(host.powershell.systemWebExtensions, 'loaded');
+            blockerCode = 'host-stage-incomplete';
+            assert.equal(report.stages.host, 'success');
+            blockerCode = 'native-report-unavailable-or-invalid';
+            const result = bounded('diagnostics/windows-private-io-tests.json', 256 * 1024);
+            const expectedFiles = ['tests/state-windows-private-protocol.test.ts', 'tests/state-windows-private-runner.test.ts'];
+            blockerCode = 'native-file-inventory-mismatch';
+            assert.deepEqual(result.testResults.map((file) => path.relative(process.cwd(), file.name).split(path.sep).join('/')).sort(), expectedFiles);
+            blockerCode = 'native-case-inventory-invalid';
+            const cases = result.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 128);
+            const nativeSuite = 'actual Windows private binary pipes and owned jobs (NONSECRET source fixtures, not custody)';
+            const native = cases.filter((test) => test.ancestorTitles?.includes(nativeSuite));
+            const runnerCases = result.testResults.find((file) =>
+              path.relative(process.cwd(), file.name).split(path.sep).join('/') === 'tests/state-windows-private-runner.test.ts').assertionResults;
+            const inapplicable = runnerCases.filter((test) => test.status === 'skipped' &&
+              test.title === 'refuses a foreign host while wiping transferred private input' &&
+              test.ancestorTitles?.includes('Windows private runner source admission, not Windows qualification'));
+            report.passed = result.numPassedTests;
+            report.failed = result.numFailedTests;
+            report.inapplicable = inapplicable.length;
+            report.nativeCases = native.length;
+            report.cases = cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }));
+            blockerCode = 'native-stage-incomplete';
+            assert.equal(report.stages.native, 'success');
+            blockerCode = 'root-exit-diagnostic-gap';
+            assert.equal(report.rootExitDiagnostic.availability, 'present', 'Missing root-exit diagnostics are a gap, not success');
+            assert.notEqual(report.rootExitDiagnostic.result, 'not-observed');
+            blockerCode = 'native-test-failure';
+            assert.equal(result.success, true);
+            assert.equal(result.numFailedTests, 0);
+            blockerCode = 'native-passed-count-mismatch';
+            assert.equal(result.numPassedTests, cases.filter((test) => test.status === 'passed').length);
+            blockerCode = 'native-suite-incomplete';
+            assert.ok(native.length > 0 && native.every((test) => test.status === 'passed'));
+            blockerCode = 'unexpected-skipped-or-pending-case';
+            assert.ok(inapplicable.length <= 1);
+            assert.equal(result.numPendingTests, inapplicable.length);
+            assert.ok(cases.every((test) => test.status === 'passed' || inapplicable.includes(test)));
+            report.accepted = true;
+          } catch {
+            report.blockerCode = blockerCode;
+            report.blocker = 'Required actual Windows private-I/O source evidence is missing, mismatched or incomplete';
+            process.exitCode = 1;
+          } finally {
+            writeFileSync('diagnostics/windows-private-io-source.json', JSON.stringify(report, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Retain sanitized Windows private-I/O source JSON only (no raw payloads or state)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-private-io-source-${{ github.sha }}-${{ github.run_attempt }}
+          path: diagnostics/windows-private-io-source.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native-go-diagnostics:
+    name: Native Go source diagnostics (${{ matrix.os }}, not qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Harden tool permissions
+        if: runner.os == 'Linux'
+        run: |
+          sudo chmod -R o-w /opt/hostedtoolcache 2>/dev/null || true
+          chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run isolated native Go source diagnostics (not qualification)
+        env:
+          LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
+        run: >-
+          npx vitest run tests/repair-preparation-native.test.ts
+          -t 'prepares actual Go module/checksum inputs'
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/native-go-tests.json
+
+      - name: Retain native Go diagnostic source report (not qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-go-source-diagnostics-${{ matrix.os }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: diagnostics/native-go-tests.json
+          if-no-files-found: error
+          retention-days: 7
+
+  native-posix-lock-diagnostics:
+    name: Linux POSIX lock source diagnostics (${{ matrix.arch }}, not custody or release qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Record and verify actual diagnostic host
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, writeFileSync } from 'node:fs';
+          const host = {
+            schemaVersion: 1,
+            scope: 'synthetic-local-state-locks-and-nonsecret-readonly-guard-only',
+            platform: process.platform,
+            architecture: process.arch,
+            runnerOS: process.env.RUNNER_OS,
+            runnerArchitecture: process.env.RUNNER_ARCH,
+            expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            encryptedCustodyQualification: 'not-performed',
+            releaseQualification: 'not-performed'
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          writeFileSync('diagnostics/native-posix-lock-host.json', JSON.stringify(host, null, 2) + '\n');
+          console.log(JSON.stringify(host));
+          assert.equal(host.platform, 'linux', 'Native Linux is required; no platform emulation');
+          assert.equal(host.architecture, host.expectedArchitecture, 'Actual architecture must match the selected lane');
+          assert.equal(host.runnerArchitecture?.toLowerCase(), host.architecture, 'Runner and Node architectures must agree');
+          NODE
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        id: python
+        with:
+          python-version: "3.14.7"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Resolve selected native tools
+        env:
+          SELECTED_PYTHON: ${{ steps.python.outputs.python-path }}
+        shell: bash
+        run: |
+          python_path="$(realpath -- "$SELECTED_PYTHON")"
+          tofu_path="$(realpath -- "$(command -v tofu)")"
+          test -x "$python_path"
+          test -x "$tofu_path"
+          printf 'LIFTOFF_STATE_PYTHON=%s\nLIFTOFF_TOFU_EXECUTABLE=%s\n' "$python_path" "$tofu_path" >> "$GITHUB_ENV"
+
+      - name: Prepare only selected native executable permissions
+        shell: bash
+        run: &prepare-selected-native-tools |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { createHash } from 'node:crypto';
+          import { accessSync, closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, realpathSync, writeFileSync } from 'node:fs';
+          import { isAbsolute } from 'node:path';
+          const pythonOnly = process.env.LIFTOFF_CI_PYTHON_ONLY === '1';
+          const report = {
+            schemaVersion: 1, scope: 'ephemeral-selected-source-test-tools-only',
+            platform: process.platform, architecture: process.arch, runnerUid: process.getuid(),
+            status: 'blocked',
+            tools: [
+              { id: 'python', path: process.env.LIFTOFF_STATE_PYTHON, status: 'not-inspected', permissionsChanged: false },
+              ...(pythonOnly ? [] : [{ id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }]),
+              ...(process.env.LIFTOFF_CI_NODE_COORDINATOR === '1' ? [{
+                id: 'node-coordinator', requestedPath: process.execPath, path: process.execPath,
+                status: 'not-inspected', permissionsChanged: false
+              }] : [])
+            ]
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          const reportFile = pythonOnly ? 'diagnostics/gnome-python-preparation.json' : 'diagnostics/native-posix-tool-preparation.json';
+          const persist = () => writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
+          const metadata = (stat) => ({
+            dev: String(stat.dev), ino: String(stat.ino), uid: String(stat.uid), gid: String(stat.gid),
+            size: String(stat.size), mtimeNs: String(stat.mtimeNs), ctimeNs: String(stat.ctimeNs),
+            mode: (Number(stat.mode) & 0o7777).toString(8).padStart(4, '0'), regular: stat.isFile()
+          });
+          const snapshot = (fd) => {
+            const before = fstatSync(fd, { bigint: true });
+            assert.ok(before.isFile(), 'Selected executable is not a regular file');
+            assert.ok(before.size <= BigInt(Number.MAX_SAFE_INTEGER), 'Selected executable size is not safely measurable');
+            const digest = createHash('sha256');
+            const buffer = Buffer.alloc(1024 * 1024);
+            for (let offset = 0; offset < Number(before.size);) {
+              const count = readSync(fd, buffer, 0, Math.min(buffer.length, Number(before.size) - offset), offset);
+              assert.ok(count > 0, 'Selected executable changed while reading');
+              digest.update(buffer.subarray(0, count));
+              offset += count;
+            }
+            const after = fstatSync(fd, { bigint: true });
+            assert.deepEqual(metadata(after), metadata(before), 'Selected executable changed while hashing');
+            return { ...metadata(after), sha256: digest.digest('hex') };
+          };
+          persist();
+          for (const tool of report.tools) {
+            let fd;
+            try {
+              if (tool.id === 'node-coordinator') tool.path = realpathSync(process.execPath);
+              assert.ok(tool.path && isAbsolute(tool.path), 'Explicit absolute executable path is required');
+              tool.observed = metadata(lstatSync(tool.path, { bigint: true }));
+              persist();
+              assert.ok(tool.observed.regular, 'Selected executable must be a regular file, not a link or directory');
+              assert.equal(realpathSync(tool.path), tool.path, 'Selected executable path must already be canonical');
+              fd = openSync(tool.path, constants.O_RDONLY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+              tool.before = snapshot(fd);
+              assert.equal(tool.before.dev, tool.observed.dev, 'Selected executable device changed before opening');
+              assert.equal(tool.before.ino, tool.observed.ino, 'Selected executable inode changed before opening');
+              persist();
+              accessSync(tool.path, constants.X_OK);
+              const mode = Number.parseInt(tool.before.mode, 8);
+              const admittedMode = mode & ~0o022;
+              if (mode !== admittedMode) {
+                assert.equal(tool.before.uid, String(report.runnerUid), 'Selected writable executable is not owned by the runner; no permission change is authorized');
+                fchmodSync(fd, admittedMode);
+                tool.permissionsChanged = true;
+                persist();
+              }
+              tool.after = snapshot(fd);
+              persist();
+              for (const key of ['dev', 'ino', 'uid', 'gid', 'size', 'mtimeNs', 'sha256']) {
+                assert.equal(tool.after[key], tool.before[key], `Selected executable ${key} changed during preparation`);
+              }
+              assert.equal(tool.after.mode, admittedMode.toString(8).padStart(4, '0'), 'Selected executable mode is not admitted');
+              const named = metadata(lstatSync(tool.path, { bigint: true }));
+              assert.ok(named.regular, 'Selected executable path is no longer a regular file');
+              assert.equal(named.dev, tool.after.dev, 'Selected executable path device changed');
+              assert.equal(named.ino, tool.after.ino, 'Selected executable path inode changed');
+              assert.equal(named.mode, tool.after.mode, 'Selected executable path mode changed');
+              assert.equal(realpathSync(tool.path), tool.path, 'Selected executable path is no longer canonical');
+              accessSync(tool.path, constants.X_OK);
+              tool.status = 'prepared';
+            } catch (error) {
+              tool.status = 'blocked';
+              tool.blocker = `Fixture-preparation blocker (${tool.id}): ${error.message}`;
+              if (typeof error.code === 'string') tool.errorCode = error.code;
+              console.error(tool.blocker);
+              process.exitCode = 1;
+              break;
+            } finally {
+              if (fd !== undefined) closeSync(fd);
+              persist();
+            }
+          }
+          if (report.tools.every((tool) => tool.status === 'prepared')) report.status = 'prepared';
+          persist();
+          NODE
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run native POSIX lock and readonly guard source diagnostics (not custody or release qualification)
+        env:
+          LIFTOFF_POSIX_NATIVE_LOCK_QUALIFICATION: "1"
+          LIFTOFF_LINUX_READONLY_PROCESS_TEST: "1"
+        run: >-
+          npx vitest run tests/state-posix-platform.test.ts tests/state-linux-readonly-process.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/native-posix-lock-tests.json
+
+      - name: Retain actual-host POSIX lock source diagnostics (not custody or release qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: native-posix-lock-source-diagnostics-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/native-posix-lock-host.json
+            diagnostics/native-posix-tool-preparation.json
+            diagnostics/native-posix-lock-tests.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-gnome-persistence:
+    name: Pinned GNOME persistence source test (${{ matrix.arch }}, not encrypted-host custody)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    env:
+      LIBSECRET_COMMIT: a5cd57f103038c06b64d5f6ebfd0e627bb40af4e
+      GNOME_COMMIT: da00f9621eaf263d5ed4236df9c22798ea8021d2
+      EXPECTED_ARCH: ${{ matrix.arch }}
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+      - *verify-native-linux-host
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        id: python
+        with:
+          python-version: "3.14.7"
+
+      - name: Resolve only selected CPython for the native process guard
+        env:
+          SELECTED_PYTHON: ${{ steps.python.outputs.python-path }}
+        shell: bash
+        run: |
+          python_path="$(realpath -- "$SELECTED_PYTHON")"
+          test -x "$python_path"
+          printf 'LIFTOFF_STATE_PYTHON=%s\n' "$python_path" >> "$GITHUB_ENV"
+
+      - name: Prepare selected CPython and actual Node coordinator with unchanged native admission
+        id: python_preparation
+        env:
+          LIFTOFF_CI_PYTHON_ONLY: "1"
+          LIFTOFF_CI_NODE_COORDINATOR: "1"
+        shell: bash
+        run: *prepare-selected-native-tools
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare declared source-build and private-fixture prerequisites (no installed GNOME daemon)
+        id: prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libglib2.0-dev libglib2.0-bin libgcrypt20-dev libgcr-3-dev libp11-kit-dev meson ninja-build gettext dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0
+          pkg-config --atleast-version=2.80 glib-2.0 gio-2.0 gobject-2.0
+          pkg-config --atleast-version=3.3.4 gck-1
+          pkg-config --atleast-version=3.27.90 gcr-base-3
+          mkdir -p diagnostics
+          dpkg-query -W build-essential pkg-config libglib2.0-dev libglib2.0-bin libgcrypt20-dev libgcr-3-dev libp11-kit-dev meson ninja-build gettext dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0 > diagnostics/gnome-prerequisites.txt
+
+      - *fetch-pinned-libsecret
+      - *build-pinned-libsecret
+      - *build-linux-keystore-client
+
+      - name: Verify compiled-client loaders and managed key-binding source contracts
+        id: contracts
+        if: success() && steps.helper.outcome == 'success'
+        env:
+          LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: "1"
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts tests/state-linux-null-process.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/gnome-source-interface-tests.json
+
+      - name: Require complete loader and key-binding contracts before actual GNOME effects
+        id: contracts_ready
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, statSync } from 'node:fs';
+          const file = 'diagnostics/gnome-source-interface-tests.json';
+          assert.ok(statSync(file).size <= 256 * 1024, 'Source contract report exceeds its bound');
+          const report = JSON.parse(readFileSync(file, 'utf8'));
+          const cases = report.testResults.flatMap((entry) => entry.assertionResults);
+          assert.ok(cases.length > 0 && cases.length <= 256);
+          assert.equal(report.success, true);
+          assert.equal(report.numFailedTests, 0);
+          assert.equal(report.numPendingTests, 0);
+          assert.ok(cases.every((test) => test.status === 'passed'));
+          for (const suite of [
+            'opt-in compiled client against private synthetic Secret Service, not native custody',
+            'managed Linux key binding, not native custody or readiness'
+          ]) assert.ok(cases.some((test) => test.ancestorTitles?.includes(suite)), 'Required source contract suite did not execute');
+          NODE
+
+      - name: Fetch and verify exact clean GNOME source (not a release tag or system daemon)
+        id: gnome_source
+        run: |
+          root="$RUNNER_TEMP/liftoff-gnome-persistence-build"
+          mkdir -m 700 "$root"
+          mkdir -m 700 "$root/source" "$root/prefix"
+          git -C "$root/source" init --quiet
+          git -C "$root/source" -c credential.helper= -c core.hooksPath=/dev/null fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/gnome-keyring.git "$GNOME_COMMIT"
+          git -C "$root/source" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$root/source" rev-parse HEAD)" = "$GNOME_COMMIT"
+          test -z "$(git -C "$root/source" status --porcelain=v1 --untracked-files=all)"
+          printf 'GNOME_SOURCE_DIR=%s\nGNOME_PREFIX=%s\nGNOME_BUILD_DIR=%s\n' "$root/source" "$root/prefix" "$root/build" >> "$GITHUB_ENV"
+
+      - name: Build only the pinned daemon target into the private test prefix
+        id: gnome_build
+        run: |
+          meson setup "$GNOME_BUILD_DIR" "$GNOME_SOURCE_DIR" \
+            --prefix="$GNOME_PREFIX" --libdir=lib --sysconfdir=etc --localstatedir=var --buildtype=release --wrap-mode=nodownload \
+            -Dssh-agent=false -Dpam=false -Dsystemd=disabled -Dlibcap-ng=disabled -Dselinux=disabled \
+            -Ddebug-mode=false -Dmanpage=false \
+            -Dpkcs11-config="$GNOME_PREFIX/etc/pkcs11" -Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"
+          meson compile -C "$GNOME_BUILD_DIR" --jobs=2 gnome-keyring-daemon
+          install -D -m0755 "$GNOME_BUILD_DIR/daemon/gnome-keyring-daemon" "$GNOME_PREFIX/bin/gnome-keyring-daemon"
+          test "$(git -C "$GNOME_SOURCE_DIR" rev-parse HEAD)" = "$GNOME_COMMIT"
+          test -z "$(git -C "$GNOME_SOURCE_DIR" status --porcelain=v1 --untracked-files=all)"
+
+      - name: Record exact GNOME build identity without starting a daemon
+        id: gnome_identity
+        run: node native/linux-keystore-client/gnome-build-identity.mjs
+
+      - name: Test actual GNOME persistence and explicit null-sink profile in private source fixtures only
+        id: persistence
+        if: success() && steps.contracts_ready.outcome == 'success' && steps.gnome_identity.outcome == 'success'
+        env:
+          LIFTOFF_GNOME_PERSISTENCE_TEST: "1"
+          LIFTOFF_LINUX_READONLY_NULL_TEST: "1"
+        run: >-
+          npx vitest run tests/state-gnome-persistence.test.ts tests/state-linux-null-process.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/gnome-persistence-tests.json
+
+      - name: Capture bounded generated-data identity and persistence outcomes only
+        if: always()
+        env:
+          PYTHON_PREPARATION_OUTCOME: ${{ steps.python_preparation.outcome }}
+          PREREQUISITES_OUTCOME: ${{ steps.prerequisites.outcome }}
+          LIBSECRET_OUTCOME: ${{ steps.libsecret.outcome }}
+          HELPER_OUTCOME: ${{ steps.helper.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
+          CONTRACTS_READY_OUTCOME: ${{ steps.contracts_ready.outcome }}
+          GNOME_BUILD_OUTCOME: ${{ steps.gnome_build.outcome }}
+          GNOME_IDENTITY_OUTCOME: ${{ steps.gnome_identity.outcome }}
+          PERSISTENCE_OUTCOME: ${{ steps.persistence.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+          const boundaries = {
+            hostEncryptionQualification: 'not-performed', providerQualification: 'not-performed',
+            cloudQualification: 'not-performed', releaseQualification: 'not-performed',
+            minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed'
+          };
+          const report = {
+            schemaVersion: 1, classification: 'actual-pinned-gnome-persistence-generated-data-source-only',
+            generatedTestDataOnly: true,
+            platform: process.platform, architecture: process.arch, expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            libsecretCommit: process.env.LIBSECRET_COMMIT, gnomeCommit: process.env.GNOME_COMMIT,
+            ...boundaries,
+            stages: Object.fromEntries(['python_preparation', 'prerequisites', 'libsecret', 'helper', 'contracts', 'contracts_ready', 'gnome_build', 'gnome_identity', 'persistence'].map(
+              (stage) => [stage, process.env[`${stage.toUpperCase()}_OUTCOME`] ?? 'not-run'])),
+            issues: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          for (const file of ['gnome-client-build-identity.json', 'gnome-daemon-build-identity.json', 'gnome-contract-summary.json', 'gnome-persistence-summary.json']) {
+            rmSync(`diagnostics/${file}`, { force: true });
+          }
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).size <= limit, `Report exceeds byte limit: ${file}`);
+            return readFileSync(file);
+          };
+          const capture = (label, operation) => {
+            try { operation(); } catch {
+              report.issues.push(`${label}: required bounded source evidence is missing, mismatched or incomplete`);
+              process.exitCode = 1;
+            }
+          };
+          const text = (value) => {
+            assert.ok(typeof value === 'string' && value.length <= 4096 && !/[\r\n\0]/u.test(value));
+            return value;
+          };
+          const digest = (value) => {
+            assert.match(value, /^[a-f0-9]{64}$/u);
+            return value;
+          };
+          const fileIdentity = (value) => ({ path: text(value.path), sha256: digest(value.sha256) });
+          const dependencies = (identity) => {
+            const entries = Object.entries(identity.dependencies);
+            assert.ok(entries.length > 0 && entries.length <= 32);
+            return Object.fromEntries(entries.map(([name, value]) => {
+              assert.match(name, /^[a-z0-9.-]{1,128}$/u);
+              return [name, { library: text(value.library), sha256: digest(value.sha256), version: text(value.version) }];
+            }));
+          };
+          if (existsSync('diagnostics/gnome-prerequisites.txt')) capture('prerequisites', () => {
+            report.prerequisites = bounded('diagnostics/gnome-prerequisites.txt', 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const summarize = (stage, input, output, suites) => {
+            if (!existsSync(input)) {
+              if (report.stages[stage] === 'success') throw new Error('Missing required test report');
+              return;
+            }
+            const result = JSON.parse(bounded(input, 256 * 1024));
+            const cases = result.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256);
+            const selected = cases.filter((test) => suites.some((suite) => test.ancestorTitles?.includes(suite)));
+            const complete = result.success === true && result.numFailedTests === 0 && result.numPendingTests === 0 &&
+              cases.every((test) => test.status === 'passed') &&
+              suites.every((suite) => cases.some((test) => test.ancestorTitles?.includes(suite)));
+            writeFileSync(output, JSON.stringify({
+              classification: stage === 'persistence' ? 'actual-gnome-generated-data-persistence-and-process-outcomes-only' : 'compiled-client-and-managed-binding-source-contracts-only',
+              platform: process.platform, architecture: process.arch,
+              sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              ...boundaries,
+              accepted: complete && report.stages[stage] === 'success',
+              passed: result.numPassedTests, failed: result.numFailedTests, pending: result.numPendingTests,
+              requiredSuiteCases: selected.length,
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+            if (report.stages[stage] === 'success') assert.ok(complete, 'Actual opted-in suites must execute without failures or skips');
+          };
+          capture('contracts', () => summarize('contracts', 'diagnostics/gnome-source-interface-tests.json', 'diagnostics/gnome-contract-summary.json', [
+            'opt-in compiled client against private synthetic Secret Service, not native custody',
+            'managed Linux key binding, not native custody or readiness'
+          ]));
+          capture('persistence', () => {
+            if (report.stages.persistence === 'success') {
+              assert.equal(process.platform, 'linux');
+              assert.equal(process.arch, process.env.EXPECTED_ARCH);
+              assert.equal(report.stages.contracts, 'success');
+              assert.equal(report.stages.contracts_ready, 'success');
+              assert.equal(report.stages.gnome_identity, 'success');
+              assert.equal(report.stages.python_preparation, 'success');
+            }
+            summarize('persistence', 'diagnostics/gnome-persistence-tests.json', 'diagnostics/gnome-persistence-summary.json', [
+              'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody',
+              'opt-in Linux null-sink profile nonsecret fixtures'
+            ]);
+          });
+          if (report.stages.helper === 'success') capture('client-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.libsecretCommit, process.env.LIBSECRET_COMMIT);
+            assert.equal(identity.qualification, 'compile-only-not-provider-or-runtime-admission');
+            const sources = Object.entries(identity.sources);
+            assert.ok(sources.length > 0 && sources.length <= 64);
+            writeFileSync('diagnostics/gnome-client-build-identity.json', JSON.stringify({
+              schemaVersion: identity.schemaVersion, platform: identity.platform, architecture: identity.architecture,
+              libsecretCommit: identity.libsecretCommit, qualification: identity.qualification,
+              compiler: text(identity.compiler), binarySha256: digest(identity.binarySha256),
+              contractProbeLibraryPath: text(identity.contractProbeLibraryPath), dependencies: dependencies(identity),
+              sources: Object.fromEntries(sources.map(([name, value]) => {
+                assert.match(name, /^[A-Za-z0-9._/-]{1,128}$/u);
+                return [name, digest(value)];
+              }))
+            }, null, 2) + '\n');
+          });
+          if (report.stages.gnome_identity === 'success') capture('daemon-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/gnome-build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.architecture, process.env.EXPECTED_ARCH);
+            assert.equal(identity.sourceCommit, process.env.GNOME_COMMIT);
+            assert.equal(identity.kind, 'actual-gnome-persistence-with-generated-test-data-only');
+            assert.equal(identity.qualification, 'gnome-persistence-source-test-not-encrypted-host-custody-or-release-readiness');
+            writeFileSync('diagnostics/gnome-daemon-build-identity.json', JSON.stringify({
+              schemaVersion: identity.schemaVersion, kind: identity.kind, platform: identity.platform,
+              architecture: identity.architecture, sourceCommit: identity.sourceCommit,
+              qualification: identity.qualification, executable: fileIdentity(identity.executable),
+              dependencies: dependencies(identity), tools: { bus: fileIdentity(identity.tools.bus), observer: fileIdentity(identity.tools.observer) },
+              libraryPath: text(identity.libraryPath), fixtureManifestSha256: digest(identity.fixtureManifestSha256),
+              privatePrefixOptions: Object.fromEntries(Object.entries({
+                'pkcs11-config': 'etc/pkcs11', 'pkcs11-modules': 'lib/pkcs11'
+              }).map(([name, relative]) => {
+                assert.equal(identity.privatePrefixOptions[name], `${process.env.GNOME_PREFIX}/${relative}`);
+                return [name, text(identity.privatePrefixOptions[name])];
+              })),
+              mesonOptions: Object.fromEntries(Object.entries({
+                'ssh-agent': false, pam: false, systemd: 'disabled', 'libcap-ng': 'disabled',
+                selinux: 'disabled', 'debug-mode': false, manpage: false
+              }).map(([name, expected]) => {
+                assert.equal(identity.mesonOptions[name], expected);
+                return [name, identity.mesonOptions[name]];
+              }))
+            }, null, 2) + '\n');
+          });
+          if (report.issues.length > 0) {
+            for (const file of ['diagnostics/gnome-contract-summary.json', 'diagnostics/gnome-persistence-summary.json']) {
+              if (!existsSync(file)) continue;
+              const summary = JSON.parse(bounded(file, 512 * 1024));
+              summary.accepted = false;
+              writeFileSync(file, JSON.stringify(summary, null, 2) + '\n');
+            }
+          }
+          writeFileSync('diagnostics/gnome-source-report.json', JSON.stringify(report, null, 2) + '\n');
+          NODE
+
+      - name: Retain sanitized GNOME source JSON only (no stores, binaries or private output)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gnome-persistence-source-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/gnome-source-report.json
+            diagnostics/gnome-contract-summary.json
+            diagnostics/gnome-persistence-summary.json
+            diagnostics/gnome-python-preparation.json
+            diagnostics/gnome-client-build-identity.json
+            diagnostics/gnome-daemon-build-identity.json
+          if-no-files-found: error
+          retention-days: 7

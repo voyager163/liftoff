@@ -1,0 +1,40 @@
+{
+  "kind": "actual-gnome-persistence-with-generated-test-data-only",
+  "sourceCommit": "da00f9621eaf263d5ed4236df9c22798ea8021d2",
+  "tagEquivalent": null,
+  "minimumGlib": "2.80",
+  "ubuntu2404AdditionalBuildPackages": ["libgcr-3-dev", "libp11-kit-dev"],
+  "runtimeTools": { "bus": "/usr/bin/dbus-daemon", "observer": "/usr/bin/gdbus" },
+  "restartProfile": {
+    "kind": "linux-landlock-readonly-process-null-sink/1",
+    "selection": "explicit-plan-then-run-no-fallback",
+    "operationDigest": "nonsecret-exact-coordinator-arguments-tools-paths-and-limits",
+    "privateInputBinding": "excluded-no-password-or-key-verifier",
+    "approval": "not-conferred-by-plan",
+    "readiness": false
+  },
+  "mesonOptions": {
+    "ssh-agent": false,
+    "pam": false,
+    "systemd": "disabled",
+    "libcap-ng": "disabled",
+    "selinux": "disabled",
+    "debug-mode": false,
+    "manpage": false
+  },
+  "privatePrefixOptions": {
+    "pkcs11-config": "etc/pkcs11",
+    "pkcs11-modules": "lib/pkcs11"
+  },
+  "primaryLibraries": {
+    "glib-2.0": "libglib-2.0.so",
+    "gio-2.0": "libgio-2.0.so",
+    "gobject-2.0": "libgobject-2.0.so",
+    "gck-1": "libgck-1.so",
+    "gcr-base-3": "libgcr-base-3.so",
+    "libgcrypt": "libgcrypt.so",
+    "p11-kit-1": "libp11-kit.so"
+  },
+  "budgets": { "jobMinutes": 20, "coordinatorMs": 12000, "parentMs": 15000, "clientMs": 5000, "startupMs": 5000, "maximumPrivateOutputBytes": 16384 },
+  "qualification": "gnome-persistence-source-test-not-encrypted-host-custody-or-release-readiness"
+}

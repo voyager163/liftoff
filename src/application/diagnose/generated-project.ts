@@ -107,6 +107,27 @@ export async function validateGeneratedProject(projectRoot: string): Promise<str
         `Unsafe project provenance path for ${artifact.logicalName} at ${artifact.pathParts.join('/')}: ${errorMessage(error)}`
       );
     }
+    if (artifact.adoption) {
+      try {
+        await resolveProjectPath(projectRoot, artifact.adoption.sourcePathParts);
+      } catch (error) {
+        issues.push(
+          `Unsafe adopted source path for ${artifact.logicalName} at ${artifact.adoption.sourcePathParts.join('/')}: ${errorMessage(error)}`
+        );
+      }
+    }
+  }
+
+  if ('standards' in manifest && manifest.standards?.components) {
+    for (const component of manifest.standards.components) {
+      try {
+        await resolveProjectPath(projectRoot, component.rootPathParts);
+      } catch (error) {
+        issues.push(
+          `Unsafe component root path for ${component.id} at ${component.rootPathParts.join('/')}: ${errorMessage(error)}`
+        );
+      }
+    }
   }
 
   if (manifest.framework.state === 'initialized') {

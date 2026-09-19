@@ -1,0 +1,42 @@
+{
+	"$schema": "https://json-schema.org/draft/2020-12/schema",
+	"properties": {
+		"identity": {
+			"properties": {
+				"liftoffVersion": {
+					"const": "0.11.0"
+				},
+				"manifestArtifactVersion": {
+					"const": 7
+				},
+				"policyVersion": {
+					"const": "6"
+				},
+				"activationContractVersion": {
+					"const": 2
+				},
+				"phaseGraphSchemaVersion": {
+					"const": 1
+				},
+				"phaseGraphHash": {
+					"const": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c"
+				},
+				"activationStateSchemaVersion": {
+					"const": 2
+				},
+				"evidenceHeaderSchemaVersion": {
+					"const": 2
+				},
+				"approvalEnvelopeSchemaVersion": {
+					"const": 2
+				},
+				"supersessionSchemaVersion": {
+					"const": 1
+				},
+				"credentialPolicySchemaVersion": {
+					"const": 1
+				}
+			}
+		}
+	}
+}

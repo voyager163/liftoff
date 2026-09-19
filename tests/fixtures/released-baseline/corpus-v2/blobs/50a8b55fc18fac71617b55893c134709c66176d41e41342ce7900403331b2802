@@ -1,0 +1,90 @@
+{
+  "caseId": "update-v0.12.3-schema1",
+  "release": "v0.12.3",
+  "root": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/update-v0.12.3-schema1-interrupted/project's directory with spaces",
+  "home": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/update-v0.12.3-schema1-interrupted/private home",
+  "fingerprint": "b1e954b2e51bb630d29c5b34f572946cfbc301e6fb638a6d47345e2baab7f807",
+  "lock": "/private/tmp/liftoff-public-baseline-2wnshdo5/tests/fixtures/released-baseline/corpus-v2/.capture-work/update-v0.12.3-schema1-interrupted/.liftoff-mutation-53a81ad52ca30713a15bee5d4b374fedb5e645dab5a4d6504cf4f844d18ae6a1.lock",
+  "platform": "darwin",
+  "node": "v24.21.0",
+  "checkpoint": {
+    "phase": "after-mutation",
+    "index": 2
+  },
+  "before": [
+    {
+      "path": "governance/evidence/receipt.bin",
+      "mode": 416,
+      "bytes": "77u/Iw0K/wCADQo="
+    },
+    {
+      "path": "liftoff.manifest.json",
+      "mode": 384,
+      "bytes": "ew0KCSJmaXh0dXJlIjogIm9yaWdpbmFsIHJlbGVhc2VkIHRyYW5zYWN0aW9uIGJ5dGVzIg0KfQ0K"
+    },
+    {
+      "path": "unrelated.bin",
+      "mode": 420,
+      "bytes": "AP7/DQo="
+    },
+    {
+      "path": "user-script.sh",
+      "mode": 488,
+      "bytes": "IyEvYmluL3NoDQpwcmludGYgdW50b3VjaGVkDQo="
+    }
+  ],
+  "mutations": [
+    {
+      "type": "write",
+      "pathParts": [
+        "governance",
+        "history",
+        "b1e954b2e51bb630d29c5b34f572946cfbc301e6fb638a6d47345e2baab7f807",
+        "files",
+        "governance",
+        "evidence",
+        "receipt.bin"
+      ],
+      "content": "77u/Iw0K/wCADQo=",
+      "mode": 288
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        "governance",
+        "history",
+        "b1e954b2e51bb630d29c5b34f572946cfbc301e6fb638a6d47345e2baab7f807",
+        "files",
+        "liftoff.manifest.json"
+      ],
+      "content": "ew0KCSJmaXh0dXJlIjogIm9yaWdpbmFsIHJlbGVhc2VkIHRyYW5zYWN0aW9uIGJ5dGVzIg0KfQ0K",
+      "mode": 288
+    },
+    {
+      "type": "delete",
+      "pathParts": [
+        "governance",
+        "evidence",
+        "receipt.bin"
+      ]
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        "governance",
+        "successor",
+        "receipt.bin"
+      ],
+      "content": "77u/Iw0K/wCADQo=",
+      "mode": 416
+    },
+    {
+      "type": "write",
+      "pathParts": [
+        "liftoff.manifest.json"
+      ],
+      "content": "eyJmaXh0dXJlIjoiYXBwcm92ZWQgdGFyZ2V0IGJ5dGVzIn0K",
+      "mode": 384
+    }
+  ]
+}

@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { isUtf8 } from 'node:buffer';
 import { constants } from 'node:fs';
 import type { Stats } from 'node:fs';
-import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
+import { lstat, mkdir, open, opendir, realpath, rename, unlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
@@ -26,6 +27,7 @@ import type {
   UpdateTransactionApprovalStore
 } from '../../application/update/transaction-approval.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
+import type { SkillScope } from '../../domain/skills/contracts.js';
 import { errorCode, errorMessage } from './errors.js';
 
 export type { UpdateTransactionApprovalStore } from '../../application/update/transaction-approval.js';
@@ -33,14 +35,21 @@ export type { UpdateTransactionApprovalStore } from '../../application/update/tr
 export type UpdatePreviewFileStat = Pick<
   Stats, 'dev' | 'ino' | 'mode' | 'nlink' | 'size' | 'mtimeMs' | 'ctimeMs' |
   'isDirectory' | 'isFile' | 'isSymbolicLink'
->;
+> & Partial<Pick<Stats, 'birthtimeMs' | 'uid'>>;
 
 export interface UpdatePreviewFileHandle {
   stat(): Promise<UpdatePreviewFileStat>;
   readText(maximumBytes: number): Promise<string>;
+  readBytes?(maximumBytes: number): Promise<Uint8Array>;
   writeText(content: string): Promise<void>;
   chmod(mode: number): Promise<void>;
   sync(): Promise<void>;
+  close(): Promise<void>;
+}
+
+export interface UpdatePreviewDirectoryHandle {
+  stat(): Promise<UpdatePreviewFileStat>;
+  readName(): Promise<string | null>;
   close(): Promise<void>;
 }
 
@@ -52,6 +61,8 @@ export interface UpdatePreviewFileSystem {
   replaceFile(sourcePath: string, targetPath: string): Promise<void>;
   removeFile(filePath: string): Promise<void>;
   syncDirectory(directoryPath: string): Promise<void>;
+  /** Optional complete name iterator; metadata enumeration refuses an unsupported filesystem. */
+  openDirectory?(directoryPath: string): Promise<UpdatePreviewDirectoryHandle>;
 }
 
 export interface UpdatePreviewPathOptions {
@@ -85,23 +96,34 @@ export const nodeUpdatePreviewFileSystem: UpdatePreviewFileSystem = {
   makeDirectory: async (directoryPath, mode) => { await mkdir(directoryPath, { mode }); },
   openFile: async (filePath, access, mode) => {
     const noFollow = constants.O_NOFOLLOW ?? 0;
+    if (access === 'read' && process.platform !== 'win32' && constants.O_NONBLOCK === undefined) {
+      throw storageError('Nonblocking private file reads are unsupported on this native filesystem.');
+    }
     const flags = access === 'read'
-      ? constants.O_RDONLY | noFollow
+      ? constants.O_RDONLY | noFollow | (process.platform === 'win32' ? 0 : constants.O_NONBLOCK)
       : constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | noFollow;
     const handle = await open(filePath, flags, mode);
-    return {
-      stat: () => handle.stat(),
-      readText: async (maximumBytes) => {
-        const bytes = Buffer.alloc(maximumBytes + 1);
-        let length = 0;
+    const readBytes = async (maximumBytes: number): Promise<Uint8Array> => {
+      const bytes = Buffer.alloc(maximumBytes + 1);
+      let length = 0;
+      try {
         while (length < bytes.length) {
           const result = await handle.read(bytes, length, bytes.length - length, length);
           if (!result.bytesRead) break;
           length += result.bytesRead;
         }
         if (length > maximumBytes) throw new Error('Preview receipt exceeds its size limit.');
-        return bytes.subarray(0, length).toString('utf8');
+        return bytes.subarray(0, length);
+      } catch (error) { bytes.fill(0); throw error; }
+    };
+    return {
+      stat: () => handle.stat(),
+      readText: async (maximumBytes) => {
+        const bytes = await readBytes(maximumBytes);
+        try { return Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8'); }
+        finally { bytes.fill(0); }
       },
+      readBytes,
       writeText: (content) => handle.writeFile(content, 'utf8'),
       chmod: (mode) => handle.chmod(mode),
       sync: () => handle.sync(),
@@ -121,6 +143,31 @@ export const nodeUpdatePreviewFileSystem: UpdatePreviewFileSystem = {
       // Node does not support flushing directory handles on every Windows filesystem.
       if (process.platform !== 'win32' ||
           !['EACCES', 'EPERM', 'EINVAL', 'ENOTSUP', 'EISDIR'].includes(errorCode(error) ?? '')) throw error;
+    }
+  },
+  openDirectory: async (directoryPath) => {
+    if (process.platform === 'win32' || constants.O_DIRECTORY === undefined || constants.O_NOFOLLOW === undefined ||
+      constants.O_NONBLOCK === undefined) throw storageError('Descriptor-bound private metadata enumeration is unsupported on this native filesystem.');
+    const handle = await open(directoryPath, constants.O_RDONLY | constants.O_DIRECTORY | constants.O_NOFOLLOW | constants.O_NONBLOCK);
+    let directory: Awaited<ReturnType<typeof opendir>> | null = null;
+    try {
+      const before = await handle.stat();
+      if (!before.isDirectory()) throw storageError('Private metadata enumeration requires a directory.');
+      directory = await opendir(directoryPath, { bufferSize: 1 });
+      const current = await lstat(directoryPath), opened = await handle.stat();
+      if (!sameMetadataStamp(before, current) || !sameMetadataStamp(before, opened) ||
+        await realpath(directoryPath) !== directoryPath) {
+        throw storageError('Private metadata directory changed while opening its name iterator.');
+      }
+      const names = directory;
+      return {
+        stat: () => handle.stat(),
+        readName: async () => (await names.read())?.name ?? null,
+        close: () => withCleanup(() => names.close(), () => handle.close())
+      };
+    } catch (error) {
+      await withCleanup(async () => { if (directory) await directory.close(); }, () => handle.close());
+      throw error;
     }
   }
 };
@@ -285,7 +332,25 @@ async function canonicalStateBase(fs: UpdatePreviewFileSystem, paths: NativePath
   }
 }
 
-async function storageFor(projectRoot: string, options: UpdatePreviewOptions): Promise<Storage> {
+async function installationStorageFor(targetRoot: string, options: UpdatePreviewOptions): Promise<Storage> {
+  const home = options.homedir ?? os.homedir();
+  const storage = await storageFor(home, options, true);
+  const requested = absoluteNativePath(targetRoot, storage.paths, 'Installation transaction root');
+  const canonical = await canonicalDirectory(storage.fs, storage.paths, requested);
+  if (requested !== canonical || within(storage.location.directory, canonical, storage.paths, storage.platform)) {
+    throw storageError('Installation authority requires an exact canonical target outside its private approval store.');
+  }
+  const projectKey = updatePreviewProjectKey(canonical);
+  return {
+    ...storage,
+    location: Object.freeze({
+      ...storage.location, projectRoot: canonical, projectKey,
+      receiptPath: storage.paths.join(storage.location.directory, `${projectKey}.json`)
+    })
+  };
+}
+
+async function storageFor(projectRoot: string, options: UpdatePreviewOptions, userSkillScope = false): Promise<Storage> {
   const fs = options.fileSystem ?? nodeUpdatePreviewFileSystem;
   const platform = options.platform ?? process.platform;
   if (platform !== process.platform && fs === nodeUpdatePreviewFileSystem) {
@@ -294,19 +359,33 @@ async function storageFor(projectRoot: string, options: UpdatePreviewOptions): P
   const paths = nativePaths(platform);
   const requestedRoot = absoluteNativePath(projectRoot, paths, 'Project root');
   const root = normalizeUpdatePreviewProjectRoot(await canonicalDirectory(fs, paths, requestedRoot));
-  const requestedRepository = options.repositoryRoot === undefined
+  const requestedRepository = userSkillScope || options.repositoryRoot === undefined
     ? undefined : absoluteNativePath(options.repositoryRoot, paths, 'Repository root');
   const repositoryRoot = requestedRepository === undefined
-    ? await discoverRepository(fs, paths, root)
+    ? userSkillScope ? undefined : await discoverRepository(fs, paths, root)
     : await canonicalDirectory(fs, paths, requestedRepository);
   if (repositoryRoot !== undefined && !within(repositoryRoot, root, paths, platform)) {
     throw storageError(`The supplied repository does not contain the project: ${repositoryRoot}`);
   }
-  const boundaries = [requestedRoot, root, ...repositoryRoot ? [repositoryRoot] : [],
-    ...requestedRepository ? [requestedRepository] : []];
+  if (userSkillScope) {
+    const home = absoluteNativePath(options.homedir ?? os.homedir(), paths, 'Skills user home');
+    if (await canonicalDirectory(fs, paths, home) !== root || requestedRoot !== root) {
+      throw storageError('User-scope skills approval must bind the independently selected canonical user home.');
+    }
+  }
+  const boundaries = userSkillScope
+    ? ['.agents', '.claude', '.github', '.liftoff'].map((part) => paths.join(root, part))
+    : [requestedRoot, root, ...repositoryRoot ? [repositoryRoot] : [], ...requestedRepository ? [requestedRepository] : []];
   const base = stateBase(options);
   rejectContainedStore(paths.join(base, ...updatePreviewDirectoryParts), boundaries, paths, platform);
-  const directory = paths.join(await canonicalStateBase(fs, paths, base), ...updatePreviewDirectoryParts);
+  const canonicalBase = await canonicalStateBase(fs, paths, base);
+  if (userSkillScope && (canonicalBase !== base || !within(root, canonicalBase, paths, platform))) {
+    throw storageError('User-scope skills private state must remain in its canonical home boundary without linked or redirected ancestors.');
+  }
+  const directory = paths.join(canonicalBase, ...updatePreviewDirectoryParts);
+  if (userSkillScope && comparable(directory, platform) === comparable(root, platform)) {
+    throw storageError('Skills approval storage cannot be the user target directory itself.');
+  }
   rejectContainedStore(directory, boundaries, paths, platform);
   const projectKey = updatePreviewProjectKey(root);
   return {
@@ -420,24 +499,52 @@ async function withCleanup<T>(action: () => Promise<T>, cleanup: () => Promise<v
   return result;
 }
 
-async function readText(storage: Storage, filePath: string, snapshot: DirectorySnapshot): Promise<string | undefined> {
+interface MetadataReadGuard {
+  check(): Promise<void>;
+  file(details: UpdatePreviewFileStat): void;
+}
+
+async function readText(
+  storage: Storage, filePath: string, snapshot: DirectorySnapshot, metadata?: MetadataReadGuard
+): Promise<string | undefined> {
+  await metadata?.check();
   await assertDirectories(storage, snapshot);
   const before = await inspect(storage.fs, filePath);
   if (!before) return undefined;
   privateFile(storage, before, filePath);
+  metadata?.file(before);
   if (before.size > maximumReceiptBytes) throw storageError(`Preview receipt exceeds its size limit: ${filePath}`);
   const handle = await io('open for reading', filePath, () => storage.fs.openFile(filePath, 'read', 0o600));
   return withCleanup(async () => {
     const opened = await io('inspect opened file', filePath, () => handle.stat());
     privateFile(storage, opened, filePath);
+    metadata?.file(opened);
     if (!sameFile(before, opened)) throw storageError(`Preview file changed while opening: ${filePath}`);
-    const content = await io('read', filePath, () => handle.readText(maximumReceiptBytes));
+    if (metadata && !sameMetadataStamp(before, opened)) throw storageError('Private metadata changed while opening.');
+    await metadata?.check();
+    let content: string;
+    if (metadata) {
+      if (!handle.readBytes) throw new ScopedMetadataEnumerationError('unsupported');
+      const readBytes = handle.readBytes.bind(handle);
+      const bytes = await io('read private metadata', filePath, () => readBytes(maximumReceiptBytes));
+      try {
+        if (bytes.byteLength !== before.size || !isUtf8(bytes)) throw new ScopedMetadataEnumerationError('changed');
+        content = Buffer.from(bytes.buffer, bytes.byteOffset, bytes.byteLength).toString('utf8');
+      } finally { bytes.fill(0); }
+    } else content = await io('read', filePath, () => handle.readText(maximumReceiptBytes));
     const after = await inspect(storage.fs, filePath);
     if (!after || !sameFile(before, after) || before.size !== after.size ||
         before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
       throw storageError(`Preview file changed while reading: ${filePath}`);
     }
     privateFile(storage, after, filePath);
+    if (metadata) {
+      const retained = await handle.stat();
+      metadata.file(retained);
+      metadata.file(after);
+      if (!sameMetadataStamp(before, retained) || !sameMetadataStamp(before, after)) throw new ScopedMetadataEnumerationError('changed');
+      await metadata.check();
+    }
     await assertDirectories(storage, snapshot);
     return content;
   }, () => io('close', filePath, () => handle.close()));
@@ -615,9 +722,10 @@ function parseApproval(
   return validateUpdateTransactionApprovalSeal(value, binding, storage.now());
 }
 
-export function createUpdateTransactionApprovalStore(
+function createTransactionApprovalStore(
   projectRoot: string,
-  options: UpdatePreviewOptions = {}
+  options: UpdatePreviewOptions,
+  userSkillScope: boolean | 'installation' = false
 ): UpdateTransactionApprovalStore {
   const env = options.env ?? process.env;
   const capturedOptions: UpdatePreviewOptions = {
@@ -629,7 +737,8 @@ export function createUpdateTransactionApprovalStore(
   let boundLocation: UpdatePreviewLocation | undefined;
   const resolveBinding = async (planFingerprint: string, transactionDigest: string) => {
     validateUpdateTransactionApprovalDigests(planFingerprint, transactionDigest);
-    const storage = await storageFor(projectRoot, capturedOptions);
+    const storage = userSkillScope === 'installation'
+      ? await installationStorageFor(projectRoot, capturedOptions) : await storageFor(projectRoot, capturedOptions, userSkillScope);
     if (boundLocation && canonicalJson(boundLocation) !== canonicalJson(storage.location)) {
       throw new UpdateTransactionApprovalError('The transaction approval project or user-local storage boundary changed.');
     }
@@ -689,6 +798,25 @@ export function createUpdateTransactionApprovalStore(
   };
 }
 
+export function createUpdateTransactionApprovalStore(
+  projectRoot: string, options: UpdatePreviewOptions = {}
+): UpdateTransactionApprovalStore {
+  return createTransactionApprovalStore(projectRoot, options);
+}
+
+export function createSkillsTransactionApprovalStore(
+  targetRoot: string, scope: SkillScope, options: UpdatePreviewOptions = {}
+): UpdateTransactionApprovalStore {
+  if (scope !== 'user' && scope !== 'project') throw storageError('Unknown skills approval scope.');
+  return createTransactionApprovalStore(targetRoot, options, scope === 'user');
+}
+
+export function createInstallationTransactionApprovalStore(
+  targetRoot: string, options: UpdatePreviewOptions = {}
+): UpdateTransactionApprovalStore {
+  return createTransactionApprovalStore(targetRoot, options, 'installation');
+}
+
 export async function consumeUpdatePreviewReceipt(
   projectRoot: string,
   expectedReceipt: UpdatePreviewReceipt,
@@ -722,23 +850,282 @@ export interface ScopedUserLocalRecord {
   value: unknown;
 }
 
-export function createScopedUserLocalRecordStore(
-  projectRoot: string,
-  namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' |
+type ScopedRecordNamespace = 'governance-preview' | 'governance-approval' | 'governance-operation' | 'workstation-remediation' |
     'repair-preview' | 'repair-approval' | 'repair-verification' | 'repair-backup' |
-    'repair-workspace-authority',
-  options: UpdatePreviewOptions = {}
+    'repair-workspace-authority' | 'adoption-preview' | 'adoption-approval' |
+    'adoption-verification' | 'adoption-backup' | 'adoption-framework' | 'adoption-checkpoint' |
+    'skills-ownership' | 'installation-record';
+
+export type ScopedMetadataNamespace = 'governance-preview' | 'governance-approval' | 'governance-operation';
+export const scopedMetadataEnumerationLimits = Object.freeze({
+  maximumEntries: 8192,
+  maximumRecords: 1024,
+  maximumBytes: 8 * 1024 * 1024,
+  maximumFilenameBytes: 2 * 1024 * 1024,
+  timeoutMs: 10_000
+});
+
+export interface ScopedMetadataEnumerationOptions {
+  maximumEntries?: number;
+  maximumRecords?: number;
+  maximumBytes?: number;
+  maximumFilenameBytes?: number;
+  timeoutMs?: number;
+  signal?: AbortSignal;
+}
+
+export interface ScopedMetadataInventory {
+  namespace: ScopedMetadataNamespace;
+  projectRoot: string;
+  projectIdentity: { device: string; inode: string; birthtime: string; ownerUid: number };
+  keys: readonly string[];
+  scannedEntries: number;
+  totalBytes: number;
+}
+
+export interface ScopedMetadataRecordInventory extends ScopedMetadataInventory {
+  records: readonly ScopedUserLocalRecord[];
+}
+
+export class ScopedMetadataEnumerationError extends UpdatePreviewError {
+  constructor(readonly reason: 'unsupported' | 'unavailable' | 'limit' | 'timeout' | 'aborted' | 'changed' | 'unsafe' | 'binding' | 'invalid-record') {
+    super('preview-storage', `Private metadata enumeration is blocked (${reason}); incomplete inventory is not absence or dispatch authority.`);
+    this.name = 'ScopedMetadataEnumerationError';
+  }
+}
+
+function sameMetadataStamp(left: UpdatePreviewFileStat, right: UpdatePreviewFileStat): boolean {
+  return sameFile(left, right) && left.mode === right.mode && left.nlink === right.nlink &&
+    left.size === right.size && left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs &&
+    left.birthtimeMs === right.birthtimeMs && left.uid === right.uid;
+}
+
+function metadataCreation(details: UpdatePreviewFileStat): ScopedMetadataInventory['projectIdentity'] {
+  if (!Number.isFinite(details.dev) || !Number.isFinite(details.ino) ||
+    typeof details.birthtimeMs !== 'number' || !Number.isFinite(details.birthtimeMs) || details.birthtimeMs <= 0 ||
+    typeof details.uid !== 'number' || !Number.isSafeInteger(details.uid) || details.uid < 0) {
+    throw new ScopedMetadataEnumerationError('unsupported');
+  }
+  return { device: String(details.dev), inode: String(details.ino), birthtime: String(details.birthtimeMs), ownerUid: details.uid };
+}
+
+function ordinaryMetadata(
+  details: UpdatePreviewFileStat, directory: boolean, ownerUid: number
+): void {
+  metadataCreation(details);
+  if (details.isSymbolicLink() || (directory ? !details.isDirectory() : !details.isFile() || details.nlink !== 1) ||
+    details.uid !== ownerUid || !Number.isSafeInteger(details.size) || details.size < 0 ||
+    !Number.isFinite(details.mtimeMs) || !Number.isFinite(details.ctimeMs) ||
+    (directory ? ![0o500, 0o700].includes(details.mode & 0o7777) : ![0o400, 0o600].includes(details.mode & 0o7777))) {
+    throw new ScopedMetadataEnumerationError('unsafe');
+  }
+}
+
+async function enumerateScopedMetadata(
+  selectStorage: () => Promise<Storage>, namespace: ScopedRecordNamespace,
+  options: ScopedMetadataEnumerationOptions, readValues: boolean
+): Promise<ScopedMetadataRecordInventory> {
+  if (namespace !== 'governance-preview' && namespace !== 'governance-approval' && namespace !== 'governance-operation') {
+    throw new ScopedMetadataEnumerationError('unsupported');
+  }
+  const limits: { -readonly [K in keyof typeof scopedMetadataEnumerationLimits]: number } = { ...scopedMetadataEnumerationLimits };
+  for (const key of Object.keys(options)) {
+    if (key !== 'signal' && !Object.hasOwn(limits, key)) throw new ScopedMetadataEnumerationError('limit');
+  }
+  for (const key of Object.keys(limits) as (keyof typeof limits)[]) {
+    const value = options[key];
+    if (value !== undefined) {
+      if (!Number.isSafeInteger(value) || value < 1 || value > limits[key]) throw new ScopedMetadataEnumerationError('limit');
+      limits[key] = value;
+    }
+  }
+  const deadline = performance.now() + limits.timeoutMs;
+  let stopped = false;
+  const checkTime = () => {
+    if (options.signal?.aborted) throw new ScopedMetadataEnumerationError('aborted');
+    if (stopped || performance.now() >= deadline) throw new ScopedMetadataEnumerationError('timeout');
+  };
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let rejectAbort: (() => void) | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => { stopped = true; reject(new ScopedMetadataEnumerationError('timeout')); }, limits.timeoutMs);
+    rejectAbort = () => { stopped = true; reject(new ScopedMetadataEnumerationError('aborted')); };
+    options.signal?.addEventListener('abort', rejectAbort, { once: true });
+  });
+  const work = (async (): Promise<ScopedMetadataRecordInventory> => {
+    checkTime();
+    const storage = await selectStorage();
+    checkTime();
+    if (!storage.fs.openDirectory || storage.platform === 'win32') throw new ScopedMetadataEnumerationError('unsupported');
+    const project = await storage.fs.lstat(storage.location.projectRoot);
+    regularDirectory(project, storage.location.projectRoot);
+    const projectIdentity = metadataCreation(project);
+    if (storage.platform === process.platform && process.getuid && projectIdentity.ownerUid !== process.getuid()) {
+      throw new ScopedMetadataEnumerationError('binding');
+    }
+    const snapshot = await directories(storage, false);
+    if (!snapshot) throw new ScopedMetadataEnumerationError('unavailable');
+    const directoryBefore = snapshot.get(storage.location.directory);
+    if (!directoryBefore) throw new ScopedMetadataEnumerationError('unavailable');
+    const privateRoot = storage.paths.dirname(storage.location.directory);
+    for (const [name, details] of snapshot) {
+      if (within(privateRoot, name, storage.paths, storage.platform)) ordinaryMetadata(details, true, projectIdentity.ownerUid);
+    }
+    const checkBinding = async () => {
+      checkTime();
+      const current = await storage.fs.lstat(storage.location.projectRoot);
+      regularDirectory(current, storage.location.projectRoot);
+      if (JSON.stringify(metadataCreation(current)) !== JSON.stringify(projectIdentity) ||
+        await storage.fs.realpath(storage.location.projectRoot) !== storage.location.projectRoot) {
+        throw new ScopedMetadataEnumerationError('binding');
+      }
+      await assertDirectories(storage, snapshot);
+      for (const [name, details] of snapshot) {
+        if (!within(privateRoot, name, storage.paths, storage.platform)) continue;
+        const current = await storage.fs.lstat(name);
+        ordinaryMetadata(current, true, projectIdentity.ownerUid);
+        if (!sameMetadataStamp(details, current)) throw new ScopedMetadataEnumerationError('changed');
+      }
+      if (await storage.fs.realpath(storage.location.directory) !== storage.location.directory) {
+        throw new ScopedMetadataEnumerationError('changed');
+      }
+      checkTime();
+    };
+    await checkBinding();
+    const directory = await storage.fs.openDirectory(storage.location.directory);
+    const selected = new Map<string, { path: string; stat: UpdatePreviewFileStat }>();
+    let complete = false;
+    return withCleanup(async () => {
+      await checkBinding();
+      ordinaryMetadata(await directory.stat(), true, projectIdentity.ownerUid);
+      if (!sameMetadataStamp(directoryBefore, await directory.stat())) throw new ScopedMetadataEnumerationError('changed');
+      const prefix = `${namespace}-${storage.location.projectKey}-`;
+      const names = new Set<string>();
+      let scannedEntries = 0, filenameBytes = 0, totalBytes = 0;
+      while (true) {
+        checkTime();
+        const name = await directory.readName();
+        checkTime();
+        if (name === null) break;
+        if (typeof name !== 'string' || !name || name === '.' || name === '..' || name.includes('/') || names.has(name)) {
+          throw new ScopedMetadataEnumerationError('changed');
+        }
+        names.add(name);
+        if (++scannedEntries > limits.maximumEntries || (filenameBytes += Buffer.byteLength(name)) > limits.maximumFilenameBytes) {
+          throw new ScopedMetadataEnumerationError('limit');
+        }
+        const compared = comparable(name, storage.platform);
+        if (compared.startsWith(`.${prefix}`)) throw new ScopedMetadataEnumerationError('changed');
+        if (!compared.startsWith(prefix)) continue;
+        if (!name.startsWith(prefix) || !/^[a-f0-9]{64}\.json$/u.test(name.slice(prefix.length))) {
+          throw new ScopedMetadataEnumerationError('unsafe');
+        }
+        if (selected.size >= limits.maximumRecords) throw new ScopedMetadataEnumerationError('limit');
+        const key = name.slice(prefix.length, -5), file = storage.paths.join(storage.location.directory, name);
+        const details = await storage.fs.lstat(file);
+        ordinaryMetadata(details, false, projectIdentity.ownerUid);
+        if (details.size < 1) throw new ScopedMetadataEnumerationError('invalid-record');
+        if (details.size > maximumReceiptBytes || (totalBytes += details.size) > limits.maximumBytes) {
+          throw new ScopedMetadataEnumerationError('limit');
+        }
+        selected.set(key, { path: file, stat: details });
+      }
+      await checkBinding();
+      if (!sameMetadataStamp(directoryBefore, await directory.stat())) throw new ScopedMetadataEnumerationError('changed');
+      const records: ScopedUserLocalRecord[] = [], keys = [...selected.keys()].sort();
+      for (const key of keys) {
+        const entry = selected.get(key)!;
+        await checkBinding();
+        const current = await storage.fs.lstat(entry.path);
+        ordinaryMetadata(current, false, projectIdentity.ownerUid);
+        if (!sameMetadataStamp(entry.stat, current)) throw new ScopedMetadataEnumerationError('changed');
+        if (!readValues) continue;
+        const content = await readText(storage, entry.path, snapshot, {
+          check: checkBinding,
+          file: (details) => {
+            checkTime();
+            ordinaryMetadata(details, false, projectIdentity.ownerUid);
+            if (!sameMetadataStamp(details, entry.stat)) throw new ScopedMetadataEnumerationError('changed');
+          }
+        });
+        if (content === undefined) throw new ScopedMetadataEnumerationError('changed');
+        let value: unknown;
+        try { value = JSON.parse(content); } catch { throw new ScopedMetadataEnumerationError('invalid-record'); }
+        if (value === null || typeof value !== 'object' || Array.isArray(value)) throw new ScopedMetadataEnumerationError('invalid-record');
+        if ('projectRoot' in value && value.projectRoot !== storage.location.projectRoot) throw new ScopedMetadataEnumerationError('binding');
+        if ('projectIdentity' in value) {
+          const identity = value.projectIdentity;
+          if (identity === null || typeof identity !== 'object' || Array.isArray(identity) ||
+            !('device' in identity) || identity.device !== projectIdentity.device ||
+            !('inode' in identity) || identity.inode !== projectIdentity.inode ||
+            !('birthtime' in identity) || identity.birthtime !== projectIdentity.birthtime ||
+            'uid' in identity && identity.uid !== projectIdentity.ownerUid) {
+            throw new ScopedMetadataEnumerationError('binding');
+          }
+        }
+        records.push({ projectRoot: storage.location.projectRoot, path: entry.path, value });
+      }
+      for (const entry of selected.values()) {
+        checkTime();
+        const current = await storage.fs.lstat(entry.path);
+        ordinaryMetadata(current, false, projectIdentity.ownerUid);
+        if (!sameMetadataStamp(entry.stat, current)) throw new ScopedMetadataEnumerationError('changed');
+      }
+      await checkBinding();
+      if (!sameMetadataStamp(directoryBefore, await directory.stat())) throw new ScopedMetadataEnumerationError('changed');
+      complete = true;
+      return { namespace, projectRoot: storage.location.projectRoot, projectIdentity, keys, scannedEntries, totalBytes, records };
+    }, async () => {
+      await directory.close();
+      if (!complete) return;
+      await checkBinding();
+      for (const entry of selected.values()) {
+        checkTime();
+        const current = await storage.fs.lstat(entry.path);
+        ordinaryMetadata(current, false, projectIdentity.ownerUid);
+        if (!sameMetadataStamp(entry.stat, current)) throw new ScopedMetadataEnumerationError('changed');
+      }
+    });
+  })();
+  try {
+    const result = await Promise.race([work, timeout]);
+    checkTime();
+    return result;
+  } catch (error) {
+    if (error instanceof ScopedMetadataEnumerationError) throw error;
+    throw new ScopedMetadataEnumerationError('unsafe');
+  } finally {
+    stopped = true;
+    if (timer) clearTimeout(timer);
+    if (rejectAbort) options.signal?.removeEventListener('abort', rejectAbort);
+  }
+}
+
+function createScopedRecordStore(
+  projectRoot: string,
+  namespace: ScopedRecordNamespace,
+  options: UpdatePreviewOptions,
+  userSkillScope: boolean | 'installation' = false
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;
   write(key: string, value: unknown): Promise<ScopedUserLocalRecord>;
+  listKeys(options?: ScopedMetadataEnumerationOptions): Promise<ScopedMetadataInventory>;
+  readAll(options?: ScopedMetadataEnumerationOptions): Promise<ScopedMetadataRecordInventory>;
 } {
+  const selectStorage = () => userSkillScope === 'installation'
+    ? installationStorageFor(projectRoot, options) : storageFor(projectRoot, options, userSkillScope);
   const location = async (key: string) => {
     if (!/^[a-f0-9]{64}$/u.test(key)) throw storageError('A scoped metadata key must be a complete lowercase SHA-256 digest.');
-    const storage = await storageFor(projectRoot, options);
+    const storage = await selectStorage();
     const filePath = storage.paths.join(storage.location.directory, `${namespace}-${storage.location.projectKey}-${key}.json`);
     return { storage, filePath };
   };
   return {
+    listKeys: async (limits = {}) => {
+      const { records: _records, ...inventory } = await enumerateScopedMetadata(selectStorage, namespace, limits, false);
+      return inventory;
+    },
+    readAll: (limits = {}) => enumerateScopedMetadata(selectStorage, namespace, limits, true),
     read: async (key) => {
       const { storage, filePath } = await location(key);
       const snapshot = await directories(storage, false);
@@ -765,6 +1152,31 @@ export function createScopedUserLocalRecordStore(
       });
     }
   };
+}
+
+export function createScopedUserLocalRecordStore(
+  projectRoot: string, namespace: Exclude<ScopedRecordNamespace, 'skills-ownership' | 'installation-record'>,
+  options: UpdatePreviewOptions = {}
+): ReturnType<typeof createScopedRecordStore> {
+  return createScopedRecordStore(projectRoot, namespace, options);
+}
+
+export function createSkillsOwnershipAuthorityStore(
+  targetRoot: string, scope: SkillScope, options: UpdatePreviewOptions = {}
+): ReturnType<typeof createScopedRecordStore> {
+  if (scope !== 'user' && scope !== 'project') throw storageError('Unknown skills ownership authority scope.');
+  const env = options.env ?? process.env;
+  return createScopedRecordStore(targetRoot, 'skills-ownership', {
+    ...options,
+    env: { XDG_STATE_HOME: env.XDG_STATE_HOME, LOCALAPPDATA: env.LOCALAPPDATA },
+    homedir: options.homedir ?? os.homedir(), platform: options.platform ?? process.platform
+  }, scope === 'user');
+}
+
+export function createInstallationRecordStore(
+  targetRoot: string, options: UpdatePreviewOptions = {}
+): ReturnType<typeof createScopedRecordStore> {
+  return createScopedRecordStore(targetRoot, 'installation-record', options, 'installation');
 }
 
 export interface RepairWorkspaceRegistryValue extends ScopedUserLocalRecord {

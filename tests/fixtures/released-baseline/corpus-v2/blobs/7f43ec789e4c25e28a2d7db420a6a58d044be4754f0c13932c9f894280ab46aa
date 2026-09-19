@@ -1,0 +1,45 @@
+variable "environment" {
+  type        = string
+  description = "Deployment environment name."
+}
+
+variable "location" {
+  type        = string
+  description = "Azure region slug."
+  default     = "eastus"
+}
+
+variable "resource_suffix" {
+  type        = string
+  description = "Twelve-character lowercase alphanumeric suffix for globally scoped Azure resource names."
+
+  validation {
+    condition     = can(regex("^[a-z0-9]{12}$", var.resource_suffix))
+    error_message = "resource_suffix must contain exactly 12 lowercase letters or numbers."
+  }
+}
+
+variable "backend_image" {
+  type        = string
+  default     = "nginx:1.30-alpine@sha256:97d490c12ba55b4946b01546d1c3ed324e8d41ab1c9fcb2a616aa470620e5b46"
+  description = "Backend image. Replace the bootstrap image with the generated backend image after pushing it to ACR."
+}
+
+variable "backend_target_port" {
+  type        = number
+  default     = 80
+  description = "Backend ingress port. Set to 8000 when switching from the bootstrap image to the generated backend."
+}
+
+variable "postgres_admin_password" {
+  type        = string
+  sensitive   = true
+  description = "PostgreSQL administrator password supplied at apply time."
+}
+
+variable "enable_private_networking" {
+  type        = bool
+  default     = false
+  description = "Enable production-oriented private-networking-ready settings."
+}
+

@@ -1,0 +1,200 @@
+resource "azurerm_resource_group" "main" {
+  name     = "rg-flight-lo-ae055e41-${var.environment}"
+  location = var.location
+}
+
+resource "azurerm_container_registry" "main" {
+  name                = "acrflae055e41${var.resource_suffix}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+  sku                 = "Basic"
+  admin_enabled       = false
+}
+
+resource "azurerm_user_assigned_identity" "app" {
+  name                = "id-flight-lo-ae055e41-${var.environment}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+}
+
+resource "azurerm_role_assignment" "acr_pull" {
+  scope                = azurerm_container_registry.main.id
+  role_definition_name = "AcrPull"
+  principal_id         = azurerm_user_assigned_identity.app.principal_id
+}
+
+resource "azurerm_container_app_environment" "main" {
+  name                = "cae-flight-lo-ae055e41-${var.environment}"
+  resource_group_name = azurerm_resource_group.main.name
+  location            = azurerm_resource_group.main.location
+}
+
+resource "azurerm_container_app" "backend" {
+  name                         = "ca-flight-lo-ae055e41-be-${var.environment}"
+  container_app_environment_id = azurerm_container_app_environment.main.id
+  resource_group_name          = azurerm_resource_group.main.name
+  revision_mode                = "Single"
+
+  identity {
+    type         = "UserAssigned"
+    identity_ids = [azurerm_user_assigned_identity.app.id]
+  }
+
+  registry {
+    server   = azurerm_container_registry.main.login_server
+    identity = azurerm_user_assigned_identity.app.id
+  }
+
+  secret {
+    name  = "database-url"
+    value = "postgresql://liftoffadmin:${urlencode(var.postgres_admin_password)}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/postgres?sslmode=require"
+  }
+
+  secret {
+    name  = "redis-url"
+    value = "rediss://:${urlencode(azurerm_redis_cache.main.primary_access_key)}@${azurerm_redis_cache.main.hostname}:${azurerm_redis_cache.main.ssl_port}/0"
+  }
+
+  template {
+    container {
+      name   = "backend"
+      image  = var.backend_image
+      cpu    = 0.5
+      memory = "1Gi"
+
+      env {
+        name  = "APP_ENV"
+        value = var.environment
+      }
+
+      env {
+        name  = "APP_NAME"
+        value = "flight-log"
+      }
+
+      env {
+        name  = "PROJECT_TYPE"
+        value = "standard"
+      }
+
+      env {
+        name  = "API_STACK"
+        value = "node-fastify"
+      }
+
+      env {
+        name  = "CLOUD_PROVIDER"
+        value = "azure"
+      }
+
+      env {
+        name  = "AZURE_REGION"
+        value = var.location
+      }
+
+
+      env {
+        name        = "DATABASE_URL"
+        secret_name = "database-url"
+      }
+
+      env {
+        name        = "REDIS_URL"
+        secret_name = "redis-url"
+      }
+
+      env {
+        name  = "MESSAGING_TRANSPORT"
+        value = "azure-service-bus"
+      }
+
+      env {
+        name  = "BLOB_ENDPOINT"
+        value = azurerm_storage_account.main.primary_blob_endpoint
+      }
+    }
+  }
+
+  ingress {
+    external_enabled = true
+    target_port      = var.backend_target_port
+    traffic_weight {
+      percentage      = 100
+      latest_revision = true
+    }
+  }
+
+  depends_on = [azurerm_role_assignment.acr_pull]
+}
+
+resource "azurerm_postgresql_flexible_server" "main" {
+  name                   = "psql-flight-lo-ae055e41-${var.environment}-${var.resource_suffix}"
+  resource_group_name    = azurerm_resource_group.main.name
+  location               = azurerm_resource_group.main.location
+  version                = "16"
+  administrator_login    = "liftoffadmin"
+  administrator_password = var.postgres_admin_password
+  storage_mb             = 32768
+  sku_name               = "B_Standard_B1ms"
+}
+
+resource "azurerm_postgresql_flexible_server_firewall_rule" "azure_services" {
+  count            = var.enable_private_networking ? 0 : 1
+  name             = "AllowAzureServices"
+  server_id        = azurerm_postgresql_flexible_server.main.id
+  start_ip_address = "0.0.0.0"
+  end_ip_address   = "0.0.0.0"
+}
+
+resource "azurerm_redis_cache" "main" {
+  name                = "redis-flight-lo-ae055e41-${var.environment}-${var.resource_suffix}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  capacity            = 0
+  family              = "C"
+  sku_name            = "Basic"
+}
+
+resource "azurerm_storage_account" "main" {
+  name                     = "stflae055e41${var.resource_suffix}"
+  resource_group_name      = azurerm_resource_group.main.name
+  location                 = azurerm_resource_group.main.location
+  account_tier             = "Standard"
+  account_replication_type = "LRS"
+}
+
+resource "azurerm_storage_container" "documents" {
+  name                  = "documents"
+  storage_account_id    = azurerm_storage_account.main.id
+  container_access_type = "private"
+}
+
+resource "azurerm_servicebus_namespace" "main" {
+  name                = "sb-flight-lo-ae055e41-${var.environment}-${var.resource_suffix}"
+  location            = azurerm_resource_group.main.location
+  resource_group_name = azurerm_resource_group.main.name
+  sku                 = "Standard"
+}
+
+resource "azurerm_servicebus_queue" "events" {
+  name         = "events"
+  namespace_id = azurerm_servicebus_namespace.main.id
+}
+
+
+resource "azurerm_communication_service" "main" {
+  name                = "acs-flight-lo-ae055e41-${var.environment}-${var.resource_suffix}"
+  resource_group_name = azurerm_resource_group.main.name
+  data_location       = "United States"
+}
+
+resource "azurerm_key_vault" "main" {
+  name                       = "kv-ae055e41-${var.resource_suffix}"
+  location                   = azurerm_resource_group.main.location
+  resource_group_name        = azurerm_resource_group.main.name
+  tenant_id                  = data.azurerm_client_config.current.tenant_id
+  sku_name                   = "standard"
+  rbac_authorization_enabled = true
+}
+
+data "azurerm_client_config" "current" {}

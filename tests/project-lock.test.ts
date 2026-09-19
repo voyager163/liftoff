@@ -196,6 +196,9 @@ describe('cooperating project mutation lock', () => {
       cloud: 'azure', includeFrontend: false
     });
     roots.push(path.dirname(root));
+    await mkdir(path.join(root, '.git'));
+    const updatePreview = { homedir: path.join(path.dirname(root), 'receipt-home'), repositoryRoot: root, env: {} };
+    await mkdir(updatePreview.homedir);
     const lockPath = await projectMutationLockPath(root);
     const before = await captureTreeState(root);
     await writeFile(lockPath, 'other writer');
@@ -209,21 +212,23 @@ describe('cooperating project mutation lock', () => {
       const stderr = new CaptureStream();
       expect(await runCommand(parseArgs(args), {
         cwd: root, stdout, stderr, runner: new ReadyInitRunner(),
+        updatePreview,
         env: { LIFTOFF_TELEMETRY_DISABLED: '1' }
-      }), `${args.join(' ')}: ${stderr.text()}`).toBe(code);
+      }), `${args.join(' ')}: ${stderr.text() || stdout.text()}`).toBe(code);
     }
     expect(await captureTreeState(root)).toEqual(before);
+    expect(await readdir(updatePreview.homedir)).toEqual([]);
     expect(await readFile(lockPath, 'utf8')).toBe('other writer');
     const manifest = await loadManifest(root);
     const managed = manifest.managedArtifacts[0];
     expect(managed).toBeDefined();
     await unlink(path.join(root, ...managed.pathParts));
-    const updatePreview = { homedir: path.join(path.dirname(root), 'receipt-home'), env: {} };
     const previewOutput = new CaptureStream();
     const previewError = new CaptureStream();
-    expect(await runCommand(parseArgs(['update', '--check', '--json']), {
+    const previewCode = await runCommand(parseArgs(['update', '--check', '--json']), {
       cwd: root, stdout: previewOutput, stderr: previewError, updatePreview
-    })).toBe(2);
+    });
+    expect(previewCode, previewError.text() || previewOutput.text()).toBe(2);
     const preview = JSON.parse(previewOutput.text());
     const fingerprint = preview.plans.find((entry: { mode: string }) => entry.mode === 'normal').fingerprint;
     const stdout = new CaptureStream();

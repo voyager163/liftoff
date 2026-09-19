@@ -293,6 +293,7 @@ describe('evidence validation and latest selection', () => {
     });
     expect(readiness.phases['seed-valid'].state).toBe('ready');
     expect(readiness.nextReadyPhase).toBe('seed-valid');
+    expect(readiness.scope).toBe('activation');
     expect(readiness.phases['seed-verified'].state).toBe('blocked');
   });
 });
@@ -396,10 +397,14 @@ describe('live readback proof requirements', () => {
     expect(sourceOnly.valid).toBe(false);
     expect(sourceOnly.valid ? '' : sourceOnly.issues.map((issue) => issue.message).join('\n')).toContain('github live readback proof');
 
-    const withReadback = validateEvidenceFreshness(
-      recordFor('live', freshness, 'verified', '2026-09-04T00:00:00.000Z', [liveProof(freshness, 'github')]),
-      freshness
-    );
+    const proof = liveProof(freshness, 'github');
+    const record = recordFor('live', freshness, 'verified', '2026-09-04T00:00:00.000Z', [proof]);
+    record.payload = {
+      kind: 'rulesets-applied.v1', resourceId: proof.resourceId,
+      sourceDigest: proof.sourceDigest, readbackDigest: proof.readbackDigest
+    };
+    record.header.bodyDigest = evidenceBodyDigest(record.payload, record.liveReadback);
+    const withReadback = validateEvidenceFreshness(record, freshness);
     expect(withReadback.valid).toBe(true);
   });
 

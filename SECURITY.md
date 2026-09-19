@@ -2,9 +2,19 @@
 
 ## Supported versions
 
-Security fixes target the current stable `@msn-control/liftoff` release on the canonical registry at `https://registry.npmjs.org`. Versions before 0.3.0 are unsupported. Check the canonical `latest` dist-tag and run `liftoff --version` after upgrading before reporting an issue that may already be resolved.
+The current source candidate is Liftoff 0.13.0, an unpublished native-only candidate.
+Signed artifacts, supported-host qualification, and verified delivery channels remain
+release blockers. Report the exact output of `liftoff --version` and the installation
+owner; do not use npm's `latest` dist-tag as evidence of native availability or support.
 
-Managed registries can lag behind canonical npm. If an approved mirror exposes an older release, stop onboarding and ask the mirror owner to synchronize it; use direct canonical npm only where organizational policy permits. A successful installation of an older mirrored version does not make that version supported.
+The npm distribution line ends at v0.12.3 and remains available for explicit historical
+recovery. Versions before 0.3.0 are unsupported. Where organizational policy requires a
+managed npm registry, verify the exact selected historical version through that registry
+and ask its owner to resolve any mismatch; a successful mirrored installation does not
+establish native availability.
+A successful installation of an older mirrored version does not make that version supported.
+Historical recovery does not authorize a new npm release
+or a bypass of registry policy.
 
 ## Report a vulnerability
 

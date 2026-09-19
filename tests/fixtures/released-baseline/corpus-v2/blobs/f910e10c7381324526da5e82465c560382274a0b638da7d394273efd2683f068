@@ -1,0 +1,250 @@
+{
+	"schemaVersion": 2,
+	"identity": {
+		"liftoffVersion": "0.11.0",
+		"manifestArtifactVersion": 7,
+		"policyVersion": "6",
+		"activationContractVersion": 2,
+		"phaseGraphSchemaVersion": 1,
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"activationStateSchemaVersion": 2,
+		"evidenceHeaderSchemaVersion": 2,
+		"approvalEnvelopeSchemaVersion": 2,
+		"supersessionSchemaVersion": 1,
+		"credentialPolicySchemaVersion": 1
+	},
+	"repository": {
+		"id": "local:00000000-0000-4000-8000-000000000002",
+		"name": "Flight Log",
+		"defaultBranch": "develop"
+	},
+	"activeChange": null,
+	"applicability": {
+		"statePath": "existing-private",
+		"privateStagingDast": false,
+		"credentialRequired": false
+	},
+	"remoteBinding": {
+		"id": "R_SOURCE_REMOTE",
+		"name": "example-org/flight-log",
+		"defaultBranch": "develop",
+		"pushUrl": "https://github.com/example-org/flight-log.git",
+		"verifiedAt": "2026-09-01T08:00:00.000Z"
+	},
+	"phases": {
+		"seed-valid": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-valid",
+					"evidenceId": "published-v2-seed-valid",
+					"headerDigest": "d63e68f0bc07c3db6f043c9b427a743afcd8e337239598b92b8fc3cf474f0263",
+					"result": "verified"
+				}
+			]
+		},
+		"seed-verified": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-verified",
+					"evidenceId": "published-v2-seed-verified",
+					"headerDigest": "2485c363c7819ea97af0a012407f15be9aedc7fbdc2f2fb6c37818bfa72425eb",
+					"result": "verified"
+				}
+			]
+		},
+		"seed-archived": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [],
+			"evidence": [
+				{
+					"phaseId": "seed-archived",
+					"evidenceId": "published-v2-seed-archived",
+					"headerDigest": "85556d4128dd1462866fa3a3123ac8e0d0f5e80eb50695c8b5879b391fcf327b",
+					"result": "verified"
+				}
+			]
+		},
+		"committed": {
+			"state": "verified",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"blockers": [],
+			"approvals": [
+				"published-v2-publication-approval"
+			],
+			"evidence": [
+				{
+					"phaseId": "committed",
+					"evidenceId": "published-v2-committed",
+					"headerDigest": "726fd71e77cb49e67aa162e0f897ba5924a5e8303d8aa10385b2816bfc3ae388",
+					"result": "verified"
+				}
+			]
+		},
+		"pushed": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"phase-0-complete": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"activation-approved": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"credential-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"provider-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"state-path-selected": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"existing-private-path": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-local": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"runner-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"private-backend-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"remote-import-verified": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"remote-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"application-foundation": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"workflow-source-ready": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"dev-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"staging-qualified": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"production-rehearsed": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"green-red-proof": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"enforcement-approved": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"rulesets-applied": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"live-readback": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		},
+		"bootstrap-state-disposed": {
+			"state": "pending",
+			"updatedAt": "2026-09-01T08:00:00.000Z",
+			"evidence": [],
+			"approvals": [],
+			"blockers": []
+		}
+	},
+	"createdAt": "2026-09-01T08:00:00.000Z",
+	"updatedAt": "2026-09-01T08:00:00.000Z"
+}

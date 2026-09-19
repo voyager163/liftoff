@@ -54,3 +54,8 @@ backend becomes unreachable:
 
 Do not add dynamic GitHub-hosted runner ranges. Standard hosted CI performs only
 build, test, formatting, backend-free initialization, and validation.
+
+## Related operator documentation
+
+- [Telemetry infrastructure](../telemetry/README.md)
+- [Telemetry privacy and architecture](../../../docs/telemetry.md)

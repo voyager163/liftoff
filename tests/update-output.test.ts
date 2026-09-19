@@ -6,6 +6,7 @@ import {
 } from '../src/adapters/process/shell-command.js';
 import {
   formatUpdateCommand,
+  formatUpdateGuidanceText,
   formatRevalidationPhaseBlocker,
   formatUpdateValidationCommands,
   type ResolvedUpdateGuidanceContext
@@ -63,9 +64,7 @@ describe('project-bound update command guidance', () => {
       state: 'resolved', projectRoot: root, requestedProjectRoot: root,
       invocationDirectory: root, implicitProjectRoot: root
     };
-    expect(formatRepairCommand(root, 'check', platform, context)).toBe(
-      platform === 'win32' ? "& 'liftoff' 'repair' '--check'" : 'liftoff repair --check'
-    );
+    expect(formatRepairCommand(root, 'check', platform, context)).toBe(expected);
     expect(formatRepairCommand(root, 'check', platform, {
       ...context, implicitProjectRoot: `${root}-other`
     })).toBe(expected);
@@ -81,7 +80,7 @@ describe('project-bound update command guidance', () => {
       normal: `liftoff update --project '/tmp/User'"'"'s $project [draft]'`,
       check: `liftoff update --check --project '/tmp/User'"'"'s $project [draft]'`,
       force: `liftoff update --force --project '/tmp/User'"'"'s $project [draft]'`,
-      validation: `cd -- '/tmp/User'"'"'s $project [draft]' && liftoff validate && liftoff doctor`
+      validation: `cd -- '/tmp/User'"'"'s $project [draft]' && liftoff validate --project '/tmp/User'"'"'s $project [draft]' && liftoff doctor`
     },
     {
       platform: 'darwin' as const,
@@ -89,7 +88,7 @@ describe('project-bound update command guidance', () => {
       normal: "liftoff update --project '/Users/person/Project with spaces'",
       check: "liftoff update --check --project '/Users/person/Project with spaces'",
       force: "liftoff update --force --project '/Users/person/Project with spaces'",
-      validation: "cd -- '/Users/person/Project with spaces' && liftoff validate && liftoff doctor"
+      validation: "cd -- '/Users/person/Project with spaces' && liftoff validate --project '/Users/person/Project with spaces' && liftoff doctor"
     },
     {
       platform: 'win32' as const,
@@ -97,7 +96,7 @@ describe('project-bound update command guidance', () => {
       normal: "& 'liftoff' 'update' '--project' 'C:\\Projects\\User''s $project [draft]'",
       check: "& 'liftoff' 'update' '--check' '--project' 'C:\\Projects\\User''s $project [draft]'",
       force: "& 'liftoff' 'update' '--force' '--project' 'C:\\Projects\\User''s $project [draft]'",
-      validation: "Set-Location -LiteralPath 'C:\\Projects\\User''s $project [draft]'; if ($?) { & 'liftoff' 'validate'; if ($?) { & 'liftoff' 'doctor' } }"
+      validation: "Set-Location -LiteralPath 'C:\\Projects\\User''s $project [draft]'; if ($?) { & 'liftoff' 'validate' '--project' 'C:\\Projects\\User''s $project [draft]'; if ($?) { & 'liftoff' 'doctor' } }"
     },
     {
       platform: 'win32' as const,
@@ -105,7 +104,7 @@ describe('project-bound update command guidance', () => {
       normal: "& 'liftoff' 'update' '--project' '\\\\server\\share\\Project with spaces'",
       check: "& 'liftoff' 'update' '--check' '--project' '\\\\server\\share\\Project with spaces'",
       force: "& 'liftoff' 'update' '--force' '--project' '\\\\server\\share\\Project with spaces'",
-      validation: "Set-Location -LiteralPath '\\\\server\\share\\Project with spaces'; if ($?) { & 'liftoff' 'validate'; if ($?) { & 'liftoff' 'doctor' } }"
+      validation: "Set-Location -LiteralPath '\\\\server\\share\\Project with spaces'; if ($?) { & 'liftoff' 'validate' '--project' '\\\\server\\share\\Project with spaces'; if ($?) { & 'liftoff' 'doctor' } }"
     }
   ])('quotes literal native targets on $platform: $root', (entry) => {
     for (const mode of ['normal', 'check', 'force'] as const) {
@@ -121,10 +120,7 @@ describe('project-bound update command guidance', () => {
       implicitProjectRoot: entry.root
     };
     for (const mode of ['normal', 'check', 'force'] as const) {
-      const expected = formatShellCommand({
-        executable: 'liftoff',
-        args: ['update', ...(mode === 'normal' ? [] : [`--${mode}`])]
-      }, commandShellForPlatform(entry.platform));
+      const expected = entry[mode];
       expect(formatUpdateCommand(entry.root, mode, entry.platform, context)).toBe(expected);
       expect(formatUpdateCommand(entry.root, mode, entry.platform, {
         ...context, invocationDirectory: (entry.platform === 'win32' ? path.win32 : path.posix).join(entry.root, 'backend')
@@ -139,17 +135,40 @@ describe('project-bound update command guidance', () => {
         ...context, requestedProjectRoot: `${entry.root}-other`, projectRoot: `${entry.root}-other`
       })).toBe(entry[mode]);
     }
-    expect(formatUpdateValidationCommands(entry.root, entry.platform, context)).toBe(
-      entry.platform === 'win32'
-        ? "& 'liftoff' 'validate'; if ($?) { & 'liftoff' 'doctor' }"
-        : 'liftoff validate && liftoff doctor'
-    );
+    expect(formatUpdateValidationCommands(entry.root, entry.platform, context)).toBe(entry.validation);
     expect(formatUpdateValidationCommands(entry.root, entry.platform, {
       ...context, invocationDirectory: (entry.platform === 'win32' ? path.win32 : path.posix).join(entry.root, 'backend')
     })).toBe(entry.validation);
     expect(formatUpdateValidationCommands(entry.root, entry.platform, {
       state: 'unresolved', detail: 'No trustworthy invocation context'
     })).toBe(entry.validation);
+  });
+
+  it.each([
+    ['/projects/Preview with spaces', 'linux'],
+    ["C:\\Projects\\Preview's $literal [path]", 'win32'],
+    ['\\\\server\\share\\Preview with spaces', 'win32']
+  ] as const)('renders lower-layer errors for %s independently of the current host', (root, platform) => {
+    const check = formatUpdateCommand(root, 'check', platform);
+    const apply = formatUpdateCommand(root, 'normal', platform);
+    const remedy = ['Run ', { projectRoot: root, mode: 'check' as const }, ' again.'];
+    expect(formatUpdateGuidanceText(remedy)).toBe(`Run ${check} again.`);
+    expect(new UpdatePlanError('Inputs changed.', 'inputs-changed', remedy).remedy)
+      .toBe(`Run ${check} again.`);
+    for (const code of ['preview-missing', 'preview-mismatch', 'preview-storage',
+      'preview-invalid', 'preview-unsupported', 'preview-busy'] as const) {
+      const error = new UpdatePreviewError(code, 'Original failure.', { projectRoot: root });
+      expect(error.code).toBe(code);
+      expect(error.detail).toBe('Original failure.');
+      expect(error.message).toContain(check);
+      if (code === 'preview-missing' || code === 'preview-mismatch') expect(error.message).toContain(apply);
+    }
+    const wrongPlatform = platform === 'win32' ? 'linux' : 'win32';
+    expect(() => formatUpdateGuidanceText(remedy, undefined, wrongPlatform))
+      .toThrow(/different hosts/);
+    expect(() => new UpdatePreviewError('preview-mismatch', 'Original failure.', {
+      projectRoot: root, platform: wrongPlatform
+    })).toThrow(/different hosts/);
   });
 
   it('renders structured lower-layer remedies without altering standalone guidance', () => {
@@ -332,7 +351,7 @@ describe('human reviewed scope', () => {
       ),
       preview.boundary,
       'Known revalidation gap: seed-valid: A named prerequisite is missing.',
-      'Approval may commit v3 while these known revalidation gaps remain blocked',
+      'Approval may commit the displayed successor identity while these known revalidation gaps remain blocked',
       'Next incomplete phase: seed-valid'
     ];
     for (const detail of details) {

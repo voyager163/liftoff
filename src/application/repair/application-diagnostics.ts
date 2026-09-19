@@ -1,4 +1,7 @@
 import type { CommandResult } from '../../process-runner.js';
+import {
+  windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryRemedy
+} from '../../domain/execution/windows-working-directory.js';
 import { applicationBounds, type ApplicationVerificationCommand } from './application-types.js';
 
 export interface ApplicationCommandFailure {
@@ -48,6 +51,14 @@ export function applicationDiagnosticMatches(
 export function applicationCommandFailure(
   command: ApplicationVerificationCommand, result: CommandResult
 ): ApplicationCommandFailure | null {
+  if (result.errorCode === 'CONTROLLER_STARTUP_TIMEOUT') {
+    return failure('execution-failed',
+      'The Windows controller exceeded its startup/authentication deadline before target dispatch. This is not the declared project-command timeout. Review the supported controller host prerequisites; no automatic retry, policy bypass, or timeout increase is authorized.');
+  }
+  if (result.errorCode === 'SUPERVISOR_TIMEOUT') {
+    return failure('termination-unconfirmed',
+      'The Windows controller did not confirm target admission or process-tree settlement within its supervisory deadline. Target effects may have started; the private workspace is retained. This does not establish that the declared project-command timeout elapsed, and no retry or timeout increase is authorized.', true);
+  }
   if (result.errorCode === 'PROCESS_TREE_TERMINATION_FAILED' ||
       result.errorCode === 'DESCENDANT_PROCESSES_ACTIVE' ||
       result.errorCode === 'UNSUPPORTED_PROCESS_SETTLEMENT') {
@@ -72,6 +83,9 @@ export function applicationCommandFailure(
   if (typeof result.stdout !== 'string' || typeof result.stderr !== 'string') return executionFailure();
   if (result.status === 0 && !result.signal && !result.errorCode && !result.errorMessage) return null;
   if (result.errorCode === 'ENOENT') return missingExecutable();
+  if (result.errorCode === windowsWorkingDirectoryErrorCode) {
+    return failure('execution-failed', windowsWorkingDirectoryRemedy);
+  }
   if (result.errorCode === 'RESTRICTED_EXECUTION_POLICY') {
     return failure('execution-failed',
       'Windows PowerShell execution policy (Restricted or AllSigned) prevents running the controller script. Adjust execution policy (e.g. Set-ExecutionPolicy RemoteSigned -Scope CurrentUser) to permit script execution; Liftoff does not bypass execution policies.');

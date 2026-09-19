@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { Writable } from 'node:stream';
@@ -59,6 +59,37 @@ describe('telemetry client', () => {
       config: { configPath: file }
     })).toBe(false);
     expect(stderr.text()).toBe('');
+  });
+
+  it('discloses read-only uses without persisting notice state', async () => {
+    const file = await configPath();
+    const stderr = new CaptureStream();
+    const options = { stderr, env: {}, config: { configPath: file }, persistNotice: false };
+    expect(await maybeShowTelemetryNotice(options)).toBe(true);
+    expect(await maybeShowTelemetryNotice(options)).toBe(true);
+    expect(stderr.text()).toBe(telemetryNotice.repeat(2));
+    await expect(readFile(file)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('reuses an existing notice during read-only use without rewriting it', async () => {
+    const file = await configPath();
+    await maybeShowTelemetryNotice({ stderr: new CaptureStream(), env: {}, config: { configPath: file } });
+    const before = await readFile(file);
+    const stderr = new CaptureStream();
+    expect(await maybeShowTelemetryNotice({
+      stderr, env: {}, config: { configPath: file }, persistNotice: false
+    })).toBe(true);
+    expect(stderr.text()).toBe('');
+    expect(await readFile(file)).toEqual(before);
+  });
+
+  it('resolves disclosure storage from the selected environment', async () => {
+    const root = path.dirname(await configPath());
+    expect(await maybeShowTelemetryNotice({
+      stderr: new CaptureStream(), env: { XDG_CONFIG_HOME: root }
+    })).toBe(true);
+    expect(JSON.parse(await readFile(path.join(root, 'liftoff', 'config.json'), 'utf8')))
+      .toEqual({ telemetry: { noticeVersion: 1 } });
   });
 
   it('suppresses collection when the disclosure cannot be written', async () => {

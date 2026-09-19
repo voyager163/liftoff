@@ -13,6 +13,7 @@ import {
 import { buildProjectPlan } from '../src/planner.js';
 import { AZURE_NAME_LIMITS, buildArtifacts, buildAzureResourceNames } from '../src/templates.js';
 import { addGenAiExtensionArtifacts } from '../src/genai-templates.js';
+import { activationContractVersion } from '../src/domain/governance/policy/identity.js';
 const fixtureRoot = path.resolve('tests', '.template-fixtures', randomUUID());
 beforeAll(async () => { await mkdir(fixtureRoot, { recursive: true }); });
 afterAll(async () => { await rm(fixtureRoot, { recursive: true, force: true }); });
@@ -186,7 +187,7 @@ describe('templates and filesystem', () => {
     const config = JSON.parse(contentAt('liftoff.config.json'));
     const manifest = JSON.parse(contentAt('liftoff.manifest.json'));
     expect(config.pattern).toBe('generic');
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.project.workload.pattern).toBe('generic');
     expect(contentAt('.env.example')).toContain('GENAI_PATTERN=generic');
     expect(contentAt('backend/config/settings.py')).toContain(
@@ -386,6 +387,10 @@ describe('templates and filesystem', () => {
     expect(pythonArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/pyproject.toml')?.content).not.toContain('pydantic-ai');
     expect(pythonArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/alembic.ini')).toBe(true);
     expect(pythonArtifacts.find((artifact) => artifact.pathParts.join('/') === 'database/migrations/env.py')?.content).toContain('DATABASE_URL');
+    const pythonMain = pythonArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/apis/main.py')?.content ?? '';
+    expect(pythonMain).toContain('openapi_url="./openapi.json"');
+    expect(pythonMain).toContain('@app.get("/scalar/", include_in_schema=False)');
+    expect(pythonMain).toContain('@app.get("/openapi.json/", include_in_schema=False)');
 
     const nodeArtifacts = buildArtifacts(buildProjectPlan({
       projectName: 'Node API',
@@ -395,10 +400,14 @@ describe('templates and filesystem', () => {
     }, { requireProjectName: true }));
     const nodePackage = nodeArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/package.json')?.content ?? '';
     const nodeDrizzle = nodeArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/drizzle.config.ts')?.content ?? '';
+    const nodeApp = nodeArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/src/app.ts')?.content ?? '';
     expect(nodePackage).toContain('"fastify"');
     expect(nodePackage).toContain('"drizzle-orm"');
     expect(nodeDrizzle).toContain('loadConfig().databaseUrl');
     expect(nodeDrizzle).not.toContain('******');
+    expect(nodeApp).toContain('./openapi.json');
+    expect(nodeApp).toContain("app.get('/scalar/',");
+    expect(nodeApp).toContain("app.get('/openapi.json/',");
     expect(nodeArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/migrations/0000_initial.sql')).toBe(true);
     expect(nodeArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/migrations/meta/_journal.json')).toBe(true);
     expect(nodeArtifacts.some((artifact) => artifact.pathParts.join('/') === 'database/migrations/meta/0000_snapshot.json')).toBe(true);
@@ -416,7 +425,9 @@ describe('templates and filesystem', () => {
     expect(goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/internal/database/database.go')?.content).toContain('pgxpool');
     const goApi = goArtifacts.find((artifact) => artifact.pathParts.join('/') === 'backend/internal/api/api.go')?.content ?? '';
     expect(goApi).toContain('apiConfig.OpenAPIPath = "/openapi"');
-    expect(goApi).toContain('data-url="/openapi.json"');
+    expect(goApi).toContain('data-url="./openapi.json"');
+    expect(goApi).toContain('router.Get("/scalar/", scalarSlashRedirect)');
+    expect(goApi).toContain('router.Get("/openapi.json/", openapiSlashRedirect)');
   });
 
   it('renders standard frontend, governance, and infrastructure without AI requirements', () => {
@@ -539,7 +550,8 @@ describe('templates and filesystem', () => {
     expect(readme).toContain('Absent components are recorded as');
     expect(readme).toContain('maintains explicit Liftoff core files');
     expect(readme).toContain('requires the matching preview and explicit approval');
-    expect(readme).toContain('linked v3 successor');
+    expect(readme).toContain(`linked v${activationContractVersion} successor`);
+    expect(readme).toContain('supported v1/v2/v3 source');
     expect(readme).toContain('liftoff update --check --json');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(/does not inspect or modify this project/);

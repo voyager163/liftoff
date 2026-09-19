@@ -173,7 +173,7 @@ export function nextStateForOutcome(input: {
   inspection: GovernanceTransitionInspection;
   phase: PhaseGraphNode;
   plan: SavedTransitionPlan;
-  resultState: EvidenceHeader['result'] | 'approved' | 'running';
+  resultState: EvidenceHeader['result'] | 'approved' | 'running' | 'pending';
   evidenceReference?: UserActivationState['phases'][PhaseId]['evidence'][number];
   blocker?: string;
   override?: UserActivationState;
@@ -193,11 +193,13 @@ export function nextStateForOutcome(input: {
     evidence: input.evidenceReference ? [...base.phases[input.phase.id].evidence, input.evidenceReference] : base.phases[input.phase.id].evidence,
     approvals: appendUnique(base.phases[input.phase.id].approvals, input.plan.approval.envelopeId),
     blockers: input.blocker ? [input.blocker] : [],
-    executionPlanDigest: input.plan.planDigest,
+    executionPlanDigest: input.resultState === 'running' && input.plan.recovery
+      ? base.phases[input.phase.id].executionPlanDigest ?? input.plan.planDigest : input.plan.planDigest,
     ...(input.operation ? { operation: input.operation } : {})
   };
   if (!base.baselineAnchor) base.baselineAnchor = input.plan.baselineDigest;
   if (input.plan.configuration) base.activationInputs = input.plan.configuration;
+  if (input.plan.configurationBinding) base.configurationBinding = input.plan.configurationBinding;
   if (input.outputs) base.phaseOutputs = { ...base.phaseOutputs, [input.phase.id]: input.outputs };
   base.updatedAt = input.now.toISOString();
   return validateUserActivationState(base);
@@ -220,7 +222,8 @@ export function blockedState(input: {
     approvals: appendUnique(base.phases[input.phase.id].approvals, input.plan.approval.envelopeId),
     blockers: [input.blocker],
     ...(input.executionStarted || base.phases[input.phase.id].executionPlanDigest
-      ? { executionPlanDigest: input.plan.planDigest } : {}),
+      ? { executionPlanDigest: input.plan.recovery
+        ? base.phases[input.phase.id].executionPlanDigest ?? input.plan.planDigest : input.plan.planDigest } : {}),
     ...(input.operation ?? base.phases[input.phase.id].operation
       ? { operation: input.operation ?? base.phases[input.phase.id].operation } : {})
   };
@@ -319,7 +322,7 @@ export function readbackProof(
     schemaVersion: context.identity.evidenceHeaderSchemaVersion, repositoryId: context.repositoryId,
     identity: context.identity, phaseGraphHash: context.phaseGraphHash, phaseId: input.phase.id,
     baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
-    observedAt: input.now.toISOString(), provider, resourceType, resourceId,
+    observedAt: (input.clock?.() ?? input.now).toISOString(), provider, resourceType, resourceId,
     sourceDigest: digest, readbackDigest: digest, matches: true
   };
 }

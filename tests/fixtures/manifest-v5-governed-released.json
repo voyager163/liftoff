@@ -1,0 +1,382 @@
+{
+  "artifactVersion": 5,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.8.0",
+  "project": {
+    "name": "Frozen governed v0.8.0",
+    "workload": {
+      "kind": "standard",
+      "apiStack": "node-fastify",
+      "cloud": "azure",
+      "region": "eastus",
+      "frontend": false,
+      "environments": [
+        "dev"
+      ]
+    },
+    "specWorkflow": "openspec",
+    "agents": [
+      "github-copilot"
+    ]
+  },
+  "framework": {
+    "state": "initialized",
+    "adapter": "openspec",
+    "contractVersion": "1.11.0"
+  },
+  "governance": {
+    "profile": "single-maintainer-gitflow",
+    "policyVersion": "1",
+    "state": "handoff-generated"
+  },
+  "artifacts": [
+    {
+      "logicalName": "root-readme",
+      "category": "documentation",
+      "pathParts": [
+        "README.md"
+      ],
+      "contentHash": "sha256:1cd33230ebed7e49d4cd732ae3500f05d57d9751e35f0a46b5d3afe759f0d2dd"
+    },
+    {
+      "logicalName": "root-gitignore",
+      "category": "project",
+      "pathParts": [
+        ".gitignore"
+      ],
+      "contentHash": "sha256:950b1cd8ee12f7f1cd9e6b96cecced438012a3c78fafe3a9100c9b864b71ea95"
+    },
+    {
+      "logicalName": "liftoff-config",
+      "category": "project",
+      "pathParts": [
+        "liftoff.config.json"
+      ],
+      "contentHash": "sha256:abb5f51da6251838da0c76ef9901a25c8f3a1f05e8860a921da36a6fde5d2958"
+    },
+    {
+      "logicalName": "env-example",
+      "category": "configuration",
+      "pathParts": [
+        ".env.example"
+      ],
+      "contentHash": "sha256:e7f61333e2e50d3ac5847a74dd6015faff64cb413318c63e6eb9b85e21244c90"
+    },
+    {
+      "logicalName": "backend-dockerfile",
+      "category": "runtime",
+      "pathParts": [
+        "Dockerfile"
+      ],
+      "contentHash": "sha256:52dde30943fcca989f159a6b7e8c0f9bfc284f7c04431f450aa81eddcb1f2fb0"
+    },
+    {
+      "logicalName": "node-backend-package",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "package.json"
+      ],
+      "contentHash": "sha256:9f970a365edf1894e8665ce57ffa958f0ee90f94325a0ea45342ed30e1e290e6"
+    },
+    {
+      "logicalName": "node-backend-lock",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "package-lock.json"
+      ],
+      "contentHash": "sha256:911119d491ee6470325bbaf157d007edc4989aed96bc689c3e6884cfe58b9ae2"
+    },
+    {
+      "logicalName": "node-backend-tsconfig",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "tsconfig.json"
+      ],
+      "contentHash": "sha256:1bb4e3c6af1cc9e56bb2d4e5a30b0724c95a2cf62ca22114730cc7cf6dc65011"
+    },
+    {
+      "logicalName": "node-backend-drizzle-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "drizzle.config.ts"
+      ],
+      "contentHash": "sha256:374434a7b6ad97a0446e91df4c637d55fc594cbbe48a5406ee2c71f78ce825c6"
+    },
+    {
+      "logicalName": "node-backend-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "config.ts"
+      ],
+      "contentHash": "sha256:3ea3b1fc7c2a85cee611d52277ba53f0e9ad17a59376be02930e7d3c5857f96d"
+    },
+    {
+      "logicalName": "node-backend-app",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "app.ts"
+      ],
+      "contentHash": "sha256:44a0054daf35a046b5b5ea5671302ab7781dc484580160cd8af49b8beeb23964"
+    },
+    {
+      "logicalName": "node-backend-server",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "server.ts"
+      ],
+      "contentHash": "sha256:25f16f459969a1c080a16aae44a2b7655948e7e48900aed1e86e24c69ceee4c8"
+    },
+    {
+      "logicalName": "node-backend-database",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "database.ts"
+      ],
+      "contentHash": "sha256:c1795a2fa77d0bc4750998bd6beb6fb9cd19c41c3291ed24953d937157dd506f"
+    },
+    {
+      "logicalName": "node-backend-schema",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "src",
+        "db",
+        "schema.ts"
+      ],
+      "contentHash": "sha256:82712a0154203358c3df4c27297f98c49e0afa384341000b5827ac2038c6e969"
+    },
+    {
+      "logicalName": "node-backend-test-health",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "test",
+        "health.test.ts"
+      ],
+      "contentHash": "sha256:5163449f8a0a14056e78bc1adde129b856782891f2796047a7bef389d70956bf"
+    },
+    {
+      "logicalName": "database-node-migration",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "0000_initial.sql"
+      ],
+      "contentHash": "sha256:94c5097fe3e55ada20eaf508cacd00056cf1299677d9ea85994ee32d4204dddc"
+    },
+    {
+      "logicalName": "database-node-migration-journal",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "meta",
+        "_journal.json"
+      ],
+      "contentHash": "sha256:40300fbc9ab9ccd6dacd6a07d55805e6d6c0a8a7ea3c270dd3dd6e08257900e1"
+    },
+    {
+      "logicalName": "database-node-migration-snapshot",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "meta",
+        "0000_snapshot.json"
+      ],
+      "contentHash": "sha256:f51ee8ee0b9b3fdd539a0e875418f17f32f1303447ef6faac8942d8019c6efb5"
+    },
+    {
+      "logicalName": "database-schema",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "models",
+        "schema.sql"
+      ],
+      "contentHash": "sha256:0ca59ada74b9e644cc87f501ecfa50786e9a44399cb37762aa4a631b20a1b3d9"
+    },
+    {
+      "logicalName": "environment-dev-backend",
+      "category": "environment",
+      "pathParts": [
+        "environments",
+        "dev",
+        "backend.env"
+      ],
+      "contentHash": "sha256:e7f61333e2e50d3ac5847a74dd6015faff64cb413318c63e6eb9b85e21244c90"
+    },
+    {
+      "logicalName": "docker-compose",
+      "category": "local-development",
+      "pathParts": [
+        "docker-compose.yml"
+      ],
+      "contentHash": "sha256:d795d28239aa364e7721c8575a37244e5b2a67ef322fc7bc23f53fd811aaf5cc"
+    },
+    {
+      "logicalName": "opentofu-versions",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "versions.tf"
+      ],
+      "contentHash": "sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af"
+    },
+    {
+      "logicalName": "opentofu-provider-lock",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        ".terraform.lock.hcl"
+      ],
+      "contentHash": "sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61"
+    },
+    {
+      "logicalName": "opentofu-providers",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "providers.tf"
+      ],
+      "contentHash": "sha256:86f53e037a5b8c98f06133e05ce13f7f213f451d1c529e08780ef875abcd012f"
+    },
+    {
+      "logicalName": "opentofu-variables",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "variables.tf"
+      ],
+      "contentHash": "sha256:7f43ec789e4c25e28a2d7db420a6a58d044be4754f0c13932c9f894280ab46aa"
+    },
+    {
+      "logicalName": "opentofu-main",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "main.tf"
+      ],
+      "contentHash": "sha256:e40cb61bea3157e444c6a29262fc3655179a16e872df765d714a99a02ad5dfa4"
+    },
+    {
+      "logicalName": "opentofu-outputs",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "outputs.tf"
+      ],
+      "contentHash": "sha256:128efc261af4d3060166cb467242eddba2a901cc64df6bb4a3a1089ca8cf636b"
+    },
+    {
+      "logicalName": "opentofu-local-state",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.local.tf"
+      ],
+      "contentHash": "sha256:f8ce688a69f00cddea7c7427713e4f3cc094fd073d2848629f1dd1ca547a9a8d"
+    },
+    {
+      "logicalName": "opentofu-remote-state-example",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.remote.example.tf"
+      ],
+      "contentHash": "sha256:af9457a84a1373665ccd17821a81fd4697de67038ae618d4b21227fcda965127"
+    },
+    {
+      "logicalName": "opentofu-readme",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "README.md"
+      ],
+      "contentHash": "sha256:3fe0cf306bb0b659a9326fbb11b70637cd7cd10070e8cadfb9b2dbf2c00cbc90"
+    },
+    {
+      "logicalName": "opentofu-dev-tfvars",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev.tfvars"
+      ],
+      "contentHash": "sha256:c1b1aafc8557d45cd4a0c871de79bd8d05915fcfd9f5593198e7ad3ae5482d90"
+    },
+    {
+      "logicalName": "repository-governance-policy",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "policy.md"
+      ],
+      "contentHash": "sha256:f90887530e667f7f68b818f48af676b89d0f6703273202897310f668d6c96737"
+    },
+    {
+      "logicalName": "repository-governance-context",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "context.json"
+      ],
+      "contentHash": "sha256:dfc6517b0e8033f88477bf4587cbb6fbf14ea3a9e53a9a40d4bc917d6e83b785"
+    },
+    {
+      "logicalName": "repository-governance-guide",
+      "category": "governance",
+      "pathParts": [
+        ".liftoff",
+        "governance",
+        "README.md"
+      ],
+      "contentHash": "sha256:8a4780c1c5cf6a3b052f09aa24e48c0f675c8384a4c3b8855479fbd3598f27f7"
+    },
+    {
+      "logicalName": "repository-governance-copilot-launcher",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-repository-governance.prompt.md"
+      ],
+      "contentHash": "sha256:3c170bbf81d51e4c394c87b2b103b9a467e4cd5bdc00c3489193f2f3973bf5a4"
+    }
+  ]
+}

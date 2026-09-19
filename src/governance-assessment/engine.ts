@@ -3,6 +3,8 @@ import { currentActivationIdentity, canonicalPhaseGraph } from '../domain/govern
 import { approvalRequestForSavedPlan, canonicalApprovalEnvelopeHash, evaluateApprovalForTransitionPlan } from '../domain/governance/activation/approvals.js';
 import { formatUpdateCommand } from '../application/update/command-guidance.js';
 import { inspectCurrentActivationEvidence } from '../governance-activation/read-only.js';
+import { bindGovernanceTransitionContext } from '../governance-activation/transition-context.js';
+import type { UpdatePreviewOptions } from '../adapters/filesystem/update-previews.js';
 import { governanceChangeMetadataFileName, validateGovernanceChangeMetadata } from '../governance-activation/source-of-truth.js';
 import {
   phaseIds,
@@ -264,10 +266,10 @@ export function resolveAssessmentLiveScope(project: AssessmentProject, git: Asse
     repository,
     refs: repository ? ['develop', 'main'] : [],
     ...(repository ? { refPrefixes: ['release/', 'hotfix/'] } : {}),
-    environments: project.project ? [...project.project.workload.environments] : [],
+    environments: project.project && project.project.workload.kind !== 'components' ? [...project.project.workload.environments] : [],
     runner: null, azure: []
   };
-  if (!repository || !project.state) return scope;
+  if (!repository || !project.state || project.project?.workload.kind === 'components') return scope;
   if (!remoteBindingVerified) {
     project.diagnostics.push({
       code: 'remote-binding-unavailable',
@@ -874,7 +876,7 @@ function evaluateControl(
 
 export async function assessGovernance(
   projectRoot: string,
-  options: { live?: boolean; runner?: CommandRunner; now?: () => Date } = {}
+  options: { live?: boolean; runner?: CommandRunner; now?: () => Date; storage?: UpdatePreviewOptions } = {}
 ): Promise<AssessmentReport> {
   const now = options.now ?? (() => new Date());
   const captured = now();
@@ -885,6 +887,7 @@ export async function assessGovernance(
     policyVersion: null, recordedActivationIdentity: null, stateSource: 'unavailable'
   };
   try {
+    const { storage } = bindGovernanceTransitionContext({ storage: options.storage });
     const loaded = loadAssessmentCatalog();
     target = loaded.target;
     let project: AssessmentProject;
@@ -892,7 +895,7 @@ export async function assessGovernance(
     let initialActivationInspection: CurrentActivationInspection | null = null;
     let initialActivationFingerprint: string | null = null;
     try {
-      project = await inspectAssessmentProject(files);
+      project = await inspectAssessmentProject(files, storage);
       git = await inspectAssessmentGit(projectRoot, options.runner);
     } catch (error) {
       if (!(error instanceof AssessmentInputError) || error.code !== 'project-not-found') {
@@ -914,7 +917,8 @@ export async function assessGovernance(
           project.manifest,
           {
             ...(options.runner ? { runner: options.runner } : {}),
-            now: captured
+            now: captured,
+            storage
           }
         );
         initialActivationInspection = activation;
@@ -947,8 +951,8 @@ export async function assessGovernance(
               severity: complete ? 'info' : 'warning',
               source: 'governance/migration-state.json',
               message: sanitizeAssessmentText(complete
-                ? 'Local v3 migration and approved local revalidation are complete. Preserved v1/v2 history is informational, not live enforcement proof.'
-                : `Local v3 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run ${formatUpdateCommand(projectRoot, 'check')} after repairing the named blocker.`)
+                ? 'Local v4 migration and approved local revalidation are complete. Preserved v1/v2/v3 history is informational, not live enforcement proof.'
+                : `Local v4 migration committed; revalidation is ${activation.migration.revalidation.status}. ${activation.migration.revalidation.nextAction} Run ${formatUpdateCommand(projectRoot, 'check')} after repairing the named blocker.`)
             });
           }
           for (const [phaseId, selection] of Object.entries(activation.selections)) {
@@ -1019,7 +1023,8 @@ export async function assessGovernance(
           project.manifest,
           {
             ...(options.runner ? { runner: options.runner } : {}),
-            now: captured
+            now: captured,
+            storage
           }
         );
         activationStable =
@@ -1031,7 +1036,7 @@ export async function assessGovernance(
     }
     let historicalActivationStable = true;
     if (project.historicalActivation) {
-      const finalHistorical = await inspectAssessmentHistoricalActivation(projectRoot);
+      const finalHistorical = await inspectAssessmentHistoricalActivation(projectRoot, storage);
       historicalActivationStable = finalHistorical.fingerprint === project.historicalActivation.fingerprint;
       if (!historicalActivationStable) {
         project.diagnostics = project.diagnostics.filter((entry) => entry !== project.historicalActivation?.diagnostic);

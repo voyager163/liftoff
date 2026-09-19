@@ -1,6 +1,6 @@
-import { mkdtemp, realpath, rm } from 'node:fs/promises';
+import { mkdir, realpath, rm } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import os from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createScopedUserLocalRecordStore } from '../src/adapters/filesystem/update-previews.js';
 import { canonicalSha256, isRecord } from '../src/domain/governance/activation/canonical-json.js';
@@ -19,9 +19,12 @@ afterEach(async () => {
 });
 
 async function fixture() {
-  const projectRoot = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-repair-identity-')));
-  const home = await realpath(await mkdtemp(path.join(os.tmpdir(), 'liftoff-repair-records-')));
-  roots.push(projectRoot, home);
+  const directory = path.resolve('tests', `.repair-identity-${randomUUID()}`);
+  await mkdir(path.join(directory, 'project', '.git'), { recursive: true });
+  await mkdir(path.join(directory, 'home'), { recursive: true });
+  const projectRoot = await realpath(path.join(directory, 'project'));
+  const home = await realpath(path.join(directory, 'home'));
+  roots.push(directory);
   const storage = { homedir: home, env: {} };
   const input = {
     projectRoot, snapshots: [{ pathParts: ['old', 'app.ts'], content: Buffer.from('custom source'), mode: 0o644 }],
@@ -41,10 +44,10 @@ describe('independent repair identities', () => {
     expect(repairCapabilities).toMatchObject({
       schemaVersion: 1, cliVersion: liftoffVersion, repairContractVersion: 1,
       schemas: { report: 2, preview: 2, history: 2, journal: 2, applicationPatch: 1 },
-      recipes: [repairRecipes['azure-local-layout'], repairRecipes['application-layout-patch']]
+      recipes: [repairRecipes['azure-local-layout'], repairRecipes['azure-baseline-settings'], repairRecipes['application-layout-patch']]
     });
     expect(currentActivationIdentity).toMatchObject({
-      liftoffVersion: '0.12.0', manifestArtifactVersion: 7, policyVersion: '6', activationContractVersion: 3
+      liftoffVersion: '0.13.0', manifestArtifactVersion: 8, policyVersion: '8', activationContractVersion: 4
     });
     expect(currentActivationIdentity).not.toHaveProperty('repairContractVersion');
   });

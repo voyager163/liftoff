@@ -30,10 +30,27 @@ and writes no disclosure state, regardless of the default telemetry setting.
 Opting into live assessment authorizes only its scoped read-only observations,
 not telemetry delivery.
 
+The same exclusion applies to `liftoff assess`, `capabilities`,
+`installation inspect`, and skill listing, inspection, and planning, including
+their help forms. Non-executing adoption, skill, and installation-migration
+previews and installation recovery inspection are also excluded.
+
+The only newly eligible command values are `adopt`, `installation:migrate`,
+`skills:install`, `skills:update`, `skills:remove`, and `skills:migrate`. This is
+an explicit allowlist, not permission to record arbitrary engine, host, or phase
+names. Preview exclusions still apply, and eligible operations emit at most the
+single outer invocation's event.
+
 The read-only `liftoff repair --capabilities` and `liftoff repair --inspect-layout`
 modes also bypass telemetry and disclosure, including their help/JSON forms.
 Capability negotiation and application inventory therefore introduce no
 telemetry network request or disclosure-state write.
+
+Otherwise eligible read-only commands, including `doctor`, `upgrade --check`,
+metadata planning, help, and governance status/resume/verify, display any needed
+disclosure on stderr without persisting notice state. Their JSON stdout and
+project/installation bytes remain unchanged. The notice can repeat until a
+write-capable eligible command is permitted to record the numeric notice version.
 
 `upgrade` is recorded only as the aggregate command value. Check/apply mode,
 target or configured-registry details, installation origin, paths, npm output,
@@ -156,6 +173,35 @@ restoration, and 30-second timeout explicitly. Its default mock-history clearing
 is compatible with the suite's per-test mocks. The pinned Vite 8.2.2 and supported
 Node.js 24.20+ satisfy Vitest 5's runtime requirements.
 
+### Backward-compatible lifecycle rollout
+
+The candidate client and gateway share `src/telemetry/contract.ts`; service
+packaging includes that compiled module rather than an independently maintained
+command list. The gateway preserves every v0.12.3 command and both outcome
+values under schema 1. The released allowlist fixture is pinned to commit
+`70d10881b46d873118d825735696f39b6d35ebe0`. Local handler and HTTP tests exercise
+the six new values, reject similar prefixes and additional fields, and submit
+only to a local server with a test ingestion dependency.
+
+Source compatibility does **not** establish that the deployed gateway accepts
+the candidate. Before releasing a client that emits the new values, separately
+authorize the gateway rollout, bind the reviewed source commit to the immutable
+image digest and actual Container App revision, and qualify that exact image's
+old/new allowlist and six-column behavior in an approved disposable scope.
+Read back the deployed revision and digest through the operator boundary.
+Missing, stale, or incompatible deployment evidence blocks coordinated release;
+client best-effort delivery and successful source tests cannot hide the gap.
+No gateway deployment or production-event probe is authorized by this guide,
+CLI installation, project activation, or dashboard qualification.
+
+This change needs no event, table, DCR, retention, identity, or notice-version
+migration. Retain the prior usable image and its exact source/digest for
+owner-approved rollback. If rollback removes support for new command values,
+stop candidate publication or disable client delivery through the separately
+reviewed release process; do not broaden validation, queue dropped events, or
+add identifiers to recover missing counts. Production records and the protected
+resource group remain intact.
+
 Real environments must use access-controlled remote state and Entra
 authentication. Before apply, review the subscription, region, unique resource
 suffix, full public source revision, immutable image digest,
@@ -176,11 +222,13 @@ apply production because their dynamic networks are not admitted to the
 perimeter.
 
 After apply, operators must verify the registry identity boundary, one ready
-replica, sub-second endpoint response, synthetic allowlisted event, six
-Liftoff-defined columns, expected Azure system columns, server time, retention,
-and absence of request, IP, geolocation, Container Apps platform/console, or
-Application Insights records before compiling the endpoint into a Liftoff
-release.
+replica, sub-second endpoint response, disposable approved-scope validation
+probes without injecting fake production usage to qualify or populate the
+telemetry dashboard, six Liftoff-defined columns, expected Azure system columns,
+server time, retention, and absence of request, IP, geolocation, Container Apps
+platform/console, or Application Insights records before compiling the endpoint
+into a Liftoff release. Test records remain confined to synthetic fixtures or
+disposable approved verification scopes.
 
 The final production architecture contains no Function App, FC1 plan, product
 storage, OneDeploy action, or production storage-perimeter association.
@@ -188,7 +236,100 @@ storage, OneDeploy action, or production storage-perimeter association.
 For emergency disablement, apply the OpenTofu configuration with
 `ingestion_enabled=false`, then publish a patch with client delivery disabled.
 Rollback preserves `rg-liftoff-prod`; do not destroy the protected production
-resource group.
+resource group. See the [telemetry infrastructure OpenTofu README](../infrastructure/opentofu/telemetry/README.md)
+for complete operator review, plan, apply, verification, and rollback procedures.
 
-Normal `liftoff` commands never authenticate to Azure, read OpenTofu state, or
-deploy telemetry infrastructure.
+## Operator Grafana telemetry dashboard
+
+Liftoff includes a version-controlled operator dashboard definition targeting
+Azure Monitor's built-in Grafana experience. After separately approved deployment,
+find it under **Azure Monitor > Dashboards with Grafana** or through the OpenTofu
+`telemetry_dashboard_portal_url` output. The definition has not yet been qualified
+in the live Azure Monitor host.
+
+### Architecture and data bindings
+
+The dashboard reuses the existing telemetry store in `rg-liftoff-prod`:
+- Managed through the OpenTofu AzAPI boundary using the Azure-native
+  `Microsoft.Dashboard/dashboards@2025-08-01` resource and definition child
+  resource `Microsoft.Dashboard/dashboards/dashboardDefinitions@2025-09-01-preview`.
+- Queries the existing Log Analytics workspace `log-liftoff-telemetry-<resource_suffix>`
+  and table `LiftoffCommandEvents_CL` using KQL.
+- Reuses the existing six-column schema (`TimeGenerated`, `EventName`,
+  `SchemaVersion`, `Command`, `CliVersion`, `Outcome`).
+- Does **not** deploy a paid Azure Managed Grafana instance, Azure Workbooks,
+  or a secondary ingestion pipeline.
+- Built-in Grafana hosting has **zero ($0) additional hosting cost**. Standard
+  Log Analytics 180-day retention and query costs apply.
+
+### Access control and identity
+
+Azure Monitor built-in Grafana queries execute under the signed-in viewer's
+Microsoft Entra ID identity:
+1. **Dashboard permissions**: Viewers need the `Reader` role on `rg-liftoff-prod`
+   or on the dashboard resource itself.
+2. **Data permissions**: Viewers independently require `Monitoring Reader` or
+   `Log Analytics Reader` on the telemetry workspace.
+3. **Sharing boundary**: Sharing a dashboard link does **not** grant underlying
+   data access. Missing workspace query permissions must remain an authorization
+   failure, not be represented as zero usage.
+4. **No shared secrets**: The dashboard introduces no client secrets, API keys,
+   or connection strings, and never reuses the Container App's ingestion identity.
+
+### Six panels and data interpretation
+
+Panels visualize aggregate directional telemetry while respecting user privacy:
+1. **Recorded Command Events** (`stat`): Total accepted command executions matching
+   the selected window and filters. Labeled strictly as recorded command events,
+   **not** as unique users, people, or installations.
+2. **Event Volume Over Time** (`timeseries`): Hourly command event volume based on
+   server-generated `TimeGenerated` timestamps.
+3. **Events by Command** (`barchart`): Ranked distribution of the top 50 recorded
+   canonical command names.
+4. **Events by CLI Version** (`table`): Ranked distribution of the top 50 observed
+   CLI versions. Does not represent installation inventory or user adoption.
+5. **Nonzero Exit Outcomes** (`piechart`): Breakdown of zero (`success`) vs nonzero
+   (`failure`) exit codes. `Outcome = failure` encompasses expected exit code 2
+   states—such as `liftoff upgrade --check` finding an available update or `doctor`
+   detecting an advisory—and is **not** an error or crash rate. Unexpected outcomes
+   remain a separate `Unknown outcome` category.
+6. **Latest Matching Event** (`stat`): Timestamp and age at the last query.
+   Refresh manually before interpreting age; it is not a live clock.
+   Absence of recent events is not proof of an outage, as executions may be
+   opted-out, running in CI, or offline.
+
+### Filtering, defaults, and states
+
+- **Default range**: 7 days (`now-7d` to `now`). Log Analytics retention is
+  capped at 180 days.
+- **Manual refresh**: Default refresh is manual (`refresh: ""`) to prevent
+  automatic query execution.
+- **Variables**: JSON-formatted `$command` and `$cliVersion` dropdowns suggest at
+  most 100 observed values for the chosen time range. Their ordinary `All` option
+  removes the filter independently of that limit; exact values, not substring
+  matches, select events.
+- **Required host-qualification states**:
+  - *Empty/Filtered No-Data*: A successful count can be zero or a panel can have no
+    matching data; neither means no people use Liftoff or that ingestion is down.
+  - *Access Denied*: Distinctly displayed when user lacks workspace permissions;
+    never falls back to zero or healthy status.
+  - *Missing Table / Throttling*: Explicit error displays; never masks failures
+    as zero usage.
+  - *Stale Display*: Values reflect the last successful query; the selected time
+    range is not itself evidence of a recent refresh.
+
+### Limitations
+
+- No Grafana alerts, scheduled reports, or custom plugins are supported in the
+  built-in host.
+- No user, device, session, geographic, or machine tracking is performed.
+- Live deployment and actual-host rendering are strictly **blocked absent explicit
+  operator deployment authorization**. Generic implementation authorization is
+  not deployment authorization.
+- Schema-39 export/import parity, actual aggregate/filter results, viewer errors,
+  narrow layouts, repeat no-op provisioning and dashboard-only rollback remain
+  qualification requirements. JSON validity and source tests do not satisfy them.
+
+Telemetry collection never authenticates to Azure, reads OpenTofu state, or
+deploys telemetry infrastructure. Separately approved project Azure activation
+does not grant authority over the operator telemetry resources.

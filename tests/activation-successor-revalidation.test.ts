@@ -69,7 +69,7 @@ async function fixture() {
     await writeProjectFile(root, marker, 'official framework marker fixture\n');
   }
   const generated = await loadManifest(root);
-  // A successor keeps its v2-era project provenance; only its control plane is v3.
+  // Existing project provenance remains separate from the current control plane.
   const manifest = {
     ...generated,
     projectArtifacts: generated.projectArtifacts.map((artifact) => ({ ...artifact, generatedBy: '0.11.3' }))
@@ -88,7 +88,7 @@ async function fixture() {
   await mkdir(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', 'dev', '.terraform'), { recursive: true });
   const createdAt = '2026-09-01T00:00:00.000Z';
   const state = validateUserActivationState({
-    schemaVersion: 3, identity: currentActivationIdentity,
+    schemaVersion: 4, identity: currentActivationIdentity,
     repository: { id: `local:${randomUUID()}`, name: manifest.project.name, defaultBranch: 'develop' },
     activeChange: null, applicability: { statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' },
     phases: Object.fromEntries(phaseIds.map((id) => [id, {
@@ -122,7 +122,7 @@ async function preview(f: Awaited<ReturnType<typeof fixture>>, reuse = false) {
 }
 
 describe('current-contract finite local revalidation without provider access', { timeout: 60_000 }, () => {
-  it('produces fresh v3 body-bound proof for each local phase without re-archiving or installing anything', async () => {
+  it('produces fresh v4 body-bound proof for each local phase without re-archiving or installing anything', async () => {
     const f = await fixture();
     const before = await captureMigrationRetainedProjectInputs(f.root);
     const approved = await preview(f);
@@ -133,7 +133,7 @@ describe('current-contract finite local revalidation without provider access', {
     for (const phase of result.phaseResults) {
       expect(phase.status).toBe('verified');
       const record = JSON.parse(await readFile(path.join(f.root, ...phase.evidence!.pathParts), 'utf8'));
-      expect(record.header).toMatchObject({ schemaVersion: 3, identity: currentActivationIdentity, scope: 'local' });
+      expect(record.header).toMatchObject({ schemaVersion: 4, identity: currentActivationIdentity, scope: 'local' });
       expect(record.header.bodyDigest).toMatch(/^[a-f0-9]{64}$/);
     }
     expect(runner.calls.some((command) => command.executable === 'npm')).toBe(true);

@@ -1,6 +1,6 @@
 import { packagedSupportedStack } from '../../adapters/packaged-assets/supported-stack.js';
 import { createProjectCatalog } from '../../domain/project/catalog.js';
-import { governancePolicyVersion } from '../../repository-governance.js';
+import { governancePolicyVersion } from '../../domain/governance/policy/content-validation.js';
 
 export type { RegionResolution } from '../../domain/project/contracts.js';
 export type {

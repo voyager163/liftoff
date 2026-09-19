@@ -1,0 +1,40 @@
+{
+  "evidenceId": "seed-valid-20260830T090000000Z",
+  "header": {
+    "schemaVersion": 1,
+    "repositoryId": "R_HISTORICAL_FLIGHT_LOG",
+    "identity": {
+      "liftoffVersion": "0.10.0",
+      "manifestArtifactVersion": 7,
+      "policyVersion": "6",
+      "activationContractVersion": 1,
+      "phaseGraphSchemaVersion": 1,
+      "phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+      "activationStateSchemaVersion": 1,
+      "evidenceHeaderSchemaVersion": 1,
+      "approvalEnvelopeSchemaVersion": 1,
+      "supersessionSchemaVersion": 1,
+      "credentialPolicySchemaVersion": 1
+    },
+    "phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+    "phaseId": "seed-valid",
+    "phaseContractDigest": "b95f64d271c8a4ec9cc4310d09d2aaf5cd75f358da3f567bbb7f4861baa19ce5",
+    "inputDigest": "e846e3406752eb95884004e6f3e0d9077cfa78420ae55b472b14125e98f30775",
+    "baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+    "transition": {
+      "phaseId": "seed-valid",
+      "baselineSha": "19aad149f456fd270a615b106ccd7c08edb3d0c8276792e87283d0d891e21cf9",
+      "inputDigest": "e846e3406752eb95884004e6f3e0d9077cfa78420ae55b472b14125e98f30775",
+      "transitionDigest": "81dfcc8eddb5dca9f520ce742ab08dd6c8179597e3251d5b54557fbcbe57844c"
+    },
+    "producedAt": "2026-08-30T09:00:00.000Z",
+    "producer": "liftoff-governance-transition-engine",
+    "result": "verified"
+  },
+  "payload": {
+    "kind": "seed-valid.v1",
+    "changeName": "bootstrap-flight-log",
+    "status": "passed",
+    "capabilityId": "node-fastify-application-baseline"
+  }
+}

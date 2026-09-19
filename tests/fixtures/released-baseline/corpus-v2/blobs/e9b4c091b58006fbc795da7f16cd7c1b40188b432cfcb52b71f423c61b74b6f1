@@ -1,0 +1,22 @@
+## Why
+
+Bootstrap the generated Node.js / Fastify / TypeScript standard application baseline created by Mission Control Liftoff.
+
+## What Changes
+
+- Establish the approved backend, infrastructure, local development, and governance baseline.
+- Confirm that domain-specific product behavior is deferred to follow-up spec-driven changes.
+
+## Capabilities
+
+### New Capabilities
+
+- `node-fastify-application-baseline`: Generated standard application baseline for this Liftoff project.
+
+### Modified Capabilities
+
+- None.
+
+## Impact
+
+- Generated Node.js / Fastify / TypeScript backend, OpenTofu infrastructure, Docker Compose local development, and governance files.

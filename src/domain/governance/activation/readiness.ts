@@ -22,7 +22,7 @@ import type {
   PhaseState,
   UserActivationState
 } from './types.js';
-import { type GovernanceScope, phaseScope } from './types.js';
+import { type GovernanceScope, phaseScope, phaseInScope } from './types.js';
 import { validateApprovalEnvelope } from './validators.js';
 
 export type PhaseReadiness = {
@@ -208,7 +208,7 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
       nextReadyPhase: null,
       nextPlannablePhase: null,
       scope,
-      completion: { local: false, activation: false, lifecycle: false }
+      completion: { local: false, repository: false, activation: false, lifecycle: false }
     };
   }
 
@@ -374,8 +374,8 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
   }
   const succeeded = new Set(['approved', 'verified', 'inapplicable', 'retained', 'disposed']);
   const localComplete = graph.completionGroups.local.every((id) => succeeded.has(phases[id].state));
-  const effectiveScope = input.scope ?? (localComplete ? 'activation' : 'local');
-  const scoped = graph.phases.filter((phase) => phaseScope(phase.id) === effectiveScope);
+  const effectiveScope = input.scope ?? 'activation';
+  const scoped = graph.phases.filter((phase) => phaseInScope(phase.id, effectiveScope, true));
   return {
     identityCompatible: true,
     phases,
@@ -384,6 +384,7 @@ export function calculatePhaseReadiness(input: ReadinessInput): ReadinessResult 
     nextPlannablePhase: scoped.find((phase) => phases[phase.id].plannable)?.id ?? null,
     completion: {
       local: localComplete,
+      repository: [...graph.completionGroups.local, ...graph.completionGroups.repository].every((id) => succeeded.has(phases[id].state)),
       activation: [...graph.completionGroups.local, ...graph.completionGroups.activation].every((id) => succeeded.has(phases[id].state)),
       lifecycle: graph.completionGroups.lifecycle.every((id) => succeeded.has(phases[id].state))
     }

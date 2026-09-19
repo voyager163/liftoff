@@ -6,10 +6,10 @@ import {
   getEnvironment
 } from '../project/catalog.js';
 import {
-  captureProjectFileSnapshot,
   type ProjectFileMutation,
   type ProjectFileSnapshot
 } from '../../adapters/filesystem/project-transaction.js';
+import { captureReviewedSnapshots } from '../execution/plan-binding.js';
 import {
   manifestDisplayPath
 } from '../../domain/project/paths.js';
@@ -38,15 +38,17 @@ import {
   infrastructureProvisioningGate,
   sharedApplicationModuleIdentities
 } from '../../domain/project/infrastructure-layout.js';
-import { buildArtifacts } from '../../templates.js';
-import { renderGovernanceContext } from '../../repository-governance.js';
+import { composeProjectArtifacts } from '../../templates.js';
+import { renderGovernanceContext } from '../repository-governance/workload-context.js';
+import { buildComponentManagedArtifacts, type ManagedProjectPlan } from '../project/component-artifacts.js';
 
 export function buildUpdateArtifacts(
-  plan: ProjectPlan,
+  plan: ManagedProjectPlan,
   manifest: LiftoffManifest
 ): GeneratedArtifact[] {
+  if (plan.workload === 'components') return buildComponentManagedArtifacts(plan);
   const infrastructureLayout = assessInfrastructureLayout(manifest).kind;
-  return buildArtifacts(plan).map((artifact) =>
+  return composeProjectArtifacts(plan).map((artifact) =>
     artifact.logicalName === 'repository-governance-context'
       ? {
           ...artifact,
@@ -83,8 +85,12 @@ export interface ProvisioningGroupRequest {
 
 export function requestedProvisioningGroups(
   manifest: LiftoffManifest,
-  plan: ProjectPlan
+  plan: ManagedProjectPlan
 ): ProvisioningGroupRequest[] {
+  if (plan.workload === 'components') return [];
+  if (manifest.project.workload.kind === 'components') {
+    throw new Error('Component-only adoption does not authorize generated-workload provisioning.');
+  }
   const provisioned = new Set(
     manifest.projectArtifacts.map((artifact) => artifact.provisioningGroup)
   );
@@ -247,6 +253,7 @@ export function sameWorkloadIntent(
   if (left.kind !== right.kind) {
     return false;
   }
+  if (left.kind === 'components' || right.kind === 'components') return true;
   return left.apiStack === right.apiStack &&
     left.cloud === right.cloud &&
     left.region === right.region &&
@@ -259,10 +266,12 @@ export function sameWorkloadIntent(
 }
 
 export function planWithBlockedProvisioning(
-  plan: ProjectPlan,
+  plan: ManagedProjectPlan,
   recordedWorkload: LiftoffManifest['project']['workload'],
   provisioningPlans: readonly ProvisioningGroupPlan[]
-): ProjectPlan {
+): ManagedProjectPlan {
+  if (plan.workload === 'components') return plan;
+  if (recordedWorkload.kind === 'components') throw new Error('Component-only projects cannot acquire generated provisioning intent.');
   const blockedGroups = new Set(
     provisioningPlans
       .filter((group) => group.blocked)
@@ -366,9 +375,7 @@ export async function captureUpdateSnapshots(
       uncaptured.push(pathParts);
     }
   }
-  for (const snapshot of await Promise.all(
-    uncaptured.map((pathParts) => captureProjectFileSnapshot(projectRoot, pathParts))
-  )) {
+  for (const snapshot of await captureReviewedSnapshots(projectRoot, uncaptured, 8 * 1024 * 1024)) {
     snapshots.set(updateSnapshotKey(snapshot.pathParts), snapshot);
   }
   return [...snapshots.values()];

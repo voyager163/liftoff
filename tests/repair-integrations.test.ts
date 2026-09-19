@@ -18,12 +18,12 @@ import { governanceAgentIntegrations, governanceArtifactPaths } from '../src/dom
 import type { ProjectOptions } from '../src/domain/project/contracts.js';
 import { repairContractVersion, repairRecipes, repairSchemaVersions } from '../src/domain/repair/identity.js';
 import { currentActivationIdentity } from '../src/domain/governance/activation/graph.js';
-import { historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
+import { compatibilityMetadataSchemaVersion, historicalActivationIdentities } from '../src/domain/governance/policy/identity.js';
 import { validateGovernanceCompatibilityMetadata } from '../src/governance-activation/compatibility.js';
 import { historicalMetadataPathParts } from '../src/governance-activation/history-contracts.js';
 import { finalizeActivationHistoryMigration, planActivationHistoryMigration } from '../src/governance-activation/migration-history.js';
 import {
-  canonicalSha256, evidenceBodyDigest, evidenceContextForPhase, phaseIds, validateEvidenceHeader
+  canonicalSha256, evidenceBodyDigest, evidenceContextForPhase, phaseIds, validateEvidenceHeader, validateUserActivationState
 } from '../src/governance-activation/index.js';
 import { buildProjectPlan } from '../src/planner.js';
 import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
@@ -31,7 +31,7 @@ import { buildRepositoryGovernanceArtifacts } from '../src/repository-governance
 import { buildArtifacts } from '../src/templates.js';
 import { liftoffVersion } from '../src/version.js';
 import { CaptureStream } from './helpers.js';
-import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
+import { materializeReleasedFiles, releasedBytes, releasedCase } from './fixtures/released-baseline/corpus.js';
 import {
   cleanupUpdateTestRoots, createReviewedUpdateFixture, createUpdateTestRoot, fingerprintUpdateTestProject, updateTestPreviewOptions
 } from './reviewed-update-helpers.js';
@@ -102,7 +102,7 @@ describe('selected native repair contracts', () => {
           } else {
             const metadata = validateGovernanceCompatibilityMetadata(JSON.parse(artifacts.find((entry) =>
               entry.logicalName === 'repository-governance-compatibility')!.content), { agents });
-            expect(metadata.schemaVersion).toBe(4);
+            expect(metadata.schemaVersion).toBe(5);
             expect(metadata.managedCore.logicalNameAllowlist).toEqual(managedCoreLogicalNames);
             for (const artifact of repairs) {
               expect(metadata.managedCore.updateInventory).toContainEqual({
@@ -124,73 +124,84 @@ describe('selected native repair contracts', () => {
       expect(new Set(entries.map((entry) => nativeBody(entry.content))).size).toBe(1);
       for (const [index, entry] of entries.entries()) {
         expect(entry.content).toContain(`# ${governanceAgentIntegrations[agentIds[index]!][operation].invocation}\n`);
-        expect(entry.content.length, entry.logicalName).toBeLessThan(operation === 'repair' ? 8_000 : operation === 'setup' ? 3_000 : 2_500);
+        expect(Buffer.byteLength(entry.content, 'utf8'), entry.logicalName).toBeLessThan(operation === 'repair' ? 8_000 : operation === 'setup' ? 3_000 : 2_500);
       }
     }
     const repair = artifacts.find((entry) => entry.logicalName === 'liftoff-repair-copilot')!.content;
-    expect([...repair.matchAll(/`(liftoff [^`]+)`/gu)][0]![1]).toBe('liftoff repair --capabilities --json');
+    const commands = [...repair.matchAll(/^liftoff [^\r\n]+$/gmu)].map((match) => match[0]);
+    expect(commands.slice(0, 2)).toEqual(['liftoff capabilities --json', 'liftoff repair --capabilities --json']);
+    for (const command of commands) expect(() => parseArgs(command.split(/\s+/u).slice(1))).not.toThrow();
     for (const phrase of [
-      'before project access', `repairContractVersion: ${repairContractVersion}`, 'azure-local-layout` v1',
-      '`schemaVersion: 1`', '`kind: liftoff-repair-capabilities`', '`cliVersion`',
-      '`schemas`', '`recipes`', '`modes`',
-      'application-layout-patch` v1', 'liftoff upgrade --check --json', 'Never emulate missing features',
-      'command.executable', 'command.args', 'approvalRequired', 'current target artifact IDs',
+      'before project access', `repairContractVersion: ${repairContractVersion}`, '`azure-local-layout`',
+      '`azure-baseline-settings`', '`application-layout-patch`', 'their registered versions',
+      'capability `project-repair`, Project Evolution', 'repair contract 1 and report schema 2',
+      '`liftoff-repair-capabilities`', '`cliVersion`', '`schemas`', '`recipes`', '`modes`',
+      'liftoff upgrade --check --json', 'Never emulate a missing feature',
+      'command.executable', 'command.args', 'approvalRequired', 'actual artifact IDs and paths',
       'imports/module paths', 'build/test', 'Docker/Compose', 'scripts, CI and documentation',
-      '--inspect-layout --json', '--check --application-patch <external-patch.json> --json',
-      'external isolated', 'staging OUTSIDE the project', 'Unresolved mappings or reference coverage remain plan-only',
+      '--inspect-layout --json', '--check --application-patch ../reviewed-patch.json --json',
+      'external isolated', 'staging OUTSIDE the project', 'Respect protected-file exclusions and bounded coverage',
       'NOT an OS or network sandbox', 'can affect the host and access the network',
-      'Declaring `network: false` is not proof scripts cannot access the network',
-      'independent consent', '--verify-plan <fingerprint> --json', '--allow-network',
-      'ask SEPARATELY', '--approve-plan <fingerprint> --json', 'confined transaction alone',
-      'interactive-repair', 'exact immutable plan', 'Yes/No, default No',
-      'JSON/nonTTY bare repair previews only', 'No/Ctrl-C/EOF',
-      'genuine input and stderr TTYs', 'exact explicit execution flags',
-      'stale-after-prompt inputs refuse execution',
-      'Mandatory isolation unsupported by this executor blocks verification',
-      'no file transaction committed', 'Never report "nothing happened"',
-      'Never use a generic yes flag or piped answers as authority',
-      'Optional agent automation', 'Do not ask humans to copy hashes',
-      'same immutable plan and action scopes the actual user separately approved',
-      'Generic repair requests, unrelated approval, autopilot, agent-generated Yes and piped input grant no consent',
-      "Azure recipe's registered reviewed manifest/history writes",
-      'Missing tools, locks, or unsupported hooks/sources are explicit blockers',
-      'Registered providers (npm-ci v1, uv-locked-sync v1, go-mod-download v1)',
-      'lifecycle scripts suppressed (lifecycle: disabled)',
-      '--allow-dependency-preparation',
+      'A `network: false` declaration does not prove isolation',
+      'independent default-No consent', 'asks SEPARATELY', 'confined guarded transaction',
+      'interactive-repair', 'immutable plan', 'Yes/No, default No',
+      'JSON/non-TTY bare repair previews only', 'No/Ctrl-C/EOF',
+      'usable input and stderr TTYs', 'after the prompt invalidate review',
+      'Mandatory unsupported isolation blocks execution', 'failed checks apply no patch',
+      'not claim "nothing happened."', 'Autopilot, generic Yes, piped answers',
+      'Machine execution uses only actual returned actions', 'Never require human hash entry',
+      'user separately approved the corresponding immutable scope',
+      "Azure recipe's separately reviewed manifest/history producer",
+      'Missing tools, locks, unsupported hooks or sources remain explicit blockers',
+      '`npm-ci`, `uv-locked-sync`, and `go-mod-download` version 1',
+      'lifecycle: disabled', 'No arbitrary installer, global installation, live dependency reuse',
+      '--allow-dependency-preparation', '--allow-network',
       'manifest/provenance', 'Never fabricate evidence', 'private rollback material and immutable history',
-      'inventory, proposed, verified and committed', 'Report only declared checks actually executed',
-      'not full application/cloud conformance',
-      "--recover --json` is only for the CLI's reported interrupted repair scope",
-      'Governance none stays disabled'
-    ]) expect(repair.replace(/\s+/gu, ' ')).toContain(phrase);
-    expect(repair.indexOf('Prefer `liftoff repair <project>`')).toBeLessThan(repair.indexOf('Optional agent automation'));
-    expect(repair.indexOf('`liftoff repair <project> --application-patch <external-patch.json>`'))
-      .toBeLessThan(repair.indexOf('Optional agent automation'));
-    expect(repair.indexOf('Optional agent automation')).toBeLessThan(repair.indexOf('--verify-plan'));
+      'inventory, proposal, preparation, checks, committed effects, readback, cleanup and remaining work',
+      'not complete application/cloud conformance', 'uncertain process settlement blocks success',
+      'original reported interrupted scope', 'newer user files', 'Governance `none` stays disabled'
+    ]) expect(repair.replace(/\s+/gu, ' ').toLowerCase(), phrase).toContain(phrase.toLowerCase());
+    expect(repair.indexOf('Prefer the genuine terminal journey')).toBeLessThan(repair.indexOf('Machine execution'));
+    expect(repair.indexOf('liftoff repair ./my-app --application-patch ../reviewed-patch.json'))
+      .toBeLessThan(repair.indexOf('Machine execution'));
+    expect(repair.indexOf('Machine execution')).toBeLessThan(repair.indexOf('--verify-plan'));
     expect(repair.indexOf('--verify-plan')).toBeLessThan(repair.indexOf('--approve-plan'));
     expect(repair).not.toContain('Bare repair also previews');
-    expect(repair).toMatch(/allow-dependency-preparation/);
     expect(repair).toMatch(/npm-ci/);
     expect(repair).toMatch(/uv-locked-sync/);
     expect(repair).toMatch(/go-mod-download/);
     const setup = artifacts.find((entry) => entry.logicalName === 'liftoff-setup-copilot')!.content;
-    expect(setup).toContain('separate native repair');
-    expect(setup).toContain('liftoff governance resume --scope local --json');
-    expect(setup.indexOf('liftoff update --check')).toBeLessThan(setup.indexOf('liftoff governance resume'));
+    expect(setup).toContain('liftoff repair ./my-app --check --json');
+    expect(setup).toContain('liftoff governance plan --project ./my-app --scope local --json');
+    const update = setup.indexOf('liftoff update --project ./my-app --check --json');
+    expect(update).toBeGreaterThan(-1);
+    expect(update).toBeLessThan(setup.indexOf('liftoff governance plan --project ./my-app --scope local --json'));
     const assessment = artifacts.find((entry) => entry.logicalName === 'liftoff-governance-assess-copilot')!.content;
-    expect(assessment).toContain('Do not invoke it, inventory source or stage a patch here');
+    expect(assessment).toContain('no follow-up execution');
+    expect(assessment).toContain('or patch staging');
+    expect(assessment).toContain('never invoke it');
     expect([...assessment.matchAll(/`(liftoff [^`]+)`/gu)].map((match) => match[1])).toEqual([
-      'liftoff governance assess --json', 'liftoff governance assess --live --json'
+      'liftoff capabilities --json',
+      'liftoff governance assess --project ./my-app --json',
+      'liftoff governance assess --project ./my-app --live --json'
     ]);
   });
 
-  it('appends exact ownership and history paths without changing release, activation or repair identities', () => {
-    expect(liftoffVersion).toBe('0.12.3');
-    expect(currentActivationIdentity).toMatchObject({
-      liftoffVersion: '0.12.0', manifestArtifactVersion: 7, policyVersion: '6',
-      activationContractVersion: 3, phaseGraphSchemaVersion: 2, activationStateSchemaVersion: 3,
-      evidenceHeaderSchemaVersion: 3, approvalEnvelopeSchemaVersion: 3
+  it('appends exact ownership and history paths while binding current release, activation and repair identities', () => {
+    const identityBefore = structuredClone(currentActivationIdentity);
+    const recipesBefore = structuredClone(repairRecipes);
+    const artifacts = rendered();
+    const manifest = parseManifest(manifestFrom(artifacts));
+    const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(
+      artifacts.find((entry) => entry.logicalName === 'repository-governance-compatibility')!.content
+    ));
+    expect(manifest.liftoffVersion).toBe(liftoffVersion);
+    expect(manifest.artifactVersion).toBe(currentActivationIdentity.manifestArtifactVersion);
+    expect(manifest.governance).toMatchObject({
+      policyVersion: currentActivationIdentity.policyVersion, activationIdentity: currentActivationIdentity
     });
+    expect(compatibility.schemaVersion).toBe(compatibilityMetadataSchemaVersion);
+    expect(compatibility.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
     expect(managedCoreLogicalNames).toEqual([...preRepairManagedCoreLogicalNames, ...repairManagedCoreLogicalNames]);
     expect(preRepairManagedCoreLogicalNames).toHaveLength(12);
     for (const { agent, logicalName, pathParts, invocation } of repairIdentities) {
@@ -205,32 +216,35 @@ describe('selected native repair contracts', () => {
     }
     expect(repairRecipes['application-layout-patch'].version).toBe(1);
     expect(repairSchemaVersions).toMatchObject({ report: 2, preview: 2, history: 2, journal: 2 });
+    expect(currentActivationIdentity).toEqual(identityBefore);
+    expect(repairRecipes).toEqual(recipesBefore);
   });
 });
 
 describe('exact repair manifest and compatibility readership', () => {
-  it.each([3, 4, 5, 6, 7])('keeps old complete v%s manifests readable without requiring repair additions', (version) => {
-    const value = manifestFrom(rendered());
-    value.managedArtifacts = value.managedArtifacts.filter((entry: { logicalName: string }) => !repairNames.has(entry.logicalName));
-    value.artifactVersion = version;
-    if (version < 7) delete value.governance.activationIdentity;
-    if (version < 5) delete value.governance;
-    if (version < 6) {
-      value.artifacts = [...value.managedArtifacts, ...value.projectArtifacts.map((entry: {
-        logicalName: string; category: string; pathParts: string[]; generationHash: string;
-      }) => ({ logicalName: entry.logicalName, category: entry.category, pathParts: entry.pathParts, contentHash: entry.generationHash }))];
-      delete value.managedArtifacts;
-      delete value.projectArtifacts;
-    }
-    if (version === 3) {
-      const workload = value.project.workload;
-      value.project = { ...value.project, ...workload, projectType: workload.kind };
-      delete value.project.workload;
-      delete value.project.kind;
-    }
-    const before = JSON.stringify(value);
-    expect(parseManifest(value).managedArtifacts.some((entry) => repairNames.has(entry.logicalName))).toBe(false);
-    expect(JSON.stringify(value)).toBe(before);
+  it.each([
+    [3, 'manifest-v3.json', []],
+    [4, 'manifest-v4-standard.json', []],
+    [5, 'manifest-v5-governed-released.json', []],
+    [6, 'manifest-v6-governed-released.json', []],
+    [7, 'manifest-v7-governed-released.json', ['liftoff-repair-copilot']]
+  ] as const)('reads released v%s without adding or removing recorded repair ownership', async (version, file, repairs) => {
+    const source = path.join('tests', 'fixtures', file);
+    const bytes = await readFile(source);
+    const index = JSON.parse(await readFile(path.join('tests', 'fixtures', 'manifest-history-index.json'), 'utf8')) as {
+      entries: Array<{ path: string; artifactVersion: number; sha256: string }>;
+    };
+    const captured = index.entries.find((entry) => entry.path === file)!;
+    expect(captured.artifactVersion).toBe(version);
+    expect(sha(bytes)).toBe(`sha256:${captured.sha256}`);
+    const value = JSON.parse(bytes.toString('utf8'));
+    const before = structuredClone(value);
+    const manifest = parseManifest(value);
+    expect(manifest.artifactVersion).toBe(version);
+    expect(manifest.liftoffVersion).toBe(value.liftoffVersion);
+    expect(manifest.managedArtifacts.filter((entry) => repairNames.has(entry.logicalName)).map((entry) => entry.logicalName)).toEqual(repairs);
+    expect(value).toEqual(before);
+    expect(await readFile(source)).toEqual(bytes);
   });
 
   for (const governanceProfile of ['single-maintainer-gitflow', 'none'] as const) {
@@ -256,7 +270,9 @@ describe('exact repair manifest and compatibility readership', () => {
     });
     expect(() => parseManifest(legacy)).toThrow(/inapplicable repair/);
     const value = manifestFrom(rendered({ governanceProfile: 'none' }));
-    const repair = value.managedArtifacts.pop();
+    const repairIndex = value.managedArtifacts.findIndex((entry: { logicalName: string }) => entry.logicalName === 'liftoff-repair-codex');
+    expect(repairIndex).toBeGreaterThanOrEqual(0);
+    const [repair] = value.managedArtifacts.splice(repairIndex, 1);
     value.projectArtifacts.push({
       logicalName: repair.logicalName, category: repair.category, pathParts: repair.pathParts,
       generationHash: repair.contentHash, generatedBy: liftoffVersion, provisioningGroup: 'base'
@@ -264,14 +280,14 @@ describe('exact repair manifest and compatibility readership', () => {
     expect(() => parseManifest(value)).toThrow(/cannot contain a managed-core logical name/);
   });
 
-  it('allows missing old repair inventories but distinguishes partial adoption from complete governance', () => {
+  it('requires complete current repair ownership unless governance explicitly records a partial handoff', () => {
     const value = manifestFrom(rendered());
     value.managedArtifacts = value.managedArtifacts.filter((entry: { logicalName: string }) => entry.logicalName !== 'liftoff-repair-codex');
     expect(() => parseManifest(value)).toThrow(/missing artifact liftoff-repair-codex/);
     value.governance.state = 'handoff-partial';
     expect(() => parseManifest(value)).not.toThrow();
     const disabled = manifestFrom(rendered({ governanceProfile: 'none' }));
-    disabled.managedArtifacts.pop();
+    disabled.managedArtifacts = disabled.managedArtifacts.filter((entry: { logicalName: string }) => entry.logicalName !== 'liftoff-repair-codex');
     expect(parseManifest(disabled).governance).toEqual({ profile: 'none', state: 'disabled' });
   });
 
@@ -300,7 +316,7 @@ describe('exact repair manifest and compatibility readership', () => {
       if (kind === 'wrong-path') entry.pathParts = ['.github', 'prompts', 'neighbor.prompt.md'];
       if (kind === 'duplicate') metadata.managedCore.updateInventory.push(entry);
       if (kind === 'future-allowlist') metadata.managedCore.logicalNameAllowlist.push('liftoff-repair-future');
-      if (kind === 'future-schema') metadata.schemaVersion = 5;
+      if (kind === 'future-schema') metadata.schemaVersion = compatibilityMetadataSchemaVersion + 1;
       if (kind === 'unselected-agent') {
         entry.logicalName = 'liftoff-repair-claude';
         entry.pathParts = [...repairIdentities[1].pathParts];
@@ -314,6 +330,7 @@ async function removeRepairInventory(root: string, keepFiles = false) {
   const value = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
   value.managedArtifacts = value.managedArtifacts.filter((entry: { logicalName: string }) => !repairNames.has(entry.logicalName));
   if (value.governance.profile !== 'none') {
+    value.governance.state = 'handoff-partial';
     const metadata = JSON.parse(await readFile(path.join(root, ...governanceArtifactPaths.compatibility), 'utf8'));
     metadata.managedCore.logicalNameAllowlist = [...preRepairManagedCoreLogicalNames];
     metadata.managedCore.updateInventory = metadata.managedCore.updateInventory.filter((entry: { logicalName: string }) => !repairNames.has(entry.logicalName));
@@ -323,6 +340,7 @@ async function removeRepairInventory(root: string, keepFiles = false) {
     value.managedArtifacts.find((entry: { logicalName: string }) =>
       entry.logicalName === 'repository-governance-compatibility').contentHash = sha(content);
   }
+  parseManifest(value);
   await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(value, null, 2)}\n`);
   if (!keepFiles) await Promise.all(repairIdentities.map((entry) => rm(path.join(root, ...entry.pathParts), { force: true })));
 }
@@ -357,23 +375,26 @@ async function approveUpdate(root: string, force = false, env?: NodeJS.ProcessEn
 }
 
 async function protectedFiles(root: string, governance: boolean) {
-  const files: Array<{ pathParts: readonly string[]; content: string }> = [
+  const historical = releasedCase('repair-v0.12.2-schema1-interrupted');
+  if (historical.family !== 'journal') throw new Error('Expected a captured released repair journal.');
+  const historicalJournal = releasedBytes(historical.files.find((file) => file.path === historical.journalPath)!);
+  const files: Array<{ pathParts: readonly string[]; content: string | Buffer }> = [
     { pathParts: ['.github', 'prompts', 'liftoff-repair-extra.prompt.md'], content: '# Custom neighboring prompt\r\n' },
     { pathParts: ['.claude', 'commands', 'liftoff-repair-custom.md'], content: '# Custom neighboring command\n' },
     { pathParts: ['.agents', 'skills', 'liftoff-repair-custom', 'SKILL.md'], content: '# Custom neighboring skill\n' },
     { pathParts: ['backend', 'src', 'custom.ts'], content: 'export const customization = "preserved";\n' },
-    { pathParts: ['.liftoff', 'repair-history', 'prior', 'receipt.json'], content: '{"schemaVersion":1,"recipe":"azure-local-layout-v1"}\n' }
+    { pathParts: ['.liftoff', 'repair-history', 'prior', 'reviewed-repair-transaction.json'], content: historicalJournal }
   ];
   if (governance) {
     const timestamp = '2026-09-04T00:00:00.000Z';
-    const state = {
-      schemaVersion: 3, identity: currentActivationIdentity,
-      repository: { id: 'R_repair', name: 'owner/repair-integrations', defaultBranch: 'develop' },
+    const state = validateUserActivationState({
+      schemaVersion: currentActivationIdentity.activationStateSchemaVersion, identity: currentActivationIdentity,
+      repository: { id: 'local:00000000-0000-4000-8000-000000000014', name: 'Repair Integrations', defaultBranch: 'develop' },
       activeChange: null, applicability: { statePath: 'bootstrap-local', privateStagingDast: true, credentialRequired: false },
       phases: Object.fromEntries(phaseIds.map((phase) => [phase, {
         state: 'pending', updatedAt: timestamp, evidence: [], approvals: [], blockers: []
       }])), createdAt: timestamp, updatedAt: timestamp
-    };
+    });
     const context = evidenceContextForPhase('seed-valid', {
       repositoryId: state.repository.id, baselineSha: canonicalSha256('prior baseline'), inputDigest: canonicalSha256('prior input')
     });
@@ -381,11 +402,18 @@ async function protectedFiles(root: string, governance: boolean) {
     const evidence = {
       evidenceId: 'retained-repair-evidence', payload,
       header: validateEvidenceHeader({
-        schemaVersion: 3, repositoryId: state.repository.id, identity: currentActivationIdentity,
+        schemaVersion: currentActivationIdentity.evidenceHeaderSchemaVersion, scope: 'local',
+        repositoryId: state.repository.id, identity: currentActivationIdentity,
         phaseGraphHash: context.phaseGraphHash, phaseId: context.phaseId, phaseContractDigest: context.phaseContractDigest,
         baselineSha: context.baselineSha, inputDigest: context.inputDigest, transition: context.transition,
         producedAt: timestamp, producer: 'repair-integration-fixture', result: 'failed', bodyDigest: evidenceBodyDigest(payload)
       })
+    };
+    state.phases['seed-valid'] = {
+      state: 'failed', updatedAt: timestamp, approvals: [], blockers: [],
+      evidence: [{
+        phaseId: 'seed-valid', evidenceId: evidence.evidenceId, headerDigest: canonicalSha256(evidence.header), result: 'failed'
+      }]
     };
     files.push(
       { pathParts: ['governance', 'activation-state.json'], content: `${JSON.stringify(state, null, 2)}\n` },
@@ -394,17 +422,19 @@ async function protectedFiles(root: string, governance: boolean) {
   }
   for (const file of files) await writeProjectFile(root, file.pathParts, file.content);
   return async () => {
-    for (const file of files) expect(await readFile(path.join(root, ...file.pathParts), 'utf8')).toBe(file.content);
+    for (const file of files) expect(await readFile(path.join(root, ...file.pathParts))).toEqual(Buffer.from(file.content));
   };
 }
 
 describe('reviewed additive native repair installation', () => {
   it.each(['single-maintainer-gitflow', 'none'] as const)(
-    'installs the old selected inventory only after approval with %s', async (governanceProfile) => {
+    'completes missing current selected ownership only after approval with %s', async (governanceProfile) => {
       const root = await fixture(governanceProfile);
       await removeRepairInventory(root);
       const assertPreserved = await protectedFiles(root, governanceProfile !== 'none');
       const source = await loadManifest(root);
+      if (source.artifactVersion !== 8) throw new Error('Expected a current partial-ownership candidate, not retagged history.');
+      expect(source.governance.state).toBe(governanceProfile === 'none' ? 'disabled' : 'handoff-partial');
       const before = await fingerprintUpdateTestProject(root);
       expect(await validateGeneratedProject(root)).toEqual([]);
       const preview = await update(root, ['--check']);
@@ -420,9 +450,14 @@ describe('reviewed additive native repair installation', () => {
       const applied = await approveUpdate(root);
       expect(applied.code, JSON.stringify(applied.report)).toBe(0);
       const next = await loadManifest(root);
+      if (next.artifactVersion !== 8) throw new Error('Managed maintenance must preserve the current manifest family.');
       expect(next.projectArtifacts).toEqual(source.projectArtifacts);
       expect(next.framework).toEqual(source.framework);
-      expect(next.governance).toEqual(source.governance);
+      expect(next.provenance).toEqual(source.provenance);
+      expect(next.standards).toEqual(source.standards);
+      expect(next.liftoffVersion).toBe(source.liftoffVersion);
+      expect(next.governance).toEqual(governanceProfile === 'none'
+        ? source.governance : { ...source.governance, state: 'handoff-generated' });
       expect(next.managedArtifacts.filter((entry) => repairNames.has(entry.logicalName))).toHaveLength(3);
       await assertPreserved();
       expect(await validateGeneratedProject(root)).toEqual([]);
@@ -488,39 +523,41 @@ describe('reviewed additive native repair installation', () => {
     expect((await loadManifest(root)).managedArtifacts.some((entry) => repairNames.has(entry.logicalName))).toBe(false);
   });
 
-  it('includes maintained repair integrations in immutable activation history without retagging old proof', async () => {
+  it('includes released repair integrations and retained ancestors in immutable history without retagging old proof', async () => {
     const root = await createUpdateTestRoot();
-    const historical = await writeHistoricalV1Fixture(root);
-    const maintained = buildRepositoryGovernanceArtifacts(buildProjectPlan(options({ agents: ['copilot'] }), { requireProjectName: true }));
-    const repair = maintained.find((entry) => entry.logicalName === 'liftoff-repair-copilot')!;
-    const compatibility = maintained.find((entry) => entry.logicalName === 'repository-governance-compatibility')!;
-    await writeProjectFile(root, repair.pathParts, repair.content);
-    await writeProjectFile(root, compatibility.pathParts, compatibility.content);
-    const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-    manifest.liftoffVersion = liftoffVersion;
-    manifest.managedArtifacts.push({
-      logicalName: repair.logicalName, category: repair.category, pathParts: repair.pathParts, contentHash: sha(repair.content)
-    });
-    manifest.managedArtifacts.find((entry: { logicalName: string }) =>
-      entry.logicalName === compatibility.logicalName).contentHash = sha(compatibility.content);
-    await writeProjectFile(root, ['liftoff.manifest.json'], `${JSON.stringify(manifest, null, 2)}\n`);
+    const historical = releasedCase('activation-v3-with-v2-v1-history');
+    await materializeReleasedFiles(root, historical.files);
+    const manifest = await loadManifest(root);
+    const repair = manifest.managedArtifacts.find((entry) => entry.logicalName === 'liftoff-repair-copilot')!;
+    const repairBytes = releasedBytes(historical.files.find((file) => file.path === repair.pathParts.join('/'))!);
+    const stateBytes = releasedBytes(historical.files.find((file) => file.path === 'governance/activation-state.json')!);
+    const state = JSON.parse(stateBytes.toString('utf8'));
+    expect(manifest.liftoffVersion).toBe('0.12.3');
+    expect(state.schemaVersion).toBe(3);
+    expect(repair.contentHash).toBe(sha(repairBytes));
     const before = await fingerprintUpdateTestProject(root);
     const planned = await planActivationHistoryMigration(root);
     expect(planned.status, JSON.stringify(planned.status === 'blocked' ? planned.issues : {})).toBe('eligible');
     if (planned.status !== 'eligible') throw new Error('Expected an exact historical successor plan.');
-    expect(planned.index.sourceIdentity).toEqual(historical.state.identity);
+    expect(planned.index.sourceIdentity).toEqual(state.identity);
+    expect(planned.semanticPlan.ancestorHistory.map((entry) => entry.sourceIdentity.activationContractVersion)).toEqual([2, 1]);
     const original = planned.index.files.find((entry) =>
       entry.originalPathParts.join('\0') === repair.pathParts.join('\0'));
     expect(original).toMatchObject({
-      kind: 'metadata', digest: createHash('sha256').update(repair.content).digest('hex')
+      kind: 'metadata', digest: createHash('sha256').update(repairBytes).digest('hex')
     });
-    const finalized = finalizeActivationHistoryMigration(planned, 'a'.repeat(64), new Date('2026-09-04T00:00:00.000Z'));
+    const finalized = finalizeActivationHistoryMigration(planned, 'a'.repeat(64), new Date('2026-09-10T00:00:00.000Z'));
     expect(finalized.mutations).toContainEqual(expect.objectContaining({
-      type: 'write', pathParts: original!.copyPathParts, content: Buffer.from(repair.content)
+      type: 'write', pathParts: original!.copyPathParts, content: repairBytes
     }));
+    expect(finalized.successor.identity).toEqual(currentActivationIdentity);
+    for (const phase of Object.values(finalized.successor.phases)) {
+      expect(phase.evidence).toEqual([]);
+      expect(phase.approvals).toEqual([]);
+    }
     expect(await fingerprintUpdateTestProject(root)).toEqual(before);
     expect(await readFile(path.join(root, 'governance', 'activation-state.json')))
-      .toEqual(historical.files.get('governance/activation-state.json'));
+      .toEqual(stateBytes);
   });
 
   it('rolls back exact integration additions and all identity bytes on injected failure', async () => {

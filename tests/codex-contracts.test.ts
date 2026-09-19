@@ -16,6 +16,8 @@ import {
 } from '../src/repository-governance.js';
 import { renderRootReadme } from '../src/generators/common/base.js';
 import { buildArtifacts } from '../src/templates.js';
+import { getCanonicalSkill } from '../src/adapters/packaged-assets/skill-assets.js';
+import { canonicalSkillBody } from '../src/domain/skills/catalog.js';
 import type { CodingAgentId, ProjectOptions, SpecWorkflowId } from '../src/types.js';
 
 const agentSubsets: CodingAgentId[][] = [
@@ -137,26 +139,32 @@ describe('native Codex governance integrations', () => {
     expect(setup).toHaveLength(selection.agents.length);
     for (const artifact of setup) {
       const content = artifact.content.replace(/\s+/g, ' ');
+      expect(artifact.content).toContain(canonicalSkillBody(getCanonicalSkill('setup')));
       for (const fragment of [
-        'liftoff governance status --scope local --json',
-        'liftoff governance plan --scope local --json',
-        'liftoff governance apply-next --scope local --json --execute',
-        'liftoff governance verify --scope local --json',
-        'Unscoped governance defaults to activation',
+        'liftoff capabilities --json',
+        'public schema 1', 'repository-governance', 'output 3',
+        'liftoff governance status --project ./my-app --scope local --json',
+        'liftoff governance plan --project ./my-app --scope local --json',
+        'Unscoped means activation; repository success cannot replace it',
         'Plan saves a disclosed external preview, not approval',
-        'Apply-next without `--execute` is strictly read-only',
-        '--inputs <public-json-file>',
+        'Apply-next without `--execute` is read-only',
+        'Even approval-free local actions need exact execution consent',
+        'Resolve `--inputs` before cwd changes; changed bytes need fresh review',
         '--protected-stdin',
-        'operator-controlled protected channel',
-        'nextActions', 'command.executable', 'command.args', 'cwd', 'scope', 'approvalRequired',
+        'private operator channel',
+        'nextActions.continuation', '`executable`', '`args`', '`cwd`', '`scope`',
+        '`project`', '`configPath`', '`configDigest`', '`compatibilityIdentity`', '`requiredAuthority`',
         'Never automatically approve a plan',
-        'approval does not execute',
-        'liftoff governance plan --scope activation --json',
-        'liftoff governance recover --plan <fingerprint> --execute',
-        'local-only request', 'declined later authority',
-        'Do not repeat an unchanged failure',
-        'deferred retention is not failed activation'
+        'then separately authorized `apply-next`',
+        'Honor local-only requests and declined authority',
+        '0 consistent-complete, 2 consistent-incomplete, 1 inconsistent',
+        'Full activation needs real deployment/live readback',
+        'retention is lifecycle work',
+        'Stop unchanged failures', 'recover only original plans and authority'
       ]) expect(content).toContain(fragment);
+      for (const [, command] of artifact.content.matchAll(/`liftoff ([^`]+)`/g)) {
+        expect(() => parseArgs(command!.split(/\s+/))).not.toThrow();
+      }
       expect(content).not.toContain('Status, plan, and resume are read-only');
       expect(content).not.toContain('supported secure reference');
     }
@@ -211,27 +219,28 @@ describe('native Codex governance integrations', () => {
       expect(artifact.logicalName).not.toContain('claude');
     }
     expect(setup.content.match(/`(liftoff [^`]+)`/)?.[1])
-      .toBe('liftoff governance status --scope local --json');
+      .toBe('liftoff capabilities --json');
+    expect(setup.content).toContain(canonicalSkillBody(getCanonicalSkill('setup')));
+    const setupBody = setup.content.replace(/\s+/g, ' ');
     for (const fragment of [
-      'command.executable', 'command.args', 'cwd', 'approvalRequired',
-      'nextPlannablePhase', 'nextReadyPhase', 'post-operation readiness',
-      'localSetup', 'activation', 'migration', 'lifecycle',
-      'liftoff governance plan --scope local --json',
-      'liftoff governance apply-next --scope local --json --execute',
-      'liftoff governance plan --scope activation --json',
+      'nextActions.continuation', '`executable`', '`args`', '`cwd`', '`requiredAuthority`',
+      'nextReadyPhase', 'selectedPhase', 'executedPhase', 'post-operation readiness',
+      'local-only', 'activation', 'lifecycle',
+      'liftoff governance plan --project ./my-app --scope local --json',
       'Never automatically approve a plan',
-      'private operator channel', 'local-only request', 'declined later authority',
-      'disclosed external preview', '--inputs <public-json-file>', '--protected-stdin',
-      'exit 2 means consistent but', 'indeterminate readiness',
-      'Do not repeat an unchanged failure', 'actual deployment',
-      'matching live enforcement', 'future'
-    ]) expect(setup.content).toContain(fragment);
+      'private operator channel', 'local-only requests and declined authority',
+      'disclosed external preview', '--inputs', '--protected-stdin',
+      '2 consistent-incomplete', '1 inconsistent',
+      'Stop unchanged failures', 'real deployment/live readback'
+    ]) expect(setupBody).toContain(fragment);
+    expect(assessment.content).toContain(canonicalSkillBody(getCanonicalSkill('governance-assess')));
     expect([...assessment.content.matchAll(/`(liftoff [^`]+)`/g)].map((match) => match[1])).toEqual([
-      'liftoff governance assess --json', 'liftoff governance assess --live --json'
+      'liftoff capabilities --json', 'liftoff governance assess --project ./my-app --json',
+      'liftoff governance assess --project ./my-app --live --json'
     ]);
-    expect(assessment.content).toContain('Only when the developer explicitly requests live reads');
-    expect(assessment.content).toContain('Stop after explaining the report');
-    expect(assessment.content).toContain('repair, migration, activation');
+    expect(assessment.content).toContain('Only after explicit consent for bounded live reads');
+    expect(assessment.content).toContain('Stop after explaining it: no follow-up execution');
+    expect(assessment.content).toContain('No governance phase is completed');
     expect(assessment.content).toContain('`$liftoff-setup`');
     expect(artifacts.some((artifact) => artifact.logicalName.endsWith('-claude'))).toBe(false);
   });

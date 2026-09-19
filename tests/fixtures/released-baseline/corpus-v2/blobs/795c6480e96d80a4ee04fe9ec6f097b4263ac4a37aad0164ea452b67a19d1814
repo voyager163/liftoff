@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.10.0",
+  "minimumLiftoffVersions": {
+    "manifestWriteVersion7": "0.10.0",
+    "remedy": "Use the historical release matching this project."
+  },
+  "manifest": {
+    "readVersions": [
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ],
+    "writeVersion": 7,
+    "hashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+  },
+  "activation": {
+    "currentCompatibleTuples": [
+      {
+        "liftoffVersion": "0.10.0",
+        "manifestArtifactVersion": 7,
+        "policyVersion": "6",
+        "activationContractVersion": 1,
+        "phaseGraphSchemaVersion": 1,
+        "phaseGraphHash": "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7",
+        "activationStateSchemaVersion": 1,
+        "evidenceHeaderSchemaVersion": 1,
+        "approvalEnvelopeSchemaVersion": 1,
+        "supersessionSchemaVersion": 1,
+        "credentialPolicySchemaVersion": 1
+      }
+    ],
+    "recognizedGraphHashes": [
+      "b84bcde6cd614637f2486b0f3a202860e6e9a6142ac60c773daa11786dbeb7f7"
+    ],
+    "graphMappings": [],
+    "historicalStateMigrations": [],
+    "unsupportedRemedy": "Preserve unsupported activation state and evidence."
+  },
+  "managedCore": {
+    "logicalNameAllowlist": [
+      "repository-governance-policy",
+      "repository-governance-context",
+      "repository-governance-guide",
+      "repository-governance-phase-graph",
+      "repository-governance-compatibility",
+      "repository-governance-credential-policy-schema",
+      "liftoff-setup-copilot",
+      "liftoff-setup-claude",
+      "liftoff-governance-assess-copilot",
+      "liftoff-governance-assess-claude"
+    ],
+    "pathAllowlist": [
+      [
+        ".liftoff",
+        "governance",
+        "policy.md"
+      ],
+      [
+        ".liftoff",
+        "governance",
+        "context.json"
+      ],
+      [
+        ".liftoff",
+        "governance",
+        "README.md"
+      ],
+      [
+        ".liftoff",
+        "governance",
+        "phase-graph.json"
+      ],
+      [
+        ".liftoff",
+        "governance",
+        "compatibility.json"
+      ],
+      [
+        ".liftoff",
+        "governance",
+        "credential-policy.schema.json"
+      ],
+      [
+        ".github",
+        "prompts",
+        "liftoff-setup.prompt.md"
+      ],
+      [
+        ".github",
+        "prompts",
+        "liftoff-governance-assess.prompt.md"
+      ]
+    ],
+    "updateInventory": [
+      {
+        "logicalName": "repository-governance-policy",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "policy.md"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "repository-governance-context",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "context.json"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "repository-governance-guide",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "README.md"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "repository-governance-phase-graph",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "phase-graph.json"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "repository-governance-compatibility",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "compatibility.json"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "repository-governance-credential-policy-schema",
+        "pathParts": [
+          ".liftoff",
+          "governance",
+          "credential-policy.schema.json"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "liftoff-setup-copilot",
+        "pathParts": [
+          ".github",
+          "prompts",
+          "liftoff-setup.prompt.md"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      },
+      {
+        "logicalName": "liftoff-governance-assess-copilot",
+        "pathParts": [
+          ".github",
+          "prompts",
+          "liftoff-governance-assess.prompt.md"
+        ],
+        "lifecycle": "managed-core",
+        "contentHashAuthority": "liftoff.manifest.json managedArtifacts[].contentHash"
+      }
+    ],
+    "validation": {
+      "strictJson": true,
+      "crossPlatformPathParts": true,
+      "noSetupSkillVersion": true,
+      "checkModeWritesBytes": 0
+    }
+  }
+}

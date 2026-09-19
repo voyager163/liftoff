@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import type { ProjectFileMutation, ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import { equivalentHcl, InfrastructureInspectionError, unsupported } from '../../adapters/hcl/semantic.js';
-import type { EnvironmentId, LiftoffManifest, ManifestProjectArtifact } from '../../domain/project/contracts.js';
+import type { EnvironmentId, LiftoffManifest, ManifestGeneratedProjectArtifact, ManifestProjectArtifact } from '../../domain/project/contracts.js';
 import {
   assessInfrastructureLayout, compatibleIndependentInfrastructureGenerationVersions,
   currentInfrastructureIdentities, environmentRootInfrastructureIdentities,
@@ -19,7 +19,7 @@ export interface InfrastructureRepairCandidate {
   blockers: string[];
   snapshots: ProjectFileSnapshot[];
   mutations: ProjectFileMutation[];
-  artifacts: ManifestProjectArtifact[];
+  artifacts: ManifestGeneratedProjectArtifact[];
   files: { pathParts: string[]; content: string }[];
   resourceGroups: { environment: EnvironmentId; name: string }[];
   statePaths: string[][];
@@ -31,8 +31,9 @@ function hash(content: string): string {
   return `sha256:${createHash('sha256').update(content, 'utf8').digest('hex')}`;
 }
 
-function sameIdentity(artifact: ManifestProjectArtifact, identity: InfrastructureArtifactIdentity): boolean {
-  return artifact.logicalName === identity.logicalName && artifact.category === identity.category &&
+function sameIdentity(artifact: ManifestProjectArtifact, identity: InfrastructureArtifactIdentity): artifact is ManifestGeneratedProjectArtifact {
+  return typeof artifact.generatedBy === 'string' && typeof artifact.generationHash === 'string' &&
+    artifact.logicalName === identity.logicalName && artifact.category === identity.category &&
     artifact.provisioningGroup === identity.provisioningGroup &&
     artifact.pathParts.join('/') === identity.pathParts.join('/');
 }
@@ -106,7 +107,12 @@ export async function inspectInfrastructureRepair(
     layout: assessInfrastructureLayout(manifest).kind, blockers: [], snapshots: [],
     mutations: [], artifacts: [], files: [], resourceGroups: [], statePaths: [], directoryInventory: []
   };
+  if (manifest.project.workload.kind === 'components') {
+    candidate.blockers.push('This adopted component has no declared Azure workload or infrastructure provenance. Use read-only assessment; no cloud or generated environment is inferred.');
+    return candidate;
+  }
   const reader = new InfrastructureFiles(projectRoot);
+  const recordedArtifacts: readonly ManifestProjectArtifact[] = manifest.projectArtifacts;
   const environments = manifest.project.workload.environments;
   const targets = currentInfrastructureIdentities(environments);
   const legacy = [...retiredFlatRootInfrastructureIdentities, ...environments.map(legacyEnvironmentIdentity)];
@@ -169,11 +175,9 @@ export async function inspectInfrastructureRepair(
         const content = contentAt(identity.pathParts);
         if (content === undefined) unsupported(`${identity.pathParts.join('/')}: required current infrastructure file is missing.`);
         candidate.files.push({ pathParts: [...identity.pathParts], content });
-        const provenance = manifest.projectArtifacts.find((artifact) => sameIdentity(artifact, identity));
+        const provenance = recordedArtifacts.find((artifact): artifact is ManifestGeneratedProjectArtifact => sameIdentity(artifact, identity));
         if (!provenance) unsupported(`${identity.pathParts.join('/')}: current provenance is missing.`);
-        const generationHash = hash(content);
-        candidate.artifacts.push(provenance.generationHash === generationHash ? provenance :
-          { ...provenance, generationHash, generatedBy: liftoffVersion });
+        candidate.artifacts.push(structuredClone(provenance));
       }
       return candidate;
     }
@@ -279,11 +283,12 @@ export async function inspectInfrastructureRepair(
         candidate.mutations.push({ type: 'write', pathParts: [...identity.pathParts], content: actual, mode: planned.mode ?? 0o600 });
       }
       const generationHash = hash(actual);
-      const provenance = manifest.projectArtifacts.find((artifact) => sameIdentity(artifact, identity) &&
+      const provenance = recordedArtifacts.find((artifact): artifact is ManifestGeneratedProjectArtifact => sameIdentity(artifact, identity) &&
         artifact.generationHash === generationHash &&
-        (identity.logicalName === 'opentofu-readme' || compatibleIndependentInfrastructureGenerationVersions.includes(artifact.generatedBy as typeof compatibleIndependentInfrastructureGenerationVersions[number])));
+        (identity.logicalName === 'opentofu-readme' || compatibleIndependentInfrastructureGenerationVersions.some((version) => version === artifact.generatedBy)));
       candidate.artifacts.push(provenance ?? {
-        ...identity, pathParts: [...identity.pathParts], generationHash, generatedBy: liftoffVersion
+        ...identity, pathParts: [...identity.pathParts], generationHash,
+        generatedBy: liftoffVersion
       });
     }
     for (const identity of legacy) {

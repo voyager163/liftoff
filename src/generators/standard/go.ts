@@ -149,6 +149,8 @@ func New(settings config.Config) http.Handler {
 		fmt.Fprint(response, ${sourceString(JSON.stringify({ name: plan.projectName, stack: 'go-huma' }))})
 	})
 	router.Get("/scalar", scalarReference)
+	router.Get("/scalar/", scalarSlashRedirect)
+	router.Get("/openapi.json/", openapiSlashRedirect)
 	return router
 }
 
@@ -188,7 +190,25 @@ func corsMiddleware(allowedOrigins map[string]struct{}) func(http.Handler) http.
 
 func scalarReference(response http.ResponseWriter, _ *http.Request) {
 	response.Header().Set("Content-Type", "text/html; charset=utf-8")
-	fmt.Fprint(response, \`<!doctype html><html><head><title>API Reference</title></head><body><script id="api-reference" data-url="/openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>\`)
+	fmt.Fprint(response, \`<!doctype html><html><head><title>API Reference</title></head><body><script id="api-reference" data-url="./openapi.json"></script><script src="https://cdn.jsdelivr.net/npm/@scalar/api-reference"></script></body></html>\`)
+}
+
+func scalarSlashRedirect(response http.ResponseWriter, request *http.Request) {
+	location := "../scalar"
+	if request.URL.RawQuery != "" {
+		location += "?" + request.URL.RawQuery
+	}
+	response.Header().Set("Location", location)
+	response.WriteHeader(http.StatusTemporaryRedirect)
+}
+
+func openapiSlashRedirect(response http.ResponseWriter, request *http.Request) {
+	location := "../openapi.json"
+	if request.URL.RawQuery != "" {
+		location += "?" + request.URL.RawQuery
+	}
+	response.Header().Set("Location", location)
+	response.WriteHeader(http.StatusTemporaryRedirect)
 }
 `;
 }

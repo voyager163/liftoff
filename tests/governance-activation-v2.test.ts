@@ -28,6 +28,7 @@ import { assessInfrastructureLayout, retiredFlatRootInfrastructureIdentities } f
 import { specKitIntegrationPaths } from '../src/framework-validation.js';
 import { writeGovernanceApprovalAuthority } from '../src/governance-activation/authority-records.js';
 import { CaptureStream, ReadyInitRunner } from './helpers.js';
+import { githubDiscoveryCliFixture, fixtureSubscription } from './governance-activation-fixtures.js';
 
 const roots: string[] = [];
 let counter = 0;
@@ -56,7 +57,7 @@ async function fixture() {
 async function cli(root: string, command: string[], runner: CommandRunner = new ReadyInitRunner()) {
   const stdout = new CaptureStream();
   const stderr = new CaptureStream();
-  const code = await runCommand(parseArgs(['governance', ...command, '--json']), {
+  const code = await runCommand(parseArgs(['governance', ...command, ...(command.includes('--scope') ? [] : ['--scope', 'local']), '--json']), {
     cwd: root, stdout, stderr, runner
   });
   return { code, output: stdout.text(), error: stderr.text(), json: JSON.parse(stdout.text() || '{}') };
@@ -116,11 +117,22 @@ describe('activation-v2 authoritative contracts', () => {
     expect(selectLatestPhaseEvidence([proof, record('failed')], context).selected).toBeNull();
   });
 
-  it('declares the 26-phase production capability inventory honestly', () => {
-    expect(Object.keys(phaseCapabilities)).toHaveLength(29);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'built-in')).toHaveLength(11);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(2);
-    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'unavailable')).toHaveLength(16);
+  it('declares all current phases without promoting unqualified or missing producers', () => {
+    expect(Object.keys(phaseCapabilities).sort()).toEqual(canonicalPhaseGraph.phases.map((phase) => phase.id).sort());
+    expect(Object.entries(phaseCapabilities).filter(([, entry]) => entry.executor === 'built-in').map(([id]) => id)).toEqual([
+      'seed-valid', 'seed-verified', 'seed-archived', 'committed', 'pushed',
+      'repository-discovered', 'repository-enforcement-approved', 'phase-0-complete', 'activation-approved',
+      'provider-ready', 'state-path-selected', 'remote-ready', 'enforcement-approved', 'bootstrap-state-disposed'
+    ]);
+    expect(Object.values(phaseCapabilities).filter((entry) => entry.executor === 'injected-only')).toHaveLength(0);
+    for (const phaseId of ['provider-ready', 'state-path-selected'] as const) {
+      expect(phaseCapabilities[phaseId]).toMatchObject({
+        executor: 'built-in', implementation: 'complete', qualification: 'unqualified', blockerKind: 'unqualified'
+      });
+    }
+    for (const entry of Object.values(phaseCapabilities).filter((capability) => capability.executor === 'unavailable')) {
+      expect(entry).toMatchObject({ implementation: 'partial', qualification: 'unqualified', blockerKind: 'implementation-missing' });
+    }
     expect(canonicalPhaseGraph.phases.find((phase) => phase.id === 'activation-approved')!.allowedMutations.local)
       .toContain('write-openspec-governance');
     const dependency = canonicalPhaseGraph.phases.find((phase) => phase.id === 'remote-ready')!.dependencies[0]!;
@@ -240,7 +252,7 @@ describe('activation-v2 local production adapter', () => {
     try {
       for (const command of ['status', 'resume', 'verify']) {
         const result = await cli(root, [command]);
-        expect(result.code, result.output + result.error).toBe(0);
+        expect(result.code, result.output + result.error).toBe(command === 'verify' ? 2 : 0);
         expect(await readFile(lockPath, 'utf8')).toBe(foreign);
       }
       await expect(readFile(path.join(root, 'governance', 'activation-state.json'))).rejects.toMatchObject({ code: 'ENOENT' });
@@ -382,6 +394,10 @@ describe('activation-v2 local production adapter', () => {
     const url = 'https://github.com/owner/repository.git';
     let pushUrls = [url];
     const calls: string[] = [];
+    let includeAzure = false;
+    const azureInputs = { schemaVersion: 1 as const, phases: {}, azure: {
+      subscriptionId: fixtureSubscription, tenantId: fixtureSubscription, region: 'eastus'
+    } };
     const runner: CommandRunner = {
       async run(command) {
         const key = `${command.executable} ${command.args.join(' ')}`;
@@ -396,14 +412,16 @@ describe('activation-v2 local production adapter', () => {
         else if (key === 'git remote -v') stdout = `origin ${url} (fetch)\norigin ${url} (push)\n`;
         else if (key === 'git remote get-url --push --all origin') stdout = pushUrls.join('\n');
         else if (key.startsWith('git ls-remote')) stdout = `${'a'.repeat(40)}\trefs/heads/develop`;
-        else if (key.startsWith('gh repo view owner/repository ')) stdout = JSON.stringify({
-          id: 'R_REMOTE', nameWithOwner: 'owner/repository', defaultBranchRef: { name: 'develop' }, isPrivate: true
+        else if (command.executable === 'gh') stdout = githubDiscoveryCliFixture(command, 'owner/repository') ?? '';
+        else if (command.executable === 'az' && command.args[0] === 'account') stdout = JSON.stringify({
+          id: fixtureSubscription, tenantId: fixtureSubscription, state: 'Enabled', name: 'fixture'
         });
         return { command, displayCommand: key, status, signal: null, stdout, stderr: '', timedOut: false };
       }
     };
     async function inspection(): Promise<GovernanceTransitionInspection> {
       const loaded = (await loadActivationState(root))!;
+      if (includeAzure) loaded.state.activationInputs = azureInputs;
       const snapshot = await readActivationInputSnapshot(root, manifest, runner);
       const contexts = activationEvidenceContexts(canonicalPhaseGraph, loaded.state, snapshot);
       const plans = await readReviewedTransitionPlans(root);
@@ -440,13 +458,16 @@ describe('activation-v2 local production adapter', () => {
       };
       await writeProjectFile(root, ['governance', 'approvals', `${phaseId}.json`], JSON.stringify(approvalEnvelope));
       await writeGovernanceApprovalAuthority(root, canonicalSha256({ testApproval: approvalEnvelope.id }), approvalEnvelope);
-      const published = await cli(root, ['apply-next', '--execute'], runner);
+      const published = await cli(root, ['apply-next', '--scope', 'activation', '--execute'], runner);
       expect(published.code, published.output).toBe(0);
       expect(published.json.executedPhase).toBe(phaseId);
       completed.push(phaseId);
       expect((await assertCurrentEvidence(root, completed, runner)).executionAnchor).toBe(prior.state.repository.id);
     }
-    const result = await cli(root, ['apply-next', '--execute'], runner);
+    const inputFile = path.join(root, 'activation.public.json');
+    await writeFile(inputFile, JSON.stringify(azureInputs));
+    includeAzure = true;
+    const result = await cli(root, ['apply-next', '--scope', 'activation', '--inputs', inputFile, '--execute'], runner);
     expect(result.json.applied, result.output).toBe(true);
     expect(result.json.executedPhase).toBe('phase-0-complete');
     completed.push('phase-0-complete');
@@ -457,11 +478,14 @@ describe('activation-v2 local production adapter', () => {
     expect(observed.status).toBe('inspected');
     if (observed.status !== 'inspected') throw new Error('Missing persisted inspection');
     expect(observed.state.repository).toEqual(prior.state.repository);
-    expect(observed.state.remoteBinding).toMatchObject({ id: 'R_REMOTE', name: 'owner/repository', pushUrl: url });
-    expect(observed.state.applicability).toEqual({ statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' });
+    expect(observed.state.remoteBinding).toMatchObject({ id: '42', name: 'owner/repository', pushUrl: url });
+    expect(observed.state.applicability).toMatchObject({ statePath: 'none', privateStagingDast: 'unknown', credentialRequired: 'unknown' });
     expect(observed.selections['seed-valid']!.selected).not.toBeNull();
     expect(observed.selections['phase-0-complete']!.selected).not.toBeNull();
-    expect(calls.some((call) => call.startsWith('az ') || /^git (?:push|init|commit) /.test(call))).toBe(false);
+    expect(calls.some((call) => /^git (?:push|init|commit) /.test(call))).toBe(false);
+    expect(calls.filter((call) => call.startsWith('az '))).toEqual([
+      `az account show --subscription ${fixtureSubscription} --output json`
+    ]);
 
     const stateBytes = await readFile(path.join(root, 'governance', 'activation-state.json'), 'utf8');
     const rejected = await executeApplyNext({
@@ -488,7 +512,14 @@ describe('activation-v2 local production adapter', () => {
 
     const beforeBindingChange = await inspection();
     beforeBindingChange.readiness.nextReadyPhase = 'pushed';
-    beforeBindingChange.approvals = [JSON.parse(await readFile(path.join(root, 'governance', 'approvals', 'pushed.json'), 'utf8'))];
+    const currentPlan = (await buildSavedTransitionPlan({ inspection: beforeBindingChange, runner }))!;
+    const currentRequest = approvalRequestForSavedPlan(currentPlan, canonicalPhaseGraph.phases.find((phase) => phase.id === 'pushed')!, beforeBindingChange.state);
+    const currentApproval = {
+      ...currentRequest, schemaVersion: 4, id: 'pushed-current-input-review', approver: 'fixture-owner',
+      approvedAt: new Date(Date.now() - 1000).toISOString(), expiresAt: new Date(Date.now() + 3_600_000).toISOString()
+    };
+    beforeBindingChange.approvals = [currentApproval];
+    await writeGovernanceApprovalAuthority(root, canonicalSha256({ reviewedPlan: currentPlan.planDigest }), currentApproval);
     await expect(executeApplyNext({
       inspection: beforeBindingChange, runner,
       reinspect: async () => {

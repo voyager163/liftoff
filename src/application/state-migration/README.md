@@ -3,6 +3,26 @@
 `index.ts` exports the stateful service functions and concrete adapters. Shared
 contracts live in `src/domain/repair/stateful.ts`. These functions do not inherit
 authority from local repair, update, activation-record migration, `--yes`, or force.
+This is an internal composition API, not an executable public `liftoff repair`
+stateful-migration mode. The unpublished 0.13.0 candidate still requires the
+specific native/backend/provider qualification and private capabilities described
+below; source presence does not establish deployment support.
+
+The current governance identity is policy 8 with credential-policy schema 2,
+activation/state/evidence/approval 4, graph schema 3 and compatibility metadata 5.
+This does not change the independent state-migration request, journal or custody
+contracts. Historical policy-7/schema-1 records keep their original identities;
+a reviewed activation successor neither retags private records nor authorizes
+state reads, key access, backend writes or disposal.
+
+GitHub's `organization_administration:read` includes broader organization,
+billing and Actions-settings reads, not hosted-runners-only access. Fresh exact
+plan-bound approval of observed grants and intended operations remains separate
+from every state authority below. PAT exact bearer/lifetime proof and conditional
+secret creation remain blocked; there is no automatic secret upsert or reuse
+of old credential approval. See [credential permissions](../../../docs/credential-permissions.md).
+The amendment does not qualify WinGet, other native hosts, live providers or
+release publication, or authorize host elevation or storage-policy changes.
 
 ## Coordinator integration
 
@@ -134,10 +154,13 @@ an inspected configuration/provider-mirror provider, and the project writer
 coordinator. Missing capabilities are blockers, not plaintext/public fallbacks.
 
 `StateRecipeQualification` must establish the exact recipe/backend/binary/host
-combination before native execution. The tests in `tests/state-migration*.test.ts`
-and `tests/state-backend*.test.ts` use deterministic synthetic state, transport,
-native-command and lock capabilities. **They are not live qualification.** No
-owner environment is contacted and no installed OpenTofu is executed by them.
+combination before native execution. Ordinary fixture tests in
+`tests/state-migration*.test.ts` and `tests/state-backend*.test.ts` use deterministic
+synthetic state, transport, native-command and lock capabilities.
+**They are not live qualification.** The separately opted-in
+`tests/state-backend-native-qualification.test.ts` lane described below executes
+the actual installed OpenTofu against disposable builtin fixtures; it does not
+qualify Azure or production state migration.
 Production registration still requires the separately approved disposable
 qualification lane; no mocked result enables it by default.
 
@@ -300,3 +323,8 @@ creation; a root-only kill or PID-reuse-prone fallback is not substituted.
 fixtures to exercise resistant grandchildren, root-exit/ignored-stdio cases,
 cancellation, output limits and retained scratch on unproven cleanup. It does
 not execute project scripts, access credentials or mutate provider resources.
+
+## Related architecture documentation
+
+- [Application repair](../../../docs/application-repair.md)
+- [Developer guide](../../../DEVELOPER.md)

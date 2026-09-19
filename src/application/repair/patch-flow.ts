@@ -2,10 +2,12 @@ import path from 'node:path';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
 import type { LiftoffManifest } from '../../domain/project/contracts.js';
-import {
-  captureProjectFileSnapshot, type ProjectFileSnapshot
-} from '../../adapters/filesystem/project-transaction.js';
-import { applyReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
+import { ProjectFileTransactionError, type ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
+import { captureReviewedSnapshot as captureProjectFileSnapshot } from '../execution/plan-binding.js';
+import { applyReviewedExecution, requestReviewedFileApproval } from '../execution/kernel.js';
+import { withCooperatingExecutionLock } from '../execution/cross-writers.js';
+import { reviewedPlanMatches } from '../../domain/execution/immutable-plan.js';
+import { operationFailureOutcome } from '../../domain/execution/operation-outcome.js';
 import { createScopedUserLocalRecordStore, type UpdatePreviewOptions } from '../../adapters/filesystem/update-previews.js';
 import { commandShellForPlatform, formatShellCommand } from '../../adapters/process/shell-command.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
@@ -40,13 +42,15 @@ async function inspectBoundPatch(
   root: string, patchPath: string, options?: { runner?: CommandRunner; env?: NodeJS.ProcessEnv }
 ): Promise<BoundPatch> {
   const metadataPaths = [['liftoff.manifest.json'], ['liftoff.config.json']];
-  const metadata = await Promise.all(metadataPaths.map((parts) => captureProjectFileSnapshot(root, parts)));
+  const metadata = await Promise.all(metadataPaths.map((parts) =>
+    captureProjectFileSnapshot(root, parts, parts[0] === 'liftoff.manifest.json' ? 4 * 1024 * 1024 : undefined)));
   if (!metadata[0].content || metadata[0].content.length > 4 * 1024 * 1024) {
     throw new Error('Application repair requires a bounded existing manifest, not new or fabricated provenance.');
   }
   const manifest = await loadManifest(root);
   const candidate = await inspectApplicationPatch(root, manifest, patchPath, options);
-  const after = await Promise.all(metadataPaths.map((parts) => captureProjectFileSnapshot(root, parts)));
+  const after = await Promise.all(metadataPaths.map((parts) =>
+    captureProjectFileSnapshot(root, parts, parts[0] === 'liftoff.manifest.json' ? 4 * 1024 * 1024 : undefined)));
   if (canonicalSha256(snapshotDescriptors(metadata)) !== canonicalSha256(snapshotDescriptors(after))) {
     throw new Error('Project manifest or desired state changed during application inspection; request a new review.');
   }
@@ -139,7 +143,7 @@ export async function repairApplicationProject(input: {
       return 2;
     }
     const preview = previewFor(root, inspected, input.saved ? new Date(input.saved.createdAt) : now());
-    if (input.saved && preview.fingerprint !== input.saved.fingerprint) {
+    if (input.saved && !reviewedPlanMatches(input.saved, preview)) {
       throw new Error('Application inputs, modes, directories, staging, references or verification changed after preview. Request a fresh inspection and patch review.');
     }
     const receipt = input.saved ? undefined :
@@ -148,7 +152,7 @@ export async function repairApplicationProject(input: {
       await loadRepairPreview(root, preview.fingerprint, now(), storage);
       const current = await inspectBoundPatch(root, patchPath, inspectionOptions);
       if (current.candidate.blockers.length ||
-          previewFor(root, current, new Date(preview.createdAt)).fingerprint !== preview.fingerprint) {
+          !reviewedPlanMatches(preview, previewFor(root, current, new Date(preview.createdAt)))) {
         throw new Error('The displayed application plan changed or became blocked; no substitute plan was approved. Request a fresh inspection and review.');
       }
       return current;
@@ -156,6 +160,7 @@ export async function repairApplicationProject(input: {
     const actions = (): RepairNextAction[] => [
       repairCommandAction(root, ['--application-patch', candidate.patchPath], {
         id: 'application-interactive', label: 'Review and approve interactively', scope: 'application-layout', approvalRequired: true,
+        configPath: candidate.scope.patch.path, configDigest: candidate.scope.patch.digest?.replace(/^sha256:/u, ''),
         description: 'A genuine terminal asks separately about project checks, declared network and file commit. No fingerprint entry.'
       }),
       repairCommandAction(root, [
@@ -257,15 +262,17 @@ export async function repairApplicationProject(input: {
       }
       inspected = await assertCurrent();
       candidate = inspected.candidate;
-      effects = { ...effects, attempted: true, networkAuthorized, dependencyPreparationAuthorized, outcome: 'incomplete' };
-      verificationResult = await verifyApplicationPatch(root, candidate, context.runner ?? new NodeCommandRunner(), {
-        preview, storage, env: context.env,
-        allowProjectCode: true,
-        allowDependencyPreparation: dependencyPreparationAuthorized,
-        allowNetwork: networkAuthorized,
-        assertCurrent: async () => { await assertCurrent(); }
-      });
-      effects.attempted = verificationResult.commands.length > 0 || (verificationResult.preparation?.length ?? 0) > 0;
+      verificationResult = await withCooperatingExecutionLock(root, async () => {
+        effects = { ...effects, attempted: true, networkAuthorized, dependencyPreparationAuthorized, outcome: 'incomplete' };
+        verificationResult = await verifyApplicationPatch(root, candidate, context.runner ?? new NodeCommandRunner(), {
+          preview, storage, env: context.env,
+          allowProjectCode: true,
+          allowDependencyPreparation: dependencyPreparationAuthorized,
+          allowNetwork: networkAuthorized,
+          assertCurrent: async () => { await assertCurrent(); }
+        });
+        return verificationResult;
+      }, { currentCommand: 'repair', storage });
       if (verificationResult.status !== 'passed' || !verificationResult.inspectedProjectUnchanged || !verificationResult.cleanupComplete ||
           verificationResult.candidateDigest !== applicationCandidateDigest(candidate) ||
           verificationResult.verificationPolicyDigest !== preview.verificationDigest ||
@@ -293,10 +300,12 @@ export async function repairApplicationProject(input: {
     });
     if (request.verifyPlan) return 0;
     if (request.approvePlan) {
-      approval = { status: 'approved', fingerprint: preview.fingerprint, method: 'fingerprint' };
+      approval = await requestReviewedFileApproval({
+        kind: 'repair', projectRoot: root, fingerprint: preview.fingerprint, approvePlan: request.approvePlan
+      }, { stderr: context.stderr });
     } else {
       approval = await requestRepairApproval(request, preview.fingerprint,
-        'Apply the displayed exact application file changes, private original-byte backup and immutable repair history?', context);
+        'Apply the displayed exact application file changes, private original-byte backup and immutable repair history?', context, root);
       if (approval.status !== 'approved') {
         emit({
           ...base(), ...detail(),
@@ -325,13 +334,22 @@ export async function repairApplicationProject(input: {
     historyPath = path.join(root, ...repairHistoryRoot, preview.fingerprint);
     const mutations = [...historyMutations, ...candidate.mutations];
     const originals = [...inspected.snapshots, ...historySnapshots];
-    const outcome = await applyReviewedUpdateTransaction(root, mutations, {
+    const outcome = await applyReviewedExecution(root, mutations, {
       transactionKind: 'repair', repairIdentity: identity, planFingerprint: preview.fingerprint,
-      approvalStore: repairApprovalStore(root, storage), preconditions: originals,
+      approval: approval!, approvalStore: repairApprovalStore(root, storage), preconditions: originals, storage,
       validatePlan: async () => {
         await assertCurrent();
         if (!await readRepairVerification(preview, now(), storage)) {
           throw new Error('Application verification no longer matches the approved transaction.');
+        }
+      },
+      verifyCommitted: async () => {
+        await assertRepairReadback(root, mutations, originals);
+        for (const snapshot of inspected.metadata) {
+          const after = await captureProjectFileSnapshot(root, snapshot.pathParts, 4 * 1024 * 1024);
+          if (canonicalSha256(snapshotDescriptors([after])) !== canonicalSha256(snapshotDescriptors([snapshot]))) {
+            throw new Error('Application patch committed, but protected manifest/configuration changed during final inspection.');
+          }
         }
       }
     });
@@ -343,32 +361,31 @@ export async function repairApplicationProject(input: {
       });
       return 2;
     }
-    await assertRepairReadback(root, mutations, originals);
-    for (const snapshot of inspected.metadata) {
-      const after = await captureProjectFileSnapshot(root, snapshot.pathParts);
-      if (canonicalSha256(snapshotDescriptors([after])) !== canonicalSha256(snapshotDescriptors([snapshot]))) {
-        throw new Error('Application patch committed, but protected manifest/configuration changed during final inspection.');
-      }
-    }
     emit({
-      ...base(), ...detail(), operationKind: 'apply', status: outcome.cleanupFailures.length ? 'partial' : 'applied',
-      verification: 'passed', repairScopeComplete: outcome.cleanupFailures.length === 0,
-      message: 'The exact reviewed application patch committed and its bytes/modes were read back. Original manifest provenance is unchanged; only the declared staged checks are verified.',
+      ...base(), ...detail(), operationKind: 'apply', status: outcome.operation.status === 'completed' ? 'applied' : 'partial',
+      verification: outcome.operation.verification === 'passed' ? 'passed' : 'incomplete',
+      repairScopeComplete: outcome.operation.status === 'completed',
+      message: outcome.operation.status === 'completed'
+        ? 'The exact reviewed application patch committed and its bytes/modes were read back. Original manifest provenance is unchanged; only the declared staged checks are verified.'
+        : 'The application patch committed, but current byte/mode readback or cleanup is incomplete. Original history and later edits were preserved.',
       blockers: outcome.cleanupFailures,
       nextActions: outcome.cleanupFailures.length ? [recoverAction()] :
         [inventoryAction(), ...repairResumeActions(root, manifest), ...repairAgentActions(root, manifest)]
     });
     return outcome.cleanupFailures.length ? 2 : 0;
   } catch (error) {
+    const failure = operationFailureOutcome({
+      committed, attemptedEffects: effects.attempted,
+      rollbackFailures: error instanceof ProjectFileTransactionError ? error.rollbackFailures : undefined
+    });
     emit({
-      ...base(), status: committed || effects.attempted ? 'partial' : 'failed',
-      verification: committed || effects.attempted ? 'incomplete' : 'not-run',
+      ...base(), ...failure,
       message: committed
         ? 'The application patch committed, but current verification/readback or cleanup is incomplete. No blind restoration was attempted.'
         : 'The application file transaction did not complete. Any earlier approved verification effects and retained private backups are reported separately.',
       blockers: [error instanceof Error ? error.message : 'Unexpected application repair failure.'],
       nextActions: [inventoryAction(), ...repairAgentActions(root, manifest)]
     });
-    return committed || effects.attempted ? 2 : 1;
+    return failure.status === 'partial' ? 2 : 1;
   }
 }

@@ -1,0 +1,22 @@
+## Purpose
+
+Define the generated Node.js / Fastify / TypeScript application baseline that setup verifies and archives before domain-specific implementation or deployment begins.
+
+## ADDED Requirements
+
+### Requirement: Generated Node.js / Fastify / TypeScript baseline is locally verifiable
+The bootstrap seed SHALL describe only the generated Node.js / Fastify / TypeScript backend, optional frontend, Docker Compose, OpenTofu, workflow configuration, and governance baseline. Domain-specific product behavior SHALL be deferred to later changes.
+
+#### Scenario: Generated baseline is present
+- **WHEN** the `bootstrap-flight-log` change is generated
+- **THEN** it declares the `node-fastify-application-baseline` capability
+- **AND** the generated backend, database, Docker Compose, OpenTofu, workflow, and governance files are in scope
+
+#### Scenario: Product behavior is deferred
+- **WHEN** the bootstrap change is completed
+- **THEN** no domain-specific API, data model, UI, deployment, GitHub, or cloud mutation is introduced
+
+#### Scenario: Local baseline checks pass
+- **WHEN** deterministic setup verifies the seed
+- **THEN** `liftoff validate`, backend tests, Docker Compose configuration validation, OpenTofu formatting, backend-disabled initialization, OpenTofu validation, and strict OpenSpec validation have passed
+- **AND** frontend checks are run only when a frontend was generated

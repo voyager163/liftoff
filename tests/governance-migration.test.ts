@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterAll, beforeEach, describe, expect, it } from 'vitest';
@@ -43,8 +43,11 @@ import { governanceArtifactPaths, governancePolicyVersion } from '../src/reposit
 import { inspectCurrentActivationEvidence } from '../src/governance-activation/read-only.js';
 import { governanceDoctorChecks } from '../src/governance-activation/doctor.js';
 import { buildHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
+import { currentStandardsManifestContext } from '../src/adapters/packaged-assets/resource-catalog.js';
+import { managedCoreArtifactPaths } from '../src/domain/project/artifact-lifecycle.js';
+import { minimumLiftoffForManifestV8 } from '../src/domain/project/manifest/identity.js';
 
-const scratchRoot = path.join(process.cwd(), '.cache', 'governance-migration-tests');
+const scratchRoot = path.join(process.cwd(), '.cache', `governance-migration-tests-${process.pid}-${randomUUID()}`);
 const receiptHome = path.join(scratchRoot, 'preview-home');
 let counter = 0;
 
@@ -116,8 +119,11 @@ async function editJson(pathname: string, mutate: (value: any) => void): Promise
   await writeJson(pathname, value);
 }
 
-async function downgradeManifest(root: string, artifactVersion: 2 | 3 | 4 | 5 | 6): Promise<void> {
+async function downgradeManifest(root: string, artifactVersion: 2 | 3 | 4 | 5 | 6 | 7): Promise<void> {
   await editJson(path.join(root, 'liftoff.manifest.json'), (manifest) => {
+    delete manifest.standards;
+    delete manifest.provenance;
+    manifest.liftoffVersion = '0.12.3';
     if (artifactVersion <= 5) {
       manifest.artifacts = [
         ...manifest.managedArtifacts,
@@ -134,9 +140,11 @@ async function downgradeManifest(root: string, artifactVersion: 2 | 3 | 4 | 5 | 
     if (artifactVersion <= 4) {
       manifest.artifacts = manifest.artifacts.filter((artifact: { category: string }) => artifact.category !== 'governance');
       delete manifest.governance;
-    } else {
+    } else if (artifactVersion < 7) {
       delete manifest.governance.activationIdentity;
     }
+    if (artifactVersion >= 5) manifest.governance.policyVersion = '6';
+    if (artifactVersion === 7) manifest.governance.activationIdentity = historicalActivationIdentities[2];
     if (artifactVersion <= 3) {
       const project = manifest.project;
       const workload = project.workload;
@@ -335,6 +343,11 @@ describe('governance managed migration framework', () => {
     const root = await fixtureProject(workload);
     const manifestPath = path.join(root, 'liftoff.manifest.json');
     const raw = JSON.parse(await readFile(manifestPath, 'utf8'));
+    raw.artifactVersion = 7;
+    raw.liftoffVersion = '0.12.3';
+    delete raw.standards;
+    delete raw.provenance;
+    raw.governance.policyVersion = '6';
     raw.governance.activationIdentity = historicalActivationIdentities[0];
     await writeJson(manifestPath, raw);
     const before = await treeFingerprint(root);
@@ -366,6 +379,21 @@ describe('governance managed migration framework', () => {
       reinspect: async () => { reinspected = true; throw new Error('Historical metadata cannot reach execution inspection.'); }
     })).rejects.toThrow(/diagnostic-only/);
     expect(reinspected).toBe(false);
+    expect(await treeFingerprint(root)).toEqual(before);
+  });
+
+  it('requires registered current catalogs for an injected v8 reader without weakening historical admission', async () => {
+    const root = await fixtureProject();
+    const raw: unknown = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
+    const before = await treeFingerprint(root);
+    const context = {
+      catalog: projectCatalog, policyVersion: governancePolicyVersion, minimumLiftoffVersion: minimumLiftoffForManifestV8,
+      validateActivationIdentity: validateReadableActivationIdentity, governanceArtifactPaths: managedCoreArtifactPaths
+    };
+    expect(() => createManifestReader(context).parseManifest(raw)).toThrow(/registered installed profile and resource catalogs/);
+    const parsed = createManifestReader({ ...context, currentStandards: currentStandardsManifestContext }).parseManifest(raw);
+    expect(parsed.artifactVersion).toBe(8);
+    expect(parsed.governance).toMatchObject({ activationIdentity: currentActivationIdentity, policyVersion: '8' });
     expect(await treeFingerprint(root)).toEqual(before);
   });
 
@@ -407,10 +435,10 @@ describe('governance managed migration framework', () => {
     expect(`sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`)
       .toBe(compatibilityArtifact.contentHash);
     const compatibility = validateGovernanceCompatibilityMetadata(JSON.parse(compatibilityContent));
-    expect(compatibility.schemaVersion).toBe(4);
+    expect(compatibility.schemaVersion).toBe(5);
     expect(compatibility.activation.historicalReadability.execution).toBe('diagnostic-only');
-    expect(compatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7]);
-    expect(compatibility.manifest.writeVersion).toBe(7);
+    expect(compatibility.manifest.readVersions).toEqual([2, 3, 4, 5, 6, 7, 8]);
+    expect(compatibility.manifest.writeVersion).toBe(8);
     expect(compatibility.activation.currentCompatibleTuples).toEqual([currentActivationIdentity]);
     expect(compatibility.activation.recognizedGraphHashes).toEqual([currentActivationIdentity.phaseGraphHash]);
     expect(compatibility.activation.graphMappings).toEqual([]);
@@ -420,12 +448,10 @@ describe('governance managed migration framework', () => {
   });
 
   it.each([2, 3, 4, 5, 6, 7] as const)(
-    'reads manifest v%s in check mode and updates transactionally to v7',
+    'reads manifest v%s in check mode and updates transactionally to v8',
     async (artifactVersion) => {
       const root = await fixtureProject();
-      if (artifactVersion !== 7) {
-        await downgradeManifest(root, artifactVersion);
-      }
+      await downgradeManifest(root, artifactVersion);
       const before = await treeFingerprint(root);
 
       const check = await run(['update', '--check', '--json'], root);
@@ -439,10 +465,10 @@ describe('governance managed migration framework', () => {
       ], root);
       expect(applied.code, `${applied.out}${applied.err}`).toBe(0);
       const manifest = JSON.parse(await readFile(path.join(root, 'liftoff.manifest.json'), 'utf8'));
-      expect(manifest.artifactVersion).toBe(7);
+      expect(manifest.artifactVersion).toBe(8);
       expect(manifest.governance).toMatchObject({
         profile: 'single-maintainer-gitflow',
-        policyVersion: '6',
+        policyVersion: '8',
         activationIdentity: currentActivationIdentity
       });
       expect(manifest.managedArtifacts.some((artifact: { logicalName: string }) =>
@@ -533,7 +559,7 @@ describe('governance managed migration framework', () => {
     const report = JSON.parse(result.out);
     expect(report.status).toBe('blocked');
     expect(report.activationMigration.reasonCode).toBe('unsupported-historical-identity');
-    expect(report.activationMigration.issues.join(' ')).toMatch(/exact versioned historical v1\/v2 representations/i);
+    expect(report.activationMigration.issues.join(' ')).toMatch(/exact registered historical representations/i);
     expect(await treeFingerprint(root)).toEqual(before);
   });
 

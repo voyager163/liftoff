@@ -28,11 +28,16 @@ export interface FrameworkInitializationResult {
 
 export interface FrameworkInitializationOptions extends Pick<RunCommandOptions, 'env' | 'stdout' | 'stderr'> {
   onCommand?: (displayCommand: string) => void;
+  preparedEnvironment?: NodeJS.ProcessEnv;
 }
+
+export type FrameworkInitializationPlan = Pick<
+  ProjectPlan, 'specWorkflow' | 'agents' | 'defaultAgent' | 'framework' | 'copilotCloud'
+>;
 
 export interface FrameworkAdapter {
   id: ProjectPlan['specWorkflow']['id'];
-  buildCommands(plan: ProjectPlan): ExternalCommand[];
+  buildCommands(plan: FrameworkInitializationPlan): ExternalCommand[];
 }
 
 function errorCode(error: unknown): string | undefined {
@@ -42,7 +47,7 @@ function errorCode(error: unknown): string | undefined {
     : undefined;
 }
 
-export function buildOpenSpecInitCommand(plan: ProjectPlan): ExternalCommand {
+export function buildOpenSpecInitCommand(plan: FrameworkInitializationPlan): ExternalCommand {
   const includesGitHubCopilot = plan.agents.some((agent) => agent.id === 'github-copilot');
   return {
     executable: plan.framework.executable,
@@ -63,7 +68,7 @@ function specKitIntegrationArgs(agent: ProjectPlan['agents'][number]): string[] 
   return agent.id === 'github-copilot' ? ['--integration-options=--skills'] : [];
 }
 
-export function buildSpecKitInitCommands(plan: ProjectPlan): ExternalCommand[] {
+export function buildSpecKitInitCommands(plan: FrameworkInitializationPlan): ExternalCommand[] {
   if (!plan.defaultAgent) {
     throw new InitFileSystemError('Spec Kit initialization requires a default agent.');
   }
@@ -110,7 +115,7 @@ export const frameworkAdapters: Record<ProjectPlan['specWorkflow']['id'], Framew
   }
 };
 
-function assertRegisteredFrameworkCommands(plan: ProjectPlan, commands: readonly ExternalCommand[]): void {
+function assertRegisteredFrameworkCommands(plan: FrameworkInitializationPlan, commands: readonly ExternalCommand[]): void {
   const registered = frameworkAdapters[plan.specWorkflow.id].buildCommands(plan);
   if (plan.specWorkflow.id === 'spec-kit') {
     registered.push(...plan.agents.map((agent) => ({
@@ -199,7 +204,7 @@ function assertInventoriedNativeChanges(
 
 export async function withFrameworkExecutionEnvironment<T>(
   area: StagingArea,
-  plan: ProjectPlan,
+  plan: FrameworkInitializationPlan,
   environment: NodeJS.ProcessEnv | undefined,
   operation: (env: NodeJS.ProcessEnv) => Promise<T>
 ): Promise<T> {
@@ -259,7 +264,7 @@ export async function withFrameworkExecutionEnvironment<T>(
 
 export async function executeFrameworkCommands(
   area: StagingArea,
-  plan: ProjectPlan,
+  plan: FrameworkInitializationPlan,
   commands: readonly ExternalCommand[],
   runner: CommandRunner,
   options: FrameworkInitializationOptions = {}
@@ -269,7 +274,7 @@ export async function executeFrameworkCommands(
   const inventory = frameworkOutputPaths(frameworkSelectionFromPlan(plan));
   assertSafeFrameworkTree(before, inventory);
   const displayed: string[] = [];
-  await withFrameworkExecutionEnvironment(area, plan, options.env, async (env) => {
+  const execute = async (env: NodeJS.ProcessEnv) => {
     for (const command of commands) {
       options.onCommand?.(formatCommand(command));
       const result = await runner.run(command, {
@@ -288,7 +293,9 @@ export async function executeFrameworkCommands(
         throw new InitFileSystemError(`Framework initializer failed: ${result.displayCommand}: ${detail}`);
       }
     }
-  });
+  };
+  if (options.preparedEnvironment) await execute(options.preparedEnvironment);
+  else await withFrameworkExecutionEnvironment(area, plan, options.env, execute);
 
   await assertNoFrameworkGitMetadata(area.root);
   const after = await captureTreeState(area.root);
@@ -309,7 +316,7 @@ export async function executeFrameworkCommands(
 
 export async function initializeFramework(
   area: StagingArea,
-  plan: ProjectPlan,
+  plan: FrameworkInitializationPlan,
   runner: CommandRunner,
   options: FrameworkInitializationOptions = {}
 ): Promise<FrameworkInitializationResult> {

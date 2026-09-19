@@ -27,3 +27,13 @@ output "data_collection_rule_id" {
   description = "Data collection rule resource ID."
   value       = azurerm_monitor_data_collection_rule.telemetry.id
 }
+
+output "telemetry_dashboard_id" {
+  description = "Azure Monitor Grafana dashboard resource ID."
+  value       = azapi_resource.telemetry_dashboard.id
+}
+
+output "telemetry_dashboard_portal_url" {
+  description = "Azure portal URL for the telemetry Grafana dashboard."
+  value       = "https://portal.azure.com/#@/resource${azapi_resource.telemetry_dashboard.id}"
+}

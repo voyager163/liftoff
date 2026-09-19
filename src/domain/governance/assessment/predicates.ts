@@ -1,5 +1,17 @@
 import type { ParsedWorkflow } from './yaml.js';
 import { isRecord } from './sanitize.js';
+import { canonicalJson } from '../activation/canonical-json.js';
+import { LiveFailure } from './errors.js';
+import {
+  normalizePullRequestParameters,
+  normalizeRule,
+  normalizeRulesetDefinition
+} from './live-normalize.js';
+import type {
+  NormalizedPullRequestParameters,
+  PullRequestComparisonResult,
+  RulesetReconciliationResult
+} from './types.js';
 
 export interface PredicateResult {
   value: boolean | null;
@@ -30,14 +42,202 @@ function scopePatterns(ruleset: Record<string, unknown>): { include: string[]; e
 function parameters(rule: Record<string, unknown>): Record<string, unknown> | null {
   return isRecord(rule.parameters) ? rule.parameters : null;
 }
-function zeroReviewers(rule: Record<string, unknown>): boolean | null {
-  const values = parameters(rule);
-  if (!values || typeof values.required_approving_review_count !== 'number' ||
-      typeof values.require_code_owner_review !== 'boolean' || typeof values.require_last_push_approval !== 'boolean' ||
-      typeof values.dismiss_stale_reviews_on_push !== 'boolean') return null;
-  return values.required_approving_review_count === 0 &&
-    values.require_code_owner_review === false && values.require_last_push_approval === false &&
-    values.dismiss_stale_reviews_on_push === true;
+
+export function isDismissalRestrictionNeutral(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!isRecord(value)) return false;
+  const enabled = value.enabled === true;
+  const actors = Array.isArray(value.allowed_actors) ? value.allowed_actors : [];
+  return !enabled && actors.length === 0;
+}
+
+export function isRequiredReviewersNeutral(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (!Array.isArray(value)) return false;
+  if (value.length === 0) return true;
+  return value.every((entry) => isRecord(entry) && entry.minimum_approvals === 0);
+}
+
+export function isExtraApprovalNeutral(value: unknown, approvingReviewCount: number): boolean {
+  if (approvingReviewCount === 0) return true;
+  return value === false || value === undefined || value === null;
+}
+
+function isNormalizedPullRequestParameters(value: unknown): value is NormalizedPullRequestParameters {
+  return isRecord(value) &&
+    typeof value.dismiss_stale_reviews_on_push === 'boolean' &&
+    typeof value.require_code_owner_review === 'boolean' &&
+    typeof value.require_last_push_approval === 'boolean' &&
+    typeof value.required_approving_review_count === 'number';
+}
+
+export function zeroReviewers(rule: Record<string, unknown>): boolean | null {
+  try {
+    const norm = normalizeRule(rule);
+    if (!isRecord(norm) || norm.type !== 'pull_request' || !isNormalizedPullRequestParameters(norm.parameters)) return false;
+    const p = norm.parameters;
+
+    if (p.required_approving_review_count !== 0) return false;
+    if (p.require_code_owner_review !== false) return false;
+    if (p.require_last_push_approval !== false) return false;
+    if (p.dismiss_stale_reviews_on_push !== true) return false;
+
+    if (p.dismissal_restriction !== undefined && !isDismissalRestrictionNeutral(p.dismissal_restriction)) {
+      return false;
+    }
+
+    if (p.required_reviewers !== undefined && p.required_reviewers.some((r) => r.minimum_approvals > 0)) {
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    if (error instanceof LiveFailure) return null;
+    throw error;
+  }
+}
+
+export function comparePullRequestParameters(
+  desired: unknown,
+  observed: unknown
+): PullRequestComparisonResult {
+  const rawP1 = normalizePullRequestParameters(desired);
+  const rawP2 = normalizePullRequestParameters(observed);
+  if (!isNormalizedPullRequestParameters(rawP1) || !isNormalizedPullRequestParameters(rawP2)) {
+    throw new LiveFailure('invalid-response', 'Normalized pull request parameters are missing required fields.');
+  }
+  const p1 = rawP1;
+  const p2 = rawP2;
+
+  const differences: string[] = [];
+
+  if (p1.required_approving_review_count !== p2.required_approving_review_count) {
+    differences.push(`required_approving_review_count: desired ${p1.required_approving_review_count}, observed ${p2.required_approving_review_count}`);
+  }
+
+  if (p1.dismiss_stale_reviews_on_push !== p2.dismiss_stale_reviews_on_push) {
+    differences.push(`dismiss_stale_reviews_on_push: desired ${p1.dismiss_stale_reviews_on_push}, observed ${p2.dismiss_stale_reviews_on_push}`);
+  }
+
+  if (p1.require_code_owner_review !== p2.require_code_owner_review) {
+    differences.push(`require_code_owner_review: desired ${p1.require_code_owner_review}, observed ${p2.require_code_owner_review}`);
+  }
+
+  if (p1.require_last_push_approval !== p2.require_last_push_approval) {
+    differences.push(`require_last_push_approval: desired ${p1.require_last_push_approval}, observed ${p2.require_last_push_approval}`);
+  }
+
+  if (Boolean(p1.required_review_thread_resolution) !== Boolean(p2.required_review_thread_resolution)) {
+    differences.push(`required_review_thread_resolution: desired ${Boolean(p1.required_review_thread_resolution)}, observed ${Boolean(p2.required_review_thread_resolution)}`);
+  }
+
+  if ((p1.allowed_merge_methods !== undefined) !== (p2.allowed_merge_methods !== undefined)) {
+    differences.push(`allowed_merge_methods: desired ${JSON.stringify(p1.allowed_merge_methods)}, observed ${JSON.stringify(p2.allowed_merge_methods)}`);
+  } else if (p1.allowed_merge_methods !== undefined && p2.allowed_merge_methods !== undefined) {
+    if (canonicalJson(p1.allowed_merge_methods) !== canonicalJson(p2.allowed_merge_methods)) {
+      differences.push(`allowed_merge_methods: desired ${JSON.stringify(p1.allowed_merge_methods)}, observed ${JSON.stringify(p2.allowed_merge_methods)}`);
+    }
+  }
+
+  if (p1.required_approving_review_count === 0 && p2.required_approving_review_count === 0) {
+    // Both zero required approvals: extra approval flag has no effect and is neutral
+  } else {
+    if (Boolean(p1.require_extra_approval_for_unattributed_changes) !== Boolean(p2.require_extra_approval_for_unattributed_changes)) {
+      differences.push(`require_extra_approval_for_unattributed_changes: desired ${Boolean(p1.require_extra_approval_for_unattributed_changes)}, observed ${Boolean(p2.require_extra_approval_for_unattributed_changes)}`);
+    }
+  }
+
+  const neutralD1 = isDismissalRestrictionNeutral(p1.dismissal_restriction);
+  const neutralD2 = isDismissalRestrictionNeutral(p2.dismissal_restriction);
+  if (neutralD1 && neutralD2) {
+    // Both neutral
+  } else if (neutralD1 !== neutralD2) {
+    differences.push(`dismissal_restriction: desired ${neutralD1 ? 'neutral' : 'meaningful'}, observed ${neutralD2 ? 'neutral' : 'meaningful'}`);
+  } else {
+    if (p1.dismissal_restriction!.enabled !== p2.dismissal_restriction!.enabled) {
+      differences.push(`dismissal_restriction.enabled: desired ${p1.dismissal_restriction!.enabled}, observed ${p2.dismissal_restriction!.enabled}`);
+    }
+    if (canonicalJson(p1.dismissal_restriction!.allowed_actors) !== canonicalJson(p2.dismissal_restriction!.allowed_actors)) {
+      differences.push(`dismissal_restriction.allowed_actors: desired ${JSON.stringify(p1.dismissal_restriction!.allowed_actors)}, observed ${JSON.stringify(p2.dismissal_restriction!.allowed_actors)}`);
+    }
+  }
+
+  const emptyR1 = !p1.required_reviewers || p1.required_reviewers.length === 0;
+  const emptyR2 = !p2.required_reviewers || p2.required_reviewers.length === 0;
+  if (emptyR1 && emptyR2) {
+    // Both empty
+  } else if (emptyR1 !== emptyR2) {
+    differences.push(`required_reviewers: desired ${emptyR1 ? 'empty' : 'specified'}, observed ${emptyR2 ? 'empty' : 'specified'}`);
+  } else {
+    if (canonicalJson(p1.required_reviewers) !== canonicalJson(p2.required_reviewers)) {
+      differences.push(`required_reviewers: desired ${JSON.stringify(p1.required_reviewers)}, observed ${JSON.stringify(p2.required_reviewers)}`);
+    }
+  }
+
+  return { matches: differences.length === 0, differences };
+}
+
+export function arePullRequestParametersSemanticallyEqual(desired: unknown, observed: unknown): boolean {
+  return comparePullRequestParameters(desired, observed).matches;
+}
+
+export function areRulesSemanticallyEqual(desiredRule: unknown, observedRule: unknown): boolean {
+  const r1 = normalizeRule(desiredRule) as Record<string, unknown>;
+  const r2 = normalizeRule(observedRule) as Record<string, unknown>;
+  if (r1.type !== r2.type) return false;
+  if (r1.type === 'pull_request') {
+    return arePullRequestParametersSemanticallyEqual(r1.parameters, r2.parameters);
+  }
+  return canonicalJson(r1.parameters ?? null) === canonicalJson(r2.parameters ?? null);
+}
+
+export function areRulesetsSemanticallyEqual(desiredRuleset: unknown, observedRuleset: unknown): boolean {
+  const s1 = normalizeRulesetDefinition(desiredRuleset) as Record<string, unknown>;
+  const s2 = normalizeRulesetDefinition(observedRuleset) as Record<string, unknown>;
+
+  if (s1.name !== s2.name) return false;
+  if (s1.target !== s2.target) return false;
+  if (s1.enforcement !== s2.enforcement) return false;
+  if (canonicalJson(s1.conditions) !== canonicalJson(s2.conditions)) return false;
+  if (canonicalJson(s1.bypass_actors) !== canonicalJson(s2.bypass_actors)) return false;
+
+  const rules1 = s1.rules as Array<Record<string, unknown>>;
+  const rules2 = s2.rules as Array<Record<string, unknown>>;
+  if (rules1.length !== rules2.length) return false;
+
+  const matched = new Set<number>();
+  for (const r1 of rules1) {
+    const idx = rules2.findIndex((r2, i) => !matched.has(i) && areRulesSemanticallyEqual(r1, r2));
+    if (idx === -1) return false;
+    matched.add(idx);
+  }
+  return matched.size === rules2.length;
+}
+
+export function reconcileRulesetSemantics(
+  desiredRuleset: unknown,
+  observedRuleset: unknown
+): RulesetReconciliationResult {
+  const desired = normalizeRulesetDefinition(desiredRuleset) as Record<string, unknown>;
+  const observed = normalizeRulesetDefinition(observedRuleset) as Record<string, unknown>;
+
+  if (areRulesetsSemanticallyEqual(desired, observed)) {
+    return { requiresWrite: false, differences: [] };
+  }
+
+  const r1 = (desired.rules as Array<Record<string, unknown>>).find((r) => r.type === 'pull_request');
+  const r2 = (observed.rules as Array<Record<string, unknown>>).find((r) => r.type === 'pull_request');
+  const differences: string[] = [];
+  if (r1 && r2) {
+    const prComp = comparePullRequestParameters(r1.parameters, r2.parameters);
+    differences.push(...prComp.differences);
+  } else if (Boolean(r1) !== Boolean(r2)) {
+    differences.push('pull_request rule presence differs');
+  }
+  if (differences.length === 0) {
+    differences.push('Ruleset target, enforcement, conditions, bypass actors, or non-PR rules differ');
+  }
+  return { requiresWrite: true, differences };
 }
 
 function refMatches(pattern: string, ref: string, defaultBranch: string | null): boolean | null {

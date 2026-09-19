@@ -1,0 +1,10 @@
+APP_ENV=staging
+APP_NAME=flight-log
+API_STACK=node-fastify
+CLOUD_PROVIDER=azure
+AZURE_REGION=eastus
+DATABASE_URL=postgresql://postgres:postgres@localhost:5432/flight_log
+REDIS_URL=redis://localhost:6379/0
+MESSAGING_TRANSPORT=azure-service-bus
+BLOB_ENDPOINT=
+CORS_ALLOWED_ORIGINS=http://localhost:5173

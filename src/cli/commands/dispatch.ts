@@ -57,18 +57,21 @@ import {
 import {
   upgradeCommand
 } from './upgrade.js';
+import {
+  installationCommand
+} from './installation.js';
 import { repairCommand } from './repair.js';
+import { skillsCommand } from './skills.js';
+import { adoptCommand } from './adopt.js';
+import { assessCommand } from './assess.js';
+import { capabilitiesCommand } from './capabilities.js';
+import { commandDefinitions } from '../args/definitions.js';
+import { composeExecutionContext } from '../../application/engine-composition.js';
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
-  const jsonMode = !helpRequested && (
-    parsed.command === 'doctor' ||
-    parsed.command === 'update' ||
-    parsed.command === 'repair' ||
-    parsed.command === 'governance' ||
-    parsed.command === 'upgrade' ||
-    parsed.command === 'validate'
-  ) &&
+  const jsonMode = !helpRequested && parsed.command !== undefined &&
+    Object.hasOwn(commandDefinitions[parsed.command]?.flags ?? {}, 'json') &&
     readBooleanFlag(parsed.flags, 'json') === true;
   const presentation = new PresentationSession({
     stdout: context.stdout,
@@ -77,6 +80,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
     json: jsonMode
   });
   const executionContext: ExecutionContext = { ...context, presentation };
+  let runtime: Promise<ExecutionContext> | undefined;
+  const runtimeContext = () => runtime ??= composeExecutionContext(context, presentation);
   try {
     if (parsed.command && readBooleanFlag(parsed.flags, 'help')) {
       renderCommandHelp(parsed.command, presentation, parsed.subcommand);
@@ -95,10 +100,12 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
       case 'version':
         presentation.rawStdout(`Liftoff ${liftoffVersion}\n`);
         return 0;
+      case 'capabilities':
+        return await capabilitiesCommand(parsed, executionContext);
       case 'init':
-        return await initializeCommand(parsed, executionContext);
+        return await initializeCommand(parsed, await runtimeContext());
       case 'plan':
-        return await planCommand(parsed, executionContext);
+        return await planCommand(parsed, await runtimeContext());
       case 'patterns':
         return patternsCommand(executionContext);
       case 'providers':
@@ -106,19 +113,27 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
       case 'regions':
         return regionsCommand(parsed, executionContext);
       case 'validate':
-        return await validateCommand(parsed, executionContext);
+        return await validateCommand(parsed, await runtimeContext());
       case 'update':
-        return await updateCommand(parsed, executionContext);
+        return await updateCommand(parsed, await runtimeContext());
       case 'repair':
-        return await repairCommand(parsed, executionContext);
+        return await repairCommand(parsed, await runtimeContext());
       case 'upgrade':
-        return await upgradeCommand(parsed, executionContext);
+        return await upgradeCommand(parsed, await runtimeContext());
+      case 'installation':
+        return await installationCommand(parsed, await runtimeContext());
+      case 'skills':
+        return await skillsCommand(parsed, await runtimeContext());
+      case 'adopt':
+        return await adoptCommand(parsed, await runtimeContext());
+      case 'assess':
+        return await assessCommand(parsed, await runtimeContext());
       case 'migrate':
-        return await migrateCommand(parsed, executionContext);
+        return await migrateCommand(parsed, await runtimeContext());
       case 'doctor':
-        return await doctorCommand(parsed, executionContext);
+        return await doctorCommand(parsed, await runtimeContext());
       case 'governance':
-        return await governanceCommand(parsed, executionContext);
+        return await governanceCommand(parsed, await runtimeContext());
       case 'dev':
         return await helperCommand(parsed, executionContext, 'docker compose');
       case 'infra':

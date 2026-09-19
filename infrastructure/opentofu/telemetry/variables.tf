@@ -79,3 +79,24 @@ variable "daily_quota_gb" {
     error_message = "daily_quota_gb must be greater than 0 and no more than 1."
   }
 }
+
+variable "dashboard_name" {
+  description = "Explicit name for the Azure Monitor Grafana dashboard resource in rg-liftoff-prod (defaults to liftoff-telemetry-<resource_suffix>)."
+  type        = string
+  default     = ""
+
+  validation {
+    condition     = var.dashboard_name == "" || can(regex("^[a-zA-Z][a-z0-9A-Z-]{0,28}[a-z0-9A-Z]$", var.dashboard_name))
+    error_message = "dashboard_name must match pattern ^[a-zA-Z][a-z0-9A-Z-]{0,28}[a-z0-9A-Z]$ (2-30 characters, alphanumeric with hyphens, starting with a letter and ending with alphanumeric)."
+  }
+}
+
+variable "dashboard_datasource_uid" {
+  description = "Azure Monitor data-source instance UID observed in an export from the selected built-in Grafana host; not the plugin type or a credential."
+  type        = string
+
+  validation {
+    condition     = can(regex("^[a-zA-Z0-9_-]{1,40}$", var.dashboard_datasource_uid))
+    error_message = "dashboard_datasource_uid must be the observed 1-40 character data-source UID using letters, digits, underscores or hyphens."
+  }
+}

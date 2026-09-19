@@ -1,11 +1,11 @@
 import path from 'node:path';
 import { readBooleanFlag, readStringFlag } from '../cli/args/readers.js';
 import type { ParsedArgs } from '../domain/project/contracts.js';
-import type { CommandRunner } from '../process-runner.js';
 import type { PresentationSession } from '../terminal.js';
 import type { AssessmentReport, AssessmentTarget } from './types.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
-import { assessGovernance } from './engine.js';
+import { getApplicationEngines } from '../application/engine-composition.js';
+import type { ExecutionContext } from '../application/context.js';
 import { assembleAssessmentReport } from '../domain/governance/assessment/report.js';
 import { loadAssessmentCatalog } from './catalog.js';
 import { sanitizeAssessmentText } from '../domain/governance/assessment/sanitize.js';
@@ -59,7 +59,7 @@ export function renderAssessmentReport(report: AssessmentReport, presentation: P
 
 export async function governanceAssessmentCommand(
   parsed: ParsedArgs,
-  context: { cwd: string; presentation: PresentationSession; runner?: CommandRunner }
+  context: Pick<ExecutionContext, 'cwd' | 'presentation' | 'runner' | 'storage' | 'engines'>
 ): Promise<number> {
   const mode = readBooleanFlag(parsed.flags, 'live') ?? false;
   const start = path.resolve(context.cwd, parsed.positional[0] ?? readStringFlag(parsed.flags, 'project') ?? '.');
@@ -68,7 +68,8 @@ export async function governanceAssessmentCommand(
   try {
     target = loadAssessmentCatalog().target;
     const boundary = await resolveAssessmentBoundary(start);
-    report = await assessGovernance(boundary.root, { live: mode, runner: context.runner });
+    report = await (await getApplicationEngines(context))['repository-governance'].assessGovernance(
+      boundary.root, { live: mode, runner: context.runner, storage: context.storage });
   } catch (error) {
     report = assembleAssessmentReport({
       projectRoot: start, mode: mode ? 'live' : 'local',

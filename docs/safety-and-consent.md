@@ -42,12 +42,21 @@ subscription capability.
 
 ## CLI self-upgrade boundary
 
-`liftoff upgrade` is itself the narrow authorization to replace a supported
-global npm installation with one exact stable version. It accepts no project
+In the unpublished native candidate, `liftoff upgrade` is itself the narrow
+authorization to replace one proven native-owner installation with an independently
+admitted exact stable target. It accepts no project
 path, `--yes`, `--force`, tool-install, or dependency-install permission.
-`liftoff upgrade --check` is read-only and invokes no npm installation.
+`liftoff upgrade --check` performs non-installing owner/target observations and
+does not resume unfinished effects. Missing qualified artifacts, channel evidence,
+or ownership blocks replacement; an npm installation requires separate owner
+migration. Native upgrade does not fall back to npm, bypass owner controls,
+elevate privileges, or change projects. Preserve original completed/uncertain
+effects and recovery evidence after a failed handover.
 
-Both modes operate from a temporary neutral directory so a project `.npmrc`
+### Historical npm upgrade boundary
+
+The v0.12.3-and-earlier npm self-upgrader has a separate historical boundary.
+Both historical modes operate from a temporary neutral directory so a project `.npmrc`
 cannot redirect machine-level discovery. Canonical npm selects the target while
 the configured registry must provide that exact release. Liftoff does not expose
 registry credentials, rewrite npm configuration, bypass a stale mirror, invoke
@@ -56,7 +65,7 @@ Machine-level `@msn-control:registry` takes precedence over default `registry`;
 canonical verification isolates both settings, but installation still honors
 the effective delivery registry.
 
-npm replacement is not a Liftoff file transaction. If npm or post-install
+Historical npm replacement is not a Liftoff file transaction. If npm or post-install
 verification fails, Liftoff reports an exact-version repair command and does not
 claim automatic rollback.
 
@@ -127,17 +136,18 @@ The approved transaction preflights exact managed-core and create-only
 provisioning paths separately from any explicitly authorized activation migration.
 Schema/successor changes commit consistently with their manifest and history link.
 
-Managed update may install manifest v7, policy v6, activation-contract v2,
-phase graph, compatibility metadata, credential-policy schema, setup
+Managed update may install manifest v8, policy v8, activation-contract v4,
+phase graph schema 3, compatibility metadata 5, credential-policy schema 2, setup
 integrations, and forced removal of exact retired generated setup-alias entries
 from older manifests. It preserves user-owned activation state, approvals,
 immutable evidence, credential policies, active OpenSpec changes, and bootstrap
 retention/disposal records. If the current activation identity is future,
 unsupported, or graph-incompatible, update and setup block with a remedy instead
 of downgrading or rewriting state.
-Exact known historical v1 can use the reviewed successor lane, not in-place
+Exact known historical v1/v2/v3 and the pre-amendment policy-7/schema-1 candidate
+can use their reviewed successor lanes, not in-place
 retagging. Original records are copied byte-for-byte into immutable in-project
-history before their exact active paths are retired or replaced. A linked v2
+history before their exact active paths are retired or replaced. A linked v4
 activation obtains fresh evidence; historical approvals never become current
 permission. Unavailable revalidation remains an explicit blocker.
 
@@ -149,7 +159,7 @@ Ordinary transaction backups are for failed-write recovery. Activation history
 is different: it remains after success and is never removed with disposable
 preview receipts. A durable recovery journal must match a separately persisted
 external transaction approval; a project-local claim alone cannot authorize
-recovery. Post-commit revalidation failure preserves v2 and its historical link.
+recovery. Post-commit revalidation failure preserves v4 and its historical link.
 
 Dependency execution has a different recovery boundary: installer scripts can
 write arbitrary project files, and a concurrent developer edit cannot be
@@ -241,10 +251,10 @@ the exact fields, Azure boundary, OpenTofu deployment, and 180-day retention.
 ## Credentials and external actions
 
 Generated files contain configuration boundaries, not real credentials.
-Liftoff does not:
+Initialization and ordinary managed-core update do not:
 
 - Modify `.npmrc` to bypass a managed registry.
-- Store cloud or agent credentials.
+- Enroll cloud or agent credentials.
 - Perform cloud sign-in.
 - Apply OpenTofu.
 - Restore or manage the retired Power Apps workload or Code Apps integration.
@@ -257,12 +267,22 @@ has the required read permissions. The normative fallback specifies one
 fine-grained PAT:
 display name `<repo>-runner-preflight-read`, repository secret
 `RUNNER_CONFIGURATION_READ_TOKEN`, 30-day lifetime, current repository only,
-repository metadata read, organization hosted-runner read and
-network-configuration read, no writes, and only the recorded workflow/job
-allowlist. The CLI currently lacks public secure enrollment, independent
-credential readback, and approval-persistence entry points; stop at the capability
-blocker instead of creating JSON or inventing an input channel. Any future
-supported enrollment must use masked input. Never paste or
+repository `metadata:read`, organization `organization_administration:read` and
+`organization_network_configurations:read`, no writes, and only the recorded
+workflow/job allowlist. Administration read also reaches broader organization,
+billing and Actions-settings metadata; it is not hosted-runners-only access.
+Policy 8 and credential-policy schema 2 require fresh exact plan-bound approval
+for observed grants, disclosure, principal, repository/organization, intended
+operations, workflow restrictions and expiry. Earlier policies, ownership
+receipts and approvals never authorize that broader grant.
+
+Public approval and protected-input interfaces exist, but PAT exact
+bearer/lifetime proof and conditional secret creation remain blockers. The
+blocked enrollment path fails before prompting or writing. Never turn GitHub's
+create-or-update endpoint into automatic secret upsert or foreign-secret
+replacement. Existing-App usage/readback has its separate admission and fresh
+approval requirements; no policy file alone proves credential readiness.
+See [credential permissions](credential-permissions.md). Never paste or
 show it in chat, argv, command arguments, logs, evidence, generated files, or
 screenshots. If it appears there, treat it as compromised and manually revoke and
 rotate it before continuing.

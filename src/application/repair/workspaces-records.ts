@@ -3,11 +3,13 @@ import path from 'node:path';
 import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { validateRepairExecutionIdentity } from '../../domain/repair/identity.js';
 import { liftoffVersion } from '../../version.js';
+import { validateAdoptionExecutionIdentity } from '../../domain/project-evolution/adoption/identity.js';
 import {
   RepairWorkspaceError, repairWorkspaceRoleNames,
   type CreateRepairVerificationWorkspaceOptions, type RepairWorkspaceActivity,
   type RepairWorkspaceFileIdentity, type RepairWorkspaceRecord
 } from './workspaces-types.js';
+import type { CreateVerificationWorkspaceOptions } from './workspaces-types.js';
 
 export const repairWorkspaceIndexKey = canonicalSha256('liftoff-repair-workspace-index-v1');
 export const repairWorkspaceAuthorityKey = canonicalSha256('liftoff-repair-workspace-authority-v1');
@@ -73,14 +75,18 @@ export function sameWorkspaceFileIdentity(left: RepairWorkspaceFileIdentity, rig
   return left.device === right.device && left.inode === right.inode && left.birthtime === right.birthtime;
 }
 
-export function validateWorkspaceRequest(value: unknown): CreateRepairVerificationWorkspaceOptions {
-  const request = exact(value, ['planFingerprint', 'repairIdentity', 'patchStagingRoot', 'bindings', 'approvedScopes']);
+export function validateWorkspaceRequest(
+  value: unknown, kind: 'repair' | 'adoption' = 'repair', historical = false
+): CreateVerificationWorkspaceOptions {
+  const identityKey = kind === 'repair' ? 'repairIdentity' : 'adoptionIdentity';
+  const request = exact(value, ['planFingerprint', identityKey, 'patchStagingRoot', 'bindings', 'approvedScopes']);
   workspaceDigest(request.planFingerprint);
   nativePath(request.patchStagingRoot);
   let identity;
-  try { identity = validateRepairExecutionIdentity(request.repairIdentity); }
+  try { identity = kind === 'repair' ? validateRepairExecutionIdentity(request.repairIdentity) : validateAdoptionExecutionIdentity(request.adoptionIdentity); }
   catch { throw new RepairWorkspaceError('unsupported-record', 'Workspace repair identity is not supported by this CLI.'); }
-  if (identity.cliVersion !== liftoffVersion) {
+  const readableVersions = kind === 'repair' ? ['0.12.0', '0.12.1', '0.12.2', '0.12.3', liftoffVersion] : [liftoffVersion];
+  if (historical ? !readableVersions.includes(identity.cliVersion) : identity.cliVersion !== liftoffVersion) {
     throw new RepairWorkspaceError('unsupported-record', 'Workspace CLI identity is not supported by this implementation.');
   }
   const bindings = exact(request.bindings, ['inputDigest', 'verificationPolicyDigest', 'providerDigest', 'toolchainDigest']);
@@ -89,7 +95,20 @@ export function validateWorkspaceRequest(value: unknown): CreateRepairVerificati
   if (Object.values(scopes).some((value) => typeof value !== 'boolean') || scopes.projectCode !== true) {
     throw new RepairWorkspaceError('permission-denied', 'Private verification requires explicit project-code scope and separate declared effect permissions.');
   }
-  return structuredClone(request) as unknown as CreateRepairVerificationWorkspaceOptions;
+  const common = {
+    planFingerprint: request.planFingerprint, patchStagingRoot: request.patchStagingRoot,
+    bindings: {
+      inputDigest: String(bindings.inputDigest), verificationPolicyDigest: String(bindings.verificationPolicyDigest),
+      providerDigest: String(bindings.providerDigest), toolchainDigest: String(bindings.toolchainDigest)
+    },
+    approvedScopes: {
+      projectCode: scopes.projectCode === true, dependencyPreparation: scopes.dependencyPreparation === true,
+      network: scopes.network === true, lifecycle: scopes.lifecycle === true
+    }
+  };
+  return kind === 'repair'
+    ? { ...common, repairIdentity: validateRepairExecutionIdentity(request.repairIdentity) }
+    : { ...common, adoptionIdentity: validateAdoptionExecutionIdentity(request.adoptionIdentity) };
 }
 
 export function validateWorkspaceActivity(value: unknown, record: RepairWorkspaceRecord): RepairWorkspaceActivity {
@@ -130,21 +149,23 @@ export function validateWorkspaceRecord(
   value: unknown,
   expected: { projectRoot: string; directory: (workspaceId: string) => string }
 ): RepairWorkspaceRecord {
+  const adoption = isRecord(value) && value.kind === 'liftoff-adoption-workspace';
   const record = exact(value, [
     'schemaVersion', 'kind', 'workspaceId', 'revision', 'projectRoot', 'projectIdentity',
-    'patchStagingRoot', 'patchStagingIdentity', 'planFingerprint', 'repairIdentity',
+    'patchStagingRoot', 'patchStagingIdentity', 'planFingerprint', adoption ? 'adoptionIdentity' : 'repairIdentity',
     'bindings', 'approvedScopes', 'directory', 'creationIdentity', 'roles', 'owner',
     'phase', 'lastCheckpoint', 'activities', 'cleanup', 'createdAt', 'updatedAt'
   ]);
-  if (record.schemaVersion !== 1 || record.kind !== 'liftoff-repair-workspace') {
+  if (record.schemaVersion !== 1 || !['liftoff-repair-workspace', 'liftoff-adoption-workspace'].includes(String(record.kind))) {
     throw new RepairWorkspaceError('unsupported-record', 'Private workspace record schema is unsupported; no cleanup was authorized.');
   }
   workspaceDigest(record.workspaceId);
   integer(record.revision, 1);
   validateWorkspaceRequest({
-    planFingerprint: record.planFingerprint, repairIdentity: record.repairIdentity,
+    planFingerprint: record.planFingerprint,
+    ...(adoption ? { adoptionIdentity: record.adoptionIdentity } : { repairIdentity: record.repairIdentity }),
     patchStagingRoot: record.patchStagingRoot, bindings: record.bindings, approvedScopes: record.approvedScopes
-  });
+  }, adoption ? 'adoption' : 'repair', true);
   if (record.projectRoot !== expected.projectRoot || record.directory !== expected.directory(record.workspaceId)) {
     throw new RepairWorkspaceError('scope-mismatch', 'Private workspace location is not the exact registered project-bound location.');
   }

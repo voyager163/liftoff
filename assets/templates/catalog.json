@@ -1,0 +1,977 @@
+{
+  "schemaVersion": 1,
+  "catalogId": "liftoff-template-catalog",
+  "revision": "2026.09.01",
+  "components": {
+    "common-base": {
+      "id": "common-base",
+      "label": "Common Base Template Components",
+      "category": "common",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "baselines.supported-stack"
+      ],
+      "resources": [
+        "templates.common.dockerignore",
+        "templates.common.gitignore",
+        "baselines.supported-stack"
+      ],
+      "artifactLifecycles": {
+        "root-readme": "project",
+        "root-gitignore": "project",
+        "root-dockerignore": "project",
+        "env-example": "project",
+        "liftoff-config": "desired-state",
+        "docker-compose": "project",
+        "liftoff-repair-copilot": "managed-core",
+        "liftoff-repair-claude": "managed-core",
+        "liftoff-repair-codex": "managed-core"
+      },
+      "digest": "sha256:d987150bdc31fe20bdf148e0186f70ff7c7ccfb730b23719b269a290e729f906"
+    },
+    "frontend-vue": {
+      "id": "frontend-vue",
+      "label": "Reusable Vue 3 Frontend Component",
+      "category": "frontend",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.frontend.package-lock"
+      ],
+      "resources": [
+        "templates.frontend.styles",
+        "templates.frontend.main",
+        "templates.frontend.vite-config",
+        "templates.frontend.tailwind-config",
+        "templates.frontend.env-example",
+        "templates.frontend.dockerignore",
+        "locks.frontend.package-json",
+        "locks.frontend.package-lock"
+      ],
+      "artifactLifecycles": {
+        "frontend-package": "project",
+        "frontend-lock": "project",
+        "frontend-index": "project",
+        "frontend-main": "project",
+        "frontend-app": "project",
+        "frontend-env-example": "project",
+        "frontend-styles": "project",
+        "frontend-vite-config": "project",
+        "frontend-tailwind-config": "project",
+        "frontend-dockerfile": "project",
+        "frontend-dockerignore": "project"
+      },
+      "digest": "sha256:d68619a07f2bd494c17b0a5ece1e6eee4982889d4fbce5aaf86cf5f39c73c9a5"
+    },
+    "backend-python-fastapi": {
+      "id": "backend-python-fastapi",
+      "label": "FastAPI Python Backend Component",
+      "category": "backend",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-standard.uv-lock"
+      ],
+      "resources": [
+        "locks.python-standard.pyproject",
+        "locks.python-standard.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "backend-pyproject": "project",
+        "backend-uv-lock": "project",
+        "backend-dockerfile": "project",
+        "backend-package": "project",
+        "backend-api-package": "project",
+        "backend-main": "project",
+        "backend-routes-package": "project",
+        "backend-health-routes": "project",
+        "backend-config-package": "project",
+        "backend-settings": "project",
+        "backend-auth-dependency": "project",
+        "backend-observability-package": "project",
+        "backend-observability": "project",
+        "backend-test-health": "project",
+        "database-alembic-ini": "project",
+        "database-alembic-env": "project",
+        "database-schema": "project",
+        "database-initial-migration": "project"
+      },
+      "digest": "sha256:b4488647ada2ed25b061cde5670a80afea758aa8ad3e955096f0570c27c240cc"
+    },
+    "backend-node-fastify": {
+      "id": "backend-node-fastify",
+      "label": "Fastify Node.js Backend Component",
+      "category": "backend",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.node-backend.package-lock"
+      ],
+      "resources": [
+        "locks.node-backend.package-json",
+        "locks.node-backend.package-lock"
+      ],
+      "artifactLifecycles": {
+        "node-backend-package": "project",
+        "node-backend-lock": "project",
+        "node-backend-tsconfig": "project",
+        "node-backend-app": "project",
+        "node-backend-server": "project",
+        "node-backend-routes-package": "project",
+        "node-backend-health-routes": "project",
+        "node-backend-config": "project",
+        "node-backend-vitest-config": "project",
+        "node-backend-test-health": "project",
+        "backend-dockerfile": "project",
+        "node-backend-drizzle-config": "project",
+        "node-backend-database": "project",
+        "node-backend-schema": "project",
+        "database-node-migration": "project",
+        "database-node-migration-journal": "project",
+        "database-node-migration-snapshot": "project",
+        "database-schema": "project"
+      },
+      "digest": "sha256:a80b22666d52a19ad231bcb069cdf921ae0e5b64c9f6dac1fc2ec09372ac37d2"
+    },
+    "backend-go-huma": {
+      "id": "backend-go-huma",
+      "label": "Go / Huma Backend Component",
+      "category": "backend",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.go-backend.go-sum"
+      ],
+      "resources": [
+        "locks.go-backend.go-mod",
+        "locks.go-backend.go-sum"
+      ],
+      "artifactLifecycles": {
+        "go-backend-module": "project",
+        "go-backend-checksums": "project",
+        "go-backend-main": "project",
+        "go-backend-api": "project",
+        "go-backend-routes": "project",
+        "go-backend-config": "project",
+        "go-backend-test-health": "project",
+        "backend-dockerfile": "project",
+        "go-backend-database": "project",
+        "go-backend-makefile": "project",
+        "go-runtime-config-example": "project",
+        "go-backend-migration-command": "project",
+        "database-go-migration": "project",
+        "database-schema": "project"
+      },
+      "digest": "sha256:96318217c6446f9f67b35577fd13e7cc80a4f9dec3bc152b8582da18c1e63ab0"
+    },
+    "genai-common": {
+      "id": "genai-common",
+      "label": "GenAI Common Backend Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.pyproject",
+        "locks.python-genai.uv-lock",
+        "locks.python-genai.function-requirements"
+      ],
+      "artifactLifecycles": {
+        "backend-pyproject": "project",
+        "backend-uv-lock": "project",
+        "backend-dockerfile": "project",
+        "backend-main": "project",
+        "backend-routes-package": "project",
+        "backend-health-routes": "project",
+        "backend-pattern-routes": "project",
+        "backend-config-package": "project",
+        "backend-settings": "project",
+        "backend-model-config": "project",
+        "backend-messaging-tool": "project",
+        "backend-auth-dependency": "project",
+        "backend-observability-package": "project",
+        "backend-observability": "project",
+        "backend-orchestration-package": "project",
+        "backend-tools-package": "project",
+        "backend-package": "project",
+        "backend-api-package": "project",
+        "backend-test-health": "project",
+        "backend-test-messaging": "project",
+        "backend-test-tracing": "project",
+        "database-alembic-ini": "project",
+        "database-alembic-env": "project",
+        "database-schema": "project",
+        "database-initial-migration": "project",
+        "functions-readme": "project",
+        "function-worker-app": "project",
+        "function-worker-funcignore": "project",
+        "function-worker-gitignore": "project",
+        "function-worker-host": "project",
+        "function-worker-local-settings": "project",
+        "function-worker-readme": "project",
+        "function-worker-requirements": "project",
+        "function-worker-test": "project"
+      },
+      "digest": "sha256:440b48fb7b2ccb4744df6fa81ce3ea5da3e09fc3b47f7aa76a1cd7c001205ad9"
+    },
+    "genai-generic": {
+      "id": "genai-generic",
+      "label": "GenAI Generic Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:b269cd1e545ed87ec72657ecb9a86bbb84b42ac65c8475657ada103c7cb7c17d"
+    },
+    "genai-rag": {
+      "id": "genai-rag",
+      "label": "GenAI RAG Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "rag-vector-store": "project",
+        "rag-retrieval-package": "project",
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project",
+        "pattern-worker": "project",
+        "backend-workers-package": "project"
+      },
+      "digest": "sha256:8a6ca68230706bbca890270d39b690a6febc51dfbb619edb61616486e2671322"
+    },
+    "genai-chatbot": {
+      "id": "genai-chatbot",
+      "label": "GenAI Chatbot Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:65e1dd21bff6620f1a161fc52122620ee36bb2db724ca5d17718765224fdc28a"
+    },
+    "genai-agent": {
+      "id": "genai-agent",
+      "label": "GenAI Autonomous Agent Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project",
+        "pattern-worker": "project",
+        "backend-workers-package": "project"
+      },
+      "digest": "sha256:271f8b8e5762bb3c3751b3d006b3d56c613e4ad3253d4a74838e22b723ac803e"
+    },
+    "genai-prompt": {
+      "id": "genai-prompt",
+      "label": "GenAI Prompt Pipeline Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:f2de4e9d4c3f69115c7b53998573365a0511e0e125c8e693a6786db686fea490"
+    },
+    "genai-multi-agent": {
+      "id": "genai-multi-agent",
+      "label": "GenAI Multi-Agent Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project",
+        "pattern-worker": "project",
+        "backend-workers-package": "project"
+      },
+      "digest": "sha256:da2a0e935f63c4baf6fd86bb29991a335d916bddfbd259de45afad15e5b79ca5"
+    },
+    "genai-fine-tuned": {
+      "id": "genai-fine-tuned",
+      "label": "GenAI Fine-Tuned Model Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "fine-tuned-eval-dataset": "project",
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:7440010f5db197da36ff111825681a574bc2c2d8f8cbb848cdfab2ca798ce324"
+    },
+    "genai-streaming": {
+      "id": "genai-streaming",
+      "label": "GenAI Streaming Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:5ddc134f32f1e59183b3aee4734ba68ca64fddc91bbfe692680acf5982f337eb"
+    },
+    "genai-workflow": {
+      "id": "genai-workflow",
+      "label": "GenAI Orchestrated Workflow Pattern Component",
+      "category": "genai",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.python-genai.uv-lock"
+      ],
+      "resources": [
+        "locks.python-genai.uv-lock"
+      ],
+      "artifactLifecycles": {
+        "pattern-worker": "project",
+        "backend-workers-package": "project",
+        "pattern-agent": "project",
+        "pattern-agent-package": "project",
+        "pattern-agent-test": "project",
+        "pattern-prompt": "project",
+        "pattern-prompt-readme": "project"
+      },
+      "digest": "sha256:2e5fe4cefc4a0bc980d7d6f852cc818b0f99255ddfba2ea48529584d82fcda0e"
+    },
+    "infrastructure-azure-opentofu": {
+      "id": "infrastructure-azure-opentofu",
+      "label": "Azure OpenTofu Infrastructure Component",
+      "category": "infrastructure",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "locks.opentofu-azure.provider-lock"
+      ],
+      "resources": [
+        "locks.opentofu-azure.versions",
+        "locks.opentofu-azure.provider-lock"
+      ],
+      "artifactLifecycles": {
+        "opentofu-application-main": "project",
+        "opentofu-application-variables": "project",
+        "opentofu-application-outputs": "project",
+        "opentofu-application-versions": "project",
+        "opentofu-readme": "project",
+        "opentofu-dev-provider-lock": "project",
+        "opentofu-dev-providers": "project",
+        "opentofu-dev-variables": "project",
+        "opentofu-dev-main": "project",
+        "opentofu-dev-outputs": "project",
+        "opentofu-dev-local-state": "project",
+        "opentofu-dev-remote-state-example": "project",
+        "opentofu-dev-tfvars": "project",
+        "opentofu-dev-versions": "project",
+        "opentofu-staging-provider-lock": "project",
+        "opentofu-staging-providers": "project",
+        "opentofu-staging-variables": "project",
+        "opentofu-staging-main": "project",
+        "opentofu-staging-outputs": "project",
+        "opentofu-staging-local-state": "project",
+        "opentofu-staging-remote-state-example": "project",
+        "opentofu-staging-tfvars": "project",
+        "opentofu-staging-versions": "project",
+        "opentofu-prod-provider-lock": "project",
+        "opentofu-prod-providers": "project",
+        "opentofu-prod-variables": "project",
+        "opentofu-prod-main": "project",
+        "opentofu-prod-outputs": "project",
+        "opentofu-prod-local-state": "project",
+        "opentofu-prod-remote-state-example": "project",
+        "opentofu-prod-tfvars": "project",
+        "opentofu-prod-versions": "project",
+        "environment-dev-backend": "project",
+        "environment-dev-functions": "project",
+        "environment-staging-backend": "project",
+        "environment-staging-functions": "project",
+        "environment-prod-backend": "project",
+        "environment-prod-functions": "project"
+      },
+      "digest": "sha256:977751f31d829190ed9f639cd8c056dd4c6b4e44cc0d2ffbfaa3e4976e2e8501"
+    },
+    "workflow-openspec": {
+      "id": "workflow-openspec",
+      "label": "OpenSpec Spec-Driven Workflow Component",
+      "category": "workflow",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "baselines.supported-stack"
+      ],
+      "resources": [
+        "baselines.supported-stack"
+      ],
+      "artifactLifecycles": {
+        "openspec-config": "seed",
+        "openspec-seed-change-metadata": "seed",
+        "openspec-seed-proposal": "seed",
+        "openspec-seed-design": "seed",
+        "openspec-seed-tasks": "seed",
+        "openspec-seed-spec": "seed",
+        "openspec-spec-placeholder": "seed"
+      },
+      "digest": "sha256:9232d0ca74677cfeca9002b5f4aa8326b79c3013cc4b0ab4001ceb14a7696373"
+    },
+    "workflow-speckit": {
+      "id": "workflow-speckit",
+      "label": "Spec Kit Spec-Driven Workflow Component",
+      "category": "workflow",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "baselines.supported-stack"
+      ],
+      "resources": [
+        "baselines.supported-stack"
+      ],
+      "artifactLifecycles": {
+        "spec-kit-constitution": "seed",
+        "spec-kit-spec-template": "framework",
+        "spec-kit-plan-template": "framework",
+        "spec-kit-bootstrap-spec": "seed",
+        "spec-kit-bootstrap-plan": "seed",
+        "spec-kit-bootstrap-tasks": "seed",
+        "specs-placeholder": "seed"
+      },
+      "digest": "sha256:5b174a0099c8a08235a67631328d18ce5c57dd3bbe8239cdf3de5691f473b9ef"
+    },
+    "governance-single-maintainer-gitflow": {
+      "id": "governance-single-maintainer-gitflow",
+      "label": "Single Maintainer GitFlow Governance Component",
+      "category": "governance",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "governance.single-maintainer-gitflow.policy"
+      ],
+      "resources": [
+        "governance.single-maintainer-gitflow.policy",
+        "governance.single-maintainer-gitflow.activation-v2-graph",
+        "governance.single-maintainer-gitflow.assessment-controls"
+      ],
+      "artifactLifecycles": {
+        "repository-governance-policy": "managed-core",
+        "repository-governance-context": "managed-core",
+        "repository-governance-guide": "managed-core",
+        "repository-governance-phase-graph": "managed-core",
+        "repository-governance-compatibility": "managed-core",
+        "repository-governance-credential-policy-schema": "managed-core",
+        "liftoff-setup-copilot": "managed-core",
+        "liftoff-governance-assess-copilot": "managed-core",
+        "liftoff-setup-claude": "managed-core",
+        "liftoff-governance-assess-claude": "managed-core",
+        "liftoff-setup-codex": "managed-core",
+        "liftoff-governance-assess-codex": "managed-core"
+      },
+      "digest": "sha256:4051d2be03ef19ea2a0a3f7803882fc7f0ea157622cffd94173cc285931ab330"
+    },
+    "repair-windows": {
+      "id": "repair-windows",
+      "label": "Windows Process Supervision Component",
+      "category": "common",
+      "revision": "2026.09.01",
+      "dependencies": [
+        "repair.windows.job-controller"
+      ],
+      "resources": [
+        "repair.windows.job-controller"
+      ],
+      "artifactLifecycles": {},
+      "digest": "sha256:00f7eb366b4b6fb51605364df3f637735f125180948d850c5bf17d06bc6a3bb3"
+    },
+    "canonical-skills": {
+      "id": "canonical-skills",
+      "label": "Canonical Agent Skills Library",
+      "category": "workflow",
+      "revision": "2026.09.01",
+      "dependencies": [],
+      "resources": [
+        "skills.catalog",
+        "skills.setup",
+        "skills.assess",
+        "skills.init",
+        "skills.adopt",
+        "skills.update",
+        "skills.repair",
+        "skills.azure",
+        "skills.governance",
+        "skills.governance-assess",
+        "skills.cli-upgrade",
+        "skills.migrate"
+      ],
+      "artifactLifecycles": {},
+      "digest": "sha256:ef09449926151ffd643f31bfc464d343df0cc670f609c62c13cbf3a784fca102"
+    }
+  },
+  "resources": {
+    "templates.common.dockerignore": {
+      "id": "templates.common.dockerignore",
+      "path": "assets/templates/components/common/dockerignore.txt",
+      "category": "template",
+      "componentId": "common-base",
+      "digest": "sha256:3c3facbe318b27efcb8c48c45ec5e16727dbcf188444853fed76f7e0ad433429",
+      "size": 460,
+      "lifecycle": "project",
+      "description": "Default container build ignore patterns"
+    },
+    "templates.common.gitignore": {
+      "id": "templates.common.gitignore",
+      "path": "assets/templates/components/common/gitignore.txt",
+      "category": "template",
+      "componentId": "common-base",
+      "digest": "sha256:0b692f03bae8d31bb5696744cf7607d99bfba0611ac9bc66ca6300c5224ab079",
+      "size": 132,
+      "lifecycle": "project",
+      "description": "Default version control ignore patterns"
+    },
+    "baselines.supported-stack": {
+      "id": "baselines.supported-stack",
+      "path": "assets/supported-stack.json",
+      "category": "baseline",
+      "componentId": "common-base",
+      "digest": "sha256:4b73cedabc7f817042fef26eae28fd07200c9346b4e8f7e79fd00398e57813f3",
+      "size": 16098,
+      "lifecycle": "managed-core",
+      "description": "Release supported-stack runtime and tooling baseline"
+    },
+    "templates.frontend.styles": {
+      "id": "templates.frontend.styles",
+      "path": "assets/templates/components/frontend/styles.css",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:42070e0b45bb201b2b838a52aaaa6e965f964e0b542d97f1fe517fe59c4b75a8",
+      "size": 23,
+      "lifecycle": "project",
+      "description": "Tailwind CSS style entrypoint"
+    },
+    "templates.frontend.main": {
+      "id": "templates.frontend.main",
+      "path": "assets/templates/components/frontend/main.ts",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:d84655965257e86e771cbf38fe4b6e3e53f7955b2c7937f9333e1081b2880c93",
+      "size": 116,
+      "lifecycle": "project",
+      "description": "Vue 3 application bootstrapping"
+    },
+    "templates.frontend.vite-config": {
+      "id": "templates.frontend.vite-config",
+      "path": "assets/templates/components/frontend/vite.config.ts",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:ea4dcec9911279710fc2d5acaa3614bd3b128ced2fc0d32de7b8ae1cc296e56a",
+      "size": 193,
+      "lifecycle": "project",
+      "description": "Vite build tool configuration"
+    },
+    "templates.frontend.tailwind-config": {
+      "id": "templates.frontend.tailwind-config",
+      "path": "assets/templates/components/frontend/tailwind.config.ts",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:402fb5343cc1a42700fcb54e266d35ed23e7b261870a038cafd064508b0cb9d4",
+      "size": 172,
+      "lifecycle": "project",
+      "description": "Tailwind CSS configuration"
+    },
+    "templates.frontend.env-example": {
+      "id": "templates.frontend.env-example",
+      "path": "assets/templates/components/frontend/env.example",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:8efca76609c1c17e70cd8d62e811085e611df91baf15f63f948326c0cca643ae",
+      "size": 40,
+      "lifecycle": "project",
+      "description": "Frontend environment example"
+    },
+    "templates.frontend.dockerignore": {
+      "id": "templates.frontend.dockerignore",
+      "path": "assets/templates/components/frontend/dockerignore.txt",
+      "category": "template",
+      "componentId": "frontend-vue",
+      "digest": "sha256:3c3facbe318b27efcb8c48c45ec5e16727dbcf188444853fed76f7e0ad433429",
+      "size": 460,
+      "lifecycle": "project",
+      "description": "Frontend container ignore patterns"
+    },
+    "locks.frontend.package-json": {
+      "id": "locks.frontend.package-json",
+      "path": "assets/locks/frontend/package.json",
+      "category": "lock",
+      "componentId": "frontend-vue",
+      "digest": "sha256:8217179388207e3d8e8599544e7741b29beb6dded81f01bcf5d4356785a68561",
+      "size": 367,
+      "lifecycle": "project",
+      "description": "Frontend dependencies declaration"
+    },
+    "locks.frontend.package-lock": {
+      "id": "locks.frontend.package-lock",
+      "path": "assets/locks/frontend/package-lock.json",
+      "category": "lock",
+      "componentId": "frontend-vue",
+      "digest": "sha256:7e454f0ab739038e99569d174045673776b4565786b1f81764b4c3ee785638b5",
+      "size": 41183,
+      "lifecycle": "project",
+      "description": "Frontend pinned npm lockfile"
+    },
+    "locks.python-standard.pyproject": {
+      "id": "locks.python-standard.pyproject",
+      "path": "assets/locks/python-standard/pyproject.toml",
+      "category": "lock",
+      "componentId": "backend-python-fastapi",
+      "digest": "sha256:dc551853962b84bec527bb3463801b74ab9681b41d362653892243836a6e6935",
+      "size": 752,
+      "lifecycle": "project",
+      "description": "Standard Python dependencies"
+    },
+    "locks.python-standard.uv-lock": {
+      "id": "locks.python-standard.uv-lock",
+      "path": "assets/locks/python-standard/uv.lock",
+      "category": "lock",
+      "componentId": "backend-python-fastapi",
+      "digest": "sha256:ac827ab61c9704b1cd080034571320a2b9285e9f7d420658b2d232ae14ed2647",
+      "size": 341607,
+      "lifecycle": "project",
+      "description": "Standard Python pinned uv lockfile"
+    },
+    "locks.node-backend.package-json": {
+      "id": "locks.node-backend.package-json",
+      "path": "assets/locks/node-backend/package.json",
+      "category": "lock",
+      "componentId": "backend-node-fastify",
+      "digest": "sha256:6ce7e8d9f6a5c878c9e6ed843e75772453bac1d72b049762f84e4a403b9b3382",
+      "size": 761,
+      "lifecycle": "project",
+      "description": "Fastify backend dependencies"
+    },
+    "locks.node-backend.package-lock": {
+      "id": "locks.node-backend.package-lock",
+      "path": "assets/locks/node-backend/package-lock.json",
+      "category": "lock",
+      "componentId": "backend-node-fastify",
+      "digest": "sha256:1eedf51491d8900fe4b487980720ea7257ced4697ee8d6a4865c922734bf2c86",
+      "size": 104848,
+      "lifecycle": "project",
+      "description": "Fastify backend pinned npm lockfile"
+    },
+    "locks.go-backend.go-mod": {
+      "id": "locks.go-backend.go-mod",
+      "path": "assets/locks/go-backend/go.mod",
+      "category": "lock",
+      "componentId": "backend-go-huma",
+      "digest": "sha256:b4a00ccd7a9881c7e518dcbba83bd8ead0a852b29cb2509402f3c8c9af5bafac",
+      "size": 436,
+      "lifecycle": "project",
+      "description": "Go module definition"
+    },
+    "locks.go-backend.go-sum": {
+      "id": "locks.go-backend.go-sum",
+      "path": "assets/locks/go-backend/go.sum",
+      "category": "lock",
+      "componentId": "backend-go-huma",
+      "digest": "sha256:c4c5f94664176df8c09e6fbf02a48391e606d135caec6b75932271333bbb4fb5",
+      "size": 14003,
+      "lifecycle": "project",
+      "description": "Go module checksums"
+    },
+    "locks.python-genai.pyproject": {
+      "id": "locks.python-genai.pyproject",
+      "path": "assets/locks/python-genai/pyproject.toml",
+      "category": "lock",
+      "componentId": "genai-common",
+      "digest": "sha256:94cbed85dbaf807866b4908703106d19e01eee9a30b7ccf186b88f68d8154745",
+      "size": 881,
+      "lifecycle": "project",
+      "description": "GenAI backend dependencies"
+    },
+    "locks.python-genai.uv-lock": {
+      "id": "locks.python-genai.uv-lock",
+      "path": "assets/locks/python-genai/uv.lock",
+      "category": "lock",
+      "componentId": "genai-common",
+      "digest": "sha256:4aa3bea0873ade3a2d4266adeeb1d504138f18bc2f093459f90699674d805648",
+      "size": 459998,
+      "lifecycle": "project",
+      "description": "GenAI backend pinned uv lockfile"
+    },
+    "locks.python-genai.function-requirements": {
+      "id": "locks.python-genai.function-requirements",
+      "path": "assets/locks/python-genai/function-requirements.txt",
+      "category": "lock",
+      "componentId": "genai-common",
+      "digest": "sha256:3d8fa15e16764e7b1d5d2b884829a06e0e020f4627bd2e83c221461564e4cbfb",
+      "size": 142692,
+      "lifecycle": "project",
+      "description": "Azure Functions worker requirements"
+    },
+    "locks.opentofu-azure.versions": {
+      "id": "locks.opentofu-azure.versions",
+      "path": "assets/locks/opentofu-azure/versions.tf",
+      "category": "lock",
+      "componentId": "infrastructure-azure-opentofu",
+      "digest": "sha256:7f1b60e1d88e6e8f0bc3981fafbb33b9d1471b3fe028b2eaa757d01d7f7001af",
+      "size": 166,
+      "lifecycle": "project",
+      "description": "OpenTofu pinned Azure providers"
+    },
+    "locks.opentofu-azure.provider-lock": {
+      "id": "locks.opentofu-azure.provider-lock",
+      "path": "assets/locks/opentofu-azure/.terraform.lock.hcl",
+      "category": "lock",
+      "componentId": "infrastructure-azure-opentofu",
+      "digest": "sha256:e4a061da79009c7e1c2f9cb356b3a4df0bb05802f9b98f30de79c351c280ef61",
+      "size": 2173,
+      "lifecycle": "project",
+      "description": "OpenTofu provider lockfile"
+    },
+    "governance.single-maintainer-gitflow.policy": {
+      "id": "governance.single-maintainer-gitflow.policy",
+      "path": "assets/governance/single-maintainer-gitflow/policy.md",
+      "category": "governance",
+      "componentId": "governance-single-maintainer-gitflow",
+      "digest": "sha256:36727ca7a4c03b89a103298e57cfb026d8a42120858eaf779d4c8e9686eb9f5b",
+      "size": 71342,
+      "lifecycle": "managed-core",
+      "description": "Single Maintainer GitFlow governance policy"
+    },
+    "governance.single-maintainer-gitflow.activation-v2-graph": {
+      "id": "governance.single-maintainer-gitflow.activation-v2-graph",
+      "path": "assets/governance/single-maintainer-gitflow/activation-v2-graph.json",
+      "category": "governance",
+      "componentId": "governance-single-maintainer-gitflow",
+      "digest": "sha256:63871abf519c302c9ed78a756e00a61c839c569eb4fa557e209e28c5a62a921f",
+      "size": 38613,
+      "lifecycle": "managed-core",
+      "description": "Activation v2 phase graph"
+    },
+    "governance.single-maintainer-gitflow.assessment-controls": {
+      "id": "governance.single-maintainer-gitflow.assessment-controls",
+      "path": "assets/governance/single-maintainer-gitflow/assessment-controls.json",
+      "category": "governance",
+      "componentId": "governance-single-maintainer-gitflow",
+      "digest": "sha256:3adbdf18003938f21582fd68b891637f9ff2c201e4d8e7694b0071e3864b70b3",
+      "size": 16171,
+      "lifecycle": "managed-core",
+      "description": "Governance assessment controls"
+    },
+    "repair.windows.job-controller": {
+      "id": "repair.windows.job-controller",
+      "path": "assets/repair/windows-job-controller.ps1",
+      "category": "repair",
+      "componentId": "repair-windows",
+      "digest": "sha256:a7aa404d84d1e0a9188b8c9d487533cacee830b4d58172ef959d159895c2d909",
+      "size": 36791,
+      "lifecycle": "managed-core",
+      "description": "Windows job object process controller script"
+    },
+    "skills.catalog": {
+      "id": "skills.catalog",
+      "path": "assets/skills/catalog.json",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:6f8e96043455654e4e376445739de93127bb11008c1a7e1dca92b4aa76628818",
+      "size": 8491,
+      "lifecycle": "managed-core",
+      "description": "Canonical agent skills catalog"
+    },
+    "skills.setup": {
+      "id": "skills.setup",
+      "path": "assets/skills/setup/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:20bfa3e536d331c071693ec2d93fe8f2f333f4205aadff5c96cd8ae6d2993054",
+      "size": 2921,
+      "lifecycle": "managed-core",
+      "description": "Liftoff setup skill definition"
+    },
+    "skills.assess": {
+      "id": "skills.assess",
+      "path": "assets/skills/assess/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:6dbeca466e3cc0e5536f14dc1da1da790a44e8228c79f93c7641fb70f49a1065",
+      "size": 2162,
+      "lifecycle": "managed-core",
+      "description": "Liftoff assessment skill definition"
+    },
+    "skills.init": {
+      "id": "skills.init",
+      "path": "assets/skills/init/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:c35910da0cf0af581547fa34a156b2fcdbff77af4fe90cb8ed01e1ab69599a6c",
+      "size": 2794,
+      "lifecycle": "managed-core",
+      "description": "Liftoff initialization skill definition"
+    },
+    "skills.adopt": {
+      "id": "skills.adopt",
+      "path": "assets/skills/adopt/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:21d23fd2dd85dd493d9805d7e48fcebcce982f0658f598992dcaeda276b60a35",
+      "size": 2804,
+      "lifecycle": "managed-core",
+      "description": "Liftoff adoption skill definition"
+    },
+    "skills.update": {
+      "id": "skills.update",
+      "path": "assets/skills/update/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:f97271acca0b11f4d0af8b4b7744274a39b611bb0f30596ec005e2cc764391ec",
+      "size": 2870,
+      "lifecycle": "managed-core",
+      "description": "Liftoff update skill definition"
+    },
+    "skills.repair": {
+      "id": "skills.repair",
+      "path": "assets/skills/repair/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:ab76f6705aa566d01063ec934f8835ebd72a99b5cb733eb318c9c5d732d9d09e",
+      "size": 7899,
+      "lifecycle": "managed-core",
+      "description": "Liftoff repair skill definition"
+    },
+    "skills.azure": {
+      "id": "skills.azure",
+      "path": "assets/skills/azure/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:6a1fd49c653e49241207abfa9c046b4cb7be48c87a0eeca87eae5bef42b7ed5e",
+      "size": 2865,
+      "lifecycle": "managed-core",
+      "description": "Liftoff Azure skill definition"
+    },
+    "skills.governance": {
+      "id": "skills.governance",
+      "path": "assets/skills/governance/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:52351fe8456cdb80bd92d64d1c9b67f4fd2ac8366bc3953eebe1b1265e3c1ff2",
+      "size": 3249,
+      "lifecycle": "managed-core",
+      "description": "Liftoff governance skill definition"
+    },
+    "skills.governance-assess": {
+      "id": "skills.governance-assess",
+      "path": "assets/skills/governance-assess/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:4849ca368879feb99e3904e8e87452f87aea0ddbd3142f12d4faf826944fcf8b",
+      "size": 2408,
+      "lifecycle": "managed-core",
+      "description": "Liftoff governance assessment skill definition"
+    },
+    "skills.cli-upgrade": {
+      "id": "skills.cli-upgrade",
+      "path": "assets/skills/cli-upgrade/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:a8007ea15274dde19ff6c87cccff5c76146e068d9b06d696324c16bac1b61f63",
+      "size": 2659,
+      "lifecycle": "managed-core",
+      "description": "Liftoff CLI upgrade skill definition"
+    },
+    "skills.migrate": {
+      "id": "skills.migrate",
+      "path": "assets/skills/migrate/SKILL.md",
+      "category": "skill",
+      "componentId": "canonical-skills",
+      "digest": "sha256:a2d8985d7c29b9481dbabcfd57596ae034604279b5cc6d74eb51dcc7ce7c61a3",
+      "size": 2768,
+      "lifecycle": "managed-core",
+      "description": "Liftoff migration skill definition"
+    }
+  },
+  "retirements": {
+    "repository-governance-copilot-launcher": {
+      "retiredLogicalName": "repository-governance-copilot-launcher",
+      "category": "governance",
+      "pathParts": [
+        ".github",
+        "prompts",
+        "liftoff-repository-governance.prompt.md"
+      ],
+      "replacementLogicalName": "liftoff-setup-copilot",
+      "reason": "Replaced by unified liftoff-setup prompt."
+    },
+    "repository-governance-claude-launcher": {
+      "retiredLogicalName": "repository-governance-claude-launcher",
+      "category": "governance",
+      "pathParts": [
+        ".claude",
+        "commands",
+        "liftoff-repository-governance.md"
+      ],
+      "replacementLogicalName": "liftoff-setup-claude",
+      "reason": "Replaced by unified liftoff-setup command."
+    }
+  },
+  "digest": "sha256:e64fef73ea7754389267a9344e123402d39bec026dda7176af6d88d16856dbae"
+}

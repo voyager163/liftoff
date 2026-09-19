@@ -10,6 +10,7 @@ import { loadManifest, validateGeneratedProject, writeArtifacts, writeProjectFil
 import { buildProjectPlan } from '../src/planner.js';
 import { buildArtifacts } from '../src/templates.js';
 import { currentActivationIdentity } from '../src/governance-activation/index.js';
+import { parseManifest } from '../src/application/project/manifest.js';
 import { openSpecIntegrationPaths } from '../src/openspec-profile.js';
 import { governanceArtifactPaths } from '../src/repository-governance.js';
 import { reconcileProject } from '../src/reconcile.js';
@@ -101,7 +102,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('validates a prior complete compatibility inventory and reports assessment additions as new drift', async () => {
+  it('requires truthful partial handoff for an incomplete current inventory and reports assessment additions as new drift', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'liftoff-prior-assessment-inventory-'));
     try {
       const current = renderMatrixEntry({
@@ -130,6 +131,8 @@ describe('manifest contract', () => {
       const previous = JSON.parse(current.find((artifact) => artifact.logicalName === 'manifest')!.content);
       previous.managedArtifacts = previous.managedArtifacts
         .filter((entry: { logicalName: string }) => !names.has(entry.logicalName));
+      expect(() => parseManifest(previous)).toThrow(/missing artifact liftoff-governance-assess-copilot/);
+      previous.governance.state = 'handoff-partial';
       previous.managedArtifacts.find((entry: { logicalName: string }) =>
         entry.logicalName === 'repository-governance-compatibility'
       ).contentHash = `sha256:${createHash('sha256').update(compatibilityContent).digest('hex')}`;
@@ -146,7 +149,7 @@ describe('manifest contract', () => {
         await writeProjectFile(root, marker, '# Framework-owned marker\n');
       }
       const manifest = await loadManifest(root);
-      expect(manifest.governance.state).toBe('handoff-generated');
+      expect(manifest.governance.state).toBe('handoff-partial');
       expect(await validateGeneratedProject(root)).toEqual([]);
       const drift = await reconcileProject(manifest, current, root);
       expect(drift).toContainEqual(expect.objectContaining({
@@ -265,7 +268,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('writes schema v7 with framework, governance identity, and separated ownership', async () => {
+  it('writes schema v8 with framework, governance identity, and separated ownership', async () => {
     const artifacts = renderMatrixEntry({
       projectName: 'Manifest V3',
       pattern: 'rag',
@@ -280,7 +283,7 @@ describe('manifest contract', () => {
       governance: { profile: string; policyVersion: string; activationIdentity: unknown; state: string };
     };
 
-    expect(manifest.artifactVersion).toBe(7);
+    expect(manifest.artifactVersion).toBe(8);
     expect(manifest.project.workload.kind).toBe('genai');
     expect(manifest.project.agents).toEqual(['github-copilot', 'claude']);
     expect(manifest.framework).toEqual({
@@ -290,7 +293,7 @@ describe('manifest contract', () => {
     });
     expect(manifest.governance).toEqual({
       profile: 'single-maintainer-gitflow',
-      policyVersion: '6',
+      policyVersion: '8',
       activationIdentity: currentActivationIdentity,
       state: 'handoff-generated'
     });
@@ -327,7 +330,7 @@ describe('manifest contract', () => {
     }
   });
 
-  it('records and reloads generic as an explicit schema-v7 GenAI identity', async () => {
+  it('records and reloads generic as an explicit schema-v8 GenAI identity', async () => {
     const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-generic-contract-'));
     const projectRoot = path.join(tempRoot, 'generic-app');
     try {
@@ -338,7 +341,7 @@ describe('manifest contract', () => {
       }));
 
       const manifest = await loadManifest(projectRoot);
-      expect(manifest.artifactVersion).toBe(7);
+      expect(manifest.artifactVersion).toBe(8);
       expect(manifest.project.workload).toMatchObject({
         kind: 'genai',
         apiStack: 'python-fastapi',
@@ -362,7 +365,7 @@ describe('manifest contract', () => {
         'utf8'
       );
 
-      await expect(loadManifest(tempRoot)).rejects.toThrow(/Unsupported manifest artifactVersion 1.*Regenerate the project/s);
+      await expect(loadManifest(tempRoot)).rejects.toThrow(/Unsupported manifest artifactVersion 1.*supported values are 2, 3, 4, 5, 6, 7, 8.*do not initialize over an existing project/s);
 
       const issues = await validateGeneratedProject(tempRoot);
       expect(issues).toHaveLength(1);

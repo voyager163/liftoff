@@ -1,5 +1,6 @@
 import type { ProjectCatalog } from '../catalog.js';
 import type { LiftoffManifest } from '../contracts.js';
+import type { StandardsProfileCatalog } from '../../standards/profile-schema.js';
 
 type EnabledGovernance = Exclude<
   LiftoffManifest['governance'],
@@ -24,4 +25,5 @@ export interface ManifestContractContext {
   minimumLiftoffVersion: string;
   governanceArtifactPaths: ReadonlyMap<string, readonly string[]>;
   validateActivationIdentity(value: unknown): NonNullable<EnabledGovernance['activationIdentity']>;
+  currentStandards?(): { profiles: StandardsProfileCatalog; resourceCatalogDigest: string };
 }

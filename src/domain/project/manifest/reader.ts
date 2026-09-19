@@ -1,4 +1,4 @@
-import type { LiftoffManifest, ManifestManagedArtifact, ManifestProjectArtifact } from '../contracts.js';
+import type { HistoricalLiftoffManifest, LiftoffManifest, ManifestGeneratedProjectArtifact, ManifestManagedArtifact } from '../contracts.js';
 import { FileSystemError } from '../errors.js';
 import { isManagedCoreLogicalName, isRetiredManagedCoreLogicalName,
   isUnknownRetiredManagedCoreAliasLogicalName, legacyProvisioningGroup } from '../artifact-lifecycle.js';
@@ -8,8 +8,10 @@ import { assertOnlyFields, isRecord, requiredString, SEMVER_PATTERN } from './fi
 import { createManifestProjectReader } from './project-identity.js';
 import { createManifestArtifactReader } from './artifacts.js';
 import { createManifestGovernanceReader } from './governance.js';
+import { createCurrentManifestReader } from './current.js';
+import { minimumLiftoffForManifestV8 } from './identity.js';
 
-export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5, 6, 7];
+export const SUPPORTED_MANIFEST_VERSIONS: readonly number[] = [2, 3, 4, 5, 6, 7, 8];
 
 // seed entries recorded by 0.2.0 manifests; dropped on read so archiving the
 // seeded change is a non-event for validate, update, and doctor
@@ -39,6 +41,7 @@ export function manifestHadFilteredLegacyNonDurableOwnership(
 }
 
 export function createManifestReader(context: ManifestContractContext) {
+  const parseCurrentManifest = createCurrentManifestReader(context);
   const { normalizeManifestProject, normalizeManifestFramework } = createManifestProjectReader(context.catalog);
   const { normalizeManifestManagedArtifacts, normalizeManifestProjectArtifacts,
     validateV6AndV7ArtifactAuthority, validateManifestArtifactUniqueness } = createManifestArtifactReader(context.catalog);
@@ -64,11 +67,12 @@ export function createManifestReader(context: ManifestContractContext) {
     if (!SUPPORTED_MANIFEST_VERSIONS.includes(artifactVersion)) {
       throw new FileSystemError(
         `Unsupported manifest artifactVersion ${JSON.stringify(artifactVersion)}: found ${JSON.stringify(artifactVersion)}; ` +
-          `supported values are ${SUPPORTED_MANIFEST_VERSIONS.join(', ')}; write version is 7. ` +
-          `Minimum Liftoff ${context.minimumLiftoffVersion} is required for manifest v7. ` +
-          'Regenerate the project with this CLI, upgrade the CLI for future manifests, or use the Liftoff version that generated this project; no downgrade or write was performed.'
+          `supported values are ${SUPPORTED_MANIFEST_VERSIONS.join(', ')}; write version is 8. ` +
+          `Minimum Liftoff ${minimumLiftoffForManifestV8} is required for manifest v8. ` +
+          'Upgrade the CLI for future manifests or use a compatible historical CLI; do not initialize over an existing project. No downgrade or write was performed.'
       );
     }
+    if (artifactVersion === 8) return parseCurrentManifest(raw);
     if (artifactVersion === 6 || artifactVersion === 7) {
       assertOnlyFields(
         raw,
@@ -112,7 +116,7 @@ export function createManifestReader(context: ManifestContractContext) {
     const framework = normalizeManifestFramework(raw.framework, artifactVersion, project);
     const governance = normalizeManifestGovernance(raw.governance, artifactVersion);
     let managedArtifacts: ManifestManagedArtifact[];
-    let projectArtifacts: ManifestProjectArtifact[];
+    let projectArtifacts: ManifestGeneratedProjectArtifact[];
     let filteredLegacySeedOwnership = false;
     if (artifactVersion === 6 || artifactVersion === 7) {
       managedArtifacts = normalizeManifestManagedArtifacts(
@@ -156,7 +160,7 @@ export function createManifestReader(context: ManifestContractContext) {
         }));
     }
     validateManifestArtifactUniqueness(managedArtifacts, projectArtifacts);
-    const manifest: LiftoffManifest = {
+    const manifest: HistoricalLiftoffManifest = {
       artifactVersion: artifactVersion as 2 | 3 | 4 | 5 | 6 | 7,
       generatedBy: 'Mission Control Liftoff',
       liftoffVersion,

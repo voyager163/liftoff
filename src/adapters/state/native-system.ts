@@ -6,19 +6,12 @@ import {
   type NativeLocalStateTools, type StateRegisteredExecutable
 } from '../../domain/repair/stateful.js';
 import { stateAssert, stateDigest, stateObjectDigest } from '../../domain/repair/stateful-invariants.js';
+import { posixNativeStateProtocol as nativeLocalStateProtocol } from '../../domain/repair/native-state-protocols.js';
 import { OwnedPrivateStateProcessRunner, spawnOwnedStateProcess } from './owned-process.js';
 
-export const nativeLocalStateProtocol = Object.freeze({
-  version: 'opentofu-1.12.6-posix-fcntl' as const,
-  tofuVersion: '1.12.6' as const,
-  sourceCommit: 'b4305e5a5dd2fb79a27897ae30784a181d3a26cb',
-  lockSource: 'internal/flock/filesystem_lock_unix.go',
-  lockBlob: 'c396e445a0eede26b32b97068216fe3691070d9f',
-  stateSource: 'internal/states/statemgr/filesystem.go',
-  stateBlob: '3f01209ea1635c9cad5f499f4f08ce356aef9a4c',
-  lockOperation: 'F_SETLK/F_WRLCK/start=0/length=0',
-  writeOperation: 'seek/truncate/write/sync on the same open inode'
-});
+export { nativeLocalStateProtocol };
+
+export const nativeStatePythonVersionProbe = 'import json,platform,sys; print(json.dumps({"implementation":platform.python_implementation(),"version":".".join(map(str,sys.version_info[:3]))}))';
 
 export function nativeStateHostId(): string {
   return `native-host:${stateObjectDigest({ platform: process.platform, host: hostname(), uid: process.getuid?.() ?? null })}`;
@@ -78,17 +71,30 @@ export async function runPrivateStateProcess(request: {
   });
 }
 
-export async function inspectNativeLocalStateTools(request: {
+interface NativeLocalStateToolInspection {
   pythonPath: string;
   tofuPath: string;
   workingDirectory: string;
   signal?: AbortSignal;
-}): Promise<NativeLocalStateTools> {
-  stateAssert(process.platform === 'darwin', 'unsupported-native-platform');
+}
+
+export function inspectNativeLocalStateTools(request: NativeLocalStateToolInspection): Promise<NativeLocalStateTools> {
+  return inspectPosixLocalStateTools(request, 'darwin');
+}
+
+export function inspectLinuxLocalStateTools(request: NativeLocalStateToolInspection): Promise<NativeLocalStateTools> {
+  return inspectPosixLocalStateTools(request, 'linux');
+}
+
+async function inspectPosixLocalStateTools(
+  request: NativeLocalStateToolInspection, platform: 'darwin' | 'linux'
+): Promise<NativeLocalStateTools> {
+  stateAssert(process.platform === platform, 'unsupported-native-platform');
+  if (platform === 'linux') stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
   const python = await captureStateExecutable(request.pythonPath);
   const tofu = await captureStateExecutable(request.tofuPath);
   const py = await runPrivateStateProcess({
-    executable: python, args: ['-I', '-S', '-B', '-c', 'import json,platform,sys; print(json.dumps({"implementation":platform.python_implementation(),"version":".".join(map(str,sys.version_info[:3]))}))'],
+    executable: python, args: ['-I', '-S', '-B', '-c', nativeStatePythonVersionProbe],
     cwd: request.workingDirectory, signal: request.signal
   });
   let pythonVersion: string;
@@ -98,12 +104,13 @@ export async function inspectNativeLocalStateTools(request: {
     pythonVersion = info.version;
   } finally { py.stdout.fill(0); py.stderr.fill(0); }
   const tf = await runPrivateStateProcess({
-    executable: tofu, args: ['version', '-json'], cwd: request.workingDirectory, signal: request.signal
+    executable: tofu, args: ['version', '-json'], cwd: request.workingDirectory, signal: request.signal,
+    environment: { ...isolatedStateEnvironment(request.workingDirectory), TF_CLI_CONFIG_FILE: '/dev/null' }
   });
   try {
     const info = JSON.parse(Buffer.from(tf.stdout).toString('utf8'));
     stateAssert(tf.exitCode === 0 && info.terraform_version === nativeLocalStateProtocol.tofuVersion
-      && info.platform === `darwin_${process.arch === 'arm64' ? 'arm64' : 'amd64'}`, 'unqualified-combination');
+      && info.platform === `${platform}_${process.arch === 'arm64' ? 'arm64' : 'amd64'}`, 'unqualified-combination');
   } finally { tf.stdout.fill(0); tf.stderr.fill(0); }
   return { python, tofu, pythonVersion, tofuVersion: '1.12.6', hostId: nativeStateHostId() };
 }

@@ -7,15 +7,22 @@ import { canonicalJson, canonicalSha256, isRecord } from '../../domain/governanc
 import { FileSystemError } from '../../domain/project/errors.js';
 import { validateArtifactPathParts } from '../../domain/project/paths.js';
 import {
-  reviewedRepairTransactionPathParts, reviewedUpdateTransactionPathParts
+  reviewedAdoptionTransactionPathParts, reviewedRepairTransactionPathParts, reviewedSkillsTransactionPathParts, reviewedUpdateTransactionPathParts,
+  reviewedInstallationTransactionPathParts
 } from '../../domain/project/reviewed-update-artifacts.js';
 import type { ReviewedTransactionKind } from '../../domain/project/reviewed-update-artifacts.js';
 import {
   repairSchemaVersions, validateRepairExecutionIdentity, type RepairExecutionIdentity
 } from '../../domain/repair/identity.js';
+import { validateAdoptionExecutionIdentity, type AdoptionExecutionIdentity } from '../../domain/project-evolution/adoption/identity.js';
+import { validateSkillsExecutionIdentity, validateSkillsTransactionPaths, type SkillsExecutionIdentity } from '../../domain/skills/identity.js';
+import {
+  validateInstallationExecutionIdentity, validateInstallationTransactionPaths, type InstallationExecutionIdentity
+} from '../../domain/distribution/transaction-identity.js';
+import type { SkillScope } from '../../domain/skills/contracts.js';
 import { commandShellForPlatform, formatShellCommand } from '../process/shell-command.js';
 import { errorCode, errorMessage } from './errors.js';
-import { withProjectMutationLock } from './project-lock.js';
+import { withProjectMutationLock, withUserScopeMutationLock } from './project-lock.js';
 import type { ProjectMutationLease } from './project-lock.js';
 import { ProjectFileTransactionError } from './project-transaction.js';
 import type { ProjectFileMutation, ProjectFileSnapshot } from './project-transaction.js';
@@ -40,6 +47,12 @@ export interface ReviewedUpdateTransactionCheckpoint {
 export interface ReviewedUpdateTransactionOptions {
   transactionKind?: ReviewedTransactionKind;
   repairIdentity?: RepairExecutionIdentity;
+  adoptionIdentity?: AdoptionExecutionIdentity;
+  adoptionDirectories?: readonly ReviewedSkillsDirectorySnapshot[];
+  skillsIdentity?: SkillsExecutionIdentity;
+  skillsDirectories?: readonly ReviewedSkillsDirectorySnapshot[];
+  installationIdentity?: InstallationExecutionIdentity;
+  installationDirectories?: readonly ReviewedSkillsDirectorySnapshot[];
   planFingerprint: string;
   approvalStore: ReviewedUpdateApprovalStore;
   preconditions?: readonly ProjectFileSnapshot[];
@@ -48,9 +61,17 @@ export interface ReviewedUpdateTransactionOptions {
   onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
 }
 
+export type ReviewedSkillsDirectorySnapshot =
+  | { pathParts: string[]; state: 'absent' }
+  | { pathParts: string[]; state: 'directory'; device: number; inode: number; mode: number };
+export type ReviewedAdoptionDirectorySnapshot = ReviewedSkillsDirectorySnapshot;
+
 export interface ReviewedUpdateRecoveryOptions {
   transactionKind?: ReviewedTransactionKind;
   approvalStore?: ReviewedUpdateApprovalStore;
+  onCommittedReadback?: () => Promise<void>;
+  validateRecovery?: (planFingerprint: string) => Promise<void>;
+  skillsScope?: SkillScope;
 }
 
 export interface ReviewedUpdateTransactionDestination {
@@ -67,6 +88,9 @@ export interface ReviewedUpdateTransactionInspection {
   transactionDigest?: string;
   schemaVersion?: number;
   repairIdentity?: RepairExecutionIdentity;
+  adoptionIdentity?: AdoptionExecutionIdentity;
+  skillsIdentity?: SkillsExecutionIdentity;
+  installationIdentity?: InstallationExecutionIdentity;
   reason?: string;
   destinations: ReviewedUpdateTransactionDestination[];
 }
@@ -78,6 +102,7 @@ export interface ReviewedUpdateTransactionOutcome {
   transactionDigest?: string;
   rollbackFailures: string[];
   cleanupFailures: string[];
+  retainedDirectories?: string[][];
 }
 
 export class ReviewedUpdateTransactionError extends ProjectFileTransactionError {
@@ -105,6 +130,12 @@ interface JournalBody {
   schemaVersion: 1 | 2;
   transactionKind?: ReviewedTransactionKind;
   repairIdentity?: RepairExecutionIdentity;
+  adoptionIdentity?: AdoptionExecutionIdentity;
+  adoptionDirectories?: ReviewedSkillsDirectorySnapshot[];
+  skillsIdentity?: SkillsExecutionIdentity;
+  skillsDirectories?: ReviewedSkillsDirectorySnapshot[];
+  installationIdentity?: InstallationExecutionIdentity;
+  installationDirectories?: ReviewedSkillsDirectorySnapshot[];
   projectRoot: string;
   planFingerprint: string;
   nonce: string;
@@ -116,9 +147,18 @@ interface JournalHeader extends JournalBody {
   transactionDigest: string;
 }
 
+interface SkillsDirectoryFrame {
+  phase: 'skills-directory' | 'adoption-directory';
+  pathParts: string[];
+  device: number;
+  inode: number;
+  mode: number;
+}
+
 type JournalFrame =
   | { phase: 'mutation'; index: number }
-  | { phase: 'committed' };
+  | { phase: 'committed' }
+  | SkillsDirectoryFrame;
 
 interface LoadedJournal {
   header: JournalHeader;
@@ -126,6 +166,7 @@ interface LoadedJournal {
   pendingIndex: number;
   committed: boolean;
   rollbackComplete?: boolean;
+  skillsDirectoryFrames?: SkillsDirectoryFrame[];
 }
 
 const MAX_MUTATIONS = 1024;
@@ -135,7 +176,7 @@ const MAX_JOURNAL_BYTES = 32 * 1024 * 1024;
 const DIGEST = /^[a-f0-9]{64}$/;
 const UUID = /^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/;
 const privateFileMode = process.platform === 'win32' ? 0o666 : 0o600;
-const transactionKinds = ['update', 'repair'] as const;
+const transactionKinds = ['update', 'repair', 'adoption', 'skills', 'installation'] as const;
 
 function fail(message: string): never {
   throw new FileSystemError(`Reviewed update transaction: ${message}`);
@@ -144,6 +185,9 @@ function fail(message: string): never {
 function journalParts(kind: ReviewedTransactionKind = 'update'): readonly string[] {
   if (kind === 'update') return reviewedUpdateTransactionPathParts;
   if (kind === 'repair') return reviewedRepairTransactionPathParts;
+  if (kind === 'adoption') return reviewedAdoptionTransactionPathParts;
+  if (kind === 'skills') return reviewedSkillsTransactionPathParts;
+  if (kind === 'installation') return reviewedInstallationTransactionPathParts;
   return fail('unregistered transaction kind.');
 }
 
@@ -152,11 +196,17 @@ async function assertNoPendingTransactions(root: string, kind: ReviewedTransacti
     const parts = journalParts(pendingKind);
     const recovery = formatShellCommand({
       executable: 'liftoff',
-      args: pendingKind === 'repair' ? ['repair', root, '--recover'] : ['update', '--project', root]
+      args: pendingKind === 'installation' ? ['installation', 'migrate', '--recover'] :
+        pendingKind === 'skills' ? ['skills', 'inspect', '--scope', 'project', '--project', root] :
+        pendingKind === 'repair' ? ['repair', root, '--recover'] :
+        pendingKind === 'adoption' ? ['adopt', '--project', root, '--recover'] : ['update', '--project', root]
     }, commandShellForPlatform(process.platform));
     const check = formatShellCommand({
       executable: 'liftoff',
-      args: kind === 'repair' ? ['repair', root, '--check'] : ['update', '--check', '--project', root]
+      args: kind === 'installation' ? ['installation', 'inspect'] :
+        kind === 'skills' ? ['skills', 'inspect', '--scope', 'project', '--project', root] :
+        kind === 'repair' ? ['repair', root, '--check'] :
+        kind === 'adoption' ? ['adopt', '--project', root, '--check'] : ['update', '--check', '--project', root]
     }, commandShellForPlatform(process.platform));
     let snapshot: ProjectFileSnapshot;
     try {
@@ -189,6 +239,62 @@ function validParts(value: unknown): string[] {
     fail('a path is too long or contains non-portable characters.');
   }
   return parts;
+}
+
+function parseSkillsDirectory(value: unknown): ReviewedSkillsDirectorySnapshot {
+  const missing = isRecord(value) && value.state === 'absent';
+  exactKeys(value, missing ? ['pathParts', 'state'] : ['pathParts', 'state', 'device', 'inode', 'mode']);
+  const pathParts = Array.isArray(value.pathParts) && value.pathParts.length === 0 ? [] : validParts(value.pathParts);
+  if (missing) return { pathParts, state: 'absent' };
+  if (value.state !== 'directory' || !Number.isSafeInteger(value.device) || (value.device as number) < 0 ||
+      !Number.isSafeInteger(value.inode) || (value.inode as number) <= 0) fail('invalid skills directory creation identity.');
+  assertMode(value.mode);
+  return { pathParts, state: 'directory', device: value.device as number, inode: value.inode as number, mode: value.mode };
+}
+
+function parseSkillsDirectories(
+  value: unknown, mutations: readonly { pathParts: readonly string[] }[],
+  kind: 'skills' | 'adoption' | 'installation' = 'skills'
+): ReviewedSkillsDirectorySnapshot[] {
+  if (!Array.isArray(value) || value.length === 0 || value.length > MAX_MUTATIONS * 64) fail(`${kind} requires its reviewed directory inventory.`);
+  const directories = value.map(parseSkillsDirectory);
+  const keys = new Set(directories.map((entry) => key(entry.pathParts)));
+  if (keys.size !== directories.length || !directories.some((entry) => entry.pathParts.length === 0 && entry.state === 'directory')) {
+    fail(`${kind} requires an exact unique root directory identity.`);
+  }
+  for (const parts of [...mutations.map((entry) => entry.pathParts), journalParts(kind)]) {
+    for (let count = 1; count < parts.length; count += 1) {
+      if (!keys.has(key(parts.slice(0, count)))) fail(`${kind} directory inventory does not cover every approved destination.`);
+    }
+  }
+  return directories;
+}
+
+async function assertSkillsDirectories(
+  root: string, header: Pick<JournalHeader, 'skillsDirectories' | 'adoptionDirectories'>, created: readonly SkillsDirectoryFrame[] = []
+): Promise<void> {
+  for (const original of header.adoptionDirectories ?? header.skillsDirectories ?? []) {
+    const observed = created.find((entry) => key(entry.pathParts) === key(original.pathParts));
+    const expected = original.state === 'absent' && observed ? { ...observed, state: 'directory' as const } : original;
+    const native = original.pathParts.length ? await safePath(root, original.pathParts) : root;
+    let details;
+    try { details = await lstat(native); }
+    catch (error) {
+      if (errorCode(error) === 'ENOENT' && expected.state === 'absent') continue;
+      throw error;
+    }
+
+    if (expected.state === 'absent' || !details.isDirectory() || details.isSymbolicLink() ||
+        details.dev !== expected.device || details.ino !== expected.inode || (details.mode & 0o7777) !== expected.mode) {
+      fail(`${header.adoptionDirectories ? 'adoption' : 'skills'} directory changed or has no sealed creation identity: ${key(original.pathParts) || '.'}.`);
+    }
+  }
+}
+
+async function assertInstallationDirectories(
+  root: string, header: Pick<JournalHeader, 'installationDirectories'>
+): Promise<void> {
+  await assertSkillsDirectories(root, { skillsDirectories: header.installationDirectories });
 }
 
 function exactKeys(value: unknown, keys: readonly string[]): asserts value is Record<string, unknown> {
@@ -364,16 +470,47 @@ function bodyOf(header: JournalHeader): JournalBody {
 function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind): JournalHeader {
   const hasKind = isRecord(value) && Object.hasOwn(value, 'transactionKind');
   const hasRepairIdentity = isRecord(value) && Object.hasOwn(value, 'repairIdentity');
+  const hasAdoptionIdentity = isRecord(value) && Object.hasOwn(value, 'adoptionIdentity');
+  const hasAdoptionDirectories = isRecord(value) && Object.hasOwn(value, 'adoptionDirectories');
+  const hasSkillsIdentity = isRecord(value) && Object.hasOwn(value, 'skillsIdentity');
+  const hasSkillsDirectories = isRecord(value) && Object.hasOwn(value, 'skillsDirectories');
+  const hasInstallationIdentity = isRecord(value) && Object.hasOwn(value, 'installationIdentity');
+  const hasInstallationDirectories = isRecord(value) && Object.hasOwn(value, 'installationDirectories');
   exactKeys(value, [
     'schemaVersion', 'projectRoot', 'planFingerprint', 'nonce', 'mutations', 'missingDirectories', 'transactionDigest',
-    ...(hasKind ? ['transactionKind'] : []), ...(hasRepairIdentity ? ['repairIdentity'] : [])
+    ...(hasKind ? ['transactionKind'] : []), ...(hasRepairIdentity ? ['repairIdentity'] : []),
+    ...(hasAdoptionIdentity ? ['adoptionIdentity'] : []),
+    ...(hasAdoptionDirectories ? ['adoptionDirectories'] : []), ...(hasSkillsIdentity ? ['skillsIdentity'] : []),
+    ...(hasSkillsDirectories ? ['skillsDirectories'] : []),
+    ...(hasInstallationIdentity ? ['installationIdentity'] : []),
+    ...(hasInstallationDirectories ? ['installationDirectories'] : [])
   ]);
   // Schema-1 journals without a lane belong only to the original update journal path.
   if ((hasKind ? value.transactionKind : 'update') !== kind) fail('recovery journal transaction kind does not match its registered path.');
   assertDigest(value.planFingerprint);
   assertDigest(value.transactionDigest);
   let repairIdentity: RepairExecutionIdentity | undefined;
-  if (kind === 'repair' && value.schemaVersion === repairSchemaVersions.journal) {
+  let adoptionIdentity: AdoptionExecutionIdentity | undefined;
+  let skillsIdentity: SkillsExecutionIdentity | undefined;
+  let installationIdentity: InstallationExecutionIdentity | undefined;
+  if (kind === 'installation') {
+    if (value.schemaVersion !== 1 || !hasKind || hasRepairIdentity || hasAdoptionIdentity || hasAdoptionDirectories || hasSkillsIdentity || hasSkillsDirectories) {
+      fail('installation requires its independent schema-1 journal and identity.');
+    }
+    installationIdentity = validateInstallationExecutionIdentity(value.installationIdentity);
+  } else if (hasInstallationIdentity || hasInstallationDirectories) {
+    fail('historical journals cannot acquire native installation authority.');
+  } else if (kind === 'skills') {
+    if (value.schemaVersion !== 1 || !hasKind || hasRepairIdentity || hasAdoptionIdentity || hasAdoptionDirectories) fail('skills requires its independent schema-1 journal and identity.');
+    skillsIdentity = validateSkillsExecutionIdentity(value.skillsIdentity);
+  } else if (hasSkillsIdentity || hasSkillsDirectories) {
+    fail('historical update/repair/adoption journals cannot acquire skills identity.');
+  } else if (kind === 'adoption') {
+    if (value.schemaVersion !== 1 || !hasKind || hasRepairIdentity) fail('adoption requires its independent schema-1 journal and identity.');
+    adoptionIdentity = validateAdoptionExecutionIdentity(value.adoptionIdentity);
+  } else if (hasAdoptionIdentity || hasAdoptionDirectories) {
+    fail('historical update/repair journals cannot acquire adoption identity.');
+  } else if (kind === 'repair' && value.schemaVersion === repairSchemaVersions.journal) {
     repairIdentity = validateRepairExecutionIdentity(value.repairIdentity);
   } else if (value.schemaVersion !== 1 || hasRepairIdentity) {
     fail(`unsupported ${kind} journal schema/identity; supported ${kind === 'repair' ? 'sealed legacy schema 1 or repair schema 2 with contract 1 and a registered recipe' : 'update schema 1 without repair identity'}. Use a CLI supporting the original record; do not rewrite it.`);
@@ -403,6 +540,18 @@ function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind
     };
   });
   validateInventory(mutations);
+  if (skillsIdentity) validateSkillsTransactionPaths(skillsIdentity, mutations);
+  if (installationIdentity) validateInstallationTransactionPaths(installationIdentity, mutations);
+  if (installationIdentity && mutations.some((mutation) =>
+    mutation.original.kind !== (installationIdentity.intent === 'migrate' ? 'missing' : 'file'))) {
+    fail('native migration may acquire only absent launcher/receipt paths; upgrade must retain its original owned files.');
+  }
+  const skillsDirectories = skillsIdentity ? parseSkillsDirectories(value.skillsDirectories, mutations) : undefined;
+  const adoptionDirectories = adoptionIdentity ? parseSkillsDirectories(value.adoptionDirectories, mutations, 'adoption') : undefined;
+  const installationDirectories = installationIdentity ? parseSkillsDirectories(value.installationDirectories, mutations) : undefined;
+  if (installationDirectories?.some((entry) => entry.state !== 'directory')) {
+    fail('native launcher transactions require existing, identity-bound parents; staging is independently checkpointed.');
+  }
   const missingDirectories: string[][] = value.missingDirectories.map(validParts);
   const seen = new Set<string>();
   for (const parts of missingDirectories) {
@@ -422,6 +571,12 @@ function parseHeader(value: unknown, root: string, kind: ReviewedTransactionKind
     projectRoot: root, planFingerprint: value.planFingerprint, nonce: value.nonce,
     ...(hasKind ? { transactionKind: kind } : {}),
     ...(repairIdentity ? { repairIdentity } : {}),
+    ...(adoptionIdentity ? { adoptionIdentity } : {}),
+    ...(adoptionDirectories ? { adoptionDirectories } : {}),
+    ...(skillsIdentity ? { skillsIdentity } : {}),
+    ...(skillsDirectories ? { skillsDirectories } : {}),
+    ...(installationIdentity ? { installationIdentity } : {}),
+    ...(installationDirectories ? { installationDirectories } : {}),
     mutations, missingDirectories, transactionDigest: value.transactionDigest
   };
   if (canonicalSha256(bodyOf(header)) !== header.transactionDigest) fail('transaction digest does not match the journal.');
@@ -462,10 +617,29 @@ async function loadJournal(
   let pendingIndex = -1;
   let committed = false;
   let lastFrame: JournalFrame | undefined;
+  const skillsDirectoryFrames: SkillsDirectoryFrame[] = [];
   for (const line of lines.slice(1)) {
     const frame = parseCanonicalLine(line);
     if (committed || !isRecord(frame)) fail('invalid recovery phase sequence.');
-    if (frame.phase === 'mutation') {
+    if (frame.phase === 'skills-directory' || frame.phase === 'adoption-directory') {
+      exactKeys(frame, ['phase', 'pathParts', 'device', 'inode', 'mode']);
+      if (frame.phase === 'skills-directory' ? !header.skillsIdentity : !header.adoptionIdentity) {
+        fail('historical journals cannot acquire another operation directory identity.');
+      }
+      const directory = parseSkillsDirectory({
+        pathParts: frame.pathParts, state: 'directory', device: frame.device, inode: frame.inode, mode: frame.mode
+      });
+      const parts = directory.pathParts;
+      if (directory.state !== 'directory' || !(header.adoptionDirectories ?? header.skillsDirectories)?.some((entry) =>
+        entry.state === 'absent' && key(entry.pathParts) === key(parts)) ||
+        skillsDirectoryFrames.some((entry) => key(entry.pathParts) === key(parts)) ||
+        (pendingIndex < 0 ? key(parts) !== '.liftoff'
+          : !key(header.mutations[pendingIndex].pathParts).startsWith(`${key(parts)}/`))) {
+        fail('unregistered or duplicate skills directory creation checkpoint.');
+      }
+      lastFrame = { phase: frame.phase, pathParts: parts, device: directory.device, inode: directory.inode, mode: directory.mode };
+      skillsDirectoryFrames.push(lastFrame);
+    } else if (frame.phase === 'mutation') {
       exactKeys(frame, ['phase', 'index']);
       if (frame.index !== pendingIndex + 1 || pendingIndex + 1 >= header.mutations.length) fail('invalid mutation checkpoint.');
       pendingIndex += 1;
@@ -494,6 +668,11 @@ async function loadJournal(
   if (approved && lastFrame && await store.verify(header.planFingerprint, frameDigest(header, lastFrame)) !== true) {
     fail('recovery checkpoint has no matching user-local approval seal.');
   }
+  for (const frame of skillsDirectoryFrames) {
+    if (await store.verify(header.planFingerprint, frameDigest(header, frame)) !== true) {
+      fail('skills directory creation checkpoint has no matching private approval seal.');
+    }
+  }
   // A durable external commit seal wins even if the local commit append was interrupted or truncated.
   const sealedCommit = await store.verify(header.planFingerprint, frameDigest(header, { phase: 'committed' }));
   if (committed && sealedCommit !== true) fail('committed journal has no matching external commit seal.');
@@ -501,7 +680,10 @@ async function loadJournal(
     // This separately sealed capability cannot restore files: every original must already be intact.
     for (const mutation of header.mutations) await assertSnapshot(root, mutation.pathParts, mutation.original);
   }
-  return { header, snapshot, pendingIndex, committed: sealedCommit === true, rollbackComplete: cleanupOnly && !sealedCommit };
+  return {
+    header, snapshot, pendingIndex, committed: sealedCommit === true, rollbackComplete: cleanupOnly && !sealedCommit,
+    ...(header.skillsIdentity || header.adoptionIdentity ? { skillsDirectoryFrames } : {})
+  };
 }
 
 function temporaryParts(header: JournalHeader, index: number, restore: boolean): string[] {
@@ -524,18 +706,32 @@ async function syncDirectory(directory: string): Promise<void> {
   }
 }
 
-async function ensureParents(root: string, parts: readonly string[], permitted: readonly string[][]): Promise<void> {
+async function ensureParents(
+  root: string, parts: readonly string[], permitted: readonly string[][],
+  skills?: { header: JournalHeader; created: SkillsDirectoryFrame[]; record: (frame: SkillsDirectoryFrame) => Promise<void> }
+): Promise<void> {
   for (let count = 1; count < parts.length; count += 1) {
     const parent = parts.slice(0, count);
     const native = await safePath(root, parent);
     try {
       if (!(await lstat(native)).isDirectory()) fail(`not a directory: ${key(parent)}.`);
+      if (skills) await assertSkillsDirectories(root, skills.header, skills.created);
     } catch (error) {
       if (errorCode(error) !== 'ENOENT') throw error;
       if (!permitted.some((allowed) => key(allowed) === key(parent))) fail(`parent changed after review: ${key(parent)}.`);
       await mkdir(native, { mode: 0o700 });
       await chmod(await safePath(root, parent), 0o700);
       await syncDirectory(path.dirname(native));
+      if (skills) {
+        const created = await lstat(await safePath(root, parent));
+        const frame: SkillsDirectoryFrame = {
+          phase: skills.header.adoptionIdentity ? 'adoption-directory' : 'skills-directory', pathParts: [...parent],
+          device: created.dev, inode: created.ino, mode: created.mode & 0o7777
+        };
+        skills.created.push(frame);
+        await skills.record(frame);
+        await assertSkillsDirectories(root, skills.header, skills.created);
+      }
     }
   }
 }
@@ -547,9 +743,12 @@ async function assertJournalCurrent(root: string, snapshot: ProjectFileSnapshot)
   }
 }
 
-async function createJournal(root: string, header: JournalHeader, lease: ProjectMutationLease): Promise<ProjectFileSnapshot> {
+async function createJournal(
+  root: string, header: JournalHeader, lease: ProjectMutationLease,
+  skills?: Parameters<typeof ensureParents>[3]
+): Promise<ProjectFileSnapshot> {
   const parts = journalParts(header.transactionKind);
-  await ensureParents(root, parts, header.missingDirectories);
+  await ensureParents(root, parts, header.missingDirectories, skills);
   const native = await safePath(root, parts);
   await lease.assertHeld();
   const handle = await open(native, 'wx', 0o600);
@@ -608,19 +807,32 @@ async function appendFrame(
 
 async function durableMutation(
   root: string, header: JournalHeader, index: number, restore: boolean, lease: ProjectMutationLease,
-  onStaged?: () => Promise<void>
+  onStaged?: () => Promise<void>,
+  skills?: Parameters<typeof ensureParents>[3]
 ): Promise<void> {
   const mutation = header.mutations[index];
   const before = restore ? mutation.target : mutation.original;
   const after = restore ? mutation.original : mutation.target;
   await lease.assertHeld();
+  await assertInstallationDirectories(root, header);
+  if (skills) await assertSkillsDirectories(root, header, skills.created);
   await assertSnapshot(root, mutation.pathParts, before);
+  if (header.installationIdentity &&
+      key(mutation.pathParts) === key(header.installationIdentity.launcherPathParts) &&
+      before.kind === 'file' && after.kind === 'file' && before.mode === after.mode &&
+      before.sha256 === after.sha256 && before.bytes === after.bytes) {
+    // The exact selected PE can stay mapped while its separately staged receipt changes.
+    await lease.assertHeld();
+    await assertSnapshot(root, mutation.pathParts, after);
+    return;
+  }
   if (after.kind === 'missing') {
     if (before.kind === 'missing') return;
+    if (skills) await assertSkillsDirectories(root, header, skills.created);
     await unlink(await safePath(root, mutation.pathParts));
     await syncDirectory(path.dirname(path.join(root, ...mutation.pathParts)));
   } else {
-    await ensureParents(root, mutation.pathParts, header.missingDirectories);
+    await ensureParents(root, mutation.pathParts, header.missingDirectories, skills);
     const temporary = await safePath(root, temporaryParts(header, index, restore));
     const handle = await open(temporary, 'wx', 0o600);
     try {
@@ -633,8 +845,11 @@ async function durableMutation(
     }
     await onStaged?.();
     await lease.assertHeld();
+    await assertInstallationDirectories(root, header);
+    if (skills) await assertSkillsDirectories(root, header, skills.created);
     await assertSnapshot(root, mutation.pathParts, before);
     await assertSnapshot(root, temporaryParts(header, index, restore), after);
+    if (skills) await assertSkillsDirectories(root, header, skills.created);
     await rename(temporary, await safePath(root, mutation.pathParts));
     await syncDirectory(path.dirname(temporary));
   }
@@ -642,8 +857,10 @@ async function durableMutation(
 }
 
 async function cleanupTemporary(
-  root: string, header: JournalHeader, index: number, restore: boolean, lease: ProjectMutationLease
+  root: string, header: JournalHeader, index: number, restore: boolean, lease: ProjectMutationLease,
+  directories: readonly SkillsDirectoryFrame[] = []
 ): Promise<void> {
+  await assertSkillsDirectories(root, header, directories);
   const parts = temporaryParts(header, index, restore);
   const snapshot = await readSnapshot(root, parts);
   if (snapshot.content === undefined) return;
@@ -655,6 +872,7 @@ async function cleanupTemporary(
   await lease.assertHeld();
   const current = await readSnapshot(root, parts);
   if (!current.content?.equals(snapshot.content) || current.mode !== snapshot.mode) fail(`temporary changed: ${key(parts)}.`);
+  await assertSkillsDirectories(root, header, directories);
   await unlink(await safePath(root, parts));
   await syncDirectory(path.dirname(path.join(root, ...parts)));
 }
@@ -663,6 +881,8 @@ async function cleanupJournal(
   root: string, loaded: LoadedJournal, store: ReviewedUpdateApprovalStore, lease: ProjectMutationLease
 ): Promise<string[]> {
   const failures: string[] = [];
+  await assertInstallationDirectories(root, loaded.header);
+  await assertSkillsDirectories(root, loaded.header, loaded.skillsDirectoryFrames);
   const removeApproval = async (digest: string): Promise<boolean> => {
     try {
       await store.remove(loaded.header.planFingerprint, digest);
@@ -681,6 +901,7 @@ async function cleanupJournal(
   try {
     await lease.assertHeld();
     await assertJournalCurrent(root, loaded.snapshot);
+    await assertSkillsDirectories(root, loaded.header, loaded.skillsDirectoryFrames);
     await unlink(await safePath(root, loaded.snapshot.pathParts));
     await syncDirectory(path.join(root, '.liftoff'));
   } catch (error) {
@@ -691,10 +912,13 @@ async function cleanupJournal(
   const digests = [
     ...loaded.header.mutations.map((_entry, index) => frameDigest(loaded.header, { phase: 'mutation', index })),
     frameDigest(loaded.header, { phase: 'committed' }),
-    rollbackCleanupDigest(loaded.header)
+    rollbackCleanupDigest(loaded.header),
+    ...loaded.skillsDirectoryFrames?.map((frame) => frameDigest(loaded.header, frame)) ?? []
   ];
   for (const digest of digests) await removeApproval(digest);
-  if (!loaded.committed && loaded.header.missingDirectories.some((parts) => key(parts) === '.liftoff')) {
+  if (!loaded.committed && loaded.header.transactionKind !== 'skills' && loaded.header.transactionKind !== 'installation' &&
+      loaded.header.transactionKind !== 'adoption' &&
+      loaded.header.missingDirectories.some((parts) => key(parts) === '.liftoff')) {
     try {
       await lease.assertHeld();
       await rmdir(await safePath(root, ['.liftoff']));
@@ -728,9 +952,21 @@ function outcome(status: ReviewedUpdateTransactionOutcome['status'], loaded?: Lo
 }
 
 async function recoverLocked(
-  root: string, loaded: LoadedJournal, store: ReviewedUpdateApprovalStore, lease: ProjectMutationLease
+  root: string, loaded: LoadedJournal, store: ReviewedUpdateApprovalStore, lease: ProjectMutationLease,
+  onCommittedReadback?: () => Promise<void>
 ): Promise<ReviewedUpdateTransactionOutcome> {
+  await assertInstallationDirectories(root, loaded.header);
+  await assertSkillsDirectories(root, loaded.header, loaded.skillsDirectoryFrames);
   if (loaded.committed) {
+    if (onCommittedReadback) {
+      try {
+        for (const mutation of loaded.header.mutations) await assertSnapshot(root, mutation.pathParts, mutation.target);
+        await onCommittedReadback();
+        await lease.assertHeld();
+      } catch (error) {
+        return { ...outcome('committed', loaded), cleanupFailures: [`Committed readback remains incomplete: ${errorMessage(error)}`] };
+      }
+    }
     return { ...outcome('committed', loaded), cleanupFailures: await cleanupJournal(root, loaded, store, lease) };
   }
   if (loaded.rollbackComplete) {
@@ -738,24 +974,35 @@ async function recoverLocked(
     const cleanupFailures = await cleanupJournal(root, loaded, store, lease);
     return { ...outcome(cleanupFailures.length ? 'blocked' : 'rolled-back', loaded), cleanupFailures };
   }
-  const result = outcome('rolled-back', loaded);
+  const result = {
+    ...outcome('rolled-back', loaded),
+    ...(loaded.header.adoptionIdentity ? { retainedDirectories: (loaded.skillsDirectoryFrames ?? []).map((frame) => [...frame.pathParts]) } : {})
+  };
   const entries = await destinations(root, loaded);
   for (const [index, mutation] of [...loaded.header.mutations.entries()].reverse()) {
     try {
       await lease.assertHeld();
       await assertJournalCurrent(root, loaded.snapshot);
+      await assertInstallationDirectories(root, loaded.header);
+      await assertSkillsDirectories(root, loaded.header, loaded.skillsDirectoryFrames);
       const current = entries[index];
       if (current.disposition === 'changed') fail(`target changed before rollback; it was preserved: ${key(mutation.pathParts)}.`);
       if (current.attempted) {
-        await cleanupTemporary(root, loaded.header, index, false, lease);
-        await cleanupTemporary(root, loaded.header, index, true, lease);
+        await cleanupTemporary(root, loaded.header, index, false, lease, loaded.skillsDirectoryFrames);
+        await cleanupTemporary(root, loaded.header, index, true, lease, loaded.skillsDirectoryFrames);
       }
-      if (current.disposition === 'target') await durableMutation(root, loaded.header, index, true, lease);
+      if (current.disposition === 'target') await durableMutation(root, loaded.header, index, true, lease, undefined,
+        loaded.header.skillsIdentity || loaded.header.adoptionIdentity ? {
+          header: loaded.header, created: loaded.skillsDirectoryFrames ?? [],
+          record: async () => { fail('skills recovery cannot invent a new directory creation identity.'); }
+        } : undefined);
     } catch (error) {
       result.rollbackFailures.push(`${key(mutation.pathParts)}: ${errorMessage(error)}`);
     }
   }
-  for (const parts of [...loaded.header.missingDirectories].sort((left, right) => right.length - left.length)) {
+  // New scoped lanes retain directories rather than treating prior absence as deletion authority.
+  for (const parts of (['skills', 'installation', 'adoption'].includes(loaded.header.transactionKind ?? '') ? [] : [...loaded.header.missingDirectories])
+    .sort((left, right) => right.length - left.length)) {
     if (key(parts) === '.liftoff') continue;
     if (!loaded.header.mutations.some((mutation, index) => index <= loaded.pendingIndex &&
         mutation.type === 'write' && key(mutation.pathParts).startsWith(`${key(parts)}/`))) continue;
@@ -775,11 +1022,12 @@ async function recoverLocked(
 }
 
 async function withReviewedMutationLock(
-  root: string, operation: (lease: ProjectMutationLease) => Promise<ReviewedUpdateTransactionOutcome>
+  root: string, operation: (lease: ProjectMutationLease) => Promise<ReviewedUpdateTransactionOutcome>,
+  userScope = false
 ): Promise<ReviewedUpdateTransactionOutcome> {
   let result: ReviewedUpdateTransactionOutcome | undefined;
   try {
-    return await withProjectMutationLock(root, async (lease) => {
+    return await (userScope ? withUserScopeMutationLock : withProjectMutationLock)(root, async (lease) => {
       result = await operation(lease);
       return result;
     });
@@ -805,6 +1053,9 @@ export async function inspectReviewedUpdateTransaction(
       planFingerprint: loaded.header.planFingerprint, transactionDigest: loaded.header.transactionDigest,
       schemaVersion: loaded.header.schemaVersion,
       ...(loaded.header.repairIdentity ? { repairIdentity: loaded.header.repairIdentity } : {}),
+      ...(loaded.header.adoptionIdentity ? { adoptionIdentity: loaded.header.adoptionIdentity } : {}),
+      ...(loaded.header.skillsIdentity ? { skillsIdentity: loaded.header.skillsIdentity } : {}),
+      ...(loaded.header.installationIdentity ? { installationIdentity: loaded.header.installationIdentity } : {}),
       destinations: loaded.committed ? [] : await destinations(root, loaded)
     };
   } catch (error) {
@@ -820,11 +1071,18 @@ export async function recoverReviewedUpdateTransaction(
       const root = await canonicalRoot(projectRoot);
       const loaded = await loadJournal(root, options.transactionKind ?? 'update', options.approvalStore);
       if (!loaded) return outcome('absent');
-      return await recoverLocked(root, loaded, options.approvalStore!, lease);
+      if (options.validateRecovery) {
+        try { await options.validateRecovery(loaded.header.planFingerprint); }
+        catch (error) { return { ...outcome('blocked', loaded), rollbackFailures: [errorMessage(error)] }; }
+      }
+      if (loaded.header.skillsIdentity && loaded.header.skillsIdentity.scope !== options.skillsScope) {
+        fail('skills recovery scope differs from its original registered identity.');
+      }
+      return await recoverLocked(root, loaded, options.approvalStore!, lease, options.onCommittedReadback);
     } catch (error) {
       return { ...outcome('blocked'), rollbackFailures: [errorMessage(error)] };
     }
-  });
+  }, options.transactionKind === 'installation' || options.transactionKind === 'skills' && options.skillsScope === 'user');
 }
 
 export async function applyReviewedUpdateTransaction(
@@ -833,7 +1091,14 @@ export async function applyReviewedUpdateTransaction(
   const kind = options.transactionKind ?? 'update';
   const journalPathParts = journalParts(kind);
   const repairIdentity = kind === 'repair' ? validateRepairExecutionIdentity(options.repairIdentity) : undefined;
-  if (kind === 'update' && options.repairIdentity !== undefined) fail('update cannot acquire repair identity or authority.');
+  const adoptionIdentity = kind === 'adoption' ? validateAdoptionExecutionIdentity(options.adoptionIdentity) : undefined;
+  const skillsIdentity = kind === 'skills' ? validateSkillsExecutionIdentity(options.skillsIdentity) : undefined;
+  const installationIdentity = kind === 'installation' ? validateInstallationExecutionIdentity(options.installationIdentity) : undefined;
+  if (kind !== 'repair' && options.repairIdentity !== undefined || kind !== 'adoption' && (options.adoptionIdentity !== undefined || options.adoptionDirectories !== undefined) ||
+      kind !== 'skills' && (options.skillsIdentity !== undefined || options.skillsDirectories !== undefined) ||
+      kind !== 'installation' && (options.installationIdentity !== undefined || options.installationDirectories !== undefined)) {
+    fail('an operation cannot acquire another recipe or adoption lane identity.');
+  }
   assertDigest(options.planFingerprint);
   const planFingerprint = options.planFingerprint;
   if (!options.approvalStore) fail('a user-local transaction approval store is required.');
@@ -853,6 +1118,12 @@ export async function applyReviewedUpdateTransaction(
     ...(mutation.mode === undefined ? {} : { mode: mutation.mode }) };
   });
   const conditions = new Map<string, { pathParts: string[]; stored: StoredSnapshot }>();
+  if (skillsIdentity) validateSkillsTransactionPaths(skillsIdentity, selected);
+  if (installationIdentity) validateInstallationTransactionPaths(installationIdentity, selected);
+  const skillsDirectories = skillsIdentity ? parseSkillsDirectories(options.skillsDirectories, selected) : undefined;
+  const adoptionDirectories = adoptionIdentity ? parseSkillsDirectories(options.adoptionDirectories, selected, 'adoption') : undefined;
+  const installationDirectories = installationIdentity ? parseSkillsDirectories(options.installationDirectories, selected) : undefined;
+  if (installationDirectories?.some((entry) => entry.state !== 'directory')) fail('native handover requires existing identity-bound destination parents.');
   if ((options.preconditions?.length ?? 0) > MAX_MUTATIONS * 4) fail('too many preconditions.');
   for (const snapshot of options.preconditions ?? []) {
     const parts = validParts(snapshot.pathParts);
@@ -883,8 +1154,15 @@ export async function applyReviewedUpdateTransaction(
       conditions.set(folded(key(mutation.pathParts)), { pathParts: mutation.pathParts, stored: original });
     }
     validateInventory(stored);
+    if (installationIdentity && stored.some((mutation) =>
+      mutation.original.kind !== (installationIdentity.intent === 'migrate' ? 'missing' : 'file'))) {
+      fail('native migration requires absent originals and native upgrade requires existing owned originals.');
+    }
     validatePaths([...conditions.values()].map((entry) => entry.pathParts));
+    const skillsDirectoryFrames: SkillsDirectoryFrame[] = [];
     const assertConditions = async () => {
+      await assertInstallationDirectories(root, { installationDirectories });
+      await assertSkillsDirectories(root, { skillsDirectories, adoptionDirectories }, skillsDirectoryFrames);
       for (const condition of conditions.values()) await assertSnapshot(root, condition.pathParts, condition.stored);
     };
     await assertConditions();
@@ -903,7 +1181,12 @@ export async function applyReviewedUpdateTransaction(
     }
     const body: JournalBody = {
       schemaVersion: repairIdentity ? repairSchemaVersions.journal : 1,
-      transactionKind: kind, ...(repairIdentity ? { repairIdentity } : {}),
+      transactionKind: kind, ...(repairIdentity ? { repairIdentity } : {}), ...(adoptionIdentity ? { adoptionIdentity } : {}),
+      ...(adoptionDirectories ? { adoptionDirectories } : {}),
+      ...(skillsIdentity ? { skillsIdentity } : {}),
+      ...(skillsDirectories ? { skillsDirectories } : {}),
+      ...(installationIdentity ? { installationIdentity } : {}),
+      ...(installationDirectories ? { installationDirectories } : {}),
       projectRoot: root, planFingerprint, nonce: randomUUID(),
       mutations: stored, missingDirectories: [...missing.values()]
     };
@@ -916,6 +1199,20 @@ export async function applyReviewedUpdateTransaction(
       }
     }
     let loaded: LoadedJournal | undefined;
+    const recordSkillsDirectory = async (frame: SkillsDirectoryFrame): Promise<void> => {
+      if (!loaded) return;
+      await lease.assertHeld();
+      await assertSkillsDirectories(root, header, skillsDirectoryFrames);
+      const digest = frameDigest(header, frame);
+      await options.approvalStore.write(header.planFingerprint, digest);
+      if (await options.approvalStore.verify(header.planFingerprint, digest) !== true) {
+        fail('skills directory creation identity was not durably sealed in the private approval store.');
+      }
+      loaded.snapshot = await appendFrame(root, loaded.snapshot, frame, lease);
+    };
+    const skillsGuard = skillsIdentity || adoptionIdentity ? {
+      header, created: skillsDirectoryFrames, record: recordSkillsDirectory
+    } : undefined;
     let committed = false;
     let operation = 'persist user-local transaction approval';
     try {
@@ -929,7 +1226,11 @@ export async function applyReviewedUpdateTransaction(
       await assertConditions();
       await assertNoPendingTransactions(root, kind);
       operation = `create ${key(journalPathParts)}`;
-      loaded = { header, snapshot: await createJournal(root, header, lease), pendingIndex: -1, committed: false };
+      loaded = {
+        header, snapshot: await createJournal(root, header, lease, skillsGuard), pendingIndex: -1, committed: false,
+        ...(skillsIdentity || adoptionIdentity ? { skillsDirectoryFrames } : {})
+      };
+      for (const frame of skillsDirectoryFrames) await recordSkillsDirectory(frame);
       await options.onCheckpoint?.({ phase: 'prepared' });
       for (const [index, mutation] of selected.entries()) {
         operation = `${mutation.type} ${key(mutation.pathParts)}`;
@@ -946,7 +1247,7 @@ export async function applyReviewedUpdateTransaction(
         await options.onCheckpoint?.({ phase: 'before-mutation', index });
         await assertConditions();
         await durableMutation(root, header, index, false, lease,
-          () => options.onCheckpoint?.({ phase: 'staged', index }) ?? Promise.resolve());
+          () => options.onCheckpoint?.({ phase: 'staged', index }) ?? Promise.resolve(), skillsGuard);
         conditions.set(folded(key(mutation.pathParts)), { pathParts: mutation.pathParts, stored: stored[index].target });
         await options.onCheckpoint?.({ phase: 'after-mutation', index });
       }
@@ -980,7 +1281,8 @@ export async function applyReviewedUpdateTransaction(
         } else {
           await options.approvalStore.remove(header.planFingerprint, header.transactionDigest);
           await options.approvalStore.remove(header.planFingerprint, rollbackCleanupDigest(header));
-          if (header.missingDirectories.some((parts) => key(parts) === '.liftoff')) {
+          if (kind !== 'skills' && kind !== 'installation' && kind !== 'adoption' &&
+            header.missingDirectories.some((parts) => key(parts) === '.liftoff')) {
             try {
               await lease.assertHeld();
               await rmdir(await safePath(root, ['.liftoff']));
@@ -997,11 +1299,15 @@ export async function applyReviewedUpdateTransaction(
         );
       }
       const failures = [...recovered?.rollbackFailures ?? [], ...recovered?.cleanupFailures ?? []];
+      const retention = recovered?.retainedDirectories?.length
+        ? ` Adoption directories were retained without deletion authority: ${recovered.retainedDirectories.map(key).join(', ')}.`
+        : '';
+      const rollbackSummary = kind === 'adoption' ? 'All attributable file changes were rolled back.' : 'All attributable changes were rolled back.';
       throw new ReviewedUpdateTransactionError(
         `Project ${kind} failed to ${operation}: ${errorMessage(error)} ${failures.length
-          ? `Recovery incomplete: ${failures.join('; ')}` : 'All attributable changes were rolled back.'}`,
+          ? `Recovery incomplete: ${failures.join('; ')}` : rollbackSummary}${retention}`,
         failures
       );
     }
-  });
+  }, kind === 'installation' || skillsIdentity?.scope === 'user');
 }

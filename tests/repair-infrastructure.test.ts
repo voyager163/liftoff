@@ -295,6 +295,16 @@ resource "azurerm_storage_container" "extra" {
     expect(repeated.mutations).toEqual([]);
     expect(repeated.files).toEqual(candidate.files);
     expect(repeated.artifacts).toEqual(candidate.artifacts);
+    const application = candidate.artifacts.find((artifact) => artifact.logicalName === 'opentofu-application-main')!;
+    const file = path.join(root, ...application.pathParts);
+    const customized = `${await readFile(file, 'utf8')}\n# Developer-owned setting documentation.\n`;
+    await writeFile(file, customized);
+    const observed = await inspectInfrastructureRepair(root, repairedManifest);
+    expect(observed.blockers).toEqual([]);
+    expect(observed.mutations).toEqual([]);
+    expect(observed.artifacts).toEqual(candidate.artifacts);
+    expect(observed.files.find((entry) => entry.pathParts.join('/') === application.pathParts.join('/'))?.content).toBe(customized);
+    expect(application.generationHash).not.toBe(`sha256:${createHash('sha256').update(customized).digest('hex')}`);
   });
 
   it('prefixes selected-root guidance while preserving custom README prose, mode and original snapshot', async () => {

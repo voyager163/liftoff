@@ -27,11 +27,11 @@ The system SHALL expose repository governance as an append-only catalog selectio
 - **AND** identifies the accepted profile values
 
 ### Requirement: The selected profile generates one canonical managed-core handoff
-The system SHALL render a versioned canonical policy, schema-versioned workload context, activation guide, and thin setup and read-only assessment integrations for each selected coding agent as explicitly named managed-core artifacts. Policy and context SHALL live under `.liftoff/governance`; Copilot and Claude SHALL retain their exact existing native paths, and Codex SHALL use its exact project-local `.agents/skills` paths. Integrations SHALL reference the canonical files and CLI instead of duplicating policy or evaluation logic. The logical `liftoff-setup` operation SHALL remain the sole setup entry point in each agent's native invocation form; assessment SHALL not become a setup alias.
+The system SHALL render one canonical versioned policy, schema-versioned workload context, activation guide, and thin selected-agent setup, assessment and repair integrations as explicitly named managed-core artifacts. Policy and context SHALL remain under their registered `.liftoff/governance` namespace. Existing Copilot, Claude and Codex integration identities and native paths SHALL remain compatible until an explicitly reviewed migration changes their transport. Integrations SHALL consume the canonical skill/policy contracts and public CLI rather than duplicate policy or execution logic. The logical setup operation SHALL remain one entry point per host, with separate assessment and repair operations.
 
 #### Scenario: Generate for Copilot and Claude
 - **WHEN** a project selects the single-maintainer profile, Copilot, and Claude
-- **THEN** it contains the canonical handoff and both integration kinds for each selected agent
+- **THEN** it contains the canonical handoff and required setup, assessment, and repair integrations for each selected agent
 - **AND** each file has a stable logical name and manifest content hash
 
 #### Scenario: Generate for one agent
@@ -51,8 +51,8 @@ The system SHALL render a versioned canonical policy, schema-versioned workload 
 
 #### Scenario: Generate for Codex
 - **WHEN** Codex is selected with the profile
-- **THEN** it receives native setup and assessment skills with distinct Codex identities
-- **AND** both use the same policy, local/activation boundary, and assessment contract as the other agents
+- **THEN** it receives native setup, assessment, and repair integrations with distinct Codex identities
+- **AND** they use the same policy, approval, scope, and repair contracts as other selected hosts, with managed hashes and negotiated capabilities rather than independent skill SemVer
 
 ### Requirement: Governance context is deterministic and workload-aware
 The generated context SHALL identify the selected supported workload, artifact
@@ -108,28 +108,16 @@ retired Power Apps boundary as a supported or generic workload context.
 - **AND** does not authorize an agent run or any GitHub, deployment, or ruleset action
 
 ### Requirement: Agent activation begins with read-only Phase 0
-The generated setup launchers SHALL instruct the selected agent to require a
-committed and pushed repository before governance Phase 0, read the canonical
-policy and context, and perform a read-only classification before proposing
-changes. Phase 0 SHALL inspect artifact type, languages, package managers,
-working build and test commands, branches, default branch, workflows and exact
-job names, rulesets, tags, releases, environments, deployments, security
-scanning, runner access, monitoring and alert routing, component health depth,
-and platform capabilities. When private Staging DAST applies, Phase 0 SHALL also
-inspect the repository's Staging subscription, existing runner and network
-resources, Azure and GitHub permissions, enterprise network-configuration
-policy, address space, private DNS and routing, egress requirements, cost, state
-ownership, and teardown authority. It SHALL report gaps, inapplicable controls,
-and an ordered plan, then stop for explicit user approval. The separate
-read-only assessment SHALL not require commit, push, or activation and SHALL
-not satisfy Phase 0 or its approval gate merely by producing a report.
+Setup SHALL require verified local/publication prerequisites, read the canonical policy/context and perform the selected scope's read-only classification before proposing remote changes. Repository classification SHALL observe artifact type, languages, package managers, working build/test commands, repository identity, refs, controls, source workflows, exact check contexts and applicable GitHub capabilities without Azure credentials. Full activation SHALL additionally inspect actual applicable environment, artifact, deployment, provider, security-scanning, monitoring/alert routing, health, runner and state-path prerequisites with explicit public bindings and authorized access.
+
+When private Staging DAST applies, its discovery SHALL cover the selected subscription, runner/network resources, permissions, network-configuration policy, address space, DNS/routing, egress, costs, state ownership and teardown authority. Findings SHALL distinguish gaps, inapplicable controls and unproven applicability, report an ordered plan, and stop before unapproved effects. Assessment remains independently available before publication and SHALL NOT satisfy execution discovery or approval merely by producing a report.
 
 #### Scenario: Run before a remote exists
 - **WHEN** an agent is asked to activate governance without a resolvable GitHub repository
 - **THEN** it reports the missing prerequisite and performs no mutation
 
 #### Scenario: Complete Phase 0
-- **WHEN** the agent can inspect the local project and GitHub repository
+- **WHEN** required local and authorized remote observations for the selected discovery scope are available
 - **THEN** it reports every required classification and named gap with evidence
 - **AND** identifies controls that are unavailable or meaningless for the workload
 - **AND** stops before writing files or changing GitHub or Azure
@@ -142,6 +130,11 @@ not satisfy Phase 0 or its approval gate merely by producing a report.
 - **WHEN** a developer requests only a governance assessment on an unpublished Liftoff project
 - **THEN** assessment may report local differences and unobserved live controls
 - **AND** it does not create a remote, push the repository, or advance Phase 0
+
+#### Scenario: Repository-only adoption precedes Azure
+- **WHEN** repository scope is explicitly selected with no Azure configuration
+- **THEN** its required GitHub discovery can proceed
+- **AND** Azure input, credential, runner or production qualification is not requested as a prerequisite
 
 ### Requirement: Azure resource providers are ready before dependent provisioning
 The canonical profile SHALL derive the minimal Azure resource-provider
@@ -209,25 +202,19 @@ an action and direction supported by that tag.
 - **AND** DNS reachability is verified before dependent provisioning
 
 ### Requirement: The single-maintainer profile preserves its fixed governance invariants
-The canonical profile SHALL require repository-scoped Vincent Driessen GitFlow
-for versioned-release repositories, zero human merge or deployment approvals,
-pull requests gated entirely by automated fail-closed checks, no `CODEOWNERS`, no
-org-level substitute, the built-in `GITHUB_TOKEN` and GitHub Actions bypass
-identity where automation must act, and immutable semantic releases on `main`.
-Conditional provisioning of the VNet-injected GitHub-hosted larger runner
-required for private Staging DAST SHALL be the only permitted org- or
-enterprise-level provisioning exception. The profile SHALL require deviations
-for genuine continuous delivery or platform limitations to be reported and
-approved rather than silently misrepresented.
+The canonical policy SHALL retain repository-scoped Vincent Driessen GitFlow for versioned-release repositories, `main` and `develop` as permanent branches, temporary feature/release/hotfix/automation branches, zero required human merge/deployment reviewers, PR-only protected-branch changes, automated fail-closed checks, no CODEOWNERS and no branch bypasses. Supported automation SHALL use the approved built-in token or scoped identity without bypassing protected-branch checks. Version tags SHALL have restricted creation and immutable update/deletion rules. Independent Liftoff scope/cost/enforcement approval SHALL NOT become a GitHub required human reviewer.
+
+Conditional provisioning of the repository-dedicated VNet-injected GitHub-hosted larger runner for private Staging DAST SHALL remain the only declared org/enterprise provisioning exception. Genuine continuous-delivery or platform deviations SHALL require explicit approved adaptation, not silent misrepresentation.
 
 #### Scenario: Configure pull-request governance
 - **WHEN** an approved governance change defines protected-branch pull-request rules
 - **THEN** it sets approving review count to zero and disables code-owner and last-push approval requirements
 - **AND** does not create a human approval gate
+- **AND** branch changes still require PRs and successful applicable checks without bypass actors
 
 #### Scenario: Repository scope cannot enforce a control
 - **WHEN** a required control other than the approved VNet-injected runner provisioning exception is unavailable at repository scope
-- **THEN** the agent reports and omits that control
+- **THEN** the limitation is reported and required unsupported enforcement remains a blocker for its applicable scope
 - **AND** it does not propose an org-level ruleset, required workflow, GitHub App installation, or other org-level substitute
 
 #### Scenario: Repository ships continuously
@@ -239,6 +226,11 @@ approved rather than silently misrepresented.
 - **WHEN** private Staging qualification requires DAST and no suitable VNet-injected larger runner is assigned
 - **THEN** the agent keeps release qualification blocked and reports whether the narrowly scoped runner stack can be provisioned
 - **AND** it does not create a self-hosted runner or generalize the exception to any other org-level control
+
+#### Scenario: Automation needs to update a protected branch
+- **WHEN** an approved automated operation prepares a merge or back-merge
+- **THEN** it uses the permitted PR/check path
+- **AND** it does not add a branch bypass to make the operation succeed
 
 ### Requirement: Security and release policy adapts without duplicate or theatrical controls
 The canonical profile SHALL map applicable security stages to the events where
@@ -450,7 +442,7 @@ success-shaped substitute.
 
 ### Requirement: Updated policy content preserves the Liftoff activation envelope
 The canonical policy SHALL retain valid versioned Liftoff frontmatter, carry
-normative policy version 6, and preserve the activation protocol that
+normative policy version 8 with the coordinated activation contract and credential-policy schema 2, and preserve the activation protocol that
 distinguishes a generated handoff from live enforcement. Updating the normative
 baseline SHALL preserve the pushed-repository prerequisite, read-only Phase 0,
 explicit conversational approval boundary, user-owned activation baseline,
@@ -458,9 +450,11 @@ post-approval spec workflow, and ruleset-last sequencing. Required controls
 that remain unavailable or unsupported SHALL stay visible as gaps or blockers
 rather than being silently removed or weakened to obtain a green outcome.
 
+Discovery and ruleset-last sequencing SHALL apply within the requested scope. Repository-only enforcement SHALL remain distinct from full cloud/production activation.
+
 #### Scenario: Liftoff renders the revised policy
 - **WHEN** a project selects the single-maintainer governance profile
-- **THEN** the generated policy contains the revised normative baseline and policy version 6
+- **THEN** the generated policy contains the revised normative baseline, policy version 8, credential-policy schema 2, and coherent declared activation identity
 - **AND** it remains a valid local handoff rather than a claim of live enforcement
 
 #### Scenario: Updated prompt omits Liftoff metadata
@@ -495,19 +489,22 @@ SHALL bind applicable required contexts explicitly for `develop`, `main`,
 covers every protected ref. Rulesets SHALL be installed last through idempotent
 repository-scoped automation and read back from GitHub after application.
 
+Repository-only scope SHALL qualify source-validation contexts without depending on staging or production deployment; full activation SHALL independently require its cloud/artifact/deployment qualification. Registered owned controls SHALL be reconciled idempotently and every mutation read back before success.
+
 #### Scenario: Required context has not run
 - **WHEN** a proposed required status context has never been observed green
 - **THEN** the ruleset application remains blocked
 
 #### Scenario: Required check is skipped or cancelled
-- **WHEN** an aggregator evaluates a required dependency that is skipped or cancelled
+- **WHEN** an aggregator evaluates a required dependency that is skipped, cancelled, neutral, or missing
 - **THEN** it treats the dependency as not successful
 - **AND** does not report a passing gate
 
 #### Scenario: Prove a gate can fail
 - **WHEN** a workflow context is proposed as required
-- **THEN** evidence includes one controlled violation that made that exact context red
+- **THEN** evidence includes a controlled unmerged fixture that made that exact real validation context fail
 - **AND** ruleset installation waits for both positive and negative evidence
+- **AND** arbitrary infrastructure failure or a posted status without the required run is insufficient
 
 #### Scenario: Release and hotfix bindings differ
 - **WHEN** a proposed required context applies differently to `release/*` and `hotfix/*` than to `main` or `develop`
@@ -516,8 +513,13 @@ repository-scoped automation and read back from GitHub after application.
 
 #### Scenario: Apply rulesets twice
 - **WHEN** the approved idempotent apply operation runs a second time against matching live rulesets
-- **THEN** it performs no destructive replacement
+- **THEN** it performs zero writes
 - **AND** live read-back still matches the committed exact rule payloads
+
+#### Scenario: Existing foreign controls are present
+- **WHEN** a repository contains protections outside the exact owned-control inventory
+- **THEN** reconciliation preserves them and reports conflicts or required separate review
+- **AND** it does not delete or replace them by name prefix
 
 ### Requirement: Existing main history is grandfathered explicitly
 For an existing repository, Phase 0 SHALL identify the current `main` tip proposed as the governance activation baseline. After approval, implementation SHALL record that exact SHA in a user-owned activation record and enforce release/tag anomaly rules only for governed production commits after it. It SHALL NOT invent a synthetic release, move a tag, or rewrite existing history.
@@ -545,6 +547,8 @@ activation status SHALL be established only by the user-owned activation
 evidence and read-back of repository settings; Liftoff SHALL NOT infer it from
 the presence of policy, workflow, or ruleset source files.
 
+Generated context, guides, plans, manifests and diagnostics SHALL distinguish handoff-generated, truthful partial handoff, verified repository enforcement and full activation. Scope completion SHALL require current user-owned evidence and actual readback.
+
 #### Scenario: Fresh governed scaffold
 - **WHEN** initialization completes with the profile enabled
 - **THEN** completion reports that the governance handoff was generated and activation is deferred
@@ -556,8 +560,76 @@ the presence of policy, workflow, or ruleset source files.
 
 #### Scenario: Governance adoption is partial
 - **WHEN** a legacy update preserves one or more unrecorded conflicting handoff destinations
-- **THEN** validation accepts the truthful schema-v7 managed-core ownership record
+- **THEN** validation accepts only truthful managed ownership under the supported manifest contract
 - **AND** doctor warns that the local handoff is incomplete and directs the developer to inspect conflicts before considering `--force`
+
+#### Scenario: Repository scope finishes first
+- **WHEN** repository controls are verified while cloud work remains incomplete
+- **THEN** the report states repository enforcement success separately
+- **AND** full activation is not marked complete
+
+### Requirement: Repository-only enforcement is an explicitly selected supported boundary
+The profile SHALL offer repository scope that discovers refs and controls, publishes source-validation workflows, qualifies exact checks, obtains owner-reviewed plan approval, reconciles owned settings/rulesets and performs independent readback without Azure configuration or production rollout. It SHALL preserve the fixed GitFlow/security invariants and current history. Required real GitHub execution SHALL not remain injected-only for the coordinated release.
+
+#### Scenario: Enforce before provisioning cloud resources
+- **WHEN** a published supported repository selects repository-only scope and supplies its actual GitHub prerequisites and approvals
+- **THEN** repository enforcement can complete without staging-qualified or production-rehearsed proof
+- **AND** no Azure resource, production release or version tag is created
+
+#### Scenario: Approval or evidence becomes stale
+- **WHEN** refs, actors, workflow source, controls or other reviewed inputs change
+- **THEN** reconciliation rejects the old plan before unapproved writes
+- **AND** a new exact review is required
+
+#### Scenario: Control reconciliation partly fails
+- **WHEN** some approved writes succeed but another write or readback fails
+- **THEN** their exact outcomes and recovery boundary are retained
+- **AND** the engine does not automatically remove protection to simplify recovery
+
+#### Scenario: GitHub capability is genuinely unavailable
+- **WHEN** the account lacks a required observable permission or product capability
+- **THEN** the report identifies that specific prerequisite
+- **AND** missing implementation is separately classified rather than disguised as a request for cloud credentials
+
+### Requirement: Deferred production uses an explicit reviewed main hold
+When production qualification is deferred, repository-only enforcement SHALL support a separately approved main-update hold bound to exact owned controls and the current main baseline. The hold SHALL prevent unqualified main updates without synthetic staging success, branch bypass, history rewrite, production release or version-tag creation. Removing or replacing it SHALL require real applicable qualification and a fresh separately approved control plan.
+
+#### Scenario: Establish repository controls while deferring production
+- **WHEN** the owner approves repository enforcement and its displayed main hold
+- **THEN** the repository records and verifies the hold independently from cloud activation
+- **AND** existing main history is preserved without a fabricated release
+
+#### Scenario: Production proof is still absent
+- **WHEN** a later operation asks to lift the hold without required genuine qualification
+- **THEN** it remains blocked
+- **AND** repository completion or the earlier approval does not authorize release
+
+#### Scenario: Production is qualified later
+- **WHEN** actual required qualification is current and the owner separately approves the exact reconciliation
+- **THEN** only the verified owned hold/control changes are applied and read back
+- **AND** foreign protections and immutable historical records remain intact
+
+#### Scenario: Main changed since review
+- **WHEN** the current main tip or owned hold differs from the reviewed observation
+- **THEN** the old hold-transition plan is rejected without forcing the branch or restoring stale controls
+
+### Requirement: Repository reconciliation preserves current GitHub review-rule semantics
+Discovery, planning, policy comparison, approved reconciliation and readback SHALL use the same supported interpretation of current pull-request rule parameters, including dismissal restrictions, the extra-approval flag and required reviewers. Neutral supported defaults SHALL NOT create an unsupported-response failure or unnecessary control mutation. Meaningful constraints and genuinely unknown or malformed enforcement data SHALL remain visible and SHALL NOT be discarded to satisfy the zero-review profile or obtain a passing readback.
+
+#### Scenario: GitHub adds neutral default fields to readback
+- **WHEN** an otherwise matching zero-review ruleset returns the supported disabled/empty defaults and neutral extra-approval flag
+- **THEN** current normalization and effective-policy comparison accept that observation
+- **AND** matching reconciliation remains zero-write without removing the provider fields
+
+#### Scenario: A meaningful reviewer restriction differs
+- **WHEN** live reviewer or dismissal constraints differ meaningfully from the reviewed target
+- **THEN** the exact difference is retained for policy evaluation and any required separately approved reconciliation
+- **AND** a top-level zero count does not hide it
+
+#### Scenario: Readback contains unknown enforcement
+- **WHEN** the provider returns an unsupported or malformed enforcement field
+- **THEN** complete enforcement verification remains blocked
+- **AND** source files, model assertions or stripping the field do not supply replacement proof
 
 ### Requirement: Transient local bootstrap state has a fixed retirement lifecycle
 When a private remote backend cannot be reached until repository-owned
@@ -639,18 +711,21 @@ identity and exact graph hash.
 - **THEN** reconciliation blocks without changing evidence, phase state, or the active change
 
 ### Requirement: Credential policy is consistent across repositories
-The governance profile SHALL use one credential-policy schema for PAT and
-existing GitHub App authentication. Repository-specific names and allowed
-workflows SHALL be values in that schema rather than model-generated prose.
+The governance profile SHALL use credential-policy schema 2 for current PAT and existing GitHub App authentication. Repository-specific names and allowed workflows SHALL be values in that schema rather than model-generated prose. Actual provider grants and the broader organization, billing and Actions-settings read disclosure SHALL be explicit and consistent across both authentication kinds; repository selection and Liftoff execution endpoints SHALL retain their narrower independently approved boundaries. Schema-1 records SHALL remain readable only through their exact original contracts, not be normalized into current permission authority.
 
 #### Scenario: Two repositories require PAT fallback
-- **WHEN** setup enrolls runner-preflight credentials
+- **WHEN** setup enrolls runner-preflight credentials through a supported independently verified path
 - **THEN** both use the `<repo>-runner-preflight-read` display-name template and `RUNNER_CONFIGURATION_READ_TOKEN` secret
-- **AND** each policy records only its own repository and explicit allowed jobs
+- **AND** each policy binds its own repository, explicit allowed jobs, actual provider grant and fresh approval without claiming the organization grant is repository-only
 
 #### Scenario: A workflow expands credential exposure
 - **WHEN** a new job or workflow references the credential outside the recorded allowlist
 - **THEN** verification fails before the workflow can satisfy qualification evidence
+
+#### Scenario: A schema-1 policy already exists
+- **WHEN** current execution requires the broader provider grant at a project with an existing schema-1 policy
+- **THEN** the policy and its original ownership/approval history remain unchanged until an exact registered transition is separately approved
+- **AND** the new approval and independently verified grants cannot be inferred from the prior policy or unrelated project-update consent
 
 ### Requirement: Local handoff completion is separate from policy activation
 The profile's single setup integration SHALL distinguish local completion from implemented cloud/governance activation while guiding the requested full journey through both. It SHALL preserve local-only operation and require separate authority before publication, credentials, infrastructure/state changes, and enforcement. The existing fixed policy controls SHALL remain mandatory where applicable; local repair observations SHALL not satisfy live proof requirements.

@@ -1,0 +1,1 @@
+export const NATIVE_LAUNCHER_MAX_BYTES = 8 * 1024 * 1024;

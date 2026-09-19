@@ -5,8 +5,8 @@ import { currentActivationIdentity } from '../domain/governance/activation/graph
 import type { ActivationIdentity, PhaseId } from '../domain/governance/activation/types.js';
 import {
   historicalActivationIdentities,
-  isHistoricalActivationIdentity, isHistoricalV1ActivationIdentity, isHistoricalV2ActivationIdentity,
-  type HistoricalActivationIdentity, type HistoricalV1ActivationIdentity, type HistoricalV2ActivationIdentity
+  isHistoricalActivationIdentity, isHistoricalV1ActivationIdentity, isHistoricalV2ActivationIdentity, isHistoricalV3ActivationIdentity, isHistoricalV4Policy7ActivationIdentity,
+  type HistoricalActivationIdentity, type HistoricalV1ActivationIdentity, type HistoricalV2ActivationIdentity, type HistoricalV3ActivationIdentity, type HistoricalV4Policy7ActivationIdentity
 } from '../domain/governance/policy/identity.js';
 import type { ActivationSuccessorMigrationId } from './compatibility.js';
 import { assertSafeHistoricalRecord } from './historical-safety.js';
@@ -142,7 +142,7 @@ export function historyCaseKey(parts: readonly string[]): string {
 
 export function historicalIdentity(value: unknown, label: string): HistoricalActivationIdentity {
   if (!isHistoricalActivationIdentity(value)) {
-    historyFail(label, 'is not an exact registered historical activation v1/v2 identity.', 'unsupported-historical-identity');
+    historyFail(label, 'is not an exact registered historical activation identity.', 'unsupported-historical-identity');
   }
   return { ...value };
 }
@@ -157,6 +157,13 @@ export function historicalV1Identity(value: unknown, label: string): HistoricalV
 export function historicalV2Identity(value: unknown, label: string): HistoricalV2ActivationIdentity {
   if (!isHistoricalV2ActivationIdentity(value)) {
     historyFail(label, 'is not the exact registered historical activation v2 identity.', 'unsupported-historical-identity');
+  }
+  return { ...value };
+}
+
+export function historicalV3Identity(value: unknown, label: string): HistoricalV3ActivationIdentity {
+  if (!isHistoricalV3ActivationIdentity(value)) {
+    historyFail(label, 'is not the exact registered historical activation v3 identity.', 'unsupported-historical-identity');
   }
   return { ...value };
 }
@@ -359,6 +366,20 @@ export type HistoricalV2SourceMigrationJournal = Omit<MigrationJournal, 'laneId'
   targetIdentity: HistoricalV2ActivationIdentity;
 };
 
+export type HistoricalV3SourceMigrationJournal = Omit<MigrationJournal, 'laneId' | 'sourceIdentity' | 'targetIdentity'> & {
+  laneId: 'activation-v1-to-v3' | 'activation-v2-to-v3';
+  sourceIdentity: HistoricalV1ActivationIdentity | HistoricalV2ActivationIdentity;
+  targetIdentity: HistoricalV3ActivationIdentity;
+};
+
+export type HistoricalV4Policy7SourceMigrationJournal = Omit<MigrationJournal, 'laneId' | 'sourceIdentity' | 'targetIdentity'> & {
+  laneId: 'activation-v1-to-v4' | 'activation-v2-to-v4' | 'activation-v3-to-v4';
+  sourceIdentity: HistoricalV1ActivationIdentity | HistoricalV2ActivationIdentity | HistoricalV3ActivationIdentity;
+  targetIdentity: HistoricalV4Policy7ActivationIdentity;
+};
+
+export type HistoricalSourceMigrationJournal = HistoricalV2SourceMigrationJournal | HistoricalV3SourceMigrationJournal | HistoricalV4Policy7SourceMigrationJournal;
+
 function readMigrationJournalFields(value: unknown) {
   const label = 'migrationJournal';
   assertSafeHistoricalRecord(value, label);
@@ -426,7 +447,9 @@ export function validateMigrationJournal(value: unknown): MigrationJournal {
   const fields = readMigrationJournalFields(value);
   const journal = historyRecord(value, 'migrationJournal');
   const sourceIdentity = historicalIdentity(journal.sourceIdentity, 'migrationJournal.sourceIdentity');
-  const laneId = sourceIdentity.activationContractVersion === 1 ? 'activation-v1-to-v3' : 'activation-v2-to-v3';
+  const laneId = sourceIdentity.activationContractVersion === 1 ? 'activation-v1-to-v4' :
+    sourceIdentity.activationContractVersion === 2 ? 'activation-v2-to-v4' :
+      sourceIdentity.activationContractVersion === 3 ? 'activation-v3-to-v4' : 'activation-v4-policy7-to-policy8';
   historyLiteral(journal.laneId, laneId, 'migrationJournal.laneId');
   return {
     ...fields, laneId, sourceIdentity,
@@ -444,4 +467,35 @@ export function validateHistoricalV2SourceMigrationJournal(value: unknown): Hist
     sourceIdentity: historicalV1Identity(journal.sourceIdentity, 'historicalMigrationJournal.sourceIdentity'),
     targetIdentity: historicalV2Identity(journal.targetIdentity, 'historicalMigrationJournal.targetIdentity')
   };
+}
+
+export function validateHistoricalV3SourceMigrationJournal(value: unknown): HistoricalV3SourceMigrationJournal {
+  const fields = readMigrationJournalFields(value);
+  const journal = historyRecord(value, 'historicalV3MigrationJournal');
+  const sourceIdentity = isHistoricalV1ActivationIdentity(journal.sourceIdentity)
+    ? historicalV1Identity(journal.sourceIdentity, 'historicalV3MigrationJournal.sourceIdentity')
+    : historicalV2Identity(journal.sourceIdentity, 'historicalV3MigrationJournal.sourceIdentity');
+  const laneId = sourceIdentity.activationContractVersion === 1 ? 'activation-v1-to-v3' : 'activation-v2-to-v3';
+  historyLiteral(journal.laneId, laneId, 'historicalV3MigrationJournal.laneId');
+  return {
+    ...fields, laneId, sourceIdentity,
+    targetIdentity: historicalV3Identity(journal.targetIdentity, 'historicalV3MigrationJournal.targetIdentity')
+  };
+}
+
+export function validateHistoricalV4Policy7SourceMigrationJournal(value: unknown): HistoricalV4Policy7SourceMigrationJournal {
+  const fields = readMigrationJournalFields(value);
+  const journal = historyRecord(value, 'policy7.migrationJournal');
+  const sourceIdentity = isHistoricalV1ActivationIdentity(journal.sourceIdentity)
+    ? historicalV1Identity(journal.sourceIdentity, 'policy7.migrationJournal.sourceIdentity')
+    : isHistoricalV2ActivationIdentity(journal.sourceIdentity)
+      ? historicalV2Identity(journal.sourceIdentity, 'policy7.migrationJournal.sourceIdentity')
+      : historicalV3Identity(journal.sourceIdentity, 'policy7.migrationJournal.sourceIdentity');
+  const laneId = sourceIdentity.activationContractVersion === 1 ? 'activation-v1-to-v4' :
+    sourceIdentity.activationContractVersion === 2 ? 'activation-v2-to-v4' : 'activation-v3-to-v4';
+  historyLiteral(journal.laneId, laneId, 'policy7.migrationJournal.laneId');
+  if (!isHistoricalV4Policy7ActivationIdentity(journal.targetIdentity)) {
+    historyFail('policy7.migrationJournal.targetIdentity', 'requires the exact pre-amendment candidate identity.');
+  }
+  return { ...fields, laneId, sourceIdentity, targetIdentity: { ...journal.targetIdentity } };
 }

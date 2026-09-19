@@ -10,7 +10,7 @@ import {
 import { applicationCandidateDirectories, applicationCandidateFiles } from './application-candidate.js';
 import { applicationPreparationBounds } from './application-preparation-policy.js';
 import type { ApplicationPrivateOutputRole, ApplicationResolvedPreparation } from './application-preparation-types.js';
-import type { ApplicationPatchCandidate } from './application-types.js';
+import type { ApplicationCandidate } from './application-types.js';
 
 function sameParts(left: readonly string[], right: readonly string[]): boolean {
   return applicationPathKey(left) === applicationPathKey(right);
@@ -23,7 +23,7 @@ export class ApplicationCandidateProtection {
   private readonly frozen = new Map<string, { role: ApplicationPrivateOutputRole; digest: string }>();
   private readonly fileHashes = new Map<string, { stamp: string; digest: string }>();
 
-  constructor(private readonly candidate: ApplicationPatchCandidate, private readonly workspace: string) {
+  constructor(private readonly candidate: ApplicationCandidate, private readonly workspace: string) {
     this.files = applicationCandidateFiles(candidate);
     this.directories = applicationCandidateDirectories(candidate);
   }

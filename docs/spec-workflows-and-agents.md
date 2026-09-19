@@ -271,10 +271,14 @@ The permission must come from the actual user for the same immutable plan and
 action scopes. A generic repair request, unrelated approval, autopilot mode or
 agent-generated Yes supplies no action-specific consent.
 
-Missing verification tools or dependencies are explicit blockers. This repair
-interface supplies no `npm ci`/`npm install` or Python environment preparation.
-Do not invent an installer, copy live dependency trees, inherit credentials or
-regenerate locks to make verification pass. `go test`/`go vet` may download modules;
+Missing verification tools or dependencies are explicit blockers unless the exact
+registered preparation is supported, reviewed, and separately approved.
+Repair contract 1 includes version-1 `npm-ci`, `uv-locked-sync`, and
+`go-mod-download` preparation; inspect `liftoff repair --capabilities --json`
+for the actual matrix and restrictions. Preparation uses the exact staged
+manifests/locks and private dependency/cache locations; it does not install
+missing toolchains, permit generic `npm install`, copy live dependency trees,
+inherit credentials, or regenerate locks. `go test`/`go vet` may download modules;
 declare and separately approve those network effects before execution.
 Report only actual declared checks: a frontend with no test script has build-only
 evidence, not passing tests. Unavailable Node/Vue dependencies mean verification

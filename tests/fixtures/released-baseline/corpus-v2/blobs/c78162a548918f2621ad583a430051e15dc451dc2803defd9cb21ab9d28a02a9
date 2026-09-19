@@ -1,0 +1,39 @@
+{
+	"evidenceId": "published-v2-remote-import-verified",
+	"header": {
+		"schemaVersion": 2,
+		"identity": {
+			"liftoffVersion": "0.11.0",
+			"manifestArtifactVersion": 7,
+			"policyVersion": "6",
+			"activationContractVersion": 2,
+			"phaseGraphSchemaVersion": 1,
+			"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+			"activationStateSchemaVersion": 2,
+			"evidenceHeaderSchemaVersion": 2,
+			"approvalEnvelopeSchemaVersion": 2,
+			"supersessionSchemaVersion": 1,
+			"credentialPolicySchemaVersion": 1
+		},
+		"phaseGraphHash": "ac160e3fc86f3e438141d985658e09f419508b3adbe176ddd13100d5dfdee47c",
+		"phaseId": "remote-import-verified",
+		"baselineSha": "3a7c1eb80b1d660cfe83c2a4f76826c9197ec0583e3a4e580d989d240c491b97",
+		"inputDigest": "f1fe695554f800b3bc790a293730d5957f63b10e44403630bed022a6e1ed7583",
+		"transition": {
+			"phaseId": "remote-import-verified",
+			"baselineSha": "3a7c1eb80b1d660cfe83c2a4f76826c9197ec0583e3a4e580d989d240c491b97",
+			"inputDigest": "f1fe695554f800b3bc790a293730d5957f63b10e44403630bed022a6e1ed7583",
+			"transitionDigest": "99acbfb8434c869894a1e80355afb17d3271cb5d4a660bedb3b69b5b47259e3b"
+		},
+		"repositoryId": "local:00000000-0000-4000-8000-000000000002",
+		"phaseContractDigest": "b5895e9941cd86f6d450be8f01fc40933e139d538f6305c98f1e982511fdc033",
+		"result": "verified",
+		"producedAt": "2026-09-01T08:00:00.000Z",
+		"producer": "historical-independent-observation",
+		"bodyDigest": "3c2b3a4505d6b8263f0b9b44051977d5786f50d0c4f075df5b593905c12e4208"
+	},
+	"payload": {
+		"kind": "remote-import-verified.v1",
+		"historicalObservation": true
+	}
+}

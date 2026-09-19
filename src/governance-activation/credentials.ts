@@ -18,6 +18,9 @@ import type {
   GitHubAppCredentialMetadata
 } from '../domain/governance/activation/types.js';
 import {
+  requiredCredentialProviderPermissions,
+  runnerPreflightProviderReadDisclosure,
+  type ObservedCredentialPermissions,
   runnerPreflightDisplayNameTemplate,
   runnerPreflightOrganizationPermissions,
   runnerPreflightPatLifetimeDays,
@@ -56,8 +59,9 @@ export interface DiscoveredGitHubAppInstallation {
   selection: 'selected-repository' | 'all-repositories';
   repositories: readonly CredentialRepositoryIdentity[];
   permissions: CredentialPermissionSet;
+  observedPermissions: ObservedCredentialPermissions;
   permissionsVerifiedAt: string;
-  readbackDigest?: string;
+  readbackDigest: string;
   token: {
     canGenerate: boolean;
     ttlSeconds: number;
@@ -80,6 +84,8 @@ export interface PatEnrollmentGuidance {
   repository: CredentialRepositoryIdentity;
   selectedRepositoryOnly: true;
   permissions: CredentialPermissionSet;
+  providerPermissions: ObservedCredentialPermissions;
+  providerReadDisclosure: typeof runnerPreflightProviderReadDisclosure;
   writes: readonly [];
   expiresAt: string;
   rotationLeadDays: typeof runnerPreflightRotationLeadDays;
@@ -269,15 +275,13 @@ export function buildPatEnrollmentGuidance(input: {
     repository: input.repository,
     selectedRepositoryOnly: true,
     permissions: runnerPreflightPermissions(),
+    providerPermissions: requiredCredentialProviderPermissions('fine-grained-pat'),
+    providerReadDisclosure: runnerPreflightProviderReadDisclosure,
     writes: [],
     expiresAt: canonicalIso(expiresAt),
     rotationLeadDays: runnerPreflightRotationLeadDays,
     rotationDueAt: canonicalIso(rotationDueAt)
   };
-}
-
-function digestPayloadFree(value: unknown): string {
-  return canonicalSha256(value);
 }
 
 function proofMetadata(input: {
@@ -312,6 +316,7 @@ export function buildFineGrainedPatCredentialPolicy(input: {
   allowedWorkflows: readonly CredentialWorkflowAllowlistEntry[];
   createdAt: Date;
   proof: CredentialPolicyProofMetadata;
+  providerPermissions: ObservedCredentialPermissions;
   identity?: ActivationIdentity;
 }): CredentialPolicy {
   const guidance = buildPatEnrollmentGuidance({ repository: input.repository, now: input.createdAt });
@@ -329,6 +334,8 @@ export function buildFineGrainedPatCredentialPolicy(input: {
     rotationLeadDays: runnerPreflightRotationLeadDays,
     rotationDueAt: guidance.rotationDueAt,
     permissions: runnerPreflightPermissions(),
+    providerPermissions: input.providerPermissions,
+    providerReadDisclosure: runnerPreflightProviderReadDisclosure,
     allowedWorkflows: normalizeAllowedWorkflows(input.allowedWorkflows),
     nonForwarding: true,
     status: 'active',
@@ -349,6 +356,8 @@ export function buildGitHubAppCredentialPolicy(input: {
   createdAt: Date;
   identity?: ActivationIdentity;
 }): CredentialPolicy {
+  const issues = appInstallationIssues(input.installation, input.repository);
+  if (issues.length) throw new Error(`GitHub App policy requires matching independent observations: ${issues.join(' ')}`);
   const app: GitHubAppCredentialMetadata = {
     installationId: input.installation.installationId,
     appSlug: input.installation.appSlug,
@@ -361,12 +370,7 @@ export function buildGitHubAppCredentialPolicy(input: {
       generatedBy: 'github-app'
     }
   };
-  const readbackDigest = input.installation.readbackDigest ?? digestPayloadFree({
-    installationId: app.installationId,
-    repository: input.repository.fullName,
-    permissions: runnerPreflightPermissions(),
-    selectedRepositoryOnly: true
-  });
+  const readbackDigest = input.installation.readbackDigest;
   const expiresAt = addDays(input.createdAt, runnerPreflightPatLifetimeDays);
   const rotationDueAt = addDays(expiresAt, -runnerPreflightRotationLeadDays);
   return validateCredentialPolicy({
@@ -383,6 +387,8 @@ export function buildGitHubAppCredentialPolicy(input: {
     rotationLeadDays: runnerPreflightRotationLeadDays,
     rotationDueAt: canonicalIso(rotationDueAt),
     permissions: runnerPreflightPermissions(),
+    providerPermissions: input.installation.observedPermissions,
+    providerReadDisclosure: runnerPreflightProviderReadDisclosure,
     allowedWorkflows: normalizeAllowedWorkflows(input.allowedWorkflows),
     nonForwarding: true,
     status: 'active',
@@ -427,6 +433,9 @@ export function appInstallationIssues(
   if (!installation.verified) {
     issues.push('GitHub App installation readback is not verified.');
   }
+  if (typeof installation.readbackDigest !== 'string' || !/^[a-f0-9]{64}$/u.test(installation.readbackDigest)) {
+    issues.push('GitHub App requires its independent complete readback digest; a locally synthesized digest is not proof.');
+  }
   if (installation.selection !== 'selected-repository') {
     issues.push('GitHub App installation is not selected-repository scoped.');
   }
@@ -435,6 +444,10 @@ export function appInstallationIssues(
   }
   if (!samePermissionSet(installation.permissions)) {
     issues.push('GitHub App permissions do not exactly match runner-preflight read requirements.');
+  }
+  if (!installation.observedPermissions ||
+      canonicalSha256(installation.observedPermissions) !== canonicalSha256(requiredCredentialProviderPermissions('github-app'))) {
+    issues.push('GitHub App actual provider permissions must be independently observed and exactly match the declared Administration/network-configuration/metadata read grant.');
   }
   if (writablePermissions(installation.permissions).length > 0) {
     issues.push('GitHub App exposes write permissions.');
@@ -488,36 +501,8 @@ export async function enrollFineGrainedPatCredential(input: {
   allowedWorkflows: readonly CredentialWorkflowAllowlistEntry[];
   now?: Date;
 }): Promise<CredentialPolicy> {
-  if (!input.adapter.setRepositorySecret) {
-    throw new Error('Repository-secret adapter does not support in-memory secret writes.');
-  }
-  const createdAt = input.now ?? new Date();
-  const credential = await input.prompt('Paste the fine-grained PAT. Input is masked and is not logged.');
-  try {
-    const readback = await input.adapter.setRepositorySecret({
-      repository: input.repository,
-      secretName: runnerPreflightSecretName,
-      value: credential
-    });
-    if (!sameRepository(readback.repository, input.repository)) {
-      throw new Error('Repository secret readback repository does not match the credential policy repository.');
-    }
-    if (readback.secretName !== runnerPreflightSecretName) {
-      throw new Error('Repository secret readback secret name does not match the fixed credential policy secret.');
-    }
-    return buildFineGrainedPatCredentialPolicy({
-      repository: input.repository,
-      allowedWorkflows: input.allowedWorkflows,
-      createdAt,
-      proof: proofMetadata({
-        verifiedAt: readback.updatedAt,
-        readbackDigest: readback.readbackDigest,
-        readbackProvider: 'github-api'
-      })
-    });
-  } finally {
-    credential.release();
-  }
+  void input;
+  throw new Error('Legacy masked enrollment cannot establish exact PAT identity, thirty-day lifetime or conditional secret creation for credential-policy schema 2. Use the reviewed credential workflow; this path performs no prompt, secret write or policy creation.');
 }
 
 export function validateCredentialPolicyUsage(
@@ -539,7 +524,7 @@ export function validateCredentialPolicyUsage(
     issues.push('Credential policy repository does not match the requested repository.');
   }
   if (!samePermissionSet(validated.permissions) || !samePermissionSet(usage.permissions)) {
-    issues.push('Credential permissions must exactly match metadata read, hosted-runners read, and network-configurations read.');
+    issues.push('Credential permissions must exactly match metadata read, organization_administration read, and organization_network_configurations read.');
   }
   const writable = [...writablePermissions(validated.permissions), ...writablePermissions(usage.permissions)];
   if (writable.length > 0) {

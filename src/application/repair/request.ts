@@ -14,6 +14,7 @@ export interface RepairRequest {
   verifyPlan?: string;
   allowNetwork?: boolean;
   allowDependencyPreparation?: boolean;
+  recipe?: string;
 }
 
 export function repairRequestIssue(request: RepairRequest, help = false): string | undefined {
@@ -22,12 +23,30 @@ export function repairRequestIssue(request: RepairRequest, help = false): string
       return `Flag --${flag} expects the complete 64-character lowercase fingerprint from a repair preview; ordinary interactive repair does not require fingerprint entry.`;
     }
   }
+  if (request.recipe !== undefined && !['azure-local-layout', 'azure-baseline-settings', 'application-layout-patch'].includes(request.recipe)) {
+    return 'Flag --recipe expects a registered repair recipe: azure-local-layout, azure-baseline-settings or application-layout-patch.';
+  }
+  if (request.recipe && (request.recover || request.approvePlan || request.verifyPlan)) {
+    return 'Flag --recipe belongs to repair inspection and preview; saved-plan execution and recovery use only their saved recipe identity.';
+  }
+  if (request.capabilities && (request.project || request.check || request.applicationPatch || request.live || request.subscription || request.allowNetwork || request.allowDependencyPreparation || request.recipe)) {
+    return 'Repair capabilities accepts only output/help options and needs no project or recipe.';
+  }
+  if (request.inspectLayout && request.recipe) {
+    return 'Layout inspection is an actual-file inventory and does not accept --recipe.';
+  }
+  if (request.recipe === 'azure-baseline-settings' && (request.live || request.subscription)) {
+    return 'Recipe azure-baseline-settings is configuration-only and does not accept --live or --subscription.';
+  }
+  if (request.applicationPatch && request.recipe && request.recipe !== 'application-layout-patch') {
+    return 'Flag --application-patch requires recipe application-layout-patch.';
+  }
+  if (request.recipe === 'application-layout-patch' && !request.applicationPatch) {
+    return 'Recipe application-layout-patch requires an external patch document via --application-patch <file>.';
+  }
   if ([request.capabilities, request.inspectLayout, request.recover, Boolean(request.approvePlan), Boolean(request.verifyPlan)].filter(Boolean).length > 1 ||
       request.check && (request.recover || request.approvePlan || request.verifyPlan)) {
     return 'Repair check, capabilities, layout inspection, exact plan application, verification and recovery are separate operations.';
-  }
-  if (request.capabilities && (request.project || request.check || request.applicationPatch || request.live || request.subscription || request.allowNetwork || request.allowDependencyPreparation)) {
-    return 'Repair capabilities accepts only output/help options and needs no project.';
   }
   if (request.applicationPatch && (request.inspectLayout || request.recover || request.approvePlan || request.verifyPlan || request.live || request.subscription)) {
     return 'Application patch selection belongs only to its preview/interactive journey; do not combine it with infrastructure discovery or saved-plan execution/recovery.';
