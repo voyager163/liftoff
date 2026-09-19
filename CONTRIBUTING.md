@@ -204,8 +204,9 @@ prefix; upstream PAM/autostart/service files are **not installed**.
 PKCS#11 configuration and module destinations must match that prefix's
 `etc/pkcs11` and `lib/pkcs11` directories; the recorder rejects system defaults.
 
-The same pinned private libsecret/client build, actual loader/dependency checks
-and `tests/managed-keystore-key-binding.test.ts` contracts must pass before real
+The same pinned private libsecret/client build, actual loader/dependency checks,
+`tests/managed-keystore-key-binding.test.ts` contracts and null-profile source
+tests must pass before real
 GNOME fixture effects. The Landlock wrapper uses selected CPython 3.14.7, and the coordinator uses the
 canonical executable obtained from Node's actual `process.execPath`. Only this
 manual lane includes Node in the existing exact-FD preparation. The retained
@@ -214,20 +215,30 @@ UID/GID, mode, device/inode, size, mtime and byte digest. Only observed
 group/other write bits on a runner-owned file may be removed; inability to
 modify safely remains a blocker. No historical Node mode/owner is inferred,
 and no sudo, tree permission changes, executable copy/replacement or production
-admission bypass is used. Only the native step sets
-`LIFTOFF_GNOME_PERSISTENCE_TEST=1` and runs
-`tests/state-gnome-persistence.test.ts`. Both architectures retain one worker,
+admission bypass is used. Only the native step sets both
+`LIFTOFF_GNOME_PERSISTENCE_TEST=1` and `LIFTOFF_LINUX_READONLY_NULL_TEST=1`,
+running `tests/state-gnome-persistence.test.ts` alongside
+`tests/state-linux-null-process.test.ts`. Both architectures retain one worker,
 the 20-minute job budget and unchanged operation/test deadlines.
 
-Completion requires the actual opt-in suite with no failed/skipped cases;
-there is no fixed case count. Only bounded allowlisted JSON identities, case
+Completion requires **both** actual opt-in suite titles: the pinned GNOME
+persistence suite and `opt-in Linux null-sink profile nonsecret fixtures`.
+Neither a missing suite nor failed/skipped applicable cases can pass; there is
+no fixed case count. The distinct null-sink profile exercises actual fixed
+`/dev/null` character device 1:3 read/write, original strict-profile refusal,
+continued store/other-device denial, plan/identity mismatch and cancellation.
+The original strict helper/default is not widened, and no device, host ACL or
+encryption setting is changed to make tests pass.
+
+Only bounded allowlisted JSON identities, case
 outcomes and process/persistence summaries are uploaded. No daemon binary,
 keyring, password, key, raw loader/protocol output or private fixture directory
 is an artifact input. Uncertain settlement remains explicit and its fixture
 scope is preserved rather than claimed cleaned. Reports explicitly state
 `hostEncryptionQualification`, provider, cloud and release qualification are
-`not-performed`: actual generated-data GNOME behavior is not encrypted-host
-custody or production enrollment qualification. Missing native hosts, build
+`not-performed`; minimum-host and installed-artifact qualification are also
+explicitly `not-performed`. Actual generated-data GNOME/null-profile behavior
+is not encrypted-host custody or production enrollment qualification. Missing native hosts, build
 dependencies or identity/permission admission remain blockers, not fallbacks.
 
 A diagnostic-only dispatch **does not qualify the source or release**, even if

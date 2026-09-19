@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { controlledGnomeSourceCommit, planControlledGnomeLaunch } from '../src/domain/repair/controlled-keystore.js';
+import {
+  controlledGnomeSourceCommit, planControlledGnomeLaunch, planControlledGnomeNullRestart
+} from '../src/domain/repair/controlled-keystore.js';
+import { createLinuxReadonlyNullProcessPlan } from '../src/domain/repair/linux-null-process.js';
 
 function input(operation: 'enroll' | 'restart' = 'enroll') {
   return {
@@ -127,5 +130,31 @@ describe('controlled GNOME launch contract, without native effects', () => {
     expect(() => planControlledGnomeLaunch({ ...input(), scopeRoot: `${allowed}a` })).toThrow('unsafe-path');
     expect(() => planControlledGnomeLaunch({ ...input(), scopeRoot: `/${'\u00e9'.repeat(50)}` }))
       .toThrow('unsafe-path');
+  });
+
+  it('binds the separate null-sink profile to the exact original restart specification without granting authority', () => {
+    const launch = input('restart');
+    const original = planControlledGnomeLaunch(launch);
+    const guardPlan = createLinuxReadonlyNullProcessPlan({
+      helperDigest: 'c'.repeat(64), hostId: launch.hostId, principalUid: launch.principalUid,
+      operationDigest: original.fingerprint, requestDigest: 'd'.repeat(64),
+      nullDevice: {
+        path: '/dev/null', kind: 'character-device', device: '1', inode: '2', ctime: '3',
+        uid: 0, gid: 0, mode: 0o666, rdev: '259', major: 1, minor: 3
+      }
+    });
+    const selected = planControlledGnomeNullRestart({ ...launch, guardPlan });
+    expect(selected).toMatchObject({
+      contract: 'linux-gnome-controlled-null-restart/1', kind: 'controlled-linux-keystore-null-restart',
+      execution: 'not-authorized', daemonStartupProvesReadiness: false, guardPlan
+    });
+    expect(selected.beforeDispatch).toContain('exact-null-sink-profile-plan-binding');
+    expect(selected.fingerprint).not.toBe(original.fingerprint);
+    expect(planControlledGnomeLaunch(launch)).toEqual(original);
+    expect(() => planControlledGnomeLaunch({ ...launch, guardPlan })).toThrow('invalid-binding');
+    for (const change of [
+      { operation: 'enroll' }, { projectId: 'other' }, { hostId: `native-host:${'c'.repeat(64)}` },
+      { principalUid: 1001 }, { dependencyInventoryDigest: 'e'.repeat(64) }, { guardPlan: null }
+    ]) expect(() => planControlledGnomeNullRestart({ ...launch, guardPlan, ...change })).toThrow('invalid-binding');
   });
 });

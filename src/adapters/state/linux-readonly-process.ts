@@ -1,10 +1,18 @@
 import { lstat, readdir, realpath } from 'node:fs/promises';
 import path from 'node:path';
+import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
+import { parseStrictManifestJson } from '../../domain/project/manifest/json.js';
+import {
+  createLinuxReadonlyNullProcessPlan, linuxNullProcessProfile, parseLinuxNullDeviceObservation,
+  parseLinuxReadonlyNullProcessPlan, type LinuxReadonlyNullProcessPlan
+} from '../../domain/repair/linux-null-process.js';
 import { StateMigrationError, type StateFailureCode, type StateRegisteredExecutable } from '../../domain/repair/stateful.js';
 import { stateAssert, stateDigest } from '../../domain/repair/stateful-invariants.js';
-import { isolatedStateEnvironment, verifyStateExecutable } from './native-system.js';
+import { isolatedStateEnvironment, nativeStateHostId, verifyStateExecutable } from './native-system.js';
 import { OwnedPrivateStateProcessRunner } from './owned-process.js';
-import { linuxReadonlyProcessProgram } from './linux-readonly-process-program.js';
+import { linuxReadonlyNullProcessProgram, linuxReadonlyProcessProgram } from './linux-readonly-process-program.js';
+
+export type { LinuxReadonlyNullProcessPlan };
 
 /**
  * Denies ABI-3 filesystem content/entry mutations outside fresh writable trees.
@@ -23,6 +31,15 @@ export const linuxReadonlyProcessContract = Object.freeze({
   networkIsolation: false,
   externalWriterExclusion: false,
   encryptedCustody: false
+} as const);
+
+export const linuxReadonlyNullProcessContract = Object.freeze({
+  ...linuxReadonlyProcessContract,
+  kind: linuxNullProcessProfile,
+  helperDigest: stateDigest(linuxReadonlyNullProcessProgram),
+  additionalSink: Object.freeze({
+    path: '/dev/null', kind: 'character-device', uid: 0, major: 1, minor: 3, rights: 'WRITE_FILE'
+  })
 } as const);
 
 interface DirectoryIdentity {
@@ -53,6 +70,11 @@ export interface LinuxReadonlyProcessRequest {
   signal?: AbortSignal;
 }
 
+export interface LinuxReadonlyNullProcessRequest extends LinuxReadonlyProcessRequest {
+  /** Digest of the nonsecret reviewed operation/configuration, never private input. */
+  operationDigest: string;
+}
+
 function strictlyBelow(parent: string, child: string): boolean {
   const relative = path.relative(parent, child);
   return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
@@ -71,7 +93,78 @@ async function observeDirectory(directory: string): Promise<DirectoryObservation
   };
 }
 
-export class LinuxReadonlyProcessGuard {
+async function observeRoots(request: LinuxReadonlyProcessRequest) {
+  const scope = await observeDirectory(request.scopeDirectory);
+  const store = await observeDirectory(request.storeDirectory);
+  const writable = await Promise.all([
+    request.writableDirectories.control, request.writableDirectories.runtime, request.writableDirectories.scratch
+  ].map(observeDirectory));
+  const entries = [store, ...writable];
+  stateAssert(entries.every((entry) => strictlyBelow(scope.path, entry.path)), 'unsafe-path');
+  for (let index = 0; index < entries.length; index++) {
+    for (const other of entries.slice(index + 1)) {
+      const current = entries[index]!;
+      stateAssert(current.path !== other.path && !strictlyBelow(current.path, other.path) && !strictlyBelow(other.path, current.path)
+        && (current.identity.device !== other.identity.device || current.identity.inode !== other.identity.inode), 'unsafe-path');
+    }
+  }
+  // Fresh leaves prevent preexisting hard-link/symlink aliases from obtaining write rights.
+  for (const entry of writable) stateAssert((await readdir(entry.path)).length === 0, 'unsafe-path');
+  return { scope, store, writable };
+}
+
+function limits(request: LinuxReadonlyProcessRequest): void {
+  stateAssert(process.platform === 'linux', 'unsupported-native-platform');
+  stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
+  stateAssert(Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 300_000
+    && Number.isSafeInteger(request.maximumBytes) && request.maximumBytes > 0 && request.maximumBytes <= 32 * 1024 * 1024
+    && (request.stdin?.byteLength ?? 0) <= 32 * 1024 * 1024, 'invalid-binding');
+  stateAssert(!request.signal?.aborted, 'cancelled');
+}
+
+function targetFailure(exitCode: number, stderr: Uint8Array): never {
+  const message = Buffer.from(stderr.buffer, stderr.byteOffset, stderr.byteLength);
+  const codes: StateFailureCode[] = [
+    'unsupported-native-platform', 'unqualified-combination', 'access-denied',
+    'unsafe-path', 'tool-unavailable', 'invalid-binding', 'operation-failed'
+  ];
+  const code = exitCode === 125
+    ? codes.find((value) => message.equals(Buffer.from(`liftoff-readonly:${value}\n`, 'ascii'))) : undefined;
+  throw new StateMigrationError(code ?? 'native-command-failed');
+}
+
+function nullRequest(request: LinuxReadonlyNullProcessRequest): LinuxReadonlyNullProcessRequest {
+  const fields = ['python', 'executable', 'args', 'scopeDirectory', 'storeDirectory', 'writableDirectories',
+    'stdin', 'timeoutMs', 'maximumBytes', 'signal', 'operationDigest'];
+  stateAssert(isRecord(request) && Object.keys(request).every((key) => fields.includes(key)) &&
+    isRecord(request.python) && isRecord(request.executable) && isRecord(request.writableDirectories) &&
+    Array.isArray(request.args) && request.args.length <= 128 &&
+    request.args.every((arg) => typeof arg === 'string' && !arg.includes('\0')) &&
+    JSON.stringify(request.args).length <= 32_768, 'invalid-binding');
+  for (const tool of [request.python, request.executable]) {
+    stateAssert(Object.keys(tool).sort().join(',') === 'path,sha256' && typeof tool.path === 'string' &&
+      typeof tool.sha256 === 'string' && /^[a-f0-9]{64}$/u.test(tool.sha256), 'invalid-binding');
+  }
+  stateAssert(Object.keys(request.writableDirectories).sort().join(',') === 'control,runtime,scratch' &&
+    [request.scopeDirectory, request.storeDirectory, ...Object.values(request.writableDirectories)]
+      .every((entry) => typeof entry === 'string'), 'invalid-binding');
+  stateAssert(typeof request.operationDigest === 'string' && /^[a-f0-9]{64}$/u.test(request.operationDigest), 'invalid-binding');
+  return Object.freeze({
+    ...request, python: Object.freeze({ ...request.python }), executable: Object.freeze({ ...request.executable }),
+    args: Object.freeze([...request.args]), writableDirectories: Object.freeze({ ...request.writableDirectories })
+  });
+}
+
+function requestDigest(request: LinuxReadonlyProcessRequest, roots: Awaited<ReturnType<typeof observeRoots>>): string {
+  return canonicalSha256({
+    python: request.python, executable: request.executable, args: request.args,
+    scopeDirectory: request.scopeDirectory, storeDirectory: request.storeDirectory,
+    writableDirectories: request.writableDirectories, timeoutMs: request.timeoutMs, maximumBytes: request.maximumBytes,
+    roots
+  });
+}
+
+class ReadonlyProcessRunner {
   readonly #runner = new OwnedPrivateStateProcessRunner();
   #generation = 0;
 
@@ -80,33 +173,50 @@ export class LinuxReadonlyProcessGuard {
     return this.#runner.quiesce();
   }
 
+  async plan(request: LinuxReadonlyNullProcessRequest): Promise<LinuxReadonlyNullProcessPlan> {
+    limits(request);
+    const generation = this.#generation;
+    const deadline = Date.now() + Math.min(request.timeoutMs, 5000);
+    try {
+      const roots = await observeRoots(request);
+      await verifyStateExecutable(request.python);
+      await verifyStateExecutable(request.executable);
+      stateAssert(await realpath(request.python.path) === request.python.path
+        && await realpath(request.executable.path) === request.executable.path, 'tool-unavailable');
+      const timeoutMs = deadline - Date.now();
+      stateAssert(timeoutMs > 0, 'timeout');
+      stateAssert(generation === this.#generation && !request.signal?.aborted, 'cancelled');
+      const result = await this.#runner.run({
+        executable: request.python.path,
+        args: ['-I', '-S', '-B', '-c', linuxReadonlyNullProcessProgram, '--observe-null-sink'],
+        cwd: '/', environment: isolatedStateEnvironment('/'), timeoutMs, maximumBytes: 4096, signal: request.signal
+      });
+      try {
+        if (result.exitCode !== 0) targetFailure(result.exitCode, result.stderr);
+        stateAssert(generation === this.#generation && !request.signal?.aborted, 'cancelled');
+        const observation = parseLinuxNullDeviceObservation(
+          parseStrictManifestJson(Buffer.from(result.stdout).toString('utf8'), 'Native null-device observation'));
+        return createLinuxReadonlyNullProcessPlan({
+          helperDigest: linuxReadonlyNullProcessContract.helperDigest, hostId: nativeStateHostId(),
+          principalUid: process.getuid!(), operationDigest: request.operationDigest,
+          requestDigest: requestDigest(request, roots), nullDevice: observation
+        });
+      } finally { result.stdout.fill(0); result.stderr.fill(0); }
+    } catch (error) {
+      if (error instanceof StateMigrationError) throw error;
+      throw new StateMigrationError('operation-failed');
+    }
+  }
+
   /** stdout remains private; the caller must consume and clear the returned bytes. */
-  async run(request: LinuxReadonlyProcessRequest): Promise<{ exitCode: 0; stdout: Uint8Array }> {
-    stateAssert(process.platform === 'linux', 'unsupported-native-platform');
-    stateAssert(process.arch === 'x64' || process.arch === 'arm64', 'unqualified-combination');
-    stateAssert(Number.isSafeInteger(request.timeoutMs) && request.timeoutMs > 0 && request.timeoutMs <= 300_000
-      && Number.isSafeInteger(request.maximumBytes) && request.maximumBytes > 0 && request.maximumBytes <= 32 * 1024 * 1024
-      && (request.stdin?.byteLength ?? 0) <= 32 * 1024 * 1024, 'invalid-binding');
-    stateAssert(!request.signal?.aborted, 'cancelled');
+  async run(request: LinuxReadonlyProcessRequest, plan?: LinuxReadonlyNullProcessPlan): Promise<{ exitCode: 0; stdout: Uint8Array }> {
+    limits(request);
     const generation = this.#generation;
     const deadline = Date.now() + request.timeoutMs;
     try {
-      const scope = await observeDirectory(request.scopeDirectory);
-      const store = await observeDirectory(request.storeDirectory);
-      const writable = await Promise.all([
-        request.writableDirectories.control, request.writableDirectories.runtime, request.writableDirectories.scratch
-      ].map(observeDirectory));
-      const entries = [store, ...writable];
-      stateAssert(entries.every((entry) => strictlyBelow(scope.path, entry.path)), 'unsafe-path');
-      for (let index = 0; index < entries.length; index++) {
-        for (const other of entries.slice(index + 1)) {
-          const current = entries[index]!;
-          stateAssert(current.path !== other.path && !strictlyBelow(current.path, other.path) && !strictlyBelow(other.path, current.path)
-            && (current.identity.device !== other.identity.device || current.identity.inode !== other.identity.inode), 'unsafe-path');
-        }
-      }
-      // Fresh leaves prevent preexisting hard-link/symlink aliases from obtaining write rights.
-      for (const entry of writable) stateAssert((await readdir(entry.path)).length === 0, 'unsafe-path');
+      const roots = await observeRoots(request);
+      const { scope, store, writable } = roots;
+      if (plan) stateAssert(plan.requestDigest === requestDigest(request, roots), 'invalid-binding');
       stateAssert(request.args.length <= 128 && request.args.every((arg) => typeof arg === 'string' && !arg.includes('\0'))
         && JSON.stringify(request.args).length <= 32_768, 'invalid-binding');
       await verifyStateExecutable(request.python);
@@ -123,7 +233,8 @@ export class LinuxReadonlyProcessGuard {
       stateAssert(generation === this.#generation && !request.signal?.aborted, 'cancelled');
       const result = await this.#runner.run({
         executable: request.python.path,
-        args: ['-I', '-S', '-B', '-c', linuxReadonlyProcessProgram, JSON.stringify({ scope, store, writable, executable, args: request.args })],
+        args: ['-I', '-S', '-B', '-c', plan ? linuxReadonlyNullProcessProgram : linuxReadonlyProcessProgram,
+          JSON.stringify({ scope, store, writable, executable, args: request.args, ...(plan ? { nullDevice: plan.nullDevice } : {}) })],
         cwd: writable[2]!.path,
         environment: {
           ...isolatedStateEnvironment(writable[2]!.path),
@@ -134,14 +245,7 @@ export class LinuxReadonlyProcessGuard {
       try {
         if (result.exitCode !== 0) {
           result.stdout.fill(0);
-          const message = Buffer.from(result.stderr.buffer, result.stderr.byteOffset, result.stderr.byteLength);
-          const codes: StateFailureCode[] = [
-            'unsupported-native-platform', 'unqualified-combination', 'access-denied',
-            'unsafe-path', 'tool-unavailable', 'invalid-binding', 'operation-failed'
-          ];
-          const code = result.exitCode === 125
-            ? codes.find((value) => message.equals(Buffer.from(`liftoff-readonly:${value}\n`, 'ascii'))) : undefined;
-          throw new StateMigrationError(code ?? 'native-command-failed');
+          targetFailure(result.exitCode, result.stderr);
         }
         return { exitCode: 0, stdout: result.stdout };
       } finally { result.stderr.fill(0); }
@@ -149,5 +253,32 @@ export class LinuxReadonlyProcessGuard {
       if (error instanceof StateMigrationError) throw error;
       throw new StateMigrationError('operation-failed');
     }
+  }
+
+}
+
+export class LinuxReadonlyProcessGuard {
+  readonly #runner = new ReadonlyProcessRunner();
+  quiesce(): Promise<void> { return this.#runner.quiesce(); }
+  run(request: LinuxReadonlyProcessRequest): Promise<{ exitCode: 0; stdout: Uint8Array }> {
+    return this.#runner.run(request);
+  }
+}
+
+export class LinuxReadonlyNullProcessGuard {
+  readonly #runner = new ReadonlyProcessRunner();
+  quiesce(): Promise<void> { return this.#runner.quiesce(); }
+  async plan(request: LinuxReadonlyNullProcessRequest): Promise<LinuxReadonlyNullProcessPlan> {
+    limits(request);
+    return this.#runner.plan(nullRequest(request));
+  }
+  async run(request: LinuxReadonlyNullProcessRequest, reviewed: LinuxReadonlyNullProcessPlan): Promise<{ exitCode: 0; stdout: Uint8Array }> {
+    limits(request);
+    const selected = nullRequest(request);
+    const plan = parseLinuxReadonlyNullProcessPlan(reviewed);
+    stateAssert(plan.profile === linuxReadonlyNullProcessContract.kind &&
+      plan.helperDigest === linuxReadonlyNullProcessContract.helperDigest && plan.hostId === nativeStateHostId() &&
+      plan.principalUid === process.getuid!() && plan.operationDigest === selected.operationDigest, 'invalid-binding');
+    return this.#runner.run(selected, plan);
   }
 }

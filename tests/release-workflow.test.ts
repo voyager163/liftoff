@@ -273,9 +273,11 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(job.steps[contractsIndex]).toMatchObject({
       if: "success() && steps.helper.outcome == 'success'",
       env: { LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: '1' },
-      run: 'npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts ' +
+      run: 'npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts tests/state-linux-null-process.test.ts ' +
         '--maxWorkers=1 --reporter=verbose --reporter=json --outputFile.json=diagnostics/gnome-source-interface-tests.json'
     });
+    expect(job.steps[contractsIndex].env.LIFTOFF_GNOME_PERSISTENCE_TEST).toBeUndefined();
+    expect(job.steps[contractsIndex].env.LIFTOFF_LINUX_READONLY_NULL_TEST).toBeUndefined();
     const persistenceIndex = job.steps.findIndex((step: any) => step.id === 'persistence');
     const readyIndex = job.steps.findIndex((step: any) => step.id === 'contracts_ready');
     expect(readyIndex).toBeGreaterThan(contractsIndex);
@@ -284,14 +286,16 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(persistenceIndex).toBeGreaterThan(job.steps.findIndex((step: any) => step.id === 'gnome_identity'));
     expect(job.steps[persistenceIndex]).toMatchObject({
       if: "success() && steps.contracts_ready.outcome == 'success' && steps.gnome_identity.outcome == 'success'",
-      env: { LIFTOFF_GNOME_PERSISTENCE_TEST: '1' },
-      run: 'npx vitest run tests/state-gnome-persistence.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+      env: { LIFTOFF_GNOME_PERSISTENCE_TEST: '1', LIFTOFF_LINUX_READONLY_NULL_TEST: '1' },
+      run: 'npx vitest run tests/state-gnome-persistence.test.ts tests/state-linux-null-process.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
         '--outputFile.json=diagnostics/gnome-persistence-tests.json'
     });
     for (const [id, entry] of Object.entries(workflow.jobs) as [string, any][]) {
       expect(entry.env?.LIFTOFF_GNOME_PERSISTENCE_TEST).toBeUndefined();
+      expect(entry.env?.LIFTOFF_LINUX_READONLY_NULL_TEST).toBeUndefined();
       if (id !== 'linux-gnome-persistence') {
         expect(entry.steps.some((step: any) => step.env?.LIFTOFF_GNOME_PERSISTENCE_TEST)).toBe(false);
+        expect(entry.steps.some((step: any) => step.env?.LIFTOFF_LINUX_READONLY_NULL_TEST)).toBe(false);
         expect(entry.steps.some((step: any) => step.env?.LIFTOFF_CI_NODE_COORDINATOR)).toBe(false);
       }
     }
@@ -416,6 +420,8 @@ describe('read-only coordinated release evidence workflow', () => {
         'managed Linux key binding, not native custody or readiness'
       ];
       const nativeSuite = 'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody';
+      const nullSuite = 'opt-in Linux null-sink profile nonsecret fixtures';
+      const nativeSuites = [nativeSuite, nullSuite];
       const result = (suites: string[]) => ({
         success: true, numFailedTests: 0, numPendingTests: 0, numPassedTests: suites.length,
         testResults: [{ assertionResults: suites.map((suite) => ({
@@ -481,30 +487,37 @@ describe('read-only coordinated release evidence workflow', () => {
       }
       await writeContracts(result(contractSuites));
       await expect(run(capture)).rejects.toThrow();
-      await writePersistence(result([nativeSuite]));
+      await writePersistence(result(nativeSuites));
       await run(capture);
       for (const file of [
         'gnome-source-report.json', 'gnome-contract-summary.json', 'gnome-persistence-summary.json',
         'gnome-client-build-identity.json', 'gnome-daemon-build-identity.json'
       ]) expect(await readFile(path.join(root, 'diagnostics', file), 'utf8')).not.toContain(marker);
       expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8'))).toMatchObject({
-        accepted: true, requiredSuiteCases: 1, sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        accepted: true, requiredSuiteCases: 2, sourceCommit: 'a'.repeat(40), runAttempt: '2',
         platform: 'linux', architecture: process.arch,
         hostEncryptionQualification: 'not-performed', providerQualification: 'not-performed',
-        cloudQualification: 'not-performed', releaseQualification: 'not-performed'
+        cloudQualification: 'not-performed', releaseQualification: 'not-performed',
+        minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed'
       });
       for (const invalid of [
         result(['ordinary source suite']),
-        { ...result([nativeSuite]), success: false },
-        { ...result([nativeSuite]), numFailedTests: 1 },
-        { ...result([nativeSuite]), numPendingTests: 1 },
-        { ...result([nativeSuite]), testResults: [{ assertionResults: [{ fullName: 'case', ancestorTitles: [nativeSuite], status: 'pending' }] }] }
+        result([nativeSuite]),
+        result([nullSuite]),
+        { ...result(nativeSuites), success: false },
+        { ...result(nativeSuites), numFailedTests: 1 },
+        { ...result(nativeSuites), numPendingTests: 1 },
+        { ...result(nativeSuites), testResults: [{
+          assertionResults: nativeSuites.map((suite) => ({
+            fullName: 'case', ancestorTitles: [suite], status: suite === nullSuite ? 'pending' : 'passed'
+          }))
+        }] }
       ]) {
         await writePersistence(invalid);
         await expect(run(capture)).rejects.toThrow();
         expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8')).accepted).toBe(false);
       }
-      await writePersistence(result([nativeSuite]));
+      await writePersistence(result(nativeSuites));
       await expect(run(capture, { CONTRACTS_READY_OUTCOME: 'failure' })).rejects.toThrow();
       await expect(run(capture, {}, 'darwin')).rejects.toThrow();
       await expect(run(capture, { EXPECTED_ARCH: 'wrong-architecture' })).rejects.toThrow();
@@ -519,7 +532,7 @@ describe('read-only coordinated release evidence workflow', () => {
       await writeFile(persistenceFile, marker.repeat(30000));
       await expect(run(capture)).rejects.toThrow();
       expect(await readFile(path.join(root, 'diagnostics/gnome-source-report.json'), 'utf8')).not.toContain(marker);
-      await writePersistence({ ...result([nativeSuite]), success: false, numFailedTests: 1 });
+      await writePersistence({ ...result(nativeSuites), success: false, numFailedTests: 1 });
       await run(capture, { PERSISTENCE_OUTCOME: 'failure' });
       expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8')))
         .toMatchObject({ accepted: false, failed: 1 });

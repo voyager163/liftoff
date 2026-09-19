@@ -100,7 +100,7 @@ npx vitest run tests/state-gnome-persistence.test.ts --maxWorkers=1
 ```
 
 The job remains **20 minutes**. Each coordinator has a 12-second overall
-budget, its outer owned-group runner 15 seconds, native startup/client work
+budget, its outer plan-and-execute operation 15 seconds, native startup/client work
 5 seconds, and bounded direct-child termination attempts. Tests retain the
 existing 30-second per-test limit. Inputs are at most 4096 private password
 bytes; private coordinator output is at most 16384 bytes. Runtime loader
@@ -122,20 +122,37 @@ calls `_dbus_ensure_standard_fds(DBUS_FORCE_STDIN_NULL, ...)` **before parsing
 `--nofork` or any other arguments**.
 [`dbus-sysdeps-unix.c`](https://gitlab.freedesktop.org/dbus/dbus/-/blob/dbus-1.14.10/dbus/dbus-sysdeps-unix.c)
 unconditionally opens `/dev/null` with `O_RDWR`, even with preexisting stdio.
-The current three-root Landlock policy does not grant that pathname write access.
+The original three-root Landlock policy does not grant that pathname write access.
 Preopened descriptors or more permissive persisted-store rules are not a repair.
 
 The coordinator now observes that same open mode without reading/writing any
 bytes, closes its probe descriptor before spawning children, and reports only
 allowlisted startup stages, errno classifications, exit/signal values, address
 presence and the null-device probe result. Raw stderr, paths and credentials
-are not returned. The native errno still requires the next hosted observation;
-the previous generic failure log did not retain it.
+are not returned. Subsequent authorized native run `35419980086` confirmed the
+standard-descriptor `/dev/null` open was denied with `EACCES` on both Linux
+architectures.
 
-A production-guard correction, if approved by its owner, must be a narrowly
-typed, identity-verified kernel-null-device capability (not `/dev` or an
-arbitrary path grant), while retaining store write denial and closing setup
-descriptors. This fixture does not implement or assume that exception.
+Approved design 13d now selects the distinct
+`linux-landlock-readonly-process-null-sink/1` profile for this fixture's
+restart operation. `LinuxReadonlyNullProcessGuard.plan()` observes the current
+fixed root-owned null character device (major 1/minor 3); `.run(request, plan)`
+must revalidate that bound profile/helper/host/principal/device plan.
+The only additional right is `WRITE_FILE` on that exact kernel device.
+There is no `/dev` grant, truncation, device creation, inherited-FD exception
+or permission repair. Original `LinuxReadonlyProcessGuard` behavior remains
+unchanged and is not tried first or widened after a failure.
+
+`gnome-restart-guard.ts` hashes the exact nonsecret coordinator arguments,
+configuration, executable identities, scope paths and limits together with
+the selected profile. The master password is a separate argument: it is
+absent from planning and excluded from all operation digests/verifiers.
+Private stdin is supplied only to the planned run. Planning is included in
+the original 15-second outer budget. Either planning or execution failure
+propagates once, with no retry or profile fallback. A plan describes admission
+inputs; it grants no approval or readiness. Authorization remains the
+explicit generated-data source-test scope, not the plan.
+
 Cancellation tests still require reaching actual native readiness and an owned
 cancellation result. Early bus failure now stops their readiness wait and fails
 with the classified startup cause instead of waiting seven seconds and
@@ -172,7 +189,9 @@ independently fsyncs the file and parent directory. It retains only an
 AES-GCM key-binding probe from `createManagedKeystoreKeyBinding`, consumes and
 clears the application-key snapshot, and never writes raw key bytes.
 
-Restart always invokes `LinuxReadonlyProcessGuard` around the coordinator.
+Restart explicitly plans and invokes `LinuxReadonlyNullProcessGuard` around
+the coordinator. The original strict profile remains separately tested by the
+parent's guard suite; this fixture never auto-retries with another profile.
 Its three writable roots are new and empty when rules are installed. Only
 then does the coordinator create bus/control IPC inside those roots and set
 the daemon's real store HOME/XDG environment. Existing store identity/digest

@@ -32,7 +32,7 @@ import { computeResourceInventorySummary } from '../src/adapters/packaged-assets
 import { observeNativeHost } from '../src/adapters/distribution/native-admission.js';
 import { darwinStateSystemProgram } from '../src/adapters/state/darwin-system-program.js';
 import { posixStateLockProgram, linuxPosixStateLockProgram } from '../src/adapters/state/posix-lock-program.js';
-import { linuxReadonlyProcessProgram } from '../src/adapters/state/linux-readonly-process-program.js';
+import { linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram } from '../src/adapters/state/linux-readonly-process-program.js';
 import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
 import { EMBEDDED_NATIVE_HELPERS, nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
@@ -494,7 +494,7 @@ beforeAll(async () => {
   const publicCapabilities = buildPublicCapabilitiesEnvelope();
   const nativePrograms: Record<string, string> = {
     darwinStateSystemProgram, posixStateLockProgram, linuxPosixStateLockProgram,
-    linuxReadonlyProcessProgram, nativeStatePythonVersionProbe
+    linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram, nativeStatePythonVersionProbe
   };
   contracts = {
     nativeHelperPrograms: Object.fromEntries(EMBEDDED_NATIVE_HELPERS.map((helper) => [helper.id, {
@@ -657,10 +657,10 @@ afterEach(() => {
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('authoritative source registry bindings', () => {
-  it.each(['missing-helper', 'empty-program', 'missing-compiled-digest', 'changed-compiled-digest'])(
-    'requires complete independently bound embedded-helper source: %s', async (failure) => {
+  it.each(['linux-readonly-process', 'linux-readonly-null-process'].flatMap((id) =>
+    ['missing-helper', 'empty-program', 'missing-compiled-digest', 'changed-compiled-digest'].map((failure) => [id, failure])))(
+    'requires complete independently bound %s source: %s', async (id, failure) => {
       const nativeHelperPrograms = structuredClone(contracts.nativeHelperPrograms);
-      const id = 'linux-readonly-process';
       if (failure === 'missing-helper') delete nativeHelperPrograms[id];
       if (failure === 'empty-program') nativeHelperPrograms[id].program = '';
       if (failure === 'missing-compiled-digest') delete nativeHelperPrograms[id].compiledSha256;
@@ -863,6 +863,15 @@ describe('versioned release admission and local identity', () => {
       .not.toBe(context.nativeHelpers['darwin-posix-state-lock'].programSha256);
     expect(context.nativeHelpers['linux-posix-state-lock'].sha256)
       .toBe(context.nativeHelpers['darwin-posix-state-lock'].sha256);
+    const strict = context.nativeHelpers['linux-readonly-process'];
+    const nullSink = context.nativeHelpers['linux-readonly-null-process'];
+    expect(strict.programSha256).toBe('bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2');
+    expect(strict.programExport).toBe('linuxReadonlyProcessProgram');
+    expect(nullSink.programExport).toBe('linuxReadonlyNullProcessProgram');
+    expect(nullSink.path).toBe(strict.path);
+    expect(nullSink.sha256).toBe(strict.sha256);
+    expect(nullSink.programSha256).toBe(sha256(linuxReadonlyNullProcessProgram));
+    expect(nullSink.programSha256).not.toBe(strict.programSha256);
     expect(formatReleaseGateReport(result)).not.toContain('QUALIFIED_FOR_PUBLICATION');
   });
 
@@ -1115,6 +1124,42 @@ describe('authenticated report binding and adversarial measurements', () => {
     expect(result.gateDetails[`${lane === 'native' ? 'native' : 'nativeMinimum'}:linux-x64`].ok).toBe(false);
   });
 
+  it.each(['linux-x64', 'linux-arm64'].flatMap((target) =>
+    ['native', 'native-minimum'].map((lane) => [target, lane])))(
+    'rejects previous strict-only helper evidence for %s %s qualification', async (target, lane) => {
+      const evidence = structuredClone(base);
+      updateReport(evidence, `${lane}-${target}`, (report) => {
+        report.data.helpers = report.data.helpers.filter((helper: any) => helper.id !== 'linux-readonly-null-process');
+      });
+      const result = await evaluate(evidence);
+      expect(result.gateDetails[`${lane === 'native' ? 'native' : 'nativeMinimum'}:${target}`].ok).toBe(false);
+      expect(result.productionQualified).toBe(false);
+    }
+  );
+
+  it.each(['strict-body', 'strict-export', 'swapped-programs', 'old-artifact-identity'])(
+    'rejects null-sink helper evidence with %s despite its shared compiled-module digest', async (failure) => {
+      const evidence = structuredClone(base);
+      updateReport(evidence, 'native-linux-arm64', (report) => {
+        const strict = report.data.helpers.find((helper: any) => helper.id === 'linux-readonly-process');
+        const nullSink = report.data.helpers.find((helper: any) => helper.id === 'linux-readonly-null-process');
+        expect(nullSink.sha256).toBe(strict.sha256);
+        if (failure === 'strict-body') nullSink.programSha256 = strict.programSha256;
+        if (failure === 'strict-export') nullSink.programExport = strict.programExport;
+        if (failure === 'swapped-programs') {
+          [strict.programSha256, nullSink.programSha256] = [nullSink.programSha256, strict.programSha256];
+          [strict.programExport, nullSink.programExport] = [nullSink.programExport, strict.programExport];
+        }
+        if (failure === 'old-artifact-identity') {
+          report.data.identity.helpers = report.data.identity.helpers.filter((helper: any) => helper.id !== nullSink.id);
+        }
+      });
+      const result = await evaluate(evidence);
+      expect(result.gateDetails['native:linux-arm64'].ok).toBe(false);
+      expect(result.productionQualified).toBe(false);
+    }
+  );
+
   it.each(['missing-program-digest', 'wrong-program-digest', 'wrong-export', 'source-only', 'missing-execution-case', 'unsettled'])(
     'rejects embedded helper evidence with %s despite authenticated module bytes', async (failure) => {
       const evidence = structuredClone(base);
@@ -1160,6 +1205,21 @@ describe('authenticated report binding and adversarial measurements', () => {
 });
 
 describe('real local final-byte and archive integrity', () => {
+  it('rejects a re-signed compiled module that retains the strict helper but omits the registered null-sink export', async () => {
+    const evidence = structuredClone(base);
+    updateArchive(evidence, 'linux-x64', (bundle) => {
+      const file = path.join(bundle, 'dist/adapters/state/linux-readonly-process-program.js');
+      const compiled = fs.readFileSync(file, 'utf8');
+      expect(compiled).toContain('linuxReadonlyProcessProgram');
+      expect(compiled).toContain('linuxReadonlyNullProcessProgram');
+      fs.writeFileSync(file, compiled.replaceAll('linuxReadonlyNullProcessProgram', 'unregisteredNullProcessProgram'));
+    });
+    const result = await evaluate(evidence);
+    expect(result.gateDetails['artifact:linux-x64'].ok).toBe(false);
+    expect(result.blockers.join(' ')).toContain('Packaged embedded helper bytes differ');
+    expect(result.productionQualified).toBe(false);
+  });
+
   it.each(EMBEDDED_NATIVE_HELPERS.map((helper) => [helper.id, helper.requiredPlatform === 'posix' ? 'linux' : helper.requiredPlatform, helper.compiledPath]))(
     'rejects final archives omitting the compiled %s helper', async (_id, platform, compiledPath) => {
       const evidence = structuredClone(base);

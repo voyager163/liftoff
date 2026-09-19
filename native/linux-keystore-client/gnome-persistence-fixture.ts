@@ -2,7 +2,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, mkdir, open, readFile, readdir, realpath, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { LinuxReadonlyProcessGuard } from '../../src/adapters/state/linux-readonly-process.js';
+import { LinuxReadonlyNullProcessGuard } from '../../src/adapters/state/linux-readonly-process.js';
 import { OwnedPrivateStateProcessRunner } from '../../src/adapters/state/owned-process.js';
 import { captureStateExecutable, nativeStateHostId } from '../../src/adapters/state/native-system.js';
 import { consumeLinuxKeyClientOutput, type LinuxKeyClientOutcome } from '../../src/adapters/state/linux-keystore-client-protocol.js';
@@ -12,6 +12,7 @@ import {
   type ManagedKeystoreKeyBinding, type ManagedKeystoreKeyContext
 } from '../../src/adapters/state/managed-keystore-key-binding.js';
 import { safeBusDiagnostic, type SafeBusDiagnostic } from './gnome-bus-diagnostics.mjs';
+import { runGnomeNullRestart } from './gnome-restart-guard.js';
 
 const directory = path.resolve('native', 'linux-keystore-client');
 const sourceCommit = 'da00f9621eaf263d5ed4236df9c22798ea8021d2';
@@ -132,7 +133,7 @@ export class GnomePersistenceFixture {
   readonly filename: string;
   readonly #password: Buffer;
   readonly #runner = new OwnedPrivateStateProcessRunner();
-  readonly #guard = new LinuxReadonlyProcessGuard();
+  readonly #restartGuard = new LinuxReadonlyNullProcessGuard();
   readonly #gnome: Software;
   readonly #client: Software;
   readonly #tools: Record<string, Executable>;
@@ -207,7 +208,7 @@ export class GnomePersistenceFixture {
 
   async close(): Promise<void> {
     this.#password.fill(0);
-    const settled = await Promise.allSettled([this.#runner.quiesce(), this.#guard.quiesce()]);
+    const settled = await Promise.allSettled([this.#runner.quiesce(), this.#restartGuard.quiesce()]);
     if (settled.some((result) => result.status === 'rejected')) this.#preserve = true;
     if (!this.#preserve) await rm(this.scope, { recursive: true, force: true });
     requireFixture(settled.every((result) => result.status === 'fulfilled'), 'cleanup-uncertain');
@@ -228,11 +229,11 @@ export class GnomePersistenceFixture {
     };
     const args = [path.join(directory, 'gnome-coordinator.mjs'), JSON.stringify(config)];
     const controller = new AbortController();
-    const task = operation === 'restart' ? this.#guard.run({
+    const task = operation === 'restart' ? runGnomeNullRestart(this.#restartGuard, {
       python: this.#python, executable: this.#node, args,
       scopeDirectory: this.scope, storeDirectory: this.store, writableDirectories: paths,
-      stdin: selectedPassword, timeoutMs: 15000, maximumBytes: 16384, signal: controller.signal
-    }) : this.#runner.run({
+      timeoutMs: 15000, maximumBytes: 16384, signal: controller.signal
+    }, selectedPassword) : this.#runner.run({
       executable: this.#python.path,
       args: ['-I', '-S', '-B', path.join(directory, 'gnome-enrollment-launch.py'), this.#node.path, ...args],
       cwd: paths.scratch,

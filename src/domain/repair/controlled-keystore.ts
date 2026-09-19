@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { canonicalSha256, isRecord } from '../governance/activation/canonical-json.js';
 import { freezeStateValue, stateAssert } from './stateful-invariants.js';
+import { parseLinuxReadonlyNullProcessPlan } from './linux-null-process.js';
 
 export const controlledGnomeSourceCommit = 'da00f9621eaf263d5ed4236df9c22798ea8021d2';
 export const controlledGnomeLaunchContract = 'linux-gnome-controlled-launch/1';
@@ -119,6 +120,25 @@ export function planControlledGnomeLaunch(value: unknown) {
       'independent-durable-readback', 'owned-session-settlement', 'fresh-process-key-bound-readback'
     ],
     daemonStartupProvesReadiness: false as const
+  };
+  return freezeStateValue({ ...specification, fingerprint: canonicalSha256(specification) });
+}
+
+/** Binds an explicitly selected guard plan, without granting execution authority. */
+export function planControlledGnomeNullRestart(value: unknown) {
+  const input = exact(value, [
+    'operation', 'projectId', 'projectRoot', 'hostId', 'principalUid', 'scopeRoot',
+    'daemon', 'sourceCommit', 'dependencyInventoryDigest', 'guardPlan'
+  ]);
+  const { guardPlan: suppliedGuard, ...launchInput } = input;
+  const { fingerprint: launchFingerprint, ...launch } = planControlledGnomeLaunch(launchInput);
+  const guardPlan = parseLinuxReadonlyNullProcessPlan(suppliedGuard);
+  stateAssert(launch.operation === 'restart' && guardPlan.operationDigest === launchFingerprint &&
+    guardPlan.hostId === launch.hostId && guardPlan.principalUid === launch.principalUid, 'invalid-binding');
+  const specification = {
+    ...launch, kind: 'controlled-linux-keystore-null-restart' as const,
+    contract: 'linux-gnome-controlled-null-restart/1' as const, guardPlan,
+    beforeDispatch: [...launch.beforeDispatch, 'exact-null-sink-profile-plan-binding', 'current-native-null-device-identity']
   };
   return freezeStateValue({ ...specification, fingerprint: canonicalSha256(specification) });
 }

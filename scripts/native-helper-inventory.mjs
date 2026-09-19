@@ -68,6 +68,16 @@ export const NATIVE_HELPER_INVENTORY = [
     requiredPlatform: 'linux'
   },
   {
+    id: 'linux-readonly-null-process',
+    path: 'src/adapters/state/linux-readonly-process-program.ts',
+    compiledPath: 'dist/adapters/state/linux-readonly-process-program.js',
+    programExport: 'linuxReadonlyNullProcessProgram',
+    description: 'Separate embedded CPython Linux Landlock guard with an explicitly selected verified null-device WRITE_FILE sink',
+    measurement: 'native-python-landlock-process',
+    v8Measured: false,
+    requiredPlatform: 'linux'
+  },
+  {
     id: 'posix-state-python-probe',
     path: 'src/adapters/state/native-system.ts',
     compiledPath: 'dist/adapters/state/native-system.js',

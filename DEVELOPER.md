@@ -516,6 +516,15 @@ exercise actual persistence/restart without using existing keyrings or user
 credentials. Sanitized JSON outcomes retain source/architecture bindings and
 leave host encryption, provider/cloud/release qualification explicitly
 `not-performed`. Uncertain process settlement does not become cleanup proof.
+The same manual native step also selects
+`LIFTOFF_LINUX_READONLY_NULL_TEST=1` for the separately bound null-sink profile
+tests. Both the actual GNOME persistence suite and
+`opt-in Linux null-sink profile nonsecret fixtures` must run with zero failed
+or skipped applicable cases. Fixed-device 1:3 admission, strict-profile refusal,
+continued write/device denial and cancellation remain source-fixture checks,
+not permission to widen the original helper or alter a host device/ACL.
+Reports separately leave minimum-host and installed-artifact qualification
+`not-performed`.
 The 18 default jobs and their independent coverage denominators are unchanged;
 see the [manual routing and build prerequisites](CONTRIBUTING.md#validate-a-change).
 

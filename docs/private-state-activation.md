@@ -207,6 +207,25 @@ been widened, so successful enrollment and persisted-file inspection still do
 not establish fresh-process key recovery. Any null-device grant requires an
 explicitly reviewed contract change, not a generic writable `/dev` exception.
 
+The approved separate `linux-landlock-readonly-process-null-sink/1` source
+profile is now implemented by `LinuxReadonlyNullProcessGuard`. Its `plan`
+performs bounded native metadata observation without consuming private stdin;
+`run` requires the exact plan, nonsecret operation digest, command/directory
+bindings, current host/principal and helper digest. Both the native observation
+and execution resolve fixed `/dev/null` through anchored no-follow `O_PATH`
+descriptors and require root-owned character device 1:3. Execution adds only
+`WRITE_FILE` on that object, rechecks its path/identity around confinement and
+closes every retained sink descriptor before target execution.
+
+The original `LinuxReadonlyProcessGuard` and its helper body remain unchanged
+in behavior and identity; no failure selects the new profile automatically.
+Neither profile permits persisted-store writes, device creation or writable
+directory access to `/dev`. `planControlledGnomeNullRestart` binds the new guard
+plan to the exact controlled-restart specification without converting it into
+approval. The new profile still requires its own native source and installed-
+artifact evidence; metadata observations and plan fingerprints do not authorize
+keystore operations, establish encrypted custody or prove fresh-process recovery.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

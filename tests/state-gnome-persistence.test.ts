@@ -1,7 +1,7 @@
 import { chmod, mkdir, readFile, lstat, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   GnomePersistenceFixture, gnomeEnrollmentFailureObservation, assertGnomeCancellation
 } from '../native/linux-keystore-client/gnome-persistence-fixture.js';
@@ -11,6 +11,11 @@ import {
 import { validateGnomePrivatePrefixOptions } from '../native/linux-keystore-client/gnome-build-contract.mjs';
 import { captureStateExecutable } from '../src/adapters/state/native-system.js';
 import { stateDigest } from '../src/domain/repair/stateful-invariants.js';
+import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
+import {
+  linuxReadonlyNullProcessContract, type LinuxReadonlyNullProcessRequest, type LinuxReadonlyNullProcessPlan
+} from '../src/adapters/state/linux-readonly-process.js';
+import { runGnomeNullRestart } from '../native/linux-keystore-client/gnome-restart-guard.js';
 
 const directory = path.resolve('native', 'linux-keystore-client');
 const coordinator = await readFile(path.join(directory, 'gnome-coordinator.mjs'), 'utf8');
@@ -110,8 +115,16 @@ describe('actual GNOME persistence fixture source boundaries', () => {
   });
 
   it('creates bus/control descendants only after the restart guard, without detached children', () => {
-    expect(fixtureSource).toContain('this.#guard.run({');
+    expect(fixtureSource).toContain('new LinuxReadonlyNullProcessGuard()');
+    expect(fixtureSource).toContain("operation === 'restart' ? runGnomeNullRestart(this.#restartGuard, {");
+    expect(fixtureSource).not.toContain('new LinuxReadonlyProcessGuard()');
     expect(fixtureSource).toContain('writableDirectories: paths');
+    expect(declaration.restartProfile).toMatchObject({
+      kind: linuxReadonlyNullProcessContract.kind,
+      selection: 'explicit-plan-then-run-no-fallback',
+      privateInputBinding: 'excluded-no-password-or-key-verifier',
+      readiness: false
+    });
     expect(coordinator).toContain('detached: false');
     expect(coordinator).not.toContain('detached: true');
     expect(coordinator).not.toMatch(/setsid|--fork|standard_session_servicedirs|autostart/);
@@ -120,6 +133,104 @@ describe('actual GNOME persistence fixture source boundaries', () => {
     expect(coordinator).toContain('DBUS_SYSTEM_BUS_ADDRESS:');
     expect(coordinator).toContain("GNOME_KEYRING_PARANOID: '1'");
     expect(coordinator).toContain('nested-session-escape');
+  });
+
+  describe('GNOME null-profile plan/run wiring, not native observation', () => {
+    const metadata: Omit<LinuxReadonlyNullProcessRequest, 'operationDigest' | 'stdin'> = {
+      python: { path: '/fixture/python3.14', sha256: 'a'.repeat(64) },
+      executable: { path: '/fixture/node', sha256: 'b'.repeat(64) },
+      args: ['/fixture/gnome-coordinator.mjs', '{"operation":"restart","fault":"none","item":"login/1"}'],
+      scopeDirectory: '/fixture/scope', storeDirectory: '/fixture/scope/store',
+      writableDirectories: {
+        control: '/fixture/scope/control', runtime: '/fixture/scope/runtime', scratch: '/fixture/scope/scratch'
+      },
+      timeoutMs: 15000, maximumBytes: 16384
+    };
+    // Deliberately not a native plan: these spies test wiring only, never authority.
+    const plan = { unitTestOnly: true } as unknown as LinuxReadonlyNullProcessPlan;
+    afterEach(() => vi.useRealTimers());
+
+    it('plans exactly once with nonsecret metadata, then supplies private stdin only to that planned run', async () => {
+      const input = Buffer.from('NONSECRET_TEST_PASSWORD');
+      const planCall = vi.fn().mockResolvedValue(plan);
+      const runCall = vi.fn().mockResolvedValue({ exitCode: 0, stdout: Buffer.alloc(0) });
+      await runGnomeNullRestart({ plan: planCall, run: runCall }, metadata, input);
+      expect(planCall).toHaveBeenCalledTimes(1);
+      expect(runCall).toHaveBeenCalledTimes(1);
+      const planned = planCall.mock.calls[0]![0] as LinuxReadonlyNullProcessRequest;
+      expect(Object.hasOwn(planned, 'stdin')).toBe(false);
+      expect(JSON.stringify(planned)).not.toContain('NONSECRET_TEST_PASSWORD');
+      expect(planned.operationDigest).toBe(canonicalSha256({
+        kind: 'gnome-source-fixture-restart-operation/1',
+        profile: linuxReadonlyNullProcessContract.kind, request: metadata
+      }));
+      expect(runCall.mock.calls[0]![0]).toEqual({ ...planned, stdin: input });
+      expect(runCall.mock.calls[0]![1]).toBe(plan);
+      expect(planCall.mock.invocationCallOrder[0]!).toBeLessThan(runCall.mock.invocationCallOrder[0]!);
+      input.fill(0);
+    });
+
+    it('binds the exact operation/configuration but neither password bytes nor a password verifier', async () => {
+      const planCall = vi.fn().mockResolvedValue(plan);
+      const runCall = vi.fn().mockResolvedValue({ exitCode: 0, stdout: Buffer.alloc(0) });
+      const first = Buffer.from('NONSECRET_FIRST_PASSWORD'), second = Buffer.from('NONSECRET_SECOND_PASSWORD');
+      try {
+        await runGnomeNullRestart({ plan: planCall, run: runCall }, metadata, first);
+        await runGnomeNullRestart({ plan: planCall, run: runCall }, metadata, second);
+        await runGnomeNullRestart({ plan: planCall, run: runCall }, {
+          ...metadata, args: [metadata.args[0]!, '{"operation":"restart","fault":"missing-probe","item":"login/1"}']
+        }, first);
+        const digests = planCall.mock.calls.map((call) => (call[0] as LinuxReadonlyNullProcessRequest).operationDigest);
+        expect(digests[0]).toBe(digests[1]);
+        expect(digests[2]).not.toBe(digests[0]);
+      } finally { first.fill(0); second.fill(0); }
+    });
+
+    it('rejects private/extra planning fields rather than hashing or passing them to the planner', async () => {
+      const planCall = vi.fn(), runCall = vi.fn();
+      const privateField = Buffer.from('NONSECRET_PRIVATE_FIELD');
+      try {
+        for (const value of [
+          { ...metadata, stdin: privateField },
+          { ...metadata, executable: { ...metadata.executable, password: privateField } },
+          { ...metadata, writableDirectories: { ...metadata.writableDirectories, secret: privateField } }
+        ]) {
+          await expect(runGnomeNullRestart({ plan: planCall, run: runCall }, value as typeof metadata, Buffer.alloc(0)))
+            .rejects.toThrow('nonsecret-restart-metadata-required');
+        }
+      } finally { privateField.fill(0); }
+      expect(planCall).not.toHaveBeenCalled();
+      expect(runCall).not.toHaveBeenCalled();
+    });
+
+    it.each(['plan', 'run'] as const)('does not retry or change profiles after %s failure', async (stage) => {
+      const blocked = new Error('unit-native-profile-blocked');
+      const planCall = stage === 'plan' ? vi.fn().mockRejectedValue(blocked) : vi.fn().mockResolvedValue(plan);
+      const runCall = vi.fn().mockRejectedValue(blocked);
+      await expect(runGnomeNullRestart({ plan: planCall, run: runCall }, metadata, Buffer.alloc(0))).rejects.toBe(blocked);
+      expect(planCall).toHaveBeenCalledTimes(1);
+      expect(runCall).toHaveBeenCalledTimes(stage === 'plan' ? 0 : 1);
+    });
+
+    it('includes planning in the original outer deadline rather than adding a second execution window', async () => {
+      vi.useFakeTimers();
+      const planned = Promise.withResolvers<LinuxReadonlyNullProcessPlan>();
+      const planCall = vi.fn().mockReturnValue(planned.promise);
+      const runCall = vi.fn().mockImplementation((request: LinuxReadonlyNullProcessRequest) =>
+        new Promise((_resolve, reject) => request.signal!.addEventListener('abort', () => reject(new Error('unit-budget-expired')), { once: true })));
+      const outcome = runGnomeNullRestart({ plan: planCall, run: runCall }, { ...metadata, timeoutMs: 1000 }, Buffer.alloc(0))
+        .then(() => null, (error: unknown) => error);
+      await vi.advanceTimersByTimeAsync(750);
+      planned.resolve(plan);
+      await vi.advanceTimersByTimeAsync(0);
+      expect(runCall).toHaveBeenCalledTimes(1);
+      const request = runCall.mock.calls[0]![0] as LinuxReadonlyNullProcessRequest;
+      await vi.advanceTimersByTimeAsync(249);
+      expect(request.signal!.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(request.signal!.aborted).toBe(true);
+      expect(await outcome).toMatchObject({ message: 'unit-budget-expired' });
+    });
   });
 
   it('keeps passwords in private stdin and retains only a consumed encrypted application-key binding', () => {

@@ -209,6 +209,29 @@ minimum-host reports. Artifact inspection does not execute downloaded archive
 code to obtain those identities. Missing or changed helper bindings block
 qualification rather than disappearing behind passing JavaScript percentages.
 
+The Linux read-only guard has two separately registered helper identities:
+
+| Helper ID | Export | Guard profile |
+| --- | --- | --- |
+| `linux-readonly-process` | `linuxReadonlyProcessProgram` | `linux-landlock-readonly-process/1` |
+| `linux-readonly-null-process` | `linuxReadonlyNullProcessProgram` | `linux-landlock-readonly-process-null-sink/1` |
+
+Both exports ship in `dist/adapters/state/linux-readonly-process-program.js`.
+Their shared compiled-module digest does not make their program digests,
+approvals or qualification evidence interchangeable. The strict helper retains
+SHA-256 `bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2`;
+its bytes and default behavior remain unchanged. The null-sink profile must be
+explicitly selected. Its sole additional right is `WRITE_FILE` on the verified
+root-owned `/dev/null` character device **1:3**, with retained no-follow object
+and path checks. It grants no parent-directory, truncation, other-device or
+device-creation authority and does not inherit a preopened writable sink.
+
+Every Linux native and minimum-host artifact report must bind both exact helper
+IDs, exports and program digests independently. Old strict-only evidence,
+omitted helpers and swapped program identities cannot qualify the new profile.
+Source fixtures are not native host-floor, encrypted-custody or final signed
+installed-artifact qualification.
+
 Bare run labels, matching digests and success flags remain unauthenticated
 assertions. Native locking or process tests also do not prove encrypted custody,
 real key access, provider outcomes or final signed installed-byte behavior.

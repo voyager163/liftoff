@@ -437,12 +437,12 @@ describe('coverage gate - native helper disclosure and qualification', () => {
   });
 
   it('discloses all shipped native helpers and launchers without claiming V8 coverage', () => {
-    expect(NATIVE_HELPER_INVENTORY).toHaveLength(8);
+    expect(NATIVE_HELPER_INVENTORY).toHaveLength(9);
     const ids = NATIVE_HELPER_INVENTORY.map((h) => h.id);
     expect(ids).toEqual([
       'windows-job-controller', 'windows-launcher', 'posix-launcher',
       'darwin-state-system', 'darwin-posix-state-lock', 'linux-posix-state-lock', 'linux-readonly-process',
-      'posix-state-python-probe'
+      'linux-readonly-null-process', 'posix-state-python-probe'
     ]);
     expect(NATIVE_HELPER_INVENTORY.find((helper) => helper.id === 'windows-launcher')).toMatchObject({
       path: 'scripts/distribution/windows-launcher.go', finalBinary: 'bin/liftoff.exe', measurement: 'native-go-pe-binary'
@@ -460,6 +460,7 @@ describe('coverage gate - native helper disclosure and qualification', () => {
       ['darwin-posix-state-lock', 'posixStateLockProgram', 'darwin'],
       ['linux-posix-state-lock', 'linuxPosixStateLockProgram', 'linux'],
       ['linux-readonly-process', 'linuxReadonlyProcessProgram', 'linux'],
+      ['linux-readonly-null-process', 'linuxReadonlyNullProcessProgram', 'linux'],
       ['posix-state-python-probe', 'nativeStatePythonVersionProbe', 'posix']
     ]);
     for (const helper of helpers) {
@@ -494,7 +495,8 @@ describe('coverage gate - native helper disclosure and qualification', () => {
       'posix-launcher', 'darwin-state-system', 'darwin-posix-state-lock', 'posix-state-python-probe'
     ]);
     expect(nativeHelpersForPlatform('linux').map((helper) => helper.id)).toEqual([
-      'posix-launcher', 'linux-posix-state-lock', 'linux-readonly-process', 'posix-state-python-probe'
+      'posix-launcher', 'linux-posix-state-lock', 'linux-readonly-process',
+      'linux-readonly-null-process', 'posix-state-python-probe'
     ]);
     expect(nativeHelpersForPlatform('win32').map((helper) => helper.id)).toEqual(['windows-job-controller', 'windows-launcher']);
     expect(() => nativeHelpersForPlatform('freebsd')).toThrow(/Unsupported/);

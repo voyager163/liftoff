@@ -1027,7 +1027,7 @@ jobs:
         env:
           LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: "1"
         run: >-
-          npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts
+          npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts tests/state-linux-null-process.test.ts
           --maxWorkers=1 --reporter=verbose --reporter=json
           --outputFile.json=diagnostics/gnome-source-interface-tests.json
 
@@ -1083,13 +1083,14 @@ jobs:
         id: gnome_identity
         run: node native/linux-keystore-client/gnome-build-identity.mjs
 
-      - name: Test actual pinned GNOME persistence in generated-data private scopes only
+      - name: Test actual GNOME persistence and explicit null-sink profile in private source fixtures only
         id: persistence
         if: success() && steps.contracts_ready.outcome == 'success' && steps.gnome_identity.outcome == 'success'
         env:
           LIFTOFF_GNOME_PERSISTENCE_TEST: "1"
+          LIFTOFF_LINUX_READONLY_NULL_TEST: "1"
         run: >-
-          npx vitest run tests/state-gnome-persistence.test.ts
+          npx vitest run tests/state-gnome-persistence.test.ts tests/state-linux-null-process.test.ts
           --maxWorkers=1 --reporter=verbose --reporter=json
           --outputFile.json=diagnostics/gnome-persistence-tests.json
 
@@ -1112,7 +1113,8 @@ jobs:
           import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
           const boundaries = {
             hostEncryptionQualification: 'not-performed', providerQualification: 'not-performed',
-            cloudQualification: 'not-performed', releaseQualification: 'not-performed'
+            cloudQualification: 'not-performed', releaseQualification: 'not-performed',
+            minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed'
           };
           const report = {
             schemaVersion: 1, classification: 'actual-pinned-gnome-persistence-generated-data-source-only',
@@ -1197,7 +1199,8 @@ jobs:
               assert.equal(report.stages.python_preparation, 'success');
             }
             summarize('persistence', 'diagnostics/gnome-persistence-tests.json', 'diagnostics/gnome-persistence-summary.json', [
-              'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody'
+              'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody',
+              'opt-in Linux null-sink profile nonsecret fixtures'
             ]);
           });
           if (report.stages.helper === 'success') capture('client-identity', () => {

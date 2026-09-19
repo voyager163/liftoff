@@ -1,7 +1,8 @@
 // ABI 3 UAPI: https://github.com/torvalds/linux/blob/v6.2/include/uapi/linux/landlock.h
 // Syscalls 444..446: v6.2 arch/x86/entry/syscalls/syscall_64.tbl and include/uapi/asm-generic/unistd.h.
 // No compatibility fallback: WRITE_FILE without TRUNCATE is not a read-only boundary.
-export const linuxReadonlyProcessProgram = String.raw`
+function processProgram(nullSink: boolean): string {
+  return String.raw`
 import ctypes, hashlib, json, os, resource, stat, sys
 
 class Blocked(Exception):
@@ -58,7 +59,27 @@ def executable(item):
     require(digest.hexdigest() == item["sha256"], "tool-unavailable")
     return fd
 
-try:
+${nullSink ? String.raw`def observe_null_device(expected=None):
+    try:
+        root = os.open("/", os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        retained.append(root)
+        parent = os.open("dev", os.O_PATH | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=root)
+        retained.append(parent)
+        for fd in (root, parent):
+            s = os.fstat(fd)
+            require(stat.S_ISDIR(s.st_mode) and s.st_uid == 0 and not s.st_mode & 0o022, "unsafe-path")
+        fd = os.open("null", os.O_PATH | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+        retained.append(fd)
+        s = os.fstat(fd)
+        require(stat.S_ISCHR(s.st_mode) and s.st_uid == 0 and os.major(s.st_rdev) == 1 and os.minor(s.st_rdev) == 3, "unsafe-path")
+        observed = dict(identity(s), path="/dev/null", kind="character-device", gid=s.st_gid,
+                        rdev=str(s.st_rdev), major=os.major(s.st_rdev), minor=os.minor(s.st_rdev))
+        require(expected is None or observed == expected, "unsafe-path")
+        return fd, observed
+    except OSError:
+        raise Blocked("unsafe-path")
+
+` : ''}try:
     require(sys.platform == "linux", "unsupported-native-platform")
     require(sys.implementation.name == "cpython" and sys.version_info[:2] == (3, 14), "unqualified-combination")
     require(os.uname().machine in ("x86_64", "aarch64") and ctypes.sizeof(ctypes.c_void_p) == 8, "unqualified-combination")
@@ -73,7 +94,12 @@ try:
     require(3 <= maximum_fd <= 2147483647, "unqualified-combination")
     os.closerange(3, maximum_fd)
     resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    request = json.loads(sys.argv[1])
+${nullSink ? String.raw`    if sys.argv[1] == "--observe-null-sink":
+        fd, observed = observe_null_device()
+        observe_null_device(observed)
+        os.write(1, json.dumps(observed, separators=(",", ":")).encode("ascii"))
+        os._exit(0)
+` : ''}    request = json.loads(sys.argv[1])
     scope, store = request["scope"], request["store"]
     writable = request["writable"]
     require(len(writable) == 3, "invalid-binding")
@@ -92,7 +118,8 @@ try:
         retained.append(readable)
         require(not os.listdir(readable), "unsafe-path")
     target_fd = executable(request["executable"])
-    require(os.execve in os.supports_fd, "unqualified-combination")
+${nullSink ? String.raw`    null_fd, null_observation = observe_null_device(request["nullDevice"])
+` : ''}    require(os.execve in os.supports_fd, "unqualified-combination")
     libc = ctypes.CDLL(None, use_errno=True)
     libc.syscall.restype = ctypes.c_long
     libc.prctl.restype = ctypes.c_int
@@ -122,14 +149,19 @@ try:
         rule = PathBeneath(allowed, fd)
         require(libc.syscall(ctypes.c_long(445), ctypes.c_int(ruleset_fd), ctypes.c_int(1),
                              ctypes.byref(rule), ctypes.c_uint(0)) == 0, "unqualified-combination")
-    # Re-open by absolute path while all rule FDs remain pinned: reject path substitution.
+${nullSink ? String.raw`    null_rule = PathBeneath(WRITE_FILE, null_fd)
+    require(libc.syscall(ctypes.c_long(445), ctypes.c_int(ruleset_fd), ctypes.c_int(1),
+                         ctypes.byref(null_rule), ctypes.c_uint(0)) == 0, "unqualified-combination")
+    observe_null_device(null_observation)
+` : ''}    # Re-open by absolute path while all rule FDs remain pinned: reject path substitution.
     for item in [scope, store] + writable:
         observe(item)
     require(libc.prctl(38, 1, 0, 0, 0) == 0, "unqualified-combination")
     require(libc.syscall(ctypes.c_long(446), ctypes.c_int(ruleset_fd), ctypes.c_uint(0)) == 0, "unqualified-combination")
     for item in [scope, store] + writable:
         observe(item)
-    os.fchdir(writable_fds[2])
+${nullSink ? String.raw`    observe_null_device(null_observation)
+` : ''}    os.fchdir(writable_fds[2])
     require(os.getcwd() == writable[2]["path"], "unsafe-path")
     # stdin is never read, decoded, copied or logged here; exec inherits the private channel.
     for fd in retained:
@@ -143,3 +175,7 @@ except BaseException:
     os.write(2, b"liftoff-readonly:operation-failed\n")
     os._exit(125)
 `;
+}
+
+export const linuxReadonlyProcessProgram = processProgram(false);
+export const linuxReadonlyNullProcessProgram = processProgram(true);

@@ -5,6 +5,14 @@
   "minimumGlib": "2.80",
   "ubuntu2404AdditionalBuildPackages": ["libgcr-3-dev", "libp11-kit-dev"],
   "runtimeTools": { "bus": "/usr/bin/dbus-daemon", "observer": "/usr/bin/gdbus" },
+  "restartProfile": {
+    "kind": "linux-landlock-readonly-process-null-sink/1",
+    "selection": "explicit-plan-then-run-no-fallback",
+    "operationDigest": "nonsecret-exact-coordinator-arguments-tools-paths-and-limits",
+    "privateInputBinding": "excluded-no-password-or-key-verifier",
+    "approval": "not-conferred-by-plan",
+    "readiness": false
+  },
   "mesonOptions": {
     "ssh-agent": false,
     "pam": false,
