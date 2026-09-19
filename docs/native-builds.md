@@ -237,6 +237,50 @@ assertions. Native locking or process tests also do not prove encrypted custody,
 real key access, provider outcomes or final signed installed-byte behavior.
 Unmeasured or unqualified helper scope remains a release blocker.
 
+### Separate Windows private-process source primitive
+
+`WindowsPrivateProcessRunner` in
+`src/adapters/state/windows-private-runner.ts` is a separate private-I/O primitive,
+not a storage, BitLocker, Credential Manager or writer-readiness capability. Its
+independently pinned `windows-private-process.ps1` helper does not replace or
+change `windows-job-controller.ps1`, whose ordinary log files and null stdin
+are unsuitable for private state.
+
+The caller supplies exact independently selected PowerShell and target
+executable identities, non-private literal arguments, an admitted working
+directory, bounded binary input/output and a deadline. Input-buffer ownership
+transfers to the runner and is wiped on refusal as well as completion; returned
+binary stdout/stderr remain private and must be disposed by their owner.
+Optional synchronous private stdout observations borrow bytes only until the
+callback returns. No private payload enters helper arguments, environment,
+ordinary log files or a named listener. Stock Windows PowerShell 5.1 must permit
+the script and FullLanguage interop on the supported host; unavailable policy
+is a refusal, never an execution-policy bypass. The shared working-directory
+limit remains enforced before controller launch.
+
+The source design uses Microsoft's documented
+[anonymous-pipe inheritance](https://learn.microsoft.com/en-us/windows/win32/procthread/creating-a-child-process-with-redirected-input-and-output)
+and [CreatePipe](https://learn.microsoft.com/en-us/windows/win32/api/namedpipeapi/nf-namedpipeapi-createpipe)
+contracts, with non-inheritable parent ends and a fresh current-user/SYSTEM pipe
+security descriptor. An explicit
+[handle list and job list](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-updateprocthreadattribute)
+bind the three child pipe ends and assign the job at suspended process creation,
+before resume. Inherited control pipes bind a per-invocation challenge and the
+controller/parent
+[creation times from retained process handles](https://learn.microsoft.com/en-us/windows/win32/api/processthreadsapi/nf-processthreadsapi-getprocesstimes).
+[CancelSynchronousIo](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelsynchronousio)
+only requests cancellation: thread completion, root exit and kernel job
+`ActiveProcesses == 0` are independently required. Controller loss, failed
+accounting or incomplete pipe settlement remains unproven; killing a controller
+or observing root exit is not a replacement proof.
+
+Portable protocol tests and authored Windows NONSECRET source cases do not
+qualify this helper on Windows or establish encrypted custody, key access,
+minimum-host support or final signed installed-byte behavior. It is not wired
+as a public private-state producer or a fallback for missing Windows custody.
+The native inventory and release reports must independently include
+`windows-private-process`; old public-controller evidence cannot qualify it.
+
 ## Real outside-checkout closure proof
 
 Use the exact emitted build status. The verifier independently checks the

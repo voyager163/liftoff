@@ -5,7 +5,7 @@ import { execFileSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import { exactKeys, object, requireValue } from './release-evidence-github.mjs';
 import { loadTelemetryReleaseContract, TELEMETRY_BASELINE_FIXTURE, TELEMETRY_CONTRACT_PATH } from './release-telemetry-gateway.mjs';
-import { EMBEDDED_NATIVE_HELPERS, nativeHelpersForPlatform } from './native-helper-inventory.mjs';
+import { EMBEDDED_NATIVE_HELPERS, NATIVE_HELPER_INVENTORY, nativeHelpersForPlatform } from './native-helper-inventory.mjs';
 import {
   DocumentationClosureError, isPublicDocumentationFile, MAX_MARKDOWN_BYTES, MAX_MARKDOWN_TOTAL_BYTES,
   REQUIRED_PUBLIC_DOCUMENTS, validateDocumentShippingEntries, verifyPublicMarkdownLinks
@@ -433,6 +433,9 @@ export async function loadReleaseContext(projectRoot, sourceCommit, contracts) {
     'assets/repair/windows-job-controller.ps1', 'infrastructure/opentofu/telemetry/dashboard.json',
     TELEMETRY_CONTRACT_PATH, TELEMETRY_BASELINE_FIXTURE
   ]) sourceFiles[file] = inspectFile(projectRoot, file).sha256;
+  for (const helper of NATIVE_HELPER_INVENTORY.filter((entry) => entry.path.startsWith('assets/'))) {
+    sourceFiles[helper.path] = inspectFile(projectRoot, helper.path, helper.expectedDigest).sha256;
+  }
   exactIds(Object.keys(object(contracts.nativeHelperPrograms, 'Native helper program bindings')),
     EMBEDDED_NATIVE_HELPERS.map((helper) => helper.id), 'Embedded native helper source');
   const nativeHelpers = Object.fromEntries(EMBEDDED_NATIVE_HELPERS.map((helper) => {
@@ -584,12 +587,12 @@ export function verifyNativeArchiveContents(archive, payload, target, context) {
   requireValue(runtime && launcher && files.get('dist/cli.js'), `Native runtime/launcher/CLI closure missing: ${target}`);
   if (payload.os !== 'win32') requireValue((runtime.mode & 0o111) !== 0 && (launcher.mode & 0o111) !== 0, `Native runtime or launcher lacks executable mode: ${target}`);
   const helpers = [{ id: payload.os === 'win32' ? 'windows-launcher' : 'posix-launcher', path: launcherPath, sha256: launcher.sha256 }];
-  if (payload.os === 'win32') {
-    const helperPath = 'assets/repair/windows-job-controller.ps1';
-    requireValue(files.get(helperPath)?.sha256 === context.sourceFiles[helperPath], `Windows controller bytes differ from reviewed source: ${target}`);
-    helpers.push({ id: 'windows-job-controller', path: helperPath, sha256: files.get(helperPath).sha256 });
-  }
   const requiredHelpers = nativeHelpersForPlatform(payload.os);
+  for (const helper of requiredHelpers.filter((entry) => entry.path.startsWith('assets/'))) {
+    requireValue(files.get(helper.path)?.sha256 === context.sourceFiles[helper.path],
+      `Packaged native helper bytes differ from reviewed source: ${target}/${helper.id}`);
+    helpers.push({ id: helper.id, path: helper.path, sha256: files.get(helper.path).sha256 });
+  }
   for (const helper of requiredHelpers.filter((entry) => entry.programExport)) {
     const expected = context.nativeHelpers[helper.id];
     requireValue(expected && files.get(helper.compiledPath)?.sha256 === expected.sha256,

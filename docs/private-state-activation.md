@@ -121,6 +121,17 @@ not private-state transport. Protected pipes/handles, bounded I/O, key snapshots
 actual native contention/cancellation and separately authorized host fixtures
 must be implemented and qualified before either new writer is enabled.
 
+The separate `WindowsPrivateProcessRunner` and
+`assets/repair/windows-private-process.ps1` now provide the source implementation
+of a bounded binary-pipe/owned-Job-Object transport with authenticated controller
+binding, transferred stdin, disposable outputs and explicit settlement results.
+The original public controller asset is unchanged. The new helper is
+independently inventoried and cannot inherit the public controller's evidence.
+Local protocol and admission regressions pass, but actual Windows compilation,
+pipe inheritance, cancellation and descendant behavior remain unverified.
+It is not wired into a ready private-state producer and supplies no BitLocker,
+SID/DACL, native-key, encrypted-custody or installed-artifact qualification.
+
 The Linux key-client decoder consumes a bounded `LKC1` stream and clears its
 input. It accepts only the registered metadata fields and creation sequence,
 retains bounded returned identities through partial/error output, and releases

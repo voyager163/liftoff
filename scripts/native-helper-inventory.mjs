@@ -20,6 +20,15 @@ export const NATIVE_HELPER_INVENTORY = [
     requiredPlatform: 'win32'
   },
   {
+    id: 'windows-private-process',
+    path: 'assets/repair/windows-private-process.ps1',
+    description: 'Independent Windows Job Object controller with bounded private binary anonymous-pipe I/O',
+    measurement: 'native-powershell-private-process',
+    v8Measured: false,
+    requiredPlatform: 'win32',
+    expectedDigest: 'c884ce3ac428ddfa29ae193bfdf3f2a9c8560aed45ba495891337ad87b881512'
+  },
+  {
     id: 'posix-launcher',
     path: 'bin/liftoff',
     description: 'Relocatable POSIX shell launcher for macOS and Linux',

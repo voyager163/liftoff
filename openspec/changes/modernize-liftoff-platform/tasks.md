@@ -117,6 +117,16 @@ terminated that child first; no controller guarantee was weakened to pass it.
 This completes the exercised native Job Object behavior, not minimum-host,
 architecture-wide or installed-artifact qualification.
 
+Complete-boundary source run `35428495819` at
+`c5e0a000404eff3f10741e90cc7f0cb6f79715cb` retained all 60 selected suites
+across three Windows shards. Shard 3 finished with 519 passing, seven failing
+and eight non-applicable cases: explicit `USERPROFILE` clearing still inherited
+the runner profile, and six npm-invocation cases failed directory-identity
+admission. Shards 1 and 2 exhausted their unchanged 20-minute job budgets;
+their incomplete outcomes are not passing evidence. Tasks 3.2 and 3.8 remain
+open while those actual host failures and workload partitioning are corrected
+without dropping cases or increasing production/test deadlines.
+
 Task 3.6 has passing native POSIX source-host evidence from run `35352071630`
 at `d9783d087a905ccdb361b6b7bbb5d6f69ac48bcf`. Both Ubuntu and macOS passed
 all applicable `process-runner`, `state-migration-process` and
@@ -282,6 +292,15 @@ proof. Regressions cover undispatched expiry, retained returned identity,
 interrupted response bodies and continuation without a second registration.
 This closes a bounded source gap, not the task's complete cross-producer
 recovery or separately authorized live qualification scope.
+
+Task 11.19 now has a separate Windows private-process source primitive using
+bounded binary pipes and an owned Job Object rather than the public
+controller's ordinary temporary output files. Its original controller asset
+is unchanged, and the new helper has separate artifact/inventory binding.
+Local protocol/refusal and release-inventory regressions pass; nine actual
+Windows cases, including PowerShell/C# compilation and native pipe/job behavior,
+remain unperformed. No producer is enabled and the storage, SID/DACL, native-key,
+host/architecture and installed-artifact custody requirements remain open.
 
 The original native POSIX protocol tuple is now held in a pure domain module
 and re-exported through its original adapter API. Its canonical digest remains

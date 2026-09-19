@@ -437,10 +437,10 @@ describe('coverage gate - native helper disclosure and qualification', () => {
   });
 
   it('discloses all shipped native helpers and launchers without claiming V8 coverage', () => {
-    expect(NATIVE_HELPER_INVENTORY).toHaveLength(9);
+    expect(NATIVE_HELPER_INVENTORY).toHaveLength(10);
     const ids = NATIVE_HELPER_INVENTORY.map((h) => h.id);
     expect(ids).toEqual([
-      'windows-job-controller', 'windows-launcher', 'posix-launcher',
+      'windows-job-controller', 'windows-launcher', 'windows-private-process', 'posix-launcher',
       'darwin-state-system', 'darwin-posix-state-lock', 'linux-posix-state-lock', 'linux-readonly-process',
       'linux-readonly-null-process', 'posix-state-python-probe'
     ]);
@@ -498,7 +498,9 @@ describe('coverage gate - native helper disclosure and qualification', () => {
       'posix-launcher', 'linux-posix-state-lock', 'linux-readonly-process',
       'linux-readonly-null-process', 'posix-state-python-probe'
     ]);
-    expect(nativeHelpersForPlatform('win32').map((helper) => helper.id)).toEqual(['windows-job-controller', 'windows-launcher']);
+    expect(nativeHelpersForPlatform('win32').map((helper) => helper.id)).toEqual([
+      'windows-job-controller', 'windows-launcher', 'windows-private-process'
+    ]);
     expect(() => nativeHelpersForPlatform('freebsd')).toThrow(/Unsupported/);
   });
 

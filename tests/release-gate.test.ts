@@ -34,7 +34,7 @@ import { darwinStateSystemProgram } from '../src/adapters/state/darwin-system-pr
 import { posixStateLockProgram, linuxPosixStateLockProgram } from '../src/adapters/state/posix-lock-program.js';
 import { linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram } from '../src/adapters/state/linux-readonly-process-program.js';
 import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
-import { EMBEDDED_NATIVE_HELPERS, nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
+import { EMBEDDED_NATIVE_HELPERS, NATIVE_HELPER_INVENTORY, nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
   evaluateReleaseGate, evaluateReleaseGateFixture, formatReleaseGateReport, REQUIRED_REPORT_IDS
 } from '../scripts/release-gate.mjs';
@@ -335,6 +335,7 @@ beforeAll(async () => {
   const sourcePackage = JSON.parse(fs.readFileSync('package.json', 'utf8'));
   definitions.push(...Object.keys(collectPublicDocumentInventory(process.cwd(), sourcePackage.files)));
   definitions.push(...EMBEDDED_NATIVE_HELPERS.map((helper) => helper.path));
+  definitions.push(...NATIVE_HELPER_INVENTORY.filter((helper) => helper.path.startsWith('assets/')).map((helper) => helper.path));
   for (const resource of Object.values(catalog.resources) as any[]) definitions.push(resource.path);
   for (const relative of new Set(definitions)) write(relative, fs.readFileSync(relative));
   for (const helper of EMBEDDED_NATIVE_HELPERS) {
@@ -847,7 +848,7 @@ describe('versioned release admission and local identity', () => {
     expect(result.ok).toBe(true);
     expect(result.productionQualified).toBe(false);
     expect(result.status).toBe('FIXTURE_VALIDATED_NOT_QUALIFIED');
-    expect(result.subject.targets['win32-arm64'].helpers).toHaveLength(2);
+    expect(result.subject.targets['win32-arm64'].helpers).toHaveLength(3);
     for (const target of REQUIRED_NATIVE_TARGETS) {
       expect(result.subject.targets[target].helpers.map((helper: any) => helper.id).sort())
         .toEqual(nativeHelpersForPlatform(target.split('-')[0]).map((helper) => helper.id).sort());
@@ -1115,6 +1116,21 @@ describe('authenticated report binding and adversarial measurements', () => {
     expect((await evaluate(evidence)).gateDetails['native:win32-x64'].ok).toBe(false);
   });
 
+  it.each(['missing-private-helper', 'public-controller-digest', 'unsettled-private-helper'])(
+    'never substitutes general-controller evidence for private I/O: %s', async (failure) => {
+      const evidence = structuredClone(base);
+      updateReport(evidence, 'native-minimum-win32-arm64', (report) => {
+        const helper = report.data.helpers.find((entry: any) => entry.id === 'windows-private-process');
+        if (failure === 'missing-private-helper') report.data.helpers = report.data.helpers.filter((entry: any) => entry !== helper);
+        if (failure === 'public-controller-digest') {
+          helper.sha256 = report.data.helpers.find((entry: any) => entry.id === 'windows-job-controller').sha256;
+        }
+        if (failure === 'unsettled-private-helper') helper.activeProcesses = 1;
+      });
+      expect((await evaluate(evidence)).gateDetails['nativeMinimum:win32-arm64'].ok).toBe(false);
+    }
+  );
+
   it.each(['native', 'native-minimum'])('requires every embedded helper in authenticated %s Linux execution evidence', async (lane) => {
     const evidence = structuredClone(base);
     updateReport(evidence, `${lane}-linux-x64`, (report) => {
@@ -1205,6 +1221,14 @@ describe('authenticated report binding and adversarial measurements', () => {
 });
 
 describe('real local final-byte and archive integrity', () => {
+  it('requires the independent private-process asset in the final Windows artifact', async () => {
+    const evidence = structuredClone(base);
+    updateArchive(evidence, 'win32-x64', (bundle) => fs.unlinkSync(path.join(bundle, 'assets/repair/windows-private-process.ps1')));
+    const result = await evaluate(evidence);
+    expect(result.gateDetails['artifact:win32-x64'].ok).toBe(false);
+    expect(result.blockers.join(' ')).toContain('windows-private-process');
+  });
+
   it('rejects a re-signed compiled module that retains the strict helper but omits the registered null-sink export', async () => {
     const evidence = structuredClone(base);
     updateArchive(evidence, 'linux-x64', (bundle) => {
