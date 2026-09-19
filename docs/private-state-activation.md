@@ -174,6 +174,16 @@ that the second snapshot came from a fresh daemon or durable storage. Its result
 explicitly retains `freshProcessVerified: false` and `readiness: false`; the
 coordinator must establish those independent native observations.
 
+The opt-in source fixture in `native/linux-keystore-client/gnome-*` now exercises
+the pinned daemon against fresh private test scopes and generated test inputs.
+Its restart coordinator creates its private IPC inside the read-only process
+guard, rechecks the persisted generation and compares a fresh key snapshot.
+Only settled owned scopes may be removed; uncertain settlement preserves them.
+This fixture has not yet passed actual Linux execution. In particular, native
+auxiliary dotlock writes denied by the guard must remain failures, not permission
+to make the persisted store writable. Source/refusal checks on macOS do not
+qualify Linux persistence, encrypted host storage or production enrollment.
+
 ## Exact plans and authority
 
 `private-resource-plans.ts` exports:

@@ -151,11 +151,12 @@ separate from real-provider, custody, enrollment, installed-artifact and
 runtime-closure qualification. Missing prerequisites or either architecture
 remain explicit blockers.
 
-All four inputs default to `false`. In the table, Windows, Go, POSIX and Build
+All five diagnostic inputs default to `false`. In the table, Windows, Go, POSIX and Build
 mean `diagnostic_windows_only`, `diagnostic_native_go_only`,
 `diagnostic_native_posix_locks_only` and `diagnostic_linux_keystore_build_only`.
 For compatibility, the Build input retains its name but now selects the full
-build plus synthetic-source behavior job described above.
+build plus synthetic-source behavior job described above. This table applies
+when `diagnostic_linux_gnome_persistence_only` is `false`.
 
 | Windows | Go | POSIX | Build | Jobs executed |
 | --- | --- | --- | --- | --- |
@@ -175,6 +176,51 @@ build plus synthetic-source behavior job described above.
 | `true` | `false` | `true` | `true` | Windows/POSIX lock diagnostics and helper builds |
 | `false` | `true` | `true` | `true` | Native Go/POSIX lock diagnostics and helper builds |
 | `true` | `true` | `true` | `true` | All selected diagnostics, including helper builds |
+
+The separate `diagnostic_linux_gnome_persistence_only` option is **manual-only**.
+It runs actual pinned GNOME persistence/restart source tests on Linux x64 and
+arm64 with generated test passwords/keys, new private buses and disposable
+runner-owned stores. It never selects an existing keyring, ordinary
+desktop/system service, user credential or cloud resource, and does not change
+host disk encryption, ACLs or policy. Normal push/PR/default runs remain at
+18 jobs and never enable this native fixture.
+
+| GNOME persistence flag | Other four diagnostic flags | Manual jobs executed |
+| --- | --- | --- |
+| `false` | Any combination | Exactly the preceding routing table |
+| `true` | All `false` | Only the Linux x64/arm64 GNOME persistence jobs |
+| `true` | Any selected | GNOME persistence plus exactly those selected diagnostics; no unrelated full jobs/gates |
+
+The lane builds exact clean GNOME commit
+[`da00f9621eaf263d5ed4236df9c22798ea8021d2`](https://gitlab.gnome.org/GNOME/gnome-keyring/-/tree/da00f9621eaf263d5ed4236df9c22798ea8021d2),
+not an equivalent version/tag or system daemon. Its
+[pinned Meson requirements](https://gitlab.gnome.org/GNOME/gnome-keyring/-/blob/da00f9621eaf263d5ed4236df9c22798ea8021d2/meson.build)
+include GLib/GIO >=2.80, GCK >=3.3.4, GCR-base >=3.27.90, libgcrypt and p11-kit.
+Ubuntu prerequisites add `libgcr-3-dev`, `libp11-kit-dev` and `libglib2.0-bin`
+to the established build/private-fixture dependencies. PAM, systemd, SSH-agent,
+capabilities, SELinux, debug mode and manpages are disabled. Only the
+`gnome-keyring-daemon` target is built and its exact bytes copied into a private
+prefix; upstream PAM/autostart/service files are **not installed**.
+
+The same pinned private libsecret/client build, actual loader/dependency checks
+and `tests/managed-keystore-key-binding.test.ts` contracts must pass before real
+GNOME fixture effects. The Landlock wrapper uses selected CPython 3.14.7 with
+the existing exact-file ownership/mode/identity checks; there is no admission
+bypass or copied Python executable. Only the native step sets
+`LIFTOFF_GNOME_PERSISTENCE_TEST=1` and runs
+`tests/state-gnome-persistence.test.ts`. Both architectures retain one worker,
+the 20-minute job budget and unchanged operation/test deadlines.
+
+Completion requires the actual opt-in suite with no failed/skipped cases;
+there is no fixed case count. Only bounded allowlisted JSON identities, case
+outcomes and process/persistence summaries are uploaded. No daemon binary,
+keyring, password, key, raw loader/protocol output or private fixture directory
+is an artifact input. Uncertain settlement remains explicit and its fixture
+scope is preserved rather than claimed cleaned. Reports explicitly state
+`hostEncryptionQualification`, provider, cloud and release qualification are
+`not-performed`: actual generated-data GNOME behavior is not encrypted-host
+custody or production enrollment qualification. Missing native hosts, build
+dependencies or identity/permission admission remain blockers, not fallbacks.
 
 A diagnostic-only dispatch **does not qualify the source or release**, even if
 it is green. Any selected diagnostic flag excludes unrelated full-validation

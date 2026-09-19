@@ -23,6 +23,11 @@ on:
         type: boolean
         required: false
         default: false
+      diagnostic_linux_gnome_persistence_only:
+        description: Test pinned GNOME persistence with generated data (not encrypted-host custody)
+        type: boolean
+        required: false
+        default: false
   push:
     branches: [main]
   pull_request:
@@ -33,7 +38,7 @@ permissions:
 jobs:
   test:
     name: Source integrations (${{ matrix.os }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -167,7 +172,7 @@ jobs:
 
   test-shards:
     name: Source tests (${{ matrix.os }}, shard ${{ matrix.shard }}/3)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
@@ -254,7 +259,7 @@ jobs:
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -300,7 +305,7 @@ jobs:
 
   standard-node-templates:
     name: Standard Node templates (npm ${{ matrix.npm-version }})
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     runs-on: ubuntu-latest
     timeout-minutes: 30
     strategy:
@@ -334,7 +339,7 @@ jobs:
 
   coverage-qualification:
     name: Source coverage gate (not native qualification)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)
     needs: test-shards
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -410,7 +415,7 @@ jobs:
 
   linux-keystore-build:
     name: Linux keystore compile/synthetic-source (${{ matrix.arch }}, not provider or custody qualification)
-    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only) || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)
+    if: github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only) || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
@@ -426,17 +431,20 @@ jobs:
       LIBSECRET_COMMIT: a5cd57f103038c06b64d5f6ebfd0e627bb40af4e
       EXPECTED_ARCH: ${{ matrix.arch }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - &native-source-checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
           persist-credentials: false
 
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+      - &native-source-node
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.20.0"
           cache: npm
 
-      - name: Verify actual compile host
+      - &verify-native-linux-host
+        name: Verify actual compile host
         run: >-
           node --input-type=module -e
           "import assert from 'node:assert/strict';
@@ -466,7 +474,8 @@ jobs:
           --maxWorkers=1 --reporter=verbose --reporter=json
           --outputFile.json=diagnostics/linux-keystore-protocol-tests.json
 
-      - name: Fetch and verify exact clean libsecret source (not a release tag)
+      - &fetch-pinned-libsecret
+        name: Fetch and verify exact clean libsecret source (not a release tag)
         id: source
         run: |
           root="$RUNNER_TEMP/liftoff-libsecret-build"
@@ -479,7 +488,8 @@ jobs:
           test -z "$(git -C "$root/source" status --porcelain=v1 --untracked-files=all)"
           printf 'LIBSECRET_SOURCE_DIR=%s\nLIBSECRET_PREFIX=%s\nLIBSECRET_BUILD_DIR=%s\n' "$root/source" "$root/prefix" "$root/build" >> "$GITHUB_ENV"
 
-      - name: Build crypto-enabled pinned libsecret into the private prefix
+      - &build-pinned-libsecret
+        name: Build crypto-enabled pinned libsecret into the private prefix
         id: libsecret
         run: |
           meson setup "$LIBSECRET_BUILD_DIR" "$LIBSECRET_SOURCE_DIR" \
@@ -492,7 +502,8 @@ jobs:
           test -z "$(git -C "$LIBSECRET_SOURCE_DIR" status --porcelain=v1 --untracked-files=all)"
           test "$(PKG_CONFIG_PATH="$LIBSECRET_PREFIX/lib/pkgconfig" pkg-config --variable=prefix libsecret-1)" = "$LIBSECRET_PREFIX"
 
-      - name: Compile helper only (do not execute helper or connect to a service)
+      - &build-linux-keystore-client
+        name: Compile helper only (do not execute helper or connect to a service)
         id: helper
         run: node native/linux-keystore-client/build.mjs
 
@@ -816,23 +827,25 @@ jobs:
 
       - name: Prepare only selected native executable permissions
         shell: bash
-        run: |
+        run: &prepare-selected-native-tools |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
           import { createHash } from 'node:crypto';
           import { accessSync, closeSync, constants, fchmodSync, fstatSync, lstatSync, mkdirSync, openSync, readSync, realpathSync, writeFileSync } from 'node:fs';
           import { isAbsolute } from 'node:path';
+          const pythonOnly = process.env.LIFTOFF_CI_PYTHON_ONLY === '1';
           const report = {
             schemaVersion: 1, scope: 'ephemeral-selected-source-test-tools-only',
             platform: process.platform, architecture: process.arch, runnerUid: process.getuid(),
             status: 'blocked',
             tools: [
               { id: 'python', path: process.env.LIFTOFF_STATE_PYTHON, status: 'not-inspected', permissionsChanged: false },
-              { id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }
+              ...(pythonOnly ? [] : [{ id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }])
             ]
           };
           mkdirSync('diagnostics', { recursive: true });
-          const persist = () => writeFileSync('diagnostics/native-posix-tool-preparation.json', JSON.stringify(report, null, 2) + '\n');
+          const reportFile = pythonOnly ? 'diagnostics/gnome-python-preparation.json' : 'diagnostics/native-posix-tool-preparation.json';
+          const persist = () => writeFileSync(reportFile, JSON.stringify(report, null, 2) + '\n');
           const metadata = (stat) => ({
             dev: String(stat.dev), ino: String(stat.ino), uid: String(stat.uid), gid: String(stat.gid),
             size: String(stat.size), mtimeNs: String(stat.mtimeNs), ctimeNs: String(stat.ctimeNs),
@@ -934,5 +947,319 @@ jobs:
             diagnostics/native-posix-lock-host.json
             diagnostics/native-posix-tool-preparation.json
             diagnostics/native-posix-lock-tests.json
+          if-no-files-found: error
+          retention-days: 7
+
+  linux-gnome-persistence:
+    name: Pinned GNOME persistence source test (${{ matrix.arch }}, not encrypted-host custody)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        include:
+          - os: ubuntu-24.04
+            arch: x64
+          - os: ubuntu-24.04-arm
+            arch: arm64
+    env:
+      LIBSECRET_COMMIT: a5cd57f103038c06b64d5f6ebfd0e627bb40af4e
+      GNOME_COMMIT: da00f9621eaf263d5ed4236df9c22798ea8021d2
+      EXPECTED_ARCH: ${{ matrix.arch }}
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+      - *verify-native-linux-host
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        id: python
+        with:
+          python-version: "3.14.7"
+
+      - name: Resolve only selected CPython for the native process guard
+        env:
+          SELECTED_PYTHON: ${{ steps.python.outputs.python-path }}
+        shell: bash
+        run: |
+          python_path="$(realpath -- "$SELECTED_PYTHON")"
+          test -x "$python_path"
+          printf 'LIFTOFF_STATE_PYTHON=%s\n' "$python_path" >> "$GITHUB_ENV"
+
+      - name: Prepare only selected CPython with unchanged native admission
+        id: python_preparation
+        env:
+          LIFTOFF_CI_PYTHON_ONLY: "1"
+        shell: bash
+        run: *prepare-selected-native-tools
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Prepare declared source-build and private-fixture prerequisites (no installed GNOME daemon)
+        id: prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends build-essential pkg-config libglib2.0-dev libglib2.0-bin libgcrypt20-dev libgcr-3-dev libp11-kit-dev meson ninja-build gettext dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0
+          pkg-config --atleast-version=2.80 glib-2.0 gio-2.0 gobject-2.0
+          pkg-config --atleast-version=3.3.4 gck-1
+          pkg-config --atleast-version=3.27.90 gcr-base-3
+          mkdir -p diagnostics
+          dpkg-query -W build-essential pkg-config libglib2.0-dev libglib2.0-bin libgcrypt20-dev libgcr-3-dev libp11-kit-dev meson ninja-build gettext dbus-daemon python3 python3-dbus python3-gi gir1.2-glib-2.0 > diagnostics/gnome-prerequisites.txt
+
+      - *fetch-pinned-libsecret
+      - *build-pinned-libsecret
+      - *build-linux-keystore-client
+
+      - name: Verify compiled-client loaders and managed key-binding source contracts
+        id: contracts
+        if: success() && steps.helper.outcome == 'success'
+        env:
+          LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: "1"
+        run: >-
+          npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/gnome-source-interface-tests.json
+
+      - name: Require complete loader and key-binding contracts before actual GNOME effects
+        id: contracts_ready
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync, statSync } from 'node:fs';
+          const file = 'diagnostics/gnome-source-interface-tests.json';
+          assert.ok(statSync(file).size <= 256 * 1024, 'Source contract report exceeds its bound');
+          const report = JSON.parse(readFileSync(file, 'utf8'));
+          const cases = report.testResults.flatMap((entry) => entry.assertionResults);
+          assert.ok(cases.length > 0 && cases.length <= 256);
+          assert.equal(report.success, true);
+          assert.equal(report.numFailedTests, 0);
+          assert.equal(report.numPendingTests, 0);
+          assert.ok(cases.every((test) => test.status === 'passed'));
+          for (const suite of [
+            'opt-in compiled client against private synthetic Secret Service, not native custody',
+            'managed Linux key binding, not native custody or readiness'
+          ]) assert.ok(cases.some((test) => test.ancestorTitles?.includes(suite)), 'Required source contract suite did not execute');
+          NODE
+
+      - name: Fetch and verify exact clean GNOME source (not a release tag or system daemon)
+        id: gnome_source
+        run: |
+          root="$RUNNER_TEMP/liftoff-gnome-persistence-build"
+          mkdir -m 700 "$root"
+          mkdir -m 700 "$root/source" "$root/prefix"
+          git -C "$root/source" init --quiet
+          git -C "$root/source" -c credential.helper= -c core.hooksPath=/dev/null fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/gnome-keyring.git "$GNOME_COMMIT"
+          git -C "$root/source" -c core.hooksPath=/dev/null checkout --quiet --detach FETCH_HEAD
+          test "$(git -C "$root/source" rev-parse HEAD)" = "$GNOME_COMMIT"
+          test -z "$(git -C "$root/source" status --porcelain=v1 --untracked-files=all)"
+          printf 'GNOME_SOURCE_DIR=%s\nGNOME_PREFIX=%s\nGNOME_BUILD_DIR=%s\n' "$root/source" "$root/prefix" "$root/build" >> "$GITHUB_ENV"
+
+      - name: Build only the pinned daemon target into the private test prefix
+        id: gnome_build
+        run: |
+          meson setup "$GNOME_BUILD_DIR" "$GNOME_SOURCE_DIR" \
+            --prefix="$GNOME_PREFIX" --libdir=lib --sysconfdir=etc --localstatedir=var --buildtype=release --wrap-mode=nodownload \
+            -Dssh-agent=false -Dpam=false -Dsystemd=disabled -Dlibcap-ng=disabled -Dselinux=disabled \
+            -Ddebug-mode=false -Dmanpage=false \
+            -Dpkcs11-config="$GNOME_PREFIX/share/p11-kit/modules" -Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"
+          meson compile -C "$GNOME_BUILD_DIR" --jobs=2 gnome-keyring-daemon
+          install -D -m0755 "$GNOME_BUILD_DIR/daemon/gnome-keyring-daemon" "$GNOME_PREFIX/bin/gnome-keyring-daemon"
+          test "$(git -C "$GNOME_SOURCE_DIR" rev-parse HEAD)" = "$GNOME_COMMIT"
+          test -z "$(git -C "$GNOME_SOURCE_DIR" status --porcelain=v1 --untracked-files=all)"
+
+      - name: Record exact GNOME build identity without starting a daemon
+        id: gnome_identity
+        run: node native/linux-keystore-client/gnome-build-identity.mjs
+
+      - name: Test actual pinned GNOME persistence in generated-data private scopes only
+        id: persistence
+        if: success() && steps.contracts_ready.outcome == 'success' && steps.gnome_identity.outcome == 'success'
+        env:
+          LIFTOFF_GNOME_PERSISTENCE_TEST: "1"
+        run: >-
+          npx vitest run tests/state-gnome-persistence.test.ts
+          --maxWorkers=1 --reporter=verbose --reporter=json
+          --outputFile.json=diagnostics/gnome-persistence-tests.json
+
+      - name: Capture bounded generated-data identity and persistence outcomes only
+        if: always()
+        env:
+          PYTHON_PREPARATION_OUTCOME: ${{ steps.python_preparation.outcome }}
+          PREREQUISITES_OUTCOME: ${{ steps.prerequisites.outcome }}
+          LIBSECRET_OUTCOME: ${{ steps.libsecret.outcome }}
+          HELPER_OUTCOME: ${{ steps.helper.outcome }}
+          CONTRACTS_OUTCOME: ${{ steps.contracts.outcome }}
+          CONTRACTS_READY_OUTCOME: ${{ steps.contracts_ready.outcome }}
+          GNOME_BUILD_OUTCOME: ${{ steps.gnome_build.outcome }}
+          GNOME_IDENTITY_OUTCOME: ${{ steps.gnome_identity.outcome }}
+          PERSISTENCE_OUTCOME: ${{ steps.persistence.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+          const boundaries = {
+            hostEncryptionQualification: 'not-performed', providerQualification: 'not-performed',
+            cloudQualification: 'not-performed', releaseQualification: 'not-performed'
+          };
+          const report = {
+            schemaVersion: 1, classification: 'actual-pinned-gnome-persistence-generated-data-source-only',
+            generatedTestDataOnly: true,
+            platform: process.platform, architecture: process.arch, expectedArchitecture: process.env.EXPECTED_ARCH,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            libsecretCommit: process.env.LIBSECRET_COMMIT, gnomeCommit: process.env.GNOME_COMMIT,
+            ...boundaries,
+            stages: Object.fromEntries(['python_preparation', 'prerequisites', 'libsecret', 'helper', 'contracts', 'contracts_ready', 'gnome_build', 'gnome_identity', 'persistence'].map(
+              (stage) => [stage, process.env[`${stage.toUpperCase()}_OUTCOME`] ?? 'not-run'])),
+            issues: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          for (const file of ['gnome-client-build-identity.json', 'gnome-daemon-build-identity.json', 'gnome-contract-summary.json', 'gnome-persistence-summary.json']) {
+            rmSync(`diagnostics/${file}`, { force: true });
+          }
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).size <= limit, `Report exceeds byte limit: ${file}`);
+            return readFileSync(file);
+          };
+          const capture = (label, operation) => {
+            try { operation(); } catch {
+              report.issues.push(`${label}: required bounded source evidence is missing, mismatched or incomplete`);
+              process.exitCode = 1;
+            }
+          };
+          const text = (value) => {
+            assert.ok(typeof value === 'string' && value.length <= 4096 && !/[\r\n\0]/u.test(value));
+            return value;
+          };
+          const digest = (value) => {
+            assert.match(value, /^[a-f0-9]{64}$/u);
+            return value;
+          };
+          const fileIdentity = (value) => ({ path: text(value.path), sha256: digest(value.sha256) });
+          const dependencies = (identity) => {
+            const entries = Object.entries(identity.dependencies);
+            assert.ok(entries.length > 0 && entries.length <= 32);
+            return Object.fromEntries(entries.map(([name, value]) => {
+              assert.match(name, /^[a-z0-9.-]{1,128}$/u);
+              return [name, { library: text(value.library), sha256: digest(value.sha256), version: text(value.version) }];
+            }));
+          };
+          if (existsSync('diagnostics/gnome-prerequisites.txt')) capture('prerequisites', () => {
+            report.prerequisites = bounded('diagnostics/gnome-prerequisites.txt', 16 * 1024).toString('utf8').trim().split('\n');
+          });
+          const summarize = (stage, input, output, suites) => {
+            if (!existsSync(input)) {
+              if (report.stages[stage] === 'success') throw new Error('Missing required test report');
+              return;
+            }
+            const result = JSON.parse(bounded(input, 256 * 1024));
+            const cases = result.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 256);
+            const selected = cases.filter((test) => suites.some((suite) => test.ancestorTitles?.includes(suite)));
+            const complete = result.success === true && result.numFailedTests === 0 && result.numPendingTests === 0 &&
+              cases.every((test) => test.status === 'passed') &&
+              suites.every((suite) => cases.some((test) => test.ancestorTitles?.includes(suite)));
+            writeFileSync(output, JSON.stringify({
+              classification: stage === 'persistence' ? 'actual-gnome-generated-data-persistence-and-process-outcomes-only' : 'compiled-client-and-managed-binding-source-contracts-only',
+              platform: process.platform, architecture: process.arch,
+              sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+              ...boundaries,
+              accepted: complete && report.stages[stage] === 'success',
+              passed: result.numPassedTests, failed: result.numFailedTests, pending: result.numPendingTests,
+              requiredSuiteCases: selected.length,
+              cases: cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }))
+            }, null, 2) + '\n');
+            if (report.stages[stage] === 'success') assert.ok(complete, 'Actual opted-in suites must execute without failures or skips');
+          };
+          capture('contracts', () => summarize('contracts', 'diagnostics/gnome-source-interface-tests.json', 'diagnostics/gnome-contract-summary.json', [
+            'opt-in compiled client against private synthetic Secret Service, not native custody',
+            'managed Linux key binding, not native custody or readiness'
+          ]));
+          capture('persistence', () => {
+            if (report.stages.persistence === 'success') {
+              assert.equal(process.platform, 'linux');
+              assert.equal(process.arch, process.env.EXPECTED_ARCH);
+              assert.equal(report.stages.contracts, 'success');
+              assert.equal(report.stages.contracts_ready, 'success');
+              assert.equal(report.stages.gnome_identity, 'success');
+              assert.equal(report.stages.python_preparation, 'success');
+            }
+            summarize('persistence', 'diagnostics/gnome-persistence-tests.json', 'diagnostics/gnome-persistence-summary.json', [
+              'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody'
+            ]);
+          });
+          if (report.stages.helper === 'success') capture('client-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.libsecretCommit, process.env.LIBSECRET_COMMIT);
+            assert.equal(identity.qualification, 'compile-only-not-provider-or-runtime-admission');
+            const sources = Object.entries(identity.sources);
+            assert.ok(sources.length > 0 && sources.length <= 64);
+            writeFileSync('diagnostics/gnome-client-build-identity.json', JSON.stringify({
+              schemaVersion: identity.schemaVersion, platform: identity.platform, architecture: identity.architecture,
+              libsecretCommit: identity.libsecretCommit, qualification: identity.qualification,
+              compiler: text(identity.compiler), binarySha256: digest(identity.binarySha256),
+              contractProbeLibraryPath: text(identity.contractProbeLibraryPath), dependencies: dependencies(identity),
+              sources: Object.fromEntries(sources.map(([name, value]) => {
+                assert.match(name, /^[A-Za-z0-9._/-]{1,128}$/u);
+                return [name, digest(value)];
+              }))
+            }, null, 2) + '\n');
+          });
+          if (report.stages.gnome_identity === 'success') capture('daemon-identity', () => {
+            const bytes = bounded('native/linux-keystore-client/build/gnome-build-identity.json', 128 * 1024);
+            const identity = JSON.parse(bytes);
+            assert.equal(identity.platform, 'linux');
+            assert.equal(identity.architecture, process.arch);
+            assert.equal(identity.architecture, process.env.EXPECTED_ARCH);
+            assert.equal(identity.sourceCommit, process.env.GNOME_COMMIT);
+            assert.equal(identity.kind, 'actual-gnome-persistence-with-generated-test-data-only');
+            assert.equal(identity.qualification, 'gnome-persistence-source-test-not-encrypted-host-custody-or-release-readiness');
+            writeFileSync('diagnostics/gnome-daemon-build-identity.json', JSON.stringify({
+              schemaVersion: identity.schemaVersion, kind: identity.kind, platform: identity.platform,
+              architecture: identity.architecture, sourceCommit: identity.sourceCommit,
+              qualification: identity.qualification, executable: fileIdentity(identity.executable),
+              dependencies: dependencies(identity), tools: { bus: fileIdentity(identity.tools.bus), observer: fileIdentity(identity.tools.observer) },
+              libraryPath: text(identity.libraryPath), fixtureManifestSha256: digest(identity.fixtureManifestSha256),
+              mesonOptions: Object.fromEntries(Object.entries({
+                'ssh-agent': false, pam: false, systemd: 'disabled', 'libcap-ng': 'disabled',
+                selinux: 'disabled', 'debug-mode': false, manpage: false
+              }).map(([name, expected]) => {
+                assert.equal(identity.mesonOptions[name], expected);
+                return [name, identity.mesonOptions[name]];
+              }))
+            }, null, 2) + '\n');
+          });
+          if (report.issues.length > 0) {
+            for (const file of ['diagnostics/gnome-contract-summary.json', 'diagnostics/gnome-persistence-summary.json']) {
+              if (!existsSync(file)) continue;
+              const summary = JSON.parse(bounded(file, 512 * 1024));
+              summary.accepted = false;
+              writeFileSync(file, JSON.stringify(summary, null, 2) + '\n');
+            }
+          }
+          writeFileSync('diagnostics/gnome-source-report.json', JSON.stringify(report, null, 2) + '\n');
+          NODE
+
+      - name: Retain sanitized GNOME source JSON only (no stores, binaries or private output)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: gnome-persistence-source-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            diagnostics/gnome-source-report.json
+            diagnostics/gnome-contract-summary.json
+            diagnostics/gnome-persistence-summary.json
+            diagnostics/gnome-python-preparation.json
+            diagnostics/gnome-client-build-identity.json
+            diagnostics/gnome-daemon-build-identity.json
           if-no-files-found: error
           retention-days: 7

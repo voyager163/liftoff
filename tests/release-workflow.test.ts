@@ -10,7 +10,7 @@ import { createRootTestConfig } from '../vitest.config.js';
 
 const execFileAsync = promisify(execFile);
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
-const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only)";
+const fullValidationCondition = "github.event_name != 'workflow_dispatch' || (!inputs.diagnostic_windows_only && !inputs.diagnostic_native_go_only && !inputs.diagnostic_native_posix_locks_only && !inputs.diagnostic_linux_keystore_build_only && !inputs.diagnostic_linux_gnome_persistence_only)";
 const keystoreBuildCondition = `${fullValidationCondition} || (github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_keystore_build_only)`;
 const fullValidationJobs = ['test', 'test-shards', 'telemetry-infrastructure', 'standard-node-templates', 'coverage-qualification'];
 const defaultSourceJobs = [...fullValidationJobs, 'linux-keystore-build'];
@@ -35,7 +35,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -148,9 +148,13 @@ describe('read-only coordinated release evidence workflow', () => {
       description: 'Build and test Linux keystore synthetic source behavior (not provider or custody qualification)',
       type: 'boolean', required: false, default: false
     });
+    expect(workflow.on.workflow_dispatch.inputs.diagnostic_linux_gnome_persistence_only).toEqual({
+      description: 'Test pinned GNOME persistence with generated data (not encrypted-host custody)',
+      type: 'boolean', required: false, default: false
+    });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
@@ -189,15 +193,21 @@ describe('read-only coordinated release evidence workflow', () => {
     { windows: true, go: false, posix: true, build: true, manualJobs: ['windows-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] },
     { windows: false, go: true, posix: true, build: true, manualJobs: ['native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] },
     { windows: true, go: true, posix: true, build: true, manualJobs: ['windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build'] }
-  ])('routes Windows=$windows, Go=$go, POSIX=$posix and build=$build without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, manualJobs }) => {
+  ].flatMap((selection) => [false, true].map((gnome) => ({
+    ...selection, gnome,
+    manualJobs: gnome
+      ? [...(selection.windows || selection.go || selection.posix || selection.build ? selection.manualJobs : []), 'linux-gnome-persistence']
+      : selection.manualJobs
+  }))))('routes Windows=$windows, Go=$go, POSIX=$posix, build=$build and GNOME=$gnome without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, gnome, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
       const conditions: Record<string, boolean> = {
-        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build),
-        [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build) || build,
+        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
+        [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only": event === 'workflow_dispatch' && windows,
         "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
+        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
       };
       const selected = Object.entries(workflow.jobs).filter(([, job]: [string, any]) => {
         expect(Object.hasOwn(conditions, job.if)).toBe(true);
@@ -205,6 +215,249 @@ describe('read-only coordinated release evidence workflow', () => {
       }).map(([id]) => id);
       expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs)].sort());
       expect(selected.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('isolates actual GNOME persistence behind its explicit manual flag and exact private source builds', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['linux-gnome-persistence'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only");
+    expect(job.name).toContain('not encrypted-host custody');
+    expect(job['runs-on']).toBe('${{ matrix.os }}');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.needs).toBeUndefined();
+    expect(job.strategy).toEqual({
+      'fail-fast': false, 'max-parallel': 2,
+      matrix: { include: [{ os: 'ubuntu-24.04', arch: 'x64' }, { os: 'ubuntu-24.04-arm', arch: 'arm64' }] }
+    });
+    expect(job.env).toEqual({
+      LIBSECRET_COMMIT: 'a5cd57f103038c06b64d5f6ebfd0e627bb40af4e',
+      GNOME_COMMIT: 'da00f9621eaf263d5ed4236df9c22798ea8021d2',
+      EXPECTED_ARCH: '${{ matrix.arch }}'
+    });
+    const normalBuild = workflow.jobs['linux-keystore-build'];
+    for (const id of ['source', 'libsecret', 'helper']) {
+      expect(job.steps.find((step: any) => step.id === id)).toEqual(normalBuild.steps.find((step: any) => step.id === id));
+    }
+    expect(job.steps.find((step: any) => step.id === 'python')).toMatchObject({ with: { 'python-version': '3.14.7' } });
+    const preparation = job.steps.find((step: any) => step.id === 'python_preparation');
+    expect(preparation.env).toEqual({ LIFTOFF_CI_PYTHON_ONLY: '1' });
+    expect(preparation.run).toBe(workflow.jobs['native-posix-lock-diagnostics'].steps.find((step: any) =>
+      step.name === 'Prepare only selected native executable permissions').run);
+    const prerequisites = job.steps.find((step: any) => step.id === 'prerequisites').run;
+    expect(prerequisites).toContain('libglib2.0-bin');
+    expect(prerequisites).toContain('libgcr-3-dev libp11-kit-dev');
+    expect(prerequisites).toContain('pkg-config --atleast-version=2.80 glib-2.0 gio-2.0 gobject-2.0');
+    expect(prerequisites).toContain('pkg-config --atleast-version=3.3.4 gck-1');
+    expect(prerequisites).toContain('pkg-config --atleast-version=3.27.90 gcr-base-3');
+    expect(prerequisites).not.toContain('gnome-keyring');
+    const source = job.steps.find((step: any) => step.id === 'gnome_source').run;
+    expect(source).toContain('mkdir -m 700 "$root"');
+    expect(source).toContain('fetch --quiet --no-tags --depth=1 https://gitlab.gnome.org/GNOME/gnome-keyring.git "$GNOME_COMMIT"');
+    expect(source).toContain('test "$(git -C "$root/source" rev-parse HEAD)" = "$GNOME_COMMIT"');
+    expect(source).toContain('status --porcelain=v1 --untracked-files=all');
+    expect(source).toContain('GNOME_SOURCE_DIR=%s\\nGNOME_PREFIX=%s\\nGNOME_BUILD_DIR=%s\\n');
+    const build = job.steps.find((step: any) => step.id === 'gnome_build').run;
+    for (const option of [
+      '--prefix="$GNOME_PREFIX"', '--libdir=lib', '--sysconfdir=etc', '--localstatedir=var', '--wrap-mode=nodownload',
+      '-Dssh-agent=false', '-Dpam=false', '-Dsystemd=disabled', '-Dlibcap-ng=disabled', '-Dselinux=disabled',
+      '-Ddebug-mode=false', '-Dmanpage=false', '-Dpkcs11-config="$GNOME_PREFIX/share/p11-kit/modules"',
+      '-Dpkcs11-modules="$GNOME_PREFIX/lib/pkcs11"'
+    ]) expect(build).toContain(option);
+    expect(build).toContain('meson compile -C "$GNOME_BUILD_DIR" --jobs=2 gnome-keyring-daemon');
+    expect(build).toContain('install -D -m0755 "$GNOME_BUILD_DIR/daemon/gnome-keyring-daemon" "$GNOME_PREFIX/bin/gnome-keyring-daemon"');
+    expect(build).not.toMatch(/meson install|sudo|setcap|systemctl|meson test/);
+    expect(job.steps.find((step: any) => step.id === 'gnome_identity').run)
+      .toBe('node native/linux-keystore-client/gnome-build-identity.mjs');
+    const contractsIndex = job.steps.findIndex((step: any) => step.id === 'contracts');
+    expect(job.steps[contractsIndex]).toMatchObject({
+      if: "success() && steps.helper.outcome == 'success'",
+      env: { LIFTOFF_LINUX_KEYSTORE_SYNTHETIC: '1' },
+      run: 'npx vitest run tests/linux-keystore-client-contract.test.ts tests/managed-keystore-key-binding.test.ts ' +
+        '--maxWorkers=1 --reporter=verbose --reporter=json --outputFile.json=diagnostics/gnome-source-interface-tests.json'
+    });
+    const persistenceIndex = job.steps.findIndex((step: any) => step.id === 'persistence');
+    const readyIndex = job.steps.findIndex((step: any) => step.id === 'contracts_ready');
+    expect(readyIndex).toBeGreaterThan(contractsIndex);
+    expect(readyIndex).toBeLessThan(job.steps.findIndex((step: any) => step.id === 'gnome_source'));
+    expect(persistenceIndex).toBeGreaterThan(contractsIndex);
+    expect(persistenceIndex).toBeGreaterThan(job.steps.findIndex((step: any) => step.id === 'gnome_identity'));
+    expect(job.steps[persistenceIndex]).toMatchObject({
+      if: "success() && steps.contracts_ready.outcome == 'success' && steps.gnome_identity.outcome == 'success'",
+      env: { LIFTOFF_GNOME_PERSISTENCE_TEST: '1' },
+      run: 'npx vitest run tests/state-gnome-persistence.test.ts --maxWorkers=1 --reporter=verbose --reporter=json ' +
+        '--outputFile.json=diagnostics/gnome-persistence-tests.json'
+    });
+    for (const [id, entry] of Object.entries(workflow.jobs) as [string, any][]) {
+      expect(entry.env?.LIFTOFF_GNOME_PERSISTENCE_TEST).toBeUndefined();
+      if (id !== 'linux-gnome-persistence') {
+        expect(entry.steps.some((step: any) => step.env?.LIFTOFF_GNOME_PERSISTENCE_TEST)).toBe(false);
+      }
+    }
+    expect(job.steps.at(-1).if).toBe('always()');
+    expect(job.steps.at(-1).with).toEqual({
+      name: 'gnome-persistence-source-${{ matrix.os }}-${{ runner.arch }}-${{ github.sha }}-${{ github.run_attempt }}',
+      path: 'diagnostics/gnome-source-report.json\ndiagnostics/gnome-contract-summary.json\ndiagnostics/gnome-persistence-summary.json\n' +
+        'diagnostics/gnome-python-preparation.json\ndiagnostics/gnome-client-build-identity.json\ndiagnostics/gnome-daemon-build-identity.json\n',
+      'if-no-files-found': 'error', 'retention-days': 7
+    });
+  });
+
+  it.skipIf(process.platform === 'win32')('reuses exact selected-tool admission while preparing Python alone for the GNOME guard', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const step = workflow.jobs['linux-gnome-persistence'].steps.find((entry: any) => entry.id === 'python_preparation');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await realpath(await scratchDirectory());
+    try {
+      const python = path.join(root, 'python');
+      const other = path.join(root, 'unrelated-tofu');
+      for (const file of [python, other]) {
+        await writeFile(file, '#!/bin/sh\nexit 0\n');
+        await chmod(file, 0o777);
+      }
+      await execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root, env: {
+          ...process.env, LIFTOFF_CI_PYTHON_ONLY: '1', LIFTOFF_STATE_PYTHON: python, LIFTOFF_TOFU_EXECUTABLE: other
+        }
+      });
+      const report = JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-python-preparation.json'), 'utf8'));
+      expect(report.status).toBe('prepared');
+      expect(report.tools).toHaveLength(1);
+      expect(report.tools[0]).toMatchObject({ id: 'python', permissionsChanged: true, before: { mode: '0777' }, after: { mode: '0755' } });
+      expect(report.tools[0].before.ino).toBe(report.tools[0].after.ino);
+      expect(report.tools[0].before.sha256).toBe(report.tools[0].after.sha256);
+      expect((await lstat(other)).mode & 0o777).toBe(0o777);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it('gates actual GNOME execution on complete preflight reports and retains sanitized bounded persistence evidence', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['linux-gnome-persistence'];
+    const script = (name: string) => {
+      const step = job.steps.find((entry: any) => entry.id === name || entry.name === name);
+      const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+      expect(program).toBeTypeOf('string');
+      return program!;
+    };
+    const preflight = script('contracts_ready');
+    const capture = script('Capture bounded generated-data identity and persistence outcomes only');
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'diagnostics'));
+      await mkdir(path.join(root, 'native/linux-keystore-client/build'), { recursive: true });
+      const marker = 'DO_NOT_UPLOAD_GENERATED_PASSWORD_KEY_OR_RAW_OUTPUT';
+      const contractSuites = [
+        'opt-in compiled client against private synthetic Secret Service, not native custody',
+        'managed Linux key binding, not native custody or readiness'
+      ];
+      const nativeSuite = 'opt-in actual pinned GNOME persistence with generated test data, not encrypted host custody';
+      const result = (suites: string[]) => ({
+        success: true, numFailedTests: 0, numPendingTests: 0, numPassedTests: suites.length,
+        testResults: [{ assertionResults: suites.map((suite) => ({
+          fullName: `${suite} fixed public case`, ancestorTitles: [suite], status: 'passed',
+          failureMessages: [marker], stdout: marker, privateFixture: marker
+        })) }]
+      });
+      const contractsFile = path.join(root, 'diagnostics/gnome-source-interface-tests.json');
+      const persistenceFile = path.join(root, 'diagnostics/gnome-persistence-tests.json');
+      const writeContracts = (value: object) => writeFile(contractsFile, JSON.stringify(value));
+      const writePersistence = (value: object) => writeFile(persistenceFile, JSON.stringify(value));
+      const sha = 'c'.repeat(64);
+      const dependency = { library: '/fixture/lib/example.so', sha256: sha, version: '1.0', privateOutput: marker };
+      const client = {
+        schemaVersion: 1, platform: 'linux', architecture: process.arch,
+        libsecretCommit: job.env.LIBSECRET_COMMIT, compiler: 'fixture C11', binarySha256: sha,
+        contractProbeLibraryPath: '/fixture/lib', sources: { 'client.c': sha },
+        dependencies: { 'libsecret-1': dependency }, qualification: 'compile-only-not-provider-or-runtime-admission',
+        password: marker
+      };
+      const daemon = {
+        schemaVersion: 1, kind: 'actual-gnome-persistence-with-generated-test-data-only',
+        platform: 'linux', architecture: process.arch, sourceCommit: job.env.GNOME_COMMIT,
+        executable: { path: '/fixture/prefix/bin/gnome-keyring-daemon', sha256: sha, key: marker },
+        dependencies: { 'glib-2.0': dependency },
+        tools: {
+          bus: { path: '/usr/bin/dbus-daemon', sha256: sha },
+          observer: { path: '/usr/bin/gdbus', sha256: sha }
+        },
+        libraryPath: '/fixture/lib', fixtureManifestSha256: sha,
+        mesonOptions: { 'ssh-agent': false, pam: false, systemd: 'disabled', 'libcap-ng': 'disabled', selinux: 'disabled', 'debug-mode': false, manpage: false },
+        qualification: 'gnome-persistence-source-test-not-encrypted-host-custody-or-release-readiness',
+        privateKeyring: marker
+      };
+      const daemonFile = path.join(root, 'native/linux-keystore-client/build/gnome-build-identity.json');
+      await writeFile(path.join(root, 'native/linux-keystore-client/build/build-identity.json'), JSON.stringify(client));
+      await writeFile(daemonFile, JSON.stringify(daemon));
+      const run = (program: string, outcomes: Record<string, string> = {}, nativePlatform = 'linux') =>
+        execFileAsync(process.execPath, ['--input-type=module', '-e',
+          `Object.defineProperty(process, 'platform', { value: ${JSON.stringify(nativePlatform)} });\n${program}`], {
+          cwd: root,
+          env: {
+            ...process.env, ...job.env, EXPECTED_ARCH: process.arch,
+            GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2',
+            PYTHON_PREPARATION_OUTCOME: 'success', PREREQUISITES_OUTCOME: 'success', LIBSECRET_OUTCOME: 'success',
+            HELPER_OUTCOME: 'success', CONTRACTS_OUTCOME: 'success', CONTRACTS_READY_OUTCOME: 'success',
+            GNOME_BUILD_OUTCOME: 'success', GNOME_IDENTITY_OUTCOME: 'success', PERSISTENCE_OUTCOME: 'success',
+            ...outcomes
+          }
+        });
+      await expect(run(preflight)).rejects.toThrow();
+      await writeContracts(result(contractSuites));
+      await run(preflight);
+      for (const invalid of [
+        result(contractSuites.slice(0, 1)),
+        { ...result(contractSuites), success: false },
+        { ...result(contractSuites), numFailedTests: 1 },
+        { ...result(contractSuites), numPendingTests: 1 }
+      ]) {
+        await writeContracts(invalid);
+        await expect(run(preflight)).rejects.toThrow();
+      }
+      await writeContracts(result(contractSuites));
+      await expect(run(capture)).rejects.toThrow();
+      await writePersistence(result([nativeSuite]));
+      await run(capture);
+      for (const file of [
+        'gnome-source-report.json', 'gnome-contract-summary.json', 'gnome-persistence-summary.json',
+        'gnome-client-build-identity.json', 'gnome-daemon-build-identity.json'
+      ]) expect(await readFile(path.join(root, 'diagnostics', file), 'utf8')).not.toContain(marker);
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8'))).toMatchObject({
+        accepted: true, requiredSuiteCases: 1, sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        platform: 'linux', architecture: process.arch,
+        hostEncryptionQualification: 'not-performed', providerQualification: 'not-performed',
+        cloudQualification: 'not-performed', releaseQualification: 'not-performed'
+      });
+      for (const invalid of [
+        result(['ordinary source suite']),
+        { ...result([nativeSuite]), success: false },
+        { ...result([nativeSuite]), numFailedTests: 1 },
+        { ...result([nativeSuite]), numPendingTests: 1 },
+        { ...result([nativeSuite]), testResults: [{ assertionResults: [{ fullName: 'case', ancestorTitles: [nativeSuite], status: 'pending' }] }] }
+      ]) {
+        await writePersistence(invalid);
+        await expect(run(capture)).rejects.toThrow();
+        expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8')).accepted).toBe(false);
+      }
+      await writePersistence(result([nativeSuite]));
+      await expect(run(capture, { CONTRACTS_READY_OUTCOME: 'failure' })).rejects.toThrow();
+      await expect(run(capture, {}, 'darwin')).rejects.toThrow();
+      await expect(run(capture, { EXPECTED_ARCH: 'wrong-architecture' })).rejects.toThrow();
+      await writeFile(daemonFile, JSON.stringify({ ...daemon, sourceCommit: 'b'.repeat(40) }));
+      await expect(run(capture)).rejects.toThrow();
+      await expect(readFile(path.join(root, 'diagnostics/gnome-daemon-build-identity.json'))).rejects.toThrow();
+      await writeFile(daemonFile, JSON.stringify(daemon));
+      await writeFile(persistenceFile, marker.repeat(30000));
+      await expect(run(capture)).rejects.toThrow();
+      expect(await readFile(path.join(root, 'diagnostics/gnome-source-report.json'), 'utf8')).not.toContain(marker);
+      await writePersistence({ ...result([nativeSuite]), success: false, numFailedTests: 1 });
+      await run(capture, { PERSISTENCE_OUTCOME: 'failure' });
+      expect(JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-persistence-summary.json'), 'utf8')))
+        .toMatchObject({ accepted: false, failed: 1 });
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

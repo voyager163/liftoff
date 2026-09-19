@@ -499,6 +499,21 @@ enrollment is not enabled. Distinct bounded JSON summaries and the original
 helper output or binary is uploaded. Real provider, custody, enrollment,
 installed-artifact, runtime closure and release admission remain unqualified.
 
+Actual GNOME restart/persistence testing is a separate, default-false manual
+`diagnostic_linux_gnome_persistence_only` lane, never part of ordinary push/PR
+or default full-source execution. It builds exact clean daemon commit
+`da00f9621eaf263d5ed4236df9c22798ea8021d2`, reuses the pinned private libsecret
+client and admitted CPython, and first requires compiled-client loader and
+managed-key-binding contract tests. The daemon target alone is copied into
+the private test prefix; no upstream service/PAM/autostart installation occurs.
+Fresh owned processes, private buses/stores and generated test passwords/keys
+exercise actual persistence/restart without using existing keyrings or user
+credentials. Sanitized JSON outcomes retain source/architecture bindings and
+leave host encryption, provider/cloud/release qualification explicitly
+`not-performed`. Uncertain process settlement does not become cleanup proof.
+The 18 default jobs and their independent coverage denominators are unchanged;
+see the [manual routing and build prerequisites](CONTRIBUTING.md#validate-a-change).
+
 The standalone gate reads only the two canonical coverage-summary paths through
 bounded, identity-checked reads. Its `ok` covers **TypeScript/JavaScript
 measurements only**, not native helpers or release readiness. Missing reports,

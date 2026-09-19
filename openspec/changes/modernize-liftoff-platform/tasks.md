@@ -385,6 +385,13 @@ does not authorize existing keyrings, user credentials, cloud resources,
 disk-encryption changes, production enrollment or publication, and cannot
 serve as encrypted-host custody qualification.
 
+The opt-in actual-GNOME source fixture is implemented with private-prefix
+software identity, generated inputs, private owned processes, consumed key
+bindings and guarded restart IPC. Source/refusal checks pass on macOS; actual
+Linux execution remains pending. Auxiliary dotlock writes denied by the
+persisted-store guard are not exempted. Tasks 11.22-11.24 remain open for
+native evidence and production enrollment/recovery integration.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.
