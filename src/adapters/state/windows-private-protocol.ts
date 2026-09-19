@@ -8,9 +8,15 @@ export type WindowsPrivateFailure =
   | 'cancelled' | 'timeout' | 'output-limit' | 'native-command-failed' | 'settlement-unproven';
 
 export class WindowsPrivateProcessError extends Error {
-  constructor(readonly code: WindowsPrivateFailure, readonly processRef?: string) {
+  readonly outcome?: Readonly<WindowsPrivateCompletion>;
+  constructor(
+    readonly code: WindowsPrivateFailure, readonly processRef?: string, outcome?: WindowsPrivateCompletion
+  ) {
     super(`Windows private process refused: ${code}.`);
     this.name = 'WindowsPrivateProcessError';
+    if (outcome) this.outcome = Object.freeze({
+      settled: outcome.settled, processSpawned: outcome.processSpawned, exitCode: outcome.exitCode, reason: outcome.reason
+    });
   }
 }
 

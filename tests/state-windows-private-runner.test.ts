@@ -1,15 +1,19 @@
-import { spawn } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
 import { once } from 'node:events';
 import { copyFile, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   captureWindowsPrivateExecutable, verifyWindowsPrivateProcessAsset, WindowsPrivateProcessRunner,
   windowsPrivateProcessAssetDigest, windowsPrivateProcessContract, type WindowsPrivateExecutable
 } from '../src/adapters/state/windows-private-runner.js';
 import { windowsWorkingDirectoryLimit } from '../src/domain/execution/windows-working-directory.js';
+import { WindowsPrivateProcessError } from '../src/adapters/state/windows-private-protocol.js';
+import { rootBeforeDescendantProgram, rootExitSourceDiagnostic } from './state-windows-private-root-exit-fixture.js';
+import { buildWindowsControllerHostEnvironment } from '../src/adapters/process/windows-job-runner.js';
 
 const roots: string[] = [];
 const retainedRoots = new Set<string>();
@@ -28,6 +32,47 @@ async function fixture() {
 }
 
 describe('Windows private runner source admission, not Windows qualification', () => {
+  it('uses explicit controller/target environments and transports stdin separately from launch metadata', async () => {
+    vi.stubEnv('LIFTOFF_PRIVATE_PARENT_SENTINEL', 'NONSECRET parent environment fixture');
+    const environment = buildWindowsControllerHostEnvironment();
+    expect(environment.LIFTOFF_PRIVATE_PARENT_SENTINEL).toBeUndefined();
+    expect(Object.keys(environment).every((key) => [
+      'SystemRoot', 'WINDIR', 'SystemDrive', 'COMSPEC', 'PATH', 'PATHEXT',
+      'TEMP', 'TMP', 'USERPROFILE', 'PSExecutionPolicyPreference'
+    ].includes(key))).toBe(true);
+    const runner = await readFile('src/adapters/state/windows-private-runner.ts', 'utf8');
+    expect(runner).toContain('env: buildWindowsControllerHostEnvironment()');
+    expect(runner).toContain('send(windowsPrivateFrame(3, input))');
+    const launch = runner.slice(runner.indexOf('const child = spawn('), runner.indexOf('let release!:'));
+    expect(launch).not.toMatch(/\b(?:input|stdin|request\.args)\b/);
+    const controller = await readFile(await verifyWindowsPrivateProcessAsset(), 'utf8');
+    expect(controller).toContain('string env = "PATH=" + Path.GetDirectoryName(executable) + ";" + system + "\\0SystemRoot=" + windows + "\\0TEMP=" + cwd + "\\0TMP=" + cwd + "\\0WINDIR=" + windows + "\\0\\0";');
+    expect(controller).toContain('environment = Marshal.StringToHGlobalUni(env)');
+    expect(controller).toContain('Suspended | Extended | UnicodeEnvironment, environment, cwd');
+  });
+
+  it('keeps root-exit diagnostics bounded and excludes raw private frames, errors and payloads', () => {
+    const failure = new WindowsPrivateProcessError('native-command-failed', 'NONSECRET unreported reference', {
+      settled: true, processSpawned: true, exitCode: 0, reason: 6
+    });
+    Object.assign(failure, { stdout: 'NONSECRET unreported output', stderr: 'NONSECRET unreported error' });
+    const report = rootExitSourceDiagnostic({ rootPid: 123, failure, quiesced: true });
+    expect(report).toMatchObject({
+      result: 'rejected', code: 'native-command-failed', exitCode: 0, reason: 6, settled: true, processSpawned: true, quiesced: true
+    });
+    const encoded = JSON.stringify(report);
+    expect(encoded.length).toBeLessThan(1024);
+    expect(encoded).not.toContain('NONSECRET unreported');
+    expect(rootExitSourceDiagnostic({ failure: new Error('NONSECRET unreported text'), rootPid: -1 })).toMatchObject({
+      rootPid: null, code: 'unclassified-error', exitCode: null, reason: null, settled: null, processSpawned: null
+    });
+    expect(rootExitSourceDiagnostic({ returnedExitCode: 0 })).toMatchObject({ result: 'resolved', exitCode: 0, code: null });
+    expect(Object.isFrozen(failure.outcome)).toBe(true);
+    expect(rootBeforeDescendantProgram).toContain('detached: true');
+    expect(rootBeforeDescendantProgram).toContain("child.once('message'");
+    expect(rootBeforeDescendantProgram).toContain("process.send({ kind: 'NONSECRET-descendant-ready'");
+  });
+
   it('pins a separate private helper and preserves the public controller identity', async () => {
     const file = await verifyWindowsPrivateProcessAsset();
     const source = await readFile(file, 'utf8');
@@ -104,6 +149,50 @@ describe.skipIf(process.platform !== 'win32')('actual Windows private binary pip
       timeoutMs: 15_000, maximumBytes: 16384, ...extra };
   }
 
+  it('excludes a NONSECRET parent sentinel from controller and target environments and keeps stdin out of argv/environment', async () => {
+    const value = await host();
+    vi.stubEnv('LIFTOFF_PRIVATE_PARENT_SENTINEL', 'NONSECRET parent environment fixture');
+    const probe = await promisify(execFile)(value.powershell.path, [
+      '-NoLogo', '-NoProfile', '-NonInteractive', '-Command',
+      "if ([Environment]::GetEnvironmentVariable('LIFTOFF_PRIVATE_PARENT_SENTINEL') -eq $null) { [Console]::Write('isolated') } else { [Console]::Write('unexpected') }"
+    ], {
+      cwd: value.root, env: buildWindowsControllerHostEnvironment(), windowsHide: true,
+      encoding: 'utf8', timeout: 15_000, maxBuffer: 1024
+    });
+    expect(probe.stdout.trim()).toBe('isolated');
+    expect(probe.stderr.length).toBe(0);
+    const input = Buffer.from(`NONSECRET-stdin-only-${randomUUID()}`);
+    const result = await value.runner.run(request(value, `
+      const chunks = [];
+      process.stdin.on('data', chunk => chunks.push(chunk));
+      process.stdin.on('end', () => {
+        const input = Buffer.concat(chunks);
+        const marker = input.toString('utf8');
+        const safeEnvironmentKeys = ['PATH', 'SystemRoot', 'TEMP', 'TMP', 'WINDIR'];
+        const result = {
+          parentSentinelAbsent: process.env.LIFTOFF_PRIVATE_PARENT_SENTINEL === undefined,
+          stdinReceived: marker.startsWith('NONSECRET-stdin-only-'),
+          argvIsolated: ![...process.execArgv, ...process.argv].some(value => value.includes(marker)),
+          environmentIsolated: !safeEnvironmentKeys.some(key => (process.env[key] ?? '').includes(marker)),
+          tempRootMatches: process.env.TEMP === process.cwd() && process.env.TMP === process.cwd()
+        };
+        input.fill(0); chunks.forEach(chunk => chunk.fill(0));
+        process.stdout.write(JSON.stringify(result));
+      });
+    `, { stdin: input }));
+    try {
+      expect(input.every((byte) => byte === 0)).toBe(true);
+      expect(result.exitCode).toBe(0);
+      expect(result.stderr.length).toBe(0);
+      expect(JSON.parse(Buffer.from(result.stdout).toString('utf8'))).toEqual({
+        parentSentinelAbsent: true, stdinReceived: true, argvIsolated: true,
+        environmentIsolated: true, tempRootMatches: true
+      });
+    } finally { result.dispose(); }
+    await value.runner.quiesce();
+    expect(await readdir(value.root)).toEqual([]);
+  });
+
   it('round-trips NUL/non-UTF8 private input/output with separate stderr and no payload artifacts', async () => {
     const value = await host();
     const input = Buffer.from([78, 79, 78, 83, 69, 67, 82, 69, 84, 0, 255, 128]);
@@ -167,11 +256,34 @@ describe.skipIf(process.platform !== 'win32')('actual Windows private binary pip
 
   it('does not treat root exit as descendant settlement or successful completion', async () => {
     const value = await host();
-    await expect(value.runner.run(request(value,
-      "require('node:child_process').spawn(process.execPath,['-e','setInterval(()=>{},100)'],{stdio:'inherit'});process.exit(0);"
-    ))).rejects.toMatchObject({ code: 'native-command-failed' });
-    await value.runner.quiesce();
-    expect(await readdir(value.root)).toEqual([]);
+    const observation: Parameters<typeof rootExitSourceDiagnostic>[0] = {};
+    try {
+      const attempt = value.runner.run(request(value, rootBeforeDescendantProgram, {
+        observeOwnership: (owner: { rootPid: number }) => { observation.rootPid = owner.rootPid; }
+      })).then((result) => {
+        observation.returnedExitCode = result.exitCode;
+        result.dispose();
+        return result;
+      }, (failure: unknown) => {
+        observation.failure = failure;
+        throw failure;
+      });
+      await expect(attempt).rejects.toMatchObject({
+        code: 'native-command-failed',
+        outcome: { reason: 6, exitCode: 0, settled: true, processSpawned: true }
+      });
+      await value.runner.quiesce();
+      expect(await readdir(value.root)).toEqual([]);
+    } finally {
+      try { await value.runner.quiesce(); observation.quiesced = true; }
+      catch { observation.quiesced = false; }
+      if (process.env.LIFTOFF_WINDOWS_PRIVATE_SOURCE_DIAGNOSTICS === '1') {
+        await mkdir('diagnostics', { recursive: true });
+        await writeFile('diagnostics/windows-private-root-exit.json', `${JSON.stringify(rootExitSourceDiagnostic(observation))}\n`, {
+          flag: 'wx', mode: 0o600
+        });
+      }
+    }
   });
 
   it('terminates the owned root and descendants when the authenticated parent is lost', async () => {

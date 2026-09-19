@@ -229,7 +229,7 @@ export class WindowsPrivateProcessRunner {
         if (!failure && (controllerExit !== 0 || controllerSignal !== null)) failure = 'native-command-failed';
         if (failure || !result) {
           protocol?.dispose();
-          reject(new WindowsPrivateProcessError(failure ?? 'invalid-protocol', invocation.ref));
+          reject(new WindowsPrivateProcessError(failure ?? 'invalid-protocol', invocation.ref, result));
           return;
         }
         try {
