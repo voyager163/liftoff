@@ -1,4 +1,4 @@
-import { mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdir, readdir, rm, symlink, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -209,26 +209,25 @@ describe('standards assessment boundary resolution', () => {
     ).rejects.toThrow(BoundaryError);
   });
 
-  it('detects case or normalization collision before access', async () => {
+  it.each([
+    ['Readme.md', 'README.md'],
+    ['\u00e9.txt', 'e\u0301.txt']
+  ])('detects native case or normalization collisions: %s / %s', async (first, second) => {
     const dir = createFixtureDir('case-collision');
     await mkdir(dir, { recursive: true });
-
-    // On case-sensitive systems, we can create 'Readme.md' and 'README.md'
-    // On case-insensitive systems (macOS default), creating the second throws or overwrites,
-    // but detectCaseCollision tests the array logic
+    await writeFile(path.join(dir, first), 'content 1', { flag: 'wx' });
+    await expect(detectCaseCollision(dir)).resolves.toBeUndefined();
     try {
-      await writeFile(path.join(dir, 'Readme.md'), 'content 1');
-      await writeFile(path.join(dir, 'README.md'), 'content 2');
-    } catch {
-      // If filesystem is strictly case-insensitive and throws, that's fine
+      await writeFile(path.join(dir, second), 'content 2', { flag: 'wx' });
+    } catch (error) {
+      if (!error || typeof error !== 'object' || !('code' in error) || error.code !== 'EEXIST') throw error;
     }
-
-    // Direct unit test of detectCaseCollision:
-    // If files are created, it throws PathSafetyError
-    const entries = [path.join(dir, 'Readme.md')];
-    if (entries.length > 0) {
-      // Verify detectCaseCollision runs without error on single entry
-      await expect(detectCaseCollision(dir)).resolves.not.toThrow();
+    const entries = await readdir(dir);
+    if (entries.length === 1) {
+      await expect(detectCaseCollision(dir)).resolves.toBeUndefined();
+    } else {
+      expect(entries).toHaveLength(2);
+      await expect(detectCaseCollision(dir)).rejects.toThrow(PathSafetyError);
     }
   });
 });
