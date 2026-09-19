@@ -6,6 +6,36 @@ There is no production enrollment registration, existing-keyring adoption,
 operator credential access, cloud activity, disk-encryption setup, host-policy
 change, publication or encrypted-host custody/release-readiness claim.
 
+## Verified bounded native source result
+
+[Run **35421959515**](https://github.com/voyager163/liftoff/actions/runs/35421959515)
+at source commit
+[`440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20`](https://github.com/voyager163/liftoff/commit/440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20)
+passed on actual Linux **x64 and arm64**: **78 cases per host, zero failed,
+zero pending**, with all **14 required native GNOME/guard cases** present and
+passing in the retained reports.
+
+The observed scope includes real fresh-process key recovery with generated
+test data, unchanged persisted-store write denial, missing/substituted stores,
+wrong passwords, cancellation, changed key-binding context, and deliberately
+withheld/unknown settlement handling. It also covers the separate strict and
+null-sink guard profiles; success is not inferred from mock or compile-only
+results.
+
+Helper identities recorded for this successful source:
+
+| Profile | Helper SHA256 |
+| --- | --- |
+| Original strict `linux-landlock-readonly-process/1` (preserved) | `bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2` |
+| Explicit `linux-landlock-readonly-process-null-sink/1` | `7e0ebdbf36d10add6e17501ca2cb22bcd3b833821f82ec89131bcc62a8b2c9d9` |
+
+This closes tasks **11.25–11.27** within their approved source-contract,
+implementation and native-fixture scope. Tasks **11.17–11.24** retain separate
+production enrollment/integration, encrypted-host custody, minimum-host and
+installed-artifact gates. No existing user keyring, real credential, cloud
+resource or release was qualified. This result grants no new execution
+permission and does not change `readiness:false`.
+
 ## Audited source boundary
 
 Daemon source is exactly
@@ -60,8 +90,9 @@ production permission-check relaxation is a valid repair.
 
 Run 35417746388 identified the failing Node admission, but its retained
 preparation artifact recorded only Python. It therefore does **not** establish
-the historical Node mode/UID/hash. The next runner's Node preparation must
-observe and retain those values before deciding whether a change is allowed.
+the historical Node mode/UID/hash. Each runner's Node preparation must
+observe and retain those values before deciding whether a change is allowed;
+later successful runs do not retroactively fill that historical evidence gap.
 
 CI prepares a clean exact source checkout, a job-owned build directory and a
 job-owned prefix, all outside ordinary desktop state:
@@ -97,6 +128,16 @@ Only the expressly authorized source job enables:
 LIFTOFF_GNOME_PERSISTENCE_TEST=1 \
 LIFTOFF_STATE_PYTHON=/absolute/registered/python3.14 \
 npx vitest run tests/state-gnome-persistence.test.ts --maxWorkers=1
+```
+
+The successful combined native run also selected the independent guard suite:
+
+```sh
+LIFTOFF_GNOME_PERSISTENCE_TEST=1 \
+LIFTOFF_LINUX_READONLY_NULL_TEST=1 \
+LIFTOFF_STATE_PYTHON=/absolute/registered/python3.14 \
+npx vitest run tests/state-gnome-persistence.test.ts \
+  tests/state-linux-null-process.test.ts --maxWorkers=1
 ```
 
 The job remains **20 minutes**. Each coordinator has a 12-second overall
@@ -226,7 +267,13 @@ authorized initial creation of an empty login keyring. There is no replace/retry
 Run 35418189185 did not retain this creation-stage observation, so its generic
 `item-mismatch` report cannot establish whether that particular run dispatched.
 The pinned source independently establishes the GNOME reply-label mismatch
-documented in the native client's README; a fresh hosted run is still required.
+documented in the native client's README. Subsequent run 35418887195 did
+observe completed helper creation/readback with a returned identity, but then
+failed the format inspector's label parse: it had counted the implicit C
+terminator as a seventeenth header byte instead of the writer's explicit
+16-byte header. That inspector correction and the separately approved guard
+profile were validated together by successful run 35421959515. Neither later
+result changes what the earlier failed runs actually retained.
 
 Filesystem encryption, durability across power loss, complete installed
 runtime closure and real enrollment authority remain separate qualification

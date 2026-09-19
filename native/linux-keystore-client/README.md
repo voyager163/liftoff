@@ -172,8 +172,12 @@ not accepted from a version string. `build/build-identity.json` records helper
 sources, executable, compiler, pkg-config versions and resolved primary library
 hashes. This is evidence, **not** proof that an installed prefix came from the
 supplied checkout or that runtime loaders will select those exact dependencies.
-Transitive crypto/libc identity, reproducible rebuilding, runtime dependency
-admission and both native architectures remain qualification gates.
+The separately authorized [GNOME persistence fixture](gnome-README.md#verified-bounded-native-source-result)
+passed on Linux x64 and arm64 in run 35421959515 at
+`440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20`. That generated-data source result is
+not production enrollment, encrypted-host custody, minimum-host coverage or
+installed-artifact qualification. Transitive crypto/libc identity, reproducible
+rebuilding and complete runtime dependency admission remain separate gates.
 
 ### Separately selected `--contract`-only native CI probe
 
