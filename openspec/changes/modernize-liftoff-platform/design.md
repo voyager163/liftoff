@@ -410,6 +410,60 @@ desktop daemon's labels as persistence proof, writing a plaintext key sidecar,
 passing restart verification using cached keys, or treating design approval
 as permission to launch a daemon, request a password or mutate a real store.
 
+### 13d. Admit the fixed null-device sink through a separate restart guard profile
+
+Native run `35419980086` observed D-Bus failing with `EACCES` while opening
+`/dev/null` read/write during standard-descriptor initialization, before
+publishing its private bus address, on both Linux x64 and arm64. The existing
+guard correctly permits filesystem writes only in three fresh private trees.
+Do not silently widen that existing contract to accommodate daemon startup.
+
+Preserve `linux-landlock-readonly-process/1`, its helper bytes and its default
+behavior unchanged. Register the distinct, explicitly selected
+`linux-landlock-readonly-process-null-sink/1` profile with its own helper digest.
+Bind the selected profile, helper and current native sink observation into the
+exact operation plan and admission evidence; an old strict-profile approval or
+qualification result cannot authorize or qualify the new profile.
+
+The only additional Landlock right is `WRITE_FILE` on the fixed `/dev/null`
+object. Resolve it through an anchored, no-follow component walk and retain an
+`O_PATH` descriptor. Require a root-owned character device with major 1 and
+minor 3, bind its device/inode, ownership, mode, ctime and device-number
+observations, and recheck both the retained object and its fixed path before
+and after confinement. Reject substitution, symlinks, a regular file, another
+device number, changed ownership or an unavailable observation. The ordinary
+null-device mode is not a private regular-file mode assertion.
+
+Grant that right to the verified object, never its parent directory. Do not
+grant `TRUNCATE`, device creation or additional rights on other devices, accept
+caller-supplied device paths, repair permissions, mount/create a substitute,
+inherit a preopened writable descriptor or retry under a broader profile.
+Close the retained sink descriptor before executing the target. Descendants
+must open the admitted device themselves under the inherited restrictions.
+
+The three fresh, private, disjoint writable trees, persisted-store content and
+entry denial, private stdio, owned process-group lifecycle, cancellation,
+uncertain settlement and retained-scope rules remain unchanged. Missing or
+changed sink identity is a prerequisite failure, not a reason to weaken
+persisted-store admission or reinterpret an infrastructure error as a passing
+negative test. Reads, metadata, network/IPC, received descriptors and external
+writers retain the existing explicitly limited guarantees; this is not a full
+sandbox or encrypted-storage/key-custody observation.
+
+Inventory and qualify the new helper/profile independently on each required
+native architecture and host floor. Exercise real fixed-device opens, continued
+denial of other writes, original-profile refusal, identity substitution,
+descendant inheritance, private-bus startup and settlement. Source testing uses
+only separately authorized disposable scopes and generated data; no privileged
+device-node or host-policy mutation is inferred. Installed-artifact evidence,
+production enrollment, encrypted-host custody and release authority remain
+independent gates.
+
+**Alternative rejected:** granting write access to `/dev`, exempting arbitrary
+character devices, passing an unrestricted writable handle, modifying D-Bus to
+avoid its audited interface, silently upgrading the original profile, or
+declaring source startup success to be persisted-key recovery.
+
 ### 14. Resolve template defects and provide honest existing-project remediation
 
 For #80, emit Redis and Service Bus `minimum_tls_version = "1.2"`, storage `min_tls_version = "TLS1_2"`, and storage `allow_nested_items_to_be_public = false`. A private container is not the account-wide rule. Qualify the cited Checkov controls and backend-disabled OpenTofu output for affected profiles; do not infer a live exposure or change unrelated networking/identity settings.

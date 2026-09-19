@@ -240,3 +240,8 @@ Each native target SHALL inventory and integrity-bind the helpers required by it
 - **WHEN** the installed CLI starts but its encrypted storage, native key provider or exact state tool is unavailable
 - **THEN** capability output reports the private-state prerequisite separately from CLI runtime readiness
 - **AND** successful version/help output does not establish private-state execution support
+
+#### Scenario: Ship the separately selected null-device guard profile
+- **WHEN** a native bundle includes the controlled Linux restart profile with the fixed null-device sink
+- **THEN** its inventory separately binds that profile's helper bytes, protocol, host requirements and qualification evidence
+- **AND** the original strict profile and helper identity remain unchanged; relocation, lookup failure or stale evidence cannot silently substitute one profile for the other

@@ -601,3 +601,13 @@ Guidance SHALL describe controlled Linux enrollment as a separately reviewed nat
 - **WHEN** managed-store disposal is considered
 - **THEN** guidance requires separate owned-scope approval, settled processes and dependent-artifact accounting
 - **AND** normal activation, enrollment failure or expiry does not authorize deleting a user keyring directory or external key
+
+#### Scenario: Review the fixed null-device restart profile
+- **WHEN** guidance describes the profile needed for native D-Bus startup
+- **THEN** it explains explicit profile selection, identity-verified `/dev/null` character device 1:3, its sole additional write right and the unchanged original strict profile
+- **AND** it does not recommend writable `/dev`, arbitrary devices, permission repair, inherited-handle bypasses or privileged host changes
+
+#### Scenario: The null-device prerequisite fails or only source evidence exists
+- **WHEN** the device cannot be admitted or only generated-data source fixtures have passed
+- **THEN** guidance names the exact prerequisite or remaining native/installed-artifact qualification gap
+- **AND** device or bus startup is not represented as full sandboxing, persisted-key recovery, encrypted custody or release permission

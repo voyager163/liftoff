@@ -485,3 +485,26 @@ A managed Linux key SHALL become ready only after authoritative backing-store an
 - **WHEN** separately reviewed disposal is requested
 - **THEN** it requires exact owned-object attribution, settled processes and complete accounting for dependent retained artifacts
 - **AND** foreign material, unknown references or uncertain work block deletion; no user keyring tree or preexisting external key is swept
+
+### Requirement: Guarded Linux restart selects an exact null-device profile
+The system SHALL preserve the original strict read-only process profile and helper identity. A controlled restart requiring the null-device sink SHALL explicitly select a separately registered profile bound to its exact operation plan, helper digest and current native device observation. Its only additional Landlock right SHALL be `WRITE_FILE` on fixed `/dev/null`, admitted through anchored no-follow retained descriptors as a root-owned character device with major 1 and minor 3. Object identity and path binding SHALL be rechecked before and after confinement. The profile SHALL NOT grant parent-directory access, truncation, device creation, additional rights on other devices, caller-supplied device paths, permission repair, inherited writable handles or automatic fallback.
+
+#### Scenario: Start the private bus under the selected sink profile
+- **WHEN** the exact reviewed restart selects the registered null-sink profile and current observations match
+- **THEN** descendants may open only the verified fixed device with the additional write right, after the guard closes its retained device descriptor
+- **AND** the three fresh private writable trees, persisted-store content and entry denial, protected stdio and owned-process lifecycle remain unchanged
+
+#### Scenario: The fixed device or path is not admitted
+- **WHEN** `/dev/null` is absent, linked, substituted, a regular file, another device number, differently owned or inconsistent with the bound observation
+- **THEN** the new profile refuses before target execution and preserves any existing recovery scope
+- **AND** it does not create or repair a device, broaden the writable roots or reuse an unqualified inherited handle
+
+#### Scenario: The old profile or approval is supplied
+- **WHEN** a caller omits the new profile or supplies authority bound to the original strict profile
+- **THEN** original strict behavior remains unchanged or mismatched authority is rejected, respectively
+- **AND** failure to start D-Bus does not automatically select the more permissive profile
+
+#### Scenario: The sink succeeds but recovery does not
+- **WHEN** `/dev/null` and private-bus startup succeed without complete persisted-key recovery or process settlement
+- **THEN** readiness and unsafe cleanup remain blocked
+- **AND** the sink grant does not claim full sandboxing, encrypted custody, native qualification or publication authority

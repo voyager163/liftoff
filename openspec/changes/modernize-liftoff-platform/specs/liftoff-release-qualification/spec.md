@@ -280,3 +280,26 @@ Managed Linux keystore qualification SHALL use separately authorized disposable 
 - **WHEN** a source runner lacks bounded permission for store creation, unlock, key access, restart or disposal
 - **THEN** that native qualification remains unperformed and explicitly blocked
 - **AND** the workflow does not use the runner's ordinary keyring, real credentials or unrelated storage as a convenient fixture
+
+### Requirement: Null-device restart qualification preserves the strict guard boundary
+Qualification SHALL separately identify the original strict profile and the registered null-sink profile, their helper bytes and applicable host/architecture evidence. The new profile SHALL demonstrate fixed-device admission and continued filesystem write denial rather than inferring safety from private-bus startup. Source fixture evidence SHALL remain separate from encrypted-host custody and final installed-artifact qualification.
+
+#### Scenario: Compare original and null-sink behavior
+- **WHEN** native source fixtures exercise the two profiles on each required architecture
+- **THEN** the original profile continues to refuse `/dev/null` writes and the explicitly selected new profile admits the verified character device
+- **AND** both deny persisted-store mutation and writes outside their declared roots and exact additional sink right
+
+#### Scenario: Device observation or profile binding changes
+- **WHEN** identity, ownership, device number, path binding, profile or helper evidence is changed or absent
+- **THEN** admission rejects the mismatch without dispatch, implicit profile promotion or privileged host repair
+- **AND** tests do not mutate the host's device nodes without separately bounded authorization
+
+#### Scenario: Exercise descendants and interrupted private-bus startup
+- **WHEN** the new profile starts the private bus, spawns descendants, is cancelled or loses settlement evidence
+- **THEN** evidence verifies inherited restrictions, protected I/O and owned-process accounting before success or cleanup
+- **AND** startup infrastructure failure cannot satisfy missing-store, wrong-password or other intended negative-case assertions
+
+#### Scenario: New helper evidence is missing
+- **WHEN** only the original profile, portable fixtures or source-host startup is qualified
+- **THEN** missing new-profile, minimum-host or final installed-artifact evidence remains explicitly blocked
+- **AND** no old helper digest or success label qualifies the additional grant
