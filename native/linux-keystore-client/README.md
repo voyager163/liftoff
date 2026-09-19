@@ -380,3 +380,126 @@ enabled. Source checks for this new family are
 `tests/managed-linux-keystore-records.test.ts`; they use synthetic in-memory
 metadata and byte buffers only, never a daemon, store, real credential or
 encrypted-volume operation.
+
+## Linux encrypted-storage interface audit: directory observation only
+
+The separate `linux-ext4-fscrypt-v2-directory-observation/1` source primitive is
+implemented in `src/domain/repair/linux-storage-observation.ts` and
+`src/adapters/state/linux-storage-{observer,program}.ts`. It observes **one
+existing directory's policy and filesystem-keyring status**, not a protected
+volume, usable encryption key, whole tree, future object or writer capability.
+It is not plugged into existing protected artifact storage.
+
+The public kernel audit is pinned to Linux v6.12 commit
+[`adc218676eef25575469234709c2d87185ca223a`](https://github.com/torvalds/linux/tree/adc218676eef25575469234709c2d87185ca223a).
+This is a source/ABI audit pin, not an asserted minimum-host qualification:
+
+- [`include/uapi/linux/fscrypt.h`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/include/uapi/linux/fscrypt.h)
+  defines `FS_IOC_GET_ENCRYPTION_POLICY_EX` (`0xc0096616`; the command encodes
+  size **9**, but the v2 argument buffer is **32** bytes with `policy_size=24`)
+  and `FS_IOC_GET_ENCRYPTION_KEY_STATUS` (`0xc080661a`, **128** bytes).
+  The observer issues only these two ioctls, with zeroed reserved input.
+- [`fs/crypto/policy.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/crypto/policy.c)
+  returns the selected inode's policy. `ENODATA` means unencrypted;
+  unknown versions, insufficient layouts and unsupported kernels/filesystems
+  fail. There is no legacy-policy/`GETFLAGS`/path-label fallback.
+- [`fs/crypto/keyring.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/crypto/keyring.c)
+  reports master-key `PRESENT`, `ABSENT` or `INCOMPLETELY_REMOVED`.
+  The current-user claim refers to **fsuid**; user count counts claims, not
+  exclusive knowledge of the key. The observer requires `PRESENT`, the exact
+  known `ADDED_BY_SELF` flag and a nonzero user count, and checks real/effective/
+  saved/filesystem UIDs agree. It neither provisions nor extracts key material.
+- [`Documentation/filesystems/fscrypt.rst`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/Documentation/filesystems/fscrypt.rst)
+  specifies v2 HKDF/key verification and policy inheritance for regular files,
+  directories and symlinks. Special files are not encrypted. Non-filename
+  metadata and integrity are not protected; keys may be removed and cached
+  per-inode keys can remain. A filesystem can mix encrypted and unencrypted
+  objects. No whole-volume or ongoing protection follows from these queries.
+- [`fs/ext4/dir.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/ext4/dir.c)
+  makes directory open a private-state allocation, while
+  [`fs/ext4/file.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/ext4/file.c)
+  calls `ext4_sample_last_mounted()` on regular-file open, potentially
+  journalling a superblock update even for `O_RDONLY`, then sets up fscrypt
+  state. **Regular-file observation is deliberately not implemented** by this
+  read-only primitive. Directory open does not establish inode-key usability;
+  that remains explicitly unobserved.
+- [`fs/ext4/crypto.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/ext4/crypto.c)
+  shows that deprecated `GET_ENCRYPTION_PWSALT` can initialize persistent salt.
+  It is not used. Neither are policy setters, key add/remove, nonce testing,
+  mounts, namespace changes, permission changes or fscrypt command-line tools.
+
+The deliberately narrow policy profile accepts only v2 AES-256-XTS contents
+plus AES-256-CTS filenames, documented padding flags 0–3, default data-unit
+size and zero reserved bytes. Other modes/flags are unregistered and fail
+closed, not declared unsafe by inference. `test_dummy_encryption` is rejected:
+the audited kernel's dummy key is per-boot and is not persisted-key custody.
+The policy's key identifier is existing public kernel metadata, not key bytes
+or an application-generated password verifier; key strength, derivation quality
+and custody cannot be determined from it.
+
+### Descriptor, filesystem and topology boundary
+
+The registered CPython 3.14 helper runs only on genuine Linux little-endian
+x64/arm64 LP64. It walks from `/` with retained `O_PATH`, `O_NOFOLLOW` component
+descriptors, rejects a non-directory before reopening it, and requires current
+ownership and private owner-only mode. Its sole selected-object read descriptor
+is reopened from that retained directory anchor via authenticated procfs; this
+fixed kernel fd link is not a caller-supplied symlink fallback. It reads no
+directory entries or file contents from the selected object.
+
+`fstatfs` uses the audited public LP64 layout/syscall numbers (x64 138, arm64 44).
+`EXT4_SUPER_MAGIC` alone is insufficient because ext2/ext3 share it. The helper
+also matches the retained fd's mount ID and device against kernel mountinfo,
+requires `ext4`, rejects subtree/visible same-device mount aliases and rejects
+dummy-encryption or incompatible DAX options. Procfs/namespace filesystem magic
+and aligned `/proc/self` identity are checked before trusting kernel metadata.
+Relevant definitions are
+[`asm-generic/statfs.h`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/include/uapi/asm-generic/statfs.h),
+[`fs/proc/fd.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/proc/fd.c)
+and [`fs/proc_namespace.c`](https://github.com/torvalds/linux/blob/adc218676eef25575469234709c2d87185ca223a/fs/proc_namespace.c).
+
+Policy, matching key status, fd/path ancestry, VFS-visible owner/mode/inode and
+mount snapshots are rechecked before reporting. Changes, unavailable
+observations, missing keys and unencrypted/unsupported storage block. All setup
+descriptors close at process exit; no inherited capability is exported.
+Ordinary lookup may instantiate in-memory fscrypt caches. The result is
+namespace-local metadata at observation time, not a retained lease, proof of
+initial-namespace ownership, backing-block-device locality, or protection
+against external/root writers. Key removal or topology changes can occur
+immediately afterward.
+
+### Explicit integration blocker
+
+Existing `ProtectedVolumeAttestor`/`assertPrivateStatePath` require
+`encryptedVolume:true`, `privateAccess:true` and volume-wide coverage. This
+observer has no `verify()` method and returns none of those fields. Its
+`volumeEncryption`, `backingDeviceLocality`, `keyCustody`, `inodeKeyUsability`
+and `descendantCoverage` remain `not-observed`; authorization is `none`,
+native qualification `required` and readiness `false`. Serialized decoding
+does not mint native invocation provenance, and invocation provenance itself
+does not qualify storage/software or grant current access.
+
+**Writer integration remains blocked.** A separately reviewed artifact-storage
+coverage contract is needed for per-object directory/file coverage, retained
+identity across each operation, creation/inheritance and private scratch,
+key-removal races, topology/idmapping/locality, and independently admitted
+key protection. It must not reinterpret macOS volume authority or old
+keys/receipts. The regular-file open side effect also needs an explicit
+decision before adding a supposedly effect-free file observer.
+
+Current checks are synthetic ioctl-byte decoding, claim/identity rejection,
+helper syntax and wrong-platform refusal in
+`tests/linux-storage-observation.test.ts`. No actual positive fscrypt probe,
+encrypted volume/key provisioning, policy/key changes, daemon/store access,
+Linux emulation or installed-artifact qualification was performed. Positive
+native host qualification remains task 11.21; helper inventory/CI wiring is
+not evidence of that qualification.
+
+The shipped compiled source is independently inventoried as
+`linux-storage-directory-observer`, exporting `linuxStorageDirectoryProgram`
+from `dist/adapters/state/linux-storage-program.js`. Its program SHA256 is
+`f2c82998f664c85d41ae370ac79e89f80f4b81edf2ed7f30764770a929fbb38e`.
+V8 measurement of the TypeScript wrapper does not measure the Python program.
+Applicable Linux artifact, native and minimum-host evidence must bind this
+helper separately; unqualified status does not permit omission. Inventory
+registration adds no CI probe, provisioning authorization or writer authority.

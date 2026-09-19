@@ -309,6 +309,17 @@ regressions pin every original field and the unchanged existing behavior.
 This is preservation groundwork for 11.17, not Linux/Windows registration or
 permission to enable either writer before its native contracts are audited.
 
+The Linux fscrypt-v2/ext4 source audit now has a separately named directory-only
+observer and strict decoding/refusal coverage. It deliberately excludes
+target regular-file opens that can update ext4 superblock metadata and the persistent
+salt-creation ioctl. The eleventh native helper is independently required by
+artifact/native/minimum-host inventories, without changing the ten prior
+identities or treating V8 wrappers as native measurement. No native probe or
+encrypted fixture was executed. This metadata cannot establish key usability,
+descendant coverage, locality or legacy whole-volume authority. Tasks 11.17 and
+11.18 remain blocked on the explicit per-object coverage/integration decision
+and missing independently authorized positive host evidence; no writer is enabled.
+
 The bounded source audit has now registered distinct POSIX and Windows lock
 facts, including Windows lock blob
 `676e1318c25b9d32aa50e86dc8edfcb204bab3f4`, exact byte-range/handle lifetime and

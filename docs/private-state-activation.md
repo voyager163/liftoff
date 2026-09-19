@@ -42,6 +42,20 @@ availability does not prove backend encryption or access controls, and ordinary
 kernel keyrings do not supply reboot-durable custody. They are not admitted as
 a plaintext or ephemeral fallback. See the [fscrypt API and protection limits](https://www.kernel.org/doc/html/latest/filesystems/fscrypt.html).
 
+The separate Linux storage observer now has a directory-only fscrypt-v2/ext4
+contract, anchored native helper and strict decoder. It excludes target
+regular-file opens and `GET_ENCRYPTION_PWSALT`: the audited ext4 open path can update
+superblock metadata, and that salt ioctl can create persistent data. The
+observer reports only its bounded directory metadata; it does not establish
+key usability/custody, descendants, backing-device locality or whole-volume
+encryption, and cannot satisfy the existing `encryptedVolume: true` contract.
+Source/refusal regressions pass, but no native probe or encrypted-host fixture
+has been executed. Writer integration requires an explicitly reviewed per-object
+coverage contract and its independent native evidence, not a type cast or flag.
+Its eleventh native helper, `linux-storage-directory-observer`, is separately
+inventoried with program digest
+`f2c82998f664c85d41ae370ac79e89f80f4b81edf2ed7f30764770a929fbb38e`.
+
 The specific GNOME Keyring audit also leaves existing-daemon admission blocked.
 It examined GNOME Keyring commit
 `da00f9621eaf263d5ed4236df9c22798ea8021d2` (four commits after release 51.0)

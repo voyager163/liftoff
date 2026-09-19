@@ -3,6 +3,8 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { windowsJobControllerAssetDigest } from '../src/adapters/process/windows-job-runner.js';
 import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
+import { linuxStorageDirectoryProgram } from '../src/adapters/state/linux-storage-program.js';
+import { stateDigest } from '../src/domain/repair/stateful-invariants.js';
 import { nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
   canonicalizeRepoPath,
@@ -437,12 +439,12 @@ describe('coverage gate - native helper disclosure and qualification', () => {
   });
 
   it('discloses all shipped native helpers and launchers without claiming V8 coverage', () => {
-    expect(NATIVE_HELPER_INVENTORY).toHaveLength(10);
+    expect(NATIVE_HELPER_INVENTORY).toHaveLength(11);
     const ids = NATIVE_HELPER_INVENTORY.map((h) => h.id);
     expect(ids).toEqual([
       'windows-job-controller', 'windows-launcher', 'windows-private-process', 'posix-launcher',
       'darwin-state-system', 'darwin-posix-state-lock', 'linux-posix-state-lock', 'linux-readonly-process',
-      'linux-readonly-null-process', 'posix-state-python-probe'
+      'linux-readonly-null-process', 'posix-state-python-probe', 'linux-storage-directory-observer'
     ]);
     expect(NATIVE_HELPER_INVENTORY.find((helper) => helper.id === 'windows-launcher')).toMatchObject({
       path: 'scripts/distribution/windows-launcher.go', finalBinary: 'bin/liftoff.exe', measurement: 'native-go-pe-binary'
@@ -461,7 +463,8 @@ describe('coverage gate - native helper disclosure and qualification', () => {
       ['linux-posix-state-lock', 'linuxPosixStateLockProgram', 'linux'],
       ['linux-readonly-process', 'linuxReadonlyProcessProgram', 'linux'],
       ['linux-readonly-null-process', 'linuxReadonlyNullProcessProgram', 'linux'],
-      ['posix-state-python-probe', 'nativeStatePythonVersionProbe', 'posix']
+      ['posix-state-python-probe', 'nativeStatePythonVersionProbe', 'posix'],
+      ['linux-storage-directory-observer', 'linuxStorageDirectoryProgram', 'linux']
     ]);
     for (const helper of helpers) {
       expect(helper.v8Measured).toBe(false);
@@ -496,12 +499,31 @@ describe('coverage gate - native helper disclosure and qualification', () => {
     ]);
     expect(nativeHelpersForPlatform('linux').map((helper) => helper.id)).toEqual([
       'posix-launcher', 'linux-posix-state-lock', 'linux-readonly-process',
-      'linux-readonly-null-process', 'posix-state-python-probe'
+      'linux-readonly-null-process', 'posix-state-python-probe', 'linux-storage-directory-observer'
     ]);
     expect(nativeHelpersForPlatform('win32').map((helper) => helper.id)).toEqual([
       'windows-job-controller', 'windows-launcher', 'windows-private-process'
     ]);
     expect(() => nativeHelpersForPlatform('freebsd')).toThrow(/Unsupported/);
+  });
+
+  it('keeps the unqualified fscrypt observer independently visible instead of treating wrapper coverage as native evidence', () => {
+    const helper = NATIVE_HELPER_INVENTORY.find((entry) => entry.id === 'linux-storage-directory-observer')!;
+    expect(helper).toMatchObject({
+      path: 'src/adapters/state/linux-storage-program.ts',
+      compiledPath: 'dist/adapters/state/linux-storage-program.js',
+      programExport: 'linuxStorageDirectoryProgram', requiredPlatform: 'linux',
+      measurement: 'native-python-fscrypt-directory-observation', v8Measured: false
+    });
+    expect(stateDigest(linuxStorageDirectoryProgram)).toBe('f2c82998f664c85d41ae370ac79e89f80f4b81edf2ed7f30764770a929fbb38e');
+    expect(getCanonicalProductionInventory().cli).toContain(helper.path);
+    expect(evaluateNativeHelperQualification([helper], {}).ok).toBe(false);
+    const result = evaluateNativeHelperQualification([helper], {
+      [helper.id]: { platform: 'linux', helperDigest: stateDigest(linuxStorageDirectoryProgram),
+        passed: true, processTreeSettled: true, activeProcesses: 0, nativeRunId: 'source-decoder-only', isFixtureOnly: true }
+    });
+    expect(result.ok).toBe(false);
+    expect(result.helpers[0]).toMatchObject({ qualified: false, evidenceType: 'fixture-based', v8Measured: false });
   });
 
   it('fails when native helper qualification evidence is absent', () => {

@@ -34,6 +34,7 @@ import { darwinStateSystemProgram } from '../src/adapters/state/darwin-system-pr
 import { posixStateLockProgram, linuxPosixStateLockProgram } from '../src/adapters/state/posix-lock-program.js';
 import { linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram } from '../src/adapters/state/linux-readonly-process-program.js';
 import { nativeStatePythonVersionProbe } from '../src/adapters/state/native-system.js';
+import { linuxStorageDirectoryProgram } from '../src/adapters/state/linux-storage-program.js';
 import { EMBEDDED_NATIVE_HELPERS, NATIVE_HELPER_INVENTORY, nativeHelpersForPlatform } from '../scripts/native-helper-inventory.mjs';
 import {
   evaluateReleaseGate, evaluateReleaseGateFixture, formatReleaseGateReport, REQUIRED_REPORT_IDS
@@ -495,7 +496,7 @@ beforeAll(async () => {
   const publicCapabilities = buildPublicCapabilitiesEnvelope();
   const nativePrograms: Record<string, string> = {
     darwinStateSystemProgram, posixStateLockProgram, linuxPosixStateLockProgram,
-    linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram, nativeStatePythonVersionProbe
+    linuxReadonlyProcessProgram, linuxReadonlyNullProcessProgram, nativeStatePythonVersionProbe, linuxStorageDirectoryProgram
   };
   contracts = {
     nativeHelperPrograms: Object.fromEntries(EMBEDDED_NATIVE_HELPERS.map((helper) => [helper.id, {
@@ -658,7 +659,7 @@ afterEach(() => {
 afterAll(() => fs.rmSync(root, { recursive: true, force: true }));
 
 describe('authoritative source registry bindings', () => {
-  it.each(['linux-readonly-process', 'linux-readonly-null-process'].flatMap((id) =>
+  it.each(['linux-readonly-process', 'linux-readonly-null-process', 'linux-storage-directory-observer'].flatMap((id) =>
     ['missing-helper', 'empty-program', 'missing-compiled-digest', 'changed-compiled-digest'].map((failure) => [id, failure])))(
     'requires complete independently bound %s source: %s', async (id, failure) => {
       const nativeHelperPrograms = structuredClone(contracts.nativeHelperPrograms);
@@ -873,6 +874,12 @@ describe('versioned release admission and local identity', () => {
     expect(nullSink.sha256).toBe(strict.sha256);
     expect(nullSink.programSha256).toBe(sha256(linuxReadonlyNullProcessProgram));
     expect(nullSink.programSha256).not.toBe(strict.programSha256);
+    expect(context.nativeHelpers['linux-storage-directory-observer']).toMatchObject({
+      path: 'dist/adapters/state/linux-storage-program.js',
+      sourcePath: 'src/adapters/state/linux-storage-program.ts',
+      programExport: 'linuxStorageDirectoryProgram',
+      programSha256: 'f2c82998f664c85d41ae370ac79e89f80f4b81edf2ed7f30764770a929fbb38e'
+    });
     expect(formatReleaseGateReport(result)).not.toContain('QUALIFIED_FOR_PUBLICATION');
   });
 
@@ -1153,6 +1160,19 @@ describe('authenticated report binding and adversarial measurements', () => {
     }
   );
 
+  it.each(['linux-x64', 'linux-arm64'].flatMap((target) =>
+    ['native', 'native-minimum'].map((lane) => [target, lane])))(
+    'blocks %s %s evidence that omits the shipped but unqualified directory observer', async (target, lane) => {
+      const evidence = structuredClone(base);
+      updateReport(evidence, `${lane}-${target}`, (report) => {
+        report.data.helpers = report.data.helpers.filter((helper: any) => helper.id !== 'linux-storage-directory-observer');
+      });
+      const result = await evaluate(evidence);
+      expect(result.gateDetails[`${lane === 'native' ? 'native' : 'nativeMinimum'}:${target}`].ok).toBe(false);
+      expect(result.productionQualified).toBe(false);
+    }
+  );
+
   it.each(['strict-body', 'strict-export', 'swapped-programs', 'old-artifact-identity'])(
     'rejects null-sink helper evidence with %s despite its shared compiled-module digest', async (failure) => {
       const evidence = structuredClone(base);
@@ -1176,11 +1196,12 @@ describe('authenticated report binding and adversarial measurements', () => {
     }
   );
 
-  it.each(['missing-program-digest', 'wrong-program-digest', 'wrong-export', 'source-only', 'missing-execution-case', 'unsettled'])(
-    'rejects embedded helper evidence with %s despite authenticated module bytes', async (failure) => {
+  it.each(['linux-posix-state-lock', 'linux-storage-directory-observer'].flatMap((id) =>
+    ['missing-program-digest', 'wrong-program-digest', 'wrong-export', 'source-only', 'missing-execution-case', 'unsettled'].map((failure) => [id, failure])))(
+    'rejects %s embedded helper evidence with %s despite authenticated module bytes', async (id, failure) => {
       const evidence = structuredClone(base);
       updateReport(evidence, 'native-linux-arm64', (report) => {
-        const helper = report.data.helpers.find((entry: any) => entry.id === 'linux-posix-state-lock');
+        const helper = report.data.helpers.find((entry: any) => entry.id === id);
         if (failure === 'missing-program-digest') delete helper.programSha256;
         if (failure === 'wrong-program-digest') helper.programSha256 = context.nativeHelpers['darwin-posix-state-lock'].programSha256;
         if (failure === 'wrong-export') helper.programExport = 'posixStateLockProgram';
@@ -1255,15 +1276,18 @@ describe('real local final-byte and archive integrity', () => {
     }
   );
 
-  it('does not execute an authenticated but changed archive module to discover its helper export', async () => {
+  it.each([
+    ['darwin-arm64', 'dist/adapters/state/darwin-system-program.js'],
+    ['linux-arm64', 'dist/adapters/state/linux-storage-program.js']
+  ])('does not execute an authenticated but changed %s archive module to discover its helper export', async (target, compiledPath) => {
     const evidence = structuredClone(base);
-    const marker = path.join(root, 'untrusted-helper-executed');
-    updateArchive(evidence, 'darwin-arm64', (bundle) => {
-      fs.appendFileSync(path.join(bundle, 'dist/adapters/state/darwin-system-program.js'),
+    const marker = path.join(root, `untrusted-helper-executed-${target}`);
+    updateArchive(evidence, target, (bundle) => {
+      fs.appendFileSync(path.join(bundle, compiledPath),
         `\nimport { writeFileSync as writeUntrustedMarker } from 'node:fs';\nwriteUntrustedMarker(${JSON.stringify(marker)}, 'must never execute');\n`);
     });
     const result = await evaluate(evidence);
-    expect(result.gateDetails['artifact:darwin-arm64'].ok).toBe(false);
+    expect(result.gateDetails[`artifact:${target}`].ok).toBe(false);
     expect(result.blockers.join(' ')).toContain('Packaged embedded helper bytes differ');
     expect(fs.existsSync(marker)).toBe(false);
   });

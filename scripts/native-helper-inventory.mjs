@@ -95,6 +95,16 @@ export const NATIVE_HELPER_INVENTORY = [
     measurement: 'native-python-tool-inspection',
     v8Measured: false,
     requiredPlatform: 'posix'
+  },
+  {
+    id: 'linux-storage-directory-observer',
+    path: 'src/adapters/state/linux-storage-program.ts',
+    compiledPath: 'dist/adapters/state/linux-storage-program.js',
+    programExport: 'linuxStorageDirectoryProgram',
+    description: 'Read-only CPython ext4/fscrypt-v2 existing-directory policy and key-status observer; no volume authority',
+    measurement: 'native-python-fscrypt-directory-observation',
+    v8Measured: false,
+    requiredPlatform: 'linux'
   }
 ];
 

@@ -198,9 +198,10 @@ native Windows execution or host-floor qualification.
 ## Native-helper evidence
 
 `scripts/native-helper-inventory.mjs` is the shared helper inventory for source
-coverage disclosure and release admission. It includes the launchers, Windows
-controller, and embedded Python state-system, tool-inspection, locking and
-read-only-process programs. A TypeScript wrapper stays in the V8 production
+coverage disclosure and release admission. Its eleven independent identities
+include the launchers, Windows controllers, and embedded Python state-system,
+tool-inspection, locking, read-only-process and directory-storage-observation
+programs. A TypeScript wrapper stays in the V8 production
 denominator; executing its string factory does not measure the embedded program.
 
 Applicable helper identities bind their source, compiled module, selected
@@ -236,6 +237,38 @@ Bare run labels, matching digests and success flags remain unauthenticated
 assertions. Native locking or process tests also do not prove encrypted custody,
 real key access, provider outcomes or final signed installed-byte behavior.
 Unmeasured or unqualified helper scope remains a release blocker.
+
+### Separate Linux fscrypt directory observer (unqualified)
+
+| Helper ID | Export | Observation contract |
+| --- | --- | --- |
+| `linux-storage-directory-observer` | `linuxStorageDirectoryProgram` | `linux-ext4-fscrypt-v2-directory-observation/1` |
+
+The source wrapper is `src/adapters/state/linux-storage-program.ts`; its
+compiled module ships as `dist/adapters/state/linux-storage-program.js`.
+The independently inventoried program SHA-256 is
+`f2c82998f664c85d41ae370ac79e89f80f4b81edf2ed7f30764770a929fbb38e`.
+All ten preceding helper identities remain unchanged.
+
+This helper is shipped compiled source even while unqualified, so it cannot
+be omitted from Linux x64/arm64 artifact or authenticated native/minimum-host
+helper bindings. Each binding must independently identify the source,
+compiled module, export and program bytes, with the required execution and
+settlement evidence. Archive inspection checks reviewed bytes without executing
+an archive's module. Missing evidence, substituted exports/programs and
+source-only decoder tests remain blockers; passing V8 wrapper coverage does
+not measure Python execution.
+
+Its current scope is read-only observation of one existing ext4/fscrypt-v2
+directory's policy and filesystem-keyring status. It provides no
+`encryptedVolume:true`, native key custody, usable-key, descendant, backing-device
+locality, writer or readiness authority. Regular-file opens are excluded
+because ext4 can update superblock metadata on open. A separate per-object
+artifact-storage coverage decision is required before integration with legacy
+protected-volume consumers. Positive encrypted-host, minimum-host and
+installed-artifact qualification is still required; no new probe or provisioning
+is authorized by inventory registration. The detailed source audit is in
+`native/linux-keystore-client/README.md`.
 
 ### Separate Windows private-process source primitive
 
