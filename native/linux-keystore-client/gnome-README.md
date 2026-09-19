@@ -47,6 +47,22 @@ GLib/GIO, libgcrypt and pkg-config build prerequisites. Runtime needs the
 already installed `dbus-daemon`, `/usr/bin/gdbus` (libglib2.0-bin), Node and
 registered native **CPython 3.14** for the existing Landlock guard.
 
+The coordinator executable is the test runner's actual canonical
+`process.execPath` (Node), not an ambient substitute. Both it and CPython must
+pass the unchanged production executable admission: regular executable file,
+no group/other write bits, exact current byte identity. On an ephemeral CI
+runner, any preparation must first record actual path, owner, mode,
+device/inode, size, modification time and SHA256. Only an observed writable
+file owned by that runner may have `0o022` cleared on the exact retained FD;
+all other identity/byte fields must remain unchanged. Unknown/foreign ownership
+blocks. No sudo, recursive chmod, binary replacement, alternate Node or
+production permission-check relaxation is a valid repair.
+
+Run 35417746388 identified the failing Node admission, but its retained
+preparation artifact recorded only Python. It therefore does **not** establish
+the historical Node mode/UID/hash. The next runner's Node preparation must
+observe and retain those values before deciding whether a change is allowed.
+
 CI prepares a clean exact source checkout, a job-owned build directory and a
 job-owned prefix, all outside ordinary desktop state:
 

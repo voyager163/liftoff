@@ -206,9 +206,15 @@ PKCS#11 configuration and module destinations must match that prefix's
 
 The same pinned private libsecret/client build, actual loader/dependency checks
 and `tests/managed-keystore-key-binding.test.ts` contracts must pass before real
-GNOME fixture effects. The Landlock wrapper uses selected CPython 3.14.7 with
-the existing exact-file ownership/mode/identity checks; there is no admission
-bypass or copied Python executable. Only the native step sets
+GNOME fixture effects. The Landlock wrapper uses selected CPython 3.14.7, and the coordinator uses the
+canonical executable obtained from Node's actual `process.execPath`. Only this
+manual lane includes Node in the existing exact-FD preparation. The retained
+`gnome-python-preparation.json` now records both runtimes' live pre/post
+UID/GID, mode, device/inode, size, mtime and byte digest. Only observed
+group/other write bits on a runner-owned file may be removed; inability to
+modify safely remains a blocker. No historical Node mode/owner is inferred,
+and no sudo, tree permission changes, executable copy/replacement or production
+admission bypass is used. Only the native step sets
 `LIFTOFF_GNOME_PERSISTENCE_TEST=1` and runs
 `tests/state-gnome-persistence.test.ts`. Both architectures retain one worker,
 the 20-minute job budget and unchanged operation/test deadlines.

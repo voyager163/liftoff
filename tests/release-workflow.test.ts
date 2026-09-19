@@ -241,7 +241,7 @@ describe('read-only coordinated release evidence workflow', () => {
     }
     expect(job.steps.find((step: any) => step.id === 'python')).toMatchObject({ with: { 'python-version': '3.14.7' } });
     const preparation = job.steps.find((step: any) => step.id === 'python_preparation');
-    expect(preparation.env).toEqual({ LIFTOFF_CI_PYTHON_ONLY: '1' });
+    expect(preparation.env).toEqual({ LIFTOFF_CI_PYTHON_ONLY: '1', LIFTOFF_CI_NODE_COORDINATOR: '1' });
     expect(preparation.run).toBe(workflow.jobs['native-posix-lock-diagnostics'].steps.find((step: any) =>
       step.name === 'Prepare only selected native executable permissions').run);
     const prerequisites = job.steps.find((step: any) => step.id === 'prerequisites').run;
@@ -292,6 +292,7 @@ describe('read-only coordinated release evidence workflow', () => {
       expect(entry.env?.LIFTOFF_GNOME_PERSISTENCE_TEST).toBeUndefined();
       if (id !== 'linux-gnome-persistence') {
         expect(entry.steps.some((step: any) => step.env?.LIFTOFF_GNOME_PERSISTENCE_TEST)).toBe(false);
+        expect(entry.steps.some((step: any) => step.env?.LIFTOFF_CI_NODE_COORDINATOR)).toBe(false);
       }
     }
     expect(job.steps.at(-1).if).toBe('always()');
@@ -303,7 +304,7 @@ describe('read-only coordinated release evidence workflow', () => {
     });
   });
 
-  it.skipIf(process.platform === 'win32')('reuses exact selected-tool admission while preparing Python alone for the GNOME guard', async () => {
+  it.skipIf(process.platform === 'win32')('observes and prepares only selected Python and canonical process.execPath for the GNOME guard', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const step = workflow.jobs['linux-gnome-persistence'].steps.find((entry: any) => entry.id === 'python_preparation');
     const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
@@ -311,23 +312,84 @@ describe('read-only coordinated release evidence workflow', () => {
     const root = await realpath(await scratchDirectory());
     try {
       const python = path.join(root, 'python');
+      const node = path.join(root, 'node');
+      const invokedNode = path.join(root, 'node-link');
       const other = path.join(root, 'unrelated-tofu');
-      for (const file of [python, other]) {
+      for (const file of [python, node, other]) {
         await writeFile(file, '#!/bin/sh\nexit 0\n');
         await chmod(file, 0o777);
       }
-      await execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+      await symlink(node, invokedNode);
+      const originalNode = await lstat(node, { bigint: true });
+      const fixtureProgram = `Object.defineProperty(process, 'execPath', { value: ${JSON.stringify(invokedNode)} });\n${program}`;
+      await execFileAsync(process.execPath, ['--input-type=module', '-e', fixtureProgram], {
         cwd: root, env: {
-          ...process.env, LIFTOFF_CI_PYTHON_ONLY: '1', LIFTOFF_STATE_PYTHON: python, LIFTOFF_TOFU_EXECUTABLE: other
+          ...process.env, ...step.env, LIFTOFF_STATE_PYTHON: python, LIFTOFF_TOFU_EXECUTABLE: other
         }
       });
       const report = JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-python-preparation.json'), 'utf8'));
       expect(report.status).toBe('prepared');
-      expect(report.tools).toHaveLength(1);
+      expect(report.tools).toHaveLength(2);
       expect(report.tools[0]).toMatchObject({ id: 'python', permissionsChanged: true, before: { mode: '0777' }, after: { mode: '0755' } });
       expect(report.tools[0].before.ino).toBe(report.tools[0].after.ino);
       expect(report.tools[0].before.sha256).toBe(report.tools[0].after.sha256);
+      expect(report.tools[1]).toMatchObject({
+        id: 'node-coordinator', requestedPath: invokedNode, path: node, status: 'prepared', permissionsChanged: true,
+        before: { regular: true, uid: String(originalNode.uid), gid: String(originalNode.gid), mode: '0777' },
+        after: { regular: true, uid: String(originalNode.uid), gid: String(originalNode.gid), mode: '0755' }
+      });
+      for (const key of ['dev', 'ino', 'uid', 'gid', 'size', 'mtimeNs', 'sha256']) {
+        expect(report.tools[1].after[key]).toBe(report.tools[1].before[key]);
+      }
+      expect(report.tools[1].before.sha256).toBe(createHash('sha256').update('#!/bin/sh\nexit 0\n').digest('hex'));
+      expect((await lstat(node, { bigint: true })).ino).toBe(originalNode.ino);
       expect((await lstat(other)).mode & 0o777).toBe(0o777);
+      await execFileAsync(process.execPath, ['--input-type=module', '-e', fixtureProgram], {
+        cwd: root, env: { ...process.env, ...step.env, LIFTOFF_STATE_PYTHON: python }
+      });
+      const repeated = JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-python-preparation.json'), 'utf8'));
+      expect(repeated.tools.every((tool: any) => tool.status === 'prepared' && tool.permissionsChanged === false)).toBe(true);
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(process.platform === 'win32').each(['non-owner', 'chmod-denied'])('retains observed Node metadata and blocks %s without a fallback', async (scenario) => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const step = workflow.jobs['linux-gnome-persistence'].steps.find((entry: any) => entry.id === 'python_preparation');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await realpath(await scratchDirectory());
+    try {
+      const python = path.join(root, 'python');
+      const node = path.join(root, 'node');
+      const bytes = '#!/bin/sh\nexit 0\n';
+      await writeFile(python, bytes);
+      await writeFile(node, bytes);
+      await chmod(python, 0o755);
+      await chmod(node, 0o777);
+      const original = await lstat(node, { bigint: true });
+      const failure = scenario === 'non-owner'
+        ? `process.getuid = () => ${process.getuid!() + 1};`
+        : `import fs from 'node:fs'; import { syncBuiltinESMExports } from 'node:module';
+           fs.fchmodSync = () => { throw Object.assign(new Error('fixture chmod denied'), { code: 'EPERM' }); };
+           syncBuiltinESMExports();`;
+      const prefix = `Object.defineProperty(process, 'execPath', { value: ${JSON.stringify(node)} });\n${failure}\n`;
+      await expect(execFileAsync(process.execPath, ['--input-type=module', '-e', prefix + program], {
+        cwd: root, env: { ...process.env, ...step.env, LIFTOFF_STATE_PYTHON: python }
+      })).rejects.toThrow('Fixture-preparation blocker (node-coordinator)');
+      const report = JSON.parse(await readFile(path.join(root, 'diagnostics/gnome-python-preparation.json'), 'utf8'));
+      expect(report.status).toBe('blocked');
+      expect(report.tools[0]).toMatchObject({ id: 'python', status: 'prepared', permissionsChanged: false });
+      expect(report.tools[1]).toMatchObject({
+        id: 'node-coordinator', status: 'blocked', permissionsChanged: false,
+        before: {
+          uid: String(original.uid), gid: String(original.gid), dev: String(original.dev), ino: String(original.ino),
+          mode: '0777', sha256: createHash('sha256').update(bytes).digest('hex')
+        }
+      });
+      expect((await lstat(node)).mode & 0o777).toBe(0o777);
+      expect(await readFile(node, 'utf8')).toBe(bytes);
     } finally {
       await rm(root, { recursive: true, force: true });
     }

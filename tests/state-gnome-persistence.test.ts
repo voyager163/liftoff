@@ -1,8 +1,11 @@
-import { readFile, lstat } from 'node:fs/promises';
+import { chmod, mkdir, readFile, lstat, rm, writeFile } from 'node:fs/promises';
+import { randomUUID } from 'node:crypto';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { GnomePersistenceFixture } from '../native/linux-keystore-client/gnome-persistence-fixture.js';
 import { validateGnomePrivatePrefixOptions } from '../native/linux-keystore-client/gnome-build-contract.mjs';
+import { captureStateExecutable } from '../src/adapters/state/native-system.js';
+import { stateDigest } from '../src/domain/repair/stateful-invariants.js';
 
 const directory = path.resolve('native', 'linux-keystore-client');
 const coordinator = await readFile(path.join(directory, 'gnome-coordinator.mjs'), 'utf8');
@@ -66,12 +69,57 @@ describe('actual GNOME persistence fixture source boundaries', () => {
     expect(coordinator.indexOf('await admitLoader(config.client.executable.path')).toBeLessThan(coordinator.indexOf('secret = await password()'));
   });
 
+  it('admits the actual Node coordinator before creating fixture state or passwords', () => {
+    const node = fixtureSource.indexOf('const node = await captureStateExecutable(process.execPath)');
+    expect(node).toBeGreaterThan(0);
+    expect(node).toBeLessThan(fixtureSource.indexOf("const parent = path.join(await realpath(process.cwd()), '.cache')"));
+    expect(node).toBeLessThan(fixtureSource.indexOf('const password = randomBytes(48)'));
+    expect(fixtureSource).toContain('executable: this.#node');
+    expect(fixtureSource).not.toMatch(/chmod|fchmod|LIFTOFF_STATE_NODE/u);
+  });
+
   if (process.platform !== 'linux') {
     it('refuses actual native execution on macOS/other hosts', async () => {
       await expect(GnomePersistenceFixture.create()).rejects.toThrow('explicit-native-authorization-required');
     });
   }
 });
+
+if (process.platform === 'darwin' || process.platform === 'linux') {
+  describe('unchanged POSIX executable admission for the GNOME coordinator', () => {
+    it.each([0o775, 0o757, 0o777, 0o644])('refuses unsafe mode %s without changing executable bytes or metadata', async (mode) => {
+      const root = path.resolve('tests', `.gnome-executable-${randomUUID()}`);
+      await mkdir(root, { mode: 0o700 });
+      const filename = path.join(root, 'never-executed-fixture');
+      const bytes = Buffer.from('NONSECRET_EXECUTABLE_ADMISSION_FIXTURE');
+      try {
+        await writeFile(filename, bytes, { mode: 0o600 });
+        await chmod(filename, mode);
+        const before = await lstat(filename, { bigint: true });
+        await expect(captureStateExecutable(filename)).rejects.toMatchObject({ code: 'tool-unavailable' });
+        const after = await lstat(filename, { bigint: true });
+        expect([after.dev, after.ino, after.uid, after.gid, after.size, after.mode, after.mtimeNs, after.ctimeNs])
+          .toEqual([before.dev, before.ino, before.uid, before.gid, before.size, before.mode, before.mtimeNs, before.ctimeNs]);
+        expect(stateDigest(await readFile(filename))).toBe(stateDigest(bytes));
+      } finally { await rm(root, { recursive: true, force: true }); }
+    });
+
+    it('admits only the exact already-safe executable identity without running it', async () => {
+      const root = path.resolve('tests', `.gnome-executable-${randomUUID()}`);
+      await mkdir(root, { mode: 0o700 });
+      const filename = path.join(root, 'never-executed-fixture');
+      const bytes = Buffer.from('NONSECRET_EXECUTABLE_ADMISSION_FIXTURE');
+      try {
+        await writeFile(filename, bytes, { mode: 0o755 });
+        const before = await lstat(filename, { bigint: true });
+        expect(await captureStateExecutable(filename)).toEqual({ path: filename, sha256: stateDigest(bytes) });
+        const after = await lstat(filename, { bigint: true });
+        expect([after.dev, after.ino, after.mode, after.mtimeNs, after.ctimeNs])
+          .toEqual([before.dev, before.ino, before.mode, before.mtimeNs, before.ctimeNs]);
+      } finally { await rm(root, { recursive: true, force: true }); }
+    });
+  });
+}
 
 describe('exact GNOME private Meson path admission', () => {
   // Actual Meson values printed by both hosts in run 35417453057 at d4d8210.

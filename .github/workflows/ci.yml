@@ -840,7 +840,11 @@ jobs:
             status: 'blocked',
             tools: [
               { id: 'python', path: process.env.LIFTOFF_STATE_PYTHON, status: 'not-inspected', permissionsChanged: false },
-              ...(pythonOnly ? [] : [{ id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }])
+              ...(pythonOnly ? [] : [{ id: 'tofu', path: process.env.LIFTOFF_TOFU_EXECUTABLE, status: 'not-inspected', permissionsChanged: false }]),
+              ...(process.env.LIFTOFF_CI_NODE_COORDINATOR === '1' ? [{
+                id: 'node-coordinator', requestedPath: process.execPath, path: process.execPath,
+                status: 'not-inspected', permissionsChanged: false
+              }] : [])
             ]
           };
           mkdirSync('diagnostics', { recursive: true });
@@ -871,6 +875,7 @@ jobs:
           for (const tool of report.tools) {
             let fd;
             try {
+              if (tool.id === 'node-coordinator') tool.path = realpathSync(process.execPath);
               assert.ok(tool.path && isAbsolute(tool.path), 'Explicit absolute executable path is required');
               tool.observed = metadata(lstatSync(tool.path, { bigint: true }));
               persist();
@@ -987,10 +992,11 @@ jobs:
           test -x "$python_path"
           printf 'LIFTOFF_STATE_PYTHON=%s\n' "$python_path" >> "$GITHUB_ENV"
 
-      - name: Prepare only selected CPython with unchanged native admission
+      - name: Prepare selected CPython and actual Node coordinator with unchanged native admission
         id: python_preparation
         env:
           LIFTOFF_CI_PYTHON_ONLY: "1"
+          LIFTOFF_CI_NODE_COORDINATOR: "1"
         shell: bash
         run: *prepare-selected-native-tools
 

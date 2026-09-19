@@ -506,6 +506,11 @@ or default full-source execution. It builds exact clean daemon commit
 client and admitted CPython, and first requires compiled-client loader and
 managed-key-binding contract tests. The daemon target alone is copied into
 the private test prefix; no upstream service/PAM/autostart installation occurs.
+Its exact-file runtime preparation also observes canonical `process.execPath`
+for the Node coordinator: retained metadata precedes any runner-owned
+group/other-write-bit correction, with identity and byte verification afterward.
+No unknown historical permissions are assumed and production admission stays
+unchanged.
 Fresh owned processes, private buses/stores and generated test passwords/keys
 exercise actual persistence/restart without using existing keyrings or user
 credentials. Sanitized JSON outcomes retain source/architecture bindings and

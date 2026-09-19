@@ -400,6 +400,15 @@ regressions replay the rejected hosted values and compare workflow flags to
 the manifest without weakening exact-prefix admission. Actual persistence
 and restart evidence is still pending.
 
+Run `35417746388` passed build identity and client preflight on both Linux
+architectures, then rejected the fixture's Node coordinator at executable
+admission before persistence operations. That run did not retain Node's mode,
+owner or digest, so its exact failed admission condition remains unproven.
+The manual lane now records the exact running Node executable and permits only
+observed group/other-write-bit removal on the runner-owned descriptor with
+unchanged identity and bytes. Production admission remains unchanged; native
+regressions reject unsafe modes without modifying the selected executable.
+
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
 Linux architectures: 84 cases per host, including 13 runtime behavior cases.
