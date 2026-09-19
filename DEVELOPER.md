@@ -512,6 +512,12 @@ readiness and post-disposal acknowledgement, explicit encoded script arguments,
 and the same 15-second readiness/two-second settlement bounds. Both the primary
 failure and teardown outcome remain visible; forced termination is never a
 successful release. No PowerShell execution-policy override is used.
+Run `35443879517` proved the marker handshake and clean disposal/exit, but the
+actual Node read still succeeded (`denialCode: null`). It did not establish
+unreadability. A bound process and file-name digest are not a held kernel-file
+identity or a sharing-mode observation. The exclusive-handle fixture remains
+blocked pending native handle/file-ID and second-open sharing evidence; no
+ACL change, simulated EACCES or acceptance of a successful read is permitted.
 Mode-freshness fixtures
 require a real observable read-only-attribute change on Windows; that is not
 directory ACL/custody qualification. Application-patch rejection fixtures bind
@@ -523,7 +529,12 @@ scope. All existing command/test deadlines remain unchanged.
 
 The whole six-case Windows inspection suite passed in source run `35442938568`
 within the unchanged 90-second deadlines. This does not establish a performance
-root cause or installed qualification. Earlier run `35440527651` reached seed-valid at 8.4 seconds,
+root cause or installed qualification: both complete cases again exceeded
+90 seconds in run `35443879517`. Timing remains unresolved, not fixed by that
+single passing run. At 85 seconds the latter run had started 72 retained-input
+captures (one pending), spending about 72 seconds in completed captures, with
+the same 75-file maximum inventory. This locates cost but does not establish
+a safe optimization or explain host variance. Earlier run `35440527651` reached seed-valid at 8.4 seconds,
 seed-verified at 29.8 seconds and seed-archived at 72.5 seconds, timing out before
 local execution completed. Opt-in logs transparently time the original retained
 input captures and history inspections: call/pending counts, total/maximum
@@ -551,6 +562,43 @@ the actual host Node executable and emit a real ZIP with canonical `.exe`
 entrypoints. These generated local test artifacts are not published or installed
 qualification. Numeric NTFS identity admission remains unchanged and can still
 block subsequent candidate admission.
+Run `35443879517` admitted those archives, then refused the legacy-owner
+selection. The shared legacy fixture still has the POSIX `prefix/bin/liftoff`
+symlink and `prefix/lib/node_modules` layout, whereas Windows PATH discovery
+uses PATHEXT (default `.COM;.EXE;.BAT;.CMD`) and the npm adapter expects
+`prefix/liftoff.cmd` with `prefix/node_modules`. Its shell-based npm stub and
+absent registered Windows shim-generator inventory are further prerequisites,
+not ownership evidence. The observed "No effective legacy Liftoff command"
+refusal precedes those identity/owner checks; it must not be relabelled as the
+uint64 blocker or bypassed by renaming a POSIX launcher or asserting ownership.
+
+The standalone `fixture-prerequisites` diagnostic now builds an actual synthetic
+legacy fixture through the existing admitted Node/npm toolchain. It packs only
+the locally generated manifest and CLI, verifies the tarball's SHA-512 integrity
+and installed CLI bytes, isolates all prefix/home/cache/config paths, disables
+scripts/audit/fund/network, and records generated shim digests plus the observed
+npm `cmd-shim` generator identity. It never modifies the installed lock record,
+registers an owner, invokes retirement or claims a released baseline.
+
+Local npm 12.0.2 execution on macOS proved a more fundamental observer boundary:
+the actual global install did **not** produce the hidden `.package-lock.json`
+required by `NpmInstallationAdapter`. If a tool does produce that record, a
+local tarball's `file:` origin still cannot satisfy the observer's HTTPS registry
+origin contract. The diagnostic reports these blockers separately and does not
+wire fabricated registry metadata or an asserted Windows generator contract into
+the original continuation tests. Windows shim generation still requires actual
+execution of the standalone native case.
+
+The same diagnostic's managed/kernel cases are independent of the baseline
+read-denial fixture. They retain the actual `SafeFileHandle`, collect volume/file
+IDs using `GetFileInformationByHandle`, compare the final handle name and Node's
+BigInt file identity, and perform a second `CreateFileW` using pinned libuv's read
+access/share/backup-semantics flags. Node `readFile` and separately opened-handle
+reads are both measured against a fixed NONSECRET canary; only error codes,
+counts, identity comparisons and booleans are exported. Held identity is checked
+again before disposal and cleanup requires proven public-runner settlement.
+These observations may explain an ineffective denial but never replace the
+original denial assertion. The earlier baseline and timing failures remain open.
 
 The separate `windows_diagnostic_scope=private-io` selector, together with
 `diagnostic_windows_only=true`, exercises the independently inventoried private

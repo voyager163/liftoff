@@ -138,7 +138,7 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.workflow_dispatch.inputs.windows_diagnostic_scope).toEqual({
       description: 'Windows diagnostic scope (requires diagnostic_windows_only)',
-      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary', 'private-io', 'remaining-regressions']
+      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary', 'private-io', 'remaining-regressions', 'fixture-prerequisites']
     });
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_go_only).toEqual({
       description: 'Run native Go source diagnostics (not qualification)',
@@ -205,7 +205,7 @@ describe('read-only coordinated release evidence workflow', () => {
   }))))('routes Windows=$windows, Go=$go, POSIX=$posix, build=$build and GNOME=$gnome without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, gnome, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
-      for (const windowsScope of ['focused', 'complete-boundary', 'private-io', 'remaining-regressions']) {
+      for (const windowsScope of ['focused', 'complete-boundary', 'private-io', 'remaining-regressions', 'fixture-prerequisites']) {
         const conditions: Record<string, boolean> = {
           [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
           [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
@@ -215,8 +215,8 @@ describe('read-only coordinated release evidence workflow', () => {
             event === 'workflow_dispatch' && windows && windowsScope === 'complete-boundary',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'":
             event === 'workflow_dispatch' && windows && windowsScope === 'private-io',
-          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'":
-            event === 'workflow_dispatch' && windows && windowsScope === 'remaining-regressions',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && (inputs.windows_diagnostic_scope == 'remaining-regressions' || inputs.windows_diagnostic_scope == 'fixture-prerequisites')":
+            event === 'workflow_dispatch' && windows && ['remaining-regressions', 'fixture-prerequisites'].includes(windowsScope),
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
@@ -228,7 +228,7 @@ describe('read-only coordinated release evidence workflow', () => {
         const expected = (event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs).map((job) => {
           if (job !== 'windows-diagnostics') return job;
           if (windowsScope === 'complete-boundary') return 'windows-boundary-diagnostics';
-          if (windowsScope === 'remaining-regressions') return 'windows-regression-diagnostics';
+          if (['remaining-regressions', 'fixture-prerequisites'].includes(windowsScope)) return 'windows-regression-diagnostics';
           return windowsScope === 'private-io' ? 'windows-private-io-diagnostics' : job;
         });
         expect(selected.sort()).toEqual([...expected].sort());
@@ -240,16 +240,17 @@ describe('read-only coordinated release evidence workflow', () => {
   it('isolates the three remaining whole-file Windows regressions without changing complete-boundary partitions or deadlines', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     const job = workflow.jobs['windows-regression-diagnostics'];
-    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'");
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && (inputs.windows_diagnostic_scope == 'remaining-regressions' || inputs.windows_diagnostic_scope == 'fixture-prerequisites')");
     expect(job.name).toContain('not complete-boundary qualification');
     expect(job['runs-on']).toBe('windows-latest');
     expect(job['timeout-minutes']).toBe(20);
     expect(job.strategy).toEqual({
       'fail-fast': false, 'max-parallel': 2,
-      matrix: { suite: ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts'] }
+      matrix: { suite: '${{ fromJSON(inputs.windows_diagnostic_scope == \'fixture-prerequisites\' && \'["windows-source-fixture-diagnostics"]\' || \'["migration-inspection","repair-baseline-settings","machine-action-continuation-contracts"]\') }}' }
     });
     expect(job.env).toEqual({
-      WINDOWS_REGRESSION_SUITE: '${{ matrix.suite }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1'
+      WINDOWS_REGRESSION_SUITE: '${{ matrix.suite }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1',
+      LIFTOFF_WINDOWS_FIXTURE_DIAGNOSTICS: "${{ inputs.windows_diagnostic_scope == 'fixture-prerequisites' && '1' || '0' }}"
     });
     const program = job.steps.at(-2).run;
     for (const command of ['npm ci', 'npm run build', 'npm install --global "npm@12.0.2"',
@@ -266,10 +267,18 @@ describe('read-only coordinated release evidence workflow', () => {
     expect(program).toContain("assert.deepEqual(specs.map((spec) => relative(spec.moduleId)), [file])");
     expect(program).toContain('context.collectTests(specs)');
     expect(program).toContain('context.runTestSpecifications(specs)');
+    expect(program).toContain("assert.equal(result.testModules[0].state(), 'passed'");
+    expect(program).toContain("assert.equal(diagnostic.sourceCommit, process.env.GITHUB_SHA)");
+    expect(program).toContain("assert.equal(diagnostic.observationsComplete, true)");
+    expect(program).toContain("'windows-source-fixture-diagnostics'");
+    expect(program).toContain("assert.equal(native[0].mode, 'run'");
+    expect(program).toContain('observes actual managed handle identity and independent read-sharing outcomes');
+    expect(program).toContain('observes actual kernel handle identity and independent read-sharing outcomes');
     expect(program).not.toMatch(/testNamePattern|shard:|testTimeout|retry:|failureMessages|stderr|stdout/);
     expect(job.steps.at(-1).with).toEqual({
       name: 'windows-regressions-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.suite }}',
-      path: 'diagnostics/windows-regressions-source.json', 'if-no-files-found': 'error', 'retention-days': 7
+      path: 'diagnostics/windows-regressions-source.json\ndiagnostics/windows-fixture-prerequisites.json\n',
+      'if-no-files-found': 'error', 'retention-days': 7
     });
     expect(job.steps.at(-1).if).toBe('always()');
     const validator = /function validateOutcomes\([\s\S]*?\n\}\n/u.exec(program)?.[0];
@@ -287,6 +296,63 @@ describe('read-only coordinated release evidence workflow', () => {
       [inventory, [{ ...outcomes[0], name: 'different case' }, outcomes[1]], 0],
       [[{ ...inventory[0], mode: 'only' }, inventory[1]], outcomes, 0], [inventory, outcomes, 1]
     ]) expect(() => validate(cases, results, errors)).toThrow();
+  });
+
+  it('keeps suite teardown failures fatal even when every individual diagnostic case passed', async () => {
+    const root = await scratchDirectory();
+    try {
+      await writeFile(path.join(root, 'hooks.test.ts'), `
+import { afterAll, it } from 'vitest';
+it('observes source metadata', () => {});
+afterAll(() => { throw new Error('SOURCE_METADATA_PERSISTENCE_FAILED'); });
+`);
+      const { createVitest } = await import('vitest/node');
+      const context = await createVitest({
+        root, config: false, watch: false, cache: false, maxWorkers: 1, reporters: [], include: ['hooks.test.ts']
+      });
+      try {
+        await context.standalone();
+        const result = await context.runTestSpecifications(await context.globTestSpecifications());
+        expect([...result.testModules[0].children.allTests()].map((test) => test.result().state)).toEqual(['passed']);
+        expect(result.testModules[0].state()).toBe('failed');
+      } finally { await context.close(); }
+    } finally { await rm(root, { recursive: true, force: true }); }
+  });
+
+  it('requires complete same-source native fixture metadata without treating observed read success as denial proof', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const program = workflow.jobs['windows-regression-diagnostics'].steps.at(-2).run;
+    const block = /(const metadataPath = 'diagnostics\/windows-fixture-prerequisites.json';[\s\S]*?)\n\s*\}\n\s*report\.accepted/u.exec(program)?.[1];
+    expect(block).toBeTypeOf('string');
+    const assert = await import('node:assert/strict');
+    const validate = new Function('assert', 'statSync', 'readFileSync', 'process', block!);
+    const report = {
+      classification: 'native-nonsecret-fixture-diagnostics-not-owner-or-custody-qualification',
+      platform: 'win32', architecture: 'x64', sourceCommit: 'a'.repeat(40), runAttempt: '1',
+      observationsComplete: true, productionQualified: false,
+      observations: [
+        ...['managed', 'kernel'].map((mode) => ({
+          classification: 'native-nonsecret-file-sharing-observation-not-custody-proof',
+          before: { mode }, settlement: 'proven', readDenialObserved: false
+        })),
+        {
+          classification: 'synthetic-local-npm-source-fixture-not-owner-qualification',
+          ownerObserverInvoked: false, shimDigests: { liftoff: 'b'.repeat(64), 'liftoff.cmd': 'c'.repeat(64), 'liftoff.ps1': 'd'.repeat(64) }
+        }
+      ]
+    };
+    const run = (value: unknown, size = 1024) => validate(assert, () => ({ isFile: () => true, size }),
+      () => JSON.stringify(value), { env: { GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '1' } });
+    expect(() => run(report)).not.toThrow();
+    for (const value of [
+      { ...report, platform: 'darwin' }, { ...report, sourceCommit: 'e'.repeat(40) },
+      { ...report, observationsComplete: false }, { ...report, productionQualified: true },
+      { ...report, observations: report.observations.slice(1) },
+      { ...report, observations: [report.observations[0], report.observations[0], report.observations[2]] },
+      { ...report, observations: report.observations.map((entry) => ({ ...entry, settlement: 'uncertain' })) }
+    ]) expect(() => run(value)).toThrow();
+    expect(() => run(report, 16385)).toThrow();
+    expect(() => validate(assert, () => { throw new Error('ENOENT'); }, () => '', { env: {} })).toThrow();
   });
 
   it('keeps independently pinned Windows private-I/O fixtures in a separate manual-only source lane', async () => {

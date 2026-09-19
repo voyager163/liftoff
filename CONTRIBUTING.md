@@ -138,6 +138,28 @@ The one-worker/20-minute budgets and existing case deadlines are unchanged.
 This targeted selector does not establish the 60-file complete boundary, resolve
 the numeric NTFS identity blocker or rerun the healthy heavy partitions.
 
+For standalone NONSECRET fixture prerequisite evidence, select
+`diagnostic_windows_only=true` and `windows_diagnostic_scope=fixture-prerequisites`.
+This runs only `tests/windows-source-fixture-diagnostics.test.ts` on one Windows
+x64 host, not the three regression files. The equivalent local Windows command
+after `npm run build` is:
+
+```powershell
+$env:LIFTOFF_WINDOWS_FIXTURE_DIAGNOSTICS = '1'
+npx vitest run tests/windows-source-fixture-diagnostics.test.ts --maxWorkers=1 --reporter=verbose
+```
+
+It uses the admitted actual Node/npm tools to pack and install a dependency-free,
+script-free synthetic package offline into a fresh owned prefix/cache, observing
+the real generated shims without registering ownership. It also compares a held
+.NET `FileShare.None` handle with an explicit Win32 exclusive handle, records
+lossless kernel file identity and independent second-open/Node-read outcomes,
+and requires process-tree settlement. Stock Windows PowerShell 5.1 FullLanguage
+and .NET Framework are required; execution policy is never bypassed.
+Only bounded scalar metadata/digests are retained. A complete diagnostic can
+report that reads succeeded or that owner evidence is unavailable: neither is
+passing baseline-unreadability, released-package or owner-channel qualification.
+
 For the independent Windows private binary-I/O primitive, explicitly select
 `windows_diagnostic_scope=private-io` with `diagnostic_windows_only=true`:
 

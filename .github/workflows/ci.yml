@@ -13,7 +13,7 @@ on:
         type: choice
         required: false
         default: focused
-        options: [focused, complete-boundary, private-io, remaining-regressions]
+        options: [focused, complete-boundary, private-io, remaining-regressions, fixture-prerequisites]
       diagnostic_native_go_only:
         description: Run native Go source diagnostics (not qualification)
         type: boolean
@@ -920,18 +920,19 @@ jobs:
           retention-days: 7
 
   windows-regression-diagnostics:
-    name: Windows remaining source regressions (${{ matrix.suite }}, not complete-boundary qualification)
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'remaining-regressions'
+    name: Windows targeted source diagnostics (${{ matrix.suite }}, not complete-boundary qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && (inputs.windows_diagnostic_scope == 'remaining-regressions' || inputs.windows_diagnostic_scope == 'fixture-prerequisites')
     runs-on: windows-latest
     timeout-minutes: 20
     strategy:
       fail-fast: false
       max-parallel: 2
       matrix:
-        suite: [migration-inspection, repair-baseline-settings, machine-action-continuation-contracts]
+        suite: ${{ fromJSON(inputs.windows_diagnostic_scope == 'fixture-prerequisites' && '["windows-source-fixture-diagnostics"]' || '["migration-inspection","repair-baseline-settings","machine-action-continuation-contracts"]') }}
     env:
       WINDOWS_REGRESSION_SUITE: ${{ matrix.suite }}
       LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+      LIFTOFF_WINDOWS_FIXTURE_DIAGNOSTICS: ${{ inputs.windows_diagnostic_scope == 'fixture-prerequisites' && '1' || '0' }}
     steps:
       - *native-source-checkout
       - *native-source-node
@@ -959,12 +960,12 @@ jobs:
         run: |
           node --input-type=module <<'NODE'
           import assert from 'node:assert/strict';
-          import { mkdirSync, writeFileSync } from 'node:fs';
+          import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
           import path from 'node:path';
           import { createVitest } from 'vitest/node';
           assert.equal(process.platform, 'win32');
           assert.equal(process.arch, 'x64');
-          const suites = ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts'];
+          const suites = ['migration-inspection', 'repair-baseline-settings', 'machine-action-continuation-contracts', 'windows-source-fixture-diagnostics'];
           assert.ok(suites.includes(process.env.WINDOWS_REGRESSION_SUITE));
           const file = `tests/${process.env.WINDOWS_REGRESSION_SUITE}.test.ts`;
           const relative = (name) => path.relative(process.cwd(), name).split(path.sep).join('/');
@@ -1001,6 +1002,17 @@ jobs:
               id: test.id, name: test.fullName, mode: test.options.mode
             }));
             assert.ok(report.inventory.every((test) => ['run', 'skip', 'todo'].includes(test.mode)));
+            if (process.env.WINDOWS_REGRESSION_SUITE === 'windows-source-fixture-diagnostics') {
+              for (const name of [
+                'uses actual admitted npm to pack/install a local dependency-free fixture and observes its real generated shims',
+                'observes actual managed handle identity and independent read-sharing outcomes',
+                'observes actual kernel handle identity and independent read-sharing outcomes'
+              ]) {
+                const native = report.inventory.filter((test) => test.name.endsWith(name));
+                assert.equal(native.length, 1);
+                assert.equal(native[0].mode, 'run', 'Every required native fixture diagnostic must actually execute');
+              }
+            }
             const result = await context.runTestSpecifications(specs);
             report.unhandledErrors = result.unhandledErrors.length;
             assert.deepEqual(result.testModules.map((module) => relative(module.moduleId)), [file]);
@@ -1008,6 +1020,28 @@ jobs:
               id: test.id, name: test.fullName, state: test.result().state, durationMs: test.diagnostic()?.duration ?? null
             }));
             validateOutcomes(report.inventory, report.outcomes, report.unhandledErrors);
+            assert.equal(result.testModules[0].state(), 'passed', 'Suite hooks and diagnostic persistence must also succeed');
+            if (process.env.WINDOWS_REGRESSION_SUITE === 'windows-source-fixture-diagnostics') {
+              const metadataPath = 'diagnostics/windows-fixture-prerequisites.json';
+              const details = statSync(metadataPath);
+              assert.ok(details.isFile() && details.size > 0 && details.size <= 16384);
+              const diagnostic = JSON.parse(readFileSync(metadataPath, 'utf8'));
+              assert.equal(diagnostic.classification, 'native-nonsecret-fixture-diagnostics-not-owner-or-custody-qualification');
+              assert.equal(diagnostic.platform, 'win32');
+              assert.equal(diagnostic.architecture, 'x64');
+              assert.equal(diagnostic.sourceCommit, process.env.GITHUB_SHA);
+              assert.equal(diagnostic.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+              assert.equal(diagnostic.observationsComplete, true);
+              assert.equal(diagnostic.productionQualified, false);
+              assert.equal(diagnostic.observations.length, 3);
+              const sharing = diagnostic.observations.filter((entry) => entry.classification === 'native-nonsecret-file-sharing-observation-not-custody-proof');
+              assert.deepEqual(sharing.map((entry) => entry.before.mode).sort(), ['kernel', 'managed']);
+              assert.ok(sharing.every((entry) => entry.settlement === 'proven'));
+              const npm = diagnostic.observations.filter((entry) => entry.classification === 'synthetic-local-npm-source-fixture-not-owner-qualification');
+              assert.equal(npm.length, 1);
+              assert.equal(npm[0].ownerObserverInvoked, false);
+              assert.deepEqual(Object.keys(npm[0].shimDigests).sort(), ['liftoff', 'liftoff.cmd', 'liftoff.ps1']);
+            }
             report.accepted = true;
           } finally {
             mkdirSync('diagnostics', { recursive: true });
@@ -1020,7 +1054,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-regressions-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.suite }}
-          path: diagnostics/windows-regressions-source.json
+          path: |
+            diagnostics/windows-regressions-source.json
+            diagnostics/windows-fixture-prerequisites.json
           if-no-files-found: error
           retention-days: 7
 
