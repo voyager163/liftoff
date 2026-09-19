@@ -88,8 +88,8 @@ can fall back to another location after an invalid requested directory.
 Consequently, startup/exit status is never readiness, all slot storage needs
 confinement, actual control-location readback is required, and restart must
 enforce persisted-store write denial rather than rely on an existence check
-or ordinary file modes. These execution and persistence gates remain
-unimplemented/unqualified until their native mechanisms pass.
+or ordinary file modes. Production coordination and encrypted-host custody
+remain separate implementation and qualification gates.
 
 `LinuxReadonlyProcessGuard` now supplies a fail-closed source primitive requiring
 Landlock ABI 3 or newer, including truncation mediation. It denies newly opened
@@ -184,10 +184,11 @@ the pinned daemon against fresh private test scopes and generated test inputs.
 Its restart coordinator creates its private IPC inside the read-only process
 guard, rechecks the persisted generation and compares a fresh key snapshot.
 Only settled owned scopes may be removed; uncertain settlement preserves them.
-This fixture has not yet passed actual Linux execution. In particular, native
-auxiliary dotlock writes denied by the guard must remain failures, not permission
-to make the persisted store writable. Source/refusal checks on macOS do not
-qualify Linux persistence, encrypted host storage or production enrollment.
+The fixture now passes on actual Linux x64 and arm64 under the separately
+selected null-sink profile described below. Native auxiliary dotlock writes
+denied by the guard are not exceptions allowing writable persisted storage.
+These generated-data source results do not qualify encrypted host storage or
+production enrollment.
 
 The pinned GNOME writer always emits the Secret Service secret content-type
 label `text/plain`, including for opaque binary values. The native client now
@@ -222,9 +223,24 @@ in behavior and identity; no failure selects the new profile automatically.
 Neither profile permits persisted-store writes, device creation or writable
 directory access to `/dev`. `planControlledGnomeNullRestart` binds the new guard
 plan to the exact controlled-restart specification without converting it into
-approval. The new profile still requires its own native source and installed-
-artifact evidence; metadata observations and plan fingerprints do not authorize
-keystore operations, establish encrypted custody or prove fresh-process recovery.
+approval. Metadata observations and plan fingerprints do not authorize keystore
+operations, establish encrypted custody or prove fresh-process recovery.
+
+[Run 35421959515](https://github.com/voyager163/liftoff/actions/runs/35421959515)
+at `440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20` passed all 78 cases on each
+Linux architecture, including 14 native guard/GNOME cases with none skipped.
+It exercised original strict-profile refusal, the fixed sink, continued store
+and other-device write denial, changed plan/device bindings, descendant
+inheritance and owned cancellation. Actual GNOME cases verified durable readback,
+original-process/cache disposal, fresh-process key-bound recovery, missing and
+substituted stores, wrong passwords, changed key context and retained settlement
+uncertainty. The original helper's SHA-256 remains
+`bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2`;
+the ninth, separate null-sink helper's SHA-256 is
+`7e0ebdbf36d10add6e17501ca2cb22bcd3b833821f82ec89131bcc62a8b2c9d9`.
+This is generated-data native source evidence only. Production enrollment,
+encrypted-host custody, minimum-host and final installed-artifact qualification
+remain open; no provider/cloud effect or release authority follows from this run.
 
 ## Exact plans and authority
 

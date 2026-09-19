@@ -261,8 +261,8 @@ implementation and local acceptance, not a performed live hold replacement.
 - [ ] 11.23 Implement separately selected default-No/exact-plan Linux keystore enrollment with absence-bound private scope, protected operator input, pre-effect checkpoints, actual owned-process and returned-object custody, and private durable readback; verify occupied/stale targets, canceled input, plaintext/empty-password fallback and ambiguous outcomes cannot create a ready key or authorize ordinary desktop-keyring changes.
 - [ ] 11.24 Implement fresh-process key-bound restart verification under the exact selected guard profile, interrupted enrollment recovery, later use admission and separately approved owned-store disposal; verify no cached-key substitute, implicit profile promotion, duplicate creation, password reset, implicit rekey/cross-host conversion or unsafe deletion, and preserve all preexisting macOS/external-key records and dependent retained artifacts.
 - [x] 11.25 Register the separately selected `linux-landlock-readonly-process-null-sink/1` contract and helper identity; verify the original `linux-landlock-readonly-process/1` helper bytes, default behavior and prior authority remain unchanged and neither stale plans nor failed startup implicitly select the new profile.
-- [ ] 11.26 Implement anchored no-follow retained-descriptor admission for fixed root-owned `/dev/null` character device 1:3, pre/post confinement identity checks and its sole additional `WRITE_FILE` rule; bind the selected profile/helper/device observation into exact operation admission and native helper inventories, and verify no parent-directory, truncation, other-device, device-creation, permission-repair or inherited writable-handle grant is added.
-- [ ] 11.27 Under the existing bounded generated-data source-fixture authorization, exercise both profiles on Linux x64/arm64 with actual fixed-device opens, guarded private-bus/restart behavior, unchanged persisted-store write denial, identity/profile rejection, descendant inheritance, cancellation and uncertain settlement; update guidance with actual outcomes and retain separate encrypted-host, minimum-host and installed-artifact qualification blockers.
+- [x] 11.26 Implement anchored no-follow retained-descriptor admission for fixed root-owned `/dev/null` character device 1:3, pre/post confinement identity checks and its sole additional `WRITE_FILE` rule; bind the selected profile/helper/device observation into exact operation admission and native helper inventories, and verify no parent-directory, truncation, other-device, device-creation, permission-repair or inherited writable-handle grant is added.
+- [x] 11.27 Under the existing bounded generated-data source-fixture authorization, exercise both profiles on Linux x64/arm64 with actual fixed-device opens, guarded private-bus/restart behavior, unchanged persisted-store write denial, identity/profile rejection, descendant inheritance, cancellation and uncertain settlement; update guidance with actual outcomes and retain separate encrypted-host, minimum-host and installed-artifact qualification blockers.
 
 The full cross-platform source matrix exposed a real macOS-only private-state
 foundation, not merely host-dependent fixture metadata. The user approved
@@ -452,6 +452,23 @@ The user approved the narrow profile revision in design decision 13d and tasks
 keystore/host-policy/cloud/release authority. The original strict profile stays
 unchanged; independently bound native source evidence is still required before
 the new profile can satisfy the controlled restart contract.
+
+Run `35421959515` at `440ac1fc2dc758c0a84921ab8c15a00b1fe3bd20`
+passed on actual Linux x64 and arm64: 78 cases per host, including all 14
+required native guard/GNOME cases, with no failures or skipped cases. The
+original helper body remains
+`bb3a9080ca1c0d50113dc2f5cb0a379ae3c33d210a47411d1f0b55e2641475f2`;
+the separately inventoried null-sink helper is
+`7e0ebdbf36d10add6e17501ca2cb22bcd3b833821f82ec89131bcc62a8b2c9d9`.
+Evidence covers original-profile refusal, exact sink admission, store and other
+device write denial, changed identity/plan rejection, inherited restrictions,
+owned cancellation, real GNOME persisted-key recovery after process/cache
+disposal, missing/substituted store and wrong-password refusal, changed key
+binding and retained uncertainty. Tasks 11.25-11.27 are complete for their
+specified implementation and generated-data native source scope. Tasks
+11.17-11.24 remain open for production storage/key enrollment, independent
+receipt/approval/recovery integration and the separate encrypted-host,
+minimum-host and final installed-artifact qualification gates.
 
 Run `35390417800` at `4272a3310e58e48fefe6d25c6832cc3901598568`
 passed the native compiled client against the private synthetic service on both
