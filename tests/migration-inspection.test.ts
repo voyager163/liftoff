@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
 import { runCommand } from '../src/commands.js';
@@ -59,12 +60,20 @@ function jsonReport(text: string): Record<string, unknown> {
 }
 
 async function linkedFixture(status: MigrationRevalidationStatus) {
+  const started = performance.now();
+  const timing = (stage: string, phaseId?: string | null) => {
+    if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1') console.info(JSON.stringify({
+      kind: 'migration-inspection-source-stage', requestedStatus: status, stage, phaseId: phaseId ?? null,
+      elapsedMs: Math.round(performance.now() - started)
+    }));
+  };
   const base = path.resolve('.cache', `migration-inspection-${process.pid}-${randomUUID()}`);
   roots.push(base);
   const root = path.join(base, 'project with spaces');
   const userState = path.join(base, 'user-state');
   await writeHistoricalV1Fixture(root);
   await writeIndependentInfrastructureFixture(root);
+  timing('historical-fixture-created');
   const project = buildProjectPlan({
     projectName: 'Flight Log', projectType: 'standard', apiStack: 'node-fastify',
     cloud: 'azure', region: 'eastus', environments: ['dev', 'staging', 'prod'],
@@ -78,6 +87,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
     await mkdir(path.join(root, 'infrastructure', 'opentofu', 'azure', 'environments', environment, '.terraform'), { recursive: true });
   }
   const migration = await planActivationHistoryMigration(root);
+  timing('historical-migration-inspected');
   if (migration.status !== 'eligible') throw new Error(`Expected frozen v1 eligibility: ${JSON.stringify(migration)}`);
   const sourceBytes = await bytes(root);
   const core = buildArtifacts(project).filter((artifact) => artifact.lifecycle === 'managed-core');
@@ -115,6 +125,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   }
   for (const artifact of core) await writeProjectFile(root, [...artifact.pathParts], artifact.content);
   await writeProjectFile(root, ['liftoff.manifest.json'], JSON.stringify(targetManifest));
+  timing('successor-fixture-written');
   let journal = finalized.journal;
   async function recordProgress(progress: LocalRevalidationProgress): Promise<void> {
     const activePhase = progress.phaseId ?? (progress.status === 'blocked' ? 'seed-valid' : null);
@@ -138,6 +149,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
       }
     });
     await writeProjectFile(root, [...migrationStateFilePathParts], JSON.stringify(journal));
+    timing(`progress-${progress.status}`, progress.phaseId);
   }
   if (status === 'running') {
     await recordProgress({
@@ -147,6 +159,7 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
   } else if (status === 'blocked' || status === 'complete') {
     const binding = canonicalSha256('Reviewed local fixture inputs');
     const preview = await previewLocalRevalidation({ projectRoot: root, targetManifest, protectedInputBinding: binding });
+    timing('local-preview-complete');
     const approvedCommands = new Set(preview.phases.flatMap((phase) =>
       phase.commands.map((entry) => formatCommand(entry.command))
     ));
@@ -170,8 +183,10 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
       runner, clock, onProgress: recordProgress
     });
     expect(result, JSON.stringify(result)).toMatchObject({ status });
+    timing('local-execution-complete');
   }
   expect(await inspectActivationMigrationHistory(root)).toMatchObject({ status: 'committed', journal });
+  timing('committed-history-rechecked');
   for (const file of migration.index.files) {
     expect(await readFile(path.join(root, ...file.copyPathParts))).toEqual(sourceBytes.get(file.originalPathParts.join('/')));
   }
@@ -184,12 +199,14 @@ async function linkedFixture(status: MigrationRevalidationStatus) {
     throw new Error('Read-only inspection must not execute validation commands or contact a provider.');
   }) };
   async function inspect(command: typeof subcommands[number], json: boolean) {
+    timing(`inspection-start-${command}-${json ? 'json' : 'human'}`);
     const stdout = new CaptureStream();
     const stderr = new CaptureStream();
     const code = await runCommand(parseArgs(['governance', command, '--project', root, ...(json ? ['--json'] : [])]), {
       cwd: base, stdout, stderr, runner: inspectionRunner, updatePreview,
       terminal: { layout: 'plain', color: false }
     });
+    timing(`inspection-end-${command}-${json ? 'json' : 'human'}`);
     return { code, stdout: stdout.text(), stderr: stderr.text() };
   }
   return { root, userState, journal, receipt, inspect, inspectionRunner };

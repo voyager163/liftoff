@@ -487,6 +487,28 @@ unsupported identity boundary. Disposable-fixture refusal diagnostics retain
 fresh BigInt metadata only. Existing numeric observations, journal readers,
 receipt bytes and digest algorithms have not been expanded or reinterpreted.
 
+Fresh Windows boundary partitions must not inherit fixture setup from another
+file. Revalidation fixtures create their `.cache` parent explicitly before
+canonicalization. Repair fixtures choose short, newly owned source-test storage
+before review, preserving the complete registered workspace hierarchy and both
+64-character identities; no existing storage is relocated or aliased.
+
+Windows read-denial coverage uses an exclusive handle on a disposable fixture
+file, not a POSIX `chmod(0)` claim or an ACL change. Mode-freshness fixtures
+require a real observable read-only-attribute change on Windows; that is not
+directory ACL/custody qualification. Application-patch rejection fixtures bind
+actual source modes/digests so the intended infrastructure boundary is tested.
+The unref-descendant fixture waits for child IPC readiness; Windows omits only
+Node's own kill-on-parent-exit job while retaining the enclosing Liftoff job,
+and fixture teardown requires actual settlement rather than deleting an active
+scope. All existing command/test deadlines remain unchanged.
+
+The two Windows inspection timeouts remain unresolved; local passes are not
+native timing evidence. Opt-in boundary logs now expose only stage/phase identifiers
+and elapsed times, plus safe baseline-command status/error-code/cwd-length
+metadata. No cross-invocation snapshot cache, frozen-reader change or private
+verification producer has been introduced to manufacture success.
+
 The separate `windows_diagnostic_scope=private-io` selector, together with
 `diagnostic_windows_only=true`, exercises the independently inventoried private
 Windows binary-pipe helper on actual x64 with stock supported PowerShell/.NET.

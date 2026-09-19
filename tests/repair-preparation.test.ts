@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, readFile, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, inspectApplicationPatch, applicationCandidateDigest, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
 import { applicationPreparationSupport } from '../src/application/repair/application-preparation-policy.js';
@@ -11,8 +12,10 @@ import { createPreparationFixture, type PreparationFixture } from './fixtures/re
 import type { ApplicationPatchCandidate } from '../src/application/repair/application-types.js';
 
 const roots: string[] = [];
+const retainedRoots = new Set<string>();
 async function fixture(options: Parameters<typeof createPreparationFixture>[1] = {}) {
-  const root = path.resolve(`.repair preparation ${randomUUID()}`);
+  const root = path.resolve(process.platform === 'win32'
+    ? `.rp${randomUUID().slice(0, 8)}` : `.repair preparation ${randomUUID()}`);
   roots.push(root);
   return createPreparationFixture(root, options);
 }
@@ -39,7 +42,12 @@ function executionRunner(candidate: ApplicationPatchCandidate, execute: CommandR
 }
 afterEach(async () => {
   vi.restoreAllMocks();
-  await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true, maxRetries: 2 })));
+  const completed = roots.splice(0);
+  await Promise.all(completed.filter((root) => !retainedRoots.has(root))
+    .map((root) => rm(root, { recursive: true, force: true, maxRetries: 2 })));
+  if (completed.some((root) => retainedRoots.has(root))) {
+    throw new Error('Retaining source fixture because an owned descendant has not been proven settled.');
+  }
 });
 
 describe('registered locked preparation input and tool contracts', () => {
@@ -183,7 +191,7 @@ describe('registered locked preparation input and tool contracts', () => {
     const env = { ...process.env, PATH: [tools, process.env.PATH ?? ''].join(path.delimiter) };
     const baseline = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
     expect(baseline.blockers).toEqual([]);
-    const probes: CommandRunner = { run: vi.fn(async (command) => successful(command,
+    const probes: CommandRunner = { run: vi.fn(async (command: CommandResult['command']) => successful(command,
       command.args.some((arg) => arg.endsWith('npm-cli.js'))
         ? baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'npm')!.version
         : baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'node')!.version)) };
@@ -259,9 +267,15 @@ describe('registered locked preparation input and tool contracts', () => {
     const scriptPath = ['backend', 'test', 'spawn-descendant.cjs'];
     const scriptContent = `
       const { spawn } = require('node:child_process');
-      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], { stdio: 'ignore' });
-      descendant.unref();
-      process.exit(0);
+      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000); process.send("NONSECRET-ready");'], {
+        detached: process.platform === 'win32', stdio: ['ignore', 'ignore', 'ignore', 'ipc']
+      });
+      descendant.once('error', () => process.exit(71));
+      descendant.once('message', (message) => {
+        if (message !== 'NONSECRET-ready') process.exit(72);
+        descendant.unref();
+        process.stdout.write(JSON.stringify({ kind: 'NONSECRET-descendant', pid: descendant.pid }) + '\\n', () => process.exit(0));
+      });
     `;
     await putApplicationFixtureFile(f.root, scriptPath, scriptContent);
     f.document.verification.commands = [{
@@ -276,16 +290,43 @@ describe('registered locked preparation input and tool contracts', () => {
       projectCode: true, dependencyPreparation: false, network: false
     });
     const runner = new NodeCommandRunner();
-    const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
-    expect(verified.status).toBe('failed');
-    if (process.platform === 'win32') {
-      expect(verified.commands[0]?.timedOut).toBe(true);
-      expect(verified.cleanupComplete).toBe(true);
-      expect(verified.retainedWorkspace).toBeUndefined();
-    } else {
-      expect(verified.cleanupComplete).toBe(false);
-      expect(verified.retainedWorkspace).toBeDefined();
-      expect(verified.blockers.join(' ')).toContain('[workspace-cleanup] Registered workspace cleanup is blocked or incomplete');
+    const actualRun = runner.run.bind(runner);
+    let result: CommandResult | undefined, descendant: number | undefined;
+    vi.spyOn(runner, 'run').mockImplementation(async (command, options) => {
+      result = await actualRun(command, options);
+      try {
+        const observed = JSON.parse(result.stdout.trim());
+        if (observed.kind === 'NONSECRET-descendant' && Number.isSafeInteger(observed.pid) && observed.pid > 0) descendant = observed.pid;
+      } catch { /* No readiness observation means no descendant settlement can be inferred. */ }
+      return result;
+    });
+    retainedRoots.add(f.directory);
+    try {
+      const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
+      expect(verified.status).toBe('failed');
+      if (process.platform === 'win32') {
+        expect(verified.commands[0]?.timedOut).toBe(true);
+        expect(verified.cleanupComplete).toBe(true);
+        expect(verified.retainedWorkspace).toBeUndefined();
+      } else {
+        expect(verified.cleanupComplete).toBe(false);
+        expect(verified.retainedWorkspace).toBeDefined();
+        expect(verified.blockers.join(' ')).toContain('[workspace-cleanup] Registered workspace cleanup is blocked or incomplete');
+      }
+    } finally {
+      if (result?.processTreeSettled === true || result?.processSpawned === false) {
+        retainedRoots.delete(f.directory);
+      } else if (descendant !== undefined) {
+        const deadline = Date.now() + 10_000;
+        while (Date.now() < deadline) {
+          try { process.kill(descendant, 0); }
+          catch (error) {
+            if ((error as NodeJS.ErrnoException).code === 'ESRCH') retainedRoots.delete(f.directory);
+            break;
+          }
+          await delay(25);
+        }
+      }
     }
   }, 30_000);
 

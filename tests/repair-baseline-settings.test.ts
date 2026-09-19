@@ -1,7 +1,7 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import childProcess from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
-import { chmod, copyFile, lstat, mkdir, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseArgs } from '../src/args.js';
@@ -15,7 +15,9 @@ import { parseHcl, object, singleBlock } from '../src/adapters/hcl/semantic.js';
 import { createApplicationEnvironment } from '../src/application/repair/application-environment.js';
 import { inspectRepairVerificationWorkspaces } from '../src/application/repair/workspaces.js';
 import * as transactions from '../src/adapters/filesystem/reviewed-update-transaction.js';
-import { NodeCommandRunner, type CommandRunner, type CommandResult, type ExternalCommand, type RunCommandOptions } from '../src/process-runner.js';
+import { NodeCommandRunner, type CommandRunner, type CommandResult, type RunCommandOptions } from '../src/process-runner.js';
+import type { ExternalCommand } from '../src/domain/project/contracts.js';
+import { windowsWorkingDirectoryFits } from '../src/domain/execution/windows-working-directory.js';
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 import { putApplicationFixtureFile as put } from './fixtures/repair-application.js';
 
@@ -23,7 +25,15 @@ const mainParts = ['infrastructure', 'opentofu', 'azure', 'modules', 'applicatio
 const envParts = ['infrastructure', 'opentofu', 'azure', 'environments', 'dev'];
 const controls = ['CKV_AZURE_148', 'CKV_AZURE_44', 'CKV_AZURE_190', 'CKV2_AZURE_47', 'CKV_AZURE_205'];
 const allowedVerification = ['--allow-dependency-preparation', '--allow-network'];
-const fixtures: Array<Awaited<ReturnType<typeof fixture>>> = [];
+interface BaselineFixture {
+  directory: string; root: string; home: string; generatedMain: string;
+  runner: NativeRunner; env: NodeJS.ProcessEnv;
+  storage: { homedir: string; repositoryRoot: string; env: NodeJS.ProcessEnv };
+  pending: number;
+  cli(args: string[]): Promise<{ code: number; report: any; stderr: string }>;
+  inspect(): ReturnType<typeof inspectAzureBaselineSettings>;
+}
+const fixtures: BaselineFixture[] = [];
 const diagnostic = (result: { report: { message?: string; blockers?: string[] } }) =>
   JSON.stringify({ message: result.report.message, blockers: result.report.blockers });
 
@@ -38,6 +48,17 @@ class NativeRunner implements CommandRunner {
     try {
       const result = await this.native.run(command, options);
       this.calls.push({ command, options, result });
+      if (process.env.LIFTOFF_WINDOWS_TOOLCHAIN_REPORT === '1' &&
+          (result.status !== 0 || options?.ensureProcessTreeSettled && result.processTreeSettled !== true)) {
+        console.info(JSON.stringify({
+          kind: 'baseline-source-command-outcome',
+          operation: ['--version', 'init', 'validate'].includes(command.args[0]) ? command.args[0] : 'other',
+          status: result.status, timedOut: result.timedOut,
+          errorCode: result.errorCode && /^[A-Z0-9_]{1,64}$/u.test(result.errorCode) ? result.errorCode : null,
+          processTreeSettled: result.processTreeSettled ?? null, processSpawned: result.processSpawned ?? null,
+          cwdCodeUnits: options?.cwd?.length ?? null
+        }));
+      }
       if (options?.ensureProcessTreeSettled && result.processTreeSettled !== true) this.uncertain = true;
       await this.afterRun?.(command, options, result);
       return result;
@@ -52,9 +73,11 @@ function withoutDefaults(content: string): string {
   return content.replace(/^  (?:minimum_tls_version|min_tls_version|allow_nested_items_to_be_public)\s*=\s*(?:"[^"]+"|false)\r?\n/gmu, '');
 }
 
-async function fixture(main?: string) {
-  const directory = path.resolve('tests', `.baseline correctness ${randomUUID()}`);
-  const root = path.join(directory, 'project'), home = path.join(directory, 'private-home');
+async function fixture(main?: string): Promise<BaselineFixture> {
+  const directory = process.platform === 'win32'
+    ? await mkdtemp(path.join(process.cwd(), '.b'))
+    : path.resolve('tests', `.baseline correctness ${randomUUID()}`);
+  const root = path.join(directory, 'project'), home = process.platform === 'win32' ? directory : path.join(directory, 'private-home');
   await Promise.all([root, home].map((value) => mkdir(value, { recursive: true, mode: 0o700 })));
   const plan = buildProjectPlan({
     projectName: 'baseline-correctness', projectType: 'standard', apiStack: 'node', cloud: 'azure',
@@ -63,8 +86,8 @@ async function fixture(main?: string) {
   const artifacts = buildArtifacts(plan);
   const generatedMain = artifacts.find((entry) => entry.logicalName === 'opentofu-application-main')!.content;
   const runner = new NativeRunner(), env = { ...process.env };
-  const storage = { homedir: home, repositoryRoot: root, env: {} };
-  const current = {
+  const storage = { homedir: home, repositoryRoot: root, env: process.platform === 'win32' ? { LOCALAPPDATA: home } : {} };
+  const current: BaselineFixture = {
     directory, root, home, generatedMain, runner, env, storage, pending: 0,
     async cli(args: string[]) {
       const stdout = new CaptureStream(), stderr = new CaptureStream();
@@ -83,6 +106,56 @@ async function fixture(main?: string) {
   await writeArtifacts(root, artifacts);
   if (main !== undefined) await put(root, mainParts, main);
   return current;
+}
+
+async function withUnreadableInput(
+  current: BaselineFixture, file: string, inspect: () => Promise<void>
+) {
+  if (process.platform !== 'win32') {
+    const mode = (await lstat(file)).mode & 0o7777;
+    await chmod(file, 0);
+    try { await inspect(); } finally { await chmod(file, mode); }
+    return;
+  }
+  // Windows chmod does not deny reads; an owned exclusive handle supplies a real denial without ACL changes.
+  const powershell = path.join(process.env.SystemRoot!, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+  const script = '$ErrorActionPreference="Stop"; $f=[IO.File]::Open($env:LIFTOFF_SOURCE_LOCK_FILE,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::None); ' +
+    'try { [Console]::Out.WriteLine("SOURCE_FIXTURE_LOCK_READY"); [Console]::Out.Flush(); [void][Console]::In.ReadLine() } finally { $f.Dispose() }';
+  const child = childProcess.spawn(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+    cwd: current.directory, env: { ...process.env, LIFTOFF_SOURCE_LOCK_FILE: file },
+    stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true
+  });
+  current.pending++;
+  child.stdin.on('error', () => {});
+  child.stderr.resume();
+  const closed = new Promise<number | null>((resolve) => {
+    child.once('close', (code) => { current.pending--; resolve(code); });
+  });
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error('Source fixture exclusive-read lock did not become ready.')), 15_000);
+      let text = '';
+      const stop = (error?: Error) => { clearTimeout(timer); error ? reject(error) : resolve(); };
+      child.once('error', () => stop(new Error('Source fixture lock process could not start.')));
+      child.once('close', () => stop(new Error('Source fixture lock process exited before readiness.')));
+      child.stdout.on('data', (chunk: Buffer) => {
+        text += chunk.toString('utf8');
+        if (text.length > 128) stop(new Error('Source fixture lock readiness exceeded its bound.'));
+        else if (text.trim() === 'SOURCE_FIXTURE_LOCK_READY') stop();
+      });
+    });
+    await expect(readFile(file)).rejects.toMatchObject({ code: expect.stringMatching(/^(?:EACCES|EPERM|EBUSY)$/u) });
+    await inspect();
+  } finally {
+    child.stdin.end('\n');
+    const wait = (milliseconds: number) => new Promise<undefined>((resolve) => setTimeout(resolve, milliseconds));
+    let outcome = await Promise.race([closed, wait(2000)]);
+    if (outcome === undefined) {
+      child.kill();
+      outcome = await Promise.race([closed, wait(2000)]);
+    }
+    if (outcome === undefined) throw new Error('Retain the fixture: its exact lock process did not settle.');
+  }
 }
 
 afterEach(async () => {
@@ -137,6 +210,17 @@ async function assertExactDelta(before: string, after: string) {
 }
 
 describe('Azure baseline source-range correctness (8.4)', () => {
+  it('uses fresh source-fixture storage that fits Windows without shortening registered workspace identities', () => {
+    const checkout = 'D:\\a\\liftoff\\liftoff';
+    const workspace = ['liftoff', 'update-previews', 'repair-workspaces', 'a'.repeat(64), 'b'.repeat(64), 'project', ...envParts];
+    const old = path.win32.join(checkout, 'tests', `.baseline correctness ${'c'.repeat(36)}`, 'private-home', 'AppData', 'Local', ...workspace);
+    const current = path.win32.join(checkout, '.bABC123', ...workspace);
+    expect(windowsWorkingDirectoryFits(old)).toBe(false);
+    expect(windowsWorkingDirectoryFits(current)).toBe(true);
+    expect(current).toContain('a'.repeat(64));
+    expect(current).toContain('b'.repeat(64));
+  });
+
   it('adds only the four declared settings without reformatting any existing line', async () => {
     const current = await fixture(legacy);
     const candidate = await current.inspect();
@@ -262,12 +346,14 @@ describe('Azure baseline source-range correctness (8.4)', () => {
   it.each(['missing', 'unreadable'])('fails explicitly for %s required inputs, without fabricated empty validation files', async (condition) => {
     const current = await fixture(legacy);
     const file = path.join(current.root, ...envParts, 'versions.tf');
-    if (condition === 'missing') await unlink(file);
-    else await chmod(file, 0);
-    const candidate = await current.inspect();
-    expect(candidate.blockers.length).toBeGreaterThan(0);
-    expect(candidate.files).toEqual([]);
-    expect(candidate.mutations).toEqual([]);
+    const inspect = async () => {
+      const candidate = await current.inspect();
+      expect(candidate.blockers.length).toBeGreaterThan(0);
+      expect(candidate.files).toEqual([]);
+      expect(candidate.mutations).toEqual([]);
+    };
+    if (condition === 'missing') { await unlink(file); await inspect(); }
+    else await withUnreadableInput(current, file, inspect);
   });
 
   it('rejects changed provider locks and remote module sources before any execution', async () => {
@@ -330,9 +416,17 @@ describe('Azure baseline consent, freshness and released transactions (8.5)', ()
     expect(preview.report.status, JSON.stringify(preview.report)).toBe('available');
     const mainPath = path.join(current.root, ...mainParts);
     if (kind === 'file') await writeFile(mainPath, legacy + '\n# newer source\n');
-    else if (kind === 'file-mode') await chmod(mainPath, 0o600);
+    else if (kind === 'file-mode') {
+      const before = (await lstat(mainPath)).mode;
+      await chmod(mainPath, process.platform === 'win32' ? 0o444 : 0o600);
+      expect((await lstat(mainPath)).mode).not.toBe(before);
+    }
     else if (kind === 'directory-entry') await put(current.root, [...mainParts.slice(0, -1), 'customer-note.txt'], 'new file\n');
-    else if (kind === 'directory-mode') await chmod(path.dirname(mainPath), 0o700);
+    else if (kind === 'directory-mode') {
+      const directory = path.dirname(mainPath), before = (await lstat(directory)).mode;
+      await chmod(directory, process.platform === 'win32' ? 0o444 : 0o700);
+      expect((await lstat(directory)).mode).not.toBe(before);
+    }
     else if (kind === 'directory-identity') {
       const directory = path.dirname(mainPath), original = path.join(current.directory, 'preserved-original-module');
       const mode = (await lstat(directory)).mode & 0o7777;
@@ -448,13 +542,15 @@ describe('Azure baseline consent, freshness and released transactions (8.5)', ()
     const stage = path.join(current.directory, 'application-patch');
     await mkdir(stage);
     await put(stage, ['main.tf'], current.generatedMain);
+    const sourceMode = (await lstat(path.join(current.root, ...mainParts))).mode & 0o7777;
+    const sourceDigest = createHash('sha256').update(await readFile(path.join(current.root, ...mainParts))).digest('hex');
     const patch = {
       schemaVersion: 1, kind: 'liftoff-application-patch', projectRoot: current.root,
       inspectionDigest: inventory.report.inspectionDigest, targetLayoutDigest: inventory.report.target!.digest,
       dynamicReferencesReviewed: true, unresolvedMappings: [],
       mappings: [{
         sourcePathParts: mainParts, targetPathParts: mainParts, stagedPathParts: ['main.tf'],
-        expectedSourceDigest: 'a'.repeat(64), expectedSourceMode: 0o644, targetMode: 0o644,
+        expectedSourceDigest: sourceDigest, expectedSourceMode: sourceMode, targetMode: sourceMode,
         role: 'application', targetIdentity: { kind: 'generated-artifact', logicalName: 'node-backend-app' },
         customization: 'reviewed-edit', references: []
       }],

@@ -94,6 +94,7 @@ async function fixture(options: {
 } = {}) {
   const name = `migration-revalidation-${++sequence}`;
   const root = path.join(process.cwd(), '.cache', `${name}-${process.pid}`);
+  await mkdir(path.dirname(root), { recursive: true });
   roots.push(root);
   const plan = buildProjectPlan({
     projectName: name,
@@ -309,6 +310,7 @@ describe('bounded migration local revalidation', {
 
   it('revalidates an authentic historical successor and journals unavailable baseline proof without inheriting publication approval', async () => {
     const root = path.join(process.cwd(), '.cache', `authentic-revalidation-${process.pid}-${++sequence}`);
+    await mkdir(path.dirname(root), { recursive: true });
     roots.push(root);
     const historical = await writeHistoricalV1Fixture(root);
     const migration = await planActivationHistoryMigration(root);
