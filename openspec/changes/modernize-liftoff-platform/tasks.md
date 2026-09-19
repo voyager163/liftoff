@@ -724,6 +724,19 @@ do not qualify actual Copilot, Claude Code or Codex discovery and journeys.
 - [ ] 15.11 Verify #79 repository completion while full activation remains blocked, followed by separately approved real qualification and hold replacement; verify old/default activation callers cannot receive narrower success.
 - [ ] 15.12 Run build/type/import-boundary checks and the full supported cross-platform suite after integration; verify every advertised required capability has matching implementation, failure/recovery and qualification evidence.
 
+The implementation PR into `develop` remains a draft, not a completed release.
+Full PR run `35453226556` at `219bdb330aea3c22fc0ef4a36fb43c47520b73ec`
+verified the bounded archive/cleanup corrections: both macOS source shards 1
+and 3 passed, and the earlier Linux/macOS distribution failures were absent.
+The whole run still failed on remaining guarded-workflow timeouts, missing
+native private-state support and Windows identity/other boundary failures;
+one Windows shard exhausted its job budget. Cleanup observations improved but
+still exceeded the relevant case bounds on hosted workers. The case/normalization
+collision fixture also had an incorrect single-entry assumption on Linux and
+now asserts against the actual executing filesystem. No failed gate, timeout,
+source-only helper result or unresolved scanner finding authorizes merging as
+complete or publishing the candidate.
+
 Current local full-source measurement covers all 690 CLI production files and
 all four telemetry files. Every metric exceeds the strict raw-count threshold
 independently; CLI branches are 45,443/56,372 and telemetry branches 128/150.
