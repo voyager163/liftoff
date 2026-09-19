@@ -127,6 +127,18 @@ their incomplete outcomes are not passing evidence. Tasks 3.2 and 3.8 remain
 open while those actual host failures and workload partitioning are corrected
 without dropping cases or increasing production/test deadlines.
 
+Run `35436535279` at `4a59ed49ede8df3104f839b8bcd7cb56a51c3db8`
+completed all ten case-conserving partitions within their original job budgets;
+all three reviewed-update partitions passed. Native environment clearing also
+passed. Directory refusal diagnostics now record actual uint64 inode values
+such as `41095346599807089`, with `inodeSafeNumber: false`, confirming the
+existing numeric-identity contract cannot represent those fixtures losslessly.
+No reader/writer format was silently widened. Two inspection cases still hit
+their unchanged 90-second case bounds, isolated revalidation partitions expose
+a missing `.cache` setup dependency, and regular partitions retain identity,
+preparation and Windows baseline-validation failures. These remain failures,
+not case exclusions or complete Windows qualification.
+
 Task 3.6 has passing native POSIX source-host evidence from run `35352071630`
 at `d9783d087a905ccdb361b6b7bbb5d6f69ac48bcf`. Both Ubuntu and macOS passed
 all applicable `process-runner`, `state-migration-process` and
