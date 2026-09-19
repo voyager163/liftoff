@@ -90,6 +90,18 @@ describe('source boundaries for Windows tool environment selection', () => {
     expect(() => mergeWindowsCommandEnvironment({ Path: 'ambient' }, { PATH: 'one', pAtH: 'two' }))
       .toThrow('Conflicting case-insensitive environment aliases');
   });
+
+  it.each([
+    'HOMEDRIVE', 'HOMEPATH', 'LOGONSERVER', 'PATH', 'SYSTEMDRIVE', 'SYSTEMROOT',
+    'TEMP', 'USERDOMAIN', 'USERNAME', 'USERPROFILE', 'WINDIR'
+  ])('blanks explicitly cleared libuv-required %s instead of allowing runtime reinsertion', (name) => {
+    const environment = mergeWindowsCommandEnvironment({ [name]: 'ambient-value', OPTIONAL: 'ambient-optional' }, {
+      [name.toLowerCase()]: undefined, optional: undefined
+    });
+    expect(environmentValue(environment, name, 'win32')).toBe('');
+    expect(environmentValue(environment, 'OPTIONAL', 'win32')).toBeUndefined();
+    expect(mergeWindowsCommandEnvironment({ [name]: 'ambient-value' }, {})).toEqual({ [name]: 'ambient-value' });
+  });
 });
 
 if (process.platform === 'win32') {
@@ -140,13 +152,13 @@ if (process.platform === 'win32') {
       const search = path.dirname(process.execPath);
       const result = await new NodeCommandRunner().run({
         executable: process.execPath,
-        args: ['-e', 'console.log(JSON.stringify({path:process.env.PATH,profile:process.env.USERPROFILE??null}))']
+        args: ['-e', 'console.log(JSON.stringify({path:process.env.PATH,profile:process.env.USERPROFILE??null,appData:process.env.APPDATA??null}))']
       }, {
-        cwd: process.cwd(), env: { pAtH: search, PATH: undefined, userprofile: undefined },
+        cwd: process.cwd(), env: { pAtH: search, PATH: undefined, userprofile: undefined, appdata: undefined },
         timeoutMs: 15_000, maxOutputBytes: 8192
       });
       expect(result, result.errorMessage).toMatchObject({ status: 0, timedOut: false });
-      expect(JSON.parse(result.stdout)).toEqual({ path: search, profile: null });
+      expect(JSON.parse(result.stdout)).toEqual({ path: search, profile: '', appData: null });
     });
 
     it('admits actual supported Node/npm using mixed environment aliases and literal Windows paths', async () => {

@@ -13,7 +13,7 @@ on:
         type: choice
         required: false
         default: focused
-        options: [focused, complete-boundary]
+        options: [focused, complete-boundary, private-io]
       diagnostic_native_go_only:
         description: Run native Go source diagnostics (not qualification)
         type: boolean
@@ -656,7 +656,7 @@ jobs:
 
   windows-diagnostics:
     name: Windows source diagnostics (not qualification)
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -843,6 +843,185 @@ jobs:
             diagnostics/windows-boundary-inventory.json
             diagnostics/windows-boundary-tests.json
             diagnostics/windows-native-toolchain.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-private-io-diagnostics:
+    name: Windows private I/O NONSECRET source fixtures (not custody qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build package
+        run: npm run build
+
+      - name: Observe stock Windows x64 host and independently pinned private helper
+        id: host
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { execFileSync } from 'node:child_process';
+          import { createHash } from 'node:crypto';
+          import { lstatSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import { release } from 'node:os';
+          import path from 'node:path';
+          import { NATIVE_HELPER_INVENTORY } from './scripts/native-helper-inventory.mjs';
+          const report = {
+            classification: 'windows-private-io-nonsecret-source-only',
+            platform: process.platform, architecture: process.arch, runnerArchitecture: process.env.RUNNER_ARCH,
+            windowsRelease: release(), nodeVersion: process.versions.node,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            admitted: false, helpers: []
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          try {
+            assert.equal(process.platform, 'win32');
+            assert.equal(process.arch, 'x64');
+            assert.equal(process.env.RUNNER_ARCH?.toLowerCase(), 'x64');
+            assert.ok(Number(report.windowsRelease.split('.')[2]) >= 17763, 'Unsupported source host');
+            for (const [id, file] of [
+              ['windows-private-process', 'assets/repair/windows-private-process.ps1'],
+              ['windows-job-controller', 'assets/repair/windows-job-controller.ps1']
+            ]) {
+              const declared = NATIVE_HELPER_INVENTORY.find((entry) => entry.id === id);
+              assert.equal(declared?.path, file);
+              const stat = lstatSync(file);
+              assert.ok(stat.isFile() && !stat.isSymbolicLink() && stat.size <= 1024 * 1024);
+              const sha256 = createHash('sha256').update(readFileSync(file)).digest('hex');
+              assert.equal(sha256, declared.expectedDigest);
+              report.helpers.push({ id, path: file, sha256 });
+            }
+            assert.notEqual(report.helpers[0].sha256, report.helpers[1].sha256);
+            const powershell = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe');
+            const script = '$ErrorActionPreference="Stop"; Add-Type -AssemblyName System.Web.Extensions; ' +
+              '$s=New-Object System.Web.Script.Serialization.JavaScriptSerializer; ' +
+              '$s.Serialize(@{version=$PSVersionTable.PSVersion.ToString();languageMode=$ExecutionContext.SessionState.LanguageMode.ToString();framework=[Environment]::Version.ToString()})';
+            const observed = JSON.parse(execFileSync(powershell, ['-NoProfile', '-NonInteractive', '-Command', script], {
+              encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 8192, stdio: ['ignore', 'pipe', 'pipe']
+            }));
+            for (const field of ['version', 'languageMode', 'framework']) {
+              assert.ok(typeof observed[field] === 'string' && observed[field].length <= 128);
+            }
+            report.powershell = {
+              path: powershell, version: observed.version, languageMode: observed.languageMode,
+              framework: observed.framework, systemWebExtensions: 'loaded'
+            };
+            assert.match(observed.version, /^5\.1\./u);
+            assert.equal(observed.languageMode, 'FullLanguage');
+            assert.match(observed.framework, /^4\./u);
+            report.admitted = true;
+          } catch {
+            report.blocker = 'Stock supported host or independent helper identity admission failed; no host policy change is authorized';
+            process.exitCode = 1;
+          } finally {
+            writeFileSync('diagnostics/windows-private-io-host.json', JSON.stringify(report, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Run actual Windows private binary I/O source fixtures only
+        id: native
+        run: >-
+          npm test -- tests/state-windows-private-protocol.test.ts tests/state-windows-private-runner.test.ts
+          --maxWorkers=1 --reporter=json --outputFile.json=diagnostics/windows-private-io-tests.json
+
+      - name: Require native private I/O outcomes and retain only bounded safe metadata
+        if: always()
+        env:
+          HOST_OUTCOME: ${{ steps.host.outcome }}
+          NATIVE_OUTCOME: ${{ steps.native.outcome }}
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { mkdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          const report = {
+            classification: 'windows-private-io-nonsecret-source-only',
+            platform: process.platform, architecture: process.arch,
+            sourceCommit: process.env.GITHUB_SHA, runAttempt: process.env.GITHUB_RUN_ATTEMPT,
+            stages: { host: process.env.HOST_OUTCOME, native: process.env.NATIVE_OUTCOME },
+            accepted: false, custodyQualification: 'not-performed',
+            minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed',
+            providerQualification: 'not-performed', releaseQualification: 'not-performed'
+          };
+          const bounded = (file, limit) => {
+            assert.ok(statSync(file).isFile() && statSync(file).size <= limit);
+            return JSON.parse(readFileSync(file, 'utf8'));
+          };
+          mkdirSync('diagnostics', { recursive: true });
+          try {
+            const host = bounded('diagnostics/windows-private-io-host.json', 16 * 1024);
+            report.host = {
+              admitted: host.admitted, windowsRelease: host.windowsRelease, nodeVersion: host.nodeVersion,
+              powershell: host.powershell ? {
+                path: host.powershell.path, version: host.powershell.version,
+                languageMode: host.powershell.languageMode, framework: host.powershell.framework,
+                systemWebExtensions: host.powershell.systemWebExtensions
+              } : undefined,
+              helpers: host.helpers.map((helper) => ({ id: helper.id, path: helper.path, sha256: helper.sha256 }))
+            };
+            assert.equal(process.platform, 'win32');
+            assert.equal(process.arch, 'x64');
+            assert.equal(host.platform, process.platform);
+            assert.equal(host.architecture, process.arch);
+            assert.equal(host.sourceCommit, process.env.GITHUB_SHA);
+            assert.equal(host.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+            assert.equal(host.admitted, true);
+            assert.deepEqual(host.helpers.map((helper) => helper.id).sort(), ['windows-job-controller', 'windows-private-process']);
+            for (const helper of host.helpers) assert.match(helper.sha256, /^[a-f0-9]{64}$/u);
+            assert.notEqual(host.helpers[0].sha256, host.helpers[1].sha256);
+            assert.match(host.powershell.version, /^5\.1\./u);
+            assert.equal(host.powershell.languageMode, 'FullLanguage');
+            assert.equal(host.powershell.systemWebExtensions, 'loaded');
+            assert.equal(report.stages.host, 'success');
+            const result = bounded('diagnostics/windows-private-io-tests.json', 256 * 1024);
+            const expectedFiles = ['tests/state-windows-private-protocol.test.ts', 'tests/state-windows-private-runner.test.ts'];
+            assert.deepEqual(result.testResults.map((file) => path.relative(process.cwd(), file.name).split(path.sep).join('/')).sort(), expectedFiles);
+            const cases = result.testResults.flatMap((file) => file.assertionResults);
+            assert.ok(cases.length > 0 && cases.length <= 128);
+            const nativeSuite = 'actual Windows private binary pipes and owned jobs (NONSECRET source fixtures, not custody)';
+            const native = cases.filter((test) => test.ancestorTitles?.includes(nativeSuite));
+            const inapplicable = cases.filter((test) => test.status === 'pending' &&
+              test.title === 'refuses a foreign host while wiping transferred private input' &&
+              test.ancestorTitles?.includes('Windows private runner source admission, not Windows qualification'));
+            report.passed = result.numPassedTests;
+            report.failed = result.numFailedTests;
+            report.inapplicable = inapplicable.length;
+            report.nativeCases = native.length;
+            report.cases = cases.map((test) => ({ name: String(test.fullName).slice(0, 1024), status: test.status }));
+            assert.equal(report.stages.native, 'success');
+            assert.equal(result.success, true);
+            assert.equal(result.numPassedTests, cases.filter((test) => test.status === 'passed').length);
+            assert.equal(result.numFailedTests, 0);
+            assert.ok(native.length > 0 && native.every((test) => test.status === 'passed'));
+            assert.ok(inapplicable.length <= 1);
+            assert.equal(result.numPendingTests, inapplicable.length);
+            assert.ok(cases.every((test) => test.status === 'passed' || inapplicable.includes(test)));
+            report.accepted = true;
+          } catch {
+            report.blocker = 'Required actual Windows private-I/O source evidence is missing, mismatched or incomplete';
+            process.exitCode = 1;
+          } finally {
+            writeFileSync('diagnostics/windows-private-io-source.json', JSON.stringify(report, null, 2) + '\n');
+          }
+          NODE
+
+      - name: Retain sanitized Windows private-I/O source JSON only (no raw payloads or state)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-private-io-source-${{ github.sha }}-${{ github.run_attempt }}
+          path: diagnostics/windows-private-io-source.json
           if-no-files-found: error
           retention-days: 7
 

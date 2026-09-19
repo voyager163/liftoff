@@ -35,7 +35,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'windows-boundary-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -138,7 +138,7 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.workflow_dispatch.inputs.windows_diagnostic_scope).toEqual({
       description: 'Windows diagnostic scope (requires diagnostic_windows_only)',
-      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary']
+      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary', 'private-io']
     });
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_go_only).toEqual({
       description: 'Run native Go source diagnostics (not qualification)',
@@ -158,12 +158,12 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'windows-boundary-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'windows-boundary-diagnostics', 'windows-private-io-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
     const diagnostic = workflow.jobs['windows-diagnostics'];
-    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'");
+    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'");
     expect(diagnostic.name).toContain('not qualification');
     expect(diagnostic['runs-on']).toBe('windows-latest');
     expect(diagnostic['timeout-minutes']).toBe(20);
@@ -205,14 +205,16 @@ describe('read-only coordinated release evidence workflow', () => {
   }))))('routes Windows=$windows, Go=$go, POSIX=$posix, build=$build and GNOME=$gnome without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, gnome, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
-      for (const windowsScope of ['focused', 'complete-boundary']) {
+      for (const windowsScope of ['focused', 'complete-boundary', 'private-io']) {
         const conditions: Record<string, boolean> = {
           [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
           [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
-          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'":
-            event === 'workflow_dispatch' && windows && windowsScope !== 'complete-boundary',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary' && inputs.windows_diagnostic_scope != 'private-io'":
+            event === 'workflow_dispatch' && windows && windowsScope !== 'complete-boundary' && windowsScope !== 'private-io',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'":
             event === 'workflow_dispatch' && windows && windowsScope === 'complete-boundary',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'":
+            event === 'workflow_dispatch' && windows && windowsScope === 'private-io',
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
           "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
@@ -221,11 +223,152 @@ describe('read-only coordinated release evidence workflow', () => {
           expect(Object.hasOwn(conditions, job.if)).toBe(true);
           return conditions[job.if];
         }).map(([id]) => id);
-        const expected = (event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs).map((job) =>
-          job === 'windows-diagnostics' && windowsScope === 'complete-boundary' ? 'windows-boundary-diagnostics' : job);
+        const expected = (event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs).map((job) => {
+          if (job !== 'windows-diagnostics') return job;
+          if (windowsScope === 'complete-boundary') return 'windows-boundary-diagnostics';
+          return windowsScope === 'private-io' ? 'windows-private-io-diagnostics' : job;
+        });
         expect(selected.sort()).toEqual([...expected].sort());
         expect(selected.length).toBeGreaterThan(0);
       }
+    }
+  });
+
+  it('keeps independently pinned Windows private-I/O fixtures in a separate manual-only source lane', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['windows-private-io-diagnostics'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'private-io'");
+    expect(job.name).toContain('NONSECRET source fixtures');
+    expect(job['runs-on']).toBe('windows-latest');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.needs).toBeUndefined();
+    expect(job.steps.some((step: any) => step.run === 'npm install --global "npm@12.0.2"')).toBe(true);
+    expect(job.steps.some((step: any) => step.run === 'npm ci')).toBe(true);
+    const buildIndex = job.steps.findIndex((step: any) => step.run === 'npm run build');
+    const hostIndex = job.steps.findIndex((step: any) => step.id === 'host');
+    const nativeIndex = job.steps.findIndex((step: any) => step.id === 'native');
+    expect(buildIndex).toBeGreaterThanOrEqual(0);
+    expect(hostIndex).toBeGreaterThan(buildIndex);
+    expect(nativeIndex).toBeGreaterThan(hostIndex);
+    expect(job.steps[nativeIndex].run).toBe(
+      'npm test -- tests/state-windows-private-protocol.test.ts tests/state-windows-private-runner.test.ts ' +
+      '--maxWorkers=1 --reporter=json --outputFile.json=diagnostics/windows-private-io-tests.json'
+    );
+    const host = job.steps[hostIndex].run;
+    expect(host).toContain("assert.equal(process.platform, 'win32')");
+    expect(host).toContain("assert.equal(process.arch, 'x64')");
+    expect(host).toContain('>= 17763');
+    expect(host).toContain('NATIVE_HELPER_INVENTORY');
+    expect(host).toContain("['windows-private-process', 'assets/repair/windows-private-process.ps1']");
+    expect(host).toContain("['windows-job-controller', 'assets/repair/windows-job-controller.ps1']");
+    expect(host).toContain('assert.equal(sha256, declared.expectedDigest)');
+    expect(host).toContain("'WindowsPowerShell', 'v1.0', 'powershell.exe'");
+    expect(host).toContain('System.Web.Extensions');
+    expect(host).toContain("'FullLanguage'");
+    expect(job.steps.map((step: any) => step.run ?? '').join('\n'))
+      .not.toMatch(/ExecutionPolicy\s+(?:Bypass|Unrestricted)|Set-ExecutionPolicy|\bicacls\b|\bsudo\b|\bwinget\b|--shard|gate:release/);
+    const retained = job.steps.at(-1);
+    expect(retained.if).toBe('always()');
+    expect(retained.with).toEqual({
+      name: 'windows-private-io-source-${{ github.sha }}-${{ github.run_attempt }}',
+      path: 'diagnostics/windows-private-io-source.json', 'if-no-files-found': 'error', 'retention-days': 7
+    });
+    expect(workflow.jobs['windows-boundary-diagnostics'].steps.map((step: any) => step.run ?? '').join('\n'))
+      .not.toContain('tests/state-windows-private-');
+    for (const id of defaultSourceJobs) {
+      expect(workflow.jobs[id].steps.some((step: any) => step.run?.includes('tests/state-windows-private-'))).toBe(false);
+    }
+  });
+
+  it('requires actual private-I/O native cases, allowing only the explicitly inapplicable foreign-host refusal', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const step = workflow.jobs['windows-private-io-diagnostics'].steps.find((entry: any) =>
+      entry.name === 'Require native private I/O outcomes and retain only bounded safe metadata');
+    expect(step.if).toBe('always()');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'diagnostics'));
+      const marker = 'DO_NOT_UPLOAD_RAW_PRIVATE_FRAMES_OR_STATE';
+      const nativeSuite = 'actual Windows private binary pipes and owned jobs (NONSECRET source fixtures, not custody)';
+      const host = {
+        admitted: true, platform: 'win32', architecture: 'x64', sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        windowsRelease: '10.0.26100', nodeVersion: '24.20.0',
+        powershell: { version: '5.1.26100.0', languageMode: 'FullLanguage', framework: '4.0.30319', systemWebExtensions: 'loaded', raw: marker },
+        helpers: [
+          { id: 'windows-private-process', path: 'assets/repair/windows-private-process.ps1', sha256: 'c'.repeat(64), raw: marker },
+          { id: 'windows-job-controller', path: 'assets/repair/windows-job-controller.ps1', sha256: 'd'.repeat(64) }
+        ],
+        raw: marker
+      };
+      const foreign = {
+        fullName: 'source refuses a foreign host while wiping transferred private input',
+        title: 'refuses a foreign host while wiping transferred private input',
+        ancestorTitles: ['Windows private runner source admission, not Windows qualification'], status: 'pending'
+      };
+      const native = { fullName: `${nativeSuite} binary pipes`, title: 'binary pipes', ancestorTitles: [nativeSuite], status: 'passed', failureMessages: [marker], stdout: marker };
+      const result = {
+        success: true, numPassedTests: 2, numFailedTests: 0, numPendingTests: 1,
+        testResults: [
+          { name: path.resolve(root, 'tests/state-windows-private-protocol.test.ts'), assertionResults: [{ fullName: 'protocol', title: 'protocol', ancestorTitles: ['protocol'], status: 'passed' }] },
+          { name: path.resolve(root, 'tests/state-windows-private-runner.test.ts'), assertionResults: [native, foreign] }
+        ]
+      };
+      const hostFile = path.join(root, 'diagnostics/windows-private-io-host.json');
+      const resultFile = path.join(root, 'diagnostics/windows-private-io-tests.json');
+      const output = path.join(root, 'diagnostics/windows-private-io-source.json');
+      const save = (value: object) => writeFile(resultFile, JSON.stringify(value));
+      const run = (overrides: Record<string, string> = {}) => execFileAsync(process.execPath, ['--input-type=module', '-e',
+        `Object.defineProperty(process, 'platform', {value:'win32'}); Object.defineProperty(process, 'arch', {value:'x64'});\n${program}`], {
+        cwd: root, env: { ...process.env, GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2', HOST_OUTCOME: 'success', NATIVE_OUTCOME: 'success', ...overrides }
+      });
+      await expect(run()).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify(host));
+      await expect(run()).rejects.toThrow();
+      await save(result);
+      await run();
+      const summary = await readFile(output, 'utf8');
+      expect(summary).not.toContain(marker);
+      expect(JSON.parse(summary)).toMatchObject({
+        accepted: true, nativeCases: 1, inapplicable: 1, platform: 'win32', architecture: 'x64',
+        custodyQualification: 'not-performed', minimumHostQualification: 'not-performed', installedArtifactQualification: 'not-performed'
+      });
+      for (const invalid of [
+        { ...result, success: false },
+        { ...result, numFailedTests: 1 },
+        { ...result, numPendingTests: 2 },
+        { ...result, testResults: result.testResults.slice(0, 1) },
+        { ...result, testResults: [
+          result.testResults[0], { ...result.testResults[1], assertionResults: [foreign] }
+        ] },
+        { ...result, testResults: [
+          result.testResults[0], { ...result.testResults[1], assertionResults: [{ ...native, status: 'pending' }, foreign] }
+        ] },
+        { ...result, testResults: [
+          result.testResults[0], { ...result.testResults[1], assertionResults: [native, { ...foreign, title: 'unexpected skipped case' }] }
+        ] }
+      ]) {
+        await save(invalid);
+        await expect(run()).rejects.toThrow();
+        expect(JSON.parse(await readFile(output, 'utf8')).accepted).toBe(false);
+      }
+      await save(result);
+      await expect(run({ NATIVE_OUTCOME: 'skipped' })).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify({ ...host, admitted: false }));
+      await expect(run()).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify({ ...host, helpers: host.helpers.slice(0, 1) }));
+      await expect(run()).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify({ ...host, powershell: { ...host.powershell, languageMode: 'ConstrainedLanguage' } }));
+      await expect(run()).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify({ ...host, sourceCommit: 'b'.repeat(40) }));
+      await expect(run()).rejects.toThrow();
+      await writeFile(hostFile, JSON.stringify(host));
+      await writeFile(resultFile, marker.repeat(30000));
+      await expect(run()).rejects.toThrow();
+      expect(await readFile(output, 'utf8')).not.toContain(marker);
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

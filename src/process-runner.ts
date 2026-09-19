@@ -41,6 +41,13 @@ export interface CommandRunner {
   run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult>;
 }
 
+// Node 24.20/libuv restores these from the parent when absent; an explicit clear must stay present but empty.
+// https://github.com/nodejs/node/blob/v24.20.0/deps/uv/src/win/process.c (required_vars, make_program_env)
+const windowsRequiredEnvironmentVariables = new Set([
+  'homedrive', 'homepath', 'logonserver', 'path', 'systemdrive', 'systemroot',
+  'temp', 'userdomain', 'username', 'userprofile', 'windir'
+]);
+
 export function mergeWindowsCommandEnvironment(
   inherited: NodeJS.ProcessEnv, supplied: NodeJS.ProcessEnv
 ): NodeJS.ProcessEnv {
@@ -51,6 +58,7 @@ export function mergeWindowsCommandEnvironment(
     const source = overridden.has(folded) ? supplied : inherited;
     const value = environmentValue(source, name, 'win32');
     if (value !== undefined) entries.push([name, value]);
+    else if (overridden.has(folded) && windowsRequiredEnvironmentVariables.has(folded)) entries.push([name, '']);
   }
   return Object.fromEntries(entries);
 }

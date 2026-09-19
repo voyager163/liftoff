@@ -450,6 +450,11 @@ rejects conflicting aliases, project shims and changed executable copies.
 Undefined case aliases cannot shadow canonical child-environment variables.
 Case-insensitive Windows overrides and explicit clears also replace inherited
 aliases rather than leaving an ambient alternative in the final child block.
+Pinned Node 24.20/libuv reinserts missing required environment variables;
+explicit clears of that declared set are therefore emitted as empty strings.
+Optional variables are still omitted. The native regression checks an empty
+`USERPROFILE` and absent optional `APPDATA`, never acceptance of the ambient
+profile observed in the failed source run.
 Its incompatible-version negative uses a deliberately changed copy of npm's
 manifest, not a fabricated native version result.
 
@@ -457,6 +462,16 @@ All shards must pass for complete boundary source evidence. These results do
 not establish final installed bundles, minimum hosts, enterprise-policy
 coverage or a missing Windows private-state foundation; report those as
 separate blockers. See [Windows diagnostic commands](CONTRIBUTING.md#validate-a-change).
+
+The separate `windows_diagnostic_scope=private-io` selector, together with
+`diagnostic_windows_only=true`, exercises the independently inventoried private
+Windows binary-pipe helper on actual x64 with stock supported PowerShell/.NET.
+It builds first, then selects only the private protocol/runner test files and
+requires their native NONSECRET cases to execute successfully. It neither
+modifies the public controller nor extends the complete-boundary inventory.
+Only sanitized bounded JSON identities/statuses are retained, not raw payloads
+or state. Source success does not establish encrypted custody, minimum-host or
+installed qualification, and no host policy/ACL change is an allowed remedy.
 
 Collect CLI and telemetry coverage independently, then validate both complete
 source inventories and exact raw counts:

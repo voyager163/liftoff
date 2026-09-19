@@ -95,12 +95,52 @@ Canonical environment selection rejects conflicting Windows aliases and
 removes undefined aliases that could shadow valid variables in a child.
 Windows command-environment merging also replaces or clears inherited aliases
 case-insensitively, rather than resurrecting ambient values under another case.
+For the variables that pinned Node/libuv automatically restores when absent
+(including `USERPROFILE`), an explicit clear is represented by an empty value,
+not omission. Optional variables remain absent. This prevents inherited values
+from returning; it is not an OS sandbox or a claim that account metadata cannot
+be observed through other APIs.
 
 Existing separately enabled native-preparation/provider lanes remain separate;
 this boundary is not installed-artifact, minimum-host or complete Windows
 private-state/custody qualification. Missing native prerequisites or uncertain
 settlement remain failures/blockers, never mock success or cleanup permission.
 The 18 default jobs and all other diagnostic selections remain unchanged.
+
+For the independent Windows private binary-I/O primitive, explicitly select
+`windows_diagnostic_scope=private-io` with `diagnostic_windows_only=true`:
+
+```bash
+gh workflow run ci.yml --ref <source-branch> \
+  -f diagnostic_windows_only=true -f windows_diagnostic_scope=private-io
+```
+
+This separate x64 job runs only
+`tests/state-windows-private-protocol.test.ts` and
+`tests/state-windows-private-runner.test.ts`, after the normal package build.
+It does not add them to the 60-suite complete-boundary selector or add an
+automatic default job; full-suite discovery and all 18 default jobs remain
+unchanged. The job retains the existing 20-minute budget and uses one worker.
+
+Admission observes Windows >=17763, actual x64, stock Windows PowerShell 5.1
+FullLanguage and System.Web.Extensions from the existing .NET Framework.
+Both the independent private helper and the unchanged public controller must
+match their own canonical inventory digests. No execution-policy bypass,
+policy/ACL mutation, keystore access or extra host installations are performed.
+Missing or restricted-host support remains a blocker.
+
+The fixtures use only NONSECRET byte sequences and owned processes to exercise
+binary pipes, limits, nonzero exit, cancellation, descendant/parent loss and
+admission failure. Successful evidence requires the actual native suite, every
+applicable case passed, and no applicable skips. Only the precisely named
+non-Windows refusal case may be pending on Windows; there is no broad skip
+allowance or fixed native-case count.
+
+The artifact contains only bounded sanitized JSON host/helper identities and
+case statuses. Raw test JSON, binary payloads/frames, private output and state
+directories are not uploaded. This is independently labeled private-I/O source
+evidence, not complete encrypted custody, minimum-host, installed-artifact,
+provider or release qualification.
 
 For isolated native Go preparation investigation, set
 `diagnostic_native_go_only` to `true`. Ubuntu and macOS each run the
