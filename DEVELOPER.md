@@ -533,6 +533,17 @@ Node's own kill-on-parent-exit job while retaining the enclosing Liftoff job,
 and fixture teardown requires actual settlement rather than deleting an active
 scope. All existing command/test deadlines remain unchanged.
 
+Guarded verification-workspace cleanup indexes the already captured directory
+names once per cleanup instead of filtering the complete directory map before
+each effect. The index preserves NFC/case-folded ancestor selection, original
+snapshot order, exact identity objects and live membership after directory
+removal. It caches no filesystem observation: all lease, authority, path,
+identity, permission, link-count and peer-link checks still run before each
+serial effect. Failure stops further effects and retains actual partial progress.
+A paired local Fastify remediation run reduced cleanup from 152.6 seconds to
+66.1 seconds with identical 1,612 scan, 7,835 unlink and 1,612 rmdir operations.
+This is local source evidence, not a claim that full hosted CI now passes.
+
 The whole six-case Windows inspection suite passed in source run `35442938568`
 within the unchanged 90-second deadlines. This does not establish a performance
 root cause or installed qualification: both complete cases again exceeded

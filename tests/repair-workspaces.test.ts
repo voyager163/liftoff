@@ -533,6 +533,34 @@ describe('record and creation-identity confinement', () => {
 });
 
 describe('cleanup progress and safe recovery', () => {
+  it('stops at the first failed effect and records only completed removals before exact recovery', async () => {
+    const f = await fixture();
+    const effects: string[] = [];
+    let stopAt = '';
+    const handle = await createRepairVerificationWorkspace(f.project, f.request, {
+      ...f.storage,
+      beforeWorkspaceOperation: async (operation, target) => {
+        if (operation !== 'unlink' && operation !== 'rmdir') return;
+        effects.push(target);
+        if (target === stopAt) throw Object.assign(new Error('stop owned deletion'), { code: 'EIO' });
+      }
+    });
+    const files = ['a', 'b', 'c'].map((name) => path.join(handle.roles.cache, name));
+    for (const file of files) await writeFile(file, 'owned bytes retained until deletion succeeds\n');
+    stopAt = files[1];
+    await handle.releaseOwner();
+    const result = await handle.cleanup();
+    expect(result).toMatchObject({ status: 'incomplete', cleanupComplete: false, retained: true, removedEntries: 1 });
+    expect(effects).toEqual(files.slice(0, 2));
+    await expect(lstat(files[0])).rejects.toMatchObject({ code: 'ENOENT' });
+    for (const file of files.slice(1)) expect(await readFile(file, 'utf8')).toBe('owned bytes retained until deletion succeeds\n');
+    expect((await recordFor(f, handle)).record.cleanup).toEqual({ complete: false, removedEntries: 1 });
+    const recovered = await recoverRepairVerificationWorkspaces(f.project, f.storage);
+    expect(recovered).toMatchObject({ cleanupComplete: true, retained: [] });
+    expect((await recordFor(f, handle)).record.cleanup).toEqual({ complete: true, removedEntries: 8 });
+    expect(effects).toEqual(files.slice(0, 2));
+  });
+
   it('cleans a nontrivial private dependency/output inventory without persisting its bytes in records', async () => {
     const f = await fixture();
     const handle = await createRepairVerificationWorkspace(f.project, f.request, f.storage);

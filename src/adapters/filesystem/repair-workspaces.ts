@@ -9,6 +9,7 @@ import {
 } from '../../application/repair/workspaces-types.js';
 import { sameWorkspaceFileIdentity, workspaceDigest } from '../../application/repair/workspaces-records.js';
 import { resolveUpdatePreviewLocation, getUpdatePreviewDirectory, type UpdatePreviewPathOptions } from './update-previews.js';
+import { indexWorkspaceDirectoryAncestors } from './repair-workspace-directory-index.js';
 
 export const repairWorkspaceDirectoryParts = ['repair-workspaces'] as const;
 export const maximumWorkspaceCleanupEntries = 250_000;
@@ -470,6 +471,7 @@ export async function deleteRegisteredWorkspace(
       directories.set(entry.path, entry.identity);
     }
   }
+  const directoryAncestors = indexWorkspaceDirectoryAncestors(directories);
 
   const privateBoundaries = [
     location.privateRoot, location.registryDirectory, path.dirname(location.root),
@@ -503,9 +505,7 @@ export async function deleteRegisteredWorkspace(
       }
     }
     const assertPathAncestors = async (targetPath: string) => {
-      const ancestors = new Map([...directories].filter(([directory]) =>
-        directory !== targetPath && workspaceWithin(directory, targetPath)));
-      await assertWorkspaceDirectorySnapshot(ancestors);
+      await assertWorkspaceDirectorySnapshot(directoryAncestors(targetPath));
       await assertExactChildName(path.dirname(targetPath), path.basename(targetPath));
     };
     await assertPathAncestors(entry.path);
