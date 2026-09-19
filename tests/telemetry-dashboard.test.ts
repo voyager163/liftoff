@@ -530,8 +530,12 @@ describe("OpenSpec modernization task 17: Azure Monitor Grafana telemetry dashbo
   });
 
   describe("17.10: Repeat no-op provisioning, drift detection, and rollback safety", () => {
-    it("manages only the documented dashboard pair without ignoring definition drift or adding effects", async () => {
-      const parsed = await parseHcl("dashboard.tf", await loadTofuFile("dashboard.tf"));
+    it.each([
+      { label: "LF", newline: "\n" },
+      { label: "CRLF", newline: "\r\n" }
+    ])("manages only the documented dashboard pair without ignoring definition drift or adding effects ($label)", async ({ newline }) => {
+      const source = (await loadTofuFile("dashboard.tf")).replace(/\r?\n/g, newline);
+      const parsed = await parseHcl("dashboard.tf", source);
       expect(Object.keys(parsed).sort()).toEqual(["locals", "resource"]);
       expect(Object.keys(parsed.resource)).toEqual(["azapi_resource"]);
       const resources = parsed.resource.azapi_resource;
@@ -547,7 +551,7 @@ describe("OpenSpec modernization task 17: Azure Monitor Grafana telemetry dashbo
         name: "${local.dashboard_name}",
         parent_id: "${azurerm_resource_group.telemetry.id}",
         location: "${var.location}",
-        tags: '${merge(local.common_tags, {\n    GrafanaDashboardTags = join(",", jsondecode(local.dashboard_definition_json).tags)\n  })}',
+        tags: '${merge(local.common_tags, {\n    GrafanaDashboardTags = join(",", jsondecode(local.dashboard_definition_json).tags)\n  })}'.replace(/\n/g, newline),
         body: { properties: {} }
       }]);
     });
