@@ -8,6 +8,12 @@ on:
         type: boolean
         required: false
         default: false
+      windows_diagnostic_scope:
+        description: Windows diagnostic scope (requires diagnostic_windows_only)
+        type: choice
+        required: false
+        default: focused
+        options: [focused, complete-boundary]
       diagnostic_native_go_only:
         description: Run native Go source diagnostics (not qualification)
         type: boolean
@@ -650,7 +656,7 @@ jobs:
 
   windows-diagnostics:
     name: Windows source diagnostics (not qualification)
-    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'
     runs-on: windows-latest
     timeout-minutes: 20
     steps:
@@ -674,11 +680,13 @@ jobs:
         run: npm run build
 
       - name: Run isolated Windows source diagnostics (not qualification)
+        env:
+          LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
         run: >-
           npx vitest run
           tests/windows-job-runner.test.ts tests/windows-job-protocol.test.ts
           tests/windows-execution-qualification.test.ts tests/repair-workspaces.test.ts
-          tests/update-preview.test.ts
+          tests/update-preview.test.ts tests/windows-native-toolchain.test.ts
           --maxWorkers=1 --reporter=verbose --reporter=json
           --outputFile.json=diagnostics/windows-source-tests.json
 
@@ -687,7 +695,154 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: windows-source-diagnostics-${{ github.sha }}-${{ github.run_attempt }}
-          path: diagnostics/windows-source-tests.json
+          path: |
+            diagnostics/windows-source-tests.json
+            diagnostics/windows-native-toolchain.json
+          if-no-files-found: error
+          retention-days: 7
+
+  windows-boundary-diagnostics:
+    name: Complete Windows source boundary (${{ matrix.shard }}/3, not installed qualification)
+    if: github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        shard: [1, 2, 3]
+    env:
+      WINDOWS_BOUNDARY_SHARD: ${{ matrix.shard }}
+      LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: "1"
+    steps:
+      - *native-source-checkout
+      - *native-source-node
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install source qualification tools
+        run: python -m pip install uv==0.12.7 checkov==3.2.495
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Build package
+        run: npm run build
+
+      - name: Run a complete Windows source-boundary shard without narrowing any selected file
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { spawnSync } from 'node:child_process';
+          import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+          import path from 'node:path';
+          import { parse } from 'yaml';
+          import { BaseSequencer, createVitest } from 'vitest/node';
+          assert.equal(process.platform, 'win32', 'Actual Windows is required');
+          const workflow = parse(readFileSync('.github/workflows/ci.yml', 'utf8'));
+          const original = workflow.jobs.test.steps.find((step) => step.name === 'Run Windows project and packaging boundary coverage').run.trim().split(/\s+/u);
+          assert.deepEqual(original.slice(0, 3), ['npx', 'vitest', 'run']);
+          const files = [...new Set([...original.slice(3),
+            'tests/repair-baseline-settings.test.ts', 'tests/repair-manifest-v8.test.ts',
+            'tests/repair-preparation.test.ts', 'tests/repair-validation.test.ts',
+            'tests/application-preparation-input-boundaries.test.ts',
+            'tests/workstation-executables.test.ts', 'tests/workstation-compatibility.test.ts',
+            'tests/windows-native-toolchain.test.ts', 'tests/distribution/windows-invocation.test.ts',
+            'tests/input-consistency.test.ts', 'tests/machine-action-continuation-contracts.test.ts',
+            'tests/continuation-admission.test.ts'
+          ])].sort();
+          assert.ok(files.every((file) => /^tests\/[\w/-]+\.test\.ts$/u.test(file)));
+          const index = Number(process.env.WINDOWS_BOUNDARY_SHARD);
+          assert.ok([1, 2, 3].includes(index));
+          const context = await createVitest({ watch: false, cache: false });
+          let selected;
+          const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
+          try {
+            const specifications = await context.globTestSpecifications(files);
+            assert.deepEqual(specifications.map((spec) => relative(spec.moduleId)).sort(), files, 'Every selected source spec must exist exactly once');
+            context.config.shard = { index, count: 3 };
+            selected = (await new BaseSequencer(context).shard(specifications)).map((spec) => relative(spec.moduleId)).sort();
+            assert.ok(selected.length > 0);
+          } finally {
+            await context.close();
+          }
+          mkdirSync('diagnostics', { recursive: true });
+          writeFileSync('diagnostics/windows-boundary-inventory.json', JSON.stringify({
+            classification: 'complete-windows-repair-process-source-boundary-only',
+            platform: process.platform, architecture: process.arch, sourceCommit: process.env.GITHUB_SHA,
+            runAttempt: process.env.GITHUB_RUN_ATTEMPT, shard: index, shards: 3, files, selected,
+            installedArtifactQualification: 'not-performed', minimumHostQualification: 'not-performed',
+            privateCustodyQualification: 'not-performed'
+          }, null, 2) + '\n');
+          const result = spawnSync(process.execPath, [
+            'node_modules/vitest/vitest.mjs', 'run', ...files, `--shard=${index}/3`,
+            '--maxWorkers=1', '--reporter=verbose', '--reporter=json',
+            '--outputFile.json=diagnostics/windows-boundary-tests.json'
+          ], { stdio: 'inherit', env: process.env });
+          if (result.error) throw result.error;
+          process.exitCode = result.status ?? 1;
+          NODE
+
+      - name: Require complete same-source shard results and actual tool observations
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { readFileSync } from 'node:fs';
+          import path from 'node:path';
+          const inventory = JSON.parse(readFileSync('diagnostics/windows-boundary-inventory.json', 'utf8'));
+          const report = JSON.parse(readFileSync('diagnostics/windows-boundary-tests.json', 'utf8'));
+          assert.equal(inventory.platform, 'win32');
+          assert.equal(inventory.sourceCommit, process.env.GITHUB_SHA);
+          assert.equal(inventory.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+          assert.equal(inventory.shard, Number(process.env.WINDOWS_BOUNDARY_SHARD));
+          assert.equal(inventory.shards, 3);
+          assert.equal(report.success, true);
+          assert.equal(report.numFailedTests, 0);
+          const relative = (file) => path.relative(process.cwd(), file).split(path.sep).join('/');
+          assert.deepEqual(report.testResults.map((file) => relative(file.name)).sort(), inventory.selected);
+          if (inventory.selected.includes('tests/windows-native-toolchain.test.ts')) {
+            const file = report.testResults.find((entry) => relative(entry.name) === 'tests/windows-native-toolchain.test.ts');
+            const native = file.assertionResults.filter((test) => test.ancestorTitles?.includes('native supported Windows toolchain source acceptance'));
+            assert.ok(native.length > 0 && native.every((test) => test.status === 'passed'), 'Actual Windows tool acceptance cases must all execute and pass');
+            const observed = JSON.parse(readFileSync('diagnostics/windows-native-toolchain.json', 'utf8'));
+            assert.equal(observed.platform, 'win32');
+            assert.equal(observed.architecture, inventory.architecture);
+            assert.equal(observed.sourceCommit, process.env.GITHUB_SHA);
+            assert.equal(observed.runAttempt, process.env.GITHUB_RUN_ATTEMPT);
+            assert.deepEqual(observed.tools.map((tool) => tool.id).sort(), ['node', 'npm']);
+            assert.match(observed.git.file.digest, /^[a-f0-9]{64}$/u);
+          }
+          NODE
+
+      - name: Retain Windows source-boundary inventory and results (not installed qualification)
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}
+          path: |
+            diagnostics/windows-boundary-inventory.json
+            diagnostics/windows-boundary-tests.json
+            diagnostics/windows-native-toolchain.json
           if-no-files-found: error
           retention-days: 7
 

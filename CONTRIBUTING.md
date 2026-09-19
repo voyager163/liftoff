@@ -61,8 +61,46 @@ merges their actual measurements before checking the two packages independently.
 For bounded Windows failure investigation, a manual CI dispatch can explicitly
 set `diagnostic_windows_only` to `true`. It runs only the Windows job-runner,
 protocol, execution-qualification, repair-workspaces and update-preview suites,
-with one worker and a 20-minute job limit. Verbose logs and a separately named
-JSON artifact retain failures.
+plus the actual Windows toolchain acceptance cases, with one worker and a
+20-minute job limit. Verbose logs and separately named JSON artifacts retain
+failures and observed Node/npm/Git identities.
+
+For the complete Windows repair/process source boundary, also select
+`windows_diagnostic_scope=complete-boundary`:
+
+```bash
+gh workflow run ci.yml --ref <source-branch> \
+  -f diagnostic_windows_only=true -f windows_diagnostic_scope=complete-boundary
+```
+
+The selector defaults to `focused` and applies only when the Windows diagnostic
+flag is enabled. Complete-boundary validation conserves every original Windows
+boundary selector, including migration revalidation/inspection, and adds the
+remaining repair source, workstation identity, preparation-input, continuation
+and Windows invocation cases. Three disjoint built-in shards run on separate
+Windows hosts, with one worker and the same 20-minute budget each. No file's
+cases are filtered or retimed. Each job checks its discovered and completed
+file inventory against the exact selected shard and retains source SHA/attempt
+bindings. All three jobs and their reports are required for complete-lane source
+evidence; one passing shard or the focused lane is not a substitute.
+
+The native toolchain suite uses the actual supported Node/npm executables and
+read-only Git, with real Windows process settlement and literal spaced/
+metacharacter paths. It exercises mixed-case environment aliases, conflicting
+alias refusal, incompatible **copied npm metadata** rejected before execution,
+a project shim reached through a real junction, and changed copied Node bytes.
+It does not pretend a copied metadata version is a qualified older npm release,
+modify installed executables or manufacture Windows results on another OS.
+Canonical environment selection rejects conflicting Windows aliases and
+removes undefined aliases that could shadow valid variables in a child.
+Windows command-environment merging also replaces or clears inherited aliases
+case-insensitively, rather than resurrecting ambient values under another case.
+
+Existing separately enabled native-preparation/provider lanes remain separate;
+this boundary is not installed-artifact, minimum-host or complete Windows
+private-state/custody qualification. Missing native prerequisites or uncertain
+settlement remain failures/blockers, never mock success or cleanup permission.
+The 18 default jobs and all other diagnostic selections remain unchanged.
 
 For isolated native Go preparation investigation, set
 `diagnostic_native_go_only` to `true`. Ubuntu and macOS each run the

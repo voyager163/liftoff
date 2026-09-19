@@ -3,6 +3,7 @@ import { spawn as spawnProcess, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from './domain/project/contracts.js';
+import { environmentValue } from './domain/workstation/executables.js';
 
 export interface RunCommandOptions {
   cwd?: string;
@@ -38,6 +39,20 @@ export interface CommandResult {
 
 export interface CommandRunner {
   run(command: ExternalCommand, options?: RunCommandOptions): Promise<CommandResult>;
+}
+
+export function mergeWindowsCommandEnvironment(
+  inherited: NodeJS.ProcessEnv, supplied: NodeJS.ProcessEnv
+): NodeJS.ProcessEnv {
+  const names = new Map([...Object.keys(inherited), ...Object.keys(supplied)].map((key) => [key.toLowerCase(), key]));
+  const overridden = new Set(Object.keys(supplied).map((key) => key.toLowerCase()));
+  const entries: Array<[string, string]> = [];
+  for (const [folded, name] of names) {
+    const source = overridden.has(folded) ? supplied : inherited;
+    const value = environmentValue(source, name, 'win32');
+    if (value !== undefined) entries.push([name, value]);
+  }
+  return Object.fromEntries(entries);
 }
 
 function displayArgument(value: string): string {
@@ -161,6 +176,21 @@ export class NodeCommandRunner implements CommandRunner {
       const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');
       return runWindowsJobCommand(command, options);
     }
+    let environment = process.env;
+    try {
+      if (options.env) {
+        environment = process.platform === 'win32'
+          ? mergeWindowsCommandEnvironment(process.env, options.env)
+          : { ...process.env, ...options.env };
+      }
+    } catch (error) {
+      if (process.platform !== 'win32') throw error;
+      return {
+        command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+        processSpawned: false, processTreeSettled: true, errorCode: 'INVALID_ENVIRONMENT_BLOCK',
+        errorMessage: 'Conflicting Windows environment aliases cannot select a command environment.'
+      };
+    }
     return new Promise((resolve) => {
       let settled = false;
       let stopping = false;
@@ -184,7 +214,7 @@ export class NodeCommandRunner implements CommandRunner {
       const ownsProcessGroup = (bounded || options.ensureProcessTreeSettled === true) && process.platform !== 'win32';
       const child = spawn(command.executable, command.args, {
         cwd: options.cwd,
-        env: options.env ? { ...process.env, ...options.env } : process.env,
+        env: environment,
         shell: false,
         detached: ownsProcessGroup,
         stdio: [options.stdin === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],

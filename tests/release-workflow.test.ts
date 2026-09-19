@@ -35,7 +35,7 @@ describe('read-only coordinated release evidence workflow', () => {
 
   it('fetches immutable release history for source tests without leaving checkout credentials in Git', async () => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
-    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
+    for (const id of ['test', 'test-shards', 'coverage-qualification', 'windows-diagnostics', 'windows-boundary-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-keystore-build', 'linux-gnome-persistence']) {
       const checkout = workflow.jobs[id].steps.find((step: { uses?: string }) => step.uses?.startsWith('actions/checkout@'));
       expect(checkout?.with).toMatchObject({ 'fetch-depth': 0, 'persist-credentials': false });
     }
@@ -136,6 +136,10 @@ describe('read-only coordinated release evidence workflow', () => {
       description: 'Run Windows source diagnostics (not qualification)',
       type: 'boolean', required: false, default: false
     });
+    expect(workflow.on.workflow_dispatch.inputs.windows_diagnostic_scope).toEqual({
+      description: 'Windows diagnostic scope (requires diagnostic_windows_only)',
+      type: 'choice', required: false, default: 'focused', options: ['focused', 'complete-boundary']
+    });
     expect(workflow.on.workflow_dispatch.inputs.diagnostic_native_go_only).toEqual({
       description: 'Run native Go source diagnostics (not qualification)',
       type: 'boolean', required: false, default: false
@@ -154,24 +158,24 @@ describe('read-only coordinated release evidence workflow', () => {
     });
     expect(workflow.on.push).toEqual({ branches: ['main'] });
     expect(workflow.on).toHaveProperty('pull_request');
-    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
+    expect(Object.keys(workflow.jobs).sort()).toEqual([...defaultSourceJobs, 'windows-diagnostics', 'windows-boundary-diagnostics', 'native-go-diagnostics', 'native-posix-lock-diagnostics', 'linux-gnome-persistence'].sort());
     for (const id of fullValidationJobs) {
       expect(workflow.jobs[id].if).toBe(fullValidationCondition);
     }
     const diagnostic = workflow.jobs['windows-diagnostics'];
-    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only");
+    expect(diagnostic.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'");
     expect(diagnostic.name).toContain('not qualification');
     expect(diagnostic['runs-on']).toBe('windows-latest');
     expect(diagnostic['timeout-minutes']).toBe(20);
     expect(diagnostic.needs).toBeUndefined();
     expect(diagnostic.steps.at(-2).run).toBe(
       'npx vitest run tests/windows-job-runner.test.ts tests/windows-job-protocol.test.ts ' +
-      'tests/windows-execution-qualification.test.ts tests/repair-workspaces.test.ts tests/update-preview.test.ts ' +
+      'tests/windows-execution-qualification.test.ts tests/repair-workspaces.test.ts tests/update-preview.test.ts tests/windows-native-toolchain.test.ts ' +
       '--maxWorkers=1 --reporter=verbose --reporter=json --outputFile.json=diagnostics/windows-source-tests.json'
     );
     expect(diagnostic.steps.at(-1).if).toBe('always()');
     expect(diagnostic.steps.at(-1).with.name).toBe('windows-source-diagnostics-${{ github.sha }}-${{ github.run_attempt }}');
-    expect(diagnostic.steps.at(-1).with.path).toBe('diagnostics/windows-source-tests.json');
+    expect(diagnostic.steps.at(-1).with.path).toBe('diagnostics/windows-source-tests.json\ndiagnostics/windows-native-toolchain.json\n');
     expect(diagnostic.steps.at(-1).with['if-no-files-found']).toBe('error');
     expect(diagnostic.steps.some((step: any) => step.run?.includes('gate:coverage') || step.run?.includes('gate:release'))).toBe(false);
   });
@@ -201,20 +205,139 @@ describe('read-only coordinated release evidence workflow', () => {
   }))))('routes Windows=$windows, Go=$go, POSIX=$posix, build=$build and GNOME=$gnome without diagnostic success pretending to be full validation', async ({ windows, go, posix, build, gnome, manualJobs }) => {
     const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
     for (const event of ['workflow_dispatch', 'push', 'pull_request']) {
-      const conditions: Record<string, boolean> = {
-        [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
-        [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only": event === 'workflow_dispatch' && windows,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
-        "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
+      for (const windowsScope of ['focused', 'complete-boundary']) {
+        const conditions: Record<string, boolean> = {
+          [fullValidationCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome),
+          [keystoreBuildCondition]: event !== 'workflow_dispatch' || (!windows && !go && !posix && !build && !gnome) || build,
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope != 'complete-boundary'":
+            event === 'workflow_dispatch' && windows && windowsScope !== 'complete-boundary',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'":
+            event === 'workflow_dispatch' && windows && windowsScope === 'complete-boundary',
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_go_only": event === 'workflow_dispatch' && go,
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_native_posix_locks_only": event === 'workflow_dispatch' && posix,
+          "github.event_name == 'workflow_dispatch' && inputs.diagnostic_linux_gnome_persistence_only": event === 'workflow_dispatch' && gnome
+        };
+        const selected = Object.entries(workflow.jobs).filter(([, job]: [string, any]) => {
+          expect(Object.hasOwn(conditions, job.if)).toBe(true);
+          return conditions[job.if];
+        }).map(([id]) => id);
+        const expected = (event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs).map((job) =>
+          job === 'windows-diagnostics' && windowsScope === 'complete-boundary' ? 'windows-boundary-diagnostics' : job);
+        expect(selected.sort()).toEqual([...expected].sort());
+        expect(selected.length).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('preserves every complete Windows boundary selector across bounded one-worker shards', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const job = workflow.jobs['windows-boundary-diagnostics'];
+    expect(job.if).toBe("github.event_name == 'workflow_dispatch' && inputs.diagnostic_windows_only && inputs.windows_diagnostic_scope == 'complete-boundary'");
+    expect(job['runs-on']).toBe('windows-latest');
+    expect(job['timeout-minutes']).toBe(20);
+    expect(job.strategy).toEqual({ 'fail-fast': false, 'max-parallel': 3, matrix: { shard: [1, 2, 3] } });
+    expect(job.env).toEqual({ WINDOWS_BOUNDARY_SHARD: '${{ matrix.shard }}', LIFTOFF_WINDOWS_TOOLCHAIN_REPORT: '1' });
+    const runIndex = job.steps.findIndex((step: any) => step.name === 'Run a complete Windows source-boundary shard without narrowing any selected file');
+    for (const action of ['actions/setup-python@', 'actions/setup-go@', 'opentofu/setup-opentofu@']) {
+      expect(job.steps.slice(0, runIndex).some((step: any) => step.uses?.startsWith(action))).toBe(true);
+    }
+    for (const command of [
+      'python -m pip install uv==0.12.7 checkov==3.2.495', 'npm install --global "npm@12.0.2"',
+      'npm ci', 'npm ci --prefix services/telemetry-ingest', 'npm run build'
+    ]) expect(job.steps.slice(0, runIndex).some((step: any) => step.run === command)).toBe(true);
+    const program = job.steps[runIndex].run;
+    expect(program).toContain("assert.equal(process.platform, 'win32'");
+    expect(program).toContain("'run', ...files, `--shard=${index}/3`");
+    expect(program).toContain("'--maxWorkers=1', '--reporter=verbose', '--reporter=json'");
+    expect(program).toContain('process.exitCode = result.status ?? 1');
+    const original = workflow.jobs.test.steps.find((step: any) => step.name === 'Run Windows project and packaging boundary coverage').run.trim().split(/\s+/).slice(3);
+    const additional = [...program.matchAll(/'(tests\/[\w/-]+\.test\.ts)'/gu)].map((match: RegExpMatchArray) => match[1]);
+    expect(additional).toEqual([
+      'tests/repair-baseline-settings.test.ts', 'tests/repair-manifest-v8.test.ts',
+      'tests/repair-preparation.test.ts', 'tests/repair-validation.test.ts',
+      'tests/application-preparation-input-boundaries.test.ts',
+      'tests/workstation-executables.test.ts', 'tests/workstation-compatibility.test.ts',
+      'tests/windows-native-toolchain.test.ts', 'tests/distribution/windows-invocation.test.ts',
+      'tests/input-consistency.test.ts', 'tests/machine-action-continuation-contracts.test.ts',
+      'tests/continuation-admission.test.ts'
+    ]);
+    const expected = [...new Set([...original, ...additional])].sort();
+    expect(expected).toContain('tests/migration-revalidation.test.ts');
+    expect(expected).toContain('tests/migration-inspection.test.ts');
+    const { BaseSequencer, createVitest } = await import('vitest/node');
+    const context = await createVitest({ ...createRootTestConfig('win32').test, config: false, watch: false, cache: false });
+    try {
+      const specifications = await context.globTestSpecifications(expected);
+      const relative = (spec: { moduleId: string }) => path.relative(process.cwd(), spec.moduleId).split(path.sep).join('/');
+      expect(specifications.map(relative).sort()).toEqual(expected);
+      const selected: string[] = [];
+      for (const index of [1, 2, 3]) {
+        context.config.shard = { index, count: 3 };
+        selected.push(...(await new BaseSequencer(context).shard(specifications)).map(relative));
+      }
+      expect(selected.sort()).toEqual(expected);
+      expect(new Set(selected).size).toBe(expected.length);
+    } finally {
+      await context.close();
+    }
+    expect(job.steps[runIndex + 1].name).toBe('Require complete same-source shard results and actual tool observations');
+    expect(job.steps[runIndex + 1].if).toBeUndefined();
+    expect(job.steps.at(-1).if).toBe('always()');
+    expect(job.steps.at(-1).with).toEqual({
+      name: 'windows-boundary-source-${{ github.sha }}-${{ github.run_attempt }}-${{ matrix.shard }}',
+      path: 'diagnostics/windows-boundary-inventory.json\ndiagnostics/windows-boundary-tests.json\ndiagnostics/windows-native-toolchain.json\n',
+      'if-no-files-found': 'error', 'retention-days': 7
+    });
+  });
+
+  it('rejects missing boundary specs or skipped native tool observations without rejecting existing platform-gated cases elsewhere', async () => {
+    const workflow = parse(await readFile('.github/workflows/ci.yml', 'utf8'));
+    const step = workflow.jobs['windows-boundary-diagnostics'].steps.find((entry: any) =>
+      entry.name === 'Require complete same-source shard results and actual tool observations');
+    const program = /^node --input-type=module <<'NODE'\n([\s\S]*)\nNODE\n$/.exec(step.run)?.[1];
+    expect(program).toBeTypeOf('string');
+    const root = await scratchDirectory();
+    try {
+      await mkdir(path.join(root, 'diagnostics'));
+      const selected = ['tests/migration-revalidation.test.ts', 'tests/windows-native-toolchain.test.ts'];
+      const inventory = {
+        platform: 'win32', architecture: 'x64', sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        shard: 1, shards: 3, selected
       };
-      const selected = Object.entries(workflow.jobs).filter(([, job]: [string, any]) => {
-        expect(Object.hasOwn(conditions, job.if)).toBe(true);
-        return conditions[job.if];
-      }).map(([id]) => id);
-      expect(selected.sort()).toEqual([...(event === 'workflow_dispatch' ? manualJobs : defaultSourceJobs)].sort());
-      expect(selected.length).toBeGreaterThan(0);
+      const report = {
+        success: true, numFailedTests: 0, numPendingTests: 1,
+        testResults: selected.map((file) => ({
+          name: path.resolve(root, file),
+          assertionResults: file.endsWith('windows-native-toolchain.test.ts')
+            ? [{ ancestorTitles: ['native supported Windows toolchain source acceptance'], status: 'passed' }]
+            : [{ ancestorTitles: ['existing platform contract'], status: 'pending' }]
+        }))
+      };
+      const observation = {
+        platform: 'win32', architecture: 'x64', sourceCommit: 'a'.repeat(40), runAttempt: '2',
+        tools: [{ id: 'node' }, { id: 'npm' }], git: { file: { digest: 'b'.repeat(64) } }
+      };
+      const save = (file: string, value: unknown) => writeFile(path.join(root, 'diagnostics', file), JSON.stringify(value));
+      const run = () => execFileAsync(process.execPath, ['--input-type=module', '-e', program!], {
+        cwd: root, env: { ...process.env, GITHUB_SHA: 'a'.repeat(40), GITHUB_RUN_ATTEMPT: '2', WINDOWS_BOUNDARY_SHARD: '1' }
+      });
+      await expect(run()).rejects.toThrow();
+      await save('windows-boundary-inventory.json', inventory);
+      await save('windows-boundary-tests.json', report);
+      await expect(run()).rejects.toThrow();
+      await save('windows-native-toolchain.json', observation);
+      await run();
+      await save('windows-boundary-tests.json', { ...report, testResults: report.testResults.slice(1) });
+      await expect(run()).rejects.toThrow();
+      const skipped = structuredClone(report);
+      skipped.testResults[1].assertionResults[0].status = 'pending';
+      await save('windows-boundary-tests.json', skipped);
+      await expect(run()).rejects.toThrow();
+      await save('windows-boundary-tests.json', report);
+      await save('windows-native-toolchain.json', { ...observation, sourceCommit: 'c'.repeat(40) });
+      await expect(run()).rejects.toThrow();
+    } finally {
+      await rm(root, { recursive: true, force: true });
     }
   });
 

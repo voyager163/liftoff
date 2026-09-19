@@ -439,6 +439,25 @@ longer executes `CKV2_AZURE_47` is not equivalent qualification. Dependency
 restoration honors the operator's approved package registry and still uses
 frozen locks; it does not force canonical tarball hosts past mirror policy.
 
+Windows source acceptance has both focused and complete-boundary manual modes
+under `diagnostic_windows_only`. Select
+`windows_diagnostic_scope=complete-boundary` for the full original boundary plus
+the remaining repair/toolchain/continuation source cases in three conserved,
+one-worker shards. This includes the historical read-only Git metadata
+revalidation case without increasing its deadline. The actual Windows
+Node/npm/Git acceptance suite records installed executable identities and
+rejects conflicting aliases, project shims and changed executable copies.
+Undefined case aliases cannot shadow canonical child-environment variables.
+Case-insensitive Windows overrides and explicit clears also replace inherited
+aliases rather than leaving an ambient alternative in the final child block.
+Its incompatible-version negative uses a deliberately changed copy of npm's
+manifest, not a fabricated native version result.
+
+All shards must pass for complete boundary source evidence. These results do
+not establish final installed bundles, minimum hosts, enterprise-policy
+coverage or a missing Windows private-state foundation; report those as
+separate blockers. See [Windows diagnostic commands](CONTRIBUTING.md#validate-a-change).
+
 Collect CLI and telemetry coverage independently, then validate both complete
 source inventories and exact raw counts:
 

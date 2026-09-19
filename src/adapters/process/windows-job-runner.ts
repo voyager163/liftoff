@@ -8,6 +8,7 @@ import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
+import { environmentValue } from '../../domain/workstation/executables.js';
 import {
   windowsWorkingDirectoryErrorCode, windowsWorkingDirectoryFits, windowsWorkingDirectoryRemedy
 } from '../../domain/execution/windows-working-directory.js';
@@ -79,7 +80,7 @@ export function resolveTargetExecutableCommand(
   env: NodeJS.ProcessEnv = {},
   cwd: string = process.cwd()
 ): ResolvedTargetCommand | null {
-  const targetPath = env.PATH ?? env.Path ?? '';
+  const targetPath = environmentValue(env, 'PATH', 'win32') ?? '';
   const searchDirs = [cwd, ...targetPath.split(path.delimiter).filter(Boolean)];
 
   if (command.executable === 'npm' || command.executable === 'npm.cmd') {
@@ -133,7 +134,7 @@ export function resolveTargetExecutableCommand(
 
   const isWin = process.platform === 'win32';
   const pathext = isWin
-    ? (env.PATHEXT ?? env.PathExt ?? '.EXE;.COM;.CMD;.BAT').split(';').filter(Boolean)
+    ? (environmentValue(env, 'PATHEXT', 'win32') ?? '.EXE;.COM;.CMD;.BAT').split(';').filter(Boolean)
     : [''];
   // On Windows, prioritize binary executables (.exe, .com)
   const extensions = path.extname(command.executable)

@@ -1,33 +1,51 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { applicationWithin } from './application-files.js';
+import { environmentValue } from '../../domain/workstation/executables.js';
+import { ApplicationInspectionError, applicationWithin } from './application-files.js';
 
 export function applicationSearchEnvironment(
   inherited: NodeJS.ProcessEnv, projectRoot: string, stagingRoot: string, cwd: string
 ): NodeJS.ProcessEnv {
   const environment: NodeJS.ProcessEnv = Object.fromEntries(Object.keys({ ...process.env, ...inherited }).map((key) => [key, undefined]));
-  const systemRoot = inherited.SystemRoot ?? inherited.SYSTEMROOT ?? inherited.systemroot ?? process.env.SystemRoot ?? process.env.SYSTEMROOT ?? process.env.systemroot;
+  const removeAliases = (name: string) => {
+    // Windows child-environment folding can let an undefined alias hide a defined canonical key.
+    if (process.platform !== 'win32' && name !== 'PATH') return;
+    for (const key of Object.keys(environment)) {
+      if (key.toLowerCase() === name.toLowerCase()) delete environment[key];
+    }
+  };
+  const selected = (name: string, ...aliases: string[]): string | undefined => {
+    const names = [name, ...aliases];
+    let value: string | undefined;
+    try {
+      value = process.platform === 'win32'
+        ? environmentValue(inherited, name, 'win32') ?? environmentValue(process.env, name, 'win32')
+        : names.map((name) => inherited[name]).find((entry) => entry !== undefined) ??
+          names.map((name) => process.env[name]).find((entry) => entry !== undefined);
+    } catch {
+      throw new ApplicationInspectionError('[ambiguous-tool-environment] Conflicting Windows environment aliases cannot select an installed tool or system directory.');
+    }
+    removeAliases(name);
+    return value;
+  };
+  const systemRoot = selected('SystemRoot', 'SYSTEMROOT', 'systemroot');
   if (systemRoot) environment.SystemRoot = systemRoot;
-  const windir = inherited.WINDIR ?? inherited.windir ?? process.env.WINDIR ?? process.env.windir;
+  const windir = selected('WINDIR', 'windir');
   if (windir) environment.WINDIR = windir;
-  const systemDrive = inherited.SystemDrive ?? inherited.SYSTEMDRIVE ?? process.env.SystemDrive ?? process.env.SYSTEMDRIVE ?? (systemRoot ? systemRoot.slice(0, 2) : undefined);
+  const systemDrive = selected('SystemDrive', 'SYSTEMDRIVE') ?? (systemRoot ? systemRoot.slice(0, 2) : undefined);
   if (systemDrive) environment.SystemDrive = systemDrive;
-  const comspec = inherited.COMSPEC ?? inherited.ComSpec ?? process.env.COMSPEC ?? process.env.ComSpec;
+  const comspec = selected('COMSPEC', 'ComSpec');
   if (comspec) environment.COMSPEC = comspec;
   for (const name of ['LANG', 'LC_ALL', 'LC_CTYPE', 'TZ']) {
-    const value = inherited[name] ?? process.env[name];
+    const value = selected(name);
     if (value) environment[name] = value;
   }
-  const search = inherited.PATH ?? inherited.Path ?? process.env.PATH ?? process.env.Path ?? '';
+  const search = selected('PATH', 'Path') ?? '';
   environment.PATH = search.slice(0, 32_768).split(path.delimiter).slice(0, 256).filter((entry) =>
     path.isAbsolute(entry) && ![projectRoot, stagingRoot, cwd].some((root) => applicationWithin(root, path.resolve(entry)))
   ).join(path.delimiter);
-  for (const key of Object.keys(environment)) {
-    if (key.toLowerCase() === 'path' && key !== 'PATH') {
-      delete environment[key];
-    }
-  }
   if (process.platform === 'win32') {
+    removeAliases('PATHEXT');
     environment.PATHEXT = '.COM;.EXE;.BAT;.CMD';
   }
   return environment;
