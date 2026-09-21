@@ -19,10 +19,22 @@ param(
     [string]$WorkspaceId,
 
     [Parameter(Mandatory = $true)]
-    [string]$InvocationId
+    [string]$InvocationId,
+
+    [switch]$CaptureLifecycle,
+
+    [string]$DiagnosticBinding = ''
 )
 
 $ErrorActionPreference = 'Stop'
+
+function Write-LifecycleStage([string]$Stage) {
+    if ($CaptureLifecycle -and $DiagnosticBinding -match '^[a-f0-9]{64}$') {
+        [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE:${DiagnosticBinding}:$Stage")
+    }
+}
+
+Write-LifecycleStage 'script-started'
 
 # Define Win32 interop for Job Objects and CreateProcessW with STARTUPINFOEX
 $win32TypeDef = @"
@@ -313,16 +325,20 @@ public static class Win32JobNative {
 "@
 
 try {
+    Write-LifecycleStage 'interop-loading'
     Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop
+    Write-LifecycleStage 'interop-ready'
 } catch {
     Write-Error "Failed to load Win32 Job API definitions. Check LanguageMode and ExecutionPolicy: $_"
     exit 1
 }
 
 # Connect to the private control pipe
+Write-LifecycleStage 'pipe-connecting'
 $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
 try {
     $pipe.Connect(30000)
+    Write-LifecycleStage 'pipe-connected'
 } catch {
     Write-Error "Failed to connect to control pipe $ControlPipeName : $_"
     exit 1
@@ -387,6 +403,7 @@ try {
         invocationId = $InvocationId
         nonce = $ExpectedNonce
     }
+    Write-LifecycleStage 'ready-sent'
 
     # Read the spawn request from the parent
     $req = Read-ControlFrame $pipe

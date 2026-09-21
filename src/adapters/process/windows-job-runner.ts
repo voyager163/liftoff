@@ -25,7 +25,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'c91996e7d63b20fe3a571eb2100357f3f2e5018a909f8af818c39c183ba99ec6';
+export const windowsJobControllerAssetDigest = 'c18efc9fd97d39b2cbde8a085138d4dd02e427bfc9b048d77fc71c747017d829';
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -39,7 +39,9 @@ export interface WindowsJobDiagnostic {
   phase: 'server-listening' | 'controller-spawn-requested' | 'controller-spawned' | 'controller-spawn-error'
     | 'controller-exit' | 'client-connected' | 'authenticated' | 'spawn-dispatched' | 'acknowledged'
     | 'response-received' | 'supervisor-timeout' | 'abort-received' | 'server-error' | 'finishing'
-    | 'controller-stop-requested' | 'controller-stop-wait-ended' | 'reading-output' | 'cleaning-output' | 'finished';
+    | 'controller-stop-requested' | 'controller-stop-wait-ended' | 'reading-output' | 'cleaning-output' | 'finished'
+    | 'controller-script-started' | 'controller-interop-loading' | 'controller-interop-ready'
+    | 'controller-pipe-connecting' | 'controller-pipe-connected' | 'controller-ready-sent' | 'controller-marker-rejected';
   elapsedMs: number;
   controllerPidKnown: boolean;
   connected: boolean;
@@ -67,6 +69,41 @@ export function readWindowsJobDiagnosticRecorder(recorder: WindowsJobDiagnosticR
   const state = diagnosticRecorders.get(recorder);
   if (!state) throw new Error('Unknown Windows controller diagnostic recorder.');
   return { events: state.events.map(event => ({ ...event })), bytes: state.bytes, truncated: state.truncated, complete: state.complete };
+}
+
+export function createWindowsControllerStageDecoder(binding: string) {
+  if (!/^[a-f0-9]{64}$/.test(binding)) throw new Error('Invalid Windows controller diagnostic binding.');
+  const stages = [
+    ['script-started', 'controller-script-started'], ['interop-loading', 'controller-interop-loading'],
+    ['interop-ready', 'controller-interop-ready'], ['pipe-connecting', 'controller-pipe-connecting'],
+    ['pipe-connected', 'controller-pipe-connected'], ['ready-sent', 'controller-ready-sent']
+  ] as const;
+  let next = 0;
+  let pending = '', discard = false;
+  return (chunk: string) => {
+    const result: WindowsJobDiagnostic['phase'][] = [];
+    let truncated = false;
+    const emit = (phase: WindowsJobDiagnostic['phase']) => {
+      if (result.length < 64) result.push(phase);
+      else truncated = true;
+    };
+    for (const character of chunk) {
+      if (character === '\n') {
+        const line = pending.replace(/\r$/, '');
+        const expected = stages[next];
+        if (!discard && expected && line === `LIFTOFF_CONTROLLER_STAGE:${binding}:${expected[0]}`) {
+          emit(expected[1]); next++;
+        } else if (!discard && line.startsWith('LIFTOFF_CONTROLLER_STAGE:')) {
+          emit('controller-marker-rejected');
+        }
+        pending = ''; discard = false;
+      } else if (!discard) {
+        if (pending.length >= 128) { pending = ''; discard = true; }
+        else pending += character;
+      }
+    }
+    return { phases: result, truncated };
+  };
 }
 
 export async function verifyWindowsJobControllerAsset(customPath?: string): Promise<string> {
@@ -397,6 +434,9 @@ export async function runWindowsJobCommand(
     let supervisorTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
     const captureDiagnostics = runnerOptions.captureDiagnostics === true || externalDiagnostics !== undefined;
+    const diagnosticBinding = captureDiagnostics && !runnerOptions.skipAssetVerification && runnerOptions.powershellPath === undefined
+      ? createHash('sha256').update(`liftoff-controller-diagnostic\0${invocationId}\0${nonce}`).digest('hex') : null;
+    const decodeControllerStage = diagnosticBinding ? createWindowsControllerStageDecoder(diagnosticBinding) : null;
     const diagnosticStart = captureDiagnostics ? performance.now() : 0;
     const diagnostics = externalDiagnostics ?? { events: [] as WindowsJobDiagnostic[], bytes: 0, truncated: false, complete: false, claimed: true };
     const trace = (phase: WindowsJobDiagnostic['phase']) => {
@@ -719,6 +759,7 @@ export async function runWindowsJobCommand(
         '-InvocationId',
         invocationId
       ];
+      if (diagnosticBinding) psArgs.push('-CaptureLifecycle', '-DiagnosticBinding', diagnosticBinding);
 
       const hostEnv = buildWindowsControllerHostEnvironment();
       trace('controller-spawn-requested');
@@ -733,6 +774,11 @@ export async function runWindowsJobCommand(
 
       psProcess.stderr?.on('data', (d) => {
         psStderr += d.toString('utf8');
+        if (decodeControllerStage && !authenticated) {
+          const decoded = decodeControllerStage(d.toString('utf8'));
+          diagnostics.truncated ||= decoded.truncated;
+          for (const phase of decoded.phases) trace(phase);
+        }
       });
 
       psProcess.on('error', (err) => {

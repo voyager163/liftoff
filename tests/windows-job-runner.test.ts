@@ -6,6 +6,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildWindowsControllerHostEnvironment,
+  createWindowsControllerStageDecoder,
   createWindowsJobDiagnosticRecorder,
   readWindowsJobDiagnosticRecorder,
   runWindowsJobCommand,
@@ -27,6 +28,41 @@ afterEach(async () => {
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
+  it('decodes only exact invocation-bound ordered bootstrap markers across arbitrary chunk boundaries', () => {
+    const binding = 'a'.repeat(64), decode = createWindowsControllerStageDecoder(binding);
+    const text = ['script-started', 'interop-loading', 'interop-ready', 'pipe-connecting', 'pipe-connected', 'ready-sent']
+      .map(stage => `LIFTOFF_CONTROLLER_STAGE:${binding}:${stage}\r\n`).join('');
+    const phases = [...text].flatMap(character => decode(character).phases);
+    expect(phases).toEqual([
+      'controller-script-started', 'controller-interop-loading', 'controller-interop-ready',
+      'controller-pipe-connecting', 'controller-pipe-connected', 'controller-ready-sent'
+    ]);
+    expect(decode(`LIFTOFF_CONTROLLER_STAGE:${binding}:ready-sent\n`).phases).toEqual(['controller-marker-rejected']);
+  });
+  it('does not accept forged, stale, out-of-order or embedded marker text as native stage evidence', () => {
+    const binding = 'a'.repeat(64), decode = createWindowsControllerStageDecoder(binding);
+    const sentinel = 'NONFUNCTIONAL_CONTROLLER_OUTPUT';
+    expect(decode(`${sentinel}\n`).phases).toEqual([]);
+    expect(decode(`LIFTOFF_CONTROLLER_STAGE:${'b'.repeat(64)}:script-started\n`).phases).toEqual(['controller-marker-rejected']);
+    expect(decode(`LIFTOFF_CONTROLLER_STAGE:${binding}:interop-ready\n`).phases).toEqual(['controller-marker-rejected']);
+    expect(decode(`${'x'.repeat(1024)}LIFTOFF_CONTROLLER_STAGE:${binding}:script-started\n`).phases).toEqual([]);
+    expect(decode(`LIFTOFF_CONTROLLER_STAGE:${binding}:script-started\n`).phases).toEqual(['controller-script-started']);
+    const flooded = decode(`LIFTOFF_CONTROLLER_STAGE:${binding}:script-started\n`.repeat(200));
+    expect(flooded.phases).toHaveLength(64);
+    expect(flooded.truncated).toBe(true);
+    expect(JSON.stringify(flooded)).not.toContain(sentinel);
+    expect(JSON.stringify(flooded)).not.toContain(binding);
+  });
+  it('keeps controller bootstrap logging opt-in and preserves interop-before-ready ordering', async () => {
+    const asset = await readFile(await verifyWindowsJobControllerAsset(), 'utf8');
+    expect(asset).toContain('[switch]$CaptureLifecycle');
+    expect(asset).toContain('[string]$DiagnosticBinding = \'\'');
+    expect(asset).toContain("if ($CaptureLifecycle -and $DiagnosticBinding -match '^[a-f0-9]{64}$')");
+    expect(asset.indexOf("Write-LifecycleStage 'interop-loading'")).toBeLessThan(asset.indexOf('Add-Type -TypeDefinition'));
+    expect(asset.indexOf('Add-Type -TypeDefinition')).toBeLessThan(asset.indexOf("Write-LifecycleStage 'interop-ready'"));
+    expect(asset.indexOf("Write-LifecycleStage 'interop-ready'")).toBeLessThan(asset.indexOf("Write-LifecycleStage 'pipe-connecting'"));
+    expect(asset.indexOf("Write-LifecycleStage 'pipe-connected'")).toBeLessThan(asset.indexOf("kind = 'ready'"));
+  });
   it('rejects forged and reused recorders and keeps independent invocation data separate', async () => {
     const recorder = createWindowsJobDiagnosticRecorder(), other = createWindowsJobDiagnosticRecorder();
     const abort = new AbortController();

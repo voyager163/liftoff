@@ -77,6 +77,21 @@ five-second supervision grace remains separate from the ten-second command
 budget; teardown can report an incomplete live trace at the original
 15-second diagnostic-test deadline.
 
+The subsequent hosted AMD64 run verified the exact guard/tool digests, all
+socket/io_uring denials, seccomp/no-new-privileges readback, offline extraction
+and owned cleanup. The Windows live trace separately established controller
+spawn at 5 ms but no pipe connection, authentication or target dispatch before
+the existing test deadline. It does not identify interop compilation as the
+cause merely because that precedes connection.
+
+Pending bootstrap diagnostics add only opt-in, invocation-bound static markers
+around script entry, interop loading and pipe connection. They are decoded only
+from the pinned default controller's own stderr before authentication; target
+output, wrong bindings, out-of-order/replayed markers and oversized lines do not
+become trusted stage observations. Marker delivery never advances readiness,
+authentication or settlement. The asset pin is updated mechanically; removing
+only diagnostic additions reproduces the prior controller bytes exactly.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
