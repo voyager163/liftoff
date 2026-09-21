@@ -187,16 +187,29 @@ export function requireOsvAdvisoryCoverage(source: string, inputPath: string, gr
 }
 
 export const osvNoNetworkProfile = '(version 1) (allow default) (deny network*)';
-export function linuxOsvNetworkProbe(python: string) {
+export function linuxOsvNetworkProbe(
+  python: string, producer = { pid: process.pid, uid: process.getuid?.() }
+) {
   if (!path.isAbsolute(python) || /[\0\r\n]/.test(python)) reject('osv-network-sandbox-unqualified');
-  return { executable: python, args: ['-I', '-S', fileURLToPath(new URL('./osv-linux-sandbox.py', import.meta.url)), '--probe'] };
+  if (!Number.isInteger(producer.pid) || producer.pid <= 0 || producer.pid > 2_147_483_647 ||
+      producer.uid === undefined || !Number.isInteger(producer.uid) || producer.uid < 0 || producer.uid >= 4_294_967_295) {
+    reject('osv-network-sandbox-producer');
+  }
+  return {
+    executable: python,
+    args: ['-I', '-S', fileURLToPath(new URL('./osv-linux-sandbox.py', import.meta.url)),
+      '--stdio-parent-pid', String(producer.pid), '--stdio-parent-uid', String(producer.uid), '--probe']
+  };
 }
-export function sandboxOsvCommand(executable: string, args: readonly string[], platform = process.platform, python?: string) {
+export function sandboxOsvCommand(
+  executable: string, args: readonly string[], platform = process.platform, python?: string,
+  producer = { pid: process.pid, uid: process.getuid?.() }
+) {
   if (!['darwin', 'linux'].includes(platform) || platform === 'linux' && !python) reject('osv-network-sandbox-unqualified');
   if (!args.includes('--offline') && args[0] !== '--version') reject('osv-network-sandbox-requires-offline');
   if (platform === 'linux') {
     if (!path.isAbsolute(executable) || /[\0\r\n]/.test(executable)) reject('osv-network-sandbox-unqualified');
-    const command = linuxOsvNetworkProbe(python!);
+    const command = linuxOsvNetworkProbe(python!, producer);
     return { executable: command.executable, args: [...command.args.slice(0, -1), executable, ...args] };
   }
   return { executable: '/usr/bin/sandbox-exec', args: ['-p', osvNoNetworkProfile, executable, ...args] };

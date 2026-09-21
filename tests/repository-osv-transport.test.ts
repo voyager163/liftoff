@@ -132,12 +132,14 @@ describe('OSV enforced coordinate transport', () => {
     expect(sandboxOsvCommand('/owned/osv', ['scan', 'source', '--offline'], 'darwin').executable).toBe('/usr/bin/sandbox-exec');
     expect(() => sandboxOsvCommand('/owned/osv', ['scan', 'source'], 'darwin')).toThrow('osv-network-sandbox-requires-offline');
     expect(() => sandboxOsvCommand('/owned/osv', ['--offline'], 'linux')).toThrow('osv-network-sandbox-unqualified');
-    const linux = sandboxOsvCommand('/owned/osv', ['scan', 'source', '--offline'], 'linux', '/owned/python');
+    const linux = sandboxOsvCommand('/owned/osv', ['scan', 'source', '--offline'], 'linux', '/owned/python', { pid: 123, uid: 456 });
     expect(linux.executable).toBe('/owned/python');
     expect(linux.args.slice(0, 2)).toEqual(['-I', '-S']);
     expect(linux.args[2]).toMatch(/osv-linux-sandbox\.py$/);
-    expect(linux.args.slice(3)).toEqual(['/owned/osv', 'scan', 'source', '--offline']);
+    expect(linux.args.slice(3)).toEqual(['--stdio-parent-pid', '123', '--stdio-parent-uid', '456',
+      '/owned/osv', 'scan', 'source', '--offline']);
     expect(() => sandboxOsvCommand('/owned/osv', ['scan', 'source'], 'linux', '/owned/python')).toThrow('requires-offline');
     expect(() => sandboxOsvCommand('/owned/osv', ['--offline'], 'linux', 'python')).toThrow('unqualified');
+    expect(() => sandboxOsvCommand('/owned/osv', ['--offline'], 'linux', '/owned/python', { pid: 0, uid: 456 })).toThrow('producer');
   });
 });

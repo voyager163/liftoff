@@ -84,7 +84,8 @@ export function parseLinuxBoundaryDiagnostic(source: string) {
   let value: unknown;
   try { value = JSON.parse(source); } catch { return reject('osv-linux-diagnostic-invalid'); }
   const item = record(value, ['boundary', 'phase', 'errno'], 'osv-linux-diagnostic-invalid');
-  const phase = (['platform', 'stdio', 'descriptor-closure', 'filter-install', 'filter-readback', 'denial-probe', 'native-exec'] as const)
+  const phase = (['platform', 'stdio', 'stdio-producer', 'stdio-domain', 'stdio-address', 'stdio-peer', 'stdio-flags',
+    'descriptor-closure', 'filter-install', 'filter-readback', 'denial-probe', 'native-exec'] as const)
     .find(phase => phase === item.phase);
   if (item.boundary !== 'linux-osv-network' || !phase ||
       item.errno !== null && (typeof item.errno !== 'number' || !Number.isInteger(item.errno) || item.errno < 0 || item.errno > 4095)) {

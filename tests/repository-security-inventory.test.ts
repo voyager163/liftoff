@@ -18,7 +18,7 @@ describe('explicit repository and generated security inventory', () => {
   it('reconciles committed inputs and the explicitly introduced Python source without racing other tests', async () => {
     const files = execFileSync('git', ['ls-files', '-z'], { encoding: 'utf8' }).split('\0').filter(Boolean).map(file => file.split('/'));
     const guard = ['scripts', 'repository-security', 'osv-linux-sandbox.py'];
-    expect(await readFile(path.join(process.cwd(), ...guard), 'utf8')).toContain('def install():');
+    expect(await readFile(path.join(process.cwd(), ...guard), 'utf8')).toContain('def install(producer):');
     if (!files.some(parts => parts.join('/') === guard.join('/'))) files.push(guard);
     const inventory = verifyRepositoryInventory(supportedStack, templateDependencyInventory, files);
     expect(inventory.sources).toHaveLength(5);

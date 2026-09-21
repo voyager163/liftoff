@@ -49,6 +49,34 @@ after the original boundary step fails; it neither skips tests nor changes
 settlement assertions. Hosted qualification of these follow-up changes remains
 pending separate authorization.
 
+The authorized diagnostic follow-up at `71e18a4` again completed seven passing
+and three failing jobs. It verified the non-npm report's real PR/run/attempt and
+base/head/tested-merge binding while preserving the Go finding block. The Linux
+failure was specifically the stdio preflight, before seccomp installation:
+Node's Unix child-process pipes use anonymous stream socketpairs. The pending
+correction admits only existing anonymous AF_UNIX stream descriptors whose
+kernel peer PID/UID match the explicitly supplied immediate producer, preserving
+descriptor identity/flags. Network, named, datagram, foreign-peer and unbound
+producer cases still reject, and non-stdio descriptors are still closed.
+Thirteen native ARM64 cases reproduced the old failure and verified the narrow
+correction, ordinary pipe/file behavior and continued socket/io_uring denial.
+The changed guard also completed 52 pinned CodeQL query executions without
+findings; earlier tool-restoration failures remain separate failed receipts.
+No other source category was renewed by that targeted analysis. This is not yet
+hosted AMD64 qualification.
+
+The Windows diagnostic hit its actual 15-second test limit before returning;
+that failed observation remains unchanged. A pending opaque per-invocation
+recorder can be read during teardown even if the awaited result never returns.
+It caps stage events and bytes, rejects forged/reused handles, and keeps abort,
+timeout, truncation and unsettled-process results distinct from trace delivery.
+No production logging is enabled by default and no existing command,
+supervision, cleanup or test timeout is enlarged.
+In particular, trace completion is not process-tree settlement. The existing
+five-second supervision grace remains separate from the ten-second command
+budget; teardown can report an incomplete live trace at the original
+15-second diagnostic-test deadline.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.

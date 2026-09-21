@@ -32,12 +32,14 @@ export interface WindowsJobRunnerOptions {
   powershellPath?: string;
   skipAssetVerification?: boolean;
   captureDiagnostics?: boolean;
+  diagnosticRecorder?: WindowsJobDiagnosticRecorder;
 }
 
 export interface WindowsJobDiagnostic {
   phase: 'server-listening' | 'controller-spawn-requested' | 'controller-spawned' | 'controller-spawn-error'
     | 'controller-exit' | 'client-connected' | 'authenticated' | 'spawn-dispatched' | 'acknowledged'
-    | 'response-received' | 'supervisor-timeout' | 'server-error' | 'finishing' | 'finished';
+    | 'response-received' | 'supervisor-timeout' | 'abort-received' | 'server-error' | 'finishing'
+    | 'controller-stop-requested' | 'controller-stop-wait-ended' | 'reading-output' | 'cleaning-output' | 'finished';
   elapsedMs: number;
   controllerPidKnown: boolean;
   connected: boolean;
@@ -47,8 +49,25 @@ export interface WindowsJobDiagnostic {
 }
 
 export type WindowsJobCommandResult = CommandResult & {
-  controllerDiagnostics?: { events: WindowsJobDiagnostic[]; truncated: boolean };
+  controllerDiagnostics?: { events: WindowsJobDiagnostic[]; bytes: number; truncated: boolean; complete: boolean };
 };
+
+export interface WindowsJobDiagnosticRecorder { readonly kind: 'windows-job-diagnostic-recorder'; }
+const diagnosticRecorders = new WeakMap<WindowsJobDiagnosticRecorder, {
+  events: WindowsJobDiagnostic[]; bytes: number; truncated: boolean; complete: boolean; claimed: boolean;
+}>();
+
+export function createWindowsJobDiagnosticRecorder(): WindowsJobDiagnosticRecorder {
+  const recorder = Object.freeze({ kind: 'windows-job-diagnostic-recorder' as const });
+  diagnosticRecorders.set(recorder, { events: [], bytes: 0, truncated: false, complete: false, claimed: false });
+  return recorder;
+}
+
+export function readWindowsJobDiagnosticRecorder(recorder: WindowsJobDiagnosticRecorder) {
+  const state = diagnosticRecorders.get(recorder);
+  if (!state) throw new Error('Unknown Windows controller diagnostic recorder.');
+  return { events: state.events.map(event => ({ ...event })), bytes: state.bytes, truncated: state.truncated, complete: state.complete };
+}
 
 export async function verifyWindowsJobControllerAsset(customPath?: string): Promise<string> {
   const assetPath = customPath ?? resolvePackageFile(...windowsJobControllerAssetPathParts);
@@ -217,6 +236,12 @@ export async function runWindowsJobCommand(
   options: RunCommandOptions = {},
   runnerOptions: WindowsJobRunnerOptions = {}
 ): Promise<WindowsJobCommandResult> {
+  const externalDiagnostics = runnerOptions.diagnosticRecorder
+    ? diagnosticRecorders.get(runnerOptions.diagnosticRecorder) : undefined;
+  if (runnerOptions.diagnosticRecorder && (!externalDiagnostics || externalDiagnostics.claimed)) {
+    throw new Error('Unknown or reused Windows controller diagnostic recorder.');
+  }
+  if (externalDiagnostics) externalDiagnostics.claimed = true;
   const displayCommand = [command.executable, ...command.args].join(' ');
   const timeoutMs = options.timeoutMs ?? 120_000;
   const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
@@ -371,17 +396,23 @@ export async function runWindowsJobCommand(
     let incomingBuffer = Buffer.alloc(0);
     let supervisorTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
-    const diagnosticStart = runnerOptions.captureDiagnostics === true ? performance.now() : 0;
-    const diagnostics: WindowsJobDiagnostic[] = [];
-    let diagnosticTruncated = false;
+    const captureDiagnostics = runnerOptions.captureDiagnostics === true || externalDiagnostics !== undefined;
+    const diagnosticStart = captureDiagnostics ? performance.now() : 0;
+    const diagnostics = externalDiagnostics ?? { events: [] as WindowsJobDiagnostic[], bytes: 0, truncated: false, complete: false, claimed: true };
     const trace = (phase: WindowsJobDiagnostic['phase']) => {
-      if (runnerOptions.captureDiagnostics !== true) return;
-      if (diagnostics.length >= 64) { diagnosticTruncated = true; return; }
-      diagnostics.push({
-        phase, elapsedMs: Math.max(0, Math.trunc(performance.now() - diagnosticStart)),
+      if (!captureDiagnostics || diagnostics.complete) return;
+      if (diagnostics.events.length >= 64) { diagnostics.truncated = true; return; }
+      const elapsedMs = Math.trunc(performance.now() - diagnosticStart);
+      if (!Number.isSafeInteger(elapsedMs) || elapsedMs < 0) { diagnostics.truncated = true; return; }
+      const event: WindowsJobDiagnostic = {
+        phase, elapsedMs,
         controllerPidKnown: Number.isInteger(psProcess?.pid), connected, authenticated, spawnRequestDispatched,
         sessionState: session.getState()
-      });
+      };
+      const bytes = Buffer.byteLength(JSON.stringify(event));
+      if (diagnostics.bytes + bytes > 20 * 1024) { diagnostics.truncated = true; return; }
+      diagnostics.events.push(event);
+      diagnostics.bytes += bytes;
     };
 
     const safeUnlink = async (file: string): Promise<boolean> => {
@@ -414,17 +445,20 @@ export async function runWindowsJobCommand(
       try { clientSocket?.destroy(); } catch { /* ignore */ }
       try { server.close(); } catch { /* ignore */ }
       if (psProcess && !psProcess.killed && psProcess.exitCode === null) {
+        trace('controller-stop-requested');
         try { psProcess.kill(); } catch { /* ignore */ }
         await new Promise<void>((r) => {
           const timer = setTimeout(r, 1000);
           psProcess?.once('exit', () => { clearTimeout(timer); r(); });
         });
+        trace('controller-stop-wait-ended');
       }
 
       let capturedStdout = result.stdout ?? '';
       let capturedStderr = result.stderr ?? '';
 
       if (!capturedStdout && !capturedStderr) {
+        trace('reading-output');
         try {
           const stdoutBuf = await readBoundedFile(stdoutFile, maxOutputBytes);
           const remainingBytes = Math.max(0, maxOutputBytes - stdoutBuf.length);
@@ -438,6 +472,7 @@ export async function runWindowsJobCommand(
         } catch { /* ignore */ }
       }
 
+      trace('cleaning-output');
       const stdoutCleaned = await safeUnlink(stdoutFile);
       const stderrCleaned = await safeUnlink(stderrFile);
       const cleanupFailed = !stdoutCleaned || !stderrCleaned;
@@ -457,6 +492,7 @@ export async function runWindowsJobCommand(
         : result.errorMessage;
 
       trace('finished');
+      diagnostics.complete = true;
       resolve({
         command,
         displayCommand,
@@ -470,13 +506,17 @@ export async function runWindowsJobCommand(
         ...(result.outputLimitExceeded !== undefined ? { outputLimitExceeded: result.outputLimitExceeded } : {}),
         ...(effectiveErrorCode ? { errorCode: effectiveErrorCode } : {}),
         ...(effectiveErrorMessage ? { errorMessage: effectiveErrorMessage } : {}),
-        ...(runnerOptions.captureDiagnostics === true
-          ? { controllerDiagnostics: { events: diagnostics.map(event => ({ ...event })), truncated: diagnosticTruncated } } : {})
+        ...(captureDiagnostics
+          ? { controllerDiagnostics: {
+            events: diagnostics.events.map(event => ({ ...event })), bytes: diagnostics.bytes,
+            truncated: diagnostics.truncated, complete: diagnostics.complete
+          } } : {})
       });
     };
 
     if (options.signal) {
       abortHandler = () => {
+        trace('abort-received');
         void finish({
           signal: 'SIGABRT',
           processTreeSettled: false,

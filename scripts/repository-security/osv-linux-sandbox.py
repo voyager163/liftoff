@@ -1,11 +1,13 @@
 import ctypes
 import errno
+import fcntl
 import json
 import os
 import platform
 import resource
 import socket
 import stat
+import struct
 import sys
 
 phase = "platform"
@@ -20,7 +22,48 @@ class Program(ctypes.Structure):
     _fields_ = [("length", ctypes.c_ushort), ("filters", ctypes.POINTER(Filter))]
 
 
-def install():
+def validate_stdio(descriptor, producer):
+    global phase
+    before = os.fstat(descriptor)
+    if not stat.S_ISSOCK(before.st_mode):
+        return
+    phase = "stdio-producer"
+    if producer is None:
+        raise RuntimeError()
+    parent, uid = producer
+    if os.getppid() != parent or os.getuid() != uid or os.geteuid() != uid:
+        raise RuntimeError()
+    status_flags = fcntl.fcntl(descriptor, fcntl.F_GETFL)
+    descriptor_flags = fcntl.fcntl(descriptor, fcntl.F_GETFD)
+    with socket.socket(fileno=os.dup(descriptor)) as stream:
+        phase = "stdio-domain"
+        if stream.getsockopt(socket.SOL_SOCKET, socket.SO_DOMAIN) != socket.AF_UNIX:
+            raise RuntimeError()
+        if stream.getsockopt(socket.SOL_SOCKET, socket.SO_TYPE) != socket.SOCK_STREAM:
+            raise RuntimeError()
+        phase = "stdio-address"
+        if stream.getsockname() not in ("", b"") or stream.getpeername() not in ("", b""):
+            raise RuntimeError()
+        phase = "stdio-peer"
+        peer_pid, peer_uid, _ = struct.unpack(
+            "iII", stream.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, struct.calcsize("iII"))
+        )
+        if peer_pid != parent or peer_uid != uid:
+            raise RuntimeError()
+        duplicate = os.fstat(stream.fileno())
+        if (duplicate.st_dev, duplicate.st_ino, duplicate.st_mode) != (before.st_dev, before.st_ino, before.st_mode):
+            raise RuntimeError()
+    phase = "stdio-flags"
+    after = os.fstat(descriptor)
+    if (after.st_dev, after.st_ino, after.st_mode) != (before.st_dev, before.st_ino, before.st_mode):
+        raise RuntimeError()
+    if fcntl.fcntl(descriptor, fcntl.F_GETFL) != status_flags or fcntl.fcntl(descriptor, fcntl.F_GETFD) != descriptor_flags:
+        raise RuntimeError()
+    if os.getppid() != parent or os.getuid() != uid or os.geteuid() != uid:
+        raise RuntimeError()
+
+
+def install(producer):
     global phase
     if sys.platform != "linux":
         raise RuntimeError()
@@ -31,10 +74,13 @@ def install():
     profile = profiles.get(platform.machine())
     if profile is None:
         raise RuntimeError()
+    if producer is not None:
+        phase = "stdio-producer"
+        if os.getppid() != producer[0] or os.getuid() != producer[1] or os.geteuid() != producer[1]:
+            raise RuntimeError()
     phase = "stdio"
     for descriptor in range(3):
-        if stat.S_ISSOCK(os.fstat(descriptor).st_mode):
-            raise RuntimeError()
+        validate_stdio(descriptor, producer)
     phase = "descriptor-closure"
     _, maximum = resource.getrlimit(resource.RLIMIT_NOFILE)
     if maximum < 3 or maximum > 1_048_576:
@@ -85,9 +131,25 @@ def probe(libc):
 def main():
     global phase
     arguments = sys.argv[1:]
+    producer = None
+    if arguments and arguments[0] == "--stdio-parent-pid":
+        phase = "stdio-producer"
+        if len(arguments) < 5 or arguments[2] != "--stdio-parent-uid":
+            raise RuntimeError()
+        if not 1 <= len(arguments[1]) <= 10 or not 1 <= len(arguments[3]) <= 10:
+            raise RuntimeError()
+        if not arguments[1].isascii() or not arguments[1].isdecimal() or not arguments[3].isascii() or not arguments[3].isdecimal():
+            raise RuntimeError()
+        parent, uid = int(arguments[1]), int(arguments[3])
+        if not 0 < parent <= 2_147_483_647 or not 0 <= uid < 4_294_967_295:
+            raise RuntimeError()
+        if str(parent) != arguments[1] or str(uid) != arguments[3]:
+            raise RuntimeError()
+        producer = (parent, uid)
+        arguments = arguments[4:]
     if not arguments or (arguments != ["--probe"] and not os.path.isabs(arguments[0])):
         raise RuntimeError()
-    libc = install()
+    libc = install(producer)
     if arguments == ["--probe"]:
         probe(libc)
     else:

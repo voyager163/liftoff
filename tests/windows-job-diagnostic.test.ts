@@ -1,7 +1,10 @@
 import path from 'node:path';
 import os from 'node:os';
-import { expect, it } from 'vitest';
-import { buildWindowsControllerHostEnvironment, runWindowsJobCommand } from '../src/adapters/process/windows-job-runner.js';
+import { afterEach, expect, it } from 'vitest';
+import {
+  buildWindowsControllerHostEnvironment, createWindowsJobDiagnosticRecorder, readWindowsJobDiagnosticRecorder,
+  runWindowsJobCommand, type WindowsJobDiagnosticRecorder
+} from '../src/adapters/process/windows-job-runner.js';
 
 const safeCodes = new Set([
   'ABORTED', 'CORRUPTED_CONTROLLER_ASSET', 'UNSUPPORTED_PROCESS_SETTLEMENT', 'ENOENT',
@@ -12,28 +15,39 @@ const safeCodes = new Set([
   'CONTROLLER_EXITED_UNEXPECTEDLY', 'CONTROL_SERVER_ERROR'
 ]);
 
+let recorder: WindowsJobDiagnosticRecorder | undefined;
+let completed: { status: number | null; timedOut: boolean; processSpawned: boolean | undefined;
+  processTreeSettled: boolean | undefined; errorCode: string | null } | undefined;
+afterEach(() => {
+  if (!recorder) return;
+  console.log(JSON.stringify({
+    kind: 'native-windows-controller-diagnostic', platform: process.platform, architecture: process.arch,
+    resultReturned: completed !== undefined, result: completed ?? null,
+    controller: readWindowsJobDiagnosticRecorder(recorder),
+    commandContentsRecorded: false, processOutputRecorded: false, credentialsRecorded: false,
+    completeApplicationQualification: false
+  }));
+  recorder = undefined; completed = undefined;
+});
+
 it.runIf(process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC === '1')(
   'records actual controller stages for a non-writing native Node target without changing settlement requirements',
   async () => {
     const host = buildWindowsControllerHostEnvironment();
+    recorder = createWindowsJobDiagnosticRecorder();
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['-e', 'process.exit(0)'] },
       {
         timeoutMs: 10_000, maxOutputBytes: 1024,
         env: { SystemRoot: host.SystemRoot, PATH: path.dirname(process.execPath), TEMP: os.tmpdir(), TMP: os.tmpdir() }
       },
-      { captureDiagnostics: true }
+      { diagnosticRecorder: recorder }
     );
-    const receipt = {
-      kind: 'native-windows-controller-diagnostic', platform: process.platform, architecture: process.arch,
+    completed = {
       status: result.status, timedOut: result.timedOut, processSpawned: result.processSpawned,
       processTreeSettled: result.processTreeSettled,
-      errorCode: result.errorCode ? safeCodes.has(result.errorCode) ? result.errorCode : 'UNRECOGNIZED_ERROR' : null,
-      controller: result.controllerDiagnostics ?? null,
-      commandContentsRecorded: false, processOutputRecorded: false, credentialsRecorded: false,
-      completeApplicationQualification: false
+      errorCode: result.errorCode ? safeCodes.has(result.errorCode) ? result.errorCode : 'UNRECOGNIZED_ERROR' : null
     };
-    console.log(JSON.stringify(receipt));
-    expect(receipt).toMatchObject({ status: 0, timedOut: false, processSpawned: true, processTreeSettled: true, errorCode: null });
+    expect(completed).toMatchObject({ status: 0, timedOut: false, processSpawned: true, processTreeSettled: true, errorCode: null });
   }, 15_000
 );

@@ -3,9 +3,11 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   buildWindowsControllerHostEnvironment,
+  createWindowsJobDiagnosticRecorder,
+  readWindowsJobDiagnosticRecorder,
   runWindowsJobCommand,
   verifyWindowsJobControllerAsset,
   windowsJobControllerAssetDigest
@@ -25,6 +27,45 @@ afterEach(async () => {
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
+  it('rejects forged and reused recorders and keeps independent invocation data separate', async () => {
+    const recorder = createWindowsJobDiagnosticRecorder(), other = createWindowsJobDiagnosticRecorder();
+    const abort = new AbortController();
+    abort.abort();
+    const command = { executable: process.execPath, args: ['--version'] };
+    const result = await runWindowsJobCommand(command, { signal: abort.signal }, { diagnosticRecorder: recorder });
+    expect(result).toMatchObject({ errorCode: 'ABORTED', processSpawned: false, processTreeSettled: false });
+    expect(readWindowsJobDiagnosticRecorder(recorder)).toEqual({ events: [], bytes: 0, complete: false, truncated: false });
+    expect(readWindowsJobDiagnosticRecorder(other)).toEqual({ events: [], bytes: 0, complete: false, truncated: false });
+    await expect(runWindowsJobCommand(command, {}, { diagnosticRecorder: recorder })).rejects.toThrow('reused');
+    await expect(runWindowsJobCommand(command, {}, { diagnosticRecorder: { kind: 'windows-job-diagnostic-recorder' } }))
+      .rejects.toThrow('Unknown');
+  });
+  it.each(['timeout', 'abort'])('retains %s stages without clearing unsettled state when a simulated controller never starts', async mode => {
+    const server = new net.Server(), recorder = createWindowsJobDiagnosticRecorder();
+    const abort = new AbortController();
+    vi.spyOn(server, 'listen').mockReturnValue(server);
+    vi.spyOn(net, 'createServer').mockReturnValue(server);
+    vi.useFakeTimers();
+    try {
+      const pending = runWindowsJobCommand(
+        { executable: process.execPath, args: ['--version'] }, { timeoutMs: 50, signal: abort.signal },
+        { powershellPath: process.execPath, skipAssetVerification: true, diagnosticRecorder: recorder }
+      );
+      if (mode === 'abort') abort.abort();
+      await vi.advanceTimersByTimeAsync(mode === 'timeout' ? 5050 : 0);
+      const result = await pending;
+      expect(result).toMatchObject({
+        errorCode: mode === 'timeout' ? 'SUPERVISOR_TIMEOUT' : 'ABORTED',
+        timedOut: mode === 'timeout', processSpawned: false, processTreeSettled: false
+      });
+      const snapshot = readWindowsJobDiagnosticRecorder(recorder);
+      expect(snapshot.events.map(event => event.phase)).toContain(mode === 'timeout' ? 'supervisor-timeout' : 'abort-received');
+      expect(snapshot.complete).toBe(true);
+      expect(snapshot.events.length).toBeLessThanOrEqual(64);
+      expect(snapshot.bytes).toBeLessThanOrEqual(20 * 1024);
+      expect(snapshot.events.every(event => Number.isSafeInteger(event.elapsedMs) && event.elapsedMs >= 0)).toBe(true);
+    } finally { vi.useRealTimers(); vi.restoreAllMocks(); }
+  });
   it('verifies the packaged controller asset matches its exact pinned SHA-256 digest', async () => {
     const verifiedPath = await verifyWindowsJobControllerAsset();
     expect(verifiedPath).toContain(path.join('assets', 'repair', 'windows-job-controller.ps1'));
@@ -226,11 +267,14 @@ exec node "${mockPs}" "$@"
       { mode: 0o755 }
     );
 
-    const result = await runWindowsJobCommand(
+    const recorder = createWindowsJobDiagnosticRecorder();
+    const pending = runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true, captureDiagnostics: true }
+      { powershellPath: mockLauncher, skipAssetVerification: true, diagnosticRecorder: recorder }
     );
+    expect(readWindowsJobDiagnosticRecorder(recorder)).toMatchObject({ complete: false });
+    const result = await pending;
 
     expect(result.processTreeSettled).toBe(true);
     expect(result.processSpawned).toBe(true);
@@ -242,6 +286,10 @@ exec node "${mockPs}" "$@"
     ]));
     expect(JSON.stringify(result.controllerDiagnostics)).not.toContain(tempDir);
     expect(JSON.stringify(result.controllerDiagnostics)).not.toContain('nonce');
+    expect(readWindowsJobDiagnosticRecorder(recorder)).toEqual(result.controllerDiagnostics);
+    const copy = readWindowsJobDiagnosticRecorder(recorder);
+    copy.events.length = 0;
+    expect(readWindowsJobDiagnosticRecorder(recorder).events.length).toBeGreaterThan(0);
   });
 
   it('captures stdout and stderr from file paths with output bounding and cleans up files', async () => {
