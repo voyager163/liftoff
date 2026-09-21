@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-09-21",
+  "ownerDecision": "Approve tracked diagnostics for this exact telemetry role",
+  "provenance": {
+    "source": "Explicit owner selection relayed by the coordinating session after source/native rule inspection",
+    "coordinatorSession": "f1debac3-fd7e-44a5-a4f8-078a5cbf2a3a"
+  },
+  "role": "exact Basic identity-authenticated telemetry container registry",
+  "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+  "pathParts": ["infrastructure", "opentofu", "telemetry", "container-app.tf"],
+  "sourceSha256": "2619aca90ece080565e28ab146498ca60cbe62b75813092a78e30f9c8b80fc86",
+  "rules": ["CKV_AZURE_163", "CKV_AZURE_237", "CKV_AZURE_164", "CKV_AZURE_166", "CKV_AZURE_167"],
+  "classification": "tracked-feature-design-diagnostics",
+  "nativeFailuresPreserved": true,
+  "featuresClaimedPresent": false,
+  "digestPinningIsSigning": false,
+  "changedOrUnknownFactsRequireRequalification": true,
+  "generatedRegistriesInherit": false,
+  "mandatoryAuthenticationAndImageScanningUnchanged": true,
+  "actualVulnerabilityExceptionsApproved": [],
+  "infrastructureChangesAuthorized": false,
+  "hostedEffectsAuthorized": false
+}

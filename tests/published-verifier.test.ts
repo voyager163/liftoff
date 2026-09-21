@@ -15,6 +15,7 @@ interface HarnessOptions {
   registryUnavailable?: boolean;
   installedVersion?: string;
   failedCommand?: 'help' | 'upgrade-help' | 'version' | 'plan';
+  observedIntegrity?: string;
 }
 
 function verifierHarness(options: HarnessOptions = {}): {
@@ -41,6 +42,9 @@ function verifierHarness(options: HarnessOptions = {}): {
       state.npmCalls.push(args);
       state.npmOptions.push(commandOptions);
       if (args[0] === 'view') {
+        if (args[2] === 'dist.integrity') {
+          return { status: 0, stdout: options.observedIntegrity ?? '', stderr: '' };
+        }
         return options.registryUnavailable
           ? { status: 1, stdout: '', stderr: 'registry unavailable' }
           : { status: 0, stdout: `${options.observedVersion ?? '0.3.3'}\n`, stderr: '' };
@@ -105,6 +109,35 @@ function verifierHarness(options: HarnessOptions = {}): {
 }
 
 describe('published package verifier', () => {
+  it('optionally compares exact canonical integrity before installing', async () => {
+    const integrity = `sha512-${Buffer.alloc(64, 1).toString('base64')}`;
+    const { dependencies, state } = verifierHarness({ observedIntegrity: integrity });
+    const result = await verifyPublishedPackage({
+      packageRoot: process.cwd(), tag: 'latest', expectedIntegrity: integrity
+    }, dependencies);
+    expect(result.integrity).toBe(integrity);
+    expect(state.npmCalls[1]).toContain('@msn-control/liftoff@0.3.3');
+    expect(state.npmCalls[1]).toContain('dist.integrity');
+    expect(state.npmOptions.every(options => options.env.LIFTOFF_TELEMETRY === '0')).toBe(true);
+  });
+
+  it.each(['', `sha512-${Buffer.alloc(64, 2).toString('base64')}`])('rejects missing or substituted canonical integrity', async observedIntegrity => {
+    const { dependencies, state } = verifierHarness({ observedIntegrity });
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(), tag: 'latest',
+      expectedIntegrity: `sha512-${Buffer.alloc(64, 1).toString('base64')}`
+    }, dependencies)).rejects.toThrow(/integrity mismatch/);
+    expect(state.npmCalls.some(args => args[0] === 'install')).toBe(false);
+  });
+
+  it('rejects malformed expected integrity before registry access', async () => {
+    const { dependencies, state } = verifierHarness();
+    await expect(verifyPublishedPackage({
+      packageRoot: process.cwd(), tag: 'latest', expectedIntegrity: 'sha512-incomplete'
+    }, dependencies)).rejects.toThrow(/canonical SHA-512/);
+    expect(state.npmCalls).toEqual([]);
+  });
+
   it('verifies the canonical dist-tag, installed version, and representative commands', async () => {
     const { dependencies, state } = verifierHarness();
     const result = await verifyPublishedPackage({ packageRoot: process.cwd(), tag: 'latest' }, dependencies);
@@ -133,8 +166,10 @@ describe('published package verifier', () => {
       expect(options.env).toMatchObject({
         npm_config_registry: CANONICAL_NPM_REGISTRY
       });
-      expect(options.env.npm_config_userconfig).not.toContain('/private/');
-      expect(options.env.npm_config_globalconfig).not.toContain('/private/');
+      expect(options.env.npm_config_userconfig).not.toBe('/private/original-user.npmrc');
+      expect(options.env.npm_config_globalconfig).not.toBe('/private/original-global.npmrc');
+      expect(options.env.npm_config_userconfig).toBe(path.join(state.tempRoot!, 'user.npmrc'));
+      expect(options.env.npm_config_globalconfig).toBe(path.join(state.tempRoot!, 'global.npmrc'));
     }
     expect(state.removed).toBe(true);
     expect(state.tempRoot && existsSync(state.tempRoot)).toBe(false);

@@ -2,7 +2,6 @@
 import { mkdtemp, mkdir, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
@@ -10,16 +9,40 @@ import {
   templateDependencyInventory,
   validateTemplateDependencyInventory
 } from './template-dependency-security.mjs';
+import {
+  documentationRequiredFiles,
+  validateDocumentationNavigation
+} from './documentation-navigation.mjs';
+import {
+  parseSmokeArguments,
+  prepareSmokeArtifact,
+  verifyInstalledArchiveFiles
+} from './package-smoke-artifact.mjs';
 
 const packageRoot = process.cwd();
-const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
+const suppliedTarball = parseSmokeArguments(process.argv.slice(2));
 const npmCliPath = process.env.npm_execpath;
 
 if (!npmCliPath) {
   throw new Error('npm_execpath is required. Run this smoke test through npm.');
 }
+const tempRoot = await mkdtemp(path.join(packageRoot, '.liftoff-package-smoke-'));
+let smokeStage = 'artifact';
+let commandIndex = 0;
+let commandOperation = 'none';
+let commandExit = null;
+let commandFailure = 'assertion';
+
+function observeCommand(args) {
+  commandIndex++;
+  commandExit = null;
+  commandFailure = 'assertion';
+  const allowed = ['install', 'help', '--version', 'init', 'update', 'repair', 'plan', 'governance', 'upgrade', 'doctor'];
+  commandOperation = args[0] === '-e' ? 'node-eval' : allowed.includes(args[1]) ? args[1] : 'other';
+}
 
 function run(command, args, options = {}) {
+  observeCommand(args);
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? packageRoot,
     env: options.env ?? process.env,
@@ -30,6 +53,8 @@ function run(command, args, options = {}) {
   });
 
   if (result.status !== 0) {
+    commandExit = result.status;
+    commandFailure = ['ENOENT', 'EACCES', 'ETIMEDOUT', 'ENOBUFS'].includes(result.error?.code) ? result.error.code : 'subprocess';
     const output = [result.error?.message, result.stdout, result.stderr].filter(Boolean).join('\n');
     throw new Error(`${command} ${args.join(' ')} failed with exit code ${result.status}\n${output}`);
   }
@@ -38,6 +63,7 @@ function run(command, args, options = {}) {
 }
 
 function runFailure(command, args, options = {}) {
+  observeCommand(args);
   const result = spawnSync(command, args, {
     cwd: options.cwd ?? packageRoot,
     env: options.env ?? process.env,
@@ -54,16 +80,6 @@ function runFailure(command, args, options = {}) {
 
 function runNpm(args, options = {}) {
   return run(process.execPath, [npmCliPath, ...args], options);
-}
-
-function firstPackResult(value) {
-  if (Array.isArray(value)) {
-    return value[0];
-  }
-  if (value && typeof value === 'object') {
-    return Object.values(value)[0];
-  }
-  return undefined;
 }
 
 function assertPackageContains(packResult, expectedPath) {
@@ -110,7 +126,7 @@ async function treeDigest(root) {
 
 try {
   const packDirectory = path.join(tempRoot, 'pack');
-  const installPrefix = path.join(tempRoot, 'global');
+  const installPrefix = path.join(tempRoot, 'global with spaces');
   const homeDirectory = path.join(tempRoot, 'home');
   const outsideDirectory = path.join(tempRoot, 'outside');
   const npmCache = path.join(tempRoot, 'npm-cache');
@@ -118,35 +134,13 @@ try {
   await mkdir(homeDirectory, { recursive: true });
   await mkdir(outsideDirectory, { recursive: true });
 
-  const pack = runNpm(['pack', '--json', '--pack-destination', packDirectory]);
-  const packResults = JSON.parse(pack.stdout);
-  const packResult = firstPackResult(packResults);
-  if (!packResult?.filename) {
-    throw new Error('npm pack did not return a package filename');
-  }
+  const artifact = await prepareSmokeArtifact({
+    tarball: suppliedTarball, packageRoot, packDirectory, runNpm
+  });
+  const { packResult, tarballPath } = artifact;
 
-  assertPackageContains(packResult, 'package.json');
-  assertPackageContains(packResult, 'README.md');
-  assertPackageContains(packResult, 'DEVELOPER.md');
-  assertPackageContains(packResult, 'LICENSE');
-  for (const documentationPath of [
-    'docs/getting-started.md',
-    'docs/workloads.md',
-    'docs/spec-workflows-and-agents.md',
-    'docs/repository-governance.md',
-    'docs/existing-repositories.md',
-    'docs/prerequisites.md',
-    'docs/supported-stack.md',
-    'docs/safety-and-consent.md',
-    'docs/telemetry.md',
-    'docs/cli-reference.md',
-    'docs/application-repair.md',
-    'docs/project-structure.md',
-    'docs/configuration-and-manifests.md',
-    'docs/azure-deployment.md',
-    'docs/troubleshooting.md',
-    'docs/assets/liftoff-terminal.svg'
-  ]) {
+  await validateDocumentationNavigation(packageRoot);
+  for (const documentationPath of documentationRequiredFiles) {
     assertPackageContains(packResult, documentationPath);
   }
   assertPackageContains(packResult, 'dist/cli.js');
@@ -207,7 +201,6 @@ try {
     throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
   }
 
-  const tarballPath = path.join(packDirectory, packResult.filename);
   const npmEnv = {
     ...process.env,
     HOME: homeDirectory,
@@ -217,16 +210,41 @@ try {
     LIFTOFF_TELEMETRY: '0',
     npm_config_cache: npmCache
   };
-  runNpm(['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline', tarballPath], {
+  await artifact.verifyUnchanged();
+  smokeStage = 'installation';
+  runNpm(['install', '--global', '--prefix', installPrefix, '--no-audit', '--no-fund', '--prefer-offline',
+    ...(suppliedTarball ? ['--ignore-scripts'] : []), tarballPath], {
     cwd: outsideDirectory,
     env: npmEnv
   });
 
   const liftoffBinary = resolveInstalledBinary(installPrefix);
+  smokeStage = 'installed-artifact';
   if (!existsSync(liftoffBinary)) {
     throw new Error(`Installed liftoff binary not found at ${liftoffBinary}`);
   }
   const liftoffEntrypoint = resolveInstalledEntrypoint(installPrefix);
+  const extractedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  await verifyInstalledArchiveFiles(extractedPackageRoot, packResult.files);
+  const navigation = await validateDocumentationNavigation(extractedPackageRoot);
+  console.log(`Verified ${navigation.files.length} documentation files and ${navigation.linksChecked} local links in the extracted tarball.`);
+  for (const missingFile of ['CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md']) {
+    const extractedFile = path.join(extractedPackageRoot, missingFile);
+    const original = await readFile(extractedFile);
+    try {
+      await rm(extractedFile);
+      let rejected = false;
+      try {
+        await validateDocumentationNavigation(extractedPackageRoot);
+      } catch (error) {
+        if (!error.message.includes(missingFile)) throw error;
+        rejected = true;
+      }
+      if (!rejected) throw new Error(`Missing extracted ${missingFile} passed documentation qualification`);
+    } finally {
+      await writeFile(extractedFile, original);
+    }
+  }
   if (!existsSync(liftoffEntrypoint)) {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
@@ -236,6 +254,7 @@ try {
     cwd: outsideDirectory,
     env: npmEnv
   });
+  smokeStage = 'installed-behavior';
   if (!help.stdout.includes('Mission Control Liftoff')) {
     throw new Error('Installed liftoff help output did not include the expected heading');
   }
@@ -543,6 +562,15 @@ try {
     }
   }
   await installedWrite(repairProject, repairArtifacts);
+  // Give the nested fixture its own repository boundary so private state stays outside it.
+  run('git', ['init', '--quiet', '--template=', '--initial-branch=develop', repairProject], {
+    cwd: tempRoot,
+    env: {
+      ...npmEnv,
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: process.platform === 'win32' ? 'NUL' : '/dev/null'
+    }
+  });
   await mkdir(path.join(repairProject, 'legacy-code'));
   await mkdir(path.join(repairProject, 'checks'));
   const customSource = 'export const calculate = value => value * 4 + 5;\n';
@@ -640,7 +668,21 @@ try {
     throw new Error('Installed assessment did not preserve and explain unsupported activation state.');
   }
 
+  await artifact.verifyUnchanged();
   console.log(`Package smoke test passed for ${packResult.name}@${packResult.version}`);
+} catch (error) {
+  if (process.env.LIFTOFF_PACKAGE_SMOKE_STATUS) {
+    const statusFile = process.env.LIFTOFF_PACKAGE_SMOKE_STATUS;
+    if (!path.isAbsolute(statusFile) || await realpath(path.dirname(statusFile)) !== path.dirname(statusFile)) {
+      throw new Error('Invalid private smoke-status destination.');
+    }
+    await writeFile(statusFile, JSON.stringify({
+      schemaVersion: 1, stage: smokeStage, commandIndex, operation: commandOperation,
+      exit: commandExit, failure: commandFailure
+    }), { flag: 'wx', mode: 0o600 });
+    throw new Error('Exact package smoke failed; bounded private status recorded without subprocess output.');
+  }
+  throw error;
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
 }

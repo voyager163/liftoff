@@ -1,0 +1,58 @@
+{
+  "schemaVersion": 1,
+  "observedOn": "2026-09-20",
+  "source": "Pinned public action.yml descriptors were read without executing actions.",
+  "hostedAllowlistApplied": false,
+  "scope": "Direct and declared nested GitHub Actions references; not proof of immutable runtime downloads or SLSA qualification.",
+  "actions": [
+    {
+      "reference": "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1",
+      "descriptorGitBlob": "5b0524f730db83f9513c18ab31a6c086c7239076",
+      "runtime": "node24",
+      "entrypoints": ["dist/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020",
+      "descriptorGitBlob": "dc1cefd59528621f6952ef3309bb6c551925b330",
+      "runtime": "node24",
+      "entrypoints": ["dist/setup/index.js", "dist/cache-save/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97",
+      "descriptorGitBlob": "df6c8235b476652b6402d31d92a2a89cdea74bb9",
+      "runtime": "node24",
+      "entrypoints": ["dist/setup/index.js", "dist/cache-save/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e",
+      "descriptorGitBlob": "74a4e7e9f0b1eb0faee6d30576af05c489c39a3b",
+      "runtime": "node24",
+      "entrypoints": ["dist/setup/index.js", "dist/cache-save/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4",
+      "descriptorGitBlob": "61eca1e5da8615c4a678270ff5e34a0fab270296",
+      "runtime": "node24",
+      "entrypoints": ["dist/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+      "descriptorGitBlob": "7cb4d1e81db55320b41217e1a78a1a46e3d2baef",
+      "runtime": "node24",
+      "entrypoints": ["dist/upload/index.js"],
+      "dependencies": []
+    },
+    {
+      "reference": "actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
+      "descriptorGitBlob": "8b8c65029ccad20750a29fecb438eca5a607fc57",
+      "runtime": "node24",
+      "entrypoints": ["dist/index.js"],
+      "dependencies": []
+    }
+  ]
+}

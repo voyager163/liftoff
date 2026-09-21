@@ -1,0 +1,38 @@
+name: Feature request
+description: Discuss a problem, desired outcome, and alternatives before a substantial change.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Search existing issues first. Small corrections do not need a separate feature proposal.
+        Never include credentials, private source or data, `.env` files, or unredacted diagnostics.
+        Do not attach whole projects or broad environment/configuration dumps.
+        Suspected vulnerabilities or secret exposure belong in [private security reporting](https://github.com/voyager163/liftoff/security/advisories/new).
+        Questions can use ordinary [Issues](https://github.com/voyager163/liftoff/issues).
+        See the [support and reporting map](https://github.com/voyager163/liftoff/blob/develop/CONTRIBUTING.md#support-and-reporting).
+        Sensitive conduct concerns use the separate [private conduct route](https://github.com/voyager163/liftoff/blob/develop/CODE_OF_CONDUCT.md#report-a-conduct-concern), not this form or vulnerability intake.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who is affected and what supported workflow is difficult today?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: Describe the user-visible result, not only a proposed implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Existing commands, workarounds, or other approaches; say not applicable if none.
+  - type: textarea
+    id: scope
+    attributes:
+      label: Compatibility and scope (optional)
+      description: Affected workloads, existing projects, or public behavior contracts. Leave empty if unknown.

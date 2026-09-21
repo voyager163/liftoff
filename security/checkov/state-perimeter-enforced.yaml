@@ -1,0 +1,11 @@
+metadata:
+  id: CKV2_LIFTOFF_5
+  name: Retain enforced bootstrap state-storage perimeter associations
+  category: NETWORKING
+  severity: HIGH
+definition:
+  cond_type: attribute
+  resource_types: [azurerm_network_security_perimeter_association]
+  attribute: access_mode
+  operator: equals
+  value: Enforced

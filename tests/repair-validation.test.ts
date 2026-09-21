@@ -35,7 +35,7 @@ class Runner implements CommandRunner {
   }
 }
 describe('isolated local repair validation', () => {
-  it.each([['ci.yml', 'test'], ['release.yml', 'publish']])('uses the native OpenTofu binary in %s/%s', async (file, job) => {
+  it.each([['ci.yml', 'test'], ['release.yml', 'validate']])('uses the native OpenTofu binary in %s/%s', async (file, job) => {
     const workflow = parseYaml(await readFile(path.resolve('.github', 'workflows', file), 'utf8'));
     const setup = workflow.jobs[job].steps.find((step: { uses?: string }) => step.uses?.startsWith('opentofu/setup-opentofu@'));
     expect(setup.with.tofu_wrapper).toBe(false);

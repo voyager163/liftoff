@@ -2,6 +2,11 @@
 
 This guide covers release-owned compatibility, deterministic setup, and package
 publishing. General contribution setup remains in [CONTRIBUTING.md](CONTRIBUTING.md).
+Advanced toolchains, cross-platform validation, dependency audits, baseline
+refresh, optional policy-required registries, release verification, and recovery
+are collected in the [maintainer reference](docs/maintainer-reference.md).
+For public questions and private reporting boundaries, use the
+[support and reporting map](CONTRIBUTING.md#support-and-reporting).
 
 ## Stabilization acceptance matrix
 
@@ -270,6 +275,11 @@ See [assessment guidance](docs/repository-governance.md#read-only-governance-ass
 
 ## Release integrity requirements
 
+- Source-repository PR admission is not release qualification. Publication must
+  reassess actual source and artifact bytes against independently reloaded
+  adopted policy using fresh complete release evidence; neither normal nor
+  maintenance admission is publication evidence. See
+  [source-security admission](#source-security-admission-foundation).
 - Validate the canonical graph, graph hash, per-phase contract digests, and
   compatibility metadata together.
 - A graph byte change with unchanged phase semantics needs a compatibility
@@ -298,6 +308,40 @@ See [assessment guidance](docs/repository-governance.md#read-only-governance-ass
   and screened for credential-shaped content before truncation or persistence.
 - Path tests must cover Windows, macOS, and Linux path-part arrays, symlink
   rejection, atomic state writes, and rollback.
+
+## Source-security admission foundation
+
+This source-repository boundary is separate from generated-project activation
+and its approval envelopes. `scripts/repository-security/admission.ts` and
+`scripts/repository-security/policy-data.ts` implement local trusted-base loading,
+normal versus policy-only admission, exact data adapters, drift rejection, and
+rejection of admission evidence at the publication boundary.
+`tests/repository-admission.test.ts` uses isolated real-Git fixtures with synthetic
+observation reports. It is not live scanner, PR-merge, or hosted-enforcement proof.
+Trusted production workflow integration and hosted enforcement remain
+unqualified; required-check composition is still pending qualification.
+
+`normal-admitted` requires complete successful candidate analysis, integrity,
+functional checks, and actual finding-policy success. `maintenance-admitted`
+qualifies only exact base-registered exception/disposition data, without changing
+protected inputs or clearing the existing blocked finding result. Both are
+`pull-request-admission` records with `policyAdopted: false` and
+`publicationQualified: false`, not policy authority or release receipts.
+
+The [canonical admission contract](docs/repository-security.md#pull-request-admission-and-policy-adoption)
+defines comparison/provenance identities, unchanged-input and complete-coverage
+requirements, disallowed grants, confirmed-exposure blocking, and incident-history
+preservation. Candidate owner/approval/evidence-reference fields are traceability
+only; independently loaded adopted base content supplies authority. Normal
+maintainer merge adopts qualified policy data, with no extra pre-merge command,
+receipt, or reviewer gate. Subsequent assessments reload that base.
+
+Future required-check composition must combine security admission with successful
+analysis-completion, integrity, and existing functional checks. It must not also
+require an unconditional clean finding context for eligible maintenance, or fake
+success, suppress errors, or bypass native hosted rules. Standalone finding
+reports retain their actual verdicts. This composition still needs actual
+qualification before hosted settings change.
 
 ## Focused commands
 

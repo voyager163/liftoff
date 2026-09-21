@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Usage help and reporting routes
+    url: https://github.com/voyager163/liftoff/blob/develop/CONTRIBUTING.md#support-and-reporting
+    about: Start with the guides, then use an ordinary Issue for unresolved questions, bugs, or features.
+  - name: Report a vulnerability or secret exposure privately
+    url: https://github.com/voyager163/liftoff/security/advisories/new
+    about: Do not post suspected vulnerabilities, credentials, or sensitive reports in public issues.
+  - name: Report a sensitive conduct concern privately
+    url: https://github.com/voyager163/liftoff/blob/develop/CODE_OF_CONDUCT.md#report-a-conduct-concern
+    about: Use the owner-approved conduct-only mailbox, not public Issues or vulnerability intake.

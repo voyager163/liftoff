@@ -1,95 +1,248 @@
 name: Release Liftoff
 
+# One coordinator owns the operation. A created v* tag never starts a duplicate
+# publication, regardless of which future qualified identity creates it.
+# The current readiness adapter cannot authorize publication: genuine producer
+# receipts and authenticated publisher/readback adapters are still missing.
 on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: Run all release checks without publishing to npm
+        description: Validate one exact npm candidate without publication authority
         required: true
         default: true
         type: boolean
-  push:
-    tags:
-      - v*
 
 permissions:
   contents: read
-  id-token: write
+
+concurrency:
+  group: release-liftoff
+  cancel-in-progress: false
+
+env:
+  LIFTOFF_TELEMETRY: "0"
+  LIFTOFF_RELEASE_DRY_RUN: ${{ inputs.dry_run }}
+  NODE_DISABLE_COMPILE_CACHE: "1"
 
 jobs:
-  publish:
-    name: Publish @msn-control/liftoff
+  validate:
+    name: Build and inspect exact npm candidate
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.bundle.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.20.0"
-          registry-url: https://registry.npmjs.org
-          cache: npm
-
+          package-manager-cache: false
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
         with:
           python-version: "3.14.7"
-
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
         with:
           go-version: "1.27.0"
-          cache-dependency-path: assets/supported-stack.json
-
+          cache: false
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
         with:
           tofu_version: 1.12.6
           tofu_wrapper: false
-
-      - name: Install uv
-        run: python -m pip install uv==0.12.7
-
-      - name: Select supported npm
-        run: npm install --global "npm@12.0.2"
-
-      - name: Install dependencies
-        run: npm ci
-
+      - name: Install validation tools and dependencies
+        run: |
+          python -m pip install uv==0.12.7
+          npm install --global "npm@12.0.2" --ignore-scripts
+          npm ci
       - name: Run package check
         run: npm run check
-
-      - name: Run package smoke test
-        run: npm run smoke:package
-
+      - name: Audit release npm dependency graphs
+        env:
+          LIFTOFF_NPM_AUDIT_REGISTRY: https://registry.npmjs.org
+        run: npm run audit:template-dependencies
       - name: Verify standard Node.js templates
         run: npm run verify:standard-node-templates
-
-      - name: Inspect publish package
-        run: npm pack --dry-run --json
-
       - name: Verify release identity
+        run: node scripts/verify-release-identity.mjs
+      - name: Pack once and smoke the exact tarball
+        id: candidate
+        run: npm exec -- node scripts/qualify-npm-candidate.mjs --runtime-assessment
+      - name: Retain candidate observations, not release qualification
+        id: bundle
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-candidate-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.candidate.outputs.candidate-root }}
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 7
+
+  qualification:
+    name: Require genuine release evidence and publisher readback
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    outputs:
+      publication-authorized: ${{ steps.gate.outputs.publication-authorized }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+      - name: Fail closed without independent producer and authority receipts
+        id: gate
         env:
-          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+          LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+        run: node scripts/release-coordinator.mjs readiness
+
+  assemble:
+    name: Assemble complete draft with qualified tag authority
+    needs: [validate, qualification]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dry_run == false && needs.qualification.outputs.publication-authorized == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # No generic GITHUB_TOKEN write grant substitutes for the currently
+    # unqualified repository-only publisher identity.
+    permissions:
+      contents: read
+    environment: npm-publisher
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+      - name: Revalidate and assemble exact tag, draft and all assets
+        env:
+          LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+        run: node scripts/release-coordinator.mjs assemble
+
+  publish:
+    name: Publish exact qualified npm bytes
+    needs: [validate, qualification, assemble]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dry_run == false && needs.qualification.outputs.publication-authorized == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+    environment: npm-publisher
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+          registry-url: https://registry.npmjs.org
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+      - name: Publish to npm without package scripts or repacking
+        env:
+          LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+        run: node scripts/release-coordinator.mjs npm
+
+  canonical-verify:
+    name: Verify canonical installed CLI without publisher credentials
+    needs: [validate, publish]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      artifact-id: ${{ steps.canonical-record.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+      - name: Prepare read-only verifier
         run: |
-          if [[ -n "$RELEASE_TAG" ]]; then
-            npm run verify:release-identity -- "$RELEASE_TAG"
-          else
-            npm run verify:release-identity
-          fi
-
-      - name: Select npm dist-tag
-        id: dist-tag
-        shell: bash
-        run: |
-          version=$(node -p "require('./package.json').version")
-          if [[ "$version" == *-* ]]; then
-            echo "tag=next" >> "$GITHUB_OUTPUT"
-          else
-            echo "tag=latest" >> "$GITHUB_OUTPUT"
-          fi
-
-      - name: Publish to npm
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
-        run: npm publish --access public --provenance --tag "${{ steps.dist-tag.outputs.tag }}"
-
+          npm ci --ignore-scripts
+          npm run build
       - name: Verify published package from canonical npm
-        if: ${{ github.event_name != 'workflow_dispatch' || inputs.dry_run == false }}
-        run: npm run verify:published -- "${{ steps.dist-tag.outputs.tag }}"
+        env:
+          LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+        run: npm exec -- node scripts/release-coordinator.mjs canonical
+      - name: Retain read-only installed verification observation
+        id: canonical-record
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: npm-canonical-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-candidate/canonical-observation.json
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 7
+
+  finalize:
+    name: Finalize draft only after independent canonical verification
+    needs: [validate, qualification, publish, canonical-verify]
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' && inputs.dry_run == false && needs.qualification.outputs.publication-authorized == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    environment: npm-publisher
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.validate.outputs.artifact-id }}
+          path: ${{ runner.temp }}/release-candidate
+          merge-multiple: true
+      - name: Retrieve separate read-only verification observation
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.canonical-verify.outputs.artifact-id }}
+          path: ${{ runner.temp }}/canonical-evidence
+          merge-multiple: true
+      - name: Revalidate independent verification and immutable release readback
+        env:
+          LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+          LIFTOFF_CANONICAL_BUNDLE: ${{ runner.temp }}/canonical-evidence
+        run: node scripts/release-coordinator.mjs finalize

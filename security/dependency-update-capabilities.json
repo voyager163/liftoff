@@ -1,0 +1,56 @@
+{
+  "schemaVersion": 1,
+  "repository": "voyager163/liftoff",
+  "evidenceKind": "read-only-upstream-source-inspection-not-hosted-execution",
+  "upstreamRepository": "dependabot/dependabot-core",
+  "upstreamCommit": "6a3570b5be207c5bd2ea497c046805d47f71bb1e",
+  "sources": [
+    "uv/Dockerfile",
+    "uv/helpers/requirements.txt",
+    "uv/lib/dependabot/uv/file_fetcher.rb",
+    "uv/lib/dependabot/uv/file_parser/pyproject_files_parser.rb",
+    "python/lib/dependabot/python/file_parser/pyproject_document.rb",
+    "uv/lib/dependabot/uv/file_updater/lock_file_updater.rb",
+    "go_modules/Dockerfile",
+    "go_modules/lib/dependabot/go_modules/file_updater.rb",
+    "go_modules/lib/dependabot/go_modules/file_updater/go_mod_updater.rb"
+  ],
+  "uv": {
+    "status": "prepared-not-hosted-qualified",
+    "runtimeVersion": "0.12.7",
+    "pythonMinor": "3.14",
+    "directories": [
+      ["assets", "locks", "python-standard"],
+      ["assets", "locks", "python-genai"]
+    ],
+    "manifest": "pyproject.toml",
+    "lock": "uv.lock",
+    "lockVersion": 1,
+    "lockRevision": 3,
+    "behavior": "PEP 621 dependencies and optional-dependencies are parsed; the updater changes pyproject.toml and runs uv lock --upgrade-package for the selected dependency. Universal lock coverage is not an installed-runtime claim.",
+    "limitations": [
+      "The documentation support table still lists uv 0.11; inspected pinned updater source uses the repository's exact uv 0.12.7. Source inspection does not prove the hosted deployment uses that commit.",
+      "No independent update job is configured for function-requirements.txt. Its exact exported dependency set must be regenerated and reconciled during supported-stack review.",
+      "Dependabot does not adopt assets/supported-stack.json or regenerate template strings. Maintainer baseline refresh and consistency checks remain mandatory."
+    ]
+  },
+  "go": {
+    "status": "blocked-source-free-template-shape",
+    "runtimeVersion": "1.27.0",
+    "directory": ["assets", "locks", "go-backend"],
+    "manifest": "go.mod",
+    "lock": "go.sum",
+    "reason": "The only files in this template directory are go.mod and go.sum. The pinned updater unconditionally enables go mod tidy after removing its temporary dummy package. With no imported Go packages this can prune the release-owned graph, so a gomod entry is not safe to enable without a separately reconciled source-bearing update mechanism.",
+    "scanExempt": false,
+    "securityUpdates": "Repository-wide Dependabot alerts and security updates remain enabled. Omitting gomod version updates does not disable independently eligible security-update PRs; actual provider eligibility is unqualified. Any proposal must preserve the full graph/locks and reconcile supported-stack ownership.",
+    "independentTool": "Goose remains owned by the supported-stack refresh and exact independent tool-graph contract, not a gomod update entry."
+  },
+  "providerAndImages": {
+    "status": "supported-stack-maintainer-refresh",
+    "scanExempt": false
+  },
+  "defaultBranchTargeting": true,
+  "automaticApprovalOrMerge": false,
+  "hostedExecuted": false,
+  "enforced": false
+}

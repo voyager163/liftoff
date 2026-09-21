@@ -1,0 +1,23 @@
+metadata:
+  id: CKV2_LIFTOFF_2
+  name: Retain modern TLS for bootstrap state storage
+  category: ENCRYPTION
+  severity: HIGH
+definition:
+  or:
+    - cond_type: attribute
+      resource_types: [azapi_resource]
+      attribute: type
+      operator: not_regex_match
+      value: '(?i)^Microsoft\.Storage/storageAccounts@'
+    - and:
+        - cond_type: attribute
+          resource_types: [azapi_resource]
+          attribute: type
+          operator: equals_ignore_case
+          value: Microsoft.Storage/storageAccounts@2023-05-01
+        - cond_type: attribute
+          resource_types: [azapi_resource]
+          attribute: body.properties.minimumTlsVersion
+          operator: within
+          value: [TLS1_2, TLS1_3]

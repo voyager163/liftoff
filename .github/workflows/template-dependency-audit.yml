@@ -1,6 +1,9 @@
 name: Template dependency audit
 
 on:
+  pull_request:
+  push:
+    branches: [develop, main]
   schedule:
     - cron: "17 9 * * 1"
   workflow_dispatch:
@@ -8,24 +11,94 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: template-dependency-audit-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  audit:
-    name: Audit packaged npm templates
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  non-npm:
+    name: Assess frozen Python and Go graphs
+    runs-on: macos-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ github.event_name == 'schedule' && fromJSON('["develop","main"]') || fromJSON('[""]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref || github.sha }}
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache: false
+      - name: Install parser dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Assess immutable snapshots without scanner network access
+        env:
+          LIFTOFF_TELEMETRY: "0"
+        run: >-
+          node scripts/repository-security/osv-driver.ts
+          --python "$(command -v python3)" --go "$(command -v go)"
+          --workspace-parent "$RUNNER_TEMP" --restore-public-go
+
+  dependency-review:
+    name: Review dependency changes
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.20.0"
-          cache: npm
+          package-manager-cache: false
+
+      - name: Review complete native dependency comparison
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/repository-security/dependency-review.ts
+
+  audit:
+    name: Audit packaged npm templates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        ref: ${{ github.event_name == 'schedule' && fromJSON('["develop","main"]') || fromJSON('[""]') }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+          ref: ${{ matrix.ref || github.sha }}
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
 
       - name: Select supported npm
         run: npm install --global "npm@12.0.2"
 
       - name: Install Liftoff dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts --no-audit --no-fund
+
+      - name: Validate action dependency policy
+        run: node scripts/check-repository-actions.mjs
 
       - name: Audit packaged template lockfiles
+        env:
+          LIFTOFF_NPM_AUDIT_REGISTRY: https://registry.npmjs.org
         run: npm run audit:template-dependencies

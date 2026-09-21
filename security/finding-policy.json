@@ -1,0 +1,103 @@
+{
+  "schemaVersion": 1,
+  "repository": "voyager163/liftoff",
+  "triageOwner": "voyager163",
+  "blockingVulnerabilitySeverities": ["high", "critical"],
+  "lowerSeverityHandling": "owner-bound-triage",
+  "unknownClassification": "error",
+  "npmPolicy": "existing-exact-exception-for-every-finding",
+  "secretsPolicy": "independent-disposition-no-vulnerability-waiver",
+  "policyRules": [
+    {
+      "tool": "checkov",
+      "rule": "CKV_AZURE_3",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Storage-account transport must require HTTPS. Review priority is not a CVSS score."
+    },
+    {
+      "tool": "osv-scanner",
+      "rule": "osv-valid-unscored-advisory",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Valid applicable advisories without published classification block intake. Upstream severity remains unscored; HIGH is review priority, not CVSS. Exceptions remain exact per advisory/component/version/graph and capped at 30 days."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_1",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Preserve HTTPS-only transport for the exact supported AzAPI storage-account shape; unknown API versions do not inherit coverage."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_2",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Preserve the existing bootstrap state-storage TLS contract, only within the registered bootstrap role."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_3",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Bootstrap state storage retains Entra-oriented authentication with shared keys disabled; this does not impose that role on unrelated resources."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_4",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "The exact bootstrap state-container role retains private blob access; this does not restrict intentional public telemetry ingress."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_5",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "The bootstrap state-storage perimeter association remains Enforced. This check alone does not qualify its CIDRs, topology or identity relationships."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_6",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Generated Compose image references must exactly match the immutable supported-stack inventory; local builds must resolve to explicitly inventoried Dockerfiles, not remote or escaping contexts."
+    },
+    {
+      "tool": "trivy",
+      "rule": "trivy-valid-native-unscored-advisory",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Valid native UNKNOWN with no same-record published score, vector or supported label remains blocking; HIGH is policy review priority, not CVSS. Exceptions require exact adopted image/component/version/advisory/digest identity and expire within 30 days."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_7",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Existing bootstrap state storage must remain SecuredByPerimeter with public blob access disabled; this rule does not restrict intentional public telemetry ingress."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_8",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "Existing bootstrap perimeter admission requires an explicit nonempty IPv4 /32 list and inbound direction, without legacy subscription/service-tag admission. Unresolved bindings remain errors; representative fixtures are not operator values."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_9",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "The exact declared bootstrap graph retains state-only perimeter/profile/container connections, storage-scoped Entra role assignment and existing deletion protections. Unknown resource membership or unresolved role bindings remain unqualified, not excepted by a resource count."
+    },
+    {
+      "tool": "checkov",
+      "rule": "CKV2_LIFTOFF_10",
+      "classification": "blocking-policy",
+      "reviewPriority": "high",
+      "rationale": "The exact telemetry role graph preserves its approved managed identity, least-privilege roles, HTTPS/public-ingress intent, digest reference, tokenless build source and six-column/180-day privacy contracts. Unknown role membership or malformed bindings remain unqualified; no production deployment or signing is claimed."
+    }
+  ]
+}

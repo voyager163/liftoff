@@ -41,6 +41,7 @@ export interface PublishedVerifierOptions {
   timeoutMs?: number;
   retryIntervalMs?: number;
   allowLegacyVersionCommand?: boolean;
+  expectedIntegrity?: string;
 }
 
 export interface PublishedVerificationResult {
@@ -49,6 +50,7 @@ export interface PublishedVerificationResult {
   tag: string;
   registry: string;
   legacyVersionCommandAllowed: boolean;
+  integrity?: string;
 }
 
 interface PackageIdentity {
@@ -160,6 +162,12 @@ export async function verifyPublishedPackage(
   if (!/^[a-z0-9][a-z0-9._-]*$/i.test(options.tag)) {
     throw new Error(`Invalid npm dist-tag: ${options.tag}`);
   }
+  if (options.expectedIntegrity !== undefined && (
+    !/^sha512-[A-Za-z0-9+/]{86}==$/.test(options.expectedIntegrity) ||
+    `sha512-${Buffer.from(options.expectedIntegrity.slice(7), 'base64').toString('base64')}` !== options.expectedIntegrity
+  )) {
+    throw new Error('Expected npm integrity must be a canonical SHA-512 integrity value.');
+  }
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
   const retryIntervalMs = options.retryIntervalMs ?? DEFAULT_RETRY_INTERVAL_MS;
   if (timeoutMs < 0 || retryIntervalMs <= 0) {
@@ -205,7 +213,8 @@ export async function verifyPublishedPackage(
       npm_config_cache: npmCache,
       npm_config_registry: CANONICAL_NPM_REGISTRY,
       npm_config_userconfig: path.join(tempRoot, 'user.npmrc'),
-      npm_config_globalconfig: path.join(tempRoot, 'global.npmrc')
+      npm_config_globalconfig: path.join(tempRoot, 'global.npmrc'),
+      LIFTOFF_TELEMETRY: '0'
     };
     const commandOptions = { cwd: outsideDirectory, env: isolatedEnvironment };
     await waitForPublishedVersion(
@@ -216,6 +225,16 @@ export async function verifyPublishedPackage(
       retryIntervalMs,
       dependencies
     );
+    if (options.expectedIntegrity !== undefined) {
+      const integrity = dependencies.runNpm([
+        'view', `${identity.name}@${identity.version}`, 'dist.integrity',
+        ...npmRegistryOverrideArgs(CANONICAL_NPM_REGISTRY)
+      ], commandOptions);
+      assertCommand(integrity, 'Canonical npm integrity lookup');
+      if (integrity.stdout.trim() !== options.expectedIntegrity) {
+        throw new Error(`Canonical npm integrity mismatch for ${identity.name}@${identity.version}.`);
+      }
+    }
     const install = dependencies.runNpm([
       'install',
       '--global',
@@ -297,7 +316,8 @@ export async function verifyPublishedPackage(
       version: identity.version,
       tag: options.tag,
       registry: CANONICAL_NPM_REGISTRY,
-      legacyVersionCommandAllowed: options.allowLegacyVersionCommand ?? false
+      legacyVersionCommandAllowed: options.allowLegacyVersionCommand ?? false,
+      ...(options.expectedIntegrity === undefined ? {} : { integrity: options.expectedIntegrity })
     };
   } finally {
     await dependencies.removeTempRoot(tempRoot);

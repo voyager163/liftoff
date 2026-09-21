@@ -1,0 +1,4498 @@
+{
+  "schemaVersion": 1,
+  "graph": "go-backend",
+  "baseline": {
+    "pathParts": [
+      "assets",
+      "supported-stack.json"
+    ],
+    "lookup": [
+      "goModules",
+      "go-backend",
+      "tools",
+      "github.com/pressly/goose/v3"
+    ]
+  },
+  "root": {
+    "name": "github.com/pressly/goose/v3",
+    "version": "v3.27.3",
+    "sum": "h1:pIglVHjw99r4e/hDHHwbl9vfOsDMqUokfkXo6+n/RxA=",
+    "goModSum": "h1:Dag+xpV6o20HR2LFY1j0q6MDwc3f7vPUFDA77R+0yGY=",
+    "archiveDigest": "sha256:5707e627c3c16cac20df24fd008aeea47e5d23d3befb0e024624e33691358bbf",
+    "goModDigest": "sha256:f25f8a88b5d9bcd71c8b170afce0b7bde1f0423d06ceeb101ddfe90abc0fbb9f",
+    "upstreamGoSumDigest": "sha256:c9c8d8fa4e93f6807d508de4dc75651c49c50b3043c7fc5ce7e9ff3a16e56f43"
+  },
+  "derivation": {
+    "method": "frozen-go-list-m-all",
+    "goVersion": "1.27.1",
+    "goExecutableDigest": "sha256:548608a910c46de32c65a3934f461b1787acf6ddd371044826068d8503b8509b",
+    "rootGoVersion": "1.25.7",
+    "moduleGraphDigest": "sha256:15bb03e0650ea44af455284f342bee953d816a4a984c603fc17d3c9656995d62",
+    "selectedGraphDigest": "sha256:4f5461eba33fdde9622f893fcdf331d5298f769677b828881252c3b71567994f",
+    "observedAt": "2026-09-20T10:21:55.083Z",
+    "proxy": "https://proxy.golang.org",
+    "sumdb": "sum.golang.org",
+    "toolchain": "local",
+    "metadata": "readonly"
+  },
+  "modules": [
+    {
+      "name": "cel.dev/expr",
+      "version": "v0.25.1",
+      "sum": "h1:1KrZg61W6TWSxuNZ37Xy49ps13NUovb66QLprthtwi4=",
+      "goModSum": "h1:hrXvqGP6G6gyx8UAHSHJ5RGk//1Oj5nXQ2NI02Nrsg4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "cel.dev/expr@v0.25.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:2647f7c35564302a80208f8bd5e3fca96ecfa13dd99c740f5bd1ab1052af4ce8"
+      }
+    },
+    {
+      "name": "cloud.google.com/go",
+      "version": "v0.34.0",
+      "sum": "h1:eOI3/cP2VTU6uZLDYAoic+eyzzB9YyGmJ7eIjl8rOPg=",
+      "goModSum": "h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "golang.org/x/oauth2@v0.0.0-20200107190931-bf48bf16ab8d",
+          "cloud.google.com/go@v0.34.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:de1c356bbed6bea72e1997c584778bd5439b29b21f0251ac49460771a683d09a"
+      }
+    },
+    {
+      "name": "cloud.google.com/go/compute/metadata",
+      "version": "v0.9.0",
+      "sum": "h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdBtwLoEkH9Zs=",
+      "goModSum": "h1:E0bWwX5wTnLPedCKqk3pJmVgCBSM6qQI1yTBdEb3C10=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "cloud.google.com/go/compute/metadata@v0.9.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:47bd4fe7eaa779b37c4d1021e87aa4c1fa24d3395a4c86e3bc778d60074e2bff"
+      }
+    },
+    {
+      "name": "dario.cat/mergo",
+      "version": "v1.0.2",
+      "sum": "h1:85+piFYR1tMbRrLcDwR18y4UKJ3aH1Tbzi24VRW1TK8=",
+      "goModSum": "h1:E/hbnu0NxMFBjpMIE34DRGLWqDy0g5FuKDhCb31ngxA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "dario.cat/mergo@v1.0.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:45ffeb8d018ec42836e1a380a64a04805b34a4581de0b416411690fd735cd515"
+      }
+    },
+    {
+      "name": "filippo.io/edwards25519",
+      "version": "v1.2.0",
+      "sum": "h1:crnVqOiS4jqYleHd9vaKZ+HKtHfllngJIiOpNpoJsjo=",
+      "goModSum": "h1:xzAOLCNug/yB62zG1bQ8uziwrIqIuxhctzJT18Q77mc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/go-sql-driver/mysql@v1.10.0",
+          "filippo.io/edwards25519@v1.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/azure-sdk-for-go/sdk/azcore",
+      "version": "v1.21.1",
+      "sum": "h1:jHb/wfvRikGdxMXYV3QG/SzUOPYN9KEUUuC0Yd0/vC0=",
+      "goModSum": "h1:pzBXCYn05zvYIrwLgtK8Ap8QcjRg+0i76tMQdWN6wOk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/Azure/azure-sdk-for-go/sdk/azcore@v1.21.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/azure-sdk-for-go/sdk/azidentity",
+      "version": "v1.13.1",
+      "sum": "h1:Hk5QBxZQC1jb2Fwj6mpzme37xbCDdNTxU7O9eb5+LB4=",
+      "goModSum": "h1:IYus9qsFobWIc2YVwe/WPjcnyCkPKtnHAqUYeebc8z0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/Azure/azure-sdk-for-go/sdk/azidentity@v1.13.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/azure-sdk-for-go/sdk/internal",
+      "version": "v1.12.0",
+      "sum": "h1:fhqpLE3UEXi9lPaBRpQ6XuRW0nU7hgg4zlmZZa+a9q4=",
+      "goModSum": "h1:7dCRMLwisfRH3dBupKeNCioWYUZ4SS09Z14H+7i8ZoY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/Azure/azure-sdk-for-go/sdk/internal@v1.12.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys",
+      "version": "v1.4.0",
+      "sum": "h1:E4MgwLBGeVB5f2MdcIVD3ELVAWpr+WD6MUe1i+tM/PA=",
+      "goModSum": "h1:Y2b/1clN4zsAoUd/pgNAQHjLDnTis/6ROkUfyob6psM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/azkeys@v1.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal",
+      "version": "v1.2.0",
+      "sum": "h1:nCYfgcSyHZXJI8J0IWE5MsCGlb2xp9fJiXyxWgmOFg4=",
+      "goModSum": "h1:ucUjca2JtSZboY8IoUqyQyuuXvwbMBVwFOm0vdQPNhA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/Azure/azure-sdk-for-go/sdk/security/keyvault/internal@v1.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/Azure/go-ansiterm",
+      "version": "v0.0.0-20250102033503-faa5f7b0171c",
+      "sum": "h1:udKWzYgxTojEKWjV8V+WSxDXJ4NFATAsZjh8iIbsQIg=",
+      "goModSum": "h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/Azure/go-ansiterm@v0.0.0-20250102033503-faa5f7b0171c"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:89a6889f752c74c55b8d6e07f99d3a9deb4f2386896bd5204b96a7515bbe47d4"
+      }
+    },
+    {
+      "name": "github.com/AzureAD/microsoft-authentication-library-for-go",
+      "version": "v1.6.0",
+      "sum": "h1:XRzhVemXdgvJqCH0sFfrBUTnUJSBrBf7++ypk+twtRs=",
+      "goModSum": "h1:HKpQxkWaGLJ+D/5H8QRpyQXA1eKjxkFlOMwck5+33Jk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/AzureAD/microsoft-authentication-library-for-go@v1.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/BurntSushi/toml",
+      "version": "v0.3.1",
+      "sum": "h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=",
+      "goModSum": "h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/cncf/xds/go@v0.0.0-20211011173535-cb28da3451f1",
+          "google.golang.org/grpc@v1.25.1",
+          "github.com/envoyproxy/go-control-plane@v0.9.0",
+          "google.golang.org/grpc@v1.23.0",
+          "github.com/BurntSushi/toml@v0.3.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:5281ea410f6e87baf3942e72721245886e8fd981c7150df81664ce9b30197dba"
+      }
+    },
+    {
+      "name": "github.com/ClickHouse/ch-go",
+      "version": "v0.73.0",
+      "sum": "h1:jsHiGRbQ3sz+gekvDFJF29LWDo5dzbJm5s1h8TWVP2M=",
+      "goModSum": "h1:wkFIxrqlXeRJ9cn3r5Fz5Qen9jl5aTMPuGZeuJpANNY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/ClickHouse/clickhouse-go/v2",
+      "version": "v2.47.0",
+      "sum": "h1:ZDAzrnKSOPTIsm4tdUNfrii2yc8dk4SVRLC77BR7Z5Q=",
+      "goModSum": "h1:sPj7C7UYQ2MWHcfX+4eGN6nwnCqwUKfgO6PcwKpd6K8=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp",
+      "version": "v1.32.0",
+      "sum": "h1:rIkQfkCOVKc1OiRCNcSDD8ml5RJlZbH/Xsq7lbpynwc=",
+      "goModSum": "h1:RD2SsorTmYhF6HkTmDw7KmPYQk8OBYwTkuasChwv7R4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp@v1.32.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:5246ab57e37eae1fe8c7bf78caeb47548ea14c0d778106727616cedf4e57ac9a"
+      }
+    },
+    {
+      "name": "github.com/Microsoft/go-winio",
+      "version": "v0.6.2",
+      "sum": "h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERoyfY=",
+      "goModSum": "h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/Microsoft/go-winio@v0.6.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/andybalholm/brotli",
+      "version": "v1.2.2",
+      "sum": "h1:HzTuoo2ErYQqf5qvcJInB8uvqSVxRttzkFexPWtnceM=",
+      "goModSum": "h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/andybalholm/brotli@v1.2.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/antihax/optional",
+      "version": "v1.0.0",
+      "sum": "h1:xK2lYat7ZLaVVcIuj82J8kIro4V6kDe0AUDFboUCwcg=",
+      "goModSum": "h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0",
+          "github.com/grpc-ecosystem/grpc-gateway@v1.16.0",
+          "github.com/antihax/optional@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:c7175cbc7b874f992a3e492e7187d4e9540d419092b045de4afc6178226a19bd"
+      }
+    },
+    {
+      "name": "github.com/antlr4-go/antlr/v4",
+      "version": "v4.13.1",
+      "sum": "h1:SqQKkuVZ+zWkMMNkjy5FZe5mr5WURWnlpmOuzYWrPrQ=",
+      "goModSum": "h1:GKmUxMtwp6ZgGwZSva4eWPC5mS6vUAmOABFgjdkM7Nw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/antlr4-go/antlr/v4@v4.13.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/cenkalti/backoff/v4",
+      "version": "v4.3.0",
+      "sum": "h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=",
+      "goModSum": "h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/cenkalti/backoff/v4@v4.3.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:6f031581d7d7559b2485495aca05bbb6c694e461a097f9c0a8e8c1468489d67d"
+      }
+    },
+    {
+      "name": "github.com/census-instrumentation/opencensus-proto",
+      "version": "v0.2.1",
+      "sum": "h1:glEXhBS5PSLLv4IXzLA5yPRVX4bilULVyxxbrfOtDAk=",
+      "goModSum": "h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "github.com/census-instrumentation/opencensus-proto@v0.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:a2e3f4808a66ff4dbc18af803bc0c078b28cc7aaa860c80684e3cb2016d16599"
+      }
+    },
+    {
+      "name": "github.com/cespare/xxhash/v2",
+      "version": "v2.3.0",
+      "sum": "h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=",
+      "goModSum": "h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/cespare/xxhash/v2@v2.3.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/client9/misspell",
+      "version": "v0.3.4",
+      "sum": "h1:ta993UF76GwbvJcIo3Y68y/M3WxlpEHPWIGDkJYwzJI=",
+      "goModSum": "h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/cncf/xds/go@v0.0.0-20211011173535-cb28da3451f1",
+          "google.golang.org/grpc@v1.25.1",
+          "github.com/envoyproxy/go-control-plane@v0.9.0",
+          "google.golang.org/grpc@v1.23.0",
+          "github.com/client9/misspell@v0.3.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:75cfcf11270e4bc584aa9d0d48502a330226b374aa8ac2c292ad78f44e14f347"
+      }
+    },
+    {
+      "name": "github.com/cncf/udpa/go",
+      "version": "v0.0.0-20210930031921-04548b0d99d4",
+      "sum": "h1:hzAQntlaYRkVSFEfj9OTWlVV1H155FMD8BTKktLv0QI=",
+      "goModSum": "h1:6pvJx4me5XPnfI9Z40ddWsdw2W/uZgQLFXToKeRcDiI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/cncf/udpa/go@v0.0.0-20210930031921-04548b0d99d4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:c8820bfcedf51bd534c23e0e0831ee84d1d7da3482e049603dfbeb97c389cf5f"
+      }
+    },
+    {
+      "name": "github.com/cncf/xds/go",
+      "version": "v0.0.0-20260202195803-dba9d589def2",
+      "sum": "h1:aBangftG7EVZoUb69Os8IaYg++6uMOdKK83QtkkvJik=",
+      "goModSum": "h1:qwXFYgsP6T7XnJtbKlf1HP8AjxZZyzxMmc+Lq5GjlU4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/cncf/xds/go@v0.0.0-20260202195803-dba9d589def2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:f57c8cdd577e41dc99deca3d6c9225a8fe608d2d6bfb1dcb9a82bf83c0071028"
+      }
+    },
+    {
+      "name": "github.com/coder/websocket",
+      "version": "v1.8.15",
+      "sum": "h1:6B2JPeOGlpff2Uz6vOEH1Vzpi0iUz20A+lPVhPHtNUA=",
+      "goModSum": "h1:NX3SzP+inril6yawo5CQXx8+fk145lPDC6pumgx0mVg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/coder/websocket@v1.8.15"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/containerd/errdefs",
+      "version": "v1.0.0",
+      "sum": "h1:tg5yIfIlQIrxYtu9ajqY42W3lpS19XqdxRQeEwYG8PI=",
+      "goModSum": "h1:+YBYIdtsnF4Iw6nWZhJcqGSg/dwvV7tyJ/kCkyJ2k+M=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/containerd/errdefs@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/containerd/errdefs/pkg",
+      "version": "v0.3.0",
+      "sum": "h1:9IKJ06FvyNlexW690DXuQNx2KA2cUJXx151Xdx3ZPPE=",
+      "goModSum": "h1:NJw6s9HwNuRhnjJhM7pylWwMyAkmCQvQ4GpJHEqRLVk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/containerd/errdefs/pkg@v0.3.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/containerd/log",
+      "version": "v0.1.0",
+      "sum": "h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I=",
+      "goModSum": "h1:VRRf09a7mHDIRezVKTRCrOq78v577GXq3bSa3EhrzVo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/containerd/log@v0.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:52b963d7a645a3fea77f8fe1031329ef64ae8bb504e7b9e4252b2c24257015ff"
+      }
+    },
+    {
+      "name": "github.com/containerd/platforms",
+      "version": "v0.2.1",
+      "sum": "h1:zvwtM3rz2YHPQsF2CHYM8+KtB5dvhISiXh5ZpSBQv6A=",
+      "goModSum": "h1:XHCb+2/hzowdiut9rkudds9bE5yJ7npe7dG/wG+uFPw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/containerd/platforms@v0.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:2870bfa2386b5e799249070017056f4f25af1008193a2f257982d4be108c8218"
+      }
+    },
+    {
+      "name": "github.com/containerd/typeurl/v2",
+      "version": "v2.2.0",
+      "sum": "h1:6NBDbQzr7I5LHgp34xAXYF5DOTQDn05X58lsPEmzLso=",
+      "goModSum": "h1:8XOOxnyatxSWuG8OfsZXVnAF4iZfedjS/8UHSPJnX4g=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/containerd/errdefs/pkg@v0.3.0",
+          "github.com/containerd/typeurl/v2@v2.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:cd8d20d4a2d62f9c5ea02d294739e612deafa8f6513d9a791c7e4b28632701e7"
+      }
+    },
+    {
+      "name": "github.com/cpuguy83/dockercfg",
+      "version": "v0.3.2",
+      "sum": "h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GKorA=",
+      "goModSum": "h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/cpuguy83/dockercfg@v0.3.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:c8d2e3e086a0d9560f005f63a6617f28b5a0a9770416308836cb08dce113a817"
+      }
+    },
+    {
+      "name": "github.com/creack/pty",
+      "version": "v1.1.24",
+      "sum": "h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=",
+      "goModSum": "h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/client@v0.5.0",
+          "github.com/creack/pty@v1.1.24"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:cd4a99911a6b7bf748ae8d8daa02c250495adfd43ba03d72db9e92e10350dcc8"
+      }
+    },
+    {
+      "name": "github.com/davecgh/go-spew",
+      "version": "v1.1.1",
+      "sum": "h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=",
+      "goModSum": "h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/davecgh/go-spew@v1.1.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/distribution/reference",
+      "version": "v0.6.0",
+      "sum": "h1:0IXCQ5g4/QMHHkarYzh5l+u8T3t73zM5QvfrDyIgxBk=",
+      "goModSum": "h1:BbU0aIcezP1/5jX/8MP0YiH4SdvB5Y4f/wlDRiLyi3E=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/distribution/reference@v0.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/dmarkham/enumer",
+      "version": "v1.6.3",
+      "sum": "h1:B4aV4OsfzbrS5rvjILt4mMjiWBA//cKxJUMsvHZ8mEI=",
+      "goModSum": "h1:DyjXaqCglj4GhELF73oWiparNkYkXvmOBLza/o4kO74=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0",
+          "github.com/dmarkham/enumer@v1.6.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:405bf005b779bd8085e8a0e0379669b26c88e5f8840755445828e027c0fae48c"
+      }
+    },
+    {
+      "name": "github.com/docker/go-connections",
+      "version": "v0.7.0",
+      "sum": "h1:6SsRfJddP22WMrCkj19x9WKjEDTB+ahsdiGYf0mN39c=",
+      "goModSum": "h1:no1qkHdjq7kLMGUXYAduOhYPSJxxvgWBh7ogVvptn3Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/docker/go-connections@v0.7.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/docker/go-units",
+      "version": "v0.5.0",
+      "sum": "h1:69rxXcBk27SvSaaxTtLh/8llcHD8vYHT7WSdRZ/jvr4=",
+      "goModSum": "h1:fgPhTUdO+D/Jk86RDLlptpiXQzgHJF7gydDDbaIK4Dk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/docker/go-units@v0.5.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/dustin/go-humanize",
+      "version": "v1.0.1",
+      "sum": "h1:GzkhY7T5VNhEkwH0PVJgjz+fX1rhBrR7pRT3mDkpeCY=",
+      "goModSum": "h1:Mu1zIs6XwVuF/gI1OepvI0qD18qycQx+mFykh5fBlto=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "github.com/dustin/go-humanize@v1.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/ebitengine/purego",
+      "version": "v0.10.1",
+      "sum": "h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=",
+      "goModSum": "h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ebitengine/purego@v0.10.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:a241ae230b94d16d8400713094aa3cadbe8736fc30a60cc0592690c7769f4b2b"
+      }
+    },
+    {
+      "name": "github.com/elastic/go-sysinfo",
+      "version": "v1.15.5",
+      "sum": "h1:fCVUDmjHgljLUQCygherMnsRRJ9AkuAQIywTL7dEH28=",
+      "goModSum": "h1:ZBVXmqS368dOn/jvijV/zHLfakWTYHBZPk3G244lHrU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/elastic/go-sysinfo@v1.15.5"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/elastic/go-windows",
+      "version": "v1.0.2",
+      "sum": "h1:yoLLsAsV5cfg9FLhZ9EXZ2n2sQFKeDYrHenkcivY4vI=",
+      "goModSum": "h1:bGcDpBzXgYSqM0Gx3DM4+UxFj300SZLixie9u9ixLM8=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/elastic/go-windows@v1.0.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane",
+      "version": "v0.14.0",
+      "sum": "h1:hbG2kr4RuFj222B6+7T83thSPqLjwBIfQawTkC++2HA=",
+      "goModSum": "h1:NcS5X47pLl/hfqxU70yPwL9ZMkUlwlKxtAohpi2wBEU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/envoyproxy/go-control-plane@v0.14.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:f76fbf26b6389fc058897f1f879edb846690ec7d620ecf67143a120b8bb2e3ea"
+      }
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane/envoy",
+      "version": "v1.37.0",
+      "sum": "h1:u3riX6BoYRfF4Dr7dwSOroNfdSbEPe9Yyl09/B6wBrQ=",
+      "goModSum": "h1:DReE9MMrmecPy+YvQOAOHNYMALuowAnbjjEMkkWOi6A=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/envoyproxy/go-control-plane/envoy@v1.37.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:25bc5fb530d11dba5850318f4dd8ad29e4392302d3a5b5eb4678b9506f5b98fd"
+      }
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane/ratelimit",
+      "version": "v0.1.0",
+      "sum": "h1:/G9QYbddjL25KvtKTv3an9lx6VBE2cnb8wp1vEGNYGI=",
+      "goModSum": "h1:Wk+tMFAFbCXaJPzVVHnPgRKdUdwW/KdbRt94AzgRee4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/envoyproxy/go-control-plane/ratelimit@v0.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:961b015059098818faf8e74ca05ac8e3b7a6bf8b124c620de95a12144d638421"
+      }
+    },
+    {
+      "name": "github.com/envoyproxy/protoc-gen-validate",
+      "version": "v1.3.3",
+      "sum": "h1:MVQghNeW+LZcmXe7SY1V36Z+WFMDjpqGAGacLe2T0ds=",
+      "goModSum": "h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/envoyproxy/protoc-gen-validate@v1.3.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:4460b7972e2ea606152239f3d09327278d1afa72db1767770292884b548ecac9"
+      }
+    },
+    {
+      "name": "github.com/felixge/httpsnoop",
+      "version": "v1.1.0",
+      "sum": "h1:3YtUj32ZZkqZtt3sZZsClsymw/QDuVfpNhoA31zeORc=",
+      "goModSum": "h1:Zqxgdd+1Rkcz8euOqdr7lqgCRJztwr5hp9vDSi5UZCE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/felixge/httpsnoop@v1.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/ghodss/yaml",
+      "version": "v1.0.0",
+      "sum": "h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=",
+      "goModSum": "h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0",
+          "github.com/grpc-ecosystem/grpc-gateway@v1.16.0",
+          "github.com/ghodss/yaml@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:1d0f9b2092652a85351010fa4d7c02e7c2b050fbe5e1375a345f9a2a467ef6a1"
+      }
+    },
+    {
+      "name": "github.com/go-faster/city",
+      "version": "v1.0.1",
+      "sum": "h1:4WAxSZ3V2Ws4QRDrscLEDcibJY8uf41H6AhXDrNDcGw=",
+      "goModSum": "h1:jKcUJId49qdW3L1qKHH/3wPeUstCVpVSXTM6vO3VcTw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/go-faster/city@v1.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/go-faster/errors",
+      "version": "v0.7.1",
+      "sum": "h1:MkJTnDoEdi9pDabt1dpWf7AA8/BaSYZqibYyhZ20AYg=",
+      "goModSum": "h1:5ySTjWFiphBs07IKuiL69nxdfd5+fzh1u7FPGZP2quo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/go-faster/errors@v0.7.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/go-jose/go-jose/v4",
+      "version": "v4.1.4",
+      "sum": "h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=",
+      "goModSum": "h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/go-jose/go-jose/v4@v4.1.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:11b3edd993e670fe7bbb694fac66bd8be8f9f9d29c48112ad1511e4976d53bc9"
+      }
+    },
+    {
+      "name": "github.com/go-logr/logr",
+      "version": "v1.4.4",
+      "sum": "h1:tG4xh9yMsRCAiodLVTxyrkzSZ9+o0L1Kg/+cPVcbP/8=",
+      "goModSum": "h1:9T104GzyrTigFIr8wt5mBrctHMim0Nb2HLGrmQ40KvY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/go-logr/logr@v1.4.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/go-logr/stdr",
+      "version": "v1.2.2",
+      "sum": "h1:hSWxHoqTgW2S2qGc0LTAI563KZ5YKYRhT3MFKZMbjag=",
+      "goModSum": "h1:mMo/vtBO5dYbehREoey6XUKy/eSumjCCveDpRre4VKE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/go-logr/stdr@v1.2.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/go-ole/go-ole",
+      "version": "v1.3.0",
+      "sum": "h1:Dt6ye7+vXGIKZ7Xtk4s6/xVdGDQynvom7xCFEdWr6uE=",
+      "goModSum": "h1:5LS6F96DhAwUc7C+1HLexzMXY1xGRSryjyPPKW6zv78=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/go-ole/go-ole@v1.3.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:55879a8357c6e4685e3d89abab83d1f75639b4fc731e27fa31be5aa8230a34c7"
+      }
+    },
+    {
+      "name": "github.com/go-sql-driver/mysql",
+      "version": "v1.10.0",
+      "sum": "h1:Q+1LV8DkHJvSYAdR83XzuhDaTykuDx0l6fkXxoWCWfw=",
+      "goModSum": "h1:M+cqaI7+xxXGG9swrdeUIoPG3Y3KCkF0pZej+SK+nWk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/go-sql-driver/mysql@v1.10.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/gogo/protobuf",
+      "version": "v1.3.2",
+      "sum": "h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=",
+      "goModSum": "h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/containerd/errdefs/pkg@v0.3.0",
+          "github.com/gogo/protobuf@v1.3.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:2d07e991b497491c36c8f8baf8d59f4487f65b7762ed8978031fe23711d69581"
+      }
+    },
+    {
+      "name": "github.com/golang-jwt/jwt/v4",
+      "version": "v4.5.2",
+      "sum": "h1:YtQM7lnr8iZ+j5q71MGKkNw9Mn7AjHM68uc9g5fXeUI=",
+      "goModSum": "h1:m21LjoU+eqJr34lmDMbreY2eSTRJ1cv77w39/MY0Ch0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/golang-jwt/jwt/v4@v4.5.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/golang-jwt/jwt/v5",
+      "version": "v5.3.1",
+      "sum": "h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=",
+      "goModSum": "h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/golang-jwt/jwt/v5@v5.3.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/golang-sql/civil",
+      "version": "v0.0.0-20220223132316-b832511892a9",
+      "sum": "h1:au07oEsX2xN0ktxqI+Sida1w446QrXBRJ0nee3SNZlA=",
+      "goModSum": "h1:8vg3r2VgvsThLBIFL93Qb5yWzgyZWhEmBwUJWevAkK0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/golang-sql/civil@v0.0.0-20220223132316-b832511892a9"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/golang-sql/sqlexp",
+      "version": "v0.1.0",
+      "sum": "h1:ZCD6MBpcuOVfGVqsEmY5/4FtYiKz6tSyUv9LPEDei6A=",
+      "goModSum": "h1:J4ad9Vo8ZCWQ2GMrC4UCQy1JpCbwU9m3EOqtpKwwwHI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/golang-sql/sqlexp@v0.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/golang/glog",
+      "version": "v1.2.5",
+      "sum": "h1:DrW6hGnjIhtvhOIiAKT6Psh/Kd/ldepEa81DKeiRJ5I=",
+      "goModSum": "h1:6AhwSGph0fcJtXVM/PEHPqZlFeoLxhs7/t5UDAwmO+w=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/golang/glog@v1.2.5"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:233eab5bb41cc9dc53ded2b741dbeb2ab267a9f583aeb843b763cdf6940563a1"
+      }
+    },
+    {
+      "name": "github.com/golang/mock",
+      "version": "v1.1.1",
+      "sum": "h1:G5FRp8JnTd7RQH5kemVNlMeyXQAztQ3mOWV95KxsXH8=",
+      "goModSum": "h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/cncf/xds/go@v0.0.0-20211011173535-cb28da3451f1",
+          "google.golang.org/grpc@v1.25.1",
+          "github.com/golang/mock@v1.1.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:65efbe2423caf31747270b93e98d95ed02a9bdcc749e2aaf9cfa26d8ec70bdc7"
+      }
+    },
+    {
+      "name": "github.com/golang/protobuf",
+      "version": "v1.5.4",
+      "sum": "h1:i7eJL8qZTpSEXOPTxNKhASYpMn+8e5Q6AdndVa1dWek=",
+      "goModSum": "h1:lnTiLA8Wa4RWRcIUkrtSVa5nRhsEGBg48fD6rSs7xps=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/golang/protobuf@v1.5.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/google/go-cmp",
+      "version": "v0.7.0",
+      "sum": "h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=",
+      "goModSum": "h1:pXiqmnSA92OHEEa9HXL2W4E7lf9JzCmGVUdgjX3N/iU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/api@v1.55.0",
+          "github.com/google/go-cmp@v0.7.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/google/pprof",
+      "version": "v0.0.0-20250317173921-a4b03ec1a45e",
+      "sum": "h1:ijClszYn+mADRFY17kjQEVQ1XRhq2/JR1M3sGqeJoxs=",
+      "goModSum": "h1:boTsfXsheKC2y+lKOCMpSfarhxDeIzfZG1jqGcPl3cA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "github.com/google/pprof@v0.0.0-20250317173921-a4b03ec1a45e"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/google/uuid",
+      "version": "v1.6.0",
+      "sum": "h1:NIvaJDMOsjHA8n1jAhLSgzrAzy1Hgr+hNrb57e+94F0=",
+      "goModSum": "h1:TIyPZe4MgqvfeYDBFedMoGGpEw/LqOeaOT+nhxU+yHo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/google/uuid@v1.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/gorilla/websocket",
+      "version": "v1.4.2",
+      "sum": "h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=",
+      "goModSum": "h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/gorilla/websocket@v1.4.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:1b524ff87155de60eeed6b834e05eacd9a49a54ef79c73d70498f5c110499bea"
+      }
+    },
+    {
+      "name": "github.com/grpc-ecosystem/grpc-gateway",
+      "version": "v1.16.0",
+      "sum": "h1:gmcG1KaJ57LophUzW0Hy8NmPhnMZb4M0+kPpLofRdBo=",
+      "goModSum": "h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0",
+          "github.com/grpc-ecosystem/grpc-gateway@v1.16.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:896a8a529e63c837ce92f13d025b5cac5abdfdf9fdb942cae60b70904b8929a4"
+      }
+    },
+    {
+      "name": "github.com/hashicorp/go-uuid",
+      "version": "v1.0.3",
+      "sum": "h1:2gKiV6YVmrJ1i2CKKa9obLvRieoRGviZFL26PcT/Co8=",
+      "goModSum": "h1:6SBZvOh/SIDV7/2o3Jml5SYk/TvGqwFJ/bN7x4byOro=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/hashicorp/go-uuid@v1.0.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:bea58c98b8ed720af197b1d4a59607e5f8ca9e2ee9266631f6dbbd07febde323"
+      }
+    },
+    {
+      "name": "github.com/hashicorp/go-version",
+      "version": "v1.9.0",
+      "sum": "h1:CeOIz6k+LoN3qX9Z0tyQrPtiB1DFYRPfCIBtaXPSCnA=",
+      "goModSum": "h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0",
+          "github.com/hashicorp/go-version@v1.9.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:6b33bb500a79a35f17b186dbf8d3882ebb029c6bc5af425af8fd1f2b1bb88df2"
+      }
+    },
+    {
+      "name": "github.com/hashicorp/golang-lru/v2",
+      "version": "v2.0.7",
+      "sum": "h1:a+bsQ5rvGLjzHuww6tVxozPZFVghXaHOwFs4luLUK2k=",
+      "goModSum": "h1:QeFd9opnmA6QUJc5vARoKUSoFhyfM2/ZepoAG6RGpeM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "github.com/hashicorp/golang-lru/v2@v2.0.7"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jackc/pgpassfile",
+      "version": "v1.0.0",
+      "sum": "h1:/6Hmqy13Ss2zCq62VdNG8tM1wchn8zjSGOBJ6icpsIM=",
+      "goModSum": "h1:CEx0iS5ambNFdcRtxPj5JhEz+xB6uRky5eyVu/W2HEg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/jackc/pgx/v5@v5.10.0",
+          "github.com/jackc/pgpassfile@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jackc/pgservicefile",
+      "version": "v0.0.0-20240606120523-5a60cdf6a761",
+      "sum": "h1:iCEnooe7UlwOQYpKFhBabPMi4aNAfoODPEFNiAnClxo=",
+      "goModSum": "h1:5TJZWKEWniPve33vlWYSoGYefn3gLQRzjfDlhSJ9ZKM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/jackc/pgx/v5@v5.10.0",
+          "github.com/jackc/pgservicefile@v0.0.0-20240606120523-5a60cdf6a761"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jackc/pgx/v5",
+      "version": "v5.10.0",
+      "sum": "h1:VhSvgU2jSli8o3AqIEOTJr7rZwAEUVo4E4XhR94Zfr0=",
+      "goModSum": "h1:mal1tBGAFfLHvZzaYh77YS/eC6IX9OWbRV1QIIM0Jn4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/jackc/pgx/v5@v5.10.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jackc/puddle/v2",
+      "version": "v2.2.2",
+      "sum": "h1:PR8nw+E/1w0GLuRFSmiioY6UooMp6KJv0/61nB7icHo=",
+      "goModSum": "h1:vriiEXHvEE654aYKXXjOvZM39qJ0q+azkZFrfEOc3H4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/jackc/pgx/v5@v5.10.0",
+          "github.com/jackc/puddle/v2@v2.2.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jcmturner/aescts/v2",
+      "version": "v2.0.0",
+      "sum": "h1:9YKLH6ey7H4eDBXW8khjYslgyqG2xZikXP0EQFKrle8=",
+      "goModSum": "h1:AiaICIRyfYg35RUkr8yESTqvSy7csK90qZ5xfvvsoNs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/aescts/v2@v2.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:649d3aa9d5a621fe2fc9d041f7e828ca2dfed31270d01029d1b4ac9a6551b31d"
+      }
+    },
+    {
+      "name": "github.com/jcmturner/dnsutils/v2",
+      "version": "v2.0.0",
+      "sum": "h1:lltnkeZGL0wILNvrNiVCR6Ro5PGU/SeBvVO/8c/iPbo=",
+      "goModSum": "h1:b0TnjGOvI/n42bZa+hmXL+kFJZsFT7G4t3HTlQ184QM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/dnsutils/v2@v2.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:1824a13006859d0056a783a822b86153b3292232f1da5de727f4c94581d31a8d"
+      }
+    },
+    {
+      "name": "github.com/jcmturner/gofork",
+      "version": "v1.7.6",
+      "sum": "h1:QH0l3hzAU1tfT3rZCnW5zXl+orbkNMMRGJfdJjHVETg=",
+      "goModSum": "h1:1622LH6i/EZqLloHfE7IeZ0uEJwMSUyQ/nDd82IeqRo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/gofork@v1.7.6"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:ce651afaf240cba21204085c8bd4a4d5954cadfdeb217cde24ceff9f7ae64261"
+      }
+    },
+    {
+      "name": "github.com/jcmturner/goidentity/v6",
+      "version": "v6.0.1",
+      "sum": "h1:VKnZd2oEIMorCTsFBnJWbExfNN7yZr3EhJAxwOkZg6o=",
+      "goModSum": "h1:X1YW3bgtvwAXju7V3LCIMpY0Gbxyjn/mY9zx4tFonSg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/goidentity/v6@v6.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:a6414c4bc1eecd3ae11243e896642524ab5c707d19558802596bdfa3233f8f4d"
+      }
+    },
+    {
+      "name": "github.com/jcmturner/gokrb5/v8",
+      "version": "v8.4.4",
+      "sum": "h1:x1Sv4HaTpepFkXbt2IkL29DXRf8sOfZXo8eRKh687T8=",
+      "goModSum": "h1:1btQEpgT6k+unzCwX1KdWMEwPPkkgBtP+F6aCACiMrs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/gokrb5/v8@v8.4.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:1039b56a5642c02c16589334d069d5c5a1540095770323718324edc1cbc458bc"
+      }
+    },
+    {
+      "name": "github.com/jcmturner/rpc/v2",
+      "version": "v2.0.3",
+      "sum": "h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZY=",
+      "goModSum": "h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/jcmturner/rpc/v2@v2.0.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:992f8b7dc05165bc1781a676755420056be30001c4fd819f9cc7150b423d1751"
+      }
+    },
+    {
+      "name": "github.com/jessevdk/go-flags",
+      "version": "v1.4.0",
+      "sum": "h1:4IU2WS7AumrZ/40jfhf4QVDMsQwqA7VEHozFRrGARJA=",
+      "goModSum": "h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "howett.net/plist@v1.0.1",
+          "github.com/jessevdk/go-flags@v1.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:065c42456d3b1567a3dd36fe10f44b5950988a4c52b2f6bd1e1bd6eb9005811c"
+      }
+    },
+    {
+      "name": "github.com/joeshaw/multierror",
+      "version": "v0.0.0-20140124173710-69b34d4ec901",
+      "sum": "h1:rp+c0RAYOWj8l6qbCUTSiRLG/iKnW3K3/QfPPuSsBt4=",
+      "goModSum": "h1:Z86h9688Y0wesXCyonoVr47MasHilkuLMqGhRZ4Hpak=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/vertica/vertica-sql-go@v1.3.8",
+          "github.com/joeshaw/multierror@v0.0.0-20140124173710-69b34d4ec901"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:daa8bfb3891d1e81e207c2d387eb843698aed372d58075a8405cb6b09ae472f6"
+      }
+    },
+    {
+      "name": "github.com/joho/godotenv",
+      "version": "v1.5.1",
+      "sum": "h1:7eLL/+HRGLY0ldzfGMeQkb7vMd0as4CfYvUVzLqw0N0=",
+      "goModSum": "h1:f4LDr5Voq0i2e/R5DDNOoa2zzDfwtkZa6DnEwAbqwq4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/joho/godotenv@v1.5.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/jonboulle/clockwork",
+      "version": "v0.5.0",
+      "sum": "h1:Hyh9A8u51kptdkR+cqRpT1EebBwTn1oK9YfGYbdFz6I=",
+      "goModSum": "h1:3mZlmanh0g2NDKO5TWZVJAfofYk64M7XN3SzBPjZF60=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/jonboulle/clockwork@v0.5.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/klauspost/compress",
+      "version": "v1.19.1",
+      "sum": "h1:VsB4HPswih7mmZ8WleSFQ75c/Ui1M4trX5oAsJnhSlk=",
+      "goModSum": "h1:cwPg85FWrGar70rWktvGQj8/hthj3wpl0PGDogxkrSQ=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/klauspost/compress@v1.19.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/kr/pretty",
+      "version": "v0.3.1",
+      "sum": "h1:flRD4NNwYAUpkphVc1HcthR4KEIFJ65n8Mw5qdRn3LE=",
+      "goModSum": "h1:hoEshYVHaxMs3cyo3Yncou5ZscifuDolrwPKZanG3xk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/auto/sdk@v1.2.1",
+          "github.com/kr/pretty@v0.3.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/kr/text",
+      "version": "v0.2.0",
+      "sum": "h1:5Nx0Ya0ZqY2ygV366QzturHI13Jq95ApcVaJBhpS+AY=",
+      "goModSum": "h1:eLer722TekiGuMkidMxC/pM04lWEeraHUUmBw8l2grE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/otel@v1.44.0",
+          "github.com/kr/text@v0.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/kylelemons/godebug",
+      "version": "v1.1.0",
+      "sum": "h1:RPNrshWIDI6G2gRW9EHilWtl7Z6Sb1BR0xunSBf0SNc=",
+      "goModSum": "h1:9/0rRGxNHcop5bhtWyNeEfOS8JIWk580+fNqagV/RAw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/kylelemons/godebug@v1.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/lufia/plan9stats",
+      "version": "v0.0.0-20260330125221-c963978e514e",
+      "sum": "h1:Q6MvJtQK/iRcRtzAscm/zF23XxJlbECiGPyRicsX+Ak=",
+      "goModSum": "h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/lufia/plan9stats@v0.0.0-20260330125221-c963978e514e"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:2dada1b3d9e829631865064c371159b5aa1b588381a90b7338d769bf8e80b947"
+      }
+    },
+    {
+      "name": "github.com/magiconair/properties",
+      "version": "v1.8.10",
+      "sum": "h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8SYxI99mE=",
+      "goModSum": "h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/magiconair/properties@v1.8.10"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:34bfaac7e4d2f91c345149b5a4de30bbf15d5e35960f652cb93f643a3621ea82"
+      }
+    },
+    {
+      "name": "github.com/mattn/go-isatty",
+      "version": "v0.0.23",
+      "sum": "h1:cYwCQTQf3HB6xUC+BtyCLZNr7IzbOmoZbmssVNzSyiQ=",
+      "goModSum": "h1:nMCL3Zebbrt45jsMDgnfIwz6ydEQApk5oEI3HqDio6A=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/mattn/go-isatty@v0.0.23"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/mfridman/interpolate",
+      "version": "v0.0.2",
+      "sum": "h1:pnuTK7MQIxxFz1Gr+rjSIx9u7qVjf5VOoM/u6BbAxPY=",
+      "goModSum": "h1:p+7uk6oE07mpE/Ik1b8EckO0O4ZXiGAfshKBWLUM9Xg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/mfridman/interpolate@v0.0.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/mfridman/xflag",
+      "version": "v0.1.0",
+      "sum": "h1:TWZrZwG1QklFX5S4j1vxfF1sZbZeZSGofMwPMLAF29M=",
+      "goModSum": "h1:/483ywM5ZO5SuMVjrIGquYNE5CzLrj5Ux/LxWWnjRaE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/mfridman/xflag@v0.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/microsoft/go-mssqldb",
+      "version": "v1.10.0",
+      "sum": "h1:pHEt+Qz6YFPWqREq10mqSE524QQo+/QremwTCQht7TY=",
+      "goModSum": "h1:mnG7lGa9iYJbzJqGCXyuQCegStKMr3kogDLD6+bmggg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/mkevac/debugcharts",
+      "version": "v0.0.0-20191222103121-ae1c48aa8615",
+      "sum": "h1:/mD+ABZyXD39BzJI2XyRJlqdZG11gXFo0SSynL+OFeU=",
+      "goModSum": "h1:Ad7oeElCZqA1Ufj0U9/liOF4BtVepxRcTvr2ey7zTvM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/mkevac/debugcharts@v0.0.0-20191222103121-ae1c48aa8615"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:0fe65458085c6bd94bed444a986a0d1b355373ca128330916eb49bb361b0d0c1"
+      }
+    },
+    {
+      "name": "github.com/moby/docker-image-spec",
+      "version": "v1.3.1",
+      "sum": "h1:jMKff3w6PgbfSa69GfNg+zN/XLhfXJGnEx3Nl2EsFP0=",
+      "goModSum": "h1:eKmb5VW8vQEh/BAr2yvVNvuiJuY6UIocYsFu/DxxRpo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/docker-image-spec@v1.3.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/moby/go-archive",
+      "version": "v0.2.0",
+      "sum": "h1:zg5QDUM2mi0JIM9fdQZWC7U8+2ZfixfTYoHL7rWUcP8=",
+      "goModSum": "h1:mNeivT14o8xU+5q1YnNrkQVpK+dnNe/K6fHqnTg4qPU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/go-archive@v0.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:fb2676bda46c8828237c48de092855085cc066c1d5d0bdeb9aecbc339fb83732"
+      }
+    },
+    {
+      "name": "github.com/moby/moby/api",
+      "version": "v1.55.0",
+      "sum": "h1:2/sexvQyqIWS8pRSCFddBfpW2qE7vR7FCL+vN8pxwMc=",
+      "goModSum": "h1:+RQ6wluLwtYaTd1WnPLykIDPekkuyD/ROWQClE83pzs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/api@v1.55.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/moby/moby/client",
+      "version": "v0.5.0",
+      "sum": "h1:5XhyPk2fuOWf6RlSFa3MkIIgDZkF25xToXW8Q/BH7cc=",
+      "goModSum": "h1:rcVpF8ncl9vo5gaIBdol6CnbEtSj1uxMvEV/UrykF/s=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/client@v0.5.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/moby/patternmatcher",
+      "version": "v0.6.1",
+      "sum": "h1:qlhtafmr6kgMIJjKJMDmMWq7WLkKIo23hsrpR3x084U=",
+      "goModSum": "h1:hDPoyOpDY7OrrMDLaYoY3hf52gNCR/YOUYxkhApJIxc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/patternmatcher@v0.6.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:4f8cb8895ed4d42c11693d510f5ff7093b4ea8bba04bfc84dc8e9873ab7a7c95"
+      }
+    },
+    {
+      "name": "github.com/moby/sys/sequential",
+      "version": "v0.6.0",
+      "sum": "h1:qrx7XFUd/5DxtqcoH1h438hF5TmOvzC/lspjy7zgvCU=",
+      "goModSum": "h1:uyv8EUTrca5PnDsdMGXhZe6CCe8U/UiTWd+lL+7b/Ko=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/sys/sequential@v0.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:eda3c867e57a201226d627f4817aab85da001ad77334c6c6a3e611a751adb8cb"
+      }
+    },
+    {
+      "name": "github.com/moby/sys/user",
+      "version": "v0.4.0",
+      "sum": "h1:jhcMKit7SA80hivmFJcbB1vqmw//wU61Zdui2eQXuMs=",
+      "goModSum": "h1:bG+tYYYJgaMtRKgEmuueC0hJEAZWwtIbZTB+85uoHjs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/sys/user@v0.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:4031d13eb70c5103f27188f83f4d19c10fbf316dc48a8048e9638d3c1b7a63ca"
+      }
+    },
+    {
+      "name": "github.com/moby/sys/userns",
+      "version": "v0.1.0",
+      "sum": "h1:tVLXkFOxVu9A64/yh59slHVv9ahO9UIev4JZusOLG/g=",
+      "goModSum": "h1:IHUYgu/kao6N8YZlp9Cf444ySSvCmDlmzUcYfDHOl28=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/sys/userns@v0.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:b4456eb78a6fc8c8602da24b70b9a137f02079c99b59fcc39333add7a1a3f224"
+      }
+    },
+    {
+      "name": "github.com/moby/term",
+      "version": "v0.5.2",
+      "sum": "h1:6qk3FJAFDs6i/q3W/pQ97SX192qKfZgGjCQqfCJkgzQ=",
+      "goModSum": "h1:d3djjFCrjnB+fl8NJux+EJzu0msscUP+f8it8hPkFLc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/moby/term@v0.5.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:46352785ac80b2377d3840b8b6d9aaaaee155c69600bec7d65f227d804c81716"
+      }
+    },
+    {
+      "name": "github.com/ncruces/go-strftime",
+      "version": "v1.0.0",
+      "sum": "h1:HMFp8mLCTPp341M/ZnA4qaf7ZlsbTc+miZjCLOFAw7w=",
+      "goModSum": "h1:Fwc5htZGVVkseilnfgOVb9mKy6w1naJmn9CehxcKcls=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "github.com/ncruces/go-strftime@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/opencontainers/go-digest",
+      "version": "v1.0.0",
+      "sum": "h1:apOUWs51W5PlhuyGyz9FCeeBIOUDA/6nW8Oi/yOhh5U=",
+      "goModSum": "h1:0JzlMkj0TRzQZfJkVvzbP0HBR3IKzErnv2BNG4W4MAM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/opencontainers/go-digest@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/opencontainers/image-spec",
+      "version": "v1.1.1",
+      "sum": "h1:y0fUlFfIZhPF1W537XOLg0/fcx6zcHCJwooC2xJA040=",
+      "goModSum": "h1:qpqAh3Dmcf36wStyyWU+kCeDgrGnAve2nCC8+7h8Q0M=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/opencontainers/image-spec@v1.1.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/pascaldekloe/name",
+      "version": "v1.0.1",
+      "sum": "h1:9lnXOHeqeHHnWLbKfH6X98+4+ETVqFqxN09UXSjcMb0=",
+      "goModSum": "h1:Z//MfYJnH4jVpQ9wkclwu2I2MkHmXTlT9wR5UZScttM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0",
+          "github.com/pascaldekloe/name@v1.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:f5242dd8aec253bf4ace00fe9ea5bc23de1a8a08058b77405e253496aae37eb9"
+      }
+    },
+    {
+      "name": "github.com/paulmach/orb",
+      "version": "v0.13.0",
+      "sum": "h1:r7n7mQGGF+cj/CbcivEj9J3HGK+XR+yXnvzRdq9saIw=",
+      "goModSum": "h1:6scRWINywA2Jf05dcjOfLfxrUIMECvTSG2MVbRLxu/k=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/paulmach/orb@v0.13.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/paulmach/protoscan",
+      "version": "v0.2.1",
+      "sum": "h1:rM0FpcTjUMvPUNk2BhPJrreDKetq43ChnL+x1sRg8O8=",
+      "goModSum": "h1:SpcSwydNLrxUGSDvXvO0P7g7AuhJ7lcKfDlhJCDw2gY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/paulmach/orb@v0.13.0",
+          "github.com/paulmach/protoscan@v0.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:ca37371b3034ee581b4c97f8feb94758796770ffba4f44fc191ca9d1bdb350d7"
+      }
+    },
+    {
+      "name": "github.com/pierrec/lz4/v4",
+      "version": "v4.1.27",
+      "sum": "h1:+PhzhWDrjRj89TH2sw43nE3+4+W8lSxIuQadEHZyjUk=",
+      "goModSum": "h1:EoQMVJgeeEOMsCqCzqFm2O0cJvljX2nGZjcRIPL34O4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/pierrec/lz4/v4@v4.1.27"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/pkg/browser",
+      "version": "v0.0.0-20240102092130-5ac0b6a4141c",
+      "sum": "h1:+mdjkGKdHQG3305AYmdv1U2eRNDiU2ErMBj1gwrq8eQ=",
+      "goModSum": "h1:7rwL4CYBLnjLxUqIJNnCWiEdr3bn6IUYi15bNlnbCCU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/microsoft/go-mssqldb@v1.10.0",
+          "github.com/pkg/browser@v0.0.0-20240102092130-5ac0b6a4141c"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/pkg/errors",
+      "version": "v0.8.1",
+      "sum": "h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=",
+      "goModSum": "h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/vertica/vertica-sql-go@v1.3.8",
+          "github.com/pkg/errors@v0.8.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:bb07976b3c7b35bfebee26c743d3a25f699d8a00acaa4b46dc613de5f7406dba"
+      }
+    },
+    {
+      "name": "github.com/planetscale/vtprotobuf",
+      "version": "v0.6.1-0.20240319094008-0393e58bdf10",
+      "sum": "h1:GFCKgmp0tecUJ0sJuv4pzYCqS9+RGSn52M3FUwPs+uo=",
+      "goModSum": "h1:t/avpk3KcrXxUnYOhZhMXJlSEyie6gQbtLq5NM3loB8=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/planetscale/vtprotobuf@v0.6.1-0.20240319094008-0393e58bdf10"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:3064e09f4ee08cb678ebe295940a4f0da41038188e4a8f223a7b34373d79d140"
+      }
+    },
+    {
+      "name": "github.com/pmezard/go-difflib",
+      "version": "v1.0.0",
+      "sum": "h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=",
+      "goModSum": "h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/pmezard/go-difflib@v1.0.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/power-devops/perfstat",
+      "version": "v0.0.0-20240221224432-82ca36839d55",
+      "sum": "h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=",
+      "goModSum": "h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/power-devops/perfstat@v0.0.0-20240221224432-82ca36839d55"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:f550a4213e585a38c103150a328bd6d3428652f861bc1fd035fa92f67c377a52"
+      }
+    },
+    {
+      "name": "github.com/pressly/goose/v3",
+      "version": "v3.27.3",
+      "sum": "h1:pIglVHjw99r4e/hDHHwbl9vfOsDMqUokfkXo6+n/RxA=",
+      "goModSum": "h1:Dag+xpV6o20HR2LFY1j0q6MDwc3f7vPUFDA77R+0yGY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:996d7185bb12f522d3379016bd9b559a37b25b62d9ed954fb1bd1e60189c3145"
+      }
+    },
+    {
+      "name": "github.com/prometheus/client_model",
+      "version": "v0.0.0-20190812154241-14fe0d1b01d4",
+      "sum": "h1:gQz4mCbXsO+nc9n1hCxHcGA3Zx3Eo+UHZoInFGUIXNM=",
+      "goModSum": "h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "github.com/prometheus/client_model@v0.0.0-20190812154241-14fe0d1b01d4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:e590f31c936668a998c79978b7a067638f724c55c3d484fb74e359b8806aa0d1"
+      }
+    },
+    {
+      "name": "github.com/prometheus/procfs",
+      "version": "v0.21.1",
+      "sum": "h1:GljZCt+zSTS+NZq88cyQ1LjZ+RCHp3uVuabBWA5+OJI=",
+      "goModSum": "h1:aB55Cww9pdSJVHk0hUf0inxWyyjPogFIjmHKYgMKmtY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/prometheus/procfs@v0.21.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/rekby/fixenv",
+      "version": "v0.6.1",
+      "sum": "h1:jUFiSPpajT4WY2cYuc++7Y1zWrnCxnovGCIX72PZniM=",
+      "goModSum": "h1:/b5LRc06BYJtslRtHKxsPWFT/ySpHV+rWvzTg+XWk4c=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/rekby/fixenv@v0.6.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/remyoudompheng/bigfft",
+      "version": "v0.0.0-20230129092748-24d4a6f8daec",
+      "sum": "h1:W09IVJc94icq4NjY3clb7Lk8O1qJ8BdBEF8z0ibU0rE=",
+      "goModSum": "h1:qqbHyh8v60DhA7CoWK5oRCqLrMHRGoxYCSS9EjAz6Eo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "github.com/remyoudompheng/bigfft@v0.0.0-20230129092748-24d4a6f8daec"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/rogpeppe/fastuuid",
+      "version": "v1.2.0",
+      "sum": "h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=",
+      "goModSum": "h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0",
+          "github.com/grpc-ecosystem/grpc-gateway@v1.16.0",
+          "github.com/rogpeppe/fastuuid@v1.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:568b0cd7f0f0f0e8e4d6437726bb021936de3ed3b6ef96fa76c4d8a83fcd3175"
+      }
+    },
+    {
+      "name": "github.com/rogpeppe/go-internal",
+      "version": "v1.14.1",
+      "sum": "h1:UQB4HGPB6osV0SQTLymcB4TgvyWu6ZyliaW0tI/otEQ=",
+      "goModSum": "h1:MaRKkUm5W0goXpeCfT7UZI6fk/L7L7so1lCWt35ZSgc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/auto/sdk@v1.2.1",
+          "github.com/rogpeppe/go-internal@v1.14.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/russross/blackfriday",
+      "version": "v1.6.0",
+      "sum": "h1:KqfZb0pUVN2lYqZUYRddxF4OR8ZMURnJIG5Y3VRLtww=",
+      "goModSum": "h1:ti0ldHuxg49ri4ksnFxlkCfN+hvslNlmVHqNRXXJNAY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/opencontainers/image-spec@v1.1.1",
+          "github.com/russross/blackfriday@v1.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:9b8d5a2cee31efb93bd05bd9d6115533f6c548a3452b23e83b7303e1209d6990"
+      }
+    },
+    {
+      "name": "github.com/santhosh-tekuri/jsonschema/v5",
+      "version": "v5.3.1",
+      "sum": "h1:lZUw3E0/J3roVtGQ+SCrUrg3ON6NgVqpn3+iol9aGu4=",
+      "goModSum": "h1:uToXkOrWAZ6/Oc07xWQrPOhJotwFIyu2bBVN41fcDUY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/opencontainers/image-spec@v1.1.1",
+          "github.com/santhosh-tekuri/jsonschema/v5@v5.3.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:23019d8f742d98890926161fc165abc124ae0e12db812848c8cd72409dc4e70b"
+      }
+    },
+    {
+      "name": "github.com/segmentio/asm",
+      "version": "v1.2.1",
+      "sum": "h1:DTNbBqs57ioxAD4PrArqftgypG4/qNpXoJx8TVXxPR0=",
+      "goModSum": "h1:BqMnlJP91P8d+4ibuonYZw9mfnzI9HfxselHZr5aAcs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/segmentio/asm@v1.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/sethvargo/go-retry",
+      "version": "v0.4.0",
+      "sum": "h1:9qy1OoIAxBL+gBYnkTnTnWle5wlfsXQlwRzIbbpdqPw=",
+      "goModSum": "h1:tvsjdKG6xfiCx4LSiUZ06kcv38xvdVQwv8R6/VnnVWg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/sethvargo/go-retry@v0.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/shirou/gopsutil",
+      "version": "v3.21.11+incompatible",
+      "sum": "h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=",
+      "goModSum": "h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/shirou/gopsutil@v3.21.11+incompatible"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:d4e4ad051f43f86308281ccc975960bd9d97c49a5bad24ba140fd0cb8b795180"
+      }
+    },
+    {
+      "name": "github.com/shirou/gopsutil/v4",
+      "version": "v4.26.5",
+      "sum": "h1:RPcBXkpz7kOj9PqGFQOlBPZHsyaPvPVQc098y9RmCNM=",
+      "goModSum": "h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/shirou/gopsutil/v4@v4.26.5"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:fba226c95a2c0fe296a7c999fc56dba9269a8fe36579bbade1b83b1cf8ec7bb8"
+      }
+    },
+    {
+      "name": "github.com/shopspring/decimal",
+      "version": "v1.4.0",
+      "sum": "h1:bxl37RwXBklmTi0C79JfXCEBD1cqqHt0bbgBAGFp81k=",
+      "goModSum": "h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+DMd9qYNcwME=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/shopspring/decimal@v1.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/sirupsen/logrus",
+      "version": "v1.9.4",
+      "sum": "h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=",
+      "goModSum": "h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/sirupsen/logrus@v1.9.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:ebdeaa2335803b3b2976a2d4bfd28533b865bbe47e6594fc80436d3c28c3ae33"
+      }
+    },
+    {
+      "name": "github.com/spiffe/go-spiffe/v2",
+      "version": "v2.6.0",
+      "sum": "h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMpsbLuo=",
+      "goModSum": "h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "github.com/spiffe/go-spiffe/v2@v2.6.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:ca2d8f1614cd398d86b191c8b433be65fd979846a2812ec94f7f20437b71ec64"
+      }
+    },
+    {
+      "name": "github.com/stretchr/objx",
+      "version": "v0.5.2",
+      "sum": "h1:xuMeJ0Sdp5ZMRXx/aWO6RZxdr3beISkG5/G/aIRr3pY=",
+      "goModSum": "h1:FRsXN1f5AsAjCGJKqEizvkpNtU+EGNCLh3NxZ/8L+MA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/stretchr/testify@v1.11.1",
+          "github.com/stretchr/objx@v0.5.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/stretchr/testify",
+      "version": "v1.11.1",
+      "sum": "h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=",
+      "goModSum": "h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/stretchr/testify@v1.11.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/testcontainers/testcontainers-go",
+      "version": "v0.43.0",
+      "sum": "h1:oEQx5MW2DGd9z3AeEQfB2lPM0eLs7ztyaGRu75bFo5A=",
+      "goModSum": "h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/testcontainers/testcontainers-go@v0.43.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:858ec66070ccc0e4a9698bf43e850bef527772f6b05cd2e6be633b065e221a20"
+      }
+    },
+    {
+      "name": "github.com/tklauser/go-sysconf",
+      "version": "v0.4.0",
+      "sum": "h1:7H0uAN+7RkwWRaxhYXDLqa5V3LPrJeV8wmD9dRUgPQU=",
+      "goModSum": "h1:8mTNWyog7H+MpKijp4VmKJAd2bbYQ2zuUwkYRbUArPI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/tklauser/go-sysconf@v0.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:b790eae38d6963b4c2d718a8cf6f0daef743910ef7b730bde212826feb9610f5"
+      }
+    },
+    {
+      "name": "github.com/tklauser/numcpus",
+      "version": "v0.12.0",
+      "sum": "h1:NR85qdvHA9pFse3x3weVZ0r0ST8R6l5RHbZrlRaqob4=",
+      "goModSum": "h1:ABHeXzJnr/qqwguhClkZKT1/8VABcYrsyUiUGobwWJg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/tklauser/numcpus@v0.12.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:0e4ddf94e466c11133b3249d1e07c0fa19473e630ffb8c070bb56ffbea7d332d"
+      }
+    },
+    {
+      "name": "github.com/tursodatabase/libsql-client-go",
+      "version": "v0.0.0-20260528064733-9d5d30a29a60",
+      "sum": "h1:TfQEwhr0Q9t+Bgs0TNk2eHZ9EGD107Mimic0kcoGS1M=",
+      "goModSum": "h1:08inkKyguB6CGGssc/JzhmQWwBgFQBgjlYFjxjRh7nU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/tursodatabase/libsql-client-go@v0.0.0-20260528064733-9d5d30a29a60"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/vertica/vertica-sql-go",
+      "version": "v1.3.8",
+      "sum": "h1:FomjkM3cam9yE6zSic31flNWPLdsZbYGK9ihlLtbF1Y=",
+      "goModSum": "h1:c4OZ8lq1Ztc18w8a0nG+dzQh69BzJRcKN2LZOnYbERI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/vertica/vertica-sql-go@v1.3.8"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/xyproto/randomstring",
+      "version": "v1.0.5",
+      "sum": "h1:YtlWPoRdgMu3NZtP45drfy1GKoojuR7hmRcnhZqKjWU=",
+      "goModSum": "h1:rgmS5DeNXLivK7YprL0pY+lTuhNQW3iGxZ18UQApw/E=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/andybalholm/brotli@v1.2.2",
+          "github.com/xyproto/randomstring@v1.0.5"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/ydb-platform/ydb-go-genproto",
+      "version": "v0.0.0-20260428144813-1c07baab7f7b",
+      "sum": "h1:xeiobG1riqe6dTMZuTcOvwOY0BbFidSk3gRLyVeLfJA=",
+      "goModSum": "h1:Er+FePu1dNUieD+XTMDduGpQuCPssK5Q4BjF+IIXJ3I=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/ydb-platform/ydb-go-sdk/v3",
+      "version": "v3.144.6",
+      "sum": "h1:XWx3dStuZHEvEHAFzvNIbFYJUw7EayHnNUUx+YKAKxw=",
+      "goModSum": "h1:b9NEO6mgaiqsnOMkS003uS82XsKh6GL+ZTFfPqXWz+c=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "github.com/yusufpapurcu/wmi",
+      "version": "v1.2.4",
+      "sum": "h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=",
+      "goModSum": "h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/yusufpapurcu/wmi@v1.2.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:93af7ff70661448c801dd00940cf0e0e242d085a92e106339aebaca9ce2a7165"
+      }
+    },
+    {
+      "name": "github.com/ziutek/mymysql",
+      "version": "v1.5.4",
+      "sum": "h1:GB0qdRGsTwQSBVYuVShFBKaXSnSnYYC2d9knnE1LHFs=",
+      "goModSum": "h1:LMSpPZ6DbqWFxNCHW77HeMg9I646SAhApZ/wKdgO/C0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ziutek/mymysql@v1.5.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.mongodb.org/mongo-driver/v2",
+      "version": "v2.5.0",
+      "sum": "h1:yXUhImUjjAInNcpTcAlPHiT7bIXhshCTL3jVBkF3xaE=",
+      "goModSum": "h1:yOI9kBsufol30iFsl1slpdq1I0eHPzybRWdyYUs8K/0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/paulmach/orb@v0.13.0",
+          "go.mongodb.org/mongo-driver/v2@v2.5.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:956a87a829222b08582aa6b7fe3225fe1fc7b660198b991f6600add307ae9795"
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/auto/sdk",
+      "version": "v1.2.1",
+      "sum": "h1:jXsnJ4Lmnqd11kwkBV2LgLoFMZKizbCi5fNZ/ipaZ64=",
+      "goModSum": "h1:KRTj+aOaElaLi+wW1kO/DZRXwkF4C5xPbEe3ZiIhN7Y=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/auto/sdk@v1.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/contrib/detectors/gcp",
+      "version": "v1.43.0",
+      "sum": "h1:62yY3dT7/ShwOxzA0RsKRgshBmfElKI4d/Myu2OxDFU=",
+      "goModSum": "h1:RyaZMFY7yi1kAs45S6mbFGz8O8rqB0dTY14uzvG4LCs=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "go.opentelemetry.io/contrib/detectors/gcp@v1.43.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:510bdba8cf36c436a3957437c97c281a1448037d4be8c67ef35c6b840fa1fd4a"
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp",
+      "version": "v0.69.0",
+      "sum": "h1:8tvICD4vSTOOsNrsI4Ljf6C+6UKvpTEH5XY3JMoyPoo=",
+      "goModSum": "h1:z9+yiacE0IHRqM4qFfkbt/JYlmYXgss8GY/jXoNuPJI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.69.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/otel",
+      "version": "v1.44.0",
+      "sum": "h1:JjwHmHpA4iZ3wBxluu2fbbE7j4kqlE8jXyAyPXH7HqU=",
+      "goModSum": "h1:BMgjTHL9WPRlRjL2oZCBTL4whCGtXch2H4BhOPIAyYc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/otel@v1.44.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/otel/metric",
+      "version": "v1.44.0",
+      "sum": "h1:1w0gILTcHdr3YI+ixLyjemwrVnsMURbTZFrSYCdDdmc=",
+      "goModSum": "h1:8O7hanEPBNgEMmybD3s2VBKcgWOCsA6tzHBPODAiquo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/otel/metric@v1.44.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/otel/sdk",
+      "version": "v1.44.0",
+      "sum": "h1:nHYwb9lK+fJPU/dnT6s7W7Z8itMWyqrnVfbheVYrZ58=",
+      "goModSum": "h1:Osuydd3Se74nqjAKxid74N5eC+jfEqfTegHRnq58oK0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0",
+          "go.opentelemetry.io/otel/sdk@v1.44.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/otel/sdk/metric",
+      "version": "v1.44.0",
+      "sum": "h1:3LlKgI+VjbVsjNRFZJZAJ30WjXC5VkNRks6si09iEfI=",
+      "goModSum": "h1:5B5pMARnXxKhltooO4xUuCBorl65a4EpnTalObqOigA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp@v0.69.0",
+          "go.opentelemetry.io/otel/sdk/metric@v1.44.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/otel/trace",
+      "version": "v1.44.0",
+      "sum": "h1:jxF5CsGYCe74MCRx2X4g7WsY/VBKRqqpNvXlX/6gtIk=",
+      "goModSum": "h1:oLl1jrMQAVo6v3GAggN+1VH9VIz9iUSvW53sW1Q8PIE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.opentelemetry.io/otel/trace@v1.44.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.opentelemetry.io/proto/otlp",
+      "version": "v0.7.0",
+      "sum": "h1:rwOQPCuKAKmwGKq2aVNnYIibI6wnV7EvzgfTCzcdGg8=",
+      "goModSum": "h1:PqfVotwruBrMGOCsRd/89rSnXhoiJIqeYNgFYFoEGnI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:9c293055f30d29c4f1788112e19995f99b1fbfb9e8ba92e590dea979e6131ad8"
+      }
+    },
+    {
+      "name": "go.uber.org/goleak",
+      "version": "v1.3.0",
+      "sum": "h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=",
+      "goModSum": "h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "go.uber.org/goleak@v1.3.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:436486d5f5477e34f0848f8eac9092c234d3f104e20eec6067c1f62098285cfc"
+      }
+    },
+    {
+      "name": "go.uber.org/mock",
+      "version": "v0.4.0",
+      "sum": "h1:VcM4ZOtdbR4f6VXfiOpwpVJDL6lCReaZ6mw31wqh7KU=",
+      "goModSum": "h1:a6FSlNadKUHUa9IP5Vyt1zh4fC7uAwxMutEAscFbkZc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "go.uber.org/mock@v0.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.uber.org/multierr",
+      "version": "v1.11.0",
+      "sum": "h1:blXXJkSxSSfBVBlC76pxqeO+LN3aDfLQo+309xJstO0=",
+      "goModSum": "h1:20+QtiLqy0Nd6FdQB9TLXag12DsQkrbs3htMFfDN80Y=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "go.uber.org/multierr@v1.11.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "go.uber.org/zap",
+      "version": "v1.28.0",
+      "sum": "h1:IZzaP1Fv73/T/pBMLk4VutPl36uNC+OSUh3JLG3FIjo=",
+      "goModSum": "h1:rDLpOi171uODNm/mxFcuYWxDsqWSAVkFdX4XojSKg/Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "github.com/ClickHouse/ch-go@v0.73.0",
+          "go.uber.org/zap@v1.28.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:698ce6e4c92f47713b47fe721e20f9a9e9005d5fe02c93a2c7bfdd9982b8a383"
+      }
+    },
+    {
+      "name": "go.yaml.in/yaml/v3",
+      "version": "v3.0.4",
+      "sum": "h1:tfq32ie2Jv2UxXFdLJdh3jXuOzWiL1fo0bu/FbuKpbc=",
+      "goModSum": "h1:DhzuOOF2ATzADvBadXxruRBLzYTpT36CKvDb3+aBEFg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "go.yaml.in/yaml/v3@v3.0.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/crypto",
+      "version": "v0.54.0",
+      "sum": "h1:YLIA59K4fiNzHzjnZt2tUJQjQtUWfWbeHBqKtk3eScw=",
+      "goModSum": "h1:KWL8ny2AZdGR2cWmzeHrp2azQPGogOv+HeQaVEXC2dk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/crypto@v0.54.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/exp",
+      "version": "v0.0.0-20260718201538-764159d718ef",
+      "sum": "h1:LkZ48HFgy/TvhTI0bcWkjgFkgLyKUwcTbDjS0DUjw+A=",
+      "goModSum": "h1:EdfpwwqSu+0Li0mzskwHU6FWDV3t9Q+RZDo3QMUtL3Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/exp@v0.0.0-20260718201538-764159d718ef"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/lint",
+      "version": "v0.0.0-20190313153728-d0100b6bd8b3",
+      "sum": "h1:XQyxROzUlZH+WIQwySDgnISgOivlhjIEwaQaJEJrrN0=",
+      "goModSum": "h1:6SW0HCj/g11FgYtHlgUYUwCkIfeOF89ocIRzGO/8vkc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "google.golang.org/genproto@v0.0.0-20200526211855-cb27e3aa2013",
+          "golang.org/x/lint@v0.0.0-20190313153728-d0100b6bd8b3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:02c2c5398a4937027bfa20481b84b932fc80ee59f97019a24a732a9d4f918828"
+      }
+    },
+    {
+      "name": "golang.org/x/mod",
+      "version": "v0.38.0",
+      "sum": "h1:MECBjubtXD7yj4HrhIUcywNaGeNVUdfVnxmPajOk4yk=",
+      "goModSum": "h1:V6Xz0pq8TQ3dGqVQ1FVHuelZpAL0uNhSkk9ogYP3c40=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/exp@v0.0.0-20260718201538-764159d718ef",
+          "golang.org/x/mod@v0.38.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/net",
+      "version": "v0.57.0",
+      "sum": "h1:K5+3DljvIuDG9/Jv9rvyMywYNFCQ9RSUY6OOTTkT+tE=",
+      "goModSum": "h1:KpXc8iv+r3XplLAG/f7Jsf9RPszJzdR0f58q9vGOuEU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/net@v0.57.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/oauth2",
+      "version": "v0.36.0",
+      "sum": "h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=",
+      "goModSum": "h1:YDBUJMTkDnJS+A4BP4eZBjCqtokkg1hODuPjwiGPO7Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "golang.org/x/oauth2@v0.36.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:03000c799f6113d019034c55d4c3cc85853764752e7435779f4e1de9d45be323"
+      }
+    },
+    {
+      "name": "golang.org/x/sync",
+      "version": "v0.22.0",
+      "sum": "h1:SZjpbeLmrCk4xhRSZFNZW5gFUeCeFgjekvI/+gfScek=",
+      "goModSum": "h1:9xrNwdLfx4jkKbNva9FpL6vEN7evnE43NNNJQ2LF3+0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/sync@v0.22.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/sys",
+      "version": "v0.47.0",
+      "sum": "h1:o7XGOvZQCADBQQ4Y7VNq2dRWQR7JmOUW8Kxx4ZsNgWs=",
+      "goModSum": "h1:4GL1E5IUh+htKOUEOaiffhrAeqysfVGipDYzABqnCmw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/sys@v0.47.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/term",
+      "version": "v0.45.0",
+      "sum": "h1:NwWyBmoJCbfTHpxrWoZ9C6/VxOf7ic219I8xZZFdrf0=",
+      "goModSum": "h1:9aqxs0blBcrm/n0L9QW0aRVD+ktan8ssZromtqJC43w=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/crypto@v0.54.0",
+          "golang.org/x/term@v0.45.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:87972ce93bb65798c1059754d9b43ee5b1b51640ac5d569fb91208901ad5cd25"
+      }
+    },
+    {
+      "name": "golang.org/x/text",
+      "version": "v0.40.0",
+      "sum": "h1:Ub2Z6/xjgF1WrYQz2nuITOEegKFtiIy+rieRJ5lHZKs=",
+      "goModSum": "h1:hpnzDAfGV753zIKo+wk3u1bVKCGPbrnF7+7LBF/UHVY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/text@v0.40.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/time",
+      "version": "v0.11.0",
+      "sum": "h1:/bpjEDfN9tkoN/ryeYHnv5hcMlc8ncjMcM4XBk5NWV0=",
+      "goModSum": "h1:CDIdPxbZBQxdj6cxyCIdrNogrJKMJ7pr37NYpMcMDSg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/client@v0.5.0",
+          "golang.org/x/time@v0.11.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:b2bf0625df28341edac3d16690540c5e9657530c94c15149d18c64e78235ceb2"
+      }
+    },
+    {
+      "name": "golang.org/x/tools",
+      "version": "v0.48.0",
+      "sum": "h1:3+hClM1aLL5mjMKm5ovokw9epgRXPuu2tILgismM6RE=",
+      "goModSum": "h1:08xX0orndb/F7jJxGDicx061tyd5pcMto75YMAXr6lk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/exp@v0.0.0-20260718201538-764159d718ef",
+          "golang.org/x/tools@v0.48.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "golang.org/x/tools/go/expect",
+      "version": "v0.1.1-deprecated",
+      "sum": "h1:jpBZDwmgPhXsKZC6WhL20P4b/wmnpsEAGHaNy0n/rJM=",
+      "goModSum": "h1:eihoPOH+FgIqa3FpoTwguz/bVUSGBlGQU67vpBeOrBY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/exp@v0.0.0-20260718201538-764159d718ef",
+          "golang.org/x/tools/go/expect@v0.1.1-deprecated"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:90d16aa3db6d9f254cd15de67d7609074bb147b3d2b3739adcd8afb2c9869722"
+      }
+    },
+    {
+      "name": "golang.org/x/tools/go/packages/packagestest",
+      "version": "v0.1.1-deprecated",
+      "sum": "h1:1h2MnaIAIXISqTFKdENegdpAgUXz6NrPEsbIeWaBRvM=",
+      "goModSum": "h1:RVAQXBGNv1ib0J382/DPCRS/BPnsGebyM1Gj5VSDpG8=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "golang.org/x/exp@v0.0.0-20260718201538-764159d718ef",
+          "golang.org/x/tools/go/packages/packagestest@v0.1.1-deprecated"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:4a0c6d1453fcbdb29f39780b258e99c5d8de5332e1b1196acf845df4af42fb51"
+      }
+    },
+    {
+      "name": "golang.org/x/xerrors",
+      "version": "v0.0.0-20200804184101-5ec99f83aff1",
+      "sum": "h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=",
+      "goModSum": "h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "golang.org/x/xerrors@v0.0.0-20200804184101-5ec99f83aff1"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:958b8639aade075ab6c629f41bfca09a12faa098268b803e8076dd82c50e58cd"
+      }
+    },
+    {
+      "name": "gonum.org/v1/gonum",
+      "version": "v0.17.0",
+      "sum": "h1:VbpOemQlsSMrYmn7T2OUvQ4dqxQXU+ouZFQsZOx50z4=",
+      "goModSum": "h1:El3tOrEuMpv2UdMrbNlKEh9vd86bmQ6vqIcDwxEOc1E=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "gonum.org/v1/gonum@v0.17.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "google.golang.org/appengine",
+      "version": "v1.4.0",
+      "sum": "h1:/wp5JvzpHIxhs/dumFmF7BXTf3Z+dd4uXta4kVyO508=",
+      "goModSum": "h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "golang.org/x/oauth2@v0.0.0-20200107190931-bf48bf16ab8d",
+          "google.golang.org/appengine@v1.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:e6790ee5e9f9ef6799719db4c90e821df1bb0cc37cba5bbd4f74eb5ad4029cbe"
+      }
+    },
+    {
+      "name": "google.golang.org/genproto",
+      "version": "v0.0.0-20200526211855-cb27e3aa2013",
+      "sum": "h1:+kGHl1aib/qcwaRi1CbqBZ1rk19r85MNUf8HaBghugY=",
+      "goModSum": "h1:NbSheEEYHJ7i3ixzK3sjbqSGDJWnxyFXZblF3eUsNvo=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "google.golang.org/genproto@v0.0.0-20200526211855-cb27e3aa2013"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:93b1e1a6a2340637857f6561c49523e55d0383835ee7278020843d95052bbcb0"
+      }
+    },
+    {
+      "name": "google.golang.org/genproto/googleapis/api",
+      "version": "v0.0.0-20260414002931-afd174a4e478",
+      "sum": "h1:yQugLulqltosq0B/f8l4w9VryjV+N/5gcW0jQ3N8Qec=",
+      "goModSum": "h1:C6ADNqOxbgdUUeRTU+LCHDPB9ttAMCTff6auwCVa4uc=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1",
+          "google.golang.org/genproto/googleapis/api@v0.0.0-20260414002931-afd174a4e478"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "go-verified-sumdb-cache",
+        "sumdbRecordDigest": "sha256:49f601494e15762798733305d23d621c2010b3726ccd7b11a86dac4ea9eec806"
+      }
+    },
+    {
+      "name": "google.golang.org/genproto/googleapis/rpc",
+      "version": "v0.0.0-20260720211330-0afa2a65878a",
+      "sum": "h1:qI/YMH1ep2qQtqcp00gMQyoU7mjvbhg88GJKCvfoLj0=",
+      "goModSum": "h1:4Hqkh8ycfw05ld/3BWL7rJOSfebL2Q+DVDeRgYgxUU8=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/genproto/googleapis/rpc@v0.0.0-20260720211330-0afa2a65878a"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "google.golang.org/grpc",
+      "version": "v1.82.1",
+      "sum": "h1:NnAxzGRA0677vCa4BUkOAnO5+FfQqVl9iUXeD0IqcGE=",
+      "goModSum": "h1:yzTZ1TB1Z3SG+LIYaI+WiE8D5+PZ3ArnrSp8zF3+/ZA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/grpc@v1.82.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "google.golang.org/protobuf",
+      "version": "v1.36.11",
+      "sum": "h1:fV6ZwhNocDyBLK0dj+fg8ektcVegBBuEolpbTQyBNVE=",
+      "goModSum": "h1:HTf+CrKn2C3g5S8VImy6tdcUvCska2kB7j23XfzDpco=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "google.golang.org/protobuf@v1.36.11"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "gopkg.in/check.v1",
+      "version": "v1.0.0-20201130134442-10cb98267c6c",
+      "sum": "h1:Hei/4ADfdWqJk1ZMxUNpqntNwaWcugrBjAiHlqqRiVk=",
+      "goModSum": "h1:JHkPIbrfpd72SG/EVd6muEfDQjcINNoR0C8j2r3qZ4Q=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/jackc/pgx/v5@v5.10.0",
+          "gopkg.in/check.v1@v1.0.0-20201130134442-10cb98267c6c"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "gopkg.in/yaml.v1",
+      "version": "v1.0.0-20140924161607-9f9df34309c0",
+      "sum": "h1:POO/ycCATvegFmVuPpQzZFJ+pGZeX22Ufu6fibxDVjU=",
+      "goModSum": "h1:WDnlLJ4WF5VGsH/HVa3CI79GS0ol3YnhVnKP89i0kNg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "howett.net/plist@v1.0.1",
+          "gopkg.in/yaml.v1@v1.0.0-20140924161607-9f9df34309c0"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:a4e6bfb4a14a57ba51ff9a4385f415ffdfc458e1ada6a2ece3226ed7bda6c6fb"
+      }
+    },
+    {
+      "name": "gopkg.in/yaml.v2",
+      "version": "v2.2.3",
+      "sum": "h1:fvjTMHxHEw/mxHbtzPi3JCcKXQRAnQTBRo6YCJSVHKI=",
+      "goModSum": "h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "github.com/envoyproxy/go-control-plane@v0.10.2-0.20220325020618-49ff273808a1",
+          "go.opentelemetry.io/proto/otlp@v0.7.0",
+          "github.com/grpc-ecosystem/grpc-gateway@v1.16.0",
+          "gopkg.in/yaml.v2@v2.2.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:6faaf3ca24f0271b86b8653d114e805a43546574defd8dcca89085473f561685"
+      }
+    },
+    {
+      "name": "gopkg.in/yaml.v3",
+      "version": "v3.0.1",
+      "sum": "h1:fxVm/GzAzEWqLHuvctI91KS9hhNmmWOoWu0XTYJS7CA=",
+      "goModSum": "h1:K4uyk7z7BCEPqu6E+C64Yfv1cQ7kz7rIZviUmN+EgEM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ClickHouse/clickhouse-go/v2@v2.47.0",
+          "gopkg.in/yaml.v3@v3.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "gotest.tools/v3",
+      "version": "v3.5.2",
+      "sum": "h1:7koQfIKdy+I8UTetycgUqXWSDwpgv193Ka+qRsmBY8Q=",
+      "goModSum": "h1:LtdLGcnqToBH83WByAAi/wiwSFCArdFIUV/xxN4pcjA=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/api@v1.55.0",
+          "gotest.tools/v3@v3.5.2"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "honnef.co/go/tools",
+      "version": "v0.0.0-20190523083050-ea95bdfd59fc",
+      "sum": "h1:/hemPrYIhOhy8zYrNj+069zDB68us2sMGsfkFJO0iZs=",
+      "goModSum": "h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/ydb-platform/ydb-go-sdk/v3@v3.144.6",
+          "github.com/ydb-platform/ydb-go-genproto@v0.0.0-20260428144813-1c07baab7f7b",
+          "google.golang.org/grpc@v1.47.0",
+          "google.golang.org/genproto@v0.0.0-20200526211855-cb27e3aa2013",
+          "honnef.co/go/tools@v0.0.0-20190523083050-ea95bdfd59fc"
+        ]
+      ],
+      "provenance": {
+        "sum": "go-verified-sumdb-cache",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": "sha256:eb04ad7dc00d7eee13b75c6fc3a204364a736c08944e46d72dfa2a513cd9e72a"
+      }
+    },
+    {
+      "name": "howett.net/plist",
+      "version": "v1.0.1",
+      "sum": "h1:37GdZ8tP09Q35o9ych3ehygcsL+HqKSwzctveSlarvM=",
+      "goModSum": "h1:lqaXoTrLY4hg8tnEzNru53gicrbv7rrk+2xJA/7hw9g=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "howett.net/plist@v1.0.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/cc/v4",
+      "version": "v4.29.1",
+      "sum": "h1:MKgdCV3WykTSPqpVrnxdEDS0HEd2FHpKZDzxzU5LyeI=",
+      "goModSum": "h1:OnovgIhbbMXMu1aISnJ0wvVD1KnW+cAUJkIrAWh+kVI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/cc/v4@v4.29.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/ccgo/v4",
+      "version": "v4.34.6",
+      "sum": "h1:sBgfIwyN0TQ9C5hwIeuqyeAKyMWnbvj2fvpF4L11uzU=",
+      "goModSum": "h1:SZ8YcN9NG7XVsQYdm6jYBvi8PQP1qi+kqB6OhjqI3Fk=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/ccgo/v4@v4.34.6"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/fileutil",
+      "version": "v1.4.0",
+      "sum": "h1:j6ZzNTftVS054gi281TyLjHPp6CPHr2KCxEXjEbD6SM=",
+      "goModSum": "h1:EqdKFDxiByqxLk8ozOxObDSfcVOv/54xDs/DUHdvCUU=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "modernc.org/fileutil@v1.4.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/gc/v2",
+      "version": "v2.6.5",
+      "sum": "h1:nyqdV8q46KvTpZlsw66kWqwXRHdjIlJOhG6kxiV/9xI=",
+      "goModSum": "h1:YgIahr1ypgfe7chRuJi2gD7DBQiKSLMPgBQe9oIiito=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/gc/v2@v2.6.5"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/gc/v3",
+      "version": "v3.1.4",
+      "sum": "h1:2g65LGVSmFQrXeITAw97x7hCRvZFcyE1uDP+7Vng7JI=",
+      "goModSum": "h1:HFK/6AGESC7Ex+EZJhJ2Gni6cTaYpSMmU/cT9RmlfYY=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/gc/v3@v3.1.4"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/goabi0",
+      "version": "v0.2.0",
+      "sum": "h1:HvEowk7LxcPd0eq6mVOAEMai46V+i7Jrj13t4AzuNks=",
+      "goModSum": "h1:CEFRnnJhKvWT1c1JTI3Avm+tgOWbkOu5oPA8eH8LnMI=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/goabi0@v0.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/libc",
+      "version": "v1.74.3",
+      "sum": "h1:a4J+Z8aVaxPyjyxRAdJzw246PqpcFGvVPnfT/AuM5Ws=",
+      "goModSum": "h1:4H7h/MJ8wnjL8RAbp9v3OXgnk22X7MouHIhDbvP3gj4=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/mathutil",
+      "version": "v1.7.1",
+      "sum": "h1:GCZVGXdaN8gTqB1Mf/usp1Y/hSqgI2vAGGP4jZMCxOU=",
+      "goModSum": "h1:4p5IwJITfppl0G4sUEDtCr4DthTaT47/N3aT6MhfgJg=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "modernc.org/mathutil@v1.7.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/memory",
+      "version": "v1.11.0",
+      "sum": "h1:o4QC8aMQzmcwCK3t3Ux/ZHmwFPzE6hf2Y5LbkRs+hbI=",
+      "goModSum": "h1:/JP4VbVC+K5sU2wZi9bHoq2MAkCnrt2r98UGeSK7Mjw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0",
+          "modernc.org/memory@v1.11.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/opt",
+      "version": "v0.2.0",
+      "sum": "h1:tGyef5ApycA7FSEOMraay9SaTk5zmbx7Tu+cJs4QKZg=",
+      "goModSum": "h1:03fq9lsNfvkYSfxrfUhZCWPk1lm4cq4N+Bh//bEtgns=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/opt@v0.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/sortutil",
+      "version": "v1.2.1",
+      "sum": "h1:+xyoGf15mM3NMlPDnFqrteY07klSFxLElE2PVuWIJ7w=",
+      "goModSum": "h1:7ZI3a3REbai7gzCLcotuw9AC4VZVpYMjDzETGsSMqJE=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/sortutil@v1.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/sqlite",
+      "version": "v1.54.0",
+      "sum": "h1:JCxR4qwkJvOaqAoYcgDoO25Nc+ROg6EJ2LfBVzdrgog=",
+      "goModSum": "h1:4ntCLuNmnH8+GNqjka1wNg7KJd5/Hi5FYp8K+XQ7GZw=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/sqlite@v1.54.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/strutil",
+      "version": "v1.2.1",
+      "sum": "h1:UneZBkQA+DX2Rp35KcM69cSsNES9ly8mQWD71HKlOA0=",
+      "goModSum": "h1:EHkiggD70koQxjVdSBM3JKM7k6L0FbGE5eymy9i3B9A=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/strutil@v1.2.1"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "modernc.org/token",
+      "version": "v1.1.0",
+      "sum": "h1:Xl7Ap9dKaEs5kLoOQeQmPWevfnk/DM5qcLcYlA8ys6Y=",
+      "goModSum": "h1:UGzOrNV1mAFSEB63lOFHIpNRUVMvYTc6yu1SMY/XTDM=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "modernc.org/libc@v1.74.3",
+          "modernc.org/token@v1.1.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    },
+    {
+      "name": "pgregory.net/rapid",
+      "version": "v1.2.0",
+      "sum": "h1:keKAYRcjm+e1F0oAuU5F5+YPAWcyxNNRK2wud503Gnk=",
+      "goModSum": "h1:PY5XlDGj0+V1FCq0o192FdRhpKHGTRIWBgqjDBTrq04=",
+      "chains": [
+        [
+          "go-backend/tool",
+          "github.com/pressly/goose/v3",
+          "github.com/moby/moby/api@v1.55.0",
+          "pgregory.net/rapid@v1.2.0"
+        ]
+      ],
+      "provenance": {
+        "sum": "authenticated-upstream-go.sum",
+        "goModSum": "authenticated-upstream-go.sum",
+        "sumdbRecordDigest": null
+      }
+    }
+  ],
+  "sumdbRecords": [
+    {
+      "name": "cel.dev/expr",
+      "version": "v0.25.1",
+      "recordDigest": "sha256:2647f7c35564302a80208f8bd5e3fca96ecfa13dd99c740f5bd1ab1052af4ce8",
+      "record": "46191119\ncel.dev/expr v0.25.1 h1:1KrZg61W6TWSxuNZ37Xy49ps13NUovb66QLprthtwi4=\ncel.dev/expr v0.25.1/go.mod h1:hrXvqGP6G6gyx8UAHSHJ5RGk//1Oj5nXQ2NI02Nrsg4=\n\ngo.sum database tree\n64180295\n4l+xbmkX6guNYAS4w84O5P/AktVzduwENjdN1DlyOww=\n\n— sum.golang.org Az3grnd9lUqZooEMBIxZ9EIX7XiM7JIQBzAJKsPsSYe9oT5fNwgIcOqII4xcKQfYFMTDo1AwuoxRDY0z4dP7U9Uy1A4=\n"
+    },
+    {
+      "name": "cloud.google.com/go",
+      "version": "v0.34.0",
+      "recordDigest": "sha256:de1c356bbed6bea72e1997c584778bd5439b29b21f0251ac49460771a683d09a",
+      "record": "396\ncloud.google.com/go v0.34.0 h1:eOI3/cP2VTU6uZLDYAoic+eyzzB9YyGmJ7eIjl8rOPg=\ncloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=\n\ngo.sum database tree\n64166507\nPkkZ3ebnjvQgnXsPVjUAF33CTdqSwVEh3yHU4so+brE=\n\n— sum.golang.org Az3grhZ4zgD0EoM3LeJePp+ZiWAR/3udN/gBzU2FJJ4x02NKdSlKb/McPwGjDUq0zs+ZzFMzNnfPPkxZ0teLpDvPLgw=\n"
+    },
+    {
+      "name": "cloud.google.com/go/compute/metadata",
+      "version": "v0.9.0",
+      "recordDigest": "sha256:47bd4fe7eaa779b37c4d1021e87aa4c1fa24d3395a4c86e3bc778d60074e2bff",
+      "record": "44046191\ncloud.google.com/go/compute/metadata v0.9.0 h1:pDUj4QMoPejqq20dK0Pg2N4yG9zIkYGdBtwLoEkH9Zs=\ncloud.google.com/go/compute/metadata v0.9.0/go.mod h1:E0bWwX5wTnLPedCKqk3pJmVgCBSM6qQI1yTBdEb3C10=\n\ngo.sum database tree\n64168472\nLjBJgNPOK56/Zkf90a8XDXTowZIiTtwOB/mMXVnqGwg=\n\n— sum.golang.org Az3grj0wrSGU9VcH6Dv09klmTgLV+C27c3FavIjXEjL33+7OqUrRGN/lvLGIfqOUnz0LiEzGXnF0klJu7WFERtmRUQY=\n"
+    },
+    {
+      "name": "dario.cat/mergo",
+      "version": "v1.0.2",
+      "recordDigest": "sha256:45ffeb8d018ec42836e1a380a64a04805b34a4581de0b416411690fd735cd515",
+      "record": "36956610\ndario.cat/mergo v1.0.2 h1:85+piFYR1tMbRrLcDwR18y4UKJ3aH1Tbzi24VRW1TK8=\ndario.cat/mergo v1.0.2/go.mod h1:E/hbnu0NxMFBjpMIE34DRGLWqDy0g5FuKDhCb31ngxA=\n\ngo.sum database tree\n64175462\nuwrcoom43WRnvdciqtcmIKhbOr9Y+reV20PYlsYP79Q=\n\n— sum.golang.org Az3grh3WZVKLfOLUjlJ/9GjKoHJY9duaKuPd9SGUDfji4ZFLYBeYwCN8hUNr0od4c5tzlfRgof3+ee0dHDb83IUDzwU=\n"
+    },
+    {
+      "name": "github.com/Azure/go-ansiterm",
+      "version": "v0.0.0-20250102033503-faa5f7b0171c",
+      "recordDigest": "sha256:89a6889f752c74c55b8d6e07f99d3a9deb4f2386896bd5204b96a7515bbe47d4",
+      "record": "33201072\ngithub.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c h1:udKWzYgxTojEKWjV8V+WSxDXJ4NFATAsZjh8iIbsQIg=\ngithub.com/Azure/go-ansiterm v0.0.0-20250102033503-faa5f7b0171c/go.mod h1:xomTg63KZ2rFqZQzSB4Vz2SUXa1BpHTVz9L5PTmPC4E=\n\ngo.sum database tree\n64181512\netFGhpV2slI2/uBB3Th9J8pAkkC8wfpqB0CGwWiQdJA=\n\n— sum.golang.org Az3grnESdU/J/kGCiMZV7dtKerv63y/vTb65L8H4Fo0fiAnFpTchAAf/bKK9FFIf7Vn5tLU7ax+7ZvsO/ovgEEQx3gM=\n"
+    },
+    {
+      "name": "github.com/BurntSushi/toml",
+      "version": "v0.3.1",
+      "recordDigest": "sha256:5281ea410f6e87baf3942e72721245886e8fd981c7150df81664ce9b30197dba",
+      "record": "229\ngithub.com/BurntSushi/toml v0.3.1 h1:WXkYYl6Yr3qBf1K79EBnL4mak0OimBfB0XUf9Vl28OQ=\ngithub.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=\n\ngo.sum database tree\n64193108\n0CAJLNGaJWOZBu9rYlTdIjKcZQH9WB2j4s1x7H0WO94=\n\n— sum.golang.org Az3grpOy/vujSGfowcam0T/hNJxwPgO6fJ1Q+o6KejZMZRHDWo8AH6Yb04iF9siNPe4MsWHsJ836aXwlPUHAzJ6kBwE=\n"
+    },
+    {
+      "name": "github.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp",
+      "version": "v1.32.0",
+      "recordDigest": "sha256:5246ab57e37eae1fe8c7bf78caeb47548ea14c0d778106727616cedf4e57ac9a",
+      "record": "52110884\ngithub.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.32.0 h1:rIkQfkCOVKc1OiRCNcSDD8ml5RJlZbH/Xsq7lbpynwc=\ngithub.com/GoogleCloudPlatform/opentelemetry-operations-go/detectors/gcp v1.32.0/go.mod h1:RD2SsorTmYhF6HkTmDw7KmPYQk8OBYwTkuasChwv7R4=\n\ngo.sum database tree\n64182886\nIP6efwhFJmLwMk02zcWjPRxY+L6Pc6Pj2atOEwiBRJY=\n\n— sum.golang.org Az3grhflPFTm+e2WdJmQiIT5br9Bv7t36EYmCyt9E5Z66gTPw25Lc1k9lrQvus8/abUcGO+RW1PHu5CcMbNbUN2GCgg=\n"
+    },
+    {
+      "name": "github.com/antihax/optional",
+      "version": "v1.0.0",
+      "recordDigest": "sha256:c7175cbc7b874f992a3e492e7187d4e9540d419092b045de4afc6178226a19bd",
+      "record": "308368\ngithub.com/antihax/optional v1.0.0 h1:xK2lYat7ZLaVVcIuj82J8kIro4V6kDe0AUDFboUCwcg=\ngithub.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=\n\ngo.sum database tree\n64166521\nlMcKbwVq/ProQI+AoZjCgE/JG8qZ+UKyNUC3Q5BfsD8=\n\n— sum.golang.org Az3grgMuMGKsjG/uBif3l8zivt8yYhawkYCS3/tRrE01Ek7Wnoabz00TNjcNadg2RxNJX0BZq5XhQwsRJneEQaK1OQk=\n"
+    },
+    {
+      "name": "github.com/cenkalti/backoff/v4",
+      "version": "v4.3.0",
+      "recordDigest": "sha256:6f031581d7d7559b2485495aca05bbb6c694e461a097f9c0a8e8c1468489d67d",
+      "record": "24383475\ngithub.com/cenkalti/backoff/v4 v4.3.0 h1:MyRJ/UdXutAwSAT+s3wNd7MfTIcy71VQueUuFK343L8=\ngithub.com/cenkalti/backoff/v4 v4.3.0/go.mod h1:Y3VNntkOUPxTVeUxJ/G5vcM//AlwfmyYozVcomhLiZE=\n\ngo.sum database tree\n64181154\nUPjVVLpQ2AKkca17CbCdQL8dqWe014cYyHlpwDzBiSw=\n\n— sum.golang.org Az3grjhSygtrY+8JoYCyP1XUq5m80tF2Zx11NmtxEb64Y05RsfNlHJ053Q+j7jht3ggYQUOtCtKVxvQGkk3Mtk2mjAA=\n"
+    },
+    {
+      "name": "github.com/census-instrumentation/opencensus-proto",
+      "version": "v0.2.1",
+      "recordDigest": "sha256:a2e3f4808a66ff4dbc18af803bc0c078b28cc7aaa860c80684e3cb2016d16599",
+      "record": "50391\ngithub.com/census-instrumentation/opencensus-proto v0.2.1 h1:glEXhBS5PSLLv4IXzLA5yPRVX4bilULVyxxbrfOtDAk=\ngithub.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=\n\ngo.sum database tree\n64182848\nkld/43FH7CDwvQUh5IV3mZUXRdYmJzxH65WgPytZ8Mo=\n\n— sum.golang.org Az3gruRhJ4gAd7yQoHvvswzNLQBUecwajazS83PJfbtin1swnSyc2XyFIEdp3bmG3jPBGQyqJONpArGosmIAvBRTSgU=\n"
+    },
+    {
+      "name": "github.com/client9/misspell",
+      "version": "v0.3.4",
+      "recordDigest": "sha256:75cfcf11270e4bc584aa9d0d48502a330226b374aa8ac2c292ad78f44e14f347",
+      "record": "208\ngithub.com/client9/misspell v0.3.4 h1:ta993UF76GwbvJcIo3Y68y/M3WxlpEHPWIGDkJYwzJI=\ngithub.com/client9/misspell v0.3.4/go.mod h1:qj6jICC3Q7zFZvVWo7KLAzC3yx5G7kyvSDkc90ppPyw=\n\ngo.sum database tree\n64181315\nO0t1sL5qIQYiMRAVYq4PCMX/JIuIF8+NVIUqsfmQ6Ds=\n\n— sum.golang.org Az3grgBQdlS4GraQr8lurp41S2N8qSzFpHWdJj4lTf1JTD/FQwvMyh3BGWX8b2pcJ3gmdtg+HXugE3UIDL4JB+4/bwc=\n"
+    },
+    {
+      "name": "github.com/cncf/udpa/go",
+      "version": "v0.0.0-20210930031921-04548b0d99d4",
+      "recordDigest": "sha256:c8820bfcedf51bd534c23e0e0831ee84d1d7da3482e049603dfbeb97c389cf5f",
+      "record": "7116463\ngithub.com/cncf/udpa/go v0.0.0-20210930031921-04548b0d99d4 h1:hzAQntlaYRkVSFEfj9OTWlVV1H155FMD8BTKktLv0QI=\ngithub.com/cncf/udpa/go v0.0.0-20210930031921-04548b0d99d4/go.mod h1:6pvJx4me5XPnfI9Z40ddWsdw2W/uZgQLFXToKeRcDiI=\n\ngo.sum database tree\n64180492\nEitu4/gaSlDmOqWCaj/V4MKn+sklVLRvqxWGI7ugEsg=\n\n— sum.golang.org Az3grhlvEQV7iME4rPQU/vrNJSzP0GNqWpfQS1Raz2FUxGqGRs6hjYSUpETlSe+nXN3nUqRZt8EG0QyI4Vwe3e3YowU=\n"
+    },
+    {
+      "name": "github.com/cncf/xds/go",
+      "version": "v0.0.0-20260202195803-dba9d589def2",
+      "recordDigest": "sha256:f57c8cdd577e41dc99deca3d6c9225a8fe608d2d6bfb1dcb9a82bf83c0071028",
+      "record": "49506515\ngithub.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2 h1:aBangftG7EVZoUb69Os8IaYg++6uMOdKK83QtkkvJik=\ngithub.com/cncf/xds/go v0.0.0-20260202195803-dba9d589def2/go.mod h1:qwXFYgsP6T7XnJtbKlf1HP8AjxZZyzxMmc+Lq5GjlU4=\n\ngo.sum database tree\n64174744\nj0Kj1AaKJ2yTMrHhf+ibpnbDe8T6zIg9Qaa+ilC/p/g=\n\n— sum.golang.org Az3grldwYBnf02R30ydx1oLKWZhSbL7mAdtEL2ePrF1+7oXr+IIb4hkeRb/eQR2GVSLdDlSTc+wIPhwrfbsGxLlINQc=\n"
+    },
+    {
+      "name": "github.com/containerd/log",
+      "version": "v0.1.0",
+      "recordDigest": "sha256:52b963d7a645a3fea77f8fe1031329ef64ae8bb504e7b9e4252b2c24257015ff",
+      "record": "19538849\ngithub.com/containerd/log v0.1.0 h1:TCJt7ioM2cr/tfR8GPbGf9/VRAX8D2B4PjzCpfX540I=\ngithub.com/containerd/log v0.1.0/go.mod h1:VRRf09a7mHDIRezVKTRCrOq78v577GXq3bSa3EhrzVo=\n\ngo.sum database tree\n64184250\n+iU84A/Yx096Trv9v+MN9otACDQKCAxsJmhKbwnStJ8=\n\n— sum.golang.org Az3grlyVcn/cNWljsmPnrMV9HWhSONQDi5zZgbk1Eu6ASAlijktJeTdr2Up2xgyE5TrYPaopf2mBZi2I3Q9psYQNNQ4=\n"
+    },
+    {
+      "name": "github.com/containerd/platforms",
+      "version": "v0.2.1",
+      "recordDigest": "sha256:2870bfa2386b5e799249070017056f4f25af1008193a2f257982d4be108c8218",
+      "record": "26897341\ngithub.com/containerd/platforms v0.2.1 h1:zvwtM3rz2YHPQsF2CHYM8+KtB5dvhISiXh5ZpSBQv6A=\ngithub.com/containerd/platforms v0.2.1/go.mod h1:XHCb+2/hzowdiut9rkudds9bE5yJ7npe7dG/wG+uFPw=\n\ngo.sum database tree\n64184078\nO6YPmrUJ5YT6ZmY8ULxmUDwNUYIEznuW7mHofDXLt2I=\n\n— sum.golang.org Az3grsbVBRGwu69XFBB2NGNiDZEfg3ysygPQNOwacbhg48C7jb6/S+V610Mj46BR9iOOtSj2Nl0IwdW/Z+P9l+Weqwo=\n"
+    },
+    {
+      "name": "github.com/containerd/typeurl/v2",
+      "version": "v2.2.0",
+      "recordDigest": "sha256:cd8d20d4a2d62f9c5ea02d294739e612deafa8f6513d9a791c7e4b28632701e7",
+      "record": "28151632\ngithub.com/containerd/typeurl/v2 v2.2.0 h1:6NBDbQzr7I5LHgp34xAXYF5DOTQDn05X58lsPEmzLso=\ngithub.com/containerd/typeurl/v2 v2.2.0/go.mod h1:8XOOxnyatxSWuG8OfsZXVnAF4iZfedjS/8UHSPJnX4g=\n\ngo.sum database tree\n64193213\nRDMlpYNIdIp5oU7RWynstasIWhgq56adCBC3BbeVL5M=\n\n— sum.golang.org Az3groIRWj7nB/5zUU0xsiyJpJKr+sdiBK4k/UJ1xycjSl2zyMnyRmun+NagGAhXS0UtAAaI2nTgTcawIv2VYlOSDwE=\n"
+    },
+    {
+      "name": "github.com/cpuguy83/dockercfg",
+      "version": "v0.3.2",
+      "recordDigest": "sha256:c8d2e3e086a0d9560f005f63a6617f28b5a0a9770416308836cb08dce113a817",
+      "record": "30224505\ngithub.com/cpuguy83/dockercfg v0.3.2 h1:DlJTyZGBDlXqUZ2Dk2Q3xHs/FtnooJJVaad2S9GKorA=\ngithub.com/cpuguy83/dockercfg v0.3.2/go.mod h1:sugsbF4//dDlL/i+S+rtpIWp+5h0BHJHfjj5/jFyUJc=\n\ngo.sum database tree\n64183098\nZayJMc/6663+HWd1K76LEo5aFf39jHX0aDuWlRNk2PU=\n\n— sum.golang.org Az3grhZY+SJ68AkicH1PtrZO3FTVPqudK0JzqRhesUFmQAlIo82FCvD/wdt9jUJqCRnuyCknjY9yQN5zTD7V5+k9QQ0=\n"
+    },
+    {
+      "name": "github.com/creack/pty",
+      "version": "v1.1.24",
+      "recordDigest": "sha256:cd4a99911a6b7bf748ae8d8daa02c250495adfd43ba03d72db9e92e10350dcc8",
+      "record": "31320614\ngithub.com/creack/pty v1.1.24 h1:bJrF4RRfyJnbTJqzRLHzcGaZK1NeM5kTC9jGgovnR1s=\ngithub.com/creack/pty v1.1.24/go.mod h1:08sCNb52WyoAwi2QDyzUCTgcvVFhUzewun7wtTfvcwE=\n\ngo.sum database tree\n64170006\n1LPoNXCBj0pRS3UbjWYCE+hEpXkyJEQHjW3K2AB8pzc=\n\n— sum.golang.org Az3grt2yxRkqaMplRj+R60GAcF6YqhQXm75ISvQaVRjTLtO3vLspbjVzNOtK8fjgRSABKn8kK25NetrnwAmytRpdsA4=\n"
+    },
+    {
+      "name": "github.com/dmarkham/enumer",
+      "version": "v1.6.3",
+      "recordDigest": "sha256:405bf005b779bd8085e8a0e0379669b26c88e5f8840755445828e027c0fae48c",
+      "record": "49179885\ngithub.com/dmarkham/enumer v1.6.3 h1:B4aV4OsfzbrS5rvjILt4mMjiWBA//cKxJUMsvHZ8mEI=\ngithub.com/dmarkham/enumer v1.6.3/go.mod h1:DyjXaqCglj4GhELF73oWiparNkYkXvmOBLza/o4kO74=\n\ngo.sum database tree\n64173444\nKJo8+W/6RdMxe6xSZSnF8Vt9XVWA5S5BUJAQlTCnogw=\n\n— sum.golang.org Az3grkfxyTW8nLzdAhMQG642mkCBzfyaNCe8ckgmmUCDCQ/jnSiZi7GytMHXMLlj5l0ARmIobdsILECWehjB3xEDlQk=\n"
+    },
+    {
+      "name": "github.com/ebitengine/purego",
+      "version": "v0.10.1",
+      "recordDigest": "sha256:a241ae230b94d16d8400713094aa3cadbe8736fc30a60cc0592690c7769f4b2b",
+      "record": "54734949\ngithub.com/ebitengine/purego v0.10.1 h1:dewVBCBT2GaMu1SrNTYxQhgQBethzfhiwvZiLGP/qyY=\ngithub.com/ebitengine/purego v0.10.1/go.mod h1:iIjxzd6CiRiOG0UyXP+V1+jWqUXVjPKLAI0mRfJZTmQ=\n\ngo.sum database tree\n64188358\nfj2CHgOPMmiEcfISgh30ck/csf3brI+6AqkBNizRhNo=\n\n— sum.golang.org Az3grmAFCkef1jVrzO46thDpZZKShHKNg7/ZbT+DaVscbuCCPElu5p3o6Ejzc+Hl5OO2k2F4Z5FcoJSuaTYTH33W6A4=\n"
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane",
+      "version": "v0.14.0",
+      "recordDigest": "sha256:f76fbf26b6389fc058897f1f879edb846690ec7d620ecf67143a120b8bb2e3ea",
+      "record": "45967629\ngithub.com/envoyproxy/go-control-plane v0.14.0 h1:hbG2kr4RuFj222B6+7T83thSPqLjwBIfQawTkC++2HA=\ngithub.com/envoyproxy/go-control-plane v0.14.0/go.mod h1:NcS5X47pLl/hfqxU70yPwL9ZMkUlwlKxtAohpi2wBEU=\n\ngo.sum database tree\n64182910\n1QkvguoUdUe/f/C9j3YgZGOgp4MmVZE/T/AV6GvApHk=\n\n— sum.golang.org Az3grjgeHXUlxp0lI0bu+LwBH3mfEzsRhBpTuOhHMdMxA4VtG2ieWXmKk96Lh5ihDl5TofxseHBeAW6BFbFXo2lk6Ao=\n"
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane/envoy",
+      "version": "v1.37.0",
+      "recordDigest": "sha256:25bc5fb530d11dba5850318f4dd8ad29e4392302d3a5b5eb4678b9506f5b98fd",
+      "record": "50192024\ngithub.com/envoyproxy/go-control-plane/envoy v1.37.0 h1:u3riX6BoYRfF4Dr7dwSOroNfdSbEPe9Yyl09/B6wBrQ=\ngithub.com/envoyproxy/go-control-plane/envoy v1.37.0/go.mod h1:DReE9MMrmecPy+YvQOAOHNYMALuowAnbjjEMkkWOi6A=\n\ngo.sum database tree\n64175416\nvEo1cRBvddgv5LCv4YZpLKyTQ/sVMIF/aixsStS2ZFI=\n\n— sum.golang.org Az3grvDljLMIru885ekSajRYf9+Uu8wUIpPZO26YEYKd57V/kOF5GKyE7m7N1MxL7YL08t8E7aJZhiYSMK0fMzRzPA8=\n"
+    },
+    {
+      "name": "github.com/envoyproxy/go-control-plane/ratelimit",
+      "version": "v0.1.0",
+      "recordDigest": "sha256:961b015059098818faf8e74ca05ac8e3b7a6bf8b124c620de95a12144d638421",
+      "record": "32983077\ngithub.com/envoyproxy/go-control-plane/ratelimit v0.1.0 h1:/G9QYbddjL25KvtKTv3an9lx6VBE2cnb8wp1vEGNYGI=\ngithub.com/envoyproxy/go-control-plane/ratelimit v0.1.0/go.mod h1:Wk+tMFAFbCXaJPzVVHnPgRKdUdwW/KdbRt94AzgRee4=\n\ngo.sum database tree\n64180492\nEitu4/gaSlDmOqWCaj/V4MKn+sklVLRvqxWGI7ugEsg=\n\n— sum.golang.org Az3grhlvEQV7iME4rPQU/vrNJSzP0GNqWpfQS1Raz2FUxGqGRs6hjYSUpETlSe+nXN3nUqRZt8EG0QyI4Vwe3e3YowU=\n"
+    },
+    {
+      "name": "github.com/envoyproxy/protoc-gen-validate",
+      "version": "v1.3.3",
+      "recordDigest": "sha256:4460b7972e2ea606152239f3d09327278d1afa72db1767770292884b548ecac9",
+      "record": "50258990\ngithub.com/envoyproxy/protoc-gen-validate v1.3.3 h1:MVQghNeW+LZcmXe7SY1V36Z+WFMDjpqGAGacLe2T0ds=\ngithub.com/envoyproxy/protoc-gen-validate v1.3.3/go.mod h1:TsndJ/ngyIdQRhMcVVGDDHINPLWB7C82oDArY51KfB0=\n\ngo.sum database tree\n64173398\nlw8VlftF/KOZ7k0XAzOAkjCgPu04k/n0s3kTpaxkQno=\n\n— sum.golang.org Az3grgMVGOKk0R0rskafSBrZ2a5Ya0BeEl57FNxzU20p6WnlZ2d8KtAu/mNmBKI7ivNKSCiPvpt+B5leC7h/7eyn6AI=\n"
+    },
+    {
+      "name": "github.com/ghodss/yaml",
+      "version": "v1.0.0",
+      "recordDigest": "sha256:1d0f9b2092652a85351010fa4d7c02e7c2b050fbe5e1375a345f9a2a467ef6a1",
+      "record": "15\ngithub.com/ghodss/yaml v1.0.0 h1:wQHKEahhL6wmXdzwWG11gIVCkOv05bNOh+Rxn0yngAk=\ngithub.com/ghodss/yaml v1.0.0/go.mod h1:4dBDuWmgqj2HViK6kFavaiC9ZROes6MMH2rRYeMEF04=\n\ngo.sum database tree\n64180809\nZFtufvYqQqtkg7J/ghm2GGNhZCRgKba9fNEFXVbl4nU=\n\n— sum.golang.org Az3grr/Ric/2vdjd4DAIjbfbpfNZpsm1aLjarjOB8LubRDmKdZfbWkDc8dk/dlMG4aF8/40jxojYnzScNKtPOPgT7wA=\n"
+    },
+    {
+      "name": "github.com/go-jose/go-jose/v4",
+      "version": "v4.1.4",
+      "recordDigest": "sha256:11b3edd993e670fe7bbb694fac66bd8be8f9f9d29c48112ad1511e4976d53bc9",
+      "record": "51876581\ngithub.com/go-jose/go-jose/v4 v4.1.4 h1:moDMcTHmvE6Groj34emNPLs/qtYXRVcd6S7NHbHz3kA=\ngithub.com/go-jose/go-jose/v4 v4.1.4/go.mod h1:x4oUasVrzR7071A4TnHLGSPpNOm2a21K9Kf04k1rs08=\n\ngo.sum database tree\n64173963\ng5KoS7Jt9in9D2fOejRIiuRV3il0VaJi+IdTd8Ig+y0=\n\n— sum.golang.org Az3grmXWOeleuZ+8P8i5u8U1938ZGlyltv7MY104aIAcfjKEHjrEq7gHcaZKQVOAtgFHOemPJcvOemeI6jFXZy89hQw=\n"
+    },
+    {
+      "name": "github.com/go-ole/go-ole",
+      "version": "v1.3.0",
+      "recordDigest": "sha256:55879a8357c6e4685e3d89abab83d1f75639b4fc731e27fa31be5aa8230a34c7",
+      "record": "19057266\ngithub.com/go-ole/go-ole v1.3.0 h1:Dt6ye7+vXGIKZ7Xtk4s6/xVdGDQynvom7xCFEdWr6uE=\ngithub.com/go-ole/go-ole v1.3.0/go.mod h1:5LS6F96DhAwUc7C+1HLexzMXY1xGRSryjyPPKW6zv78=\n\ngo.sum database tree\n64169479\nkKSIYPyx0nbbTrEOyKcNX7UJulcQnsV7SFQybfVzcRM=\n\n— sum.golang.org Az3grnrmkVhmCBZSGB9NzDsnh4+4mqwwxjj8WkkFi3aMHQAcUcpD9F2Vp8xQFHc2h8XJ3kUpbv7km5wuOUh/a/4HQw8=\n"
+    },
+    {
+      "name": "github.com/gogo/protobuf",
+      "version": "v1.3.2",
+      "recordDigest": "sha256:2d07e991b497491c36c8f8baf8d59f4487f65b7762ed8978031fe23711d69581",
+      "record": "2451746\ngithub.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=\ngithub.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=\n\ngo.sum database tree\n64170069\n1CxnR0uQ/VOdfgvWGQffTPOgAty5TPAbMuDurDGC22Y=\n\n— sum.golang.org Az3grmvTEqtos1U8oixbtfFCzxao8k/ekZVESi3dMf2P4V7yohjZMXuj880DoDM0q0ADjDqvN7kkd50U/eiZY4OZzAM=\n"
+    },
+    {
+      "name": "github.com/golang/glog",
+      "version": "v1.2.5",
+      "recordDigest": "sha256:233eab5bb41cc9dc53ded2b741dbeb2ab267a9f583aeb843b763cdf6940563a1",
+      "record": "36753491\ngithub.com/golang/glog v1.2.5 h1:DrW6hGnjIhtvhOIiAKT6Psh/Kd/ldepEa81DKeiRJ5I=\ngithub.com/golang/glog v1.2.5/go.mod h1:6AhwSGph0fcJtXVM/PEHPqZlFeoLxhs7/t5UDAwmO+w=\n\ngo.sum database tree\n64183644\ne2fyO730uy18MBoynHU0Q11j0I204wu27aU9ExADqH4=\n\n— sum.golang.org Az3gruWYhm3jUqHCZzAQTzJjgUtESCeNgFI9dSiNWUy/UdBE9Ty0TlqKAoWmTQ3uWVox0a/pQSHwfW17EctUk6QJ5w8=\n"
+    },
+    {
+      "name": "github.com/golang/mock",
+      "version": "v1.1.1",
+      "recordDigest": "sha256:65efbe2423caf31747270b93e98d95ed02a9bdcc749e2aaf9cfa26d8ec70bdc7",
+      "record": "203\ngithub.com/golang/mock v1.1.1 h1:G5FRp8JnTd7RQH5kemVNlMeyXQAztQ3mOWV95KxsXH8=\ngithub.com/golang/mock v1.1.1/go.mod h1:oTYuIxOrZwtPieC+H1uAHpcLFnEyAGVDL/k47Jfbm0A=\n\ngo.sum database tree\n64181154\nUPjVVLpQ2AKkca17CbCdQL8dqWe014cYyHlpwDzBiSw=\n\n— sum.golang.org Az3grjhSygtrY+8JoYCyP1XUq5m80tF2Zx11NmtxEb64Y05RsfNlHJ053Q+j7jht3ggYQUOtCtKVxvQGkk3Mtk2mjAA=\n"
+    },
+    {
+      "name": "github.com/gorilla/websocket",
+      "version": "v1.4.2",
+      "recordDigest": "sha256:1b524ff87155de60eeed6b834e05eacd9a49a54ef79c73d70498f5c110499bea",
+      "record": "932134\ngithub.com/gorilla/websocket v1.4.2 h1:+/TMaTYc4QFitKJxsQ7Yye35DkWvkdLcvGKqM+x0Ufc=\ngithub.com/gorilla/websocket v1.4.2/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=\n\ngo.sum database tree\n64192376\n/B2oddVg7sKnImM/rFNWr9lJLqj9THCJYW4TkeF3nMQ=\n\n— sum.golang.org Az3gruifxjiq0S5FVkxhdAdmg8YZLX1w77UIY981rlA6QgEO169fWkrpth9BArRQ116IW0ICnfb71ghBUhy0QRmebg4=\n"
+    },
+    {
+      "name": "github.com/grpc-ecosystem/grpc-gateway",
+      "version": "v1.16.0",
+      "recordDigest": "sha256:896a8a529e63c837ce92f13d025b5cac5abdfdf9fdb942cae60b70904b8929a4",
+      "record": "1762797\ngithub.com/grpc-ecosystem/grpc-gateway v1.16.0 h1:gmcG1KaJ57LophUzW0Hy8NmPhnMZb4M0+kPpLofRdBo=\ngithub.com/grpc-ecosystem/grpc-gateway v1.16.0/go.mod h1:BDjrQk3hbvj6Nolgz8mAMFbcEtjT1g+wF4CSlocrBnw=\n\ngo.sum database tree\n64166632\nk6Pee9YhkQVIhDNTIZVlsu7GnhRfEUjrYJzqqo0Zpvs=\n\n— sum.golang.org Az3grsdS8oa49wUhqLNAGTPyu8Me+EtdNOHtirupuUmg8JOYALcDMPshfL90CFi9nobyaLMqwrS758ThC3JQR7G5bww=\n"
+    },
+    {
+      "name": "github.com/hashicorp/go-uuid",
+      "version": "v1.0.3",
+      "recordDigest": "sha256:bea58c98b8ed720af197b1d4a59607e5f8ca9e2ee9266631f6dbbd07febde323",
+      "record": "10018907\ngithub.com/hashicorp/go-uuid v1.0.3 h1:2gKiV6YVmrJ1i2CKKa9obLvRieoRGviZFL26PcT/Co8=\ngithub.com/hashicorp/go-uuid v1.0.3/go.mod h1:6SBZvOh/SIDV7/2o3Jml5SYk/TvGqwFJ/bN7x4byOro=\n\ngo.sum database tree\n64184835\noMj+f8mgu+XyL4wWMRsxZLaaryDNGnh/Jkl52QIqe/M=\n\n— sum.golang.org Az3grmJjBrdujX9jrjc0CHTY0BBhSgPKESLgp14ygWwz4owEAMfe3hq1S/RUZz1Ezoh1SSTiTsLfxEx20iqDZrX8YAM=\n"
+    },
+    {
+      "name": "github.com/hashicorp/go-version",
+      "version": "v1.9.0",
+      "recordDigest": "sha256:6b33bb500a79a35f17b186dbf8d3882ebb029c6bc5af425af8fd1f2b1bb88df2",
+      "record": "51811676\ngithub.com/hashicorp/go-version v1.9.0 h1:CeOIz6k+LoN3qX9Z0tyQrPtiB1DFYRPfCIBtaXPSCnA=\ngithub.com/hashicorp/go-version v1.9.0/go.mod h1:fltr4n8CU8Ke44wwGCBoEymUuxUHl09ZGVZPK5anwXA=\n\ngo.sum database tree\n64168219\ndxu8lFIpYCTxkVljBspVYD6fwURHPz0LwZWlEF+Xrkk=\n\n— sum.golang.org Az3grulHSia3d980WSc1LiN5hIpMGYrQjXUrukCZ+ASCHlBxKCQFNIHH9XV8EKuQxVfBBF76obgcRHgUS/ALWbAh2gc=\n"
+    },
+    {
+      "name": "github.com/jcmturner/aescts/v2",
+      "version": "v2.0.0",
+      "recordDigest": "sha256:649d3aa9d5a621fe2fc9d041f7e828ca2dfed31270d01029d1b4ac9a6551b31d",
+      "record": "759705\ngithub.com/jcmturner/aescts/v2 v2.0.0 h1:9YKLH6ey7H4eDBXW8khjYslgyqG2xZikXP0EQFKrle8=\ngithub.com/jcmturner/aescts/v2 v2.0.0/go.mod h1:AiaICIRyfYg35RUkr8yESTqvSy7csK90qZ5xfvvsoNs=\n\ngo.sum database tree\n64184835\noMj+f8mgu+XyL4wWMRsxZLaaryDNGnh/Jkl52QIqe/M=\n\n— sum.golang.org Az3grmJjBrdujX9jrjc0CHTY0BBhSgPKESLgp14ygWwz4owEAMfe3hq1S/RUZz1Ezoh1SSTiTsLfxEx20iqDZrX8YAM=\n"
+    },
+    {
+      "name": "github.com/jcmturner/dnsutils/v2",
+      "version": "v2.0.0",
+      "recordDigest": "sha256:1824a13006859d0056a783a822b86153b3292232f1da5de727f4c94581d31a8d",
+      "record": "759653\ngithub.com/jcmturner/dnsutils/v2 v2.0.0 h1:lltnkeZGL0wILNvrNiVCR6Ro5PGU/SeBvVO/8c/iPbo=\ngithub.com/jcmturner/dnsutils/v2 v2.0.0/go.mod h1:b0TnjGOvI/n42bZa+hmXL+kFJZsFT7G4t3HTlQ184QM=\n\ngo.sum database tree\n64175397\nwvobIqt5uQnO+LGP4bn0dx8gFrzkF2WnM1UpZMfrjyI=\n\n— sum.golang.org Az3griQa6dyM4exGajA5NvqMoL4fvdPR0aJEjAx+Cu6m4jDAUEdmcrUlw4iPQQqbsxJbbXJIiTf4rre7r75sqw9TQAM=\n"
+    },
+    {
+      "name": "github.com/jcmturner/gofork",
+      "version": "v1.7.6",
+      "recordDigest": "sha256:ce651afaf240cba21204085c8bd4a4d5954cadfdeb217cde24ceff9f7ae64261",
+      "record": "11602394\ngithub.com/jcmturner/gofork v1.7.6 h1:QH0l3hzAU1tfT3rZCnW5zXl+orbkNMMRGJfdJjHVETg=\ngithub.com/jcmturner/gofork v1.7.6/go.mod h1:1622LH6i/EZqLloHfE7IeZ0uEJwMSUyQ/nDd82IeqRo=\n\ngo.sum database tree\n64185797\nxnASSVAR/zMj+jgzO5d8qM7K8TcBhsAjieF2+aPWEuQ=\n\n— sum.golang.org Az3grlhFLcG1D8MSMKB53XHFzscsmVcf8mmF3kDSv5WXeWyAs7sLOZJtxS/6eN5mYc2CYGAym6EBR4T4oRdLHCFMyQI=\n"
+    },
+    {
+      "name": "github.com/jcmturner/goidentity/v6",
+      "version": "v6.0.1",
+      "recordDigest": "sha256:a6414c4bc1eecd3ae11243e896642524ab5c707d19558802596bdfa3233f8f4d",
+      "record": "718308\ngithub.com/jcmturner/goidentity/v6 v6.0.1 h1:VKnZd2oEIMorCTsFBnJWbExfNN7yZr3EhJAxwOkZg6o=\ngithub.com/jcmturner/goidentity/v6 v6.0.1/go.mod h1:X1YW3bgtvwAXju7V3LCIMpY0Gbxyjn/mY9zx4tFonSg=\n\ngo.sum database tree\n64170609\nOoDQhz9C4XcoHEA91i2PLpjQKccJ7zDhIOHHDjE3w0Y=\n\n— sum.golang.org Az3grujONGzDg55vFUceAcKN+JxqxqLt3a7XGK3yCP8m4q5H6k2Lu0kwPSE6lc9x1YOAvZOndsZBeBcd8G/Ki4MSkQ4=\n"
+    },
+    {
+      "name": "github.com/jcmturner/gokrb5/v8",
+      "version": "v8.4.4",
+      "recordDigest": "sha256:1039b56a5642c02c16589334d069d5c5a1540095770323718324edc1cbc458bc",
+      "record": "15965114\ngithub.com/jcmturner/gokrb5/v8 v8.4.4 h1:x1Sv4HaTpepFkXbt2IkL29DXRf8sOfZXo8eRKh687T8=\ngithub.com/jcmturner/gokrb5/v8 v8.4.4/go.mod h1:1btQEpgT6k+unzCwX1KdWMEwPPkkgBtP+F6aCACiMrs=\n\ngo.sum database tree\n64193136\nKqa22iDnmiNTmbPua8BSSAeVo8ABtFxoRPeV2SL6sJY=\n\n— sum.golang.org Az3grmW4l0cQAlRAN5eq1cFU6cx4y57v8LYoAIFE5EBTwrHBIW99CpaUNXn4FVVmsIsm/+H8MRVqriwcovJF3yksOgw=\n"
+    },
+    {
+      "name": "github.com/jcmturner/rpc/v2",
+      "version": "v2.0.3",
+      "recordDigest": "sha256:992f8b7dc05165bc1781a676755420056be30001c4fd819f9cc7150b423d1751",
+      "record": "1826950\ngithub.com/jcmturner/rpc/v2 v2.0.3 h1:7FXXj8Ti1IaVFpSAziCZWNzbNuZmnvw/i6CqLNdWfZY=\ngithub.com/jcmturner/rpc/v2 v2.0.3/go.mod h1:VUJYCIDm3PVOEHw8sgt091/20OJjskO/YJki3ELg/Hc=\n\ngo.sum database tree\n64185701\nQl0oOKQIyXQADuhov/tI1KZBvRPkkmGIATx3YHfs9xQ=\n\n— sum.golang.org Az3grujwYb3q/1OeUxrgXMvm/RwgX+Aalse8H1iFyGDTnGyyLlFmAGpbXiuaogQsOq0VTWqKKtRHAeKRfrpt++YpBAU=\n"
+    },
+    {
+      "name": "github.com/jessevdk/go-flags",
+      "version": "v1.4.0",
+      "recordDigest": "sha256:065c42456d3b1567a3dd36fe10f44b5950988a4c52b2f6bd1e1bd6eb9005811c",
+      "record": "243\ngithub.com/jessevdk/go-flags v1.4.0 h1:4IU2WS7AumrZ/40jfhf4QVDMsQwqA7VEHozFRrGARJA=\ngithub.com/jessevdk/go-flags v1.4.0/go.mod h1:4FA24M0QyGHXBuZZK/XkWh8h0e1EYbRYJSGM75WSRxI=\n\ngo.sum database tree\n64169724\nARFNcbmreJtpZqdhkhm5hYyl0hqsVS6NEEv51POLMSg=\n\n— sum.golang.org Az3grjI4Y0rn6zkdRP21Gcy/ECgmWnPt1NlkYjwmcvKr2pKWr0F4lhwMlfSOMv7gc/gOMzMw93Jb+BFG7V8CnCwcbQ8=\n"
+    },
+    {
+      "name": "github.com/joeshaw/multierror",
+      "version": "v0.0.0-20140124173710-69b34d4ec901",
+      "recordDigest": "sha256:daa8bfb3891d1e81e207c2d387eb843698aed372d58075a8405cb6b09ae472f6",
+      "record": "5813\ngithub.com/joeshaw/multierror v0.0.0-20140124173710-69b34d4ec901 h1:rp+c0RAYOWj8l6qbCUTSiRLG/iKnW3K3/QfPPuSsBt4=\ngithub.com/joeshaw/multierror v0.0.0-20140124173710-69b34d4ec901/go.mod h1:Z86h9688Y0wesXCyonoVr47MasHilkuLMqGhRZ4Hpak=\n\ngo.sum database tree\n64188936\nO4tpClfJbLEtrO9a3yrL62w58O/HQYfUXo+bb4WOr90=\n\n— sum.golang.org Az3grnCndnSZnaIjhF/uyhZ+1c6RGOgiVsaJa+hEj/TRohxKvqSvHwkxtVgVqELKP8f6Kuopo/FKbezjfhBfblM9VgA=\n"
+    },
+    {
+      "name": "github.com/lufia/plan9stats",
+      "version": "v0.0.0-20260330125221-c963978e514e",
+      "recordDigest": "sha256:2dada1b3d9e829631865064c371159b5aa1b588381a90b7338d769bf8e80b947",
+      "record": "51814053\ngithub.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e h1:Q6MvJtQK/iRcRtzAscm/zF23XxJlbECiGPyRicsX+Ak=\ngithub.com/lufia/plan9stats v0.0.0-20260330125221-c963978e514e/go.mod h1:autxFIvghDt3jPTLoqZ9OZ7s9qTGNAWmYCjVFWPX/zg=\n\ngo.sum database tree\n64184665\nof+yGk3c+B9NCwDjBo0BvHqRAoYo3TspfuAmcq734Yo=\n\n— sum.golang.org Az3grn/2eMLZXl4bKDS6o4RJ5sUmhNivezgXk3zygLPgwFN4Y2Z4hACIKJ2TJ3jYYrOlaE7BPu9fqYrgG6fHVJiY3AU=\n"
+    },
+    {
+      "name": "github.com/magiconair/properties",
+      "version": "v1.8.10",
+      "recordDigest": "sha256:34bfaac7e4d2f91c345149b5a4de30bbf15d5e35960f652cb93f643a3621ea82",
+      "record": "36260914\ngithub.com/magiconair/properties v1.8.10 h1:s31yESBquKXCV9a/ScB3ESkOjUYYv+X0rg8SYxI99mE=\ngithub.com/magiconair/properties v1.8.10/go.mod h1:Dhd985XPs7jluiymwWYZ0G4Z61jb3vdS329zhj2hYo0=\n\ngo.sum database tree\n64184191\n/b9EkWS1vE4ldcdM6yOR7OrricmLnn5wf4s/KkKXALE=\n\n— sum.golang.org Az3grnQukNiATSL9FMEwhIeO+XnF4bMeFuWpld42wPxd3YqW2O7si+ewTcxeVaS1aLKo6e1cohhXQjTPeefnYWaJIQ0=\n"
+    },
+    {
+      "name": "github.com/mkevac/debugcharts",
+      "version": "v0.0.0-20191222103121-ae1c48aa8615",
+      "recordDigest": "sha256:0fe65458085c6bd94bed444a986a0d1b355373ca128330916eb49bb361b0d0c1",
+      "record": "557348\ngithub.com/mkevac/debugcharts v0.0.0-20191222103121-ae1c48aa8615 h1:/mD+ABZyXD39BzJI2XyRJlqdZG11gXFo0SSynL+OFeU=\ngithub.com/mkevac/debugcharts v0.0.0-20191222103121-ae1c48aa8615/go.mod h1:Ad7oeElCZqA1Ufj0U9/liOF4BtVepxRcTvr2ey7zTvM=\n\ngo.sum database tree\n64177499\nTUyfwPHgM7K+CQLl/9AX8HVtgUl9Avj2piU/Q9ghylg=\n\n— sum.golang.org Az3grgsUGwHGFo4wnYY+ctjQM3cB0lKb3NAqr9Wz7ywYuHHsmy9KqG1r8+IIiQ6qFdSzETXSRL83lY1ohd8W0AMKOQc=\n"
+    },
+    {
+      "name": "github.com/moby/go-archive",
+      "version": "v0.2.0",
+      "recordDigest": "sha256:fb2676bda46c8828237c48de092855085cc066c1d5d0bdeb9aecbc339fb83732",
+      "record": "48349657\ngithub.com/moby/go-archive v0.2.0 h1:zg5QDUM2mi0JIM9fdQZWC7U8+2ZfixfTYoHL7rWUcP8=\ngithub.com/moby/go-archive v0.2.0/go.mod h1:mNeivT14o8xU+5q1YnNrkQVpK+dnNe/K6fHqnTg4qPU=\n\ngo.sum database tree\n64189239\n89ZeeXwZvq4gA0542X3vziKn+AXw2Q6A2Z1390sSEgc=\n\n— sum.golang.org Az3grgIoYxirySGQEOZypdULD9pcx+5MV7lfKYiEjUVW4npN6isoCf2gzDCHaSn6WnyMBgLWDprsKA4xqWWG8JfOCAM=\n"
+    },
+    {
+      "name": "github.com/moby/patternmatcher",
+      "version": "v0.6.1",
+      "recordDigest": "sha256:4f8cb8895ed4d42c11693d510f5ff7093b4ea8bba04bfc84dc8e9873ab7a7c95",
+      "record": "51608736\ngithub.com/moby/patternmatcher v0.6.1 h1:qlhtafmr6kgMIJjKJMDmMWq7WLkKIo23hsrpR3x084U=\ngithub.com/moby/patternmatcher v0.6.1/go.mod h1:hDPoyOpDY7OrrMDLaYoY3hf52gNCR/YOUYxkhApJIxc=\n\ngo.sum database tree\n64184562\n4TrRmUHE93AGKQDtIPBKR/gFV9ptWcy7clHXYzc1xpk=\n\n— sum.golang.org Az3grmNSrdebMA2FBhWk3BNcSC8+8bRseQQaU0JNZOkNVTrS5m7r1V35jWoFmaBFUGqtWlw0AEC9TvniVTYSTGZlaQI=\n"
+    },
+    {
+      "name": "github.com/moby/sys/sequential",
+      "version": "v0.6.0",
+      "recordDigest": "sha256:eda3c867e57a201226d627f4817aab85da001ad77334c6c6a3e611a751adb8cb",
+      "record": "28386288\ngithub.com/moby/sys/sequential v0.6.0 h1:qrx7XFUd/5DxtqcoH1h438hF5TmOvzC/lspjy7zgvCU=\ngithub.com/moby/sys/sequential v0.6.0/go.mod h1:uyv8EUTrca5PnDsdMGXhZe6CCe8U/UiTWd+lL+7b/Ko=\n\ngo.sum database tree\n64184517\nSqJCETjgysWDUep6YlClcM23iMYpPCSvBR8/4IBkg9I=\n\n— sum.golang.org Az3grk5U/COOUEulv5cGuz73ohTciNChCXIiox6TA/jEX+guwsqLUtZMh9Kr7I/aV+uplw2/JMHaGJH6qMIa4kon1wM=\n"
+    },
+    {
+      "name": "github.com/moby/sys/user",
+      "version": "v0.4.0",
+      "recordDigest": "sha256:4031d13eb70c5103f27188f83f4d19c10fbf316dc48a8048e9638d3c1b7a63ca",
+      "record": "36149763\ngithub.com/moby/sys/user v0.4.0 h1:jhcMKit7SA80hivmFJcbB1vqmw//wU61Zdui2eQXuMs=\ngithub.com/moby/sys/user v0.4.0/go.mod h1:bG+tYYYJgaMtRKgEmuueC0hJEAZWwtIbZTB+85uoHjs=\n\ngo.sum database tree\n64184196\nX2DQX+8Nb/N/O2KUrGXz6o750jE/AgOjNo2q3uoMBL8=\n\n— sum.golang.org Az3grk0YYvJc5QQwlJpYXF1MySzhpdOtV7TDEd8e22OIHK/SF6zGdIEL8bBg7+heZIas1WmSUPnprqcxZgRRKSy+2QE=\n"
+    },
+    {
+      "name": "github.com/moby/sys/userns",
+      "version": "v0.1.0",
+      "recordDigest": "sha256:b4456eb78a6fc8c8602da24b70b9a137f02079c99b59fcc39333add7a1a3f224",
+      "record": "28907710\ngithub.com/moby/sys/userns v0.1.0 h1:tVLXkFOxVu9A64/yh59slHVv9ahO9UIev4JZusOLG/g=\ngithub.com/moby/sys/userns v0.1.0/go.mod h1:IHUYgu/kao6N8YZlp9Cf444ySSvCmDlmzUcYfDHOl28=\n\ngo.sum database tree\n64184078\nO6YPmrUJ5YT6ZmY8ULxmUDwNUYIEznuW7mHofDXLt2I=\n\n— sum.golang.org Az3grsbVBRGwu69XFBB2NGNiDZEfg3ysygPQNOwacbhg48C7jb6/S+V610Mj46BR9iOOtSj2Nl0IwdW/Z+P9l+Weqwo=\n"
+    },
+    {
+      "name": "github.com/moby/term",
+      "version": "v0.5.2",
+      "recordDigest": "sha256:46352785ac80b2377d3840b8b6d9aaaaee155c69600bec7d65f227d804c81716",
+      "record": "33230685\ngithub.com/moby/term v0.5.2 h1:6qk3FJAFDs6i/q3W/pQ97SX192qKfZgGjCQqfCJkgzQ=\ngithub.com/moby/term v0.5.2/go.mod h1:d3djjFCrjnB+fl8NJux+EJzu0msscUP+f8it8hPkFLc=\n\ngo.sum database tree\n64172976\nnkCDwVjI3C0wceHG2EnddLa0vHGrv5z+oaDqaaj6VvI=\n\n— sum.golang.org Az3grhqWfv0gnq+YP4719uuObC3id3T+t97qGWqro2+ZGbsVmCapnqNnAm6bPbB30I9tylzP0l9xykP2o+/tQejFswI=\n"
+    },
+    {
+      "name": "github.com/pascaldekloe/name",
+      "version": "v1.0.1",
+      "recordDigest": "sha256:f5242dd8aec253bf4ace00fe9ea5bc23de1a8a08058b77405e253496aae37eb9",
+      "record": "1649246\ngithub.com/pascaldekloe/name v1.0.1 h1:9lnXOHeqeHHnWLbKfH6X98+4+ETVqFqxN09UXSjcMb0=\ngithub.com/pascaldekloe/name v1.0.1/go.mod h1:Z//MfYJnH4jVpQ9wkclwu2I2MkHmXTlT9wR5UZScttM=\n\ngo.sum database tree\n64173424\nKDa68kJOWe/cO7kPWN/ty9asG6TZBRxT2/xDgP8uZWA=\n\n— sum.golang.org Az3grstmRUf42jfGA0hExACmJTG8AdA2W5ljllEfZaMcCHYG91xRWELQAAtE/vBRbhesC0FDkDO1gn3vU9+V3n4aQQs=\n"
+    },
+    {
+      "name": "github.com/paulmach/protoscan",
+      "version": "v0.2.1",
+      "recordDigest": "sha256:ca37371b3034ee581b4c97f8feb94758796770ffba4f44fc191ca9d1bdb350d7",
+      "record": "9053203\ngithub.com/paulmach/protoscan v0.2.1 h1:rM0FpcTjUMvPUNk2BhPJrreDKetq43ChnL+x1sRg8O8=\ngithub.com/paulmach/protoscan v0.2.1/go.mod h1:SpcSwydNLrxUGSDvXvO0P7g7AuhJ7lcKfDlhJCDw2gY=\n\ngo.sum database tree\n64172625\neEKi4DX5LW4dmj/pz38JeFN9DtJZ/OLcckblglZjNSg=\n\n— sum.golang.org Az3gruBW9SqfMfZ04wXBkWtKUT33hyKuS34Oj/GaUzVjyX6/5Y/eahEem0BsfHeALa5JSIekgU4AVvxJS8C1wHtbeAs=\n"
+    },
+    {
+      "name": "github.com/pkg/errors",
+      "version": "v0.8.1",
+      "recordDigest": "sha256:bb07976b3c7b35bfebee26c743d3a25f699d8a00acaa4b46dc613de5f7406dba",
+      "record": "52\ngithub.com/pkg/errors v0.8.1 h1:iURUrRGxPUNPdy5/HRSm+Yj6okJ6UtLINN0Q9M4+h3I=\ngithub.com/pkg/errors v0.8.1/go.mod h1:bwawxfHBFNV+L2hUp1rHADufV3IMtnDRdf1r5NINEl0=\n\ngo.sum database tree\n64189128\nxZNoT9UxVCO98gsIn0VyBnEmn8i7iQmza3ymUhFOxPI=\n\n— sum.golang.org Az3grsJNQJCOFZsHFurjYqUXmL4TmaIpin2jEgyiCFZTxwdPWobC+DhP5UHrRdawtT0LJNINAXWugsmnvlH0BmN9qg4=\n"
+    },
+    {
+      "name": "github.com/planetscale/vtprotobuf",
+      "version": "v0.6.1-0.20240319094008-0393e58bdf10",
+      "recordDigest": "sha256:3064e09f4ee08cb678ebe295940a4f0da41038188e4a8f223a7b34373d79d140",
+      "record": "23969902\ngithub.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10 h1:GFCKgmp0tecUJ0sJuv4pzYCqS9+RGSn52M3FUwPs+uo=\ngithub.com/planetscale/vtprotobuf v0.6.1-0.20240319094008-0393e58bdf10/go.mod h1:t/avpk3KcrXxUnYOhZhMXJlSEyie6gQbtLq5NM3loB8=\n\ngo.sum database tree\n64185065\nOJmVhXfRGv/+3TUq7n7WnT54hVfXUs7vC8gV7dJdYVU=\n\n— sum.golang.org Az3groNhY2UT6ewln2TukHfzHLA+rNoZVmMUblkJfsT5WYjthhFAcRCCvZMESb+027hNLECtokL5X1Mx/m92EwDvOg0=\n"
+    },
+    {
+      "name": "github.com/power-devops/perfstat",
+      "version": "v0.0.0-20240221224432-82ca36839d55",
+      "recordDigest": "sha256:f550a4213e585a38c103150a328bd6d3428652f861bc1fd035fa92f67c377a52",
+      "record": "22998377\ngithub.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 h1:o4JXh1EVt9k/+g42oCprj/FisM4qX9L3sZB3upGN2ZU=\ngithub.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55/go.mod h1:OmDBASR4679mdNQnz2pUhc2G8CO2JrUAVFDRBDP/hJE=\n\ngo.sum database tree\n64185189\nLYI+8i6hUyJTv23qPijjNZ/N8sV1N4XGcCCcG8cVGAc=\n\n— sum.golang.org Az3gruyFtJbfkr0syhTU/Wi3GpK6pgJMvnlKdcox49Oe7gjhn8WjT4VWZqBdUuYb/c9FNQT4tgoHjI9tc8JZ8FrS9AI=\n"
+    },
+    {
+      "name": "github.com/pressly/goose/v3",
+      "version": "v3.27.3",
+      "recordDigest": "sha256:996d7185bb12f522d3379016bd9b559a37b25b62d9ed954fb1bd1e60189c3145",
+      "record": "57846134\ngithub.com/pressly/goose/v3 v3.27.3 h1:pIglVHjw99r4e/hDHHwbl9vfOsDMqUokfkXo6+n/RxA=\ngithub.com/pressly/goose/v3 v3.27.3/go.mod h1:Dag+xpV6o20HR2LFY1j0q6MDwc3f7vPUFDA77R+0yGY=\n\ngo.sum database tree\n64189185\n039oWbAV/oRbvsL1bMxxQpX4d3jcX1NS3BdJr9t/Qqg=\n\n— sum.golang.org Az3grrwSS3yUnFAfgoiqmk1K999LPApfHIBUYDQHkP5KGkod9lixlmfu6Nqz5RWQMbu6Q0mDyml7MLcZf18b1mtSnQE=\n"
+    },
+    {
+      "name": "github.com/prometheus/client_model",
+      "version": "v0.0.0-20190812154241-14fe0d1b01d4",
+      "recordDigest": "sha256:e590f31c936668a998c79978b7a067638f724c55c3d484fb74e359b8806aa0d1",
+      "record": "141809\ngithub.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4 h1:gQz4mCbXsO+nc9n1hCxHcGA3Zx3Eo+UHZoInFGUIXNM=\ngithub.com/prometheus/client_model v0.0.0-20190812154241-14fe0d1b01d4/go.mod h1:xMI15A0UPsDsEKsMN9yxemIoYk6Tm2C1GtYGdfGttqA=\n\ngo.sum database tree\n64193073\nCSh+LQYHK/OeamGmPxIOeu3DeJB8tzeu+S5iaL7yF30=\n\n— sum.golang.org Az3grnNZQzxL2bYBtisERDTInb/mV6vgPAa/MUvhfS0TZrGnpww8hbK/oD2bvOuJPxAeRWRawHBnD3SroCV6ae8QUQ4=\n"
+    },
+    {
+      "name": "github.com/rogpeppe/fastuuid",
+      "version": "v1.2.0",
+      "recordDigest": "sha256:568b0cd7f0f0f0e8e4d6437726bb021936de3ed3b6ef96fa76c4d8a83fcd3175",
+      "record": "44151\ngithub.com/rogpeppe/fastuuid v1.2.0 h1:Ppwyp6VYCF1nvBTXL3trRso7mXMlRrw9ooo375wvi2s=\ngithub.com/rogpeppe/fastuuid v1.2.0/go.mod h1:jVj6XXZzXRy/MSR5jhDC/2q6DgLz+nrA6LYCDYWNEvQ=\n\ngo.sum database tree\n64166645\nn9YtvTo+cu473OlJh6dkTI2HyXNcd6WtIltPvD66BnQ=\n\n— sum.golang.org Az3gro7pli/TXvWoui2gvqt4Y25ypqHvIQ6xYpNNNEMooQl4bePcA+zlXMiTscejQ2hEN81bbOrjC0PsHWeMy++QqwI=\n"
+    },
+    {
+      "name": "github.com/russross/blackfriday",
+      "version": "v1.6.0",
+      "recordDigest": "sha256:9b8d5a2cee31efb93bd05bd9d6115533f6c548a3452b23e83b7303e1209d6990",
+      "record": "1932477\ngithub.com/russross/blackfriday v1.6.0 h1:KqfZb0pUVN2lYqZUYRddxF4OR8ZMURnJIG5Y3VRLtww=\ngithub.com/russross/blackfriday v1.6.0/go.mod h1:ti0ldHuxg49ri4ksnFxlkCfN+hvslNlmVHqNRXXJNAY=\n\ngo.sum database tree\n64187021\nPirvC6iHHS/nFRZAmzOdQDtH+Yce6mzxcYtltUbzO3g=\n\n— sum.golang.org Az3grvlO6BlS5lKxtnx6rEPsSBUYd+XBSa2TSJatKKutmsfqrqOwBn9PCoILYd5JPeqyAvTIYFAX/UllGFRuhBQewAM=\n"
+    },
+    {
+      "name": "github.com/santhosh-tekuri/jsonschema/v5",
+      "version": "v5.3.1",
+      "recordDigest": "sha256:23019d8f742d98890926161fc165abc124ae0e12db812848c8cd72409dc4e70b",
+      "record": "18626103\ngithub.com/santhosh-tekuri/jsonschema/v5 v5.3.1 h1:lZUw3E0/J3roVtGQ+SCrUrg3ON6NgVqpn3+iol9aGu4=\ngithub.com/santhosh-tekuri/jsonschema/v5 v5.3.1/go.mod h1:uToXkOrWAZ6/Oc07xWQrPOhJotwFIyu2bBVN41fcDUY=\n\ngo.sum database tree\n64188850\nt3m4kF4+6Zh78CK/OiEiBfQ9Z6e26qfPFB0kXL9tXfk=\n\n— sum.golang.org Az3grmg8qEYSzb9kBVbv5DKgs12QKQ+ayJsIsvq2nPTUCEeN2jsKIIokFWEBlcWsPkBL/mwOsxqbjjP7s5nVtptz9Ag=\n"
+    },
+    {
+      "name": "github.com/shirou/gopsutil",
+      "version": "v3.21.11+incompatible",
+      "recordDigest": "sha256:d4e4ad051f43f86308281ccc975960bd9d97c49a5bad24ba140fd0cb8b795180",
+      "record": "8197382\ngithub.com/shirou/gopsutil v3.21.11+incompatible h1:+1+c1VGhc88SSonWP6foOcLhvnKlUeu/erjjvaPEYiI=\ngithub.com/shirou/gopsutil v3.21.11+incompatible/go.mod h1:5b4v6he4MtMOwMlS0TUMTu2PcXUg8+E1lC7eC3UO/RA=\n\ngo.sum database tree\n64173963\ng5KoS7Jt9in9D2fOejRIiuRV3il0VaJi+IdTd8Ig+y0=\n\n— sum.golang.org Az3grmXWOeleuZ+8P8i5u8U1938ZGlyltv7MY104aIAcfjKEHjrEq7gHcaZKQVOAtgFHOemPJcvOemeI6jFXZy89hQw=\n"
+    },
+    {
+      "name": "github.com/shirou/gopsutil/v4",
+      "version": "v4.26.5",
+      "recordDigest": "sha256:fba226c95a2c0fe296a7c999fc56dba9269a8fe36579bbade1b83b1cf8ec7bb8",
+      "record": "54973687\ngithub.com/shirou/gopsutil/v4 v4.26.5 h1:RPcBXkpz7kOj9PqGFQOlBPZHsyaPvPVQc098y9RmCNM=\ngithub.com/shirou/gopsutil/v4 v4.26.5/go.mod h1:LZ6ewCSkBqUpvSOf+LsTGnRinC6iaNUNMGBtDkJBaLQ=\n\ngo.sum database tree\n64188904\nZhai6kciV0UgJFFFSBU7WK47tBdHIDrS/rvwLffVYzk=\n\n— sum.golang.org Az3grqZu3tPkv45XeHYlCLQJLdVgzx0UQireRdhMg+HmSAB+2/KUycpTvdh25MxVi0Lm+xfA+79feCYRht3zOpc5RAU=\n"
+    },
+    {
+      "name": "github.com/sirupsen/logrus",
+      "version": "v1.9.4",
+      "recordDigest": "sha256:ebdeaa2335803b3b2976a2d4bfd28533b865bbe47e6594fc80436d3c28c3ae33",
+      "record": "48984711\ngithub.com/sirupsen/logrus v1.9.4 h1:TsZE7l11zFCLZnZ+teH4Umoq5BhEIfIzfRDZ1Uzql2w=\ngithub.com/sirupsen/logrus v1.9.4/go.mod h1:ftWc9WdOfJ0a92nsE2jF5u5ZwH8Bv2zdeOC42RjbV2g=\n\ngo.sum database tree\n64172466\nbPa21I9UuTgvzP3IfLMMN5ZZXukj0s6/AO5/kbmA8fM=\n\n— sum.golang.org Az3grhVyZItIHmTWYqK6NNO/mFLj4HDY5/hL0fsnUTJY073UOCGaIW8Vj7RqfequIn9RA4hG/I/r3ku1mbwoWGgYeAM=\n"
+    },
+    {
+      "name": "github.com/spiffe/go-spiffe/v2",
+      "version": "v2.6.0",
+      "recordDigest": "sha256:ca2d8f1614cd398d86b191c8b433be65fd979846a2812ec94f7f20437b71ec64",
+      "record": "42386084\ngithub.com/spiffe/go-spiffe/v2 v2.6.0 h1:l+DolpxNWYgruGQVV0xsfeya3CsC7m8iBzDnMpsbLuo=\ngithub.com/spiffe/go-spiffe/v2 v2.6.0/go.mod h1:gm2SeUoMZEtpnzPNs2Csc0D/gX33k1xIx7lEzqblHEs=\n\ngo.sum database tree\n64183786\n1h574Gb48GXkGPwNp+0h9tiRG3EmeKUbUa310NHe47g=\n\n— sum.golang.org Az3grhluLPq0Oa1tTueIqU4gaM7WxUGkpgaqka+Dbb3Uaz8+bGX7y4ydcAXPmxUfMop5S7aVBawn8kqRlv8b1vc82w0=\n"
+    },
+    {
+      "name": "github.com/testcontainers/testcontainers-go",
+      "version": "v0.43.0",
+      "recordDigest": "sha256:858ec66070ccc0e4a9698bf43e850bef527772f6b05cd2e6be633b065e221a20",
+      "record": "55892032\ngithub.com/testcontainers/testcontainers-go v0.43.0 h1:oEQx5MW2DGd9z3AeEQfB2lPM0eLs7ztyaGRu75bFo5A=\ngithub.com/testcontainers/testcontainers-go v0.43.0/go.mod h1:+VxkT2NQnKOZPKi6praMuMKYHYyOGXr0XSBSlSMCzFo=\n\ngo.sum database tree\n64188739\nHMrKk6FZsoCwB1C+eD48cGTOFRPvVdnIC09dwis+Nv4=\n\n— sum.golang.org Az3grrf3L33wQAi6hDl6PFXBH24SRRAx9ietuADoTx9mWLb95Hxoa+M9vXAX3PmTQ4/Kg3jxPpxBDpGCMci4v2mMBQw=\n"
+    },
+    {
+      "name": "github.com/tklauser/go-sysconf",
+      "version": "v0.4.0",
+      "recordDigest": "sha256:b790eae38d6963b4c2d718a8cf6f0daef743910ef7b730bde212826feb9610f5",
+      "record": "53984681\ngithub.com/tklauser/go-sysconf v0.4.0 h1:7H0uAN+7RkwWRaxhYXDLqa5V3LPrJeV8wmD9dRUgPQU=\ngithub.com/tklauser/go-sysconf v0.4.0/go.mod h1:8mTNWyog7H+MpKijp4VmKJAd2bbYQ2zuUwkYRbUArPI=\n\ngo.sum database tree\n64184574\nSWPOxKwuX2qutK4lghFxAI9w0+gPvz/PiORyWCBxF7o=\n\n— sum.golang.org Az3grtQse6xRJGI2TGKRmVnffWAw7jayxHiffFnrkCxXt+RI9yMIpy+OIxnT2KiaUC6oT7x7Brr4EQ4g3ev3TKTj0gk=\n"
+    },
+    {
+      "name": "github.com/tklauser/numcpus",
+      "version": "v0.12.0",
+      "recordDigest": "sha256:0e4ddf94e466c11133b3249d1e07c0fa19473e630ffb8c070bb56ffbea7d332d",
+      "record": "53984165\ngithub.com/tklauser/numcpus v0.12.0 h1:NR85qdvHA9pFse3x3weVZ0r0ST8R6l5RHbZrlRaqob4=\ngithub.com/tklauser/numcpus v0.12.0/go.mod h1:ABHeXzJnr/qqwguhClkZKT1/8VABcYrsyUiUGobwWJg=\n\ngo.sum database tree\n64182879\nnezy7DIflPpdmyi5C2zsMxb7J4fDLYjPuZgyKAUN3ho=\n\n— sum.golang.org Az3grqm8hAyPnKYvBHoSqSvzyQRZNxbfGnhhj3oofaWH64U6ORRnrwOvGBIMObhe1UQYHyVTA2m5TRLoZ4xwEcD/jw0=\n"
+    },
+    {
+      "name": "github.com/yusufpapurcu/wmi",
+      "version": "v1.2.4",
+      "recordDigest": "sha256:93af7ff70661448c801dd00940cf0e0e242d085a92e106339aebaca9ce2a7165",
+      "record": "22355390\ngithub.com/yusufpapurcu/wmi v1.2.4 h1:zFUKzehAFReQwLys1b/iSMl+JQGSCSjtVqQn9bBrPo0=\ngithub.com/yusufpapurcu/wmi v1.2.4/go.mod h1:SBZ9tNy3G9/m5Oi98Zks0QjeHVDvuK0qfxQmPyzfmi0=\n\ngo.sum database tree\n64184547\njeKUlLr5SgQQnSR8br45XS1uJmGbLCND8tC8jB2fEO4=\n\n— sum.golang.org Az3grlZYwDmy+C8uLv3fc2FahbYhfOfK2L9bTv9TEXbm7SFfsr++asDlCqqnjROnTW1qGl4fnA3SkUNUuvRsD5HOtAk=\n"
+    },
+    {
+      "name": "go.mongodb.org/mongo-driver/v2",
+      "version": "v2.5.0",
+      "recordDigest": "sha256:956a87a829222b08582aa6b7fe3225fe1fc7b660198b991f6600add307ae9795",
+      "record": "49372950\ngo.mongodb.org/mongo-driver/v2 v2.5.0 h1:yXUhImUjjAInNcpTcAlPHiT7bIXhshCTL3jVBkF3xaE=\ngo.mongodb.org/mongo-driver/v2 v2.5.0/go.mod h1:yOI9kBsufol30iFsl1slpdq1I0eHPzybRWdyYUs8K/0=\n\ngo.sum database tree\n64177932\npmiYYZQRBvy2ZzcG89s2GjqEDGH/1hHLUsO9Am9sK+k=\n\n— sum.golang.org Az3groMk+LKsIry8kDyfZpHXozxv6W3MhHjR2mWP9XzBj4IFJl8xVCbEsB5AUMd/yTK42ickY24A/0lJ5uabOXxvYgE=\n"
+    },
+    {
+      "name": "go.opentelemetry.io/contrib/detectors/gcp",
+      "version": "v1.43.0",
+      "recordDigest": "sha256:510bdba8cf36c436a3957437c97c281a1448037d4be8c67ef35c6b840fa1fd4a",
+      "record": "52126191\ngo.opentelemetry.io/contrib/detectors/gcp v1.43.0 h1:62yY3dT7/ShwOxzA0RsKRgshBmfElKI4d/Myu2OxDFU=\ngo.opentelemetry.io/contrib/detectors/gcp v1.43.0/go.mod h1:RyaZMFY7yi1kAs45S6mbFGz8O8rqB0dTY14uzvG4LCs=\n\ngo.sum database tree\n64182629\nOVfTufF4Pe/+iXNFF+yE29aULU6lbGU2KM8imwYMtrg=\n\n— sum.golang.org Az3grk+YP3PauYZTmkigZ+yPyXovoQIHyQpGAMyxHHcyfHKN1jeGxpbTizFLgJ8hf4Tm5S35S7rd25TpFtOCKTm6MwQ=\n"
+    },
+    {
+      "name": "go.opentelemetry.io/proto/otlp",
+      "version": "v0.7.0",
+      "recordDigest": "sha256:9c293055f30d29c4f1788112e19995f99b1fbfb9e8ba92e590dea979e6131ad8",
+      "record": "3350310\ngo.opentelemetry.io/proto/otlp v0.7.0 h1:rwOQPCuKAKmwGKq2aVNnYIibI6wnV7EvzgfTCzcdGg8=\ngo.opentelemetry.io/proto/otlp v0.7.0/go.mod h1:PqfVotwruBrMGOCsRd/89rSnXhoiJIqeYNgFYFoEGnI=\n\ngo.sum database tree\n64179955\nvkRZR1xw7Mskl+Ctsvz7WSnUjO4oXSueC28dxHSmzZk=\n\n— sum.golang.org Az3grvk811irFIt+FynP9kpv1ln8wrVQrVcCiovg2SBLYnhTl7O50EO9zZjqn696XBDztczTCEWvDIoZRauMbQYn4wY=\n"
+    },
+    {
+      "name": "go.uber.org/goleak",
+      "version": "v1.3.0",
+      "recordDigest": "sha256:436486d5f5477e34f0848f8eac9092c234d3f104e20eec6067c1f62098285cfc",
+      "record": "20246898\ngo.uber.org/goleak v1.3.0 h1:2K3zAYmnTNqV73imy9J1T3WC+gmCePx2hEGkimedGto=\ngo.uber.org/goleak v1.3.0/go.mod h1:CoHD4mav9JJNrW/WLlf7HGZPjdw8EucARQHekz1X6bE=\n\ngo.sum database tree\n64184335\nswiEzPE8Q3ivSDtdiE9w8ZME6Ovo2qVhg5GeYGiAm7Q=\n\n— sum.golang.org Az3griKIkkEgNkEughmhswCqwYezHqQlcYHcBigFqSGJus/s7MXC0uNuwJhqcdH1ZDg+OKXH5tdE+5BEF3e7kiFQNAA=\n"
+    },
+    {
+      "name": "go.uber.org/zap",
+      "version": "v1.28.0",
+      "recordDigest": "sha256:698ce6e4c92f47713b47fe721e20f9a9e9005d5fe02c93a2c7bfdd9982b8a383",
+      "record": "53060845\ngo.uber.org/zap v1.28.0 h1:IZzaP1Fv73/T/pBMLk4VutPl36uNC+OSUh3JLG3FIjo=\ngo.uber.org/zap v1.28.0/go.mod h1:rDLpOi171uODNm/mxFcuYWxDsqWSAVkFdX4XojSKg/Q=\n\ngo.sum database tree\n64171161\nn1dp2Jl89M0q5cuR82ElcgmWQ4hzWqVC89T0vs3VvIc=\n\n— sum.golang.org Az3grin9Vme0+kTT5lLuJHKmNDfZGltmiWmfyqzTdbqP6C3ZYBbAT6IHEm+iBiRxdwc8BcFSVfUxPi7e128YnWOWGw4=\n"
+    },
+    {
+      "name": "golang.org/x/lint",
+      "version": "v0.0.0-20190313153728-d0100b6bd8b3",
+      "recordDigest": "sha256:02c2c5398a4937027bfa20481b84b932fc80ee59f97019a24a732a9d4f918828",
+      "record": "595\ngolang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3 h1:XQyxROzUlZH+WIQwySDgnISgOivlhjIEwaQaJEJrrN0=\ngolang.org/x/lint v0.0.0-20190313153728-d0100b6bd8b3/go.mod h1:6SW0HCj/g11FgYtHlgUYUwCkIfeOF89ocIRzGO/8vkc=\n\ngo.sum database tree\n64182976\nhzVtR1YT6MC3Gmso59O89qQbhauKkjsaKfEh2pcESsU=\n\n— sum.golang.org Az3grj3/XC0i+YknnyrFfFjsX/IamE49CO9GhWC4gkybVNNX0X397+2j8q9nJygf7fiebVxIOC7i/dfoe9D0s2Ndxgc=\n"
+    },
+    {
+      "name": "golang.org/x/oauth2",
+      "version": "v0.36.0",
+      "recordDigest": "sha256:03000c799f6113d019034c55d4c3cc85853764752e7435779f4e1de9d45be323",
+      "record": "50925305\ngolang.org/x/oauth2 v0.36.0 h1:peZ/1z27fi9hUOFCAZaHyrpWG5lwe0RJEEEeH0ThlIs=\ngolang.org/x/oauth2 v0.36.0/go.mod h1:YDBUJMTkDnJS+A4BP4eZBjCqtokkg1hODuPjwiGPO7Q=\n\ngo.sum database tree\n64166645\nn9YtvTo+cu473OlJh6dkTI2HyXNcd6WtIltPvD66BnQ=\n\n— sum.golang.org Az3gro7pli/TXvWoui2gvqt4Y25ypqHvIQ6xYpNNNEMooQl4bePcA+zlXMiTscejQ2hEN81bbOrjC0PsHWeMy++QqwI=\n"
+    },
+    {
+      "name": "golang.org/x/term",
+      "version": "v0.45.0",
+      "recordDigest": "sha256:87972ce93bb65798c1059754d9b43ee5b1b51640ac5d569fb91208901ad5cd25",
+      "record": "57012826\ngolang.org/x/term v0.45.0 h1:NwWyBmoJCbfTHpxrWoZ9C6/VxOf7ic219I8xZZFdrf0=\ngolang.org/x/term v0.45.0/go.mod h1:9aqxs0blBcrm/n0L9QW0aRVD+ktan8ssZromtqJC43w=\n\ngo.sum database tree\n64173003\n46rQzHgx6Dh13y0lw03t9U4tpDoy7UxyxBwr54iu+pk=\n\n— sum.golang.org Az3groPcbYbM4yKGahYcCK6fbiLiSewJCFYO+BuTLzeoe9uazHAYUAFII35F3GEBpoNtZLspjSJkQluvi3A7lzaTLw4=\n"
+    },
+    {
+      "name": "golang.org/x/time",
+      "version": "v0.11.0",
+      "recordDigest": "sha256:b2bf0625df28341edac3d16690540c5e9657530c94c15149d18c64e78235ceb2",
+      "record": "35066133\ngolang.org/x/time v0.11.0 h1:/bpjEDfN9tkoN/ryeYHnv5hcMlc8ncjMcM4XBk5NWV0=\ngolang.org/x/time v0.11.0/go.mod h1:CDIdPxbZBQxdj6cxyCIdrNogrJKMJ7pr37NYpMcMDSg=\n\ngo.sum database tree\n64188604\nVggYu3TAxbamGdKBvpsepfuTTRS8nD5UMjYT/YQ+Tig=\n\n— sum.golang.org Az3grkeLC9f1w0R76kUb/h5f896CqjgWWMlgf5Q3Wy19cVxCYxtyBsYJCgIL13i6706vlt3TsGLg+o0qLvzw6g5HXAY=\n"
+    },
+    {
+      "name": "golang.org/x/tools/go/expect",
+      "version": "v0.1.1-deprecated",
+      "recordDigest": "sha256:90d16aa3db6d9f254cd15de67d7609074bb147b3d2b3739adcd8afb2c9869722",
+      "record": "38907971\ngolang.org/x/tools/go/expect v0.1.1-deprecated h1:jpBZDwmgPhXsKZC6WhL20P4b/wmnpsEAGHaNy0n/rJM=\ngolang.org/x/tools/go/expect v0.1.1-deprecated/go.mod h1:eihoPOH+FgIqa3FpoTwguz/bVUSGBlGQU67vpBeOrBY=\n\ngo.sum database tree\n64170609\nOoDQhz9C4XcoHEA91i2PLpjQKccJ7zDhIOHHDjE3w0Y=\n\n— sum.golang.org Az3grujONGzDg55vFUceAcKN+JxqxqLt3a7XGK3yCP8m4q5H6k2Lu0kwPSE6lc9x1YOAvZOndsZBeBcd8G/Ki4MSkQ4=\n"
+    },
+    {
+      "name": "golang.org/x/tools/go/packages/packagestest",
+      "version": "v0.1.1-deprecated",
+      "recordDigest": "sha256:4a0c6d1453fcbdb29f39780b258e99c5d8de5332e1b1196acf845df4af42fb51",
+      "record": "38907978\ngolang.org/x/tools/go/packages/packagestest v0.1.1-deprecated h1:1h2MnaIAIXISqTFKdENegdpAgUXz6NrPEsbIeWaBRvM=\ngolang.org/x/tools/go/packages/packagestest v0.1.1-deprecated/go.mod h1:RVAQXBGNv1ib0J382/DPCRS/BPnsGebyM1Gj5VSDpG8=\n\ngo.sum database tree\n64171022\nvAG/ip2ok39CJjFpM5mRfZy3MGORGDB2z8YR1i4qA4I=\n\n— sum.golang.org Az3gru6x0dmbBB2PQCwsnDtrUJDx7+zedaAqJDnZOsTAOk6uaOR75nlDjmyVXi0Q17mgukSzDv4NxpF7uIxHqGMuZQA=\n"
+    },
+    {
+      "name": "golang.org/x/xerrors",
+      "version": "v0.0.0-20200804184101-5ec99f83aff1",
+      "recordDigest": "sha256:958b8639aade075ab6c629f41bfca09a12faa098268b803e8076dd82c50e58cd",
+      "record": "1491643\ngolang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1 h1:go1bK/D/BFZV2I8cIQd1NKEZ+0owSTG1fDTci4IqFcE=\ngolang.org/x/xerrors v0.0.0-20200804184101-5ec99f83aff1/go.mod h1:I/5z698sn9Ka8TeJc9MKroUUfqBBauWjQqLJ2OPfmY0=\n\ngo.sum database tree\n64185797\nxnASSVAR/zMj+jgzO5d8qM7K8TcBhsAjieF2+aPWEuQ=\n\n— sum.golang.org Az3grlhFLcG1D8MSMKB53XHFzscsmVcf8mmF3kDSv5WXeWyAs7sLOZJtxS/6eN5mYc2CYGAym6EBR4T4oRdLHCFMyQI=\n"
+    },
+    {
+      "name": "google.golang.org/appengine",
+      "version": "v1.4.0",
+      "recordDigest": "sha256:e6790ee5e9f9ef6799719db4c90e821df1bb0cc37cba5bbd4f74eb5ad4029cbe",
+      "record": "228\ngoogle.golang.org/appengine v1.4.0 h1:/wp5JvzpHIxhs/dumFmF7BXTf3Z+dd4uXta4kVyO508=\ngoogle.golang.org/appengine v1.4.0/go.mod h1:xpcJRLb0r/rnEns0DIKYYv+WjYCduHsrkT7/EB5XEv4=\n\ngo.sum database tree\n64193085\nFZMf4K8BUgrn7E7HTMV+Cl8lHxmrrdr0aFkIlTBpLwg=\n\n— sum.golang.org Az3grsPkxaGJ68RQE8Q4PVIqzxiB6sL5fOg4Pcco8EGpI8HjIn7MTd9E/LVRhFESXXuKtk9UU4GVtqYsAfa2TpAVgAA=\n"
+    },
+    {
+      "name": "google.golang.org/genproto",
+      "version": "v0.0.0-20200526211855-cb27e3aa2013",
+      "recordDigest": "sha256:93b1e1a6a2340637857f6561c49523e55d0383835ee7278020843d95052bbcb0",
+      "record": "1239337\ngoogle.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013 h1:+kGHl1aib/qcwaRi1CbqBZ1rk19r85MNUf8HaBghugY=\ngoogle.golang.org/genproto v0.0.0-20200526211855-cb27e3aa2013/go.mod h1:NbSheEEYHJ7i3ixzK3sjbqSGDJWnxyFXZblF3eUsNvo=\n\ngo.sum database tree\n64180319\nCGZngCZLGQH64ZlQuRwhU3eA6cioB0ScJg/BA4zCbZs=\n\n— sum.golang.org Az3grlb31qcpG4KDUAQJeLs8byX3IbSiZzTmRQuWo+/YNwGjEOyECWOB/2hXJ6D4Hhl6eAFbr4GyaOjY530F/gQ48QU=\n"
+    },
+    {
+      "name": "google.golang.org/genproto/googleapis/api",
+      "version": "v0.0.0-20260414002931-afd174a4e478",
+      "recordDigest": "sha256:49f601494e15762798733305d23d621c2010b3726ccd7b11a86dac4ea9eec806",
+      "record": "52425851\ngoogle.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478 h1:yQugLulqltosq0B/f8l4w9VryjV+N/5gcW0jQ3N8Qec=\ngoogle.golang.org/genproto/googleapis/api v0.0.0-20260414002931-afd174a4e478/go.mod h1:C6ADNqOxbgdUUeRTU+LCHDPB9ttAMCTff6auwCVa4uc=\n\ngo.sum database tree\n64184731\n3A0aCNV1rWmPa0yz79jJRhhfO0j93uAd65aZkxE5SyY=\n\n— sum.golang.org Az3groUwYpzRpflk+tMD+DYEL9FMQCviGwbB/R+sgKfKzzBkbJCjwjf96r5ZiuYuFYAyDLjMlnEYzVKXTUkVaELHNgk=\n"
+    },
+    {
+      "name": "gopkg.in/yaml.v1",
+      "version": "v1.0.0-20140924161607-9f9df34309c0",
+      "recordDigest": "sha256:a4e6bfb4a14a57ba51ff9a4385f415ffdfc458e1ada6a2ece3226ed7bda6c6fb",
+      "record": "619\ngopkg.in/yaml.v1 v1.0.0-20140924161607-9f9df34309c0 h1:POO/ycCATvegFmVuPpQzZFJ+pGZeX22Ufu6fibxDVjU=\ngopkg.in/yaml.v1 v1.0.0-20140924161607-9f9df34309c0/go.mod h1:WDnlLJ4WF5VGsH/HVa3CI79GS0ol3YnhVnKP89i0kNg=\n\ngo.sum database tree\n64189239\n89ZeeXwZvq4gA0542X3vziKn+AXw2Q6A2Z1390sSEgc=\n\n— sum.golang.org Az3grgIoYxirySGQEOZypdULD9pcx+5MV7lfKYiEjUVW4npN6isoCf2gzDCHaSn6WnyMBgLWDprsKA4xqWWG8JfOCAM=\n"
+    },
+    {
+      "name": "gopkg.in/yaml.v2",
+      "version": "v2.2.3",
+      "recordDigest": "sha256:6faaf3ca24f0271b86b8653d114e805a43546574defd8dcca89085473f561685",
+      "record": "288918\ngopkg.in/yaml.v2 v2.2.3 h1:fvjTMHxHEw/mxHbtzPi3JCcKXQRAnQTBRo6YCJSVHKI=\ngopkg.in/yaml.v2 v2.2.3/go.mod h1:hI93XBmqTisBFMUTm0b8Fm+jr3Dg1NNxqwp+5A1VGuI=\n\ngo.sum database tree\n64193304\n2NtTKcMPbSUpFvHeWRlGzEV5VCrAU3emMqZlywywrSg=\n\n— sum.golang.org Az3grp5ejiS6N3cHx01X95Li3+DvSZ6eYgSQuGvENyaR2hCDJ5X3uYyjsUlckq0Im4u8OotdN/EMLk+vXXOC6ey4GQI=\n"
+    },
+    {
+      "name": "honnef.co/go/tools",
+      "version": "v0.0.0-20190523083050-ea95bdfd59fc",
+      "recordDigest": "sha256:eb04ad7dc00d7eee13b75c6fc3a204364a736c08944e46d72dfa2a513cd9e72a",
+      "record": "17018\nhonnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc h1:/hemPrYIhOhy8zYrNj+069zDB68us2sMGsfkFJO0iZs=\nhonnef.co/go/tools v0.0.0-20190523083050-ea95bdfd59fc/go.mod h1:rf3lG4BRIbNafJWhAfAdb/ePZxsR/4RtNHQocxwk9r4=\n\ngo.sum database tree\n64180366\nI8xr9UeGSW6RV0m2p4q6r1IEk8Tc9tvnAStbIGS7OWM=\n\n— sum.golang.org Az3grneO1rkTRRdyov3EiNlI3v7LDkqtpLgP/MdfecL7MPbzL8PMaVU1tC+DLn6BzrjF6xD9FvAd40GxL59MFLXXagU=\n"
+    }
+  ]
+}

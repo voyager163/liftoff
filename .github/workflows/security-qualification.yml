@@ -1,0 +1,44 @@
+name: Bounded security qualification
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [develop, main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-qualification-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LIFTOFF_TELEMETRY: "0"
+  NODE_DISABLE_COMPILE_CACHE: "1"
+
+jobs:
+  linux-osv-network:
+    name: Native Linux AMD64 OSV network boundary
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+      - name: Install locked local test dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts
+      - name: Require actual syscall denial and pinned offline extraction
+        run: |
+          env -i PATH="$PATH" HOME="$RUNNER_TEMP" \
+            node scripts/repository-security/linux-osv-fixture.ts \
+            --python "$(command -v python)" --workspace-parent "$RUNNER_TEMP"

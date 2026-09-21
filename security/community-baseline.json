@@ -1,0 +1,50 @@
+{
+  "schemaVersion": 1,
+  "observedOn": "2026-09-20",
+  "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+  "before": {
+    "readmeNormalizedLines": 163,
+    "contributingNormalizedLines": 366,
+    "documentedReadmeLimit": "<135",
+    "testReadmeLimit": "<165",
+    "localIssueAndPullRequestTemplates": false,
+    "publicOwnerDefaults": {
+      "endpoint": "repos/voyager163/.github",
+      "status": 404,
+      "interpretation": "No accessible owner defaults observed; absence of private defaults is not inferred."
+    },
+    "packageOmissions": ["CONTRIBUTING.md", "SECURITY.md", "CODE_OF_CONDUCT.md"],
+    "navigationGap": "Checkout-only file existence; no extracted-tarball local link and anchor validation.",
+    "conductGap": "Sensitive conduct routed to vulnerability intake; superseded by the later approved contact decision."
+  },
+  "preserved": ["GPL-3.0-only", "GitHub release notes", "privacy and opt-out guidance", "accessible terminal illustration", "repair and migration safety", "private vulnerability reporting"],
+  "contactDecision": ["security", "community-contact.json"],
+  "localResult": {
+    "platform": "darwin",
+    "nodeVersion": "24.21.0",
+    "npmVersion": "12.0.2",
+    "readmeNormalizedLines": 132,
+    "focusedTests": {
+      "command": "npm test -- tests/documentation.test.ts tests/package-identity.test.ts tests/repository-security-documentation.test.ts",
+      "passed": 32,
+      "failed": 0
+    },
+    "packageSmoke": {
+      "command": "LIFTOFF_TELEMETRY=0 npm run smoke:package",
+      "buildPassed": true,
+      "passed": true,
+      "package": "@msn-control/liftoff@0.12.3",
+      "extractedDocumentationFiles": 26,
+      "extractedLocalLinks": 119,
+      "missingCommunityFileNegativeProbesPassed": true,
+      "separateReportingRoutesVerified": true,
+      "isolatedInstallPathWithSpaces": true
+    },
+    "telemetryBoundary": "Smoke runs opted out at process entry and the isolated installed-CLI environment explicitly sets LIFTOFF_TELEMETRY=0; no telemetry-production probe was performed.",
+    "portableFixtureCoverage": ["path.win32", "path.posix", "LF/CRLF counting parity", "case and anchor failures", "reporting route mismatch"],
+    "unexecutedPlatforms": ["Windows", "Linux"],
+    "hostedFeaturesChanged": false,
+    "reportsOrEmailSent": false,
+    "published": false
+  }
+}

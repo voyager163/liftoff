@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "observedOn": "2026-09-20",
+  "repository": "voyager163/liftoff",
+  "sourceCommit": "70d10881b46d873118d825735696f39b6d35ebe0",
+  "status": "blocked-pending-qualified-publisher",
+  "observed": {
+    "mainProtected": true,
+    "environments": [],
+    "rulesets": 0,
+    "defaultWorkflowToken": "read",
+    "botApprovals": false,
+    "githubActionsCheckAppId": 15368,
+    "verifiedPublisherAppId": null,
+    "npmTrustedPublisherRegistrationReadBack": false
+  },
+  "limits": [
+    "The GitHub Actions App ID is not a workflow-specific publisher identity.",
+    "Workflow/job permissions can request GITHUB_TOKEN authority; read-only defaults alone do not reserve tag creation for one workflow or environment.",
+    "A protected environment constrains refs and credential availability, not an arbitrary workflow by itself. Protected control-plane policy and actual nonpublisher denial evidence are also required.",
+    "No installation identity, credentials, environment/ref policy or npm trusted-publisher registration has been enrolled or qualified by this work."
+  ],
+  "proposedBoundary": {
+    "workflowPathParts": [".github", "workflows", "release.yml"],
+    "sourceRef": "refs/heads/main",
+    "environment": "npm-publisher",
+    "requiredReviewers": [],
+    "npmAuthentication": "short-lived OIDC through the existing trusted publisher, with exact workflow/environment registration readback",
+    "githubAuthentication": "separately authorized repository-only GitHub App if built-in token isolation cannot be proven",
+    "repositoryInstallScope": ["voyager163/liftoff"],
+    "minimumPublisherPermission": "contents:write",
+    "ordinaryBranchBypass": false,
+    "tagCreationExceptionOnly": true,
+    "tagUpdateOrDeletionBypass": false,
+    "broadPatFallback": false,
+    "untrustedCodeExecutionInPublisher": false,
+    "canonicalInstalledCliVerification": "separate read-only job without publisher environment, OIDC or installation-token authority"
+  },
+  "requiredBeforeActivation": [
+    "Explicit owner authorization for any repository-only App or credential enrollment.",
+    "Independently read back the actual GitHub App ID, installation repository scope and exact minimal permissions; do not confuse installation ID with App ID.",
+    "Read back zero-reviewer environment/ref constraints and npm workflow/environment trusted-publisher binding.",
+    "Prove qualified main publication and denial for fork, arbitrary-ref and nonpublisher paths without real package publication unless separately authorized.",
+    "Prove creation-only tag authority independently from no-bypass movement/deletion controls.",
+    "Coordinate follow-on jobs explicitly; do not depend on GITHUB_TOKEN-created tag events, and prevent duplicate publication when other token types do trigger events."
+  ],
+  "effectsPerformed": [],
+  "references": [
+    "https://docs.github.com/en/actions/tutorials/authenticate-with-github_token",
+    "https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/available-rules-for-rulesets"
+  ]
+}

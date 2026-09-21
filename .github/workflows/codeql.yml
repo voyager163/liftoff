@@ -1,0 +1,164 @@
+name: CodeQL producer
+
+# Staged source/generated producer and isolated source reporting, not hosted qualification.
+# Enabling execution requires a separately authorized repository-variable change.
+# Source-only sanitized SARIF and bounded owner-action summaries are prepared
+# locally. Upload is disabled until separately authorized capability qualification.
+# Reporting never executes downloaded candidate artifacts.
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+  schedule:
+    - cron: "37 3 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-producer-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  LIFTOFF_REPORTING_FORK: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.fork || false }}
+  LIFTOFF_REPORTING_DEPENDABOT: ${{ github.actor == 'dependabot[bot]' }}
+  LIFTOFF_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+
+jobs:
+  producer:
+    if: ${{ vars.CODEQL_PRODUCER_EXECUTION_ENABLED == 'true' }}
+    name: CodeQL local results (not qualified)
+    runs-on: macos-latest
+    timeout-minutes: 60
+    outputs:
+      artifact-id: ${{ steps.source-report.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.1"
+          cache: false
+      - name: Prepare generator without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
+      - name: Validate deterministic producer boundaries
+        run: |
+          node_modules/.bin/vitest run tests/repository-codeql.test.ts tests/repository-codeql-fixture.test.ts tests/repository-codeql-driver.test.ts
+          node_modules/.bin/tsc -p scripts/repository-security/tsconfig.json --noEmit --erasableSyntaxOnly
+      # Storage is an explicitly registered sibling outside the checkout.
+      # Public Go restore must reconcile both checksums without changing copied
+      # go.mod/go.sum; subsequent analysis uses only that private offline cache.
+      # Missing committed checksums block the complete matrix, not just Go.
+      # It never clears findings using candidate exception/admission data.
+      - name: Produce complete analysis accounting and actual finding verdicts
+        id: assess
+        run: node --max-old-space-size=2048 scripts/repository-security/codeql-driver.ts --python "$(command -v python3)" --go "$(command -v go)" --restore-public-go-modules
+      - name: Retain sanitized source reports without clearing the producer result
+        id: source-report
+        if: ${{ always() && steps.assess.outputs.reporting-root != '' }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: codeql-source-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ steps.assess.outputs.reporting-root }}
+          if-no-files-found: error
+          overwrite: false
+          retention-days: 7
+
+  report-pr:
+    name: Source reporting (unprivileged PR)
+    if: ${{ always() && github.event_name == 'pull_request' && vars.CODEQL_PRODUCER_EXECUTION_ENABLED == 'true' && needs.producer.outputs.artifact-id != '' }}
+    needs: producer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          # Candidate scripts execute only with the same read-only PR authority
+          # as validation; they are not trusted policy/admission evaluators.
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.producer.outputs.artifact-id }}
+          path: ${{ runner.temp }}/codeql-source
+          merge-multiple: true
+      - name: Validate and report source findings without a privileged fallback
+        env:
+          LIFTOFF_CODEQL_REPORTING_ROOT: ${{ runner.temp }}/codeql-source
+          LIFTOFF_CODEQL_UPLOAD_ENABLED: ${{ vars.CODEQL_REPORTING_UPLOAD_ENABLED == 'true' }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/report-codeql-source.mjs
+
+  report-protected:
+    name: Source reporting (protected ref)
+    if: ${{ always() && github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') && vars.CODEQL_PRODUCER_EXECUTION_ENABLED == 'true' && vars.CODEQL_REPORTING_UPLOAD_ENABLED == 'true' && needs.producer.outputs.artifact-id != '' }}
+    needs: producer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.producer.outputs.artifact-id }}
+          path: ${{ runner.temp }}/codeql-source
+          merge-multiple: true
+      - name: Validate source reports with narrowly scoped upload permission
+        env:
+          LIFTOFF_CODEQL_REPORTING_ROOT: ${{ runner.temp }}/codeql-source
+          LIFTOFF_CODEQL_UPLOAD_ENABLED: ${{ vars.CODEQL_REPORTING_UPLOAD_ENABLED == 'true' }}
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/report-codeql-source.mjs
+
+  report-local:
+    name: Source reporting (upload disabled)
+    if: ${{ always() && github.event_name != 'pull_request' && (github.ref == 'refs/heads/develop' || github.ref == 'refs/heads/main') && vars.CODEQL_PRODUCER_EXECUTION_ENABLED == 'true' && vars.CODEQL_REPORTING_UPLOAD_ENABLED != 'true' && needs.producer.outputs.artifact-id != '' }}
+    needs: producer
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          package-manager-cache: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.producer.outputs.artifact-id }}
+          path: ${{ runner.temp }}/codeql-source
+          merge-multiple: true
+      - name: Retain source visibility without upload permission
+        env:
+          LIFTOFF_CODEQL_REPORTING_ROOT: ${{ runner.temp }}/codeql-source
+          LIFTOFF_CODEQL_UPLOAD_ENABLED: "false"
+        run: node scripts/report-codeql-source.mjs

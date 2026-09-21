@@ -45,13 +45,20 @@ See [prerequisites](prerequisites.md) for the complete plan-derived tool model.
 
 ## 2. Start the primary path
 
-From the directory that should contain the project, run:
+Eligible commands send bounded telemetry by default; CI disables it. Before
+first use, set `LIFTOFF_TELEMETRY=0` or `DO_NOT_TRACK=1` to opt out.
+Read [telemetry and privacy](telemetry.md) for fields and retention.
 
-```text
+From the directory that should contain the project, run **in your terminal**:
+
+```bash
 liftoff init my-project
 cd my-project
-/liftoff-setup
 ```
+
+Then open the project **in your selected coding agent** and invoke
+`/liftoff-setup` for Copilot/Claude or `$liftoff-setup`/the native skill picker
+for Codex. This is not a `liftoff setup` shell command.
 
 The guided flow asks for:
 
@@ -84,6 +91,10 @@ syncs, and archives `bootstrap-<project>`; Spec Kit validates and finalizes
 work. Missing approval-persistence, credential-enrollment, and production phase
 executors remain specific blockers. Commit and push are never implicit in
 `liftoff init`, `--yes`, or read-only checks.
+
+For OpenSpec, `/liftoff-setup` completes, syncs, and archives the generated bootstrap
+seed. Spec Kit finalizes its one-time bootstrap bundle locally, without an
+OpenSpec archive or new Git branch. Local-only use remains supported.
 
 For deterministic generic generation, use `--type genai --pattern generic`.
 
@@ -191,3 +202,64 @@ liftoff migrate ../legacy-app --region eastus --agents copilot,claude --yes
 
 Power Apps support is retired, including existing-project maintenance. Retired
 inputs are rejected without converting or deleting the original application.
+
+## Maintain or repair an existing project
+
+`liftoff init` creates a scaffold; do not reinitialize an existing Liftoff project
+to resolve a verification blocker.
+
+After global npm install, later releases use `liftoff upgrade --check` then
+`liftoff upgrade`. This replaces the CLI only; generated projects use
+`liftoff update` separately for reviewed project maintenance.
+Useful project-read-only checks:
+
+```bash
+liftoff validate
+liftoff doctor
+liftoff upgrade --check
+liftoff update --check
+```
+
+Start with `liftoff update --check`, then run `liftoff update` and approve the
+matching plan. Check leaves project bytes unchanged and discloses a preview
+receipt saved outside the repository. Missing or stale previews block apply.
+Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
+
+Supported activation-v1/v2 migration preserves original records inside the project
+and creates a linked v3 activation. Failed revalidation leaves v3 blocked and
+resumable, not reset to an older contract. Application source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain project-owned
+and outside template replacement, including `--force`.
+
+For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
+verification**, not an OpenSpec feature change. Start with:
+
+```bash
+liftoff repair "path/to/existing project" --check
+```
+
+Ordinary check makes no cloud calls. Bare interactive `liftoff repair` shows the
+exact plan and asks Yes/No, default No; no fingerprint copying is needed.
+The supported local recipe preserves legacy flat-root semantics while creating
+the shared application module and selected independent environment roots.
+Eligibility requires bounded, explicitly requested
+`--check --live --subscription <UUID>` metadata discovery with existing authentication,
+authoritatively absent resource groups in that subscription, and no local
+state/backend metadata. Missing state files alone never establish safety.
+JSON/non-TTY repair only previews unless exact automation flags are supplied.
+After an eligible, separately approved repair, run `liftoff update --check --project
+"path/to/existing project"` and resume native setup's local governance planning.
+Interrupted writes use `liftoff repair [project-path] --recover`, not update recovery.
+Repair accepts neither `--force`, `--yes`, nor `--add-agents`.
+Agent installation and the public stateful migration coordinator are not
+implemented; the internal stateful engine is not an executable public command.
+Deployed, unknown, or unsupported cases remain plan-only, with source and state
+untouched. Use native `/liftoff-repair` (Codex: `$liftoff-repair`) for reviewed
+[application patches](application-repair.md); see [repair modes](cli-reference.md#repair-modes).
+Repair contract 1 is available in 0.12.3;
+negotiate capabilities directly with `liftoff repair --capabilities --json`.
+
+Older projects may display the retired `/liftoff-repository-governance` alias.
+Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.
+See [update modes](cli-reference.md#update-modes) for exact receipt, force,
+approval, and migration boundaries.

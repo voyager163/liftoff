@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-09-20",
+  "ownerDecision": "Use explicit blocking-policy findings for valid unscored advisories",
+  "provenance": {
+    "source": "Explicit owner decision relayed in the implementation conversation",
+    "coordinatorSession": "f1debac3-fd7e-44a5-a4f8-078a5cbf2a3a"
+  },
+  "policyClass": "osv-valid-unscored-advisory",
+  "upstreamSeverity": "unscored",
+  "reviewPriority": "high",
+  "blocking": true,
+  "exceptionMaximumDays": 30,
+  "exceptionAuthority": "Exact observed-base proposal adopted by ordinary maintainer merge",
+  "invalidMetadataRemainsError": true,
+  "aliasSeverityTransplantAllowed": false,
+  "actualExceptionsApproved": [],
+  "dependencyChangesAuthorized": false,
+  "hostedEffectsAuthorized": false
+}

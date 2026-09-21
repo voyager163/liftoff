@@ -1,0 +1,55 @@
+name: Bug report
+description: Report a reproducible problem with a released Liftoff CLI or supported workflow.
+title: "[Bug]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Check [troubleshooting](https://github.com/voyager163/liftoff/blob/develop/docs/troubleshooting.md) and existing issues first.
+        A released CLI reproduction is enough; no development build is required.
+        Never include credentials, private source or data, `.env` files, or unredacted diagnostics.
+        Do not attach whole projects or broad environment/configuration dumps.
+        For suspected vulnerabilities or secret exposure, use [private security reporting](https://github.com/voyager163/liftoff/security/advisories/new), not this form.
+        See the [support and reporting map](https://github.com/voyager163/liftoff/blob/develop/CONTRIBUTING.md#support-and-reporting).
+        Sensitive conduct concerns use the separate [private conduct route](https://github.com/voyager163/liftoff/blob/develop/CODE_OF_CONDUCT.md#report-a-conduct-concern), not this form or vulnerability intake.
+  - type: input
+    id: version
+    attributes:
+      label: Liftoff version
+      description: The output of `liftoff --version`, or the exact installed package version if startup fails.
+      placeholder: "For example: Liftoff 0.12.3"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Relevant environment
+      description: OS/version, Node.js version, npm version, and only the selected workload/tools relevant to this bug. No full environment dumps.
+      placeholder: "For example: macOS, Node.js 24.x, npm 12.x, API/Node"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Sanitized minimal reproduction
+      description: Commands and steps using a small public or synthetic example; omit private files, resource names, and credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include only a short redacted error excerpt if needed, not unredacted diagnostics.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context (optional)
+      description: Relevant public issue links or a workaround; leave empty when not applicable.

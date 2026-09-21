@@ -1,0 +1,30 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-09-21",
+  "authority": "Explicit repository-owner decision relayed by the coordinating session.",
+  "purpose": "private-conduct-reporting",
+  "address": "ask.msncontrol@gmail.com",
+  "ownerConfirmedWorking": true,
+  "ownerConfirmedMonitored": true,
+  "publicationConsent": true,
+  "supersedes": "The previously approved conduct address askliftoff@gmail.com.",
+  "confirmation": "The owner explicitly confirmed this replacement inbox is monitored and authorized its publication for private conduct reports.",
+  "coordinatorSession": "f1debac3-fd7e-44a5-a4f8-078a5cbf2a3a",
+  "historicalDecisions": [
+    {
+      "confirmedOn": "2026-09-20",
+      "address": "askliftoff@gmail.com",
+      "ownerConfirmedWorkingAtApproval": true,
+      "ownerConfirmedMonitoredAtApproval": true,
+      "publicationConsentAtApproval": true,
+      "supersededEarlierDeferral": true,
+      "active": false,
+      "supersededBy": "ask.msncontrol@gmail.com"
+    }
+  ],
+  "vulnerabilityRoute": "https://github.com/voyager163/liftoff/security/advisories/new",
+  "supportRoute": "https://github.com/voyager163/liftoff/issues",
+  "testMessageSent": false,
+  "mailboxProvisioned": false,
+  "grantsOtherHostedAuthority": false
+}

@@ -1,7 +1,18 @@
-import { access, readFile, readdir } from 'node:fs/promises';
+import { access, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parseDocument } from 'yaml';
+import {
+  communityReportingRoutes,
+  documentationRequiredFiles,
+  markdownAnchors,
+  markdownTargets,
+  normalizedContentLineCount,
+  readmeContentLineLimit,
+  resolveDocumentationTarget,
+  validateDocumentationNavigation
+} from '../scripts/documentation-navigation.mjs';
 import {
   canonicalPhaseGraphHash,
   canonicalPhaseGraphJson,
@@ -13,6 +24,7 @@ import { retiredFlatRootInfrastructureIdentities } from '../src/domain/project/i
 import { patterns } from '../src/application/project/catalog.js';
 import { packagedSupportedStack } from '../src/adapters/packaged-assets/supported-stack.js';
 import { liftoffVersion } from '../src/version.js';
+import { isTelemetryEnabled } from '../src/telemetry/index.js';
 
 const repositoryRoot = process.cwd();
 const requiredDocs = [
@@ -34,28 +46,6 @@ const requiredDocs = [
 
 async function repositoryFile(name: string): Promise<string> {
   return (await readFile(path.join(repositoryRoot, name), 'utf8')).replace(/\r\n/g, '\n');
-}
-
-function localMarkdownTargets(markdown: string): string[] {
-  return [...markdown.matchAll(/!?\[[^\]]*]\(([^)\s]+)(?:\s+["'][^"']*["'])?\)/g)]
-    .map((match) => match[1].replace(/^<|>$/g, ''))
-    .filter((target) =>
-      !target.startsWith('#') &&
-      !/^[a-z][a-z0-9+.-]*:/i.test(target)
-    );
-}
-
-async function expectLocalLinksToResolve(file: string): Promise<void> {
-  const markdown = await repositoryFile(file);
-  for (const target of localMarkdownTargets(markdown)) {
-    const relativeTarget = decodeURIComponent(target.split('#')[0].split('?')[0]);
-    const resolved = path.resolve(repositoryRoot, path.dirname(file), relativeTarget);
-    try {
-      await access(resolved);
-    } catch {
-      throw new Error(`${file} contains a broken local link: ${target}`);
-    }
-  }
 }
 
 function channel(hex: string): number {
@@ -82,15 +72,17 @@ describe('public documentation', () => {
     const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(165);
+    expect(normalizedContentLineCount(readme)).toBeLessThan(readmeContentLineLimit);
     expect(readme).not.toContain('Status: implemented');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
     expect(readme.indexOf(init)).toBeLessThan(workloadSection);
     expect(readme.indexOf('cd my-project')).toBeGreaterThan(readme.indexOf(init));
     expect(readme.indexOf(setup)).toBeGreaterThan(readme.indexOf('cd my-project'));
-    expect(readme.replace(/\s+/g, ' ')).toMatch(/For OpenSpec, .*completes, syncs, and archives the generated bootstrap seed/);
-    expect(readme.replace(/\s+/g, ' ')).toMatch(/Spec Kit finalizes .*locally, without an OpenSpec archive or new Git branch/);
+    const gettingStarted = (await repositoryFile('docs/getting-started.md')).replace(/\s+/g, ' ');
+    expect(readme).toContain('docs/getting-started.md#2-start-the-primary-path');
+    expect(gettingStarted).toMatch(/For OpenSpec, .*completes, syncs, and archives the generated bootstrap seed/);
+    expect(gettingStarted).toMatch(/Spec Kit finalizes .*locally, without an OpenSpec archive or new Git branch/);
     expect(readme).toContain('No model selection is required for setup');
     expect(readme).toContain('GenAI application');
     expect(readme).toContain('API application');
@@ -102,11 +94,20 @@ describe('public documentation', () => {
     expect(readme).toContain('exact current Git root');
     expect(readme).toContain('docs/safety-and-consent.md');
     expect(readme).toContain('liftoff update --check');
-    expect(readme).toContain('--approve-plan <fingerprint>');
+    expect(readme).toContain('docs/getting-started.md#maintain-or-repair-an-existing-project');
+    expect(gettingStarted).toContain('--approve-plan <fingerprint>');
     expect(readme).toContain('liftoff upgrade --check');
-    expect(readme).toMatch(
-      /replaces the CLI only; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
+    expect(gettingStarted).toContain(
+      'replaces the CLI only; generated projects use `liftoff update` separately for reviewed project maintenance'
     );
+    expect(readme.indexOf('Telemetry is enabled by default')).toBeLessThan(readme.indexOf(init));
+    expect(readme.indexOf('LIFTOFF_TELEMETRY=0')).toBeLessThan(readme.indexOf(init));
+    expect(readme.indexOf('DO_NOT_TRACK=1')).toBeLessThan(readme.indexOf(init));
+    expect(readme.indexOf('docs/telemetry.md')).toBeLessThan(readme.indexOf(init));
+    expect(readme.indexOf('24.20.0')).toBeLessThan(readme.indexOf(install));
+    expect(readme).toContain('liftoff --version');
+    expect(readme).toContain('liftoff help');
+    expect(readme).toContain('liftoff plan');
 
     const bashExamples = [...readme.matchAll(/```bash\n([\s\S]*?)```/g)]
       .map((match) => match[1])
@@ -114,11 +115,14 @@ describe('public documentation', () => {
     expect(bashExamples).not.toMatch(/liftoff init .+--/);
     expect(bashExamples).not.toContain('liftoff init\n');
     expect(bashExamples).not.toContain('liftoff create');
+    expect(bashExamples).not.toMatch(/\/liftoff-setup|\$liftoff-setup/);
+    expect(readme).toContain('**In your terminal**');
+    expect(readme).toContain('**In your selected coding agent**');
   });
 
   it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
     const docs = await Promise.all([
-      repositoryFile('README.md'), repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/getting-started.md'), repositoryFile('docs/cli-reference.md'),
       repositoryFile('docs/repository-governance.md')
     ]);
     for (const content of docs) {
@@ -144,6 +148,18 @@ describe('public documentation', () => {
     expect(docs[1]).toContain('Whole Azure root | `tofu fmt -check -recursive`');
     expect(docs[1]).toContain('tofu init -backend=false -input=false -lockfile=readonly -no-color');
     expect(docs[1]).toContain('tofu validate -json');
+    const maintenance = docs[0].replace(/\s+/g, ' ');
+    for (const preserved of [
+      'Check leaves project bytes unchanged', 'receipt saved outside the repository',
+      'Missing or stale previews block apply', 'creates a linked v3 activation',
+      'Failed revalidation leaves v3 blocked and resumable',
+      'outside template replacement, including `--force`',
+      'Missing state files alone never establish safety',
+      'no fingerprint copying is needed',
+      'liftoff repair [project-path] --recover', 'not update recovery',
+      'retired `/liftoff-repository-governance` alias',
+      'removes only exact recorded aliases'
+    ]) expect(maintenance).toContain(preserved);
   });
 
   it('uses factual badges and an accessible theme-independent terminal visual', async () => {
@@ -167,14 +183,15 @@ describe('public documentation', () => {
   });
 
   it('ships every progressive guide and resolves all local Markdown links', async () => {
-    for (const file of ['README.md', 'CONTRIBUTING.md', 'DEVELOPER.md', ...requiredDocs]) {
-      await access(path.join(repositoryRoot, file));
-      await expectLocalLinksToResolve(file);
-    }
+    const navigation = await validateDocumentationNavigation(repositoryRoot);
+    expect(navigation.files).toEqual(expect.arrayContaining(documentationRequiredFiles));
+    expect(navigation.linksChecked).toBeGreaterThan(80);
 
     const packageJson = JSON.parse(await repositoryFile('package.json'));
     expect(packageJson.files).toContain('docs');
-    expect(packageJson.files).toContain('DEVELOPER.md');
+    for (const file of ['README.md', 'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md', 'DEVELOPER.md']) {
+      expect(packageJson.files).toContain(file);
+    }
   });
 
   it('documents distinct workload questions, outputs, prerequisites, and deferred actions', async () => {
@@ -347,7 +364,7 @@ describe('public documentation', () => {
       troubleshooting,
       telemetry,
       safety,
-      contributing
+      maintainer
     ] = await Promise.all([
       repositoryFile('README.md'),
       repositoryFile('docs/getting-started.md'),
@@ -357,7 +374,7 @@ describe('public documentation', () => {
       repositoryFile('docs/troubleshooting.md'),
       repositoryFile('docs/telemetry.md'),
       repositoryFile('docs/safety-and-consent.md'),
-      repositoryFile('CONTRIBUTING.md')
+      repositoryFile('docs/maintainer-reference.md')
     ]);
     for (const source of [readme, gettingStarted, cli, supportedStack]) {
       expect(source).toContain('liftoff upgrade --check');
@@ -381,8 +398,8 @@ describe('public documentation', () => {
     );
     expect(safety).toContain('CLI self-upgrade boundary');
     expect(safety).toMatch(/does not\s+claim automatic rollback/);
-    expect(contributing).toContain('first release containing `liftoff upgrade`');
-    expect(contributing).toContain(
+    expect(maintainer).toContain('first release containing `liftoff upgrade`');
+    expect(maintainer).toContain(
       'npm install -g @msn-control/liftoff@latest --registry=https://registry.npmjs.org'
     );
   });
@@ -514,28 +531,34 @@ describe('public documentation', () => {
     expect(all).not.toMatch(/setupSkillVersion|skillVersion/);
   });
 
-  it('keeps contributor validation, packaging, release, and recovery procedures together', async () => {
-    const [contributing, security] = await Promise.all([
-      repositoryFile('CONTRIBUTING.md'),
+  it('preserves moved maintainer validation, packaging, release, and recovery procedures', async () => {
+    const [maintainer, security] = await Promise.all([
+      repositoryFile('docs/maintainer-reference.md'),
       repositoryFile('SECURITY.md')
     ]);
 
-    expect(contributing).toContain('npm run check');
-    expect(contributing).toContain('npm run smoke:package');
-    expect(contributing).toContain('npm run smoke:container --prefix services/telemetry-ingest');
-    expect(contributing).not.toContain('npm run verify:power-apps-starter');
-    expect(contributing).toContain('npm run verify:generated-containers');
-    expect(contributing).not.toContain('npm run refresh:power-apps-starter');
-    expect(contributing).toContain('rich, compact, plain,');
-    expect(contributing).toContain('tests/__snapshots__');
-    expect(contributing).toContain('Correct the dist-tag');
-    expect(contributing).toContain('publish a corrected patch release');
-    expect(contributing).toContain('Do not unpublish');
-    expect(contributing).toContain("npm deprecate '@msn-control/liftoff@<0.3.0'");
-    expect(contributing).toContain('withhold internal installation guidance');
-    expect(contributing).toContain('Liftoff must not silently downgrade');
-    expect(contributing).toContain('approval v2 and compatibility metadata v3');
-    expect(contributing).not.toContain('compatibility metadata v2');
+    expect(maintainer).toContain('npm run check');
+    expect(maintainer).toContain('npm run smoke:package');
+    expect(maintainer).toContain('package-smoke-test.mjs --tarball "/absolute/path with spaces/candidate.tgz"');
+    expect(maintainer).toContain('Exact mode never invokes `npm pack`');
+    expect(maintainer).toContain('The supplied archive is never written');
+    expect(maintainer).toContain('npm run smoke:container --prefix services/telemetry-ingest');
+    expect(maintainer).not.toContain('npm run verify:power-apps-starter');
+    expect(maintainer).toContain('npm run verify:generated-containers');
+    expect(maintainer).not.toContain('npm run refresh:power-apps-starter');
+    expect(maintainer).toContain('rich, compact, plain,');
+    expect(maintainer).toContain('tests/__snapshots__');
+    expect(maintainer).toContain('Correct the dist-tag');
+    expect(maintainer).toContain('publish a corrected patch release');
+    expect(maintainer).toContain('Do not unpublish');
+    expect(maintainer).toContain("npm deprecate '@msn-control/liftoff@<0.3.0'");
+    expect(maintainer).toContain('withhold internal installation guidance');
+    expect(maintainer).toContain('Liftoff must not silently downgrade');
+    expect(maintainer).toContain('../DEVELOPER.md#activation-version-vector');
+    const developer = await repositoryFile('DEVELOPER.md');
+    const vector = developer.split('## Activation version vector')[1].match(/```json\n([\s\S]*?)\n```/);
+    expect(JSON.parse(vector![1])).toEqual(currentActivationIdentity);
+    expect(maintainer).not.toContain('compatibility metadata v2');
     expect(security).toContain('Versions before 0.3.0 are unsupported');
     expect(security).toContain('A successful installation of an older mirrored version does not make that version supported');
   });
@@ -769,6 +792,269 @@ describe('public documentation', () => {
     expect(developer).toContain('validateReadableActivationIdentity');
     expect(developer).toContain('scope use strict current validation');
     expect(configuration).toMatch(/readable historical record never authorizes current provider scope/);
+  });
+
+  it('uses one README budget with LF/CRLF parity and only a terminal newline ignored', async () => {
+    expect(readmeContentLineLimit).toBe(135);
+    expect(normalizedContentLineCount('')).toBe(0);
+    expect(normalizedContentLineCount('\n')).toBe(1);
+    expect(normalizedContentLineCount('\r\n')).toBe(1);
+    expect(normalizedContentLineCount('\n\n')).toBe(2);
+    for (const count of [134, 135, 136]) {
+      const lf = Array.from({ length: count }, () => 'content').join('\n');
+      for (const text of [lf, `${lf}\n`, lf.replace(/\n/g, '\r\n'), `${lf.replace(/\n/g, '\r\n')}\r\n`]) {
+        expect(normalizedContentLineCount(text)).toBe(count);
+        expect(normalizedContentLineCount(text) < readmeContentLineLimit).toBe(count < 135);
+      }
+      expect(normalizedContentLineCount(`${lf}\n\n`)).toBe(count + 1);
+    }
+    const readme = await repositoryFile('README.md');
+    expect(normalizedContentLineCount(readme)).toBe(normalizedContentLineCount(readme.replace(/\n/g, '\r\n')));
+    for (const guide of ['CONTRIBUTING.md', 'docs/maintainer-reference.md']) {
+      expect((await repositoryFile(guide)).replace(/\s+/g, ' ')).toMatch(/135 normalized content lines/);
+    }
+  });
+
+  it('resolves portable targets with spaces, encoded fragments, and real Markdown anchors', () => {
+    for (const [paths, root] of [
+      [path.posix, '/artifact with spaces/package'],
+      [path.win32, 'C:\\artifact with spaces\\package']
+    ] as const) {
+      const target = resolveDocumentationTarget(root, 'docs/guide.md', '../CONTRIBUTING.md#development%2Dsetup', paths);
+      expect(target).toEqual({
+        absolute: paths.join(root, 'CONTRIBUTING.md'),
+        logicalPath: 'CONTRIBUTING.md',
+        fragment: 'development-setup'
+      });
+      expect(resolveDocumentationTarget(root, 'docs/guide.md', 'guide%20two.md#local', paths)?.absolute)
+        .toBe(paths.join(root, 'docs', 'guide two.md'));
+      expect(() => resolveDocumentationTarget(root, 'docs/guide.md', '../../README.md', paths)).toThrow('outside its root');
+      expect(() => resolveDocumentationTarget(root, 'README.md', '..%5Cprivate.md', paths)).toThrow('non-portable');
+    }
+    expect(markdownTargets('[text](doc.md#a)\n![alt](asset.svg)\n[ref]: <two words.md>\n```\n[not prose](missing.md)\n```\n`[code](missing.md)`'))
+      .toEqual(['doc.md#a', 'asset.svg', 'two words.md']);
+    const anchors = markdownAnchors('# `CLI` upgrade modes\n## Repeated\n## Repeated\n## Repeated-1\n<a id="legacy"></a>\n```md\n# ignored\n```');
+    expect([...anchors]).toEqual(['cli-upgrade-modes', 'repeated', 'repeated-1', 'repeated-1-1', 'legacy']);
+  });
+
+  it('fails missing artifact files and moved anchors without falling back to the complete checkout', async () => {
+    const fixture = await mkdtemp(path.join(repositoryRoot, '.liftoff-documentation-fixture-'));
+    const artifact = path.join(fixture, 'extracted package with spaces');
+    try {
+      for (const file of documentationRequiredFiles) {
+        const destination = path.join(artifact, ...file.split('/'));
+        await mkdir(path.dirname(destination), { recursive: true });
+        await cp(path.join(repositoryRoot, ...file.split('/')), destination);
+      }
+      await expect(validateDocumentationNavigation(artifact)).resolves.toMatchObject({
+        files: expect.arrayContaining(documentationRequiredFiles)
+      });
+      for (const missing of [
+        'CONTRIBUTING.md', 'SECURITY.md', 'CODE_OF_CONDUCT.md',
+        'docs/maintainer-reference.md', 'docs/assets/liftoff-terminal.svg'
+      ]) {
+        const original = await readFile(path.join(artifact, ...missing.split('/')));
+        await rm(path.join(artifact, ...missing.split('/')));
+        await access(path.join(repositoryRoot, ...missing.split('/')));
+        await expect(validateDocumentationNavigation(artifact)).rejects.toThrow(missing);
+        await writeFile(path.join(artifact, ...missing.split('/')), original);
+      }
+      const moved = path.join(artifact, 'docs', 'maintainer-reference.md');
+      await writeFile(moved, (await readFile(moved, 'utf8')).replace('## Release recovery', '## Renamed recovery'));
+      await expect(validateDocumentationNavigation(artifact)).rejects.toThrow('broken documentation anchor');
+      await cp(path.join(repositoryRoot, 'docs', 'maintainer-reference.md'), moved);
+      for (const [file, before, after] of [
+        ['CODE_OF_CONDUCT.md', communityReportingRoutes.conduct, 'mailto:unapproved@example.invalid'],
+        ['CODE_OF_CONDUCT.md', communityReportingRoutes.conduct, 'mailto:askliftoff@gmail.com'],
+        ['SECURITY.md', communityReportingRoutes.vulnerability, communityReportingRoutes.support],
+        ['CONTRIBUTING.md', communityReportingRoutes.conductDocument, communityReportingRoutes.securityDocument]
+      ]) {
+        const target = path.join(artifact, file);
+        const original = await readFile(target, 'utf8');
+        await writeFile(target, original.replaceAll(before, after));
+        await expect(validateDocumentationNavigation(artifact)).rejects.toThrow(/mismatched.*route/);
+        await writeFile(target, original);
+      }
+      const readme = path.join(artifact, 'README.md');
+      await writeFile(readme, (await readFile(readme, 'utf8')).replace('(LICENSE)', '(license)'));
+      await expect(validateDocumentationNavigation(artifact)).rejects.toThrow('exact case required');
+    } finally {
+      await rm(fixture, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps the newcomer path proportionate and preserves useful contributor anchors as pointers', async () => {
+    const contributing = await repositoryFile('CONTRIBUTING.md');
+    const normalized = contributing.replace(/\s+/g, ' ');
+    for (const phrase of [
+      'single-maintainer', 'best effort', 'Node.js 24 LTS at 24.20.0',
+      'npm 12.x at 12.0.2', 'git switch -c fix/my-change upstream/develop',
+      'npm ci', 'npm run build', 'node dist/cli.js help',
+      'targeting **`develop`**', '**`main`** follow the',
+      'Canonical public registries', 'device ownership alone does not',
+      'No new forum or private project access', 'first',
+      'AI-assisted work', 'GPL-3.0-only', 'confidentiality'
+    ]) expect(normalized).toContain(phrase);
+    expect(contributing).not.toContain('On a Microsoft-managed device');
+    expect(normalized).toContain('Routine typo fixes, clearer wording, and tests of unchanged behavior do not need');
+    expect(normalized).toContain('no second reviewer, CLA, DCO/sign-off, or tool-specific AI disclosure is required');
+    expect(normalized).toContain('Do not change global registry settings');
+    const anchors = markdownAnchors(contributing);
+    for (const anchor of [
+      'development-setup', 'validate-a-change', 'documentation', 'propose-behavior-changes',
+      'pull-requests', 'license-and-security'
+    ]) expect(anchors.has(anchor)).toBe(true);
+    for (const anchor of [
+      'audit-packaged-template-dependencies', 'refresh-the-supported-stack',
+      'reconcile-dependabot-updates', 'maintain-the-repository-governance-profile',
+      'release-verification', 'release-recovery'
+    ]) {
+      expect(anchors.has(anchor)).toBe(true);
+      expect(contributing).toContain(`docs/maintainer-reference.md#${anchor}`);
+    }
+    const maintainer = (await repositoryFile('docs/maintainer-reference.md')).replace(/\s+/g, ' ');
+    for (const preserved of [
+      'two concurrent file workers', '90-second limit', 'complete dependency-chain set',
+      'high and critical findings expire within 30 days',
+      'moderate and lower findings expire within 90 days',
+      'Do not renew an exception automatically',
+      'Node\'s newest supported LTS rather than Current',
+      'Do not hand-edit generated lockfiles',
+      'Never add a broad `.github` or `.claude` ownership pattern',
+      'Never run self-upgrade apply against a developer',
+      'Do not persist either override globally'
+    ]) expect(maintainer).toContain(preserved);
+  });
+
+  it('provides safe GitHub-compatible intake without assumed labels or hosted services', async () => {
+    const security = await repositoryFile('SECURITY.md');
+    const privateRoute = 'https://github.com/voyager163/liftoff/security/advisories/new';
+    const supportRoute = 'https://github.com/voyager163/liftoff/blob/develop/CONTRIBUTING.md#support-and-reporting';
+    const conductRoute = 'https://github.com/voyager163/liftoff/blob/develop/CODE_OF_CONDUCT.md#report-a-conduct-concern';
+    expect(security).toContain(privateRoute);
+    for (const file of ['bug_report.yml', 'feature_request.yml']) {
+      const text = await repositoryFile(`.github/ISSUE_TEMPLATE/${file}`);
+      const yaml = parseDocument(text, { uniqueKeys: true });
+      expect(yaml.errors).toEqual([]);
+      const form = yaml.toJS();
+      expect(Object.keys(form).sort()).toEqual(['body', 'description', 'name', 'title']);
+      expect(form.name).toBeTruthy();
+      expect(form.description).toBeTruthy();
+      const ids: string[] = [];
+      for (const field of form.body) {
+        expect(['markdown', 'input', 'textarea']).toContain(field.type);
+        if (field.type === 'markdown') {
+          expect(field.attributes.value).toBeTruthy();
+          continue;
+        }
+        expect(field.id).toMatch(/^[a-z][a-z0-9_]*$/);
+        expect(field.attributes.label).toBeTruthy();
+        expect(Object.keys(field.attributes).every((key) => ['label', 'description', 'placeholder', 'value'].includes(key))).toBe(true);
+        if (field.validations) expect(typeof field.validations.required).toBe('boolean');
+        ids.push(field.id);
+      }
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(text).toContain(privateRoute);
+      expect(text).toContain(supportRoute);
+      expect(text).toContain(conductRoute);
+      for (const warning of ['credentials', 'private source or data', '`.env` files', 'unredacted diagnostics', 'broad environment/configuration dumps']) {
+        expect(text).toContain(warning);
+      }
+      expect(text).not.toMatch(/printenv|npm config list|(?:^|\n)\s*(?:env|set|Get-ChildItem Env:)\s*$/m);
+      expect(text).not.toMatch(/labels:|assignees:|discussions|discord|slack/i);
+      if (file === 'bug_report.yml') {
+        expect(ids).toEqual(['version', 'environment', 'reproduction', 'expected', 'actual', 'context']);
+        expect(text).toContain('no development build is required');
+      } else {
+        expect(ids).toEqual(['problem', 'outcome', 'alternatives', 'scope']);
+      }
+    }
+    const chooserDocument = parseDocument(await repositoryFile('.github/ISSUE_TEMPLATE/config.yml'));
+    expect(chooserDocument.errors).toEqual([]);
+    const chooser = chooserDocument.toJS();
+    expect(Object.keys(chooser).sort()).toEqual(['blank_issues_enabled', 'contact_links']);
+    expect(chooser.blank_issues_enabled).toBe(true);
+    expect(chooser.contact_links.map((entry: { url: string }) => entry.url)).toEqual([supportRoute, privateRoute, conductRoute]);
+    for (const link of chooser.contact_links) expect(Object.keys(link).sort()).toEqual(['about', 'name', 'url']);
+    const pr = (await repositoryFile('.github/PULL_REQUEST_TEMPLATE.md')).replace(/\s+/g, ' ');
+    for (const phrase of [
+      'targets `develop`', 'not applicable', 'focused checks', 'compatibility',
+      'GPL-3.0-only', 'AI-assisted', 'credentials', 'private source or data',
+      '`.env` files', 'unredacted diagnostics', privateRoute, supportRoute, conductRoute
+    ]) expect(pr).toContain(phrase);
+  });
+
+  it('publishes only the owner-approved conduct contact with distinct support and security routes', async () => {
+    const [decisionText, conductText, contributing, security] = await Promise.all([
+      repositoryFile('security/community-contact.json'),
+      repositoryFile('CODE_OF_CONDUCT.md'),
+      repositoryFile('CONTRIBUTING.md'),
+      repositoryFile('SECURITY.md')
+    ]);
+    const decision = JSON.parse(decisionText);
+    expect(decision).toMatchObject({
+      purpose: 'private-conduct-reporting',
+      ownerConfirmedWorking: true,
+      ownerConfirmedMonitored: true,
+      publicationConsent: true,
+      testMessageSent: false,
+      mailboxProvisioned: false,
+      grantsOtherHostedAuthority: false
+    });
+    expect(communityReportingRoutes.conduct).toBe(`mailto:${decision.address}`);
+    expect(decision.address).toBe('ask.msncontrol@gmail.com');
+    expect(decision.historicalDecisions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ address: 'askliftoff@gmail.com', active: false, supersededBy: decision.address })
+    ]));
+    expect(decision.vulnerabilityRoute).toBe(communityReportingRoutes.vulnerability);
+    expect(decision.supportRoute).toBe(communityReportingRoutes.support);
+    const conduct = conductText.replace(/\s+/g, ' ');
+    for (const boundary of [
+      '**private conduct reports only**', 'not a support or security-reporting channel',
+      'sole maintainer', 'best-effort', 'no independent response team',
+      'guaranteed response time or outcome', 'confidentiality cannot be guaranteed',
+      'cannot offer independent adjudication', 'Do not post sensitive reports'
+    ]) expect(conduct).toContain(boundary);
+    expect(markdownTargets(conductText).filter((target: string) => target.startsWith('mailto:')))
+      .toEqual([communityReportingRoutes.conduct]);
+    expect(conductText).not.toContain("privately through the repository's vulnerability reporting form");
+    expect(conductText).toContain(communityReportingRoutes.securityDocument);
+    expect(contributing).toContain(communityReportingRoutes.conductDocument);
+    expect(contributing).toContain(communityReportingRoutes.securityDocument);
+    expect(contributing).toContain(communityReportingRoutes.support);
+    expect(security).toContain(communityReportingRoutes.vulnerability);
+    expect(security).not.toContain(decision.address);
+    expect(markdownAnchors(conductText).has('report-a-conduct-concern')).toBe(true);
+    for (const file of [
+      'README.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'docs/repository-security.md',
+      '.github/ISSUE_TEMPLATE/config.yml', '.github/ISSUE_TEMPLATE/bug_report.yml',
+      '.github/ISSUE_TEMPLATE/feature_request.yml', '.github/PULL_REQUEST_TEMPLATE.md'
+    ]) {
+      expect(await repositoryFile(file)).not.toMatch(/conduct.*(?:pending|deferred|not yet qualified)|That route has not been fixed/i);
+    }
+  });
+
+  it('states current support and observable facts without qualifying unproven security controls', async () => {
+    const [readme, contributing, packageText, telemetry] = await Promise.all([
+      repositoryFile('README.md'), repositoryFile('CONTRIBUTING.md'),
+      repositoryFile('package.json'), repositoryFile('docs/telemetry.md')
+    ]);
+    expect(JSON.parse(packageText).license).toBe('GPL-3.0-only');
+    expect(JSON.parse(packageText).engines.node).toBe('>=24.20');
+    expect(readme).toContain('https://github.com/voyager163/liftoff/releases');
+    expect(readme).toContain('SECURITY.md#supported-versions');
+    expect(readme.replace(/\s+/g, ' ')).toContain('`develop` is the integration branch, not a release');
+    expect(readme).toContain('without a response guarantee');
+    expect(readme).toContain('not evidence of active repository protection');
+    expect(contributing).toContain(communityReportingRoutes.conductDocument);
+    expect(telemetry).toContain('LIFTOFF_TELEMETRY=0');
+    expect(telemetry).toContain('DO_NOT_TRACK=1');
+    expect(isTelemetryEnabled({})).toBe(true);
+    for (const env of [{ LIFTOFF_TELEMETRY: '0' }, { DO_NOT_TRACK: '1' }, { CI: 'true' }]) {
+      expect(isTelemetryEnabled(env)).toBe(false);
+    }
+    expect(readme).toContain('disabled when `CI=true`');
+    expect(readme).not.toMatch(/certified|SLSA L3|native installation|official Microsoft product/i);
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

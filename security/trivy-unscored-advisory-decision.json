@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-09-21",
+  "ownerDecision": "Use a separate Trivy valid-native-unscored blocking-policy class",
+  "provenance": {
+    "source": "Explicit owner selection confirmed by the coordinating session in its pause handoff and explicit resume instruction",
+    "coordinatorSession": "f1debac3-fd7e-44a5-a4f8-078a5cbf2a3a",
+    "confirmation": "Preserve selected native UNKNOWN and absence of score; policy HIGH review priority is not invented CVSS. Only exact image/component/version/advisory/digest exceptions through adopted policy, maximum 30 days."
+  },
+  "policyClass": "trivy-valid-native-unscored-advisory",
+  "upstreamSeverity": "UNKNOWN",
+  "reviewPriority": "high",
+  "blocking": true,
+  "exceptionMaximumDays": 30,
+  "exceptionAuthority": "Exact observed-base proposal adopted by ordinary maintainer merge",
+  "malformedOrUnsupportedPresentMetadataRemainsError": true,
+  "unqualifiedAdvisoryIdentityRemainsError": true,
+  "debianVendorIdentityScope": "Debian OS-package results only",
+  "aliasSeverityTransplantAllowed": false,
+  "osvPolicyTransplantAllowed": false,
+  "actualExceptionsApproved": [],
+  "dependencyOrImageChangesAuthorized": false,
+  "hostedEffectsAuthorized": false
+}
