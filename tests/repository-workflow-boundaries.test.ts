@@ -24,6 +24,17 @@ function fixture() {
 }
 
 describe('checked-in workflow privilege boundaries', () => {
+  it('adds only bounded controller diagnostics after an actual Windows boundary failure', async () => {
+    const workflow = parse(await readFile(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8'));
+    const steps = workflow.jobs.test.steps;
+    const boundary = steps.find((step: { id?: string }) => step.id === 'windows-boundaries');
+    const diagnostic = steps.find((step: { env?: Record<string, string> }) => step.env?.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC === '1');
+    expect(boundary.run).toContain('tests/windows-job-runner.test.ts');
+    expect(diagnostic.if).toBe("${{ failure() && runner.os == 'Windows' && steps.windows-boundaries.conclusion == 'failure' }}");
+    expect(diagnostic.run).toBe('npx vitest run tests/windows-job-diagnostic.test.ts');
+    expect(diagnostic['continue-on-error']).toBeUndefined();
+    expect(workflow.jobs.test['timeout-minutes']).toBe(45);
+  });
   it('reuses the canonical four-graph audit for PRs, both scheduled refs and release qualification', async () => {
     const audit = await readFile(path.join(process.cwd(), '.github', 'workflows', 'template-dependency-audit.yml'), 'utf8');
     const release = await readFile(path.join(process.cwd(), '.github', 'workflows', 'release.yml'), 'utf8');

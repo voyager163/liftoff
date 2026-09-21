@@ -72,12 +72,45 @@ function component(name: unknown, version: unknown, ecosystem: 'PyPI' | 'Go'): O
  * Raw child streams are never logged, returned or attached to errors. Only the
  * caller's allowlisted projection may cross this boundary. No inherited env.
  */
-export async function runOsvBoundary<T>(options: {
+export interface OsvBoundaryOptions<T> {
   executable: string; args: readonly string[]; cwd: string; env: NodeJS.ProcessEnv;
   stdin?: string; timeoutMs?: number; acceptedExits?: readonly number[];
-  stderrMode?: 'go-metadata';
+  stderrMode?: 'go-metadata' | 'linux-network-boundary';
   project: (stdout: string, exitCode: number) => T;
-}): Promise<T> {
+}
+
+export function parseLinuxBoundaryDiagnostic(source: string) {
+  if (Buffer.byteLength(source) > 1024) reject('osv-linux-diagnostic-invalid');
+  let value: unknown;
+  try { value = JSON.parse(source); } catch { return reject('osv-linux-diagnostic-invalid'); }
+  const item = record(value, ['boundary', 'phase', 'errno'], 'osv-linux-diagnostic-invalid');
+  const phase = (['platform', 'stdio', 'descriptor-closure', 'filter-install', 'filter-readback', 'denial-probe', 'native-exec'] as const)
+    .find(phase => phase === item.phase);
+  if (item.boundary !== 'linux-osv-network' || !phase ||
+      item.errno !== null && (typeof item.errno !== 'number' || !Number.isInteger(item.errno) || item.errno < 0 || item.errno > 4095)) {
+    reject('osv-linux-diagnostic-invalid');
+  }
+  return { boundary: 'linux-osv-network' as const, phase, errno: item.errno };
+}
+
+export class OsvProcessFailure extends SecurityEvidenceError {
+  readonly exitCode: number | null;
+  readonly signal: string | null;
+  readonly boundary: ReturnType<typeof parseLinuxBoundaryDiagnostic> | null;
+  readonly diagnosticStatus: 'none' | 'recognized' | 'unrecognized';
+  constructor(
+    exitCode: number | null, signal: string | null, boundary: ReturnType<typeof parseLinuxBoundaryDiagnostic> | null,
+    diagnosticStatus: 'none' | 'recognized' | 'unrecognized'
+  ) {
+    super('osv-process-failed');
+    this.exitCode = exitCode;
+    this.signal = signal;
+    this.boundary = boundary;
+    this.diagnosticStatus = diagnosticStatus;
+  }
+}
+
+export async function runOsvBoundary<T>(options: OsvBoundaryOptions<T>): Promise<T> {
   if (options.stdin && Buffer.byteLength(options.stdin) > osvBounds.input) reject('osv-input-size');
   const timeout = options.timeoutMs ?? osvBounds.timeoutMs;
   if (!Number.isSafeInteger(timeout) || timeout < 1 || timeout > osvBounds.timeoutMs) reject('osv-invalid-timeout');
@@ -107,7 +140,7 @@ export async function runOsvBoundary<T>(options: {
     child.stderr.on('data', (chunk: Buffer) => {
       errorSize += chunk.length;
       if (errorSize > osvBounds.stderr) stop('osv-stderr-limit');
-      else if (!failed && options.stderrMode === 'go-metadata') errors.push(chunk);
+      else if (!failed && options.stderrMode !== undefined) errors.push(chunk);
     });
     child.on('error', () => { failed ??= 'osv-launch-failed'; });
     child.stdin.on('error', () => { /* close/exit handling below remains authoritative */ });
@@ -119,10 +152,23 @@ export async function runOsvBoundary<T>(options: {
           ? classifyGoStderr(Buffer.concat(errors).toString('utf8')) : undefined;
         const goStdout = options.stderrMode === 'go-metadata' && code !== 0
           ? classifyGoJsonError(Buffer.concat(output).toString('utf8')) : undefined;
+        let boundary: ReturnType<typeof parseLinuxBoundaryDiagnostic> | null = null;
+        let diagnosticStatus: OsvProcessFailure['diagnosticStatus'] = 'none';
+        if (options.stderrMode === 'linux-network-boundary' && errorSize > 0 && code !== 0) {
+          try {
+            boundary = parseLinuxBoundaryDiagnostic(Buffer.concat(errors).toString('utf8'));
+            diagnosticStatus = 'recognized';
+          } catch (error) {
+            if (!(error instanceof SecurityEvidenceError) || error.code !== 'osv-linux-diagnostic-invalid') throw error;
+            diagnosticStatus = 'unrecognized';
+          }
+        }
         errors = [];
         if (goStderr === 'missing' || goStdout === 'missing') reject('osv-go-metadata-missing');
         if (goStderr === 'toolchain' || goStdout === 'toolchain') reject('osv-go-toolchain-incompatible');
-        if (signal || code === null || !(options.acceptedExits ?? [0]).includes(code)) reject('osv-process-failed');
+        if (signal || code === null || !(options.acceptedExits ?? [0]).includes(code)) {
+          throw new OsvProcessFailure(code, signal, boundary, diagnosticStatus);
+        }
         // With --verbosity=error, stderr is evidence of a failed plugin even
         // when the CLI returns an apparently clean, fully enumerated report.
         if (errorSize !== 0 && goStderr !== 'download-status') reject('osv-stderr-rejected');

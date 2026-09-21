@@ -229,12 +229,19 @@ exec node "${mockPs}" "$@"
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      { powershellPath: mockLauncher, skipAssetVerification: true, captureDiagnostics: true }
     );
 
     expect(result.processTreeSettled).toBe(true);
     expect(result.processSpawned).toBe(true);
     expect(result.status).toBe(0);
+    expect(result.controllerDiagnostics?.truncated).toBe(false);
+    expect(result.controllerDiagnostics?.events.map(event => event.phase)).toEqual(expect.arrayContaining([
+      'server-listening', 'controller-spawn-requested', 'controller-spawned', 'client-connected',
+      'authenticated', 'spawn-dispatched', 'acknowledged', 'response-received', 'finished'
+    ]));
+    expect(JSON.stringify(result.controllerDiagnostics)).not.toContain(tempDir);
+    expect(JSON.stringify(result.controllerDiagnostics)).not.toContain('nonce');
   });
 
   it('captures stdout and stderr from file paths with output bounding and cleans up files', async () => {

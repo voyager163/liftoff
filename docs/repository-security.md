@@ -28,6 +28,27 @@ has run successfully. Prepared workflows, readback, successful execution,
 finding-based acceptance and enforcement are separate evidence states.
 Missing evidence remains a blocker.
 
+The initial authorized draft-PR run of checkpoint `b5b9a83` attempted ten jobs:
+seven passed and three failed. Linux/macOS functional checks, telemetry OpenTofu,
+both npm template lanes, canonical npm auditing and dependency review passed.
+The non-npm scanner completed all four graphs but correctly blocked on 19 Go
+findings, with four additional tracked findings. The Windows boundary suite
+failed functional cases, and the Linux OSV fixture failed as a process/setup
+error rather than a vulnerability finding. CodeQL remained skipped under its
+disabled controls. These are execution observations, not hosted enforcement or
+permission to merge, publish, bypass a failure or rerun jobs.
+
+Follow-up preparation binds non-npm reports to the actual event/run/attempt,
+workflow revision, base, PR head and tested merge parents; scheduled protected
+checkouts retain their identity separately from the default-branch event SHA.
+The first run's local-style embedded identity is not retroactively relabelled.
+Bounded Linux guard phase/errno/exit diagnostics and an opt-in Windows controller
+lifecycle trace retain no command contents, nonce, environment values or process
+output. The Windows diagnostic uses the existing ten-second command bound only
+after the original boundary step fails; it neither skips tests nor changes
+settlement assertions. Hosted qualification of these follow-up changes remains
+pending separate authorization.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.

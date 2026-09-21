@@ -3,14 +3,28 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createOsvWorkspace, extractOsvGoGraphs } from './osv-fixture.ts';
 import { linuxOsvNetworkProbe } from './osv-transport.ts';
-import { osvDigest, runOsvBoundary, type OsvGraph } from './osv.ts';
+import { osvDigest, runOsvBoundary, OsvProcessFailure, type OsvGraph } from './osv.ts';
 import { SecurityEvidenceError } from './evidence.ts';
+
+class LinuxFixtureError extends SecurityEvidenceError {
+  readonly stage: string;
+  readonly process: {
+    exitCode: number | null; signal: string | null; boundary: OsvProcessFailure['boundary'];
+    diagnosticStatus: OsvProcessFailure['diagnosticStatus'];
+  } | null;
+  constructor(code: string, stage: string, cause: unknown) {
+    super(code); this.stage = stage;
+    this.process = cause instanceof OsvProcessFailure
+      ? { exitCode: cause.exitCode, signal: cause.signal, boundary: cause.boundary, diagnosticStatus: cause.diagnosticStatus } : null;
+  }
+}
 
 export async function qualifyLinuxOsvFixture(options: { repository: string; workspaceParent: string; python: string }) {
   if (process.platform !== 'linux' || !['x64', 'arm64'].includes(process.arch) ||
       !path.isAbsolute(options.python)) throw new SecurityEvidenceError('osv-linux-fixture-platform');
   const guard = fileURLToPath(new URL('./osv-linux-sandbox.py', import.meta.url));
   const source = await readFile(guard, 'utf8'), workspace = await createOsvWorkspace(options.repository, options.workspaceParent);
+  let stage = 'python-startup';
   try {
     const environment = { HOME: workspace.root, TMPDIR: workspace.root, PATH: '' };
     await runOsvBoundary({
@@ -19,8 +33,10 @@ export async function qualifyLinuxOsvFixture(options: { repository: string; work
         if (value.trim() !== 'Python 3.14.7') throw new SecurityEvidenceError('osv-linux-fixture-python');
       }
     });
+    stage = 'kernel-network-denial';
     const denial = await runOsvBoundary({
       ...linuxOsvNetworkProbe(options.python), cwd: workspace.root, env: environment,
+      stderrMode: 'linux-network-boundary',
       project: value => {
         if (value.trim() !== '{"ipv4":true,"ipv6":true,"unix":true,"ioUring":true,"seccomp":true,"noNewPrivileges":true}') {
           throw new SecurityEvidenceError('osv-network-denial-unproven');
@@ -33,6 +49,7 @@ export async function qualifyLinuxOsvFixture(options: { repository: string; work
       components: [{ name: 'github.com/google/uuid', version: 'v1.6.0', ecosystem: 'Go',
         chains: [['fixture', 'github.com/google/uuid']] }]
     };
+    stage = 'pinned-tool-and-offline-extraction';
     const extraction = await extractOsvGoGraphs(workspace, { fixture: graph }, 'linux-offline-fixture', undefined, options.python);
     if (await readFile(guard, 'utf8') !== source) throw new SecurityEvidenceError('osv-linux-fixture-guard-drift');
     return {
@@ -41,6 +58,8 @@ export async function qualifyLinuxOsvFixture(options: { repository: string; work
       extraction: extraction.scopes, cleanup: 'completed',
       advisoryQueries: false, repositoryFindingVerdict: 'not-produced', releaseQualified: false
     };
+  } catch (error) {
+    throw new LinuxFixtureError(error instanceof SecurityEvidenceError ? error.code : 'osv-linux-fixture-failed', stage, error);
   } finally { await workspace.cleanup(); }
 }
 
@@ -56,7 +75,9 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   } catch (error) {
     console.error(JSON.stringify({
       kind: 'native-linux-osv-network-fixture', qualified: false,
-      code: error instanceof SecurityEvidenceError ? error.code : 'osv-linux-fixture-failed'
+      code: error instanceof SecurityEvidenceError ? error.code : 'osv-linux-fixture-failed',
+      stage: error instanceof LinuxFixtureError ? error.stage : 'initialization-or-cleanup',
+      process: error instanceof LinuxFixtureError ? error.process : null
     }));
     process.exitCode = 1;
   }

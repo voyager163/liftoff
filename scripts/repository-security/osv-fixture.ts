@@ -134,7 +134,7 @@ async function requireRuntimeNetworkDenial(workspace: RegisteredWorkspace, pytho
   if (process.platform === 'linux' && python) {
     await runOsvBoundary({
       ...linuxOsvNetworkProbe(python), cwd: workspace.root,
-      env: { HOME: workspace.root, TMPDIR: workspace.root }, timeoutMs: 5000,
+      env: { HOME: workspace.root, TMPDIR: workspace.root }, timeoutMs: 5000, stderrMode: 'linux-network-boundary',
       project: output => {
         if (output.trim() !== '{"ipv4":true,"ipv6":true,"unix":true,"ioUring":true,"seccomp":true,"noNewPrivileges":true}') {
           throw new SecurityEvidenceError('osv-network-denial-unproven');

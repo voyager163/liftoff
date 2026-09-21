@@ -31,7 +31,24 @@ export interface WindowsJobRunnerOptions {
   assetPath?: string;
   powershellPath?: string;
   skipAssetVerification?: boolean;
+  captureDiagnostics?: boolean;
 }
+
+export interface WindowsJobDiagnostic {
+  phase: 'server-listening' | 'controller-spawn-requested' | 'controller-spawned' | 'controller-spawn-error'
+    | 'controller-exit' | 'client-connected' | 'authenticated' | 'spawn-dispatched' | 'acknowledged'
+    | 'response-received' | 'supervisor-timeout' | 'server-error' | 'finishing' | 'finished';
+  elapsedMs: number;
+  controllerPidKnown: boolean;
+  connected: boolean;
+  authenticated: boolean;
+  spawnRequestDispatched: boolean;
+  sessionState: ReturnType<WindowsJobExecutionSession['getState']>;
+}
+
+export type WindowsJobCommandResult = CommandResult & {
+  controllerDiagnostics?: { events: WindowsJobDiagnostic[]; truncated: boolean };
+};
 
 export async function verifyWindowsJobControllerAsset(customPath?: string): Promise<string> {
   const assetPath = customPath ?? resolvePackageFile(...windowsJobControllerAssetPathParts);
@@ -199,7 +216,7 @@ export async function runWindowsJobCommand(
   command: ExternalCommand,
   options: RunCommandOptions = {},
   runnerOptions: WindowsJobRunnerOptions = {}
-): Promise<CommandResult> {
+): Promise<WindowsJobCommandResult> {
   const displayCommand = [command.executable, ...command.args].join(' ');
   const timeoutMs = options.timeoutMs ?? 120_000;
   const maxOutputBytes = options.maxOutputBytes ?? 64 * 1024;
@@ -343,7 +360,7 @@ export async function runWindowsJobCommand(
   session.admitScope(invocation, nonce);
   const invocationId = session.getInvocationId()!;
 
-  return new Promise<CommandResult>((resolve) => {
+  return new Promise<WindowsJobCommandResult>((resolve) => {
     let clientSocket: net.Socket | null = null;
     let psProcess: ChildProcess | null = null;
     let psStderr = '';
@@ -354,6 +371,18 @@ export async function runWindowsJobCommand(
     let incomingBuffer = Buffer.alloc(0);
     let supervisorTimer: NodeJS.Timeout | null = null;
     let abortHandler: (() => void) | null = null;
+    const diagnosticStart = runnerOptions.captureDiagnostics === true ? performance.now() : 0;
+    const diagnostics: WindowsJobDiagnostic[] = [];
+    let diagnosticTruncated = false;
+    const trace = (phase: WindowsJobDiagnostic['phase']) => {
+      if (runnerOptions.captureDiagnostics !== true) return;
+      if (diagnostics.length >= 64) { diagnosticTruncated = true; return; }
+      diagnostics.push({
+        phase, elapsedMs: Math.max(0, Math.trunc(performance.now() - diagnosticStart)),
+        controllerPidKnown: Number.isInteger(psProcess?.pid), connected, authenticated, spawnRequestDispatched,
+        sessionState: session.getState()
+      });
+    };
 
     const safeUnlink = async (file: string): Promise<boolean> => {
       for (let attempt = 0; attempt < 5; attempt++) {
@@ -370,6 +399,7 @@ export async function runWindowsJobCommand(
 
     const finish = async (result: Partial<CommandResult> & { processTreeSettled: boolean; processSpawned: boolean }) => {
       if (settled) return;
+      trace('finishing');
       settled = true;
 
       if (supervisorTimer) {
@@ -426,6 +456,7 @@ export async function runWindowsJobCommand(
         ? `${result.errorMessage ? `${result.errorMessage} ` : ''}Failed to clean up temporary execution log files.`
         : result.errorMessage;
 
+      trace('finished');
       resolve({
         command,
         displayCommand,
@@ -438,7 +469,9 @@ export async function runWindowsJobCommand(
         processSpawned: determinedSpawned,
         ...(result.outputLimitExceeded !== undefined ? { outputLimitExceeded: result.outputLimitExceeded } : {}),
         ...(effectiveErrorCode ? { errorCode: effectiveErrorCode } : {}),
-        ...(effectiveErrorMessage ? { errorMessage: effectiveErrorMessage } : {})
+        ...(effectiveErrorMessage ? { errorMessage: effectiveErrorMessage } : {}),
+        ...(runnerOptions.captureDiagnostics === true
+          ? { controllerDiagnostics: { events: diagnostics.map(event => ({ ...event })), truncated: diagnosticTruncated } } : {})
       });
     };
 
@@ -457,6 +490,7 @@ export async function runWindowsJobCommand(
 
     if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
       supervisorTimer = setTimeout(() => {
+        trace('supervisor-timeout');
         void finish({
           timedOut: true,
           processTreeSettled: false,
@@ -474,6 +508,7 @@ export async function runWindowsJobCommand(
       }
       connected = true;
       clientSocket = socket;
+      trace('client-connected');
 
       socket.on('data', (chunk) => {
         try {
@@ -537,6 +572,7 @@ export async function runWindowsJobCommand(
         try {
           session.authenticateControllerReady(r);
           authenticated = true;
+          trace('authenticated');
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -553,6 +589,7 @@ export async function runWindowsJobCommand(
           const framed = frameControlMessage(spawnReq);
           clientSocket?.write(framed);
           spawnRequestDispatched = true;
+          trace('spawn-dispatched');
         } catch (err) {
           void finish({
             processTreeSettled: false,
@@ -571,6 +608,7 @@ export async function runWindowsJobCommand(
       } else if (r.kind === 'ack') {
         try {
           session.onRootStartAcknowledged(r as unknown as WindowsJobControlAck);
+          trace('acknowledged');
         } catch (err) {
           if (err instanceof WindowsJobAdmissionDeniedError) {
             void finish({
@@ -589,6 +627,7 @@ export async function runWindowsJobCommand(
           }
         }
       } else if (r.kind === 'response') {
+        trace('response-received');
         try {
           const validated = session.ingestResponse(r);
           const outputLimitExceeded = Boolean(validated.outputLimitExceeded);
@@ -614,6 +653,7 @@ export async function runWindowsJobCommand(
     }
 
     server.listen(pipePath, () => {
+      trace('server-listening');
       if (settled || options.signal?.aborted) {
         void finish({
           signal: 'SIGABRT',
@@ -641,6 +681,7 @@ export async function runWindowsJobCommand(
       ];
 
       const hostEnv = buildWindowsControllerHostEnvironment();
+      trace('controller-spawn-requested');
       psProcess = spawn(powershellPath, psArgs, {
         cwd: process.cwd(),
         env: hostEnv,
@@ -648,12 +689,14 @@ export async function runWindowsJobCommand(
         windowsHide: true,
         stdio: ['ignore', 'pipe', 'pipe']
       });
+      psProcess.once('spawn', () => { trace('controller-spawned'); });
 
       psProcess.stderr?.on('data', (d) => {
         psStderr += d.toString('utf8');
       });
 
       psProcess.on('error', (err) => {
+        trace('controller-spawn-error');
         void finish({
           processTreeSettled: false,
           processSpawned: false,
@@ -663,6 +706,7 @@ export async function runWindowsJobCommand(
       });
 
       psProcess.on('exit', (code) => {
+        trace('controller-exit');
         if (!settled) {
           // PowerShell exited before completing. Inspect stderr for causal admission blockers.
           let errorCode = 'CONTROLLER_LAUNCH_FAILED';
@@ -692,6 +736,7 @@ export async function runWindowsJobCommand(
     });
 
     server.on('error', (err) => {
+      trace('server-error');
       void finish({
         processTreeSettled: false,
         processSpawned: spawnRequestDispatched,

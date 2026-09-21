@@ -29,6 +29,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ matrix.ref || github.sha }}
+          fetch-depth: 2
       - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: "24.20.0"
@@ -45,6 +46,9 @@ jobs:
       - name: Assess immutable snapshots without scanner network access
         env:
           LIFTOFF_TELEMETRY: "0"
+          LIFTOFF_SCAN_REF: ${{ matrix.ref }}
+          LIFTOFF_PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          LIFTOFF_PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: >-
           node scripts/repository-security/osv-driver.ts
           --python "$(command -v python3)" --go "$(command -v go)"

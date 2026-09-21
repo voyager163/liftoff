@@ -76,6 +76,7 @@ jobs:
         run: npx vitest run tests/framework-smoke.test.ts
 
       - name: Run Windows project and packaging boundary coverage
+        id: windows-boundaries
         if: runner.os == 'Windows'
         run: >-
           npx vitest run
@@ -96,6 +97,12 @@ jobs:
           tests/project-dependencies.test.ts tests/commands.test.ts
           tests/telemetry-contract.test.ts tests/telemetry-config.test.ts tests/telemetry.test.ts
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
+
+      - name: Capture bounded Windows controller diagnostics after a boundary failure
+        if: ${{ failure() && runner.os == 'Windows' && steps.windows-boundaries.conclusion == 'failure' }}
+        env:
+          LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC: "1"
+        run: npx vitest run tests/windows-job-diagnostic.test.ts
 
       - name: Validate local repair with native OpenTofu
         env:

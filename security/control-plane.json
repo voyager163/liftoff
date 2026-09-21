@@ -80,6 +80,7 @@
     ["scripts", "repository-security", "inventory.ts"],
     ["scripts", "repository-security", "workspace.ts"],
     ["scripts", "repository-security", "workflow-policy.ts"],
+    ["scripts", "repository-security", "workflow-invocation.ts"],
     ["scripts", "repository-security", "actions.ts"],
     ["scripts", "repository-security", "images.ts"],
     ["scripts", "repository-security", "artifact-gates.ts"],

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   fetchOsvSnapshot, planOsvApiRequest, requireOsvAdvisoryCoverage, sandboxOsvCommand
 } from '../scripts/repository-security/osv-transport.ts';
-import { osvDigest, type OsvGraph } from '../scripts/repository-security/osv.ts';
+import { osvDigest, OsvProcessFailure, parseLinuxBoundaryDiagnostic, runOsvBoundary, type OsvGraph } from '../scripts/repository-security/osv.ts';
 
 const sentinel = 'NONFUNCTIONAL_TRANSPORT_SENTINEL';
 const coordinates = [{ name: 'urllib3', version: '1.26.5', ecosystem: 'PyPI' as const }];
@@ -12,6 +12,45 @@ const query = () => ({ host: 'api.osv.dev', method: 'POST', path: '/v1/querybatc
 const vulnerability = { id, modified: '2026-09-20T00:00:00Z', affected: [{ package: { name: 'urllib3', ecosystem: 'PyPI' } }] };
 
 describe('OSV enforced coordinate transport', () => {
+  it('retains only fixed native guard phase/errno metadata while a real child failure stays failed', async () => {
+    const diagnostic = { boundary: 'linux-osv-network', phase: 'filter-install', errno: 22 };
+    try {
+      await runOsvBoundary({
+        executable: process.execPath, args: ['-e', `process.stderr.write(${JSON.stringify(JSON.stringify(diagnostic))});process.exitCode=78;`],
+        cwd: process.cwd(), env: {}, stderrMode: 'linux-network-boundary', project: () => 'not-a-pass'
+      });
+      throw new Error('Failed native process was accepted.');
+    } catch (error) {
+      expect(error).toBeInstanceOf(OsvProcessFailure);
+      expect(error).toMatchObject({ code: 'osv-process-failed', exitCode: 78, signal: null, boundary: diagnostic, diagnosticStatus: 'recognized' });
+    }
+  });
+  it('retains exit/signal but withholds unrecognized stderr rather than turning it into trusted diagnostics', async () => {
+    try {
+      await runOsvBoundary({
+        executable: process.execPath, args: ['-e', `process.stderr.write(${JSON.stringify(sentinel)});process.exitCode=1;`],
+        cwd: process.cwd(), env: {}, stderrMode: 'linux-network-boundary', project: () => 'not-a-pass'
+      });
+      throw new Error('Unexpected success');
+    } catch (error) {
+      expect(error).toMatchObject({ code: 'osv-process-failed', exitCode: 1, boundary: null, diagnosticStatus: 'unrecognized' });
+      expect(JSON.stringify(error)).not.toContain(sentinel);
+    }
+  });
+  it.each([
+    { boundary: 'wrong', phase: 'filter-install', errno: 22 },
+    { boundary: 'linux-osv-network', phase: sentinel, errno: 22 },
+    { boundary: 'linux-osv-network', phase: 'filter-install', errno: sentinel },
+    { boundary: 'linux-osv-network', phase: 'filter-install', errno: -1 },
+    { boundary: 'linux-osv-network', phase: 'filter-install', errno: 4096 },
+    { boundary: 'linux-osv-network', phase: 'filter-install', errno: 22, raw: sentinel }
+  ])('rejects unregistered native diagnostics without reflecting their content %#', value => {
+    try { parseLinuxBoundaryDiagnostic(JSON.stringify(value)); throw new Error('Unexpected success'); }
+    catch (error) {
+      expect(String(error)).toContain('osv-linux-diagnostic-invalid');
+      expect(String(error)).not.toContain(sentinel);
+    }
+  });
   it('constructs only the exact coordinate payload and approved advisory GETs', () => {
     const plan = planOsvApiRequest(query(), coordinates);
     expect(plan.host).toBe('api.osv.dev');

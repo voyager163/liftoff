@@ -9,6 +9,7 @@ import { evaluateSecurityReport, parseIdentity, portableParts, SecurityEvidenceE
 import { osvDigest, osvRelease, osvUnscoredPolicyRules, runOsvBoundary } from './osv.ts';
 import { createOsvWorkspace, qualifyFrozenGo, qualifyOsvFixtures, type RepositoryOsvAssessment } from './osv-fixture.ts';
 import { reportRepositorySecurity, type RepositorySecuritySummary, type ReportingProducerOutcome } from './reporting.ts';
+import { securityWorkflowInvocation } from './workflow-invocation.ts';
 
 function fail(code: string): never { throw new SecurityEvidenceError(code); }
 
@@ -57,6 +58,7 @@ interface LocalOsvReport {
   hostedQualification: false;
   publicationQualified: false;
   componentCoverage?: { python: object[]; go: object[] };
+  workflowInvocation?: ReturnType<typeof securityWorkflowInvocation>;
   reporting: RepositorySecuritySummary | null;
   ownerActions: { owner: 'voyager163'; graph: string; action: 'rerun-complete-graph' | 'triage-blocking-findings' | 'triage-lower-findings' }[];
 }
@@ -126,6 +128,7 @@ export function summarizeRepositoryOsv(
 
 export async function executeRepositoryOsv(options: {
   repository: string; python: string; go: string; workspaceParent: string; restorePublicGo: boolean;
+  workflowEnvironment?: NodeJS.ProcessEnv;
 }): Promise<LocalOsvReport> {
   const root = await realpath(options.repository);
   if (root !== await realpath(process.cwd())) fail('osv-driver-source-root');
@@ -158,16 +161,29 @@ export async function executeRepositoryOsv(options: {
     });
     if (await git(['rev-parse', '--show-toplevel']) !== root) fail('osv-driver-source-root');
     const head = await git(['rev-parse', '--verify', 'HEAD^{commit}']);
+    const environment = options.workflowEnvironment;
+    const selected = environment?.GITHUB_EVENT_NAME === 'schedule' ? environment.LIFTOFF_SCAN_REF : undefined;
+    if (selected !== undefined && !['develop', 'main'].includes(selected)) fail('osv-driver-scheduled-ref');
+    const invocation = environment ? securityWorkflowInvocation(environment, {
+      checkoutSha: head,
+      ...(environment.GITHUB_EVENT_NAME === 'pull_request'
+        ? { mergeParents: (await git(['show', '--no-patch', '--format=%P', 'HEAD'])).split(' ') } : {}),
+      ...(selected ? { selectedRef: {
+        ref: `refs/heads/${selected}`, sha: await git(['rev-parse', '--verify', `refs/remotes/origin/${selected}^{commit}`])
+      } } : {})
+    }) : undefined;
     const implementation = [];
-    for (const name of ['osv-driver.ts', 'osv-fixture.ts', 'osv.ts', 'osv-transport.ts', 'osv-linux-sandbox.py', 'osv-go-contract.ts', 'osv-advisory.ts', 'reporting.ts']) {
+    for (const name of ['osv-driver.ts', 'osv-fixture.ts', 'osv.ts', 'osv-transport.ts', 'osv-linux-sandbox.py', 'osv-go-contract.ts', 'osv-advisory.ts', 'reporting.ts', 'workflow-invocation.ts']) {
       const parts = ['scripts', 'repository-security', name], contents = await readOsvSource(root, parts);
       snapshot.set(parts.join('/'), { pathParts: parts, contents, digest: osvDigest(contents) });
       implementation.push([name, osvDigest(contents)]);
     }
     const inputs = [...snapshot.values()].map(({ pathParts, digest }) => ({ pathParts, digest }));
     const identity = parseIdentity({
-      repository: 'voyager163/liftoff', event: 'workflow_dispatch', sourceSha: head, baseSha: head, workflowSha: head,
-      runId: String(Date.now()), attempt: 1, policyDigest: osvDigest('strict-local-no-exceptions-not-adoption'),
+      repository: 'voyager163/liftoff', event: invocation?.event ?? 'workflow_dispatch', sourceSha: head,
+      baseSha: invocation?.baseSha ?? head, workflowSha: invocation?.workflowSha ?? head,
+      runId: invocation?.runId ?? String(Date.now()), attempt: invocation?.attempt ?? 1,
+      policyDigest: osvDigest('strict-local-no-exceptions-not-adoption'),
       inventoryDigest: osvDigest(JSON.stringify(inputs)),
       configurationDigest: osvDigest(JSON.stringify({ implementation, tool: osvRelease, transport: 'coordinate-only-plus-offline-network-denial' }))
     });
@@ -190,6 +206,7 @@ export async function executeRepositoryOsv(options: {
       if (await readOsvSource(root, item.pathParts) !== item.contents) fail('osv-driver-input-drift');
     }
     return { ...summarizeRepositoryOsv(identity, inputs, reports, errors),
+      ...(invocation ? { workflowInvocation: invocation } : {}),
       componentCoverage: { python: python.extraction, go: resolved.extraction.scopes } };
   } finally { await owned.cleanup(); }
 }
@@ -201,7 +218,8 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
         args[4] !== '--workspace-parent' || args.length === 7 && args[6] !== '--restore-public-go') fail('osv-driver-usage');
     const result = await executeRepositoryOsv({
       repository: process.cwd(), python: path.resolve(args[1]!), go: path.resolve(args[3]!),
-      workspaceParent: path.resolve(args[5]!), restorePublicGo: args.length === 7
+      workspaceParent: path.resolve(args[5]!), restorePublicGo: args.length === 7,
+      ...(process.env.GITHUB_ACTIONS === 'true' ? { workflowEnvironment: process.env } : {})
     });
     console.log(JSON.stringify(result));
     process.exitCode = result.analysisComplete ? result.findingsPassed ? 0 : 1 : 2;
