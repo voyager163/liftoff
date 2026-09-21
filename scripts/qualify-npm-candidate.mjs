@@ -9,11 +9,12 @@ import { verifyReleaseIdentity } from '../dist/release-identity.js';
 import { canonicalNpmRegistry, npmRegistryOverrideArgs } from '../dist/package-identity.js';
 import { artifactHashes, parseNpmCandidate, verifyCandidateBytes } from './repository-security/npm-release.ts';
 import { canonicalDigest } from './repository-security/admission.ts';
-import { parseIdentity, portableParts } from './repository-security/evidence.ts';
+import { portableParts } from './repository-security/evidence.ts';
 import { createLocalPackageRecords } from './repository-security/npm-release-records.ts';
 import { assessPackedNpmRuntime } from './repository-security/npm-runtime.ts';
 import { assessPackedPythonGoTemplates, inspectPackedTemplateComponents, packedTemplateSbom, resolvePackedGoComponents } from './repository-security/packed-template-inventory.ts';
 import { assessPackedNpmTemplates } from './repository-security/packed-template-audit.ts';
+import { packedAssessmentContext } from './repository-security/packed-assessment-context.ts';
 
 /** @typedef {import('./repository-security/npm-release.ts').NpmCandidate} NpmCandidate */
 
@@ -212,25 +213,18 @@ export async function packNpmCandidate(options, dependencies = {}) {
         const templateSbom = packedTemplateSbom(descriptor, bytes, go);
         await writeFile(path.join(candidateRoot, 'template-components.cdx.json'),
           `${JSON.stringify(templateSbom, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
-        const identity = parseIdentity({
-          repository: 'voyager163/liftoff', event: 'workflow_dispatch',
-          sourceSha: descriptor.source.commit, baseSha: descriptor.source.commit, workflowSha: descriptor.source.commit,
-          runId: String(Date.now()), attempt: 1,
-          policyDigest: canonicalDigest('strict-local-no-exceptions-not-adopted-release-policy'),
-          inventoryDigest: canonicalDigest(templateSbom),
-          configurationDigest: canonicalDigest('exact-packed-python-go-native-coordinate-only-assessment')
-        });
+        const assessmentContext = packedAssessmentContext(descriptor.source, canonicalDigest(templateSbom), env, new Date());
         const npm = await assessPackedNpmTemplates({
           repository: root, workspaceParent: outputParent, npmCli: options.npmCliPath, candidate: descriptor, tarball: bytes
         });
         const pythonGo = await assessPackedPythonGoTemplates({
           repository: root, workspaceParent: outputParent, python: options.pythonPath,
-          candidate: descriptor, tarball: bytes, go, identity
+          candidate: descriptor, tarball: bytes, go, identity: assessmentContext.identity
         });
         await writeFile(path.join(candidateRoot, 'template-vulnerabilities.json'), `${JSON.stringify({
           kind: 'exact-packed-template-vulnerability-assessments', candidateDigest: canonicalDigest(descriptor),
           artifactDigest: descriptor.artifact.sha256, templateSbomDigest: canonicalDigest(templateSbom),
-          npm, pythonGo, analysisComplete: npm.analysisComplete && pythonGo.analysisComplete,
+          npm, pythonGo, assessmentContext, analysisComplete: npm.analysisComplete && pythonGo.analysisComplete,
           findingsPassed: npm.findingsPassed && pythonGo.findingsPassed,
           configuredReleasePolicy: 'not-adopted-by-local-preparation', producerAuthentication: false, publicationQualified: false
         }, null, 2)}\n`, { flag: 'wx', mode: 0o600 });

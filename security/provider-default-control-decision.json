@@ -1,0 +1,68 @@
+{
+  "schemaVersion": 1,
+  "recordedOn": "2026-09-21",
+  "decision": "coordinator-approved-exact-provider-default-control-equivalence",
+  "coordinatorSession": "f1debac3-fd7e-44a5-a4f8-078a5cbf2a3a",
+  "scope": "independently-issued-exact-generated-baseline-observations-only",
+  "provider": {
+    "source": "hashicorp/azurerm",
+    "version": "5.3.0",
+    "repository": "hashicorp/terraform-provider-azurerm",
+    "commit": "9215c429172fbccf3c7c6197a246d23f7c3287af",
+    "sdkVersion": "2.40.1",
+    "sdkCommit": "e6c7dc42a51abcaf5b709a98720ba13ba0082021",
+    "sdkResourceDataBlob": "f2089e0277267672932c7b096a680d76497ce115"
+  },
+  "controls": [
+    {
+      "rule": "CKV_AZURE_44",
+      "resource": "azurerm_storage_account.main",
+      "attribute": "min_tls_version",
+      "value": "TLS1_2",
+      "schemaBlob": "d276a04b64c3888a716c97317034ec43ca67a562",
+      "schemaLines": [306, 313],
+      "createLines": [1243, 1243],
+      "updateLines": [1608, 1610],
+      "constantsBlob": "a87d6b1430526934e15a75ef75eb9b96547f3ba1"
+    },
+    {
+      "rule": "CKV_AZURE_148",
+      "resource": "azurerm_redis_cache.main",
+      "attribute": "minimum_tls_version",
+      "value": "1.2",
+      "schemaBlob": "dea2ea01bc7e36f4194613c7b8dbf038ae885006",
+      "schemaLines": [108, 115],
+      "createLines": [474, 474],
+      "updateLines": [579, 588],
+      "constantsBlob": "a0d1416f52202c74fc228f87617303413d7999bc"
+    },
+    {
+      "rule": "CKV_AZURE_190",
+      "resource": "azurerm_storage_account.main",
+      "attribute": "allow_nested_items_to_be_public",
+      "value": false,
+      "schemaBlob": "d276a04b64c3888a716c97317034ec43ca67a562",
+      "schemaLines": [329, 333],
+      "createLines": [1233, 1233],
+      "updateLines": [1543, 1545],
+      "constantsBlob": null
+    },
+    {
+      "rule": "CKV_AZURE_205",
+      "resource": "azurerm_servicebus_namespace.main",
+      "attribute": "minimum_tls_version",
+      "value": "1.2",
+      "schemaBlob": "a3c1b6b05df9023909143210fe998e7eee248e24",
+      "schemaLines": [147, 154],
+      "createLines": [322, 325],
+      "updateLines": [423, 425],
+      "constantsBlob": "a2af4619cfc49fd93ae1083f5754e0de6bee9164"
+    }
+  ],
+  "independentNativeBindingRequired": true,
+  "nativeFailuresPreserved": true,
+  "vulnerabilityException": false,
+  "deployedStateQualified": false,
+  "strongerContractsMayBeDowngraded": false,
+  "adoptedPolicyAuthority": false
+}

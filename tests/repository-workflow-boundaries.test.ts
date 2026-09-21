@@ -24,6 +24,17 @@ function fixture() {
 }
 
 describe('checked-in workflow privilege boundaries', () => {
+  it('isolates compiler controls and the unchanged controller on three separate bounded Windows runners', async () => {
+    const source = parse(await readFile(path.join(process.cwd(), '.github', 'workflows', 'security-qualification.yml'), 'utf8'));
+    const job = source.jobs['windows-bootstrap'];
+    expect(job['runs-on']).toBe('windows-latest');
+    expect(job['timeout-minutes']).toBe(5);
+    expect(job.permissions).toEqual({ contents: 'read' });
+    expect(job.environment).toBeUndefined();
+    expect(job.strategy).toEqual({ 'fail-fast': false, matrix: { probe: ['trivial', 'exact', 'controller'] } });
+    expect(job.steps.at(-1).run).toBe('npx --no-install vitest run tests/windows-job-diagnostic.test.ts');
+    expect(JSON.stringify(job)).not.toMatch(/continue-on-error|upload-artifact|ExecutionPolicy|Bypass/);
+  });
   it('adds only bounded controller diagnostics after an actual Windows boundary failure', async () => {
     const workflow = parse(await readFile(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8'));
     const steps = workflow.jobs.test.steps;

@@ -2,6 +2,7 @@ import { assertIssuedCheckovObservation, verifiedCheckovScope } from './checkov.
 import { SecurityEvidenceError } from './evidence.ts';
 import { createHash } from 'node:crypto';
 import { generatedOptionalDiagnostic, generatedRegistryDiagnostics, qualifyGeneratedRegistryRole } from './generated-role-policy.ts';
+import { qualifyProviderDefaultControls } from './provider-default-policy.ts';
 
 export const telemetryFeatureDiagnosticScope = Object.freeze({
   path: 'infrastructure/opentofu/telemetry/container-app.tf',
@@ -79,6 +80,8 @@ export function previewCheckovRoleDiagnostics(inputs: readonly unknown[]) {
   });
   return {
     kind: 'role-bound-checkov-classification-preview', diagnostics,
+    controlEquivalences: observations.flatMap((report, reportIndex) =>
+      qualifyProviderDefaultControls(report).controls.map(control => ({ ...control, reportIndex }))),
     nativeFailuresUnchanged: true, unknownRolesRemainUnqualified: true,
     generatedRoleQualifications,
     generatedAvailabilityRoleQualified: generatedRoleQualifications.length > 0 && generatedRoleQualifications.every(item => item.qualified),

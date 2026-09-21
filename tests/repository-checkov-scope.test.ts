@@ -10,7 +10,7 @@ const scope: CheckovInputScope = {
   files: [{ pathParts: ['folder with spaces', 'main.tf'], content: 'resource "azurerm_storage_account" "fixture" {\n}\n' }]
 };
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
-const success = () => [10, 0, 1, 1, 0, 0, 0, 1, [0], [[0, 3, 0, 1, 2, 0, 3]], 1, 0, 1, 1, 1, 1, 1, 1, [], [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []]], []];
+const success = () => [11, 0, 1, 1, 0, 0, 0, 1, [0], [[0, 3, 0, 1, 2, 0, 3]], 1, 0, 1, 1, 1, 1, 1, 1, [], [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], Array(4).fill(0), [[], [], [], []]], []];
 
 describe('registered Checkov scope projection', () => {
   it('binds complete native parsing and check results without emitting resource values or excerpts', () => {
@@ -28,6 +28,20 @@ describe('registered Checkov scope projection', () => {
       analysisComplete: true, passed: 0, failed: 1,
       results: [{ rule: 'CKV2_AZURE_1', status: 'failed' }]
     });
+
+  });
+
+  it.each([
+    ['old schema', 10, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []]]],
+    ['missing default facts', 11, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], [], [[], [], [], []]]],
+    ['invented defaults', 11, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], [2, 0, 0, 0], [[], [], [], []]]],
+    ['unbound provider', 11, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], [1, 0, 0, 0], [[], [], [], []]]],
+    ['wrong rule index', 11, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], Array(4).fill(0), [[0], [], [], []]]],
+    ['duplicate rule index', 11, [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], Array(4).fill(0), [[0, 0], [], [], []]]]
+  ])('rejects %s as provider-default evidence', (_name, schema, roles) => {
+    const value: unknown[] = success();
+    value[0] = schema; value[19] = roles;
+    expect(() => parseCheckovScopeOutput(encode(value), 0, scope)).toThrow();
   });
 
   it.each([

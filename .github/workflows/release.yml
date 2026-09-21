@@ -69,9 +69,12 @@ jobs:
         run: npm run verify:standard-node-templates
       - name: Verify release identity
         run: node scripts/verify-release-identity.mjs
-      - name: Pack once and smoke the exact tarball
+      - name: Pack once and assess exact runtime and template components
         id: candidate
-        run: npm exec -- node scripts/qualify-npm-candidate.mjs --runtime-assessment
+        run: |
+          export LIFTOFF_RELEASE_GO="$(command -v go)"
+          export LIFTOFF_RELEASE_PYTHON="$(command -v python)"
+          npm exec -- node scripts/qualify-npm-candidate.mjs --runtime-assessment --template-assessment
       - name: Retain candidate observations, not release qualification
         id: bundle
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

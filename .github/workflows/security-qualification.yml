@@ -17,6 +17,38 @@ env:
   NODE_DISABLE_COMPILE_CACHE: "1"
 
 jobs:
+  windows-bootstrap:
+    name: Isolated Windows bootstrap (${{ matrix.probe }})
+    runs-on: windows-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        probe: [trivial, exact, controller]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          package-manager-cache: false
+      - name: Prepare exact source without dependency lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund && npm run build
+      - name: Observe only bounded compiler metadata on a fresh runner
+        if: matrix.probe != 'controller'
+        env:
+          LIFTOFF_COMPILER_PROBE: ${{ matrix.probe }}
+        run: node scripts/windows-compiler-fixture.mjs $env:LIFTOFF_COMPILER_PROBE
+      - name: Exercise unchanged controller diagnostic on a separate fresh runner
+        if: matrix.probe == 'controller'
+        env:
+          LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC: "1"
+        run: npx --no-install vitest run tests/windows-job-diagnostic.test.ts
+
   linux-osv-network:
     name: Native Linux AMD64 OSV network boundary
     runs-on: ubuntu-latest

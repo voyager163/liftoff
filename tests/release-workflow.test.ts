@@ -49,7 +49,9 @@ describe('release workflow', () => {
     expect(runs).toContain('node scripts/verify-release-identity.mjs');
     expect(runs.match(/scripts\/qualify-npm-candidate.mjs/g)).toHaveLength(1);
     expect(runs).toContain('qualify-npm-candidate.mjs --runtime-assessment');
-    expect(runs).not.toContain('--template-assessment');
+    expect(runs).toContain('--runtime-assessment --template-assessment');
+    expect(runs).toContain('LIFTOFF_RELEASE_GO="$(command -v go)"');
+    expect(runs).toContain('LIFTOFF_RELEASE_PYTHON="$(command -v python)"');
     expect(runs).not.toContain('npm exec --offline -- node scripts/qualify-npm-candidate.mjs');
     expect(runs).not.toMatch(/npm pack|smoke:package|npm publish/);
     for (const name of ['assemble', 'publish', 'finalize']) {

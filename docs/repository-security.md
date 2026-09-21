@@ -84,13 +84,35 @@ spawn at 5 ms but no pipe connection, authentication or target dispatch before
 the existing test deadline. It does not identify interop compilation as the
 cause merely because that precedes connection.
 
-Pending bootstrap diagnostics add only opt-in, invocation-bound static markers
+Opt-in bootstrap diagnostics add only invocation-bound static markers
 around script entry, interop loading and pipe connection. They are decoded only
 from the pinned default controller's own stderr before authentication; target
 output, wrong bindings, out-of-order/replayed markers and oversized lines do not
 become trusted stage observations. Marker delivery never advances readiness,
 authentication or settlement. The asset pin is updated mechanically; removing
 only diagnostic additions reproduces the prior controller bytes exactly.
+
+The next actual Windows trace reached script entry and the `Add-Type` boundary
+at 295 ms, but not interop completion before the unchanged deadline. That
+locates the boundary; it does not establish whether command resolution,
+compilation, environment or prior test load caused the delay. The probe ran
+after the failed boundary suite, not on an otherwise unused runner.
+
+Prepared follow-up diagnostics use three separate fresh Windows jobs: a trivial
+non-writing compiler control, the exact pinned controller C# definition without
+native-method execution, and the existing full-controller diagnostic. They do
+not warm, reorder or weaken the required suite. Compiler probes retain only
+bound static phases, timing, exit/cleanup state, tool/source digests and
+allowlisted host-environment key names/digests, never raw compiler source,
+errors or environment values. Compiler deadlines are ten seconds with a
+five-second cleanup-only bound; timing out remains failure. Any tree termination
+targets only the exact still-live spawned process, and uncertain descendant
+settlement is not asserted. These jobs have five-minute bounds each and require
+separate authorization for their additional hosted cost; they have not yet run.
+The compile-only probes distinguish observed compilation completion from full
+resource qualification: without independent descendant-settlement proof their
+job remains unsuccessful, even if compilation finishes. They are diagnostic
+jobs, not proposed required green gates or proof of a production fix.
 
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
@@ -357,6 +379,16 @@ queue logging remains held until actual queue-service usage is established.
 Core authentication, TLS, private-blob, recovery and non-root requirements are
 not downgraded. Other resources' public-network findings remain unqualified or
 blocking, not covered by the ACR decision. Native failures remain visible.
+
+The separately approved [pinned provider-default controls](reference/provider-default-controls.md)
+preserve TLS/private-blob requirements rather than treating them as optional.
+Fresh native observations for all 39 generated Terraform scopes independently
+bind `44/148/190/205` to omitted attributes, exact AzureRM 5.3.0 defaults and
+verified create/update serialization. Their 156 native failures remain visible
+alongside a distinct source-control equivalence; they are not rewritten as
+native passes, adopted exceptions or deployed-state evidence. Changed provider,
+resource, authentication, input, lifecycle or explicit-value facts do not inherit
+this classification. Other security and resource-applicability blockers remain.
 
 Actual secret-free health-only runs now cover all 13 generated cases and 23
 backend/frontend targets. Exact whole-generated-artifact, Dockerfile, built-image
@@ -790,8 +822,14 @@ The installed runtime remains a separate graph. Missing components and forged or
 changed Go observations cannot be used to construct a complete template SBOM.
 The full archive assessment was qualified on macOS; the separate small Linux
 ARM64 network/extraction fixture is not full hosted AMD64 template qualification.
-The staged Linux release job does not pretend that runtime-only assessment
-covers templates.
+The staged Linux release job now requests both runtime and full-template
+assessment with explicit paths to its selected Go and Python tools. It does not
+equate installing or scanning the runtime graph with template coverage.
+Packed-template observations use the actual runner event, source/workflow
+revision, run and attempt when invoked by Actions; missing/mismatched metadata,
+dirty hosted source and invalid release intent fail closed. Local observations
+remain explicitly labelled local, and runner metadata is not independent
+producer authentication or adopted-policy authority.
 Full hosted template execution, authenticated current-run receipts and
 verifiable build provenance remain incomplete. A dirty local descriptor and an
 unsigned build record still cannot authorize publication.

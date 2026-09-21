@@ -161,6 +161,8 @@ role_facts = [0] * 14
 generated_role_facts = [0] * 12
 generated_optional_facts = [0] * 4
 generated_optional_indexes = [[], [], [], []]
+generated_default_facts = [0] * 4
+generated_default_indexes = [[], [], [], []]
 generated_registry_indexes = []
 bootstrap_graph = [False, False]
 telemetry_graph = [False, False]
@@ -872,6 +874,7 @@ def telemetry_graph_contract(scope):
 def project_scope(reports, runners, scope):
     global role_facts, registry_result_indexes, compose_proof, generated_role_facts, generated_registry_indexes
     global generated_optional_facts, generated_optional_indexes
+    global generated_default_facts, generated_default_indexes
     frameworks = ("terraform", "dockerfile", "yaml")
     prefixes = ("CKV_AZURE_", "CKV2_AZURE_", "CKV_DOCKER_", "CKV2_LIFTOFF_")
     files = [os.path.join(ROOT, "inputs", *entry["pathParts"]) for entry in scope["files"]]
@@ -922,6 +925,7 @@ def project_scope(reports, runners, scope):
         return value if isinstance(value, dict) else {}
     generated_role_facts = [0] * 12
     generated_optional_facts = [0] * 4
+    generated_default_facts = [0] * 4
     generated_registry_file = None
     generated_context = scope.get("terraformContext")
     expected_module = ["infrastructure", "opentofu", "azure", "modules", "application"]
@@ -984,6 +988,13 @@ def project_scope(reports, runners, scope):
             storage = generated.get("azurerm_storage_account.main", {})
             plan = generated.get("azurerm_service_plan.functions", {})
             worker = generated.get("azurerm_linux_function_app.worker", {})
+            servicebus = generated.get("azurerm_servicebus_namespace.main", {})
+            generated_default_facts = [int(provider_pin and bool(conf)
+                and all(key not in conf for key in (field, "lifecycle", "provider", "dynamic")))
+                for conf, field in (
+                    (storage, "min_tls_version"), (redis, "minimum_tls_version"),
+                    (storage, "allow_nested_items_to_be_public"), (servicebus, "minimum_tls_version")
+                )]
             generated_optional_facts = [int(value) for value in (
                 provider_pin and one(postgres, "sku_name") == "B_Standard_B1ms"
                     and "geo_redundant_backup_enabled" not in postgres and "high_availability" not in postgres,
@@ -1057,6 +1068,7 @@ def project_scope(reports, runners, scope):
     registry_result_indexes = []
     generated_registry_indexes = []
     generated_optional_indexes = [[], [], [], []]
+    generated_default_indexes = [[], [], [], []]
     yaml_native_ranges = []
     checked_resources = set()
     for group, status in ((report.passed_checks, 0), (report.failed_checks, 1), (report.skipped_checks, 2)):
@@ -1071,6 +1083,15 @@ def project_scope(reports, runners, scope):
                 for index, resource in enumerate(optional_resources):
                     if entry.resource == resource or entry.resource.endswith("." + resource):
                         generated_optional_indexes[index].append(len(records))
+                default_resources = (
+                    ("CKV_AZURE_44", "azurerm_storage_account.main"),
+                    ("CKV_AZURE_148", "azurerm_redis_cache.main"),
+                    ("CKV_AZURE_190", "azurerm_storage_account.main"),
+                    ("CKV_AZURE_205", "azurerm_servicebus_namespace.main")
+                )
+                for index, (rule, resource) in enumerate(default_resources):
+                    if entry.check_id == rule and entry.resource in (resource, "module.application." + resource):
+                        generated_default_indexes[index].append(len(records))
             prefix_index = next((i for i, prefix in enumerate(prefixes) if entry.check_id.startswith(prefix)), None)
             if prefix_index is None or entry.file_abs_path not in files:
                 raise BoundaryFailure()
@@ -1183,7 +1204,7 @@ def project_scope(reports, runners, scope):
         if not compose_services or len(records) != len(compose_services):
             raise BoundaryFailure()
         compose_proof = [len(compose_services), sum(record[6] == 0 for record in records), yaml_native_ranges]
-    return [10, frameworks.index(scope["framework"]), *numbers,
+    return [11, frameworks.index(scope["framework"]), *numbers,
             int(getattr(report.error_status, "name", None) == "SUCCESS"), sorted(parsed), records, len(checked_resources)]
 
 def selftest():
@@ -1464,7 +1485,7 @@ def run():
         ]
         projected.append([*closure_proof, variable_reads] if context else [])
         projected.append([role_facts, registry_result_indexes, generated_role_facts, generated_registry_indexes,
-                          generated_optional_facts, generated_optional_indexes])
+                          generated_optional_facts, generated_optional_indexes, generated_default_facts, generated_default_indexes])
         projected.append(compose_proof)
     return projected, status
 
@@ -1854,7 +1875,7 @@ export function parseCheckovScopeOutput(bytes: Uint8Array, exitCode: number, sco
   try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); } catch { return fail('invalid-report'); }
   if (!Array.isArray(value)) fail('invalid-report');
   if (value[0] === 0) numericPayload(bytes);
-  if (value.length !== 21 || value[0] !== 10 ||
+  if (value.length !== 21 || value[0] !== 11 ||
       value[1] !== ['terraform', 'dockerfile', 'yaml'].indexOf(scope.framework)) fail('invalid-report');
   const [,, resources, passed, failed, skipped, errors, success, files, records, checkedResources, nativeExit,
     deniedProbes, caches, nullWrites, processorProbes, architectureProbes, gitProbes, closure, roleEvidence, compose] = value;
@@ -1906,8 +1927,8 @@ export function parseCheckovScopeOutput(bytes: Uint8Array, exitCode: number, sco
   if (checkedResources === 0 && results.some(item =>
     ['applicable', 'native-selected'].includes(item.applicability))) fail('invalid-report');
   if (!Array.isArray(closure)) fail('invalid-report');
-  if (!Array.isArray(roleEvidence) || roleEvidence.length !== 6) fail('invalid-report');
-  const [roleFacts, registryIndexes, generatedFacts, generatedIndexes, optionalFacts, optionalIndexes] = roleEvidence;
+  if (!Array.isArray(roleEvidence) || roleEvidence.length !== 8) fail('invalid-report');
+  const [roleFacts, registryIndexes, generatedFacts, generatedIndexes, optionalFacts, optionalIndexes, defaultFacts, defaultIndexes] = roleEvidence;
   if (!Array.isArray(roleFacts) || roleFacts.length !== 14 || roleFacts.some(value => value !== 0 && value !== 1) ||
       !Array.isArray(registryIndexes) || new Set(registryIndexes).size !== registryIndexes.length ||
       registryIndexes.some(index => !numeric(index) || !results[index])) fail('invalid-report');
@@ -1918,6 +1939,13 @@ export function parseCheckovScopeOutput(bytes: Uint8Array, exitCode: number, sco
       !Array.isArray(optionalIndexes) || optionalIndexes.length !== 4 || optionalIndexes.some(indexes =>
         !Array.isArray(indexes) || new Set(indexes).size !== indexes.length ||
         indexes.some(index => !numeric(index) || !results[index]))) fail('invalid-report');
+  const defaultRules = ['CKV_AZURE_44', 'CKV_AZURE_148', 'CKV_AZURE_190', 'CKV_AZURE_205'];
+  if (!Array.isArray(defaultFacts) || defaultFacts.length !== 4 || defaultFacts.some(value => value !== 0 && value !== 1) ||
+      !Array.isArray(defaultIndexes) || defaultIndexes.length !== 4 || defaultIndexes.some((indexes, control) =>
+        !Array.isArray(indexes) || indexes.length > 1 ||
+        indexes.some(index => !numeric(index) || results[index]?.rule !== defaultRules[control] ||
+          scope.files[results[index]!.fileIndex]!.pathParts.join('/') !== 'infrastructure/opentofu/azure/modules/application/main.tf'))) fail('invalid-report');
+  if (defaultFacts.some(Boolean) && (!scope.terraformContext || generatedFacts[0] !== 1)) fail('identity-mismatch');
   if (!scope.terraformContext) {
     if (closure.length !== 0) fail('identity-mismatch');
   } else {
@@ -1967,6 +1995,8 @@ export function parseCheckovScopeOutput(bytes: Uint8Array, exitCode: number, sco
     generatedRegistryResultIndexes: generatedIndexes,
     generatedOptionalRoleFacts: optionalFacts.map(value => value === 1),
     generatedOptionalRoleResultIndexes: optionalIndexes.map(indexes => indexes.map((index: number) => index)),
+    generatedProviderDefaultFacts: defaultFacts.map(value => value === 1),
+    generatedProviderDefaultResultIndexes: defaultIndexes.map(indexes => indexes.map((index: number) => index)),
     compose: scope.framework === 'yaml' ? {
       declaredServices: compose[0], localBuildServices: compose[1], nativeResourceCount: resources,
       nativeRanges: compose[2], locationEncoding: 'checkov-3.3.10-yaml-native-range-and-normalized-inclusive-range',

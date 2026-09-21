@@ -88,24 +88,26 @@ export function summarizeCheckovGate(
     identifier(entry.id, 'artifact-gate-iac-id');
     const outcome = outcomes.find(item => item.id === entry.id);
     if (!outcome || outcome.status !== 'complete') return {
-      id: entry.id, owner: 'voyager163', analysis: outcome?.status ?? 'missing', blocking: [], diagnostics: [], unmapped: [],
+      id: entry.id, owner: 'voyager163', analysis: outcome?.status ?? 'missing', blocking: [], diagnostics: [], controlEquivalences: [], unmapped: [],
       resourceApplicabilityQualified: false
     };
     assertIssuedCheckovObservation(outcome.result);
     const result = outcome.result, reportIndex = complete.indexOf(outcome);
-    const blocking: string[] = [], diagnostics: string[] = [], unmapped: string[] = [];
+    const blocking: string[] = [], diagnostics: string[] = [], controlEquivalences: string[] = [], unmapped: string[] = [];
     for (const [resultIndex, finding] of result.results.entries()) {
       if (finding.status !== 'failed') continue;
       if (finding.applicability === 'unsupported-api-version') { unmapped.push(finding.rule); continue; }
       if (preview?.diagnostics.some(item => item.reportIndex === reportIndex && item.resultIndex === resultIndex)) {
         diagnostics.push(finding.rule);
+      } else if (preview?.controlEquivalences.some(item => item.reportIndex === reportIndex && item.resultIndex === resultIndex)) {
+        controlEquivalences.push(finding.rule);
       } else if (policy.policyRules.some(rule => rule.tool === 'checkov' && rule.rule === finding.rule)) {
         blocking.push(finding.rule);
       } else unmapped.push(finding.rule);
     }
 
     return {
-      id: entry.id, owner: 'voyager163', analysis: 'complete', blocking, diagnostics, unmapped,
+      id: entry.id, owner: 'voyager163', analysis: 'complete', blocking, diagnostics, controlEquivalences, unmapped,
       nativeFailures: result.failed, nativeFailureEvidenceDigest: canonicalDigest(result.results),
       cleanup: result.cleanup, resourceApplicabilityQualified: result.resourceApplicabilityQualified,
       resourceApplicabilityBasis: result.resourceApplicabilityBasis,
@@ -118,12 +120,14 @@ export function summarizeCheckovGate(
     kind: 'local-iac-finding-gate', cases, analysisComplete,
     gate: !policyComplete ? 'incomplete' as const : cases.some(item => item.blocking.length) ? 'blocked' as const : 'passed' as const,
     nativeFailuresUnchanged: true, roleDiagnosticsAreNotNativePasses: true,
+    providerDefaultEquivalencesAreNotNativePasses: true,
     ownerActions: cases.flatMap(entry => [
       ...(entry.analysis !== 'complete' ? [{ owner: 'voyager163', scope: entry.id, action: 'rerun-exact-scope' }] : []),
       ...(entry.blocking.length ? [{ owner: 'voyager163', scope: entry.id, action: 'triage-blocking-findings' }] : []),
       ...(entry.unmapped.length || !entry.resourceApplicabilityQualified
         ? [{ owner: 'voyager163', scope: entry.id, action: 'qualify-rule-and-resource-applicability' }] : []),
-      ...(entry.diagnostics.length ? [{ owner: 'voyager163', scope: entry.id, action: 'track-exact-role-feature-limitations' }] : [])
+      ...(entry.diagnostics.length ? [{ owner: 'voyager163', scope: entry.id, action: 'track-exact-role-feature-limitations' }] : []),
+      ...(entry.controlEquivalences.length ? [{ owner: 'voyager163', scope: entry.id, action: 'retain-exact-provider-default-evidence' }] : [])
     ]),
     sourceRunAuthentication: false, adoptedPolicyAuthority: false, hostedQualification: false, publicationQualified: false
   };

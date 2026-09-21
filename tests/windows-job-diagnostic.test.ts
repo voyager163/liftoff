@@ -1,5 +1,6 @@
 import path from 'node:path';
 import os from 'node:os';
+import { createHash } from 'node:crypto';
 import { afterEach, expect, it } from 'vitest';
 import {
   buildWindowsControllerHostEnvironment, createWindowsJobDiagnosticRecorder, readWindowsJobDiagnosticRecorder,
@@ -16,6 +17,7 @@ const safeCodes = new Set([
 ]);
 
 let recorder: WindowsJobDiagnosticRecorder | undefined;
+let hostEnvironment: { keys: string[]; digest: string } | undefined;
 let completed: { status: number | null; timedOut: boolean; processSpawned: boolean | undefined;
   processTreeSettled: boolean | undefined; errorCode: string | null } | undefined;
 afterEach(() => {
@@ -24,16 +26,21 @@ afterEach(() => {
     kind: 'native-windows-controller-diagnostic', platform: process.platform, architecture: process.arch,
     resultReturned: completed !== undefined, result: completed ?? null,
     controller: readWindowsJobDiagnosticRecorder(recorder),
+    hostEnvironment,
     commandContentsRecorded: false, processOutputRecorded: false, credentialsRecorded: false,
     completeApplicationQualification: false
   }));
-  recorder = undefined; completed = undefined;
+  recorder = undefined; completed = undefined; hostEnvironment = undefined;
 });
 
 it.runIf(process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC === '1')(
   'records actual controller stages for a non-writing native Node target without changing settlement requirements',
   async () => {
     const host = buildWindowsControllerHostEnvironment();
+    hostEnvironment = {
+      keys: Object.keys(host).sort(),
+      digest: createHash('sha256').update(JSON.stringify(Object.entries(host).sort())).digest('hex')
+    };
     recorder = createWindowsJobDiagnosticRecorder();
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['-e', 'process.exit(0)'] },

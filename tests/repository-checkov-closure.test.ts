@@ -31,7 +31,7 @@ function fixture(https = true): CheckovInputScope {
     }
   };
 }
-const native = () => [10, 0, 1, 1, 0, 0, 0, 1, [0, 1], [[0, 3, 1, 2, 9, 0, 3]], 1, 0, 1, 1, 1, 1, 1, 1, [1, 1, [0]], [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []]], []];
+const native = () => [11, 0, 1, 1, 0, 0, 0, 1, [0, 1], [[0, 3, 1, 2, 9, 0, 3]], 1, 0, 1, 1, 1, 1, 1, 1, [1, 1, [0]], [Array(14).fill(0), [], Array(12).fill(0), [], Array(4).fill(0), [[], [], [], []], Array(4).fill(0), [[], [], [], []]], []];
 const encode = (value: unknown) => Buffer.from(JSON.stringify(value));
 
 describe('explicit Terraform closure evidence', () => {

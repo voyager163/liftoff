@@ -20,6 +20,7 @@ export const documentationEntryPoints = Object.freeze([
   'docs/spec-workflows-and-agents.md',
   'docs/repository-governance.md',
   'docs/repository-security.md',
+  'docs/reference/provider-default-controls.md',
   'docs/existing-repositories.md',
   'docs/prerequisites.md',
   'docs/supported-stack.md',
