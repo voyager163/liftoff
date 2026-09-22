@@ -103,7 +103,7 @@ export function evaluateRepositoryFindingReports(
   if (new Set(identities).size !== 1 || reports.some(report =>
     report.identity.repository !== state.policy.repository ||
     report.identity.baseSha !== state.identity.baseCommit ||
-    ![state.identity.baseCommit, state.identity.headCommit].includes(report.identity.sourceSha) ||
+    ![state.identity.baseCommit, state.identity.testedCommit].includes(report.identity.sourceSha) ||
     report.identity.policyDigest !== state.identity.policyDigest)) fail('finding-policy-identity-mismatch');
   const producers = expected.map((report: ExpectedReport) => canonicalDigest({
     role: report.role, tool: report.tool, units: report.units.map(unit => unit.id).sort()

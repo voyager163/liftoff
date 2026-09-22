@@ -321,6 +321,33 @@ The command-flow deadline is unchanged; its same invocation records bounded
 phases/settlement, preserving an unfinished owned root instead of deleting
 uncertain work. None of these local follow-ups is a passing full Windows result.
 
+The intermittent native Go inspection blocker has also occurred on Linux.
+Unexpected inspection errors now retain a fixed inspection phase, exception
+class and allowlisted native error code while withholding paths, messages,
+output and stacks. They remain blocked with no candidate mutations; a later
+passing run does not establish the earlier cause.
+
+The POSIX 200-ms timeout fixture now opts into a lean real shell parent and
+descendant, retaining observed process-group identity, inherited pipes, ignored
+SIGTERM, neighbor survival and the original deadline/settlement assertions.
+Only this timeout case changes startup overhead; Node-specific AbortSignal,
+output and Windows cases retain their original launchers. Missing process
+records leave cleanup explicitly unqualified and preserve registered roots;
+unrelated PID records cannot authorize termination. This is fixture preparation,
+not a product settlement fix or a guarantee under arbitrary host load.
+
+The later Windows full suite reduced those 60 failures to two. Its unref-child
+case had returned `passed` without proving the intended child was alive; that
+observation alone establishes neither a Job Object defect nor correct coverage.
+The fixture now requires real child IPC readiness after installing its lifetime
+before the root may unref/exit. Spawn errors or missing readiness fail explicitly,
+and the original controller result is returned unchanged. The existing Windows
+two-second/POSIX ten-second command deadlines and 30-second case limit remain
+unchanged. Uncertain owned fixture state is preserved outside disposable test
+runtime storage. The other Windows failure was a different final-history/readback
+case; it now uses the existing finite phase recorder at the same 30-second limit,
+not a larger timeout or substituted success assertion.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
@@ -879,6 +906,24 @@ location or component/dependency-chain identity. A policy-only edit changes the
 commit identity; base/head SHAs need not be equal. Actual commit, run/attempt, and
 freshness provenance remain separately verified. Only the explicitly admitted
 policy-data bytes are excluded from protected-input comparison.
+
+The local admission interface now keeps three separate commits: the independently
+selected trusted base, the PR head defining the proposal/change set, and the
+tested merge defining producer inputs and findings. Hosted-PR mode requires a
+live GET-bound PR/run/job/check-origin handle, exact current base/head merge
+parents, and the tested tree read independently from Git. It reuses the workflow
+invocation validator rather than relabelling merge evidence as head evidence.
+The workflow and validator must be registered by the trusted base, and tested
+policy bytes must agree with the proposed head data. Missing or serialized
+handles, another workflow/App/event, stale attempts and mismatched checkout/tree
+identities fail closed. App metadata still does not attest workflow contents.
+
+Actual tested-tree inputs, coverage and findings remain mandatory: a policy-only
+head cannot hide changed combined-tree source or a new combined-tree finding.
+Functional and integrity failures still block both routes. Existing head-only
+fixtures are explicitly local/legacy, not hosted qualification. These interface
+and real-Git/simulated-API tests do not complete the multi-producer coordinator,
+activate a required check, post a status or grant publication authority.
 
 Every new or expanded entry must match an actually observed trusted-base finding
 and meet exact scope, rationale, evidence, owner, and validity-window rules.

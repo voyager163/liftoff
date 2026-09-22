@@ -16,9 +16,22 @@ export const applicationPathKey = (parts: readonly string[]): string => parts.jo
 export const applicationPathFold = (value: string): string =>
   value.normalize('NFKC').toUpperCase().toLowerCase();
 
-export function applicationFailure(error: unknown): string {
-  return error instanceof ApplicationInspectionError
-    ? error.message : 'Application inspection could not safely read the complete bounded scope.';
+export type ApplicationInspectionPhase = 'inventory' | 'staging' | 'document' | 'mappings' | 'preparation' | 'source-revalidation';
+export function applicationFailure(error: unknown, phase: ApplicationInspectionPhase = 'inventory'): string {
+  if (error instanceof ApplicationInspectionError) return error.message;
+  let code = 'unclassified';
+  try {
+    const value = error !== null && typeof error === 'object' && 'code' in error ? error.code : null;
+    if (typeof value === 'string' && [
+      'ENOENT', 'ENOTDIR', 'EISDIR', 'EACCES', 'EPERM', 'EMFILE', 'ENFILE', 'ENOSPC', 'ENAMETOOLONG',
+      'ENOTEMPTY', 'EINVAL', 'ERR_DIR_CLOSED', 'ERR_FS_FILE_TOO_LARGE'
+    ].includes(value)) code = value;
+  } catch { /* Unreadable exception properties cannot become public diagnostic content. */ }
+  const kind = error instanceof TypeError ? 'type-error' : error instanceof RangeError ? 'range-error'
+    : error instanceof SyntaxError ? 'syntax-error' : error instanceof Error ? 'error' : 'non-error';
+  const selected = ['inventory', 'staging', 'document', 'mappings', 'preparation', 'source-revalidation'].includes(phase)
+    ? phase : 'inventory';
+  return `Application inspection could not safely read the complete bounded scope. [inspection:${selected}:${kind}:${code}]`;
 }
 
 export function applicationParts(value: unknown, allowRoot = false): string[] {

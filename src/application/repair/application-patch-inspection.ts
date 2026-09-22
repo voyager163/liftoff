@@ -368,6 +368,7 @@ async function inspectApplicationPatchState(
   Object.defineProperty(candidate, 'networkRequired', { configurable: false });
   Object.defineProperty(candidate.report, 'networkRequired', { configurable: false });
   if (blockers.length || !inspection.report.complete || !inspection.report.target) return candidate;
+  let phase: 'staging' | 'document' | 'mappings' | 'preparation' | 'source-revalidation' = 'staging';
   try {
     if (applicationWithin(projectRoot, patchPath)) {
       throw new ApplicationInspectionError('Application patches and replacement staging must be outside the real project.');
@@ -385,6 +386,7 @@ async function inspectApplicationPatchState(
     candidate.report.patchPath = canonicalPatch;
     candidate.scope.patch.path = canonicalPatch;
     candidate.scope.staging.root = stagingRoot;
+    phase = 'document';
     const stage = new ApplicationFiles(stagingRoot, (parts) => applicationExclusion(parts));
     const patch = await stage.read([path.basename(canonicalPatch)], applicationBounds.patchBytes);
     if (!patch.content) throw new ApplicationInspectionError('The external application patch file is missing.');
@@ -405,6 +407,7 @@ async function inspectApplicationPatchState(
     candidate.scope.dynamicReferencesReviewed = true;
     verificationPolicy.commands = document.verification.commands;
     verificationPolicy.effects.network = verificationPolicy.commands.some((item) => item.network);
+    phase = 'mappings';
     for (const mapping of document.mappings) {
       const sourceKey = applicationPathKey(mapping.sourcePathParts), targetKey = applicationPathKey(mapping.targetPathParts);
       if (process.platform === 'win32' && mapping.targetMode !== (mapping.targetMode & 0o200 ? 0o666 : 0o444)) {
@@ -485,7 +488,9 @@ async function inspectApplicationPatchState(
       transformedFiles, candidate.scope.directoryInventory);
     validateApplicationCommands(verificationPolicy.commands, transformedFiles, candidate.scope.directoryInventory);
     if (!candidate.mutations.length) throw new ApplicationInspectionError('The staged application patch contains no actual file or mode changes.');
+    phase = 'preparation';
     await resolveApplicationPreparation(candidate, document.verification.preparation ?? [], options, approvedTools);
+    phase = 'source-revalidation';
     await source.assertUnchanged();
     await stage.assertUnchanged();
     if (stage.directoryInventory.some((directory) => directory.entries.some((entry) => entry.kind === 'symlink' || entry.kind === 'other'))) {
@@ -504,7 +509,7 @@ async function inspectApplicationPatchState(
       inspectionOptions: { ...options, ...(options.env ? { env: { ...options.env } } : {}) }
     });
   } catch (error) {
-    candidate.blockers.push(applicationFailure(error));
+    candidate.blockers.push(applicationFailure(error, phase));
     candidate.mutations = [];
   }
   return candidate;

@@ -23,6 +23,7 @@
     ["scripts", "repository-security", "policy-data.ts"],
     ["scripts", "repository-security", "npm-policy.ts"],
     ["scripts", "repository-security", "evidence.ts"],
+    ["scripts", "repository-security", "workflow-invocation.ts"],
     ["scripts", "repository-security", "secret-profile.ts"],
     ["scripts", "repository-security", "finding-policy.ts"],
     ["scripts", "template-dependency-security.mjs"]

@@ -10,6 +10,7 @@ import { findingDigest, type SecurityFinding } from '../scripts/repository-secur
 import { adoptedSecretDispositionVerdict, secretDispositionAdapter, vulnerabilityPolicyAdapter } from '../scripts/repository-security/policy-data.ts';
 import { npmPolicyAdapter, npmRawFindings } from '../scripts/repository-security/npm-policy.ts';
 import { createAdmissionGitFixture } from './fixtures/security-git.js';
+import { verifyPrExecution } from '../scripts/repository-security/workflow-invocation.ts';
 
 const now = new Date('2026-09-20T12:00:00.000Z');
 const hash = `sha256:${'a'.repeat(64)}`, secondHash = `sha256:${'b'.repeat(64)}`;
@@ -44,7 +45,7 @@ const registry = {
 
 async function scenario(
   before = policy(), after = policy([exception()]), changes: Record<string, string> = {},
-  registryValue = registry
+  registryValue = registry, baseExtras: Record<string, string> = {}
 ) {
   const fixture = await createAdmissionGitFixture();
   cleanups.push(() => fixture.cleanup());
@@ -52,7 +53,7 @@ async function scenario(
     'app.js': 'export const source = "unchanged";\n',
     'validator.txt': 'Fixed synthetic validator identity.\n',
     'security/control-plane.json': JSON.stringify(registryValue),
-    'security/exceptions.json': before
+    'security/exceptions.json': before, ...baseExtras
   };
   const baseCommit = await fixture.commit(baseFiles);
   const headCommit = await fixture.commit({ ...baseFiles, 'security/exceptions.json': after, ...changes });
@@ -89,6 +90,109 @@ function expected(value: ReturnType<typeof observations>) {
 }
 
 const vulnerabilityAdapters = new Map<string, PolicyAdapter>([['vulnerability', vulnerabilityPolicyAdapter([fullFinding])]]);
+
+async function hostedScenario(extraTestedSource = false) {
+  const workflowPath = '.github/workflows/codeql.yml';
+  const invocationPath = 'scripts/repository-security/workflow-invocation.ts';
+  const hostedRegistry = { ...registry,
+    controlInputs: [...registry.controlInputs, workflowPath.split('/'), invocationPath.split('/')],
+    validatorInputs: [...registry.validatorInputs, invocationPath.split('/')]
+  };
+  const extras = { [workflowPath]: 'name: Synthetic source analysis fixture\n', [invocationPath]: '// Synthetic validator identity only.\n' };
+  const f = await scenario(policy(), policy([exception()]), {}, hostedRegistry, extras);
+  const testedSource = extraTestedSource ? await f.fixture.commit({
+    'app.js': 'export const source = "changed combined tree";\n',
+    'validator.txt': 'Fixed synthetic validator identity.\n',
+    'security/control-plane.json': JSON.stringify(hostedRegistry),
+    'security/exceptions.json': policy([exception()]), ...extras
+  }) : f.headCommit;
+  const merge = await f.fixture.testedMerge(f.baseCommit, f.headCommit, testedSource);
+  const environment: NodeJS.ProcessEnv = {
+    GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: 'voyager163/liftoff', GITHUB_EVENT_NAME: 'pull_request',
+    GITHUB_SHA: merge.commit, GITHUB_WORKFLOW_SHA: merge.commit, GITHUB_REF: 'refs/pull/91/merge',
+    GITHUB_BASE_REF: 'develop', GITHUB_RUN_ID: '202', GITHUB_RUN_ATTEMPT: '1',
+    LIFTOFF_PR_BASE_SHA: f.baseCommit, LIFTOFF_PR_HEAD_SHA: f.headCommit
+  };
+  const root = '/repos/voyager163/liftoff', jobName = 'Synthetic source analysis';
+  const records: Record<string, unknown> = {
+    [`${root}/pulls/91`]: { number: 91, state: 'open', merged: false, merge_commit_sha: merge.commit,
+      base: { sha: f.baseCommit, ref: 'develop', repo: { full_name: 'voyager163/liftoff' } }, head: { sha: f.headCommit } },
+    [`${root}/actions/runs/202`]: { id: 202, run_attempt: 1, event: 'pull_request', head_sha: f.headCommit,
+      path: workflowPath, repository: { full_name: 'voyager163/liftoff' }, status: 'completed', conclusion: 'failure' },
+    [`${root}/git/commits/${merge.commit}`]: { sha: merge.commit, tree: { sha: merge.tree }, parents: merge.parents.map(sha => ({ sha })) },
+    [`${root}/actions/jobs/101`]: { id: 101, run_id: 202, run_attempt: 1, head_sha: f.headCommit, name: jobName,
+      status: 'completed', conclusion: 'failure', completed_at: '2026-09-20T11:59:00Z',
+      check_run_url: 'https://api.github.com/repos/voyager163/liftoff/check-runs/102' },
+    [`${root}/check-runs/102`]: { id: 102, head_sha: f.headCommit, name: jobName,
+      status: 'completed', conclusion: 'failure', app: { id: 15368, slug: 'github-actions' } }
+  };
+  const execution = verifyPrExecution(environment, { checkoutSha: merge.commit, mergeParents: merge.parents, tree: merge.tree },
+    { workflow: workflowPath, jobId: 101, jobName }, now, (_command, args) => {
+      const value = records[args.at(-1)!];
+      if (!value) throw new Error('Unregistered fixture metadata route.');
+      const stdout = JSON.stringify(value);
+      return { pid: 1, stdout, stderr: '', output: [null, stdout, ''], status: 0, signal: null };
+    });
+  const context = { repository: 'voyager163/liftoff' as const, baseRef: 'develop' as const,
+    baseCommit: f.baseCommit, headCommit: f.headCommit, now, executionMode: 'hosted-pr' as const, execution };
+  const handle = await loadAdoptedBase(f.fixture.root, context), identity = adoptedBaseIdentity(handle);
+  const evidence = observations(handle);
+  evidence.candidate.sourceCommit = identity.testedCommit;
+  evidence.candidate.protectedInputsDigest = identity.testedProtectedInputsDigest;
+  evidence.candidate.executionBindingDigest = identity.executionBindingDigest!;
+  return { ...f, handle, context, evidence, merge };
+}
+
+describe('actual tested tree and independent proposal identities (real Git, simulated hosted readback)', () => {
+  it('evaluates exact policy maintenance against the tested tree without relabelling findings as PR-head execution', async () => {
+    const f = await hostedScenario();
+    const result = evaluateAdmission(f.handle, f.evidence, expected(f.evidence), vulnerabilityAdapters);
+    expect(result).toMatchObject({
+      decision: 'maintenance-admitted', baseCommit: f.baseCommit, headCommit: f.headCommit,
+      testedCommit: f.merge.commit, sourceMode: 'verified-pr-tested-merge',
+      findingPolicy: 'blocked', policyAdopted: false, publicationQualified: false, hostedQualification: false
+    });
+    expect(f.merge.commit).not.toBe(f.headCommit);
+    const relabelled = structuredClone(f.evidence);
+    relabelled.candidate.sourceCommit = f.headCommit;
+    expect(() => evaluateAdmission(f.handle, relabelled, expected(relabelled), vulnerabilityAdapters))
+      .toThrow('admission-commit-mismatch');
+  });
+  it.each(['binding', 'attempt', 'run', 'inputs', 'policy', 'inventory', 'new-finding', 'functional', 'integrity'] as const)(
+    'rejects or blocks %s drift despite correct base/head/tested labels', async change => {
+    const f = await hostedScenario(), evidence = structuredClone(f.evidence);
+    if (change === 'binding') delete evidence.candidate.executionBindingDigest;
+    if (change === 'attempt') evidence.candidate.attempt++;
+    if (change === 'run') evidence.candidate.runId = '203';
+    if (change === 'inputs') evidence.candidate.protectedInputsDigest = secondHash;
+    if (change === 'policy') evidence.candidate.policyDigest = secondHash;
+    if (change === 'inventory') evidence.candidate.coverageDigest = secondHash;
+    if (change === 'new-finding') {
+      evidence.candidate.findings = [...evidence.candidate.findings, { ...finding, key: secondHash }];
+      expect(evidence.base.findings).toHaveLength(1);
+    }
+    if (change === 'functional') evidence.candidate.functional = 'failure';
+    if (change === 'integrity') evidence.candidate.integrity = 'failure';
+    if (change === 'inventory' || change === 'new-finding') {
+      expect(evaluateAdmission(f.handle, evidence, expected(evidence), vulnerabilityAdapters).decision).toBe('blocked');
+    } else expect(() => evaluateAdmission(f.handle, evidence, expected(evidence), vulnerabilityAdapters)).toThrow();
+  });
+  it('does not make an altered combined source tree eligible merely because the PR changed only policy data', async () => {
+    const f = await hostedScenario(true);
+    expect(() => evaluateAdmission(f.handle, f.evidence, expected(f.evidence), vulnerabilityAdapters))
+      .toThrow('maintenance-tested-inputs-changed');
+  });
+  it('requires a live origin handle and preserves explicitly local legacy fixtures', async () => {
+    const f = await hostedScenario();
+    await expect(loadAdoptedBase(f.fixture.root, { ...f.context, execution: undefined })).rejects.toThrow('hosted-execution-required');
+    await expect(loadAdoptedBase(f.fixture.root, { ...f.context, execution: structuredClone(f.context.execution) }))
+      .rejects.toThrow('unverified-hosted-execution');
+    const legacy = await scenario(), evidence = observations(legacy.handle);
+    expect(evaluateAdmission(legacy.handle, evidence, expected(evidence), vulnerabilityAdapters)).toMatchObject({
+      sourceMode: 'local-head-only', testedCommit: legacy.headCommit, executionBindingDigest: null, hostedQualification: false
+    });
+  });
+});
 
 describe('trusted-base normal and policy-only maintenance admission', () => {
   it('reports only finite Git operation/code categories without paths, output or credentials', () => {

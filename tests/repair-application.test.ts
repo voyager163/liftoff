@@ -7,7 +7,7 @@ import { inspectApplicationLayout, currentApplicationTargets } from '../src/appl
 import {
   applicationCandidateDigest, inspectApplicationPatch, verifyApplicationPatch, parseApplicationPatch
 } from '../src/application/repair/application-patch.js';
-import { applicationDigest, applicationPathKey } from '../src/application/repair/application-files.js';
+import { applicationDigest, applicationFailure, applicationPathKey, ApplicationInspectionError } from '../src/application/repair/application-files.js';
 import { applicationBounds, type ApplicationPatchDocument, type ApplicationVerificationCommand } from '../src/application/repair/application-types.js';
 import {
   applicationCommandFailure, applicationFailureBlocker, applicationRunnerFailure
@@ -21,6 +21,7 @@ import {
   putApplicationFixtureFile, stageApplicationRepairFixture, applicationVerificationFixtureContext, applicationFixtureHomeName
 } from './fixtures/repair-application.js';
 import { createOwnedFixtureRoot } from './fixtures/owned-root.js';
+import * as preparation from '../src/application/repair/application-preparation.js';
 
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>();
@@ -55,6 +56,32 @@ afterEach(async () => {
 });
 
 describe('bounded application inventory and executable staged patch', () => {
+  it('retains only finite inspection phase and native failure metadata for unexpected exceptions', () => {
+    const sentinel = 'PRIVATE_APPLICATION_ERROR_CONTENT';
+    expect(applicationFailure(Object.assign(new Error(sentinel), { code: 'EMFILE', path: sentinel }), 'preparation'))
+      .toBe('Application inspection could not safely read the complete bounded scope. [inspection:preparation:error:EMFILE]');
+    expect(applicationFailure(Object.assign(new TypeError(sentinel), { code: sentinel }), 'mappings'))
+      .toContain('[inspection:mappings:type-error:unclassified]');
+    expect(applicationFailure(new ApplicationInspectionError('[missing-tool] Registered tool required.')))
+      .toBe('[missing-tool] Registered tool required.');
+    const hostile = { get code() { throw new Error(sentinel); } };
+    expect(applicationFailure(hostile)).toContain('[inspection:inventory:non-error:unclassified]');
+    for (const error of [new Error(sentinel), { code: sentinel, stdout: sentinel, stderr: sentinel }, hostile]) {
+      expect(applicationFailure(error, 'source-revalidation')).not.toContain(sentinel);
+    }
+  });
+  it('keeps a failed preparation inspection blocked with its finite phase/code and no candidate mutations', async () => {
+    const fixture = await stagedFixture();
+    vi.spyOn(preparation, 'resolveApplicationPreparation').mockRejectedValue(
+      Object.assign(new Error('PRIVATE_NATIVE_FAILURE_CONTENT'), { code: 'EMFILE', path: 'PRIVATE_NATIVE_PATH' }));
+    const candidate = await inspectApplicationPatch(fixture.root, fixture.manifest, fixture.patchPath);
+    expect(candidate.blockers).toEqual([
+      'Application inspection could not safely read the complete bounded scope. [inspection:preparation:error:EMFILE]'
+    ]);
+    expect(candidate.mutations).toEqual([]);
+    expect(candidate.report.status).toBe('blocked');
+    expect(JSON.stringify(candidate.report)).not.toMatch(/PRIVATE_NATIVE/);
+  });
   it('inventories actual custom paths, provenance, current target IDs and literal references without source values', async () => {
     const { root, manifest } = await fixture();
     const inspection = await inspectApplicationLayout(root, manifest);

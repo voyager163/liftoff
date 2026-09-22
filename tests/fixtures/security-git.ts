@@ -68,6 +68,13 @@ export async function createAdmissionGitFixture() {
       await git(['commit', '--quiet', '--no-gpg-sign', '--no-verify', '-m', 'Synthetic Git-link fixture']);
       return git(['rev-parse', 'HEAD']);
     },
+    async testedMerge(base: string, head: string, source = head) {
+      if (![base, head, source].every(value => /^[a-f0-9]{40}$/.test(value))) throw new Error('Invalid fixture commit.');
+      const tree = await git(['rev-parse', `${source}^{tree}`]);
+      const commit = await git(['commit-tree', tree, '-p', base, '-p', head, '-m', 'Synthetic tested merge']);
+      const parents = (await git(['show', '--no-patch', '--format=%P', commit])).split(' ');
+      return { commit, tree, parents };
+    },
     async cleanup() {
       if (closed) throw new Error('Fixture is closed.');
       const status = await lstat(root), marker = await lstat(path.join(root, '.fixture-owner'));

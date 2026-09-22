@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, copyFile, lstat, mkdir, readFile, rm, symlink } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -31,6 +31,28 @@ async function save(f: PreparationFixture, refresh = false) {
 const successful = (command: CommandResult['command'], stdout = ''): CommandResult => ({
   command, displayCommand: '', status: 0, signal: null, stdout, stderr: '', timedOut: false, processTreeSettled: true
 });
+const descendantReadyMarker = 'LIFTOFF_UNREF_DESCENDANT_READY';
+function unrefDescendantScript(mode: 'ready' | 'spawn-error' | 'missing-readiness' = 'ready'): string {
+  const child = mode === 'missing-readiness' ? 'process.exit(0);'
+    : 'setTimeout(() => {}, 8000); process.send("ready", () => process.disconnect());';
+  return `
+    const { spawn } = require('node:child_process');
+    const executable = ${mode === 'spawn-error' ? 'require("node:path").join(process.cwd(), "missing-owned-descendant")' : 'process.execPath'};
+    const descendant = spawn(executable, ['-e', ${JSON.stringify(child)}],
+      { stdio: ['ignore', 'ignore', 'ignore', 'ipc'] });
+    let ready = false;
+    descendant.once('error', () => process.exit(73));
+    descendant.once('exit', () => { if (!ready) process.exit(74); });
+    descendant.once('message', value => {
+      if (value !== 'ready') process.exit(75);
+      ready = true;
+      process.stdout.write(${JSON.stringify(descendantReadyMarker + '\n')}, () => {
+        descendant.unref();
+        process.exit(0);
+      });
+    });
+  `;
+}
 function executionRunner(candidate: ApplicationPatchCandidate, execute: CommandRunner['run']): CommandRunner {
   return { run: vi.fn(async (command, options) => {
     const probe = candidate.verificationPolicy.toolchain.find((tool) =>
@@ -46,6 +68,20 @@ afterEach(async () => {
 });
 
 describe('registered locked preparation input and tool contracts', () => {
+  it.each([
+    ['spawn-error', 73], ['missing-readiness', 74]
+  ] as const)('does not report a ready descendant when the real fixture has %s', async (mode, status) => {
+    const owned = await createOwnedFixtureRoot(os.tmpdir(), 'lf-child-ready-');
+    const actual = await new NodeCommandRunner().run({
+      executable: process.execPath, args: ['-e', unrefDescendantScript(mode)]
+    }, {
+      cwd: owned.name, timeoutMs: 2_000, maxOutputBytes: 1024, ensureProcessTreeSettled: true,
+      env: { PATH: path.dirname(process.execPath), ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}) }
+    });
+    if (actual.processTreeSettled) roots.push(owned.name);
+    expect(actual).toMatchObject({ status, timedOut: false, processTreeSettled: true });
+    expect(actual.stdout).not.toContain(descendantReadyMarker);
+  });
   it('publishes a static explicit provider/source/tool matrix and treats absence as none', () => {
     expect(parseApplicationPreparation(undefined)).toEqual([]);
     expect(parseApplicationPreparation([])).toEqual([]);
@@ -258,15 +294,21 @@ describe('registered locked preparation input and tool contracts', () => {
   });
 
   it('detects unref descendant in process group with real NodeCommandRunner, blocks release and retains workspace', async () => {
-    const f = await fixture();
+    // Retained POSIX evidence must outlive the test launcher's disposable TMPDIR.
+    const owner = await createOwnedFixtureRoot(
+      process.platform === 'win32' ? os.tmpdir() : path.dirname(process.cwd()),
+      process.platform === 'win32' ? 'lf prep-' : '.repair-preparation-retained-'
+    );
+    const directory = owner.name;
+    await writeFile(path.join(directory, '.fixture-owner.json'), JSON.stringify({
+      kind: 'owned-unref-descendant-test-fixture', root: directory,
+      device: owner.device.toString(), inode: owner.inode.toString(),
+      test: 'tests/repair-preparation.test.ts', settlement: 'not-established', cleanupAuthorization: false
+    }), { flag: 'wx', mode: 0o600 });
+    roots.push(directory);
+    const f = await createPreparationFixture(directory);
     const scriptPath = ['backend', 'test', 'spawn-descendant.cjs'];
-    const scriptContent = `
-      const { spawn } = require('node:child_process');
-      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], { stdio: 'ignore' });
-      descendant.unref();
-      process.exit(0);
-    `;
-    await putApplicationFixtureFile(f.root, scriptPath, scriptContent);
+    await putApplicationFixtureFile(f.root, scriptPath, unrefDescendantScript());
     f.document.verification.commands = [{
       executable: 'node', args: ['backend/test/spawn-descendant.cjs'], cwdPathParts: [],
       timeoutMs: process.platform === 'win32' ? 2_000 : 10_000, maxOutputBytes: 16_384, network: false
@@ -279,7 +321,19 @@ describe('registered locked preparation input and tool contracts', () => {
       projectCode: true, dependencyPreparation: false, network: false
     });
     const runner = new NodeCommandRunner();
+    const execute = runner.run.bind(runner);
+    let descendantReady = false;
+    runner.run = async (command, options) => {
+      const actual = await execute(command, options);
+      descendantReady = actual.stdout.trim() === descendantReadyMarker;
+      return actual;
+    };
+    const ownedIndex = roots.indexOf(f.directory);
+    if (ownedIndex === -1) throw new Error('Fixture ownership registration is missing.');
+    roots.splice(ownedIndex, 1);
     const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
+    if (verified.cleanupComplete) roots.push(f.directory);
+    expect(descendantReady, 'The real descendant must establish readiness before root exit; no settlement inference from an unstarted fixture.').toBe(true);
     expect(verified.status).toBe('failed');
     if (process.platform === 'win32') {
       expect(verified.commands[0]?.timedOut).toBe(true);

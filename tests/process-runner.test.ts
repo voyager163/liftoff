@@ -1,6 +1,6 @@
 import { execFile, spawn as spawnFixture, type ChildProcess } from 'node:child_process';
 import { getEventListeners } from 'node:events';
-import { access, mkdir, readFile, rm } from 'node:fs/promises';
+import { access, mkdir, readFile, rm, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { Writable } from 'node:stream';
@@ -14,6 +14,8 @@ import { CaptureStream } from './helpers.js';
 const cleanups: string[] = [];
 const scratchRoot = path.join(process.cwd(), '.cache', 'process-runner-tests');
 const treeFiles: string[] = [];
+const leanTimeoutFiles = new Set<string>();
+const retainedRoots = new Set<string>();
 const neighbors: ChildProcess[] = [];
 const execFileAsync = promisify(execFile);
 let counter = 0;
@@ -45,6 +47,7 @@ async function processState(pid: number): Promise<{ running: boolean; command: s
 async function fixtureState(file: string): Promise<TreeFixture> {
   const value = JSON.parse(await readFile(file, 'utf8')) as TreeFixture;
   if (![value.parent, value.descendant].every((pid) => Number.isSafeInteger(pid) && pid > 0 && pid !== process.pid) ||
+      value.parent === value.descendant ||
       (value.group !== null && (!Number.isSafeInteger(value.group) || value.group <= 0))) {
     throw new Error('Invalid owned process fixture identities.');
   }
@@ -74,7 +77,10 @@ async function expectStopped(state: TreeFixture): Promise<void> {
 async function cleanupTree(file: string): Promise<void> {
   let state: TreeFixture;
   try { state = await fixtureState(file); } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return;
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      if (leanTimeoutFiles.has(file)) throw new Error('Owned timeout tree identities were not recorded; cleanup is unqualified.');
+      return;
+    }
     throw error;
   }
   const living: number[] = [];
@@ -104,9 +110,33 @@ async function cleanupTree(file: string): Promise<void> {
   }
 }
 
-async function treeCommand(mode: 'timeout' | 'output' | 'orphan-output'): Promise<{ file: string; command: ExternalCommand }> {
+async function treeCommand(
+  mode: 'timeout' | 'output' | 'orphan-output', leanTimeout = false
+): Promise<{ file: string; command: ExternalCommand }> {
   const file = path.join(await testRoot('owned-tree'), 'processes.json');
   treeFiles.push(file);
+  if (leanTimeout && mode === 'timeout' && process.platform !== 'win32') {
+    leanTimeoutFiles.add(file);
+    return {
+      file,
+      command: {
+        executable: '/bin/sh',
+        args: ['-c', `
+          file=$1
+          trap '' TERM
+          group=$(/bin/ps -o pgid= -p "$$") || exit 72
+          case "$group" in *[!0-9\\ ]*|'') exit 73;; esac
+          case "$group" in *[0-9]*) ;; *) exit 73;; esac
+          /bin/sh -c 'trap "" TERM; /bin/sleep 3.5 & wait' "$file" &
+          descendant=$!
+          printf '{"parent":%s,"descendant":%s,"group":%s}' "$$" "$descendant" "$group" > "$file.stage" || exit 74
+          /bin/mv "$file.stage" "$file" || exit 75
+          printf 'ready\\n'
+          wait "$descendant"
+        `, 'owned-timeout-parent', file]
+      }
+    };
+  }
   const descendant = `
     process.on('SIGTERM', () => {});
     ${mode !== 'timeout' ? "setTimeout(() => process.stdout.write('x'.repeat(4096)), 100);" : ''}
@@ -150,13 +180,41 @@ afterEach(async () => {
   for (const neighbor of neighbors.splice(0)) {
     if (neighbor.exitCode === null && neighbor.signalCode === null) neighbor.kill('SIGKILL');
   }
-  for (const file of treeFiles.splice(0)) await cleanupTree(file);
-  while (cleanups.length > 0) {
-    await rm(cleanups.pop()!, { recursive: true, force: true });
+  let unqualified = false;
+  for (const file of treeFiles.splice(0)) {
+    try { await cleanupTree(file); leanTimeoutFiles.delete(file); }
+    catch {
+      retainedRoots.add(path.dirname(file));
+      unqualified = true;
+    }
   }
+  while (cleanups.length > 0) {
+    const root = cleanups.pop()!;
+    if (!retainedRoots.has(root)) await rm(root, { recursive: true, force: true });
+  }
+  if (unqualified) throw new Error('Owned process fixture cleanup is unqualified; its registered root was preserved.');
 });
 
 describe('external command runner', () => {
+  it.runIf(process.platform !== 'win32')('does not silently discard a timeout fixture without recorded process identities', async () => {
+    const fixture = await treeCommand('timeout', true);
+    await expect(cleanupTree(fixture.file)).rejects.toThrow('identities were not recorded');
+    // This test never dispatched the command; no process needs cleanup.
+    leanTimeoutFiles.delete(fixture.file);
+    treeFiles.splice(treeFiles.indexOf(fixture.file), 1);
+  });
+
+  it.runIf(process.platform !== 'win32')('refuses PID records pointing at unrelated owned neighbors', async () => {
+    const root = await testRoot('unrelated-pids'), file = path.join(root, 'processes.json');
+    const first = spawnFixture(process.execPath, ['-e', 'setTimeout(() => {}, 3500)'], { stdio: 'ignore' });
+    const second = spawnFixture(process.execPath, ['-e', 'setTimeout(() => {}, 3500)'], { stdio: 'ignore' });
+    neighbors.push(first, second);
+    await writeFile(file, JSON.stringify({ parent: first.pid, descendant: second.pid, group: first.pid }));
+    await expect(cleanupTree(file)).rejects.toThrow('no longer belongs to this fixture');
+    expect((await processState(first.pid!)).running).toBe(true);
+    expect((await processState(second.pid!)).running).toBe(true);
+    await unlink(file);
+  });
   it('passes hostile-looking arguments literally without shell interpolation', async () => {
     const root = await testRoot('literal-args');
     const sentinel = path.join(root, 'shell-expanded');
@@ -293,7 +351,7 @@ describe('external command runner', () => {
   });
 
   it('settles at timeout after terminating its owned tree, not when inherited pipes eventually close', async () => {
-    const fixture = await treeCommand('timeout');
+    const fixture = await treeCommand('timeout', true);
     const neighbor = spawnFixture(process.execPath, ['-e', 'setTimeout(() => {}, 3500)'], { stdio: 'ignore' });
     neighbors.push(neighbor);
     const timeoutMs = process.platform === 'win32' ? 800 : 200;
@@ -334,6 +392,7 @@ describe('external command runner', () => {
 
   it('honors AbortSignal by terminating the owned tree and removes its abort listener', async () => {
     const fixture = await treeCommand('timeout');
+    expect(fixture.command.executable).toBe(process.execPath);
     const controller = new AbortController();
     const pending = new NodeCommandRunner().run(fixture.command, { signal: controller.signal });
     const state = await waitForFixture(fixture.file);

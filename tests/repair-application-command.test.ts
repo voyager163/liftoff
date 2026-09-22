@@ -18,6 +18,7 @@ import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js'
 
 const roots: string[] = [];
 type FlowObservation = {
+  scenario: 'full-transaction' | 'partial-history-readback';
   started: number; phase: 'fixture' | 'inventory' | 'preview' | 'reject-unverified' | 'verification' | 'apply' | 'readback' | 'complete';
   commandStarted: boolean; commandReturned: boolean; treeSettled: boolean | null; commandTimedOut: boolean | null;
 };
@@ -30,6 +31,7 @@ afterEach(async () => {
   const retain = observation !== undefined && observation.phase !== 'complete';
   if (process.platform === 'win32' && observation) console.log(JSON.stringify({
     kind: 'native-windows-repair-command-flow', phase: observation.phase,
+    scenario: observation.scenario,
     elapsedMs: Math.trunc(performance.now() - observation.started),
     commandStarted: observation.commandStarted, commandReturned: observation.commandReturned,
     treeSettled: observation.treeSettled, commandTimedOut: observation.commandTimedOut,
@@ -109,9 +111,17 @@ async function fixture(network = false) {
 class Runner implements CommandRunner {
   readonly calls: { command: ExternalCommand; options?: RunCommandOptions }[] = [];
   readonly native = new NodeCommandRunner();
+  constructor(private readonly observation?: FlowObservation) {}
   async run(command: ExternalCommand, options?: RunCommandOptions) {
     this.calls.push({ command, options });
-    return this.native.run(command, options);
+    if (this.observation) this.observation.commandStarted = true;
+    const result = await this.native.run(command, options);
+    if (this.observation) {
+      this.observation.commandReturned = true;
+      this.observation.treeSettled = result.processTreeSettled ?? null;
+      this.observation.commandTimedOut = result.timedOut;
+    }
+    return result;
   }
 }
 
@@ -139,20 +149,11 @@ async function interactive(
 describe('installed application-patch command flow', () => {
   it('inventories, previews, independently verifies actual behavior and applies one exact JSON transaction', async () => {
     const observation: FlowObservation = {
-      started: performance.now(), phase: 'fixture',
+      scenario: 'full-transaction', started: performance.now(), phase: 'fixture',
       commandStarted: false, commandReturned: false, treeSettled: null, commandTimedOut: null
     };
     flowObservation = observation;
-    const project = await fixture(), runner = new Runner();
-    const execute = runner.run.bind(runner);
-    runner.run = async (command, options) => {
-      observation.commandStarted = true;
-      const result = await execute(command, options);
-      observation.commandReturned = true;
-      observation.treeSettled = result.processTreeSettled ?? null;
-      observation.commandTimedOut = result.timedOut;
-      return result;
-    };
+    const project = await fixture(), runner = new Runner(observation);
     observation.phase = 'inventory';
     const inventory = await json(project, ['--inspect-layout'], runner);
     expect(inventory.code).toBe(0);
@@ -307,15 +308,24 @@ describe('installed application-patch command flow', () => {
   });
 
   it('retains committed progress and history when a later edit invalidates final readback', async () => {
-    const project = await fixture(), runner = new Runner();
+    const observation: FlowObservation = {
+      scenario: 'partial-history-readback', started: performance.now(), phase: 'fixture',
+      commandStarted: false, commandReturned: false, treeSettled: null, commandTimedOut: null
+    };
+    flowObservation = observation;
+    const project = await fixture(), runner = new Runner(observation);
+    observation.phase = 'preview';
     const preview = await json(project, ['--check', '--application-patch', project.patch], runner);
+    observation.phase = 'verification';
     expect((await json(project, ['--verify-plan', preview.report.fingerprint], runner)).code).toBe(0);
     const actualTransaction = transactions.applyReviewedUpdateTransaction;
     vi.spyOn(transactions, 'applyReviewedUpdateTransaction').mockImplementation(async (...args) => {
       const result = await actualTransaction(...args);
+      observation.phase = 'readback';
       if (result.committed) await put(project.root, project.target, 'export const laterDevelopment = true;\n');
       return result;
     });
+    observation.phase = 'apply';
     const result = await json(project, ['--approve-plan', preview.report.fingerprint], runner);
     expect(result.code).toBe(2);
     expect(result.report).toMatchObject({ status: 'partial', committed: true, repairScopeComplete: false, verification: 'incomplete' });
@@ -323,5 +333,6 @@ describe('installed application-patch command flow', () => {
     expect(await readFile(path.join(project.root, ...project.target), 'utf8')).toContain('laterDevelopment');
     expect(await readFile(path.join(result.report.historyPath, 'manifest.json'))).toEqual(project.manifestBefore);
     await expect(stat(path.join(project.root, ...project.source))).rejects.toMatchObject({ code: 'ENOENT' });
+    observation.phase = 'complete';
   }, 30_000);
 });

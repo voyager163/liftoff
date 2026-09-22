@@ -4,6 +4,7 @@ import { realpath } from 'node:fs/promises';
 import { devNull } from 'node:os';
 import { promisify } from 'node:util';
 import { digest, identifier, portableParts, record, sha, SecurityEvidenceError } from './evidence.ts';
+import { securityWorkflowInvocation, verifiedPrExecutionIdentity, type VerifiedPrExecution } from './workflow-invocation.ts';
 
 const runFile = promisify(execFile);
 const registryPath = ['security', 'control-plane.json'];
@@ -22,6 +23,8 @@ export interface AdmissionContext {
   baseCommit: string;
   headCommit: string;
   validatorDigest?: string;
+  executionMode?: 'local' | 'hosted-pr';
+  execution?: VerifiedPrExecution;
   now: Date;
 }
 
@@ -68,6 +71,7 @@ export interface AdmissionObservation {
   coverageComplete: boolean;
   findingPolicy: 'passed' | 'blocked' | 'unavailable';
   findings: RawFinding[];
+  executionBindingDigest?: string;
 }
 
 export interface ExpectedObservation {
@@ -99,6 +103,11 @@ export interface AdmissionResult {
   controlChanges: number;
   newFindings: number | null;
   reason: string;
+  sourceMode: 'local-head-only' | 'verified-pr-tested-merge';
+  testedCommit: string;
+  testedTreeDigest: string;
+  executionBindingDigest: string | null;
+  hostedQualification: false;
 }
 
 interface LoadedBase {
@@ -106,6 +115,10 @@ interface LoadedBase {
   context: AdmissionContext & { validatorDigest: string };
   base: TreeEntry[];
   head: TreeEntry[];
+  tested: TreeEntry[];
+  testedCommit: string;
+  testedProtected: string;
+  execution: ReturnType<typeof verifiedPrExecutionIdentity> | null;
   registrations: PolicyDataRegistration[];
   baseData: Map<string, string>;
   headData: Map<string, string>;
@@ -208,6 +221,15 @@ export async function loadAdoptedBase(
       !Number.isFinite(context.now.getTime())) throw new SecurityEvidenceError('invalid-admission-context');
   sha(context.baseCommit); sha(context.headCommit);
   if (context.validatorDigest !== undefined) digest(context.validatorDigest);
+  if (context.executionMode !== undefined && !['local', 'hosted-pr'].includes(context.executionMode) ||
+      (context.executionMode === 'hosted-pr') !== (context.execution !== undefined)) {
+    throw new SecurityEvidenceError('admission-hosted-execution-required');
+  }
+  const execution = context.execution ? verifiedPrExecutionIdentity(context.execution, context.now) : null;
+  if (execution && (execution.invocation.baseSha !== context.baseCommit ||
+      execution.invocation.pullRequestHeadSha !== context.headCommit || execution.baseRef !== context.baseRef)) {
+    throw new SecurityEvidenceError('admission-tested-context-mismatch');
+  }
   const root = await realpath(repositoryRoot);
   async function git(args: string[]): Promise<string> {
     try {
@@ -251,8 +273,31 @@ export async function loadAdoptedBase(
     return git(['cat-file', 'blob', entry.object]);
   }
   const [base, head] = await Promise.all([tree(context.baseCommit), tree(context.headCommit)]);
+  const testedCommit = execution?.invocation.sourceSha ?? context.headCommit;
+  let tested = head;
+  if (execution) {
+    const parents = (await git(['show', '--no-patch', '--format=%P', testedCommit])).trim().split(' ');
+    securityWorkflowInvocation({
+      GITHUB_ACTIONS: 'true', GITHUB_REPOSITORY: execution.invocation.repository,
+      GITHUB_EVENT_NAME: execution.invocation.event, GITHUB_SHA: testedCommit,
+      GITHUB_WORKFLOW_SHA: execution.invocation.workflowSha, GITHUB_REF: execution.invocation.ref,
+      GITHUB_BASE_REF: execution.baseRef, GITHUB_RUN_ID: execution.invocation.runId,
+      GITHUB_RUN_ATTEMPT: String(execution.invocation.attempt),
+      LIFTOFF_PR_BASE_SHA: context.baseCommit, LIFTOFF_PR_HEAD_SHA: context.headCommit
+    }, { checkoutSha: testedCommit, mergeParents: parents });
+    if ((await git(['rev-parse', `${testedCommit}^{tree}`])).trim() !== execution.tree) {
+      throw new SecurityEvidenceError('admission-tested-tree-mismatch');
+    }
+    tested = await tree(testedCommit);
+  }
   const registrySource = await blob(base, registryPath);
   const { registrations, controlInputs, validatorInputs } = parseRegistry(registrySource);
+  if (execution && !controlInputs.some(parts => key(parts) === execution.workflow)) {
+    throw new SecurityEvidenceError('admission-unregistered-tested-workflow');
+  }
+  if (execution && !validatorInputs.some(parts => key(parts) === 'scripts/repository-security/workflow-invocation.ts')) {
+    throw new SecurityEvidenceError('admission-unregistered-execution-validator');
+  }
   const controlEntries = controlInputs.map(parts => {
     const entry = base.find(entry => key(entry.pathParts) === key(parts));
     if (!entry || !['100644', '100755'].includes(entry.mode)) throw new SecurityEvidenceError('missing-control-input');
@@ -268,12 +313,18 @@ export async function loadAdoptedBase(
     baseData.set(registration.id, await blob(base, registration.pathParts));
     const entry = head.find(entry => key(entry.pathParts) === key(registration.pathParts));
     if (entry?.mode === '100644') headData.set(registration.id, await blob(head, registration.pathParts));
+    if (execution && headData.has(registration.id) &&
+        await blob(tested, registration.pathParts) !== headData.get(registration.id)) {
+      throw new SecurityEvidenceError('admission-tested-policy-proposal-mismatch');
+    }
   }
   const policyPaths = new Set(registrations.map(item => key(item.pathParts)));
   const handle: AdoptedBaseHandle = Object.freeze({ kind: 'independently-loaded-base' });
   loadedBases.set(handle, {
     repositoryRoot: root,
-    context: { ...context, validatorDigest, now: new Date(context.now) }, base, head, registrations, baseData, headData,
+    context: { ...context, validatorDigest, now: new Date(context.now) }, base, head, tested, testedCommit, execution,
+    testedProtected: canonicalDigest(tested.filter(entry => !policyPaths.has(key(entry.pathParts)))),
+    registrations, baseData, headData,
     basePolicyDigest: canonicalDigest({ registrySource, data: [...baseData] }),
     proposalDigest: canonicalDigest([...headData]),
     baseProtected: canonicalDigest(base.filter(entry => !policyPaths.has(key(entry.pathParts)))),
@@ -289,6 +340,9 @@ export function adoptedBaseIdentity(handle: AdoptedBaseHandle) {
   if (!base) throw new SecurityEvidenceError('unverified-adopted-base');
   return {
     baseCommit: base.context.baseCommit, headCommit: base.context.headCommit,
+    testedCommit: base.testedCommit, testedProtectedInputsDigest: base.testedProtected,
+    sourceMode: base.execution ? 'verified-pr-tested-merge' as const : 'local-head-only' as const,
+    executionBindingDigest: base.execution ? canonicalDigest(base.execution) : null,
     policyDigest: base.basePolicyDigest, proposalDigest: base.proposalDigest,
     baseProtectedInputsDigest: base.baseProtected, headProtectedInputsDigest: base.headProtected,
     validatorDigest: base.context.validatorDigest
@@ -309,10 +363,10 @@ export function adoptedSourceSnapshot(handle: AdoptedBaseHandle, side: 'base' | 
   if (side !== 'base' && side !== 'candidate') throw new SecurityEvidenceError('invalid-admission-side');
   return {
     repositoryRoot: base.repositoryRoot,
-    sourceRef: `refs/heads/${base.context.baseRef}`,
-    sourceCommit: side === 'base' ? base.context.baseCommit : base.context.headCommit,
-    treeDigest: canonicalDigest(side === 'base' ? base.base : base.head),
-    protectedInputsDigest: side === 'base' ? base.baseProtected : base.headProtected
+    sourceRef: side === 'candidate' && base.execution ? base.execution.invocation.ref : `refs/heads/${base.context.baseRef}`,
+    sourceCommit: side === 'base' ? base.context.baseCommit : base.testedCommit,
+    treeDigest: canonicalDigest(side === 'base' ? base.base : base.tested),
+    protectedInputsDigest: side === 'base' ? base.baseProtected : base.testedProtected
   };
 }
 
@@ -325,13 +379,17 @@ export async function readAdoptedControl(handle: AdoptedBaseHandle, parts: strin
 
 function validateObservation(
   input: AdmissionObservation, expected: ExpectedObservation, base: LoadedBase, protectedDigest: string,
-  requireSuccess = true
+  requireSuccess = true, testedSource = false
 ): AdmissionObservation {
   record(input, [
     'sourceCommit', 'runId', 'attempt', 'validatorDigest', 'policyDigest', 'protectedInputsDigest',
     'analysisConfigurationDigest', 'coverageDigest', 'completedAt', 'execution', 'integrity', 'functional',
-    'coverageComplete', 'findingPolicy', 'findings'
+    'coverageComplete', 'findingPolicy', 'findings', ...(testedSource && base.execution ? ['executionBindingDigest'] : [])
   ], 'invalid-admission-observation');
+  if (testedSource && base.execution && (
+    input.executionBindingDigest !== canonicalDigest(base.execution) ||
+    input.runId !== base.execution.invocation.runId || input.attempt !== base.execution.invocation.attempt
+  )) throw new SecurityEvidenceError('admission-execution-binding-mismatch');
   if (canonicalDigest(input) !== digest(expected.reportDigest) || sha(input.sourceCommit) !== sha(expected.sourceCommit) ||
       input.runId !== expected.runId || input.attempt !== expected.attempt ||
       typeof input.runId !== 'string' || input.runId.length > 30 || !/^[1-9][0-9]*$/.test(input.runId) ||
@@ -395,7 +453,7 @@ export function evaluateAdmission(
   if (!loaded) throw new SecurityEvidenceError('unverified-adopted-base');
   if ((observations.base === null) !== (expected.base === null) ||
       expected.base !== null && expected.base.sourceCommit !== loaded.context.baseCommit ||
-      expected.candidate.sourceCommit !== loaded.context.headCommit) {
+      expected.candidate.sourceCommit !== loaded.testedCommit) {
     throw new SecurityEvidenceError('admission-commit-mismatch');
   }
   const baseTree = new Map(loaded.base.map(entry => [key(entry.pathParts), entry]));
@@ -409,10 +467,13 @@ export function evaluateAdmission(
   const maintenance = changes.length > 0 && changes.every(change =>
     policyPaths.has(change.path) && change.before?.mode === '100644' && change.after?.mode === '100644') &&
     loaded.baseProtected === loaded.headProtected;
+  if (maintenance && loaded.baseProtected !== loaded.testedProtected) {
+    throw new SecurityEvidenceError('admission-maintenance-tested-inputs-changed');
+  }
   if (maintenance && observations.base === null) throw new SecurityEvidenceError('maintenance-needs-complete-base-observation');
   const base = observations.base !== null && expected.base !== null
     ? validateObservation(observations.base, expected.base, loaded, loaded.baseProtected, maintenance) : null;
-  const candidate = validateObservation(observations.candidate, expected.candidate, loaded, loaded.headProtected);
+  const candidate = validateObservation(observations.candidate, expected.candidate, loaded, loaded.testedProtected, true, true);
   const comparableBase = base?.execution === 'success' && base.coverageComplete && base.integrity === 'success' ? base : null;
   const baseFindings = new Map((comparableBase?.findings ?? []).map(finding => [finding.key, finding]));
   const candidateFindings = new Map(candidate.findings.map(finding => [finding.key, finding]));
@@ -427,6 +488,10 @@ export function evaluateAdmission(
     protectedChanges: changes.filter(change => !loaded.registrations.some(item => key(item.pathParts) === change.path)).length,
     controlChanges: changes.filter(change => loaded.controlPaths.has(change.path)).length,
     newFindings: comparableBase ? newFindings.length : null,
+    sourceMode: loaded.execution ? 'verified-pr-tested-merge' : 'local-head-only',
+    testedCommit: loaded.testedCommit, testedTreeDigest: canonicalDigest(loaded.tested),
+    executionBindingDigest: loaded.execution ? canonicalDigest(loaded.execution) : null,
+    hostedQualification: false,
     reason: 'actual-findings-block'
   };
   if (candidate.findings.some(item => item.confirmedUnremediated) ||
