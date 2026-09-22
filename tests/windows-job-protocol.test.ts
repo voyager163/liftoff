@@ -17,8 +17,9 @@ import {
 } from '../src/adapters/process/windows-job-protocol.js';
 import { NodeCommandRunner } from '../src/process-runner.js';
 import { inspectApplicationPatch, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
-import { applicationVerificationFixtureContext } from './fixtures/repair-application.js';
-import { createPreparationFixture } from './fixtures/repair-preparation.js';
+import {
+  applicationVerificationFixtureContext, createApplicationRepairFixture, stageApplicationRepairFixture
+} from './fixtures/repair-application.js';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { rm } from 'node:fs/promises';
@@ -371,8 +372,9 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
     const originalSystemRoot = process.env.SystemRoot;
     const rootDir = path.resolve(`.test-win-admission-${randomUUID()}`);
     try {
-      const f = await createPreparationFixture(rootDir, { frontend: false });
-      const candidate = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
+      const f = await createApplicationRepairFixture(rootDir);
+      const patch = await stageApplicationRepairFixture(f.root, f.stage, f.manifest);
+      const candidate = await inspectApplicationPatch(f.root, f.manifest, patch.patchPath);
       expect(candidate.blockers).toEqual([]);
 
       const runner = new NodeCommandRunner();

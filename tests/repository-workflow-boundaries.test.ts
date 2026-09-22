@@ -36,8 +36,15 @@ describe('checked-in workflow privilege boundaries', () => {
       { probe: 'exact-builtin', compiler: 'exact', 'module-scope': 'builtin-only' },
       { probe: 'controller' }
     ] } });
-    expect(job.steps.at(-2).env.LIFTOFF_COMPILER_MODULE_SCOPE).toBe('${{ matrix.module-scope }}');
-    expect(job.steps.at(-1).run).toBe('npx --no-install vitest run tests/windows-job-diagnostic.test.ts');
+    expect(job.steps.find((step: { env?: Record<string, string> }) => step.env?.LIFTOFF_COMPILER_MODULE_SCOPE)
+      .env.LIFTOFF_COMPILER_MODULE_SCOPE).toBe('${{ matrix.module-scope }}');
+    expect(job.steps.find((step: { env?: Record<string, string> }) => step.env?.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC)
+      .run).toBe('npx --no-install vitest run tests/windows-job-diagnostic.test.ts');
+    expect(job.steps.at(-1)).toMatchObject({
+      if: "matrix.probe == 'controller'",
+      env: { LIFTOFF_WINDOWS_WORKSPACE_DIAGNOSTIC: '1' },
+      run: 'npx --no-install vitest run tests/windows-workspace-diagnostic.test.ts'
+    });
     expect(JSON.stringify(job)).not.toMatch(/continue-on-error|upload-artifact|ExecutionPolicy|Bypass/);
   });
   it('adds only bounded controller diagnostics after an actual Windows boundary failure', async () => {

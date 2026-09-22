@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import type { SpawnOptions } from 'node:child_process';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
@@ -20,11 +21,32 @@ import {
   type WindowsJobControlResponse
 } from '../src/adapters/process/windows-job-protocol.js';
 
+const simulatedControllers = vi.hoisted(() => new Set<string>());
+vi.mock('node:child_process', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:child_process')>();
+  return {
+    ...actual,
+    spawn(executable: string, args: readonly string[], options: SpawnOptions) {
+      if (!simulatedControllers.has(executable)) return actual.spawn(executable, args, options);
+      // These existing protocol simulations run real Node pipe peers, not shell launchers or kernel-proof substitutes.
+      return actual.spawn(process.execPath, [executable, ...args], options);
+    }
+  };
+});
+
+async function controllerErrorFixture(directory: string, name: string, message: string) {
+  const script = path.join(directory, `${name}.mjs`);
+  await writeFile(script, `process.stderr.write(${JSON.stringify(message)});\nprocess.exit(1);\n`);
+  simulatedControllers.add(script);
+  return script;
+}
+
 const tempDirs: string[] = [];
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) {
     await rm(dir, { recursive: true, force: true });
   }
+  simulatedControllers.clear();
 });
 
 describe('Windows Job Object controller asset integrity and host environment', () => {
@@ -162,12 +184,19 @@ describe('Windows Job Object controller asset integrity and host environment', (
   it('fails explicitly before target dispatch when the controller rejects its runtime scope', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-runtime-reject-'));
     tempDirs.push(tempDir);
-    const mockPs = path.join(tempDir, 'mock-runtime.sh');
-    await writeFile(mockPs, '#!/bin/sh\nprintf LIFTOFF_CONTROLLER_RUNTIME_REJECTED >&2\nexit 1\n', { mode: 0o755 });
+    const mockPs = await controllerErrorFixture(tempDir, 'mock-runtime', 'LIFTOFF_CONTROLLER_RUNTIME_REJECTED');
     const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--version'] }, {},
       { powershellPath: mockPs, skipAssetVerification: true });
     expect(result).toMatchObject({ errorCode: 'UNSUPPORTED_CONTROLLER_RUNTIME', processSpawned: false, processTreeSettled: false });
     expect(result.controllerDiagnostics).toBeUndefined();
+  });
+  it('does not let a registered simulation bypass production controller asset validation', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-mock-integrity-'));
+    tempDirs.push(tempDir);
+    const mockPs = await controllerErrorFixture(tempDir, 'not-a-controller', 'LIFTOFF_CONTROLLER_RUNTIME_REJECTED');
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--version'] }, {},
+      { assetPath: mockPs, powershellPath: mockPs });
+    expect(result).toMatchObject({ errorCode: 'CORRUPTED_CONTROLLER_ASSET', processSpawned: false, processTreeSettled: false });
   });
 });
 
@@ -176,18 +205,8 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-policy-'));
     tempDirs.push(tempDir);
 
-    // Create a mock powershell executable (script) that outputs the standard Windows execution policy error
-    const mockPs = path.join(tempDir, 'mock-powershell.sh');
-    await writeFile(
-      mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-File C:\\repair\\windows-job-controller.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
-EOF
-exit 1
-`,
-      { mode: 0o755 }
-    );
+    const mockPs = await controllerErrorFixture(tempDir, 'mock-powershell',
+      'File C:\\repair\\windows-job-controller.ps1 cannot be loaded because running scripts is disabled on this system. See about_Execution_Policies.');
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
@@ -205,17 +224,8 @@ exit 1
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-lang-'));
     tempDirs.push(tempDir);
 
-    const mockPs = path.join(tempDir, 'mock-powershell-lang.sh');
-    await writeFile(
-      mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).
-EOF
-exit 1
-`,
-      { mode: 0o755 }
-    );
+    const mockPs = await controllerErrorFixture(tempDir, 'mock-powershell-lang',
+      'Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).');
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
@@ -315,20 +325,13 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
+    simulatedControllers.add(mockPs);
 
     const recorder = createWindowsJobDiagnosticRecorder();
     const pending = runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true, diagnosticRecorder: recorder }
+      { powershellPath: mockPs, skipAssetVerification: true, diagnosticRecorder: recorder }
     );
     expect(readWindowsJobDiagnosticRecorder(recorder)).toMatchObject({ complete: false });
     const result = await pending;
@@ -440,19 +443,12 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
+    simulatedControllers.add(mockPs);
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000, maxOutputBytes: 25 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      { powershellPath: mockPs, skipAssetVerification: true }
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -499,19 +495,12 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
+    simulatedControllers.add(mockPs);
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      { powershellPath: mockPs, skipAssetVerification: true }
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -601,19 +590,12 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
+    simulatedControllers.add(mockPs);
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      { powershellPath: mockPs, skipAssetVerification: true }
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -657,19 +639,12 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
+    simulatedControllers.add(mockPs);
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      { powershellPath: mockPs, skipAssetVerification: true }
     );
 
     expect(result.processTreeSettled).toBe(false);

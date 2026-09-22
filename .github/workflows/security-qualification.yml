@@ -56,6 +56,11 @@ jobs:
         env:
           LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC: "1"
         run: npx --no-install vitest run tests/windows-job-diagnostic.test.ts
+      - name: Compare registered workspace and short-control launch without weakening settlement
+        if: matrix.probe == 'controller'
+        env:
+          LIFTOFF_WINDOWS_WORKSPACE_DIAGNOSTIC: "1"
+        run: npx --no-install vitest run tests/windows-workspace-diagnostic.test.ts
 
   linux-osv-network:
     name: Native Linux AMD64 OSV network boundary

@@ -166,7 +166,35 @@ scope. The native diagnostic will exercise both absent and explicitly supplied
 target module environments at the existing per-test limits. Runtime identities
 are retained only as bounded hashes in the opt-in recorder; default calls do not
 gain logging. Actual patched controller/target and required-suite results are
-still needed before describing Windows behavior as fixed.
+still needed before describing all Windows behavior as fixed.
+
+The first authorized patched-controller round passed both absent/explicit
+target-environment cases on fresh hosted x64 and again after the original
+boundary suite failed. Authentication, ACK, target execution, kernel settlement
+and owned log cleanup completed at unchanged limits. Linux and macOS functional
+jobs also passed in that round; earlier failures remain retained. The original
+Windows suite still had 34 failures, so this is a scoped bootstrap correction,
+not full Windows acceptance or other-architecture qualification.
+
+The remaining causes are kept separate. Protocol simulations used POSIX shell
+launchers on Windows, including the newly added runtime-rejection case; local
+test-only registration now starts the same real Node pipe peers portably, with
+unregistered spawns and production asset validation untouched. The
+missing-PowerShell admission fixture failed npm preparation inspection before
+injecting its missing runtime; it now uses the existing no-preparation
+application fixture, preserving all no-command/no-workspace assertions without
+inventing a tool-version pass.
+
+An additional opt-in comparison is prepared for the genuine registered-workspace
+launch failure. It uses the same verified executable, clean target environment
+and ten-second command budget with independent short controls and the exact
+repair-workspace storage shape, distinguishing direct `execFile` from controller
+launch. Only path length/type/existence/digests and finite error/Win32 codes are
+reported. Direct root-process exit is not descendant-settlement proof; those
+diagnostic cases remain incomplete with uncertain owned resources retained.
+Production storage roots and deadlines are not shortened or weakened to pass
+the comparison. Its execution remains subject to a new exact hosted-effects
+approval.
 
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
