@@ -24,14 +24,19 @@ function fixture() {
 }
 
 describe('checked-in workflow privilege boundaries', () => {
-  it('isolates compiler controls and the unchanged controller on three separate bounded Windows runners', async () => {
+  it('isolates the single-input module contrast and unchanged controller on three bounded Windows runners', async () => {
     const source = parse(await readFile(path.join(process.cwd(), '.github', 'workflows', 'security-qualification.yml'), 'utf8'));
     const job = source.jobs['windows-bootstrap'];
     expect(job['runs-on']).toBe('windows-latest');
     expect(job['timeout-minutes']).toBe(5);
     expect(job.permissions).toEqual({ contents: 'read' });
     expect(job.environment).toBeUndefined();
-    expect(job.strategy).toEqual({ 'fail-fast': false, matrix: { probe: ['trivial', 'exact', 'controller'] } });
+    expect(job.strategy).toEqual({ 'fail-fast': false, matrix: { include: [
+      { probe: 'exact-baseline', compiler: 'exact', 'module-scope': 'baseline' },
+      { probe: 'exact-builtin', compiler: 'exact', 'module-scope': 'builtin-only' },
+      { probe: 'controller' }
+    ] } });
+    expect(job.steps.at(-2).env.LIFTOFF_COMPILER_MODULE_SCOPE).toBe('${{ matrix.module-scope }}');
     expect(job.steps.at(-1).run).toBe('npx --no-install vitest run tests/windows-job-diagnostic.test.ts');
     expect(JSON.stringify(job)).not.toMatch(/continue-on-error|upload-artifact|ExecutionPolicy|Bypass/);
   });

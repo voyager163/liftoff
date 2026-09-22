@@ -98,17 +98,37 @@ locates the boundary; it does not establish whether command resolution,
 compilation, environment or prior test load caused the delay. The probe ran
 after the failed boundary suite, not on an otherwise unused runner.
 
-Prepared follow-up diagnostics use three separate fresh Windows jobs: a trivial
+The subsequent authorized comparison used three separate fresh Windows jobs: a trivial
 non-writing compiler control, the exact pinned controller C# definition without
-native-method execution, and the existing full-controller diagnostic. They do
-not warm, reorder or weaken the required suite. Compiler probes retain only
+native-method execution, and the existing full-controller diagnostic. Both
+compiler probes reached `Get-Command Add-Type` but not command-resolution
+completion before their deadlines, before assigning or compiling either C#
+definition. The three host-environment digests matched, and the two compiler
+probes used the same PowerShell binary. Prior suite load is not needed to
+reproduce the stall; its actual cause is not yet established.
+
+The next prepared comparison uses that exact C# definition on two fresh runners,
+one retaining original discovery and one selecting only the verified existing
+builtin Modules root after startup, alongside the untouched full controller on
+a third runner. Windows PowerShell can add user/all-user search paths at startup,
+so an inherited `PSModulePath` value alone would not prove the effective scope.
+The fixture verifies the OS home, local canonical root and reparse-free ancestors
+with .NET primitives, not module-autoloading cmdlets. Both variants use the same
+verification prelude and differ only in the intended process-local selection.
+They bind original/effective child-environment digests and command/module identity
+if reached. Unknown identities, foreign roots and drift remain unqualified;
+production environment, asset, C# definition and timeouts remain unchanged.
+
+These diagnostics do not warm, reorder or weaken the required suite. They retain only
 bound static phases, timing, exit/cleanup state, tool/source digests and
 allowlisted host-environment key names/digests, never raw compiler source,
 errors or environment values. Compiler deadlines are ten seconds with a
 five-second cleanup-only bound; timing out remains failure. Any tree termination
 targets only the exact still-live spawned process, and uncertain descendant
 settlement is not asserted. These jobs have five-minute bounds each and require
-separate authorization for their additional hosted cost; they have not yet run.
+separate authorization for each additional hosted attempt. The new module-scope
+contrast has not yet run; local PowerShell 7 syntax parsing is not Windows 5.1
+runtime or causal qualification.
 The compile-only probes distinguish observed compilation completion from full
 resource qualification: without independent descendant-settlement proof their
 job remains unsuccessful, even if compilation finishes. They are diagnostic
