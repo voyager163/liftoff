@@ -285,6 +285,20 @@ The same run's two compiler comparisons did not complete
 discovery/compilation within their unchanged deadlines; earlier successful
 comparisons do not substitute for those unsuccessful observations.
 
+The next native fixture round reduced required Windows failures from 112 to
+three: the workspace, CLI and cwd-admission suites passed, while a CRLF-only
+documentation assertion and two npm preparation-admission cases remained.
+The same real probe independently matched the setup-node distribution's bundled
+npm 11.19.0 bytes and declaration, below the required npm 12 release line. The
+canonical framework parent measured 52 units and the longest declared/preparation
+cwd measured 259 accounted UTF-16 units, so those observed directories fit.
+The prepared CI-only correction verifies the globally installed npm 12.0.2
+declaration and actual CLI, then adds its Windows global prefix to subsequent
+steps' PATH. The real filtered tool observer must resolve that exact CLI and
+declaration; POSIX PATH selection and production admission are unchanged.
+Documentation example parsing now covers both LF and CRLF without dropping
+content assertions. These local corrections are not a new hosted pass.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
@@ -1001,9 +1015,29 @@ revision, run and attempt when invoked by Actions; missing/mismatched metadata,
 dirty hosted source and invalid release intent fail closed. Local observations
 remain explicitly labelled local, and runner metadata is not independent
 producer authentication or adopted-policy authority.
+Validated OSV and CodeQL producer summaries now also feed the existing Actions
+job-summary file, including scheduled owner actions, actual finding status and
+fresh-release requirements. A failed producer without a complete report writes
+an explicit incomplete summary instead of an empty clean result. The bounded
+writer accepts only summaries issued by the local reporting evaluator, rejects
+unsafe/oversized output files, and uses no issue, comment, notification or status
+API. These human-readable results do not authenticate producers or complete the
+remaining multi-producer admission/recurrence qualification.
 Full hosted template execution, authenticated current-run receipts and
 verifiable build provenance remain incomplete. A dirty local descriptor and an
 unsigned build record still cannot authorize publication.
+
+The coordinator's read-only `provenance` mode can consume an explicitly supplied
+local signed bundle through `gh attestation verify`. It binds the exact tarball
+and bundle before and after verification, the GitHub OIDC issuer, protected
+`main` source, release workflow digest, GitHub-hosted runner, certificate-bound
+run/attempt and fresh witnessed timestamp. Predicate claims cannot substitute for
+certificate identity. `readiness` re-verifies a supplied bundle rather than trust
+a serialized observation; only the live in-process verification can satisfy the
+provenance dependency. No signing action, OIDC enrollment, attestation upload or
+publication transport is enabled by this consumer. Its deterministic verifier
+tests are not evidence of an actual signed release, and adopted-policy, scanner,
+publisher and hosted-producer qualification remain required.
 
 Package smoke failures retain only bounded stage, command index, operation and
 failure category at the coordinator boundary; subprocess output is withheld.
@@ -1064,8 +1098,14 @@ snapshots and exercise ordered conditional writes/readback against an in-memory
 transport only. Simulation consent binds the complete source, proposal, registry
 and payload digests; drift invalidates it. Partial-failure records distinguish
 acknowledged, verified, uncertain and unattempted effects, with no rollback or
-control deletion. This does not validate opaque endpoint payload semantics or
-prove GitHub supports an atomic conditional write. The production entry always
+control deletion. The endpoint-validated settings preview now feeds this existing
+planner with exact before-state and validated Actions/bodyless immutable-release
+payloads. Drift, missing observations, stale snapshots and changed payloads fail
+before simulation; immutable enablement preserves owner-enforcement readback.
+Switching Actions from `all` or `local_only` to `selected` remains blocked pending
+an independently qualified transition and new allowlist readback, rather than
+inventing the unavailable allowlist or an API ordering guarantee.
+This does not prove GitHub supports an atomic conditional write. The production entry always
 rejects; authenticated readback, endpoint-specific preservation/capability checks,
 merged-source identities and separately authorized effects are still required.
 Task 10.4 remains incomplete until those real adapter dependencies exist.

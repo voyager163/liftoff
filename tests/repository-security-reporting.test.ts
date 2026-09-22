@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import os from 'node:os';
 import {
   findingDigest, SecurityEvidenceError, type EvidenceIdentity, type SecurityFinding, type SecurityReport
 } from '../scripts/repository-security/evidence.ts';
 import {
-  REPORTING_LIMITS, reportRepositorySecurity, type ReportedFindingAssessment, type ReportingCapabilityObservation,
+  REPORTING_LIMITS, reportRepositorySecurity, writeSecurityJobSummary, type ReportedFindingAssessment, type ReportingCapabilityObservation,
   type ReportingExpectations, type ReportingObservations, type ReportingProducerOutcome, type SecretReportingEvidence
 } from '../scripts/repository-security/reporting.ts';
 
@@ -95,6 +98,46 @@ function secretFixture(disposition: SecretReportingEvidence['findings'][number][
 }
 
 describe('bounded local repository security reporting', () => {
+  it('writes owner-visible scheduled findings without sending API notifications or changing verdicts', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-summary-')));
+    try {
+      const data = fixture([finding()], 'schedule'), report = reportRepositorySecurity(data.expected, data.actual, now);
+      const output = path.join(root, 'summary');
+      await writeSecurityJobSummary(report.summary, 'osv', output);
+      expect(await readFile(output, 'utf8')).toBe(report.markdown);
+      expect(report.summary.actualFindings.reportedStatus).toBe('blocked');
+      expect(report.summary.recurrence.status).toBe('owner-action-required');
+      await expect(writeSecurityJobSummary(structuredClone(report.summary), 'osv', output))
+        .rejects.toThrow('unverified-job-summary');
+      const oldIdentity = report.summary.identity.runId;
+      report.summary.identity.runId = '999';
+      await expect(writeSecurityJobSummary(report.summary, 'osv', output)).rejects.toThrow('mutated-job-summary');
+      report.summary.identity.runId = oldIdentity;
+      await writeSecurityJobSummary(null, 'osv', output);
+      expect(await readFile(output, 'utf8')).toContain('analysis incomplete');
+      expect(report.summary.notifications.every(item => item.delivery === 'not-sent')).toBe(true);
+    } finally { await rm(root, { recursive: true }); }
+  });
+  it('does not create output for ordinary local runs and fails explicitly on oversized summary files', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-summary-')));
+    try {
+      await expect(writeSecurityJobSummary(null, 'codeql', undefined)).resolves.toBeUndefined();
+      const output = path.join(root, 'summary');
+      await writeFile(output, Buffer.alloc(1024 * 1024));
+      await expect(writeSecurityJobSummary(null, 'codeql', output)).rejects.toThrow('job-summary-file');
+      expect((await readFile(output)).length).toBe(1024 * 1024);
+    } finally { await rm(root, { recursive: true }); }
+  });
+  it.skipIf(process.platform === 'win32')('refuses a symlink summary target without changing the target', async () => {
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-summary-')));
+    try {
+      const target = path.join(root, 'target'), link = path.join(root, 'summary');
+      await writeFile(target, sentinel);
+      await symlink(target, link);
+      await expect(writeSecurityJobSummary(null, 'codeql', link)).rejects.toThrow('job-summary-write');
+      expect(await readFile(target, 'utf8')).toBe(sentinel);
+    } finally { await rm(root, { recursive: true }); }
+  });
   it('reports complete analysis separately and never issues authority, even for a passing report', () => {
     const data = fixture();
     admission(data);

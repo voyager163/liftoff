@@ -1,11 +1,14 @@
 import { createHash } from 'node:crypto';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { writeFileSync } from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { canonicalDigest } from '../scripts/repository-security/admission.ts';
 import { artifactHashes, type NpmCandidate, type ReleaseEvidence, type ReleaseObservation, type TrustedReleaseContext } from '../scripts/repository-security/npm-release.ts';
 import {
   executeReleasePhase, npmPublicationArguments, prepareReleaseOperation, releaseReadiness,
-  ReleasePhaseError, type CanonicalReleaseReceipt, type PublisherAuthority, type ReleaseTransport
+  ReleasePhaseError, verifyReleaseProvenance, type CanonicalReleaseReceipt, type PublisherAuthority, type ReleaseTransport
 } from '../scripts/repository-security/npm-release-operation.ts';
 import { planTagProtection } from '../scripts/repository-security/tag-policy.ts';
 import { createReleaseChecksums } from '../scripts/repository-security/github-release.ts';
@@ -13,6 +16,123 @@ import { createReleaseChecksums } from '../scripts/repository-security/github-re
 const now = new Date('2026-09-20T12:00:00.000Z');
 const commit = 'a'.repeat(40), digest = `sha256:${'a'.repeat(64)}`;
 const hash = (bytes: Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+
+describe('read-only signed provenance consumption (synthetic verifier output only)', () => {
+  async function observationFixture() {
+    const { input } = fixture();
+    const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-provenance-')));
+    const tarballPath = path.join(root, input.candidate.artifact.filename), bundlePath = path.join(root, 'bundle.json');
+    await writeFile(tarballPath, input.tarball); await writeFile(bundlePath, 'SYNTHETIC_BUNDLE_NOT_CRYPTOGRAPHIC_PROOF');
+    const { repository, event, sourceSha, workflowSha, runId, attempt } = input.expected.identity;
+    const identity = { repository, event, sourceSha, workflowSha, runId, attempt };
+    const repo = 'https://github.com/voyager163/liftoff', workflow = `${repo}/.github/workflows/release.yml@refs/heads/main`;
+    const result = {
+      verificationResult: {
+        signature: { certificate: {
+          issuer: 'https://token.actions.githubusercontent.com', subjectAlternativeName: workflow,
+          buildSignerURI: workflow, buildSignerDigest: workflowSha, runnerEnvironment: 'github-hosted',
+          sourceRepositoryURI: repo, sourceRepositoryDigest: sourceSha, sourceRepositoryRef: 'refs/heads/main',
+          buildConfigURI: workflow, buildConfigDigest: workflowSha, buildTrigger: 'workflow_dispatch',
+          runInvocationURI: `${repo}/actions/runs/${runId}/attempts/${attempt}`, sourceRepositoryVisibilityAtSigning: 'public'
+        } },
+        statement: {
+          _type: 'https://in-toto.io/Statement/v1', predicateType: 'https://slsa.dev/provenance/v1',
+          subject: [{ name: input.candidate.artifact.filename, digest: { sha256: input.candidate.artifact.sha256.slice(7) } }],
+          predicate: {
+            untrustedWorkflowClaim: 'not-used-as-authority',
+            buildDefinition: {
+              buildType: 'https://slsa-framework.github.io/github-actions-buildtypes/workflow/v1',
+              externalParameters: { workflow: { repository: repo, ref: 'refs/heads/main', path: '.github/workflows/release.yml' } },
+              internalParameters: { github: { event_name: 'workflow_dispatch' } },
+              resolvedDependencies: [{ uri: `git+${repo}@refs/heads/main`, digest: { gitCommit: sourceSha } }]
+            },
+            runDetails: { builder: { id: 'https://github.com/actions/runner/github-hosted' },
+              metadata: { invocationId: `${repo}/actions/runs/${runId}/attempts/${attempt}` } }
+          }
+        },
+        verifiedTimestamps: [{ timestamp: '2026-09-20T11:15:00Z' }]
+      }
+    };
+    return { root, input: { candidate: input.candidate, tarballPath, bundlePath, identity }, result };
+  }
+  const output = (value: unknown) => ({
+    pid: 1, output: [null, JSON.stringify(value), ''], stdout: JSON.stringify(value), stderr: '',
+    status: 0, signal: null
+  });
+  it('binds exact bytes, verified certificate run/source/workflow and witnessed freshness without publication authority', async () => {
+    const f = await observationFixture(), execute = vi.fn(() => output([f.result]));
+    try {
+      const observation = await verifyReleaseProvenance(f.input, now, execute);
+      expect(observation).toMatchObject({ currentRunMatched: true, certificateIdentityMatched: true,
+        publisherAuthority: 'not-established', securityVerdict: 'not-established', publicationAuthorized: false });
+      expect(execute).toHaveBeenCalledTimes(1);
+      expect(execute).toHaveBeenCalledWith('gh', expect.arrayContaining([
+        'attestation', 'verify', '--bundle', f.input.bundlePath, '--deny-self-hosted-runners',
+        '--source-ref', 'refs/heads/main', '--source-digest', commit, '--signer-digest', commit,
+        '--predicate-type', 'https://slsa.dev/provenance/v1'
+      ]), expect.objectContaining({ shell: false, timeout: 60_000, maxBuffer: 4 * 1024 * 1024 }));
+      expect(JSON.stringify(observation)).not.toContain(f.root);
+      expect(JSON.stringify(observation)).not.toContain('untrustedWorkflowClaim');
+      const invocation = { ...f.input.identity, event: 'workflow_dispatch' as const, ref: 'refs/heads/main', dryRun: true };
+      const readiness = releaseReadiness(f.input.candidate, {}, invocation, observation, now);
+      expect(readiness.provenanceVerified).toBe(true);
+      expect(readiness.publicationAuthorized).toBe(false);
+      expect(readiness.blockers).not.toContain('verifiable-build-provenance-distinct-from-unsigned-local-record');
+      expect(readiness.blockers).toContain('current-complete-vulnerability-and-secrets-verdicts');
+      expect(() => releaseReadiness(f.input.candidate, {}, invocation, structuredClone(observation), now))
+        .toThrow('unverified-provenance-observation');
+      expect(() => releaseReadiness(f.input.candidate, {}, { ...invocation, attempt: 2 }, observation, now))
+        .toThrow('unverified-provenance-observation');
+      expect(() => releaseReadiness(f.input.candidate, {}, invocation, observation, new Date('2026-09-22T12:00:00Z')))
+        .toThrow('unverified-provenance-observation');
+    } finally { await rm(f.root, { recursive: true }); }
+  });
+  it.each(['runInvocationURI', 'buildSignerDigest', 'sourceRepositoryDigest', 'sourceRepositoryRef',
+    'buildConfigURI', 'issuer', 'runnerEnvironment', 'buildTrigger'] as const)(
+    'rejects wrong authenticated %s even when the predicate claims the expected run', async field => {
+    const f = await observationFixture();
+    try {
+      f.result.verificationResult.signature.certificate[field] = 'wrong';
+      await expect(verifyReleaseProvenance(f.input, now, () => output([f.result]))).rejects.toThrow('certificate-identity');
+    } finally { await rm(f.root, { recursive: true }); }
+  });
+  it.each(['unsigned', 'wrong-subject', 'future-witness', 'old-witness', 'missing-witness', 'ambiguous', 'wrong-build', 'wrong-material'] as const)(
+    'rejects %s provenance rather than interpreting a descriptor as authentication', async change => {
+    const f = await observationFixture();
+    try {
+      let returned: unknown = [f.result];
+      if (change === 'unsigned') returned = [{ kind: 'unsigned-local-build-record' }];
+      if (change === 'wrong-subject') f.result.verificationResult.statement.subject[0]!.digest.sha256 = 'b'.repeat(64);
+      if (change === 'future-witness') f.result.verificationResult.verifiedTimestamps[0]!.timestamp = '2026-09-21T12:00:00Z';
+      if (change === 'old-witness') f.result.verificationResult.verifiedTimestamps[0]!.timestamp = '2026-09-19T12:00:00Z';
+      if (change === 'missing-witness') f.result.verificationResult.verifiedTimestamps = [];
+      if (change === 'ambiguous') returned = [f.result, f.result];
+      if (change === 'wrong-build') f.result.verificationResult.statement.predicate.buildDefinition.buildType = 'unqualified-builder';
+      if (change === 'wrong-material') {
+        f.result.verificationResult.statement.predicate.buildDefinition.resolvedDependencies[0]!.digest.gitCommit = 'b'.repeat(40);
+      }
+      await expect(verifyReleaseProvenance(f.input, now, () => output(returned))).rejects.toThrow();
+    } finally { await rm(f.root, { recursive: true }); }
+  });
+  it('rejects verifier errors, malformed output and bytes changed during verification without exposing diagnostics', async () => {
+    const f = await observationFixture();
+    try {
+      const sentinel = 'PRIVATE_VERIFIER_DIAGNOSTICS';
+      const executors = [
+        () => ({ ...output(null), status: 1, stderr: sentinel }),
+        () => { throw new Error(sentinel); },
+        () => ({ ...output(null), stdout: sentinel }),
+        () => { writeFileSync(f.input.tarballPath, 'changed'); return output([f.result]); }
+      ];
+      for (const execute of executors) {
+        let error: unknown;
+        try { await verifyReleaseProvenance(f.input, now, execute); } catch (caught) { error = caught; }
+        expect(error).toBeInstanceOf(Error);
+        expect(String(error)).not.toContain(sentinel);
+      }
+    } finally { await rm(f.root, { recursive: true }); }
+  });
+});
 
 // All authority, database, scanner and registry values below are synthetic.
 // No production transport exists, and no real publication is executed.

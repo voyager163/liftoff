@@ -8,7 +8,7 @@ import { fixtureGitEnvironment, fixtureGitOptions } from './gitleaks.ts';
 import { evaluateSecurityReport, parseIdentity, portableParts, SecurityEvidenceError, type EvidenceIdentity } from './evidence.ts';
 import { osvDigest, osvRelease, osvUnscoredPolicyRules, runOsvBoundary } from './osv.ts';
 import { createOsvWorkspace, qualifyFrozenGo, qualifyOsvFixtures, type RepositoryOsvAssessment } from './osv-fixture.ts';
-import { reportRepositorySecurity, type RepositorySecuritySummary, type ReportingProducerOutcome } from './reporting.ts';
+import { reportRepositorySecurity, writeSecurityJobSummary, type RepositorySecuritySummary, type ReportingProducerOutcome } from './reporting.ts';
 import { securityWorkflowInvocation } from './workflow-invocation.ts';
 
 function fail(code: string): never { throw new SecurityEvidenceError(code); }
@@ -222,10 +222,13 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
       ...(process.env.GITHUB_ACTIONS === 'true' ? { workflowEnvironment: process.env } : {})
     });
     console.log(JSON.stringify(result));
+    await writeSecurityJobSummary(result.reporting, 'osv', process.env.GITHUB_STEP_SUMMARY);
     process.exitCode = result.analysisComplete ? result.findingsPassed ? 0 : 1 : 2;
   } catch (error) {
     const code = error instanceof SecurityEvidenceError ? error.code : 'osv-driver-failed';
     console.error(JSON.stringify({ kind: 'local-non-npm-assessment', analysisComplete: false, findingsPassed: null, code }));
+    try { await writeSecurityJobSummary(null, 'osv', process.env.GITHUB_STEP_SUMMARY); }
+    catch { console.error('Security job summary unavailable; analysis remains incomplete.'); }
     process.exitCode = 2;
   }
 }

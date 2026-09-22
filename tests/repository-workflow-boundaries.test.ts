@@ -24,6 +24,26 @@ function fixture() {
 }
 
 describe('checked-in workflow privilege boundaries', () => {
+  it('selects the verified installed Windows npm prefix rather than the older setup-node bundled npm', async () => {
+    const workflow = parse(await readFile(path.join(process.cwd(), '.github/workflows/ci.yml'), 'utf8'));
+    const steps = workflow.jobs.test.steps;
+    const install = steps.findIndex((step: { name?: string }) => step.name === 'Select supported npm');
+    const selected = steps[install + 1];
+    expect(selected.if).toBe("runner.os == 'Windows'");
+    expect(selected.shell).toBe('pwsh');
+    expect(selected.run).toContain('npm prefix --global');
+    expect(selected.run).toContain('[IO.Path]::IsPathRooted($prefix)');
+    expect(selected.run).toContain('node_modules/npm/bin/npm-cli.js');
+    expect(selected.run).toContain('node_modules/npm/package.json');
+    expect(selected.run).toContain(`$package.version -ne "${supportedStack.packageManagers.npm.version}"`);
+    expect(selected.run).toContain('$version = (node $cli --version).Trim()');
+    expect(selected.run).toContain('$version -ne $package.version');
+    expect(selected.run).toContain('Add-Content -LiteralPath $env:GITHUB_PATH -Value $prefix -Encoding utf8');
+    expect(selected.run).toContain('Add-Content -LiteralPath $env:GITHUB_ENV -Value "LIFTOFF_CI_NPM_PREFIX=$prefix" -Encoding utf8');
+    expect(selected.run).not.toMatch(/SetEnvironmentVariable|LOCALAPPDATA|APPDATA|continue-on-error/);
+    expect(steps[install + 2].name).toBe('Install dependencies');
+    expect(workflow.jobs.test['timeout-minutes']).toBe(45);
+  });
   it('isolates the single-input module contrast and unchanged controller on three bounded Windows runners', async () => {
     const source = parse(await readFile(path.join(process.cwd(), '.github', 'workflows', 'security-qualification.yml'), 'utf8'));
     const job = source.jobs['windows-bootstrap'];

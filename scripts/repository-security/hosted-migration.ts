@@ -1,5 +1,7 @@
 import { canonicalDigest } from './admission.ts';
 import { digest, identifier, parseIdentity, record, SecurityEvidenceError, type EvidenceIdentity } from './evidence.ts';
+import { hostedSettingsSchemaSource, validateActionsPayload, validateImmutableReleaseEnablement } from './hosted-settings-schema.ts';
+import { HOSTED_READ_ENDPOINTS, type loadHostedState } from './hosted-state.ts';
 
 export const HOSTED_MIGRATION_LIMITS = Object.freeze({
   operations: 32, nodes: 100_000, bytes: 2 * 1024 * 1024, depth: 24,
@@ -28,7 +30,7 @@ export interface MigrationOperation {
   endpointId: string;
   before: MigrationJson;
   after: MigrationJson;
-  payload: { [key: string]: MigrationJson };
+  payload: { [key: string]: MigrationJson } | null;
 }
 
 export interface MigrationProposal {
@@ -207,6 +209,7 @@ function parseRegistry(value: unknown): MigrationRegistry {
         /^\/branches\/(?:develop|main)\/protection$/.test(suffix) ||
         /^\/rulesets\/[1-9][0-9]{0,15}$/.test(suffix) ||
         /^\/actions\/permissions(?:\/selected-actions|\/workflow)?$/.test(suffix) ||
+        suffix === '/immutable-releases' ||
         /^\/environments\/[A-Za-z0-9][A-Za-z0-9_-]{0,63}$/.test(suffix)
       );
     if (!supported) fail('unsupported-endpoint');
@@ -232,17 +235,75 @@ function parseProposal(value: unknown): MigrationProposal {
     const operation = record(value, ['id', 'endpointId', 'before', 'after', 'payload'], 'hosted-migration-operation');
     const endpointId = identifier(operation.endpointId, 'hosted-migration-endpoint-id');
     if (!registry.endpoints.some(endpoint => endpoint.id === endpointId)) fail('unregistered-endpoint');
-    if (operation.payload === null || typeof operation.payload !== 'object' || Array.isArray(operation.payload)) fail('payload-shape');
+    const endpoint = registry.endpoints.find(endpoint => endpoint.id === endpointId)!;
+    if (operation.payload === null ? endpoint.path !== `/repos/${repository}/immutable-releases`
+      : typeof operation.payload !== 'object' || Array.isArray(operation.payload)) fail('payload-shape');
+    if (endpoint.path === `/repos/${repository}/immutable-releases`) validateImmutableReleaseEnablement(operation.payload);
     if (operation.before !== null && operation.after === null) fail('control-deletion-prohibited');
     return {
       id: identifier(operation.id, 'hosted-migration-operation-id'), endpointId,
-      before: operation.before as Json, after: operation.after as Json, payload: operation.payload as { [key: string]: Json }
+      before: operation.before as Json, after: operation.after as Json, payload: operation.payload as { [key: string]: Json } | null
     };
   });
   if (operations.length !== registry.endpoints.length) fail('registry-coverage');
   unique(operations.map(operation => operation.id));
   unique(operations.map(operation => operation.endpointId));
   return { identity, observedAt: item.observedAt as string, registry, operations };
+}
+
+/**
+ * Bridges the real GET-only preview and endpoint validators into the existing
+ * simulation plan. It grants no writes and cannot infer an unavailable before
+ * state or the API semantics of switching Actions from all/local to selected.
+ */
+export function prepareHostedSettingsMigration(
+  preview: Awaited<ReturnType<typeof loadHostedState>>,
+  expected: { identity: EvidenceIdentity; previewDigest: string },
+  now: Date
+): LocalMigrationPlan {
+  const snapshot = data(preview);
+  if (canonicalDigest(snapshot) !== digest(expected.previewDigest)) fail('preview-drift');
+  if (preview.kind !== 'read-only-hosted-settings-preview' || preview.repository !== repository ||
+      preview.host !== 'github.com' || preview.liveEffects !== false || preview.applyAuthorized !== false ||
+      !preview.readbackComplete || !preview.actionRegistry.references?.length) fail('preview-incomplete');
+  const start = time(preview.startedAt), end = time(preview.completedAt), stamp = nowTime(now);
+  if (start > end || end > stamp || stamp - start > HOSTED_MIGRATION_LIMITS.snapshotAgeMs) fail('stale-plan');
+  for (const surface of Object.keys(HOSTED_READ_ENDPOINTS) as (keyof typeof HOSTED_READ_ENDPOINTS)[]) {
+    const setting = preview.settings[surface];
+    if (!setting || setting.endpoint !== HOSTED_READ_ENDPOINTS[surface] || !setting.before ||
+        !['configured', 'pending', 'available'].includes(setting.status) || setting.availability !== 'available' ||
+        setting.observations.length !== 2 || setting.observations.some(observation =>
+          observation.availability !== 'available' || observation.httpStatus !== 200 || observation.reason !== null ||
+          canonicalDigest(observation.value) !== canonicalDigest(setting.before))) fail('preview-readback-unqualified');
+  }
+  if (preview.settings.execution.before!.allowed_actions !== 'selected') fail('selected-action-transition-requires-new-readback');
+  if (canonicalDigest(preview.settings.immutable.desired) !== canonicalDigest({ enabled: true })) fail('immutable-enablement-only');
+  const proposals = [
+    { id: 'workflow', value: validateActionsPayload('workflow', preview.settings.workflow.desired) },
+    { id: 'allowlist', value: validateActionsPayload('selected-actions', preview.settings.allowlist.desired, preview.actionRegistry.references) },
+    { id: 'execution', value: validateActionsPayload('permissions', preview.settings.execution.desired) },
+    { id: 'immutable', value: validateImmutableReleaseEnablement(null) }
+  ] as const;
+  const operations: MigrationOperation[] = proposals.map(({ id, value }) => {
+    const selected = preview.settings[id];
+    if (!selected.proposal || canonicalDigest(selected.proposal) !== canonicalDigest(value) || !selected.desired) {
+      fail('preview-payload-mismatch');
+    }
+    return {
+      id: `configure-${id}`, endpointId: id, before: data(selected.before),
+      after: data({ ...selected.before, ...selected.desired }), payload: data(value.payload) as MigrationOperation['payload']
+    };
+  });
+  const proposal: MigrationProposal = {
+    identity: parseIdentity(expected.identity), observedAt: preview.startedAt,
+    registry: { schemaVersion: 1, repository, ownerType: 'User',
+      endpoints: proposals.map(({ id, value }) => ({ id, readMethod: 'GET', writeMethod: 'PUT', path: value.endpoint })) },
+    operations
+  };
+  return prepareHostedMigration(proposal, {
+    identity: expected.identity, proposalDigest: canonicalDigest(proposal),
+    validatorDigest: canonicalDigest({ schema: hostedSettingsSchemaSource, references: preview.actionRegistry.references })
+  }, now);
 }
 
 /**

@@ -13,7 +13,7 @@ import {
   digest, evaluateSecurityReport, identifier, parseIdentity, portableParts, SecurityEvidenceError,
   sha, type EvidenceIdentity, type SecurityReport
 } from './evidence.ts';
-import { reportRepositorySecurity, type ReportingExpectations, type ReportingProducerOutcome } from './reporting.ts';
+import { reportRepositorySecurity, writeSecurityJobSummary, type ReportingExpectations, type ReportingProducerOutcome } from './reporting.ts';
 import { codeqlWorkflowInvocation, createCodeqlReportingBundle, type SourceReportingInvocation } from './codeql-report-artifact.ts';
 import {
   generatedSecurityCases, materializeSecurityCase, sourceRoots,
@@ -1170,9 +1170,12 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
     const output = JSON.stringify(result);
     if (Buffer.byteLength(output) > 4 * 1024 * 1024) fail('codeql-producer-summary-size');
     process.stdout.write(`${output}\n`);
+    await writeSecurityJobSummary(result.reporting, 'codeql', process.env.GITHUB_STEP_SUMMARY);
     process.exitCode = result.analysisComplete ? result.findingsPassed ? 0 : 1 : 2;
   } catch (error) {
     process.stderr.write(`${JSON.stringify(codeqlFailureSummary(error))}\n`);
+    try { await writeSecurityJobSummary(null, 'codeql', process.env.GITHUB_STEP_SUMMARY); }
+    catch { process.stderr.write('Security job summary unavailable; analysis remains incomplete.\n'); }
     process.exitCode = 2;
   }
 }

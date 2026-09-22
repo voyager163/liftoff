@@ -4,14 +4,78 @@ import { SecurityEvidenceError } from '../scripts/repository-security/evidence.t
 import {
   applyHostedMigrationProduction, applyHostedMigrationSimulation, createMigrationSimulation,
   describeHostedMigration, diffHostedMigration, hostedMigrationProductionBoundary, HOSTED_MIGRATION_LIMITS,
-  inspectMigrationSimulation, prepareHostedMigration, type MigrationExpectations, type MigrationProposal,
+  inspectMigrationSimulation, prepareHostedMigration, prepareHostedSettingsMigration, type MigrationExpectations, type MigrationProposal,
   type MigrationSimulationConsent, type MigrationSimulationFault, type InMemoryMigrationTransport
 } from '../scripts/repository-security/hosted-migration.ts';
+import { HOSTED_READ_ENDPOINTS, loadHostedState } from '../scripts/repository-security/hosted-state.ts';
 
 const now = new Date('2026-09-20T12:00:00.000Z');
 const hash = `sha256:${'a'.repeat(64)}`;
 const otherHash = `sha256:${'b'.repeat(64)}`;
 const sentinel = 'DO_NOT_RETAIN_TRANSPORT_SECRET <script> [raw](https://invalid.example) \n';
+
+describe('endpoint-validated read-only settings preview integration', () => {
+  async function preview(mode: 'selected' | 'all' = 'selected') {
+    const references = ['actions/checkout@' + 'a'.repeat(40)];
+    const states = {
+      [HOSTED_READ_ENDPOINTS.execution]: { enabled: true, allowed_actions: mode, sha_pinning_required: false },
+      [HOSTED_READ_ENDPOINTS.allowlist]: { github_owned_allowed: true, verified_allowed: true, patterns_allowed: ['*'] },
+      [HOSTED_READ_ENDPOINTS.workflow]: { default_workflow_permissions: 'read', can_approve_pull_request_reviews: false },
+      [HOSTED_READ_ENDPOINTS.immutable]: { enabled: false, enforced_by_owner: false },
+      [HOSTED_READ_ENDPOINTS.forkApproval]: { approval_policy: 'first_time_contributors' }
+    };
+    const value = await loadHostedState({ async get(endpoint) {
+      return { kind: 'response', status: 200, body: JSON.stringify(states[endpoint]) };
+    } }, async () => JSON.stringify({ schemaVersion: 1, actions: references.map(reference => ({ reference, dependencies: [] })) }));
+    const expected = { identity: fixture().proposal.identity, previewDigest: canonicalDigest(value) };
+    return { value, expected, now: new Date(), states };
+  }
+  it('connects validated payloads and real before-state shapes to ordered, idempotent simulation only', async () => {
+    const input = await preview();
+    const plan = prepareHostedSettingsMigration(input.value, input.expected, input.now);
+    const metadata = describeHostedMigration(plan);
+    expect(metadata.operations.map(item => item.endpointId)).toEqual(['workflow', 'allowlist', 'execution', 'immutable']);
+    expect(metadata.productionEnabled).toBe(false);
+    expect(metadata.operations.at(-1)?.payloadDigest).toBe(canonicalDigest(null));
+    const registry = {
+      schemaVersion: 1 as const, repository: 'voyager163/liftoff' as const, ownerType: 'User' as const,
+      endpoints: (['workflow', 'allowlist', 'execution', 'immutable'] as const).map(id => ({
+        id, readMethod: 'GET' as const, writeMethod: 'PUT' as const, path: HOSTED_READ_ENDPOINTS[id]
+      }))
+    };
+    const transport = createMigrationSimulation({
+      registry, states: registry.endpoints.map(endpoint => ({
+        endpointId: endpoint.id, value: input.states[endpoint.path]
+      })), faults: []
+    });
+    const consent = { ...authorize(plan), approvedAt: input.now.toISOString(),
+      expiresAt: new Date(input.now.getTime() + 30 * 60_000).toISOString() };
+    expect(applyHostedMigrationSimulation(plan, consent, transport, input.now).status).toBe('completed');
+    const second = applyHostedMigrationSimulation(plan, consent, transport, input.now);
+    expect(second.operations.every(operation => operation.noop)).toBe(true);
+    expect(writes(transport).map(item => item.endpointId)).toEqual(['allowlist', 'execution', 'immutable']);
+    expect(inspectMigrationSimulation(transport).states.find(item => item.endpointId === 'immutable')?.digest)
+      .toBe(canonicalDigest({ enabled: true, enforced_by_owner: false }));
+  });
+  it('does not invent selected-action transition order when the mode or complete readback is unavailable', async () => {
+    const input = await preview('all');
+    expect(() => prepareHostedSettingsMigration(input.value, input.expected, input.now)).toThrow('transition-requires-new-readback');
+    input.value.readbackComplete = false;
+    input.expected.previewDigest = canonicalDigest(input.value);
+    expect(() => prepareHostedSettingsMigration(input.value, input.expected, input.now)).toThrow('preview-incomplete');
+  });
+  it.each(['drift', 'write-grant', 'weak-token', 'disable-immutable', 'stale'] as const)(
+    'rejects %s even when the caller hashes its own changed preview', async change => {
+    const input = await preview();
+    if (change === 'drift') input.value.settings.workflow.observations[0].value!.can_approve_pull_request_reviews = true;
+    if (change === 'write-grant') Object.assign(input.value, { applyAuthorized: true });
+    if (change === 'weak-token') input.value.settings.workflow.desired!.default_workflow_permissions = 'write';
+    if (change === 'disable-immutable') input.value.settings.immutable.desired!.enabled = false;
+    if (change === 'stale') input.now = new Date(input.now.getTime() + HOSTED_MIGRATION_LIMITS.snapshotAgeMs + 1);
+    input.expected.previewDigest = canonicalDigest(input.value);
+    expect(() => prepareHostedSettingsMigration(input.value, input.expected, input.now)).toThrow();
+  });
+});
 
 // Deliberately opaque synthetic data, NOT GitHub API payloads or payload-schema qualification.
 function fixture(count: 1 | 2 = 2) {
@@ -501,7 +565,9 @@ describe('local-only repository migration preparation and in-memory simulation',
     expect(() => prepare(hostile)).toThrow('invalid-or-oversized-data');
     expect(getter).not.toHaveBeenCalled();
     const cyclic = fixture();
-    Object.assign(cyclic.proposal.operations[0]!.payload, { cycle: cyclic.proposal });
+    const payload = cyclic.proposal.operations[0]!.payload;
+    if (payload === null) throw new Error('Expected an object-payload fixture.');
+    Object.assign(payload, { cycle: cyclic.proposal });
     expect(() => prepare(cyclic)).toThrow('invalid-or-oversized-data');
     const oversized = fixture();
     oversized.proposal.operations[0]!.payload = { text: 'a'.repeat(65_537) };

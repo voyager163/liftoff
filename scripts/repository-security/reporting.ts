@@ -2,6 +2,9 @@ import {
   digest, evaluateSecurityReport, findingDigest, identifier, parseIdentity, parseSecurityReport,
   record, SecurityEvidenceError, type EvidenceIdentity, type Policy, type SecurityReport, type Severity
 } from './evidence.ts';
+import { constants } from 'node:fs';
+import { lstat, open } from 'node:fs/promises';
+import path from 'node:path';
 
 export const REPORTING_LIMITS = Object.freeze({
   inputBytes: 4 * 1024 * 1024, outputBytes: 16 * 1024 * 1024,
@@ -495,6 +498,38 @@ function build(expectedValue: unknown, actualValue: unknown, now: Date) {
 }
 
 export type RepositorySecuritySummary = ReturnType<typeof build>;
+const issuedSummaries = new WeakMap<RepositorySecuritySummary, { json: string; markdown: string }>();
+
+/** Local Actions summary output only; this sends no notification or status API request. */
+export async function writeSecurityJobSummary(
+  summary: RepositorySecuritySummary | null, producer: 'codeql' | 'osv', output: string | undefined
+): Promise<void> {
+  if (output === undefined) return;
+  if (!['codeql', 'osv'].includes(producer) || !path.isAbsolute(output) || /[\0\r\n]/.test(output) ||
+      summary !== null && !issuedSummaries.has(summary)) fail('reporting-unverified-job-summary');
+  const issued = summary === null ? null : issuedSummaries.get(summary)!;
+  if (issued && JSON.stringify(safeData(summary, { bytes: 0, nodes: 0 })) !== issued.json) {
+    fail('reporting-mutated-job-summary');
+  }
+  const content = summary === null
+    ? `# ${producer === 'codeql' ? 'CodeQL' : 'Python/Go'} analysis incomplete\n\nThe producer did not return a complete validated report. Findings are not cleared; owner action is required. Fresh exact-release qualification is still mandatory. See the bounded job diagnostics. No publication or hosted enforcement is established.\n`
+    : issued!.markdown;
+  if (Buffer.byteLength(content) > 1024 * 1024) fail('reporting-job-summary-size');
+  let file;
+  try {
+    file = await open(output, constants.O_WRONLY | constants.O_APPEND | constants.O_CREAT |
+      (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0), 0o600);
+    const stat = await file.stat(), named = await lstat(output);
+    if (!stat.isFile() || named.isSymbolicLink() || named.dev !== stat.dev || named.ino !== stat.ino ||
+        stat.nlink !== 1 || stat.size + Buffer.byteLength(content) > 1024 * 1024) {
+      fail('reporting-job-summary-file');
+    }
+    await file.writeFile(content, 'utf8');
+  } catch (error) {
+    if (error instanceof SecurityEvidenceError) throw error;
+    return fail('reporting-job-summary-write');
+  } finally { await file?.close(); }
+}
 
 // Identifiers are allowlisted by evidence.ts; encode Markdown punctuation as well.
 const cell = (value: string | number | boolean | null) => value === null ? 'unknown'
@@ -555,6 +590,7 @@ export function reportRepositorySecurity(
     const json = `${JSON.stringify(summary, null, 2)}\n`;
     const rendered = markdown(summary);
     if (Buffer.byteLength(json) + Buffer.byteLength(rendered) > REPORTING_LIMITS.outputBytes) fail('reporting-output-limit');
+    issuedSummaries.set(summary, { json: JSON.stringify(summary), markdown: rendered });
     return { summary, json, markdown: rendered };
   } catch (error) {
     if (error instanceof SecurityEvidenceError) throw error;

@@ -1,4 +1,4 @@
-import { lstat, mkdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { loadManifest } from '../src/application/project/manifest.js';
@@ -10,6 +10,7 @@ import { CaptureStream } from './helpers.js';
 import { NodeCommandRunner, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
 import { frameworkFixtureStorage, frameworkProbeRecorder, frameworkStorageObservation } from './fixtures/framework-diagnostic.js';
+import { supportedStack } from '../src/supported-stack.js';
 
 const roots: string[] = [];
 const now = new Date('2026-09-13T12:00:00Z');
@@ -77,6 +78,15 @@ describe('real framework repair fixture', () => {
       resultUnchanged: true, completeFrameworkQualification: false
     }));
     expect(candidate.blockers).toEqual([]);
+    if (process.platform === 'win32' && process.env.LIFTOFF_CI_NPM_PREFIX) {
+      const npm = candidate.verificationPolicy.toolchain.find(tool => tool.id === 'npm');
+      const prefix = process.env.LIFTOFF_CI_NPM_PREFIX;
+      const cli = await realpath(path.join(prefix, 'node_modules', 'npm', 'bin', 'npm-cli.js'));
+      const declaration = await realpath(path.join(prefix, 'node_modules', 'npm', 'package.json'));
+      expect(npm?.version).toBe(supportedStack.packageManagers.npm.version);
+      expect(npm?.prefixArgs[0] === cli).toBe(true);
+      expect(npm?.files.some(file => file.path === declaration)).toBe(true);
+    }
     expect(candidate.report.status).toBe('proposed');
     expect(candidate.verificationPolicy.effects.preparation).toBe(true);
     expect(candidate.verificationPolicy.preparation).toHaveLength(2);

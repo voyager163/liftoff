@@ -12,6 +12,27 @@ const capabilities = [
 ];
 
 describe('repository hardening baseline and acceptance plan', () => {
+  it('keeps source-only hosted policy and migration outside packaged generated-project governance', async () => {
+    const pkg = JSON.parse(await readFile(path.join(root, 'package.json'), 'utf8'));
+    for (const sourceOnly of ['security', 'scripts/repository-security', '.github']) {
+      expect(pkg.files).not.toContain(sourceOnly);
+      expect(pkg.files).not.toContain(`${sourceOnly}/**`);
+    }
+    for (const name of ['activation-v2-graph.json', 'assessment-controls.json']) {
+      const source = await readFile(path.join(root, 'assets', 'governance', 'single-maintainer-gitflow', name), 'utf8');
+      expect(source).not.toContain('/repos/voyager163/liftoff/');
+      expect(source).not.toContain('scripts/preview-hosted-settings.mjs');
+      expect(source).not.toContain('scripts/repository-security/hosted-migration.ts');
+    }
+    const registry = JSON.parse(await readFile(path.join(root, 'security', 'control-plane.json'), 'utf8'));
+    for (const parts of [
+      ['scripts', 'repository-security', 'hosted-migration.ts'],
+      ['scripts', 'repository-security', 'hosted-settings-schema.ts'],
+      ['scripts', 'repository-security', 'hosted-state.ts']
+    ]) expect(registry.controlInputs).toContainEqual(parts);
+    // No app configuration is needed for repository security data.
+    expect(existsSync(path.join(root, '.github', 'github-app.yml'))).toBe(false);
+  });
   it('records explicit owner consent only for the monitored private conduct contact', async () => {
     const contact = JSON.parse(await readFile(path.join(root, 'security', 'community-contact.json'), 'utf8'));
     expect(contact).toMatchObject({

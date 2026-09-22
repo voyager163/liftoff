@@ -3,7 +3,7 @@ import { appendFile, lstat, readFile, realpath, writeFile } from 'node:fs/promis
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseNpmCandidate, verifyCandidateBytes } from './repository-security/npm-release.ts';
-import { releaseReadiness } from './repository-security/npm-release-operation.ts';
+import { releaseReadiness, verifyReleaseProvenance } from './repository-security/npm-release-operation.ts';
 import { canonicalDigest } from './repository-security/admission.ts';
 
 async function boundedFile(root, name, maximum) {
@@ -29,13 +29,32 @@ export async function readCandidateBundle(directory) {
 }
 
 export async function main(args, env = process.env) {
-  if (args.length !== 1 || !['readiness', 'assemble', 'npm', 'canonical', 'finalize'].includes(args[0])) {
-    throw new Error('Usage: node scripts/release-coordinator.mjs <readiness|assemble|npm|canonical|finalize>');
+  if (args.length !== 1 || !['readiness', 'provenance', 'assemble', 'npm', 'canonical', 'finalize'].includes(args[0])) {
+    throw new Error('Usage: node scripts/release-coordinator.mjs <readiness|provenance|assemble|npm|canonical|finalize>');
   }
   const { candidate } = await readCandidateBundle(env.LIFTOFF_RELEASE_BUNDLE);
   if (env.GITHUB_REPOSITORY !== 'voyager163/liftoff' || !['true', 'false'].includes(env.LIFTOFF_RELEASE_DRY_RUN ?? '') ||
       !['workflow_dispatch', 'push', 'pull_request'].includes(env.GITHUB_EVENT_NAME ?? '')) {
     throw new Error('Missing or invalid workflow invocation context.');
+  }
+  let provenance;
+  if (args[0] === 'provenance' || args[0] === 'readiness' && env.LIFTOFF_RELEASE_PROVENANCE_BUNDLE) {
+    if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REF !== 'refs/heads/main' ||
+        env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || !env.LIFTOFF_RELEASE_PROVENANCE_BUNDLE) {
+      throw new Error('Provenance verification requires the exact release invocation and an explicit signed bundle.');
+    }
+    provenance = await verifyReleaseProvenance({
+      candidate, tarballPath: path.join(env.LIFTOFF_RELEASE_BUNDLE, candidate.artifact.filename),
+      bundlePath: env.LIFTOFF_RELEASE_PROVENANCE_BUNDLE,
+      identity: { repository: env.GITHUB_REPOSITORY, event: env.GITHUB_EVENT_NAME,
+        sourceSha: env.GITHUB_SHA, workflowSha: env.GITHUB_WORKFLOW_SHA,
+        runId: env.GITHUB_RUN_ID, attempt: Number(env.GITHUB_RUN_ATTEMPT) }
+    }, new Date());
+    if (args[0] === 'provenance') {
+      await writeFile(path.join(env.LIFTOFF_RELEASE_BUNDLE, 'verified-provenance-observation.json'),
+        `${JSON.stringify(provenance, null, 2)}\n`, { flag: 'wx', mode: 0o600 });
+      return provenance;
+    }
   }
   if (args[0] === 'canonical') {
     if (candidate.source.dirty || candidate.source.commit !== env.GITHUB_SHA ||
@@ -65,8 +84,9 @@ export async function main(args, env = process.env) {
   const feasibility = JSON.parse(await readFile(path.join(process.cwd(), 'security', 'publisher-feasibility.json'), 'utf8'));
   const readiness = releaseReadiness(candidate, feasibility, {
     event: env.GITHUB_EVENT_NAME, ref: env.GITHUB_REF,
-    sourceSha: env.GITHUB_SHA, dryRun: env.LIFTOFF_RELEASE_DRY_RUN === 'true'
-  });
+    sourceSha: env.GITHUB_SHA, dryRun: env.LIFTOFF_RELEASE_DRY_RUN === 'true',
+    workflowSha: env.GITHUB_WORKFLOW_SHA, runId: env.GITHUB_RUN_ID, attempt: Number(env.GITHUB_RUN_ATTEMPT)
+  }, provenance);
   if (args[0] === 'readiness') {
     if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, 'publication-authorized=false\n');
     console.log(JSON.stringify(readiness, null, 2));
