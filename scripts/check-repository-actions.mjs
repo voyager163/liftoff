@@ -33,7 +33,7 @@ try {
     verifyWorkflowBoundaries(workflow, {
       actions,
       ...(parts[2] === 'codeql.yml' ? { reportingJobs: { pullRequest: 'report-pr', protectedRef: 'report-protected' } } : {}),
-      ...(parts[2] === 'release.yml' ? { publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'] } : {})
+      ...(parts[2] === 'release.yml' ? { publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'], readbackJob: 'qualification' } : {})
     });
     references.push(...workflowActionReferences(workflow));
   }

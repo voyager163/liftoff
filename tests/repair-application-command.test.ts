@@ -17,10 +17,25 @@ import type { UpdateApprovalPrompt } from '../src/application/update/approval.js
 import { CaptureStream, scriptedTtyInput, ttyCaptureStream } from './helpers.js';
 
 const roots: string[] = [];
+type FlowObservation = {
+  started: number; phase: 'fixture' | 'inventory' | 'preview' | 'reject-unverified' | 'verification' | 'apply' | 'readback' | 'complete';
+  commandStarted: boolean; commandReturned: boolean; treeSettled: boolean | null; commandTimedOut: boolean | null;
+};
+let flowObservation: FlowObservation | undefined;
 const now = new Date('2026-09-13T12:00:00Z');
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  const observation = flowObservation; flowObservation = undefined;
+  const registered = roots.splice(0);
+  const retain = observation !== undefined && observation.phase !== 'complete';
+  if (process.platform === 'win32' && observation) console.log(JSON.stringify({
+    kind: 'native-windows-repair-command-flow', phase: observation.phase,
+    elapsedMs: Math.trunc(performance.now() - observation.started),
+    commandStarted: observation.commandStarted, commandReturned: observation.commandReturned,
+    treeSettled: observation.treeSettled, commandTimedOut: observation.commandTimedOut,
+    retainedOwnedRoots: retain ? registered.length : 0, rawPathsRecorded: false, processOutputRecorded: false
+  }));
+  if (!retain) for (const root of registered) await rm(root, { recursive: true, force: true });
 });
 
 async function put(root: string, parts: string[], content: string) {
@@ -123,20 +138,38 @@ async function interactive(
 
 describe('installed application-patch command flow', () => {
   it('inventories, previews, independently verifies actual behavior and applies one exact JSON transaction', async () => {
+    const observation: FlowObservation = {
+      started: performance.now(), phase: 'fixture',
+      commandStarted: false, commandReturned: false, treeSettled: null, commandTimedOut: null
+    };
+    flowObservation = observation;
     const project = await fixture(), runner = new Runner();
+    const execute = runner.run.bind(runner);
+    runner.run = async (command, options) => {
+      observation.commandStarted = true;
+      const result = await execute(command, options);
+      observation.commandReturned = true;
+      observation.treeSettled = result.processTreeSettled ?? null;
+      observation.commandTimedOut = result.timedOut;
+      return result;
+    };
+    observation.phase = 'inventory';
     const inventory = await json(project, ['--inspect-layout'], runner);
     expect(inventory.code).toBe(0);
     expect(inventory.report).toMatchObject({ schemaVersion: 2, status: 'inspected', committed: false, application: { complete: true } });
+    observation.phase = 'preview';
     const preview = await json(project, ['--check', '--application-patch', project.patch], runner);
     expect(preview.report.blockers).toEqual([]);
     expect(preview.report.status).toBe('available');
     expect(preview.report.identity.recipe.id).toBe('application-layout-patch');
     expect(runner.calls).toEqual([]);
     const fingerprint = preview.report.fingerprint;
+    observation.phase = 'reject-unverified';
     const missingVerification = await json(project, ['--approve-plan', fingerprint], runner);
     expect(missingVerification.code).toBe(2);
     expect(missingVerification.report.committed).toBe(false);
     expect(runner.calls).toEqual([]);
+    observation.phase = 'verification';
     const verified = await json(project, ['--verify-plan', fingerprint], runner);
     expect(verified.report.blockers).toEqual([]);
     expect(verified.code).toBe(0);
@@ -144,10 +177,12 @@ describe('installed application-patch command flow', () => {
     expect(runner.calls).toHaveLength(1);
     expect(path.relative(project.root, runner.calls[0].options!.cwd!).startsWith('..')).toBe(true);
     expect(await readFile(path.join(project.root, ...project.source), 'utf8')).toBe(project.sourceBytes);
+    observation.phase = 'apply';
     const applied = await json(project, ['--approve-plan', fingerprint], runner);
     expect(applied.report.blockers).toEqual([]);
     expect(applied.code).toBe(0);
     expect(applied.report).toMatchObject({ status: 'applied', committed: true, repairScopeComplete: true, verification: 'passed' });
+    observation.phase = 'readback';
     expect(runner.calls).toHaveLength(1);
     expect(await readFile(path.join(project.root, ...project.target), 'utf8')).toBe(project.sourceBytes);
     expect(await readFile(path.join(project.root, ...project.check), 'utf8')).toBe(project.newTest);
@@ -158,6 +193,7 @@ describe('installed application-patch command flow', () => {
     const history = JSON.parse(await readFile(path.join(applied.report.historyPath, 'receipt.json'), 'utf8'));
     expect(history).toMatchObject({ schemaVersion: 2, repairContractVersion: 1, recipe: { id: 'application-layout-patch', version: 1 }, activationEvidence: 'not-issued' });
     expect(path.relative(project.root, applied.report.backupPath).startsWith('..')).toBe(true);
+    observation.phase = 'complete';
   }, 30_000);
 
   it('runs normal human repair through separate default-No script, network and file prompts without hash entry', async () => {

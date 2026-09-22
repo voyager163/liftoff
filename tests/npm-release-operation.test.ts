@@ -8,7 +8,8 @@ import { canonicalDigest } from '../scripts/repository-security/admission.ts';
 import { artifactHashes, type NpmCandidate, type ReleaseEvidence, type ReleaseObservation, type TrustedReleaseContext } from '../scripts/repository-security/npm-release.ts';
 import {
   executeReleasePhase, npmPublicationArguments, prepareReleaseOperation, releaseReadiness,
-  ReleasePhaseError, verifyReleaseProvenance, type CanonicalReleaseReceipt, type PublisherAuthority, type ReleaseTransport
+  ReleasePhaseError, verifyReleaseProvenance, verifyReleaseRunReadback,
+  type CanonicalReleaseReceipt, type PublisherAuthority, type ReleaseTransport
 } from '../scripts/repository-security/npm-release-operation.ts';
 import { planTagProtection } from '../scripts/repository-security/tag-policy.ts';
 import { createReleaseChecksums } from '../scripts/repository-security/github-release.ts';
@@ -16,6 +17,97 @@ import { createReleaseChecksums } from '../scripts/repository-security/github-re
 const now = new Date('2026-09-20T12:00:00.000Z');
 const commit = 'a'.repeat(40), digest = `sha256:${'a'.repeat(64)}`;
 const hash = (bytes: Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
+
+describe('fixed read-only release workflow metadata adapter', () => {
+  function readbackFixture() {
+    const { input } = fixture();
+    const identity = { repository: 'voyager163/liftoff', event: 'workflow_dispatch' as const,
+      sourceSha: commit, workflowSha: commit, runId: '123', attempt: 1 };
+    const prefix = '/repos/voyager163/liftoff';
+    const run = {
+      id: 123, run_attempt: 1, head_sha: commit, head_branch: 'main', event: 'workflow_dispatch',
+      path: '.github/workflows/release.yml', repository: { full_name: identity.repository },
+      head_repository: { full_name: identity.repository }, status: 'in_progress', conclusion: null
+    };
+    const job = {
+      id: 456, name: 'Build and inspect exact npm candidate', run_id: 123, run_attempt: 1, head_sha: commit,
+      status: 'completed', conclusion: 'success', completed_at: '2026-09-20T11:30:00Z',
+      check_run_url: 'https://api.github.com/repos/voyager163/liftoff/check-runs/789'
+    };
+    const branch = { name: 'main', protected: true, commit: { sha: commit } };
+    const artifact = {
+      id: 987, name: 'npm-candidate-123-1', expired: false, size_in_bytes: 4096, digest,
+      created_at: '2026-09-20T11:25:00Z', workflow_run: { id: 123, head_sha: commit, head_branch: 'main' }
+    };
+    const check = { id: 789, name: job.name, head_sha: commit, status: 'completed', conclusion: 'success',
+      app: { id: 15368, slug: 'github-actions' } };
+    const jobs = { total_count: 1, jobs: [job] };
+    const values: Record<string, unknown> = {
+      [`${prefix}/branches/main`]: branch, [`${prefix}/actions/runs/123`]: run,
+      [`${prefix}/actions/runs/123/attempts/1/jobs?per_page=100`]: jobs,
+      [`${prefix}/check-runs/789`]: check, [`${prefix}/actions/artifacts/987`]: artifact
+    };
+    const calls: string[][] = [];
+    const execute: Parameters<typeof verifyReleaseRunReadback>[4] = (_command, args, options) => {
+      calls.push([...args]);
+      expect(options).toMatchObject({ shell: false, timeout: 15_000, maxBuffer: 1024 * 1024 });
+      expect(args).toContain('GET'); expect(args).not.toContain('--field');
+      const result = values[args.at(-1)!];
+      if (!result) throw new Error('Unregistered fixture endpoint');
+      const stdout = JSON.stringify(result);
+      return { pid: 1, output: [null, stdout, ''], stdout, stderr: '', status: 0, signal: null };
+    };
+    return { input, identity, branch, run, job, jobs, check, artifact, calls, execute };
+  }
+  it('binds branch/run/attempt/check App and artifact origin with two-pass drift checks and no write transport', () => {
+    const f = readbackFixture();
+    const observed = verifyReleaseRunReadback(f.input.candidate, f.identity, '987', now, f.execute);
+    expect(observed).toMatchObject({ protectedMainObserved: true, producerJobId: 456, producerAppId: 15368,
+      artifactId: '987', artifactArchiveDigest: digest, candidateContentsAuthenticated: false,
+      workflowContentAttestedByApp: false, publicationAuthorized: false });
+    expect(f.calls).toHaveLength(7);
+    const invocation = { ...f.identity, ref: 'refs/heads/main', dryRun: true };
+    const readiness = releaseReadiness(f.input.candidate, {}, invocation, undefined, now, observed);
+    expect(readiness.blockers).not.toContain('authenticated-protected-main-and-current-run-readback');
+    expect(readiness.blockers).toContain('authenticated-release-producer-receipts-under-adopted-policy');
+    expect(readiness.publicationAuthorized).toBe(false);
+    expect(() => releaseReadiness(f.input.candidate, {}, invocation, undefined, now, structuredClone(observed)))
+      .toThrow('unverified-run-readback');
+    expect(() => releaseReadiness(f.input.candidate, {}, invocation, undefined, new Date(now.getTime() + 60_001), observed))
+      .toThrow('unverified-run-readback');
+  });
+  it.each([
+    'unprotected', 'changed-main', 'fork', 'attempt', 'workflow', 'incomplete-jobs', 'duplicate-producer',
+    'producer-failed', 'wrong-app', 'artifact-from-other-run', 'expired-artifact', 'old-artifact', 'check-url'
+  ])('rejects %s metadata without synthesizing a producer success', change => {
+    const f = readbackFixture();
+    if (change === 'unprotected') f.branch.protected = false;
+    if (change === 'changed-main') f.branch.commit.sha = 'b'.repeat(40);
+    if (change === 'fork') f.run.head_repository.full_name = 'someone/fork';
+    if (change === 'attempt') f.run.run_attempt = 2;
+    if (change === 'workflow') f.run.path = '.github/workflows/other.yml';
+    if (change === 'incomplete-jobs') f.jobs.total_count = 2;
+    if (change === 'duplicate-producer') { f.jobs.total_count = 2; f.jobs.jobs.push({ ...f.job, id: 457 }); }
+    if (change === 'producer-failed') f.job.conclusion = 'failure';
+    if (change === 'wrong-app') f.check.app.id = 1;
+    if (change === 'artifact-from-other-run') f.artifact.workflow_run.id = 124;
+    if (change === 'expired-artifact') f.artifact.expired = true;
+    if (change === 'old-artifact') f.artifact.created_at = '2026-09-19T11:25:00Z';
+    if (change === 'check-url') f.job.check_run_url = 'https://untrusted.invalid/private';
+    expect(() => verifyReleaseRunReadback(f.input.candidate, f.identity, '987', now, f.execute)).toThrow();
+    expect(f.calls.every(args => args.at(-1)!.startsWith('/repos/voyager163/liftoff/'))).toBe(true);
+  });
+  it('rejects drift on the final main read and withholds transport error content', () => {
+    const f = readbackFixture();
+    const drift: NonNullable<Parameters<typeof verifyReleaseRunReadback>[4]> = (command, args, options) => {
+      if (f.calls.length === 5) f.branch.commit.sha = 'b'.repeat(40);
+      return f.execute!(command, args, options);
+    };
+    expect(() => verifyReleaseRunReadback(f.input.candidate, f.identity, '987', now, drift)).toThrow('protected-main');
+    expect(() => verifyReleaseRunReadback(f.input.candidate, f.identity, '987', now,
+      () => { throw new Error('PRIVATE_TRANSPORT_SENTINEL'); })).toThrow('readback-transport');
+  });
+});
 
 describe('read-only signed provenance consumption (synthetic verifier output only)', () => {
   async function observationFixture() {

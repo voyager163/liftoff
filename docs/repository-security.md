@@ -299,6 +299,28 @@ declaration; POSIX PATH selection and production admission are unchanged.
 Documentation example parsing now covers both LF and CRLF without dropping
 content assertions. These local corrections are not a new hosted pass.
 
+The subsequent exact native run did prove the original Windows boundary suite:
+1,588 passed and 24 skipped, with the real filtered npm probe selecting stable
+12.0.2 bytes and the matching declaration. All three resolved framework checks
+fit the observed cwd limit. Linux and macOS full checks passed, including native
+Go preparation on macOS; the earlier transient Go inspection error is retained
+without claiming its cause was diagnosed.
+
+Windows then reached the full package suite and exposed 60 failures, not full
+acceptance: 47 share the isolated Git read boundary, ten are preparation-fixture
+verification assertions, and three concern a native-mode assertion, CRLF spec
+lookup and a 30-second command-flow test timeout. The prepared fixes retain
+global Git isolation while using the existing Git-for-Windows `NUL` convention,
+select only owned canonical bounded test storage, and normalize spec line
+endings without changing scenario coverage. Git read failures expose only a
+finite operation/code/category, never command output or paths; those metadata
+remain necessary if the shared failure persists. The offline CodeQL fixture
+asserts ownership/identity on Windows and explicitly rejects unsupported native
+tool qualification rather than pretending POSIX modes establish Windows ACLs.
+The command-flow deadline is unchanged; its same invocation records bounded
+phases/settlement, preserving an unfinished owned root instead of deleting
+uncertain work. None of these local follow-ups is a passing full Windows result.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
@@ -1023,6 +1045,13 @@ writer accepts only summaries issued by the local reporting evaluator, rejects
 unsafe/oversized output files, and uses no issue, comment, notification or status
 API. These human-readable results do not authenticate producers or complete the
 remaining multi-producer admission/recurrence qualification.
+If the expected Python/Go graph set is present but one analysis errors, the
+summary now preserves successfully completed graphs' findings and lower-severity
+owners beside the exact incomplete graph. Its unobserved database is labelled
+unobserved, its finding count is unknown rather than zero, and the overall
+finding result remains incomplete. Missing graphs or a global driver error
+cannot be converted into a complete summary. No rerun, notification API action
+or policy waiver is triggered by that reporting.
 Full hosted template execution, authenticated current-run receipts and
 verifiable build provenance remain incomplete. A dirty local descriptor and an
 unsigned build record still cannot authorize publication.
@@ -1038,6 +1067,21 @@ provenance dependency. No signing action, OIDC enrollment, attestation upload or
 publication transport is enabled by this consumer. Its deterministic verifier
 tests are not evidence of an actual signed release, and adopted-policy, scanner,
 publisher and hosted-producer qualification remain required.
+
+Release qualification now has a fixed GET-only metadata adapter for the current
+protected `main` commit, exact manual release run/attempt, successful candidate
+job and GitHub Actions check identity, and the current producer artifact ID,
+digest and timestamps. It rechecks branch/run drift and rejects incomplete job
+pagination, another workflow, forks, stale artifacts and changed attempts.
+Only this qualification job receives `actions: read`, in addition to
+`contents: read`; it has no publisher environment or OIDC permission. Its
+existing current-run artifact ID is supplied directly by the build job. This
+readback establishes neither artifact contents nor workflow-content attestation
+from the App name, and cannot replace fresh adopted-policy scanner evidence.
+Readiness accepts only the fresh in-process result, not a serialized claim.
+The publication boundary remains disabled pending the other qualified producers
+and publisher identity. No release run was dispatched to qualify these local
+adapter tests.
 
 Package smoke failures retain only bounded stage, command index, operation and
 failure category at the coordinator boundary; subprocess output is withheld.

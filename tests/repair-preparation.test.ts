@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { chmod, copyFile, lstat, mkdir, readFile, rm, symlink } from 'node:fs/promises';
 import path from 'node:path';
+import os from 'node:os';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, inspectApplicationPatch, applicationCandidateDigest, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
 import { applicationPreparationSupport } from '../src/application/repair/application-preparation-policy.js';
@@ -9,10 +10,12 @@ import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../sr
 import { applicationVerificationFixtureContext, putApplicationFixtureFile } from './fixtures/repair-application.js';
 import { createPreparationFixture, type PreparationFixture } from './fixtures/repair-preparation.js';
 import type { ApplicationPatchCandidate } from '../src/application/repair/application-types.js';
+import { createOwnedFixtureRoot } from './fixtures/owned-root.js';
 
 const roots: string[] = [];
 async function fixture(options: Parameters<typeof createPreparationFixture>[1] = {}) {
-  const root = path.resolve(`.repair preparation ${randomUUID()}`);
+  const root = process.platform === 'win32'
+    ? (await createOwnedFixtureRoot(os.tmpdir(), 'lf prep-')).name : path.resolve(`.repair preparation ${randomUUID()}`);
   roots.push(root);
   return createPreparationFixture(root, options);
 }
@@ -183,7 +186,7 @@ describe('registered locked preparation input and tool contracts', () => {
     const env = { ...process.env, PATH: [tools, process.env.PATH ?? ''].join(path.delimiter) };
     const baseline = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
     expect(baseline.blockers).toEqual([]);
-    const probes: CommandRunner = { run: vi.fn(async (command) => successful(command,
+    const probes: CommandRunner = { run: vi.fn(async (command: CommandResult['command']) => successful(command,
       command.args.some((arg) => arg.endsWith('npm-cli.js'))
         ? baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'npm')!.version
         : baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'node')!.version)) };

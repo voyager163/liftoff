@@ -52,6 +52,15 @@ describe('full declared non-npm assessment accounting', () => {
       status: 'error', code: 'osv-unknown-severity', passed: false };
     expect(summarizeRepositoryOsv(identity, inputs, values, [], now))
       .toMatchObject({ analysisComplete: false, findingsPassed: null, missingGraphs: [] });
+    const partial = summarizeRepositoryOsv(identity, inputs, values, [], now);
+    expect(partial.reporting?.analysis).toMatchObject({ status: 'incomplete', expectedCount: 4, completeCount: 3 });
+    expect(partial.reporting?.producers.find(item => item.id === 'go-backend')).toMatchObject({
+      analysis: 'error', findingCount: null, reportedFindingsStatus: 'not-evaluated',
+      tool: { database: 'not-observed-analysis-incomplete' }
+    });
+    expect(partial.reporting?.notifications).toContainEqual(expect.objectContaining({
+      id: 'go-backend', reason: 'analysis-incomplete', action: 'rerun-exact-scope'
+    }));
     expect(summarizeRepositoryOsv(identity, inputs, complete(), ['osv-api-unavailable'], now).analysisComplete).toBe(false);
   });
 
@@ -87,6 +96,30 @@ describe('full declared non-npm assessment accounting', () => {
     expect(reported.ownerActions).toContainEqual({
       owner: 'voyager163', graph: first.graph, action: 'triage-blocking-findings'
     });
+  });
+  it('retains completed findings and lower-severity owners when another scheduled graph fails', () => {
+    const values = complete(), identityForSchedule = { ...identity, event: 'schedule' as const };
+    for (const value of values) if (value.status === 'complete') value.report.identity = identityForSchedule;
+    const first = values[0]!;
+    if (first.status !== 'complete') throw new Error('Expected a complete fixture.');
+    first.report.findings.push({
+      id: 'tracked-advisory', kind: 'vulnerability', tool: 'osv-scanner', rule: 'GHSA-fixture',
+      scope: first.graph, component: 'fixture', version: '1.0.0', chains: [['root', 'fixture']],
+      location: ['fixture.lock'], artifactDigest: hash, severity: 'low', owner: 'voyager163'
+    });
+    first.tracked = 1;
+    values[3] = { graph: 'go-backend', components: 1, inputDigest: hash,
+      status: 'error', code: 'osv-api-response-rejected', passed: false };
+    const result = summarizeRepositoryOsv(identityForSchedule, inputs, values, [], now);
+    expect(result.analysisComplete).toBe(false);
+    expect(result.findingsPassed).toBeNull();
+    expect(result.reporting?.actualFindings).toMatchObject({
+      reportedStatus: 'incomplete', observedCount: 1, coverageComplete: false
+    });
+    expect(result.reporting?.notifications).toContainEqual(expect.objectContaining({
+      reason: 'lower-severity-triage', owner: 'voyager163'
+    }));
+    expect(result.reporting?.recurrence.status).toBe('owner-action-required');
   });
 });
 

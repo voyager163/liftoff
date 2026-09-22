@@ -4,6 +4,7 @@ interface WorkflowPolicy {
   actions: readonly { repository: string; commit: string }[];
   publisherJob?: string;
   publicationJobs?: readonly string[];
+  readbackJob?: string;
   reportingJobs?: { pullRequest: string; protectedRef: string };
 }
 
@@ -16,10 +17,11 @@ function object(value: unknown): Record<string, unknown> {
   return value as Record<string, unknown>;
 }
 
-function readonlyPermissions(value: unknown, publisher: boolean, sourceReporter = false): void {
+function readonlyPermissions(value: unknown, publisher: boolean, sourceReporter = false, readback = false): void {
   const permissions = object(value);
   const expected = publisher ? { contents: 'read', 'id-token': 'write' }
-    : sourceReporter ? { contents: 'read', 'security-events': 'write' } : { contents: 'read' };
+    : sourceReporter ? { contents: 'read', 'security-events': 'write' }
+      : readback ? { contents: 'read', actions: 'read' } : { contents: 'read' };
   if (Object.keys(permissions).length !== Object.keys(expected).length ||
       Object.entries(expected).some(([key, value]) => permissions[key] !== value)) {
     throw new SecurityEvidenceError('excess-workflow-permissions');
@@ -87,6 +89,8 @@ export function verifyWorkflowBoundaries(value: unknown, policy: WorkflowPolicy)
       ![policy.reportingJobs.pullRequest, policy.reportingJobs.protectedRef].every(name => name in jobs))) {
     throw new SecurityEvidenceError('invalid-reporting-job-registration');
   }
+  if (policy.readbackJob && (!policy.publicationJobs?.length || !(policy.readbackJob in jobs) ||
+      policy.publicationJobs.includes(policy.readbackJob))) throw new SecurityEvidenceError('invalid-readback-job-registration');
   for (const [jobId, value] of Object.entries(jobs)) {
     const job = object(value);
     const publisher = jobId === policy.publisherJob;
@@ -94,8 +98,10 @@ export function verifyWorkflowBoundaries(value: unknown, policy: WorkflowPolicy)
     const prReporter = policy.reportingJobs?.pullRequest === jobId;
     const protectedReporter = policy.reportingJobs?.protectedRef === jobId;
     const reporter = prReporter || protectedReporter;
-    if (job.permissions !== undefined) readonlyPermissions(job.permissions, publisher, protectedReporter);
-    else if (publisher || reporter) throw new SecurityEvidenceError('missing-publisher-permissions');
+    const readback = policy.readbackJob === jobId;
+    if (job.permissions !== undefined) readonlyPermissions(job.permissions, publisher, protectedReporter, readback);
+    else if (publisher || reporter || readback) throw new SecurityEvidenceError('missing-publisher-permissions');
+    if (readback && (job.environment !== undefined || job.needs !== 'validate')) throw new SecurityEvidenceError('unbound-readback-job');
     if (reporter && (job.if !== (prReporter ? CODEQL_PR_REPORT_CONDITION : CODEQL_PROTECTED_REPORT_CONDITION) ||
         job.needs !== 'producer' || job.environment !== undefined)) throw new SecurityEvidenceError('unbound-source-reporting-job');
     if (job.environment !== undefined && (!publication || job.environment !== 'npm-publisher')) {

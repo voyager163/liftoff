@@ -18,10 +18,15 @@ describe('release workflow', () => {
     expect(workflow.permissions).toEqual({ contents: 'read' });
     expect(workflow.concurrency).toEqual({ group: 'release-liftoff', 'cancel-in-progress': false });
     expect(workflow.env.LIFTOFF_TELEMETRY).toBe('0');
-    for (const name of ['validate', 'qualification', 'canonical-verify']) {
+    for (const name of ['validate', 'canonical-verify']) {
       expect(workflow.jobs[name].permissions).toEqual({ contents: 'read' });
       expect(workflow.jobs[name].environment).toBeUndefined();
     }
+    expect(workflow.jobs.qualification.permissions).toEqual({ contents: 'read', actions: 'read' });
+    expect(workflow.jobs.qualification.environment).toBeUndefined();
+    const gate = workflow.jobs.qualification.steps.find((step: { id?: string }) => step.id === 'gate');
+    expect(gate.env.LIFTOFF_RELEASE_CANDIDATE_ARTIFACT_ID).toBe('${{ needs.validate.outputs.artifact-id }}');
+    expect(gate.env.GH_TOKEN).toBe('${{ github.token }}');
     for (const name of ['assemble', 'publish', 'finalize']) {
       expect(workflow.jobs[name].if).toContain("github.ref == 'refs/heads/main'");
       expect(workflow.jobs[name].if).toContain("github.event_name == 'workflow_dispatch'");

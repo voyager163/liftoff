@@ -231,6 +231,11 @@ describe('pack-once coordinator with synthetic subprocesses', () => {
         for (const name of ['GIT_DIR', 'GIT_WORK_TREE', 'GIT_COMMON_DIR', 'GIT_INDEX_FILE', 'GIT_OBJECT_DIRECTORY',
           'GIT_ALTERNATE_OBJECT_DIRECTORIES', 'GIT_CONFIG_PARAMETERS']) expect(env[name]).toBeUndefined();
         expect(env.GIT_CONFIG_NOSYSTEM).toBe('1');
+        const gitNull = process.platform === 'win32' ? 'NUL' : os.devNull;
+        expect(env.GIT_CONFIG_SYSTEM).toBe(gitNull);
+        expect(env.GIT_CONFIG_GLOBAL).toBe(gitNull);
+        expect(env.GIT_CONFIG_KEY_1).toBe('core.hooksPath');
+        expect(env.GIT_CONFIG_VALUE_1).toBe(gitNull);
         expect(env.GIT_NO_REPLACE_OBJECTS).toBe('1');
         expect(env.GIT_NO_LAZY_FETCH).toBe('1');
         if (args[0] === 'rev-parse' && args[1] === '--show-toplevel') {

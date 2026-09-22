@@ -92,6 +92,7 @@ jobs:
     timeout-minutes: 10
     permissions:
       contents: read
+      actions: read
     outputs:
       publication-authorized: ${{ steps.gate.outputs.publication-authorized }}
     steps:
@@ -112,6 +113,8 @@ jobs:
         id: gate
         env:
           LIFTOFF_RELEASE_BUNDLE: ${{ runner.temp }}/release-candidate
+          LIFTOFF_RELEASE_CANDIDATE_ARTIFACT_ID: ${{ needs.validate.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
         run: node scripts/release-coordinator.mjs readiness
 
   assemble:

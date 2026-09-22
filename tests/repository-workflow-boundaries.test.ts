@@ -100,7 +100,7 @@ describe('checked-in workflow privilege boundaries', () => {
     'checks actual %s boundary without claiming hosted enforcement or nested-action qualification', async name => {
       const value: unknown = parse(await readFile(path.join(process.cwd(), '.github', 'workflows', name), 'utf8'));
       expect(() => verifyWorkflowBoundaries(value, { actions, ...(name === 'release.yml'
-        ? { publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'] } : {}),
+        ? { publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'], readbackJob: 'qualification' } : {}),
         ...(name === 'codeql.yml' ? { reportingJobs: { pullRequest: 'report-pr', protectedRef: 'report-protected' } } : {}) }))
         .not.toThrow();
     });
@@ -127,6 +127,22 @@ describe('checked-in workflow privilege boundaries', () => {
     expect(() => verifyWorkflowBoundaries({
       ...value, jobs: { test: { ...value.jobs.test, permissions: { contents: 'read', 'id-token': 'write' } } }
     }, { actions })).toThrow('excess-workflow-permissions');
+  });
+  it('allows Actions read only in the registered release readback job, never as a publisher credential', async () => {
+    const workflow = parse(await readFile(path.join(process.cwd(), '.github', 'workflows', 'release.yml'), 'utf8'));
+    const policy = { actions, publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'],
+      readbackJob: 'qualification' };
+    expect(() => verifyWorkflowBoundaries(workflow, policy)).not.toThrow();
+    for (const edit of [
+      (value: typeof workflow) => { value.jobs.qualification.permissions.actions = 'write'; },
+      (value: typeof workflow) => { value.jobs.qualification.permissions['id-token'] = 'write'; },
+      (value: typeof workflow) => { value.jobs.qualification.environment = 'npm-publisher'; },
+      (value: typeof workflow) => { value.jobs.qualification.needs = 'arbitrary'; },
+      (value: typeof workflow) => { value.jobs.validate.permissions.actions = 'read'; }
+    ]) {
+      const changed = structuredClone(workflow); edit(changed);
+      expect(() => verifyWorkflowBoundaries(changed, policy)).toThrow();
+    }
   });
 
   it('isolates source reporting from candidate execution and preserves read-only fork/Dependabot jobs', async () => {
@@ -208,7 +224,7 @@ describe('checked-in workflow privilege boundaries', () => {
 
   it('keeps exact release event/ref/environment/producer bindings fail-closed', async () => {
     const source = parse(await readFile(path.join(process.cwd(), '.github/workflows/release.yml'), 'utf8'));
-    const policy = { actions, publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'] };
+    const policy = { actions, publisherJob: 'publish', publicationJobs: ['assemble', 'publish', 'finalize'], readbackJob: 'qualification' };
     for (const change of [
       (w: typeof source) => { w.on.pull_request = null; },
       (w: typeof source) => { w.jobs.publish.if = "${{ inputs.dry_run == false }}"; },

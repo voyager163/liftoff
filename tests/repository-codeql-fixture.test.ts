@@ -4,7 +4,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
   captureCodeqlFixtureProcess, CodeqlFixtureProcessError, codeqlFixtureEnvironment, createCodeqlFixtureArea, parseCodeqlFixtureCoverage,
-  resumeCodeqlFixtureArea, codeqlFixturePin, evaluateCodeqlFixtureSarif, inspectCodeqlFixtureSarif
+  resumeCodeqlFixtureArea, restoreCodeqlFixtureTool, codeqlFixturePin, evaluateCodeqlFixtureSarif, inspectCodeqlFixtureSarif
 } from '../scripts/repository-security/codeql-fixture.ts';
 
 const sentinel = 'PRIVATE_CODEQL_FIXTURE_SENTINEL';
@@ -42,10 +42,18 @@ function fixtureResult(name: 'clean' | 'insecure') {
 }
 
 describe('isolated CodeQL fixture process boundary (offline)', () => {
-  it('registers private output trees and discards stdout/stderr rather than retaining excerpts', async () => {
+  it('registers owned output trees and discards stdout/stderr without claiming unsupported native privacy qualification', async () => {
     const area = await createCodeqlFixtureArea(path.dirname(process.cwd()));
     try {
-      expect((await lstat(area.root)).mode & 0o777).toBe(0o700);
+      const root = await lstat(area.root);
+      expect(root.isDirectory()).toBe(true);
+      expect(root.isSymbolicLink()).toBe(false);
+      expect(root.ino).toBe(area.registration.inode);
+      expect(root.dev).toBe(area.registration.device);
+      await expect(area.verify()).resolves.toBeUndefined();
+      if (process.platform === 'win32') {
+        await expect(restoreCodeqlFixtureTool(area)).rejects.toThrow('codeql-fixture-platform-unqualified');
+      } else expect(root.mode & 0o777).toBe(0o700);
       const result = await captureCodeqlFixtureProcess(area, process.execPath, [
         '-e', `process.stdout.write('${sentinel}'); process.stderr.write('${sentinel}')`
       ]);

@@ -61,7 +61,7 @@ describe('repository hardening baseline and acceptance plan', () => {
     expect(baseline.repositoryState.mainProtection.requiredChecks).toHaveLength(3);
   });
 
-  it('assigns every approved scenario to exact tasks and evidence types without fabricating contexts', async () => {
+  it.each(['\n', '\r\n'])('assigns every approved scenario to exact tasks and evidence types with line ending %j', async lineEnding => {
     const matrix = JSON.parse(await readFile(path.join(root, 'security', 'hardening-acceptance.json'), 'utf8'));
     const activeChange = existsSync(path.join(changeRoot, 'tasks.md'));
     const tasks = activeChange ? await readFile(path.join(changeRoot, 'tasks.md'), 'utf8') : null;
@@ -71,7 +71,8 @@ describe('repository hardening baseline and acceptance plan', () => {
     let scenarioCount = 0;
     for (const capability of capabilities) {
       const specRoot = activeChange ? changeRoot : path.join(root, 'openspec');
-      const spec = await readFile(path.join(specRoot, 'specs', capability, 'spec.md'), 'utf8');
+      const source = await readFile(path.join(specRoot, 'specs', capability, 'spec.md'), 'utf8');
+      const spec = source.replace(/\r?\n/g, lineEnding).replace(/\r\n/g, '\n');
       for (const block of spec.split('### Requirement: ').slice(1)) {
         const name = block.split('\n')[0]!;
         if (!activeChange && !(name in matrix.requirements)) continue;

@@ -41,15 +41,16 @@ async function boundedBytes(file, maximum) {
 }
 
 async function sourceSnapshot(root, execute, env) {
+  const gitNull = process.platform === 'win32' ? 'NUL' : devNull;
   const environmentValue = name => env[Object.keys(env).find(key => key.toLowerCase() === name.toLowerCase()) ?? name];
   const gitEnv = Object.fromEntries(['PATH', 'SystemRoot', 'HOME', 'USERPROFILE', 'TMPDIR', 'TMP', 'TEMP']
     .map(name => [name, environmentValue(name)]).filter(([, value]) => typeof value === 'string'));
   Object.assign(gitEnv, {
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: gitNull, GIT_CONFIG_GLOBAL: gitNull,
     GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_OPTIONAL_LOCKS: '0', GIT_TERMINAL_PROMPT: '0',
     GIT_CONFIG_COUNT: '2',
     GIT_CONFIG_KEY_0: 'core.fsmonitor', GIT_CONFIG_VALUE_0: 'false',
-    GIT_CONFIG_KEY_1: 'core.hooksPath', GIT_CONFIG_VALUE_1: devNull
+    GIT_CONFIG_KEY_1: 'core.hooksPath', GIT_CONFIG_VALUE_1: gitNull
   });
   const git = args => execute('git', args, root, gitEnv);
   if (await realpath(git(['rev-parse', '--show-toplevel']).trim()) !== root) {

@@ -2,7 +2,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  adoptedBaseIdentity, canonicalDigest, evaluateAdmission, loadAdoptedBase, readAdoptedPolicyData,
+  adoptedBaseIdentity, admissionGitFailureMetadata, canonicalDigest, evaluateAdmission, loadAdoptedBase, readAdoptedPolicyData,
   rejectAdmissionAsPublicationEvidence, revalidateAdmission,
   type AdmissionObservation, type AdoptedBaseHandle, type PolicyAdapter, type RawFinding
 } from '../scripts/repository-security/admission.ts';
@@ -91,6 +91,17 @@ function expected(value: ReturnType<typeof observations>) {
 const vulnerabilityAdapters = new Map<string, PolicyAdapter>([['vulnerability', vulnerabilityPolicyAdapter([fullFinding])]]);
 
 describe('trusted-base normal and policy-only maintenance admission', () => {
+  it('reports only finite Git operation/code categories without paths, output or credentials', () => {
+    const sentinel = 'PRIVATE_GIT_DIAGNOSTIC_SENTINEL';
+    const diagnostic = admissionGitFailureMetadata(['rev-parse', '--show-toplevel'], {
+      code: 128, stderr: `fatal: unable to read config file ${sentinel}`, stdout: sentinel, path: sentinel
+    });
+    expect(diagnostic).toEqual({ operation: 'root', nativeCode: 128, reason: 'config-unreadable', timedOut: false });
+    expect(JSON.stringify(diagnostic)).not.toContain(sentinel);
+    expect(admissionGitFailureMetadata(['cat-file', 'blob', sentinel], {
+      code: sentinel, stderr: sentinel, killed: true
+    })).toEqual({ operation: 'blob-content', nativeCode: 'unclassified', reason: 'unclassified', timedOut: true });
+  });
   it('admits only observed-base exact Trivy unscored policy proposals while retaining the blocking verdict', async () => {
     const unscored: SecurityFinding = {
       ...fullFinding, kind: 'policy', tool: 'trivy', rule: 'DLA-4783-1',

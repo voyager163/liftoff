@@ -90,8 +90,6 @@ export function summarizeRepositoryOsv(
   const missingGraphs = expected.filter(id => !ids.includes(id));
   const analysisComplete = missingGraphs.length === 0 && errors.length === 0 &&
     assessments.every(item => item.status === 'complete');
-  const completed = assessments.filter((item): item is Extract<RepositoryOsvAssessment, { status: 'complete' }> =>
-    item.status === 'complete');
   const ownerActions = expected.flatMap<LocalOsvReport['ownerActions'][number]>(graph => {
     const assessment = assessments.find(item => item.graph === graph), verdict = verdicts.get(graph);
     if (!assessment || assessment.status !== 'complete' || errors.length) return [{ owner: 'voyager163', graph, action: 'rerun-complete-graph' }];
@@ -100,16 +98,22 @@ export function summarizeRepositoryOsv(
       ...(verdict!.tracked.length ? [{ owner: 'voyager163' as const, graph, action: 'triage-lower-findings' as const }] : [])
     ];
   });
-  const reporting = analysisComplete ? reportRepositorySecurity({
+  const reporting = missingGraphs.length === 0 && errors.length === 0 ? reportRepositorySecurity({
     identity, blockingRules: osvUnscoredPolicyRules, controls: [],
-    producers: completed.map(item => ({
+    producers: assessments.map(item => ({
       id: item.graph, owner: 'voyager163', policy: 'repository-findings',
-      identity, role: 'non-npm-dependencies', tool: item.report.tool,
+      identity, role: 'non-npm-dependencies',
+      tool: item.status === 'complete' ? item.report.tool : {
+        name: 'osv-scanner', version: osvRelease.version, database: 'not-observed-analysis-incomplete'
+      },
       units: [{ id: item.graph, inputDigest: item.inputDigest, count: item.components, platform: 'all' }],
       previousFindingDigests: null
     }))
   }, {
-    producers: completed.map((item): ReportingProducerOutcome => {
+    producers: assessments.map((item): ReportingProducerOutcome => {
+      if (item.status !== 'complete') return {
+        id: item.graph, analysis: 'error', identity, observedAt: now.toISOString()
+      };
       const verdict = verdicts.get(item.graph)!;
       return { id: item.graph, analysis: 'complete', report: item.report,
         assessment: { status: verdict.passed ? 'passed' : 'blocked', blocking: verdict.blocking, reviewed: verdict.reviewed,

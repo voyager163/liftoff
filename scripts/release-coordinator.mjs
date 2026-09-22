@@ -3,7 +3,7 @@ import { appendFile, lstat, readFile, realpath, writeFile } from 'node:fs/promis
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { parseNpmCandidate, verifyCandidateBytes } from './repository-security/npm-release.ts';
-import { releaseReadiness, verifyReleaseProvenance } from './repository-security/npm-release-operation.ts';
+import { releaseReadiness, verifyReleaseProvenance, verifyReleaseRunReadback } from './repository-security/npm-release-operation.ts';
 import { canonicalDigest } from './repository-security/admission.ts';
 
 async function boundedFile(root, name, maximum) {
@@ -82,11 +82,17 @@ export async function main(args, env = process.env) {
     return observation;
   }
   const feasibility = JSON.parse(await readFile(path.join(process.cwd(), 'security', 'publisher-feasibility.json'), 'utf8'));
+  const readback = args[0] === 'readiness' && env.GITHUB_ACTIONS === 'true' && env.GITHUB_REF === 'refs/heads/main' &&
+    env.GITHUB_EVENT_NAME === 'workflow_dispatch' && env.LIFTOFF_RELEASE_CANDIDATE_ARTIFACT_ID
+    ? verifyReleaseRunReadback(candidate, {
+      repository: env.GITHUB_REPOSITORY, event: env.GITHUB_EVENT_NAME, sourceSha: env.GITHUB_SHA,
+      workflowSha: env.GITHUB_WORKFLOW_SHA, runId: env.GITHUB_RUN_ID, attempt: Number(env.GITHUB_RUN_ATTEMPT)
+    }, env.LIFTOFF_RELEASE_CANDIDATE_ARTIFACT_ID, new Date()) : undefined;
   const readiness = releaseReadiness(candidate, feasibility, {
     event: env.GITHUB_EVENT_NAME, ref: env.GITHUB_REF,
     sourceSha: env.GITHUB_SHA, dryRun: env.LIFTOFF_RELEASE_DRY_RUN === 'true',
     workflowSha: env.GITHUB_WORKFLOW_SHA, runId: env.GITHUB_RUN_ID, attempt: Number(env.GITHUB_RUN_ATTEMPT)
-  }, provenance);
+  }, provenance, new Date(), readback);
   if (args[0] === 'readiness') {
     if (env.GITHUB_OUTPUT) await appendFile(env.GITHUB_OUTPUT, 'publication-authorized=false\n');
     console.log(JSON.stringify(readiness, null, 2));

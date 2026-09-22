@@ -170,12 +170,35 @@ function parseRegistry(source: string) {
 }
 
 function gitEnvironment(): NodeJS.ProcessEnv {
+  const gitNull = process.platform === 'win32' ? 'NUL' : devNull;
   return {
     ...(process.env.PATH ? { PATH: process.env.PATH } : {}),
     ...(process.env.SystemRoot ? { SystemRoot: process.env.SystemRoot } : {}),
-    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: devNull, GIT_CONFIG_GLOBAL: devNull,
+    GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_SYSTEM: gitNull, GIT_CONFIG_GLOBAL: gitNull,
     GIT_TERMINAL_PROMPT: '0', GIT_NO_REPLACE_OBJECTS: '1', GIT_NO_LAZY_FETCH: '1', GIT_OPTIONAL_LOCKS: '0'
   };
+}
+
+export function admissionGitFailureMetadata(args: readonly string[], error: unknown) {
+  const operation = args[0] === 'rev-parse' && args[1] === '--show-toplevel' ? 'root'
+    : args[0] === 'rev-parse' && args[1] === '--is-shallow-repository' ? 'history'
+      : args[0] === 'ls-tree' ? 'tree' : args[0] === 'cat-file' && args[1] === '-s' ? 'blob-size'
+        : args[0] === 'cat-file' && args[1] === 'blob' ? 'blob-content' : 'unregistered';
+  const value = error && typeof error === 'object' ? error : {};
+  const code = 'code' in value ? value.code : null;
+  const nativeCode = typeof code === 'number' && Number.isSafeInteger(code) && code >= 0 && code <= 255 ? code
+    : typeof code === 'string' && ['ENOENT', 'EACCES', 'EPERM', 'ENOTDIR', 'EINVAL', 'ETIMEDOUT', 'ERR_CHILD_PROCESS_STDIO_MAXBUFFER'].includes(code)
+      ? code : 'unclassified';
+  const stderr = 'stderr' in value && (typeof value.stderr === 'string' || Buffer.isBuffer(value.stderr))
+    ? value.stderr.toString() : '';
+  const reason = [
+    ['unable to read config file', 'config-unreadable'],
+    ['bad config line', 'config-invalid'],
+    ['not a git repository', 'repository-unavailable'],
+    ['detected dubious ownership', 'ownership-rejected'],
+    ['unknown option', 'unsupported-option']
+  ].find(([text]) => stderr.includes(text!))?.[1] ?? 'unclassified';
+  return { operation, nativeCode, reason, timedOut: 'killed' in value && value.killed === true };
 }
 
 export async function loadAdoptedBase(
@@ -189,13 +212,14 @@ export async function loadAdoptedBase(
   async function git(args: string[]): Promise<string> {
     try {
       const result = await runFile('git', [
-        '-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${devNull}`, ...args
+        '-c', 'core.fsmonitor=false', '-c', `core.hooksPath=${process.platform === 'win32' ? 'NUL' : devNull}`, ...args
       ], { cwd: root, env: gitEnvironment(), encoding: 'buffer', timeout: 30_000, maxBuffer: maximumBytes });
       if (result.stderr.length > 0) throw new SecurityEvidenceError('unexpected-git-diagnostics');
       return new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(result.stdout);
     } catch (error) {
       if (error instanceof SecurityEvidenceError) throw error;
-      throw new SecurityEvidenceError('admission-git-read-failed');
+      throw Object.assign(new SecurityEvidenceError('admission-git-read-failed'),
+        { diagnostic: admissionGitFailureMetadata(args, error) });
     }
   }
   if (await realpath((await git(['rev-parse', '--show-toplevel'])).trim()) !== root) {

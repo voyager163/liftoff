@@ -52,8 +52,110 @@ interface OperationState {
 }
 const operations = new WeakMap<ReleaseOperation, OperationState>();
 const verifiedProvenance = new WeakSet<object>();
+const verifiedRunReadbacks = new WeakSet<object>();
 const hash = (bytes: Uint8Array) => `sha256:${createHash('sha256').update(bytes).digest('hex')}`;
 function fail(code: string): never { throw new SecurityEvidenceError(`release-operation-${code}`); }
+
+type ReleaseInvocation = Pick<EvidenceIdentity, 'repository' | 'event' | 'sourceSha' | 'workflowSha' | 'runId' | 'attempt'>;
+type ReleaseReadCommand = (command: string, args: readonly string[], options: SpawnSyncOptionsWithStringEncoding) => SpawnSyncReturns<string>;
+
+/** Fixed GitHub GETs only: producer metadata is not a scanner verdict or tag/publisher authority. */
+export function verifyReleaseRunReadback(
+  candidateValue: unknown, invocation: ReleaseInvocation, artifactId: string, now: Date,
+  execute: ReleaseReadCommand = spawnSync
+) {
+  const candidate = parseNpmCandidate(candidateValue);
+  if (candidate.source.dirty || invocation.repository !== 'voyager163/liftoff' || invocation.event !== 'workflow_dispatch' ||
+      sha(invocation.sourceSha) !== candidate.source.commit || sha(invocation.workflowSha) !== candidate.source.commit ||
+      !/^[1-9][0-9]{0,14}$/.test(invocation.runId) || !/^[1-9][0-9]{0,14}$/.test(artifactId) ||
+      !Number.isSafeInteger(invocation.attempt) || invocation.attempt < 1 || invocation.attempt > 999999 ||
+      !Number.isFinite(now.getTime()) || now.getTime() < timestamp(candidate.createdAt) ||
+      now.getTime() - timestamp(candidate.createdAt) > 86_400_000) fail('readback-invocation');
+  const repository = 'voyager163/liftoff', root = `/repos/${repository}`;
+  const object = (value: unknown): Record<string, unknown> => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) fail('readback-shape');
+    return value as Record<string, unknown>;
+  };
+  const get = (endpoint: string) => {
+    let observed: SpawnSyncReturns<string>;
+    try {
+      observed = execute('gh', ['api', '--hostname', 'github.com', '--method', 'GET',
+        '-H', 'Accept: application/vnd.github+json', '-H', 'X-GitHub-Api-Version: 2022-11-28', endpoint], {
+        shell: false, windowsHide: true, encoding: 'utf8', timeout: 15_000, maxBuffer: 1024 * 1024,
+        env: { ...process.env, GH_DEBUG: '', GH_PROMPT_DISABLED: '1', GH_PAGER: 'cat', PAGER: 'cat',
+          GH_NO_UPDATE_NOTIFIER: '1', GH_NO_EXTENSION_UPDATE_NOTIFIER: '1' }
+      });
+    } catch { return fail('readback-transport'); }
+    if (observed.status !== 0 || observed.signal !== null || observed.error ||
+        typeof observed.stdout !== 'string' || Buffer.byteLength(observed.stdout) > 1024 * 1024) fail('readback-transport');
+    try { return object(JSON.parse(observed.stdout)); }
+    catch { return fail('readback-shape'); }
+  };
+  const branch = () => {
+    const value = get(`${root}/branches/main`);
+    if (value.name !== 'main' || value.protected !== true || object(value.commit).sha !== candidate.source.commit) {
+      fail('readback-protected-main');
+    }
+    return { ref: 'refs/heads/main', commit: candidate.source.commit, protected: true };
+  };
+  const run = () => {
+    const value = get(`${root}/actions/runs/${invocation.runId}`);
+    if (String(value.id) !== invocation.runId || value.run_attempt !== invocation.attempt ||
+        value.head_sha !== candidate.source.commit || value.head_branch !== 'main' ||
+        value.event !== 'workflow_dispatch' || value.path !== '.github/workflows/release.yml' ||
+        object(value.repository).full_name !== repository || object(value.head_repository).full_name !== repository ||
+        !['in_progress', 'completed'].includes(String(value.status)) ||
+        (value.status === 'completed' ? value.conclusion !== 'success' : value.conclusion !== null)) {
+      fail('readback-current-run');
+    }
+    return { runId: invocation.runId, attempt: invocation.attempt, sourceSha: candidate.source.commit };
+  };
+  const beforeBranch = branch(), beforeRun = run();
+  const jobList = get(`${root}/actions/runs/${invocation.runId}/attempts/${invocation.attempt}/jobs?per_page=100`);
+  if (!Array.isArray(jobList.jobs) || jobList.jobs.length < 1 || jobList.jobs.length >= 100 ||
+      jobList.total_count !== jobList.jobs.length) fail('readback-job-coverage');
+  const jobs = jobList.jobs.map(object), producers = jobs.filter(job => job.name === 'Build and inspect exact npm candidate');
+  if (producers.length !== 1) fail('readback-producer');
+  const producer = producers[0]!;
+  if (producer.run_id !== Number(invocation.runId) || producer.run_attempt !== invocation.attempt ||
+      producer.head_sha !== candidate.source.commit || producer.status !== 'completed' || producer.conclusion !== 'success' ||
+      !Number.isSafeInteger(producer.id) || Number(producer.id) < 1 ||
+      typeof producer.check_run_url !== 'string') fail('readback-producer');
+  const checkId = new RegExp(`^https://api\\.github\\.com/repos/${repository}/check-runs/([1-9][0-9]{0,14})$`)
+    .exec(producer.check_run_url)?.[1];
+  if (!checkId) fail('readback-producer-check');
+  const check = get(`${root}/check-runs/${checkId}`);
+  if (String(check.id) !== checkId || check.name !== producer.name || check.head_sha !== candidate.source.commit ||
+      check.status !== 'completed' || check.conclusion !== 'success' ||
+      object(check.app).id !== 15368 || object(check.app).slug !== 'github-actions') fail('readback-producer-check');
+  const completedAt = typeof producer.completed_at === 'string' ? Date.parse(producer.completed_at) : NaN;
+  if (!Number.isFinite(completedAt) || completedAt < timestamp(candidate.createdAt) ||
+      completedAt > now.getTime() || now.getTime() - completedAt > 86_400_000) fail('readback-producer-time');
+  const artifact = get(`${root}/actions/artifacts/${artifactId}`);
+  if (String(artifact.id) !== artifactId || artifact.name !== `npm-candidate-${invocation.runId}-${invocation.attempt}` ||
+      artifact.expired !== false || !Number.isSafeInteger(artifact.size_in_bytes) ||
+      Number(artifact.size_in_bytes) < 1 || Number(artifact.size_in_bytes) > 64 * 1024 * 1024 ||
+      object(artifact.workflow_run).id !== Number(invocation.runId) ||
+      object(artifact.workflow_run).head_sha !== candidate.source.commit ||
+      object(artifact.workflow_run).head_branch !== 'main') fail('readback-artifact-origin');
+  const artifactDigest = digest(artifact.digest);
+  const createdAt = typeof artifact.created_at === 'string' ? Date.parse(artifact.created_at) : NaN;
+  if (!Number.isFinite(createdAt) || createdAt < timestamp(candidate.createdAt) ||
+      createdAt > completedAt || now.getTime() - createdAt > 86_400_000) fail('readback-artifact-time');
+  if (canonicalDigest(beforeBranch) !== canonicalDigest(branch()) || canonicalDigest(beforeRun) !== canonicalDigest(run())) {
+    fail('readback-drift');
+  }
+  const result = Object.freeze({
+    kind: 'verified-release-run-readback' as const, candidateDigest: canonicalDigest(candidate),
+    identity: Object.freeze({ ...invocation }), observedAt: now.toISOString(), protectedMainObserved: true,
+    producerJobId: Number(producer.id), producerCheckId: Number(checkId), producerAppId: 15368,
+    artifactId, artifactArchiveDigest: artifactDigest, candidateContentsAuthenticated: false,
+    workflowContentAttestedByApp: false, sourceProtectionBehaviorQualified: false,
+    publicationAuthorized: false
+  });
+  verifiedRunReadbacks.add(result);
+  return result;
+}
 
 /**
  * Consume a real verifier result, not candidate-authored provenance JSON.
@@ -392,7 +494,8 @@ export function releaseReadiness(
   candidateValue: unknown, feasibility: unknown,
   invocation: { event: 'workflow_dispatch' | 'push' | 'pull_request'; ref: string; dryRun: boolean; sourceSha: string;
     workflowSha?: string; runId?: string; attempt?: number },
-  provenance?: Awaited<ReturnType<typeof verifyReleaseProvenance>>, now = new Date()
+  provenance?: Awaited<ReturnType<typeof verifyReleaseProvenance>>, now = new Date(),
+  runReadback?: ReturnType<typeof verifyReleaseRunReadback>
 ) {
   const candidate = parseNpmCandidate(candidateValue);
   const request = publicationEventDecision(invocation.event, invocation.ref, invocation.dryRun);
@@ -410,11 +513,17 @@ export function releaseReadiness(
       now.getTime() < timestamp(provenance.verifiedAt) || now.getTime() - timestamp(candidate.createdAt) > 86_400_000)) {
     fail('unverified-provenance-observation');
   }
+  if (runReadback && (!verifiedRunReadbacks.has(runReadback) || runReadback.candidateDigest !== canonicalDigest(candidate) ||
+      runReadback.identity.sourceSha !== invocation.sourceSha || runReadback.identity.workflowSha !== invocation.workflowSha ||
+      runReadback.identity.runId !== invocation.runId || runReadback.identity.attempt !== invocation.attempt ||
+      !Number.isFinite(now.getTime()) || now.getTime() < timestamp(runReadback.observedAt) ||
+      now.getTime() - timestamp(runReadback.observedAt) > 60_000)) fail('unverified-run-readback');
   blockers.push(...releaseProducerDependencies.filter(dependency =>
-    !provenance || dependency !== 'verifiable-build-provenance-distinct-from-unsigned-local-record'));
+    !(provenance && dependency === 'verifiable-build-provenance-distinct-from-unsigned-local-record') &&
+    !(runReadback && dependency === 'authenticated-protected-main-and-current-run-readback')));
   return {
     kind: 'release-readiness' as const, publicationRequested: request.publicationRequested,
     publicationAuthorized: false as const, candidateDigest: canonicalDigest(candidate),
-    provenanceVerified: provenance !== undefined, blockers
+    provenanceVerified: provenance !== undefined, producerRunReadbackVerified: runReadback !== undefined, blockers
   };
 }
