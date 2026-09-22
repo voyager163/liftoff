@@ -30,11 +30,11 @@ afterEach(async () => {
 describe('Windows Job Object controller asset integrity and host environment', () => {
   it('decodes only exact invocation-bound ordered bootstrap markers across arbitrary chunk boundaries', () => {
     const binding = 'a'.repeat(64), decode = createWindowsControllerStageDecoder(binding);
-    const text = ['script-started', 'interop-loading', 'interop-ready', 'pipe-connecting', 'pipe-connected', 'ready-sent']
+    const text = ['script-started', 'module-scope-verified', 'interop-loading', 'interop-ready', 'pipe-connecting', 'pipe-connected', 'ready-sent']
       .map(stage => `LIFTOFF_CONTROLLER_STAGE:${binding}:${stage}\r\n`).join('');
     const phases = [...text].flatMap(character => decode(character).phases);
     expect(phases).toEqual([
-      'controller-script-started', 'controller-interop-loading', 'controller-interop-ready',
+      'controller-script-started', 'controller-module-scope-verified', 'controller-interop-loading', 'controller-interop-ready',
       'controller-pipe-connecting', 'controller-pipe-connected', 'controller-ready-sent'
     ]);
     expect(decode(`LIFTOFF_CONTROLLER_STAGE:${binding}:ready-sent\n`).phases).toEqual(['controller-marker-rejected']);
@@ -58,6 +58,15 @@ describe('Windows Job Object controller asset integrity and host environment', (
     expect(asset).toContain('[switch]$CaptureLifecycle');
     expect(asset).toContain('[string]$DiagnosticBinding = \'\'');
     expect(asset).toContain("if ($CaptureLifecycle -and $DiagnosticBinding -match '^[a-f0-9]{64}$')");
+    expect(asset.indexOf('$Env:PSModulePath = $builtinRoot')).toBeLessThan(asset.indexOf('Get-Command -Name'));
+    expect(asset.indexOf("Write-LifecycleStage 'module-scope-verified'")).toBeLessThan(asset.indexOf('Add-Type -TypeDefinition'));
+    const prelude = asset.slice(0, asset.indexOf('Get-Command -Name'));
+    expect(prelude).not.toMatch(/\b(?:Get-Item|Resolve-Path|Join-Path|Test-Path|Get-FileHash|Import-Module|New-Object|ConvertTo-Json)\s/);
+    expect(asset).toContain('[Environment+SpecialFolder]::Windows');
+    expect(asset).toContain('[IO.FileAttributes]::ReparsePoint');
+    expect(asset).toContain('$ExpectedPowerShellDigest');
+    expect(asset).toContain('[Diagnostics.Process]::GetCurrentProcess().MainModule.FileName');
+    expect(asset).not.toMatch(/Set-ExecutionPolicy|SetValue|HKLM:|HKCU:/);
     expect(asset.indexOf("Write-LifecycleStage 'interop-loading'")).toBeLessThan(asset.indexOf('Add-Type -TypeDefinition'));
     expect(asset.indexOf('Add-Type -TypeDefinition')).toBeLessThan(asset.indexOf("Write-LifecycleStage 'interop-ready'"));
     expect(asset.indexOf("Write-LifecycleStage 'interop-ready'")).toBeLessThan(asset.indexOf("Write-LifecycleStage 'pipe-connecting'"));
@@ -70,8 +79,8 @@ describe('Windows Job Object controller asset integrity and host environment', (
     const command = { executable: process.execPath, args: ['--version'] };
     const result = await runWindowsJobCommand(command, { signal: abort.signal }, { diagnosticRecorder: recorder });
     expect(result).toMatchObject({ errorCode: 'ABORTED', processSpawned: false, processTreeSettled: false });
-    expect(readWindowsJobDiagnosticRecorder(recorder)).toEqual({ events: [], bytes: 0, complete: false, truncated: false });
-    expect(readWindowsJobDiagnosticRecorder(other)).toEqual({ events: [], bytes: 0, complete: false, truncated: false });
+    expect(readWindowsJobDiagnosticRecorder(recorder)).toEqual({ events: [], bytes: 0, complete: false, truncated: false, runtime: null });
+    expect(readWindowsJobDiagnosticRecorder(other)).toEqual({ events: [], bytes: 0, complete: false, truncated: false, runtime: null });
     await expect(runWindowsJobCommand(command, {}, { diagnosticRecorder: recorder })).rejects.toThrow('reused');
     await expect(runWindowsJobCommand(command, {}, { diagnosticRecorder: { kind: 'windows-job-diagnostic-recorder' } }))
       .rejects.toThrow('Unknown');
@@ -140,6 +149,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       expect(hostEnv.PATH).toBeDefined();
       // Ensure arbitrary caller/target environment keys are NOT inherited
       expect(hostEnv.UNTRUSTED_TARGET_ENV_VAR).toBeUndefined();
+      expect(hostEnv.PSModulePath).toBeUndefined();
     } finally {
       if (originalPolicy !== undefined) {
         process.env.PSExecutionPolicyPreference = originalPolicy;
@@ -147,6 +157,17 @@ describe('Windows Job Object controller asset integrity and host environment', (
         delete process.env.PSExecutionPolicyPreference;
       }
     }
+  });
+
+  it('fails explicitly before target dispatch when the controller rejects its runtime scope', async () => {
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-runtime-reject-'));
+    tempDirs.push(tempDir);
+    const mockPs = path.join(tempDir, 'mock-runtime.sh');
+    await writeFile(mockPs, '#!/bin/sh\nprintf LIFTOFF_CONTROLLER_RUNTIME_REJECTED >&2\nexit 1\n', { mode: 0o755 });
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--version'] }, {},
+      { powershellPath: mockPs, skipAssetVerification: true });
+    expect(result).toMatchObject({ errorCode: 'UNSUPPORTED_CONTROLLER_RUNTIME', processSpawned: false, processTreeSettled: false });
+    expect(result.controllerDiagnostics).toBeUndefined();
   });
 });
 

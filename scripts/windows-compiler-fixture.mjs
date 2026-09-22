@@ -4,7 +4,7 @@ import { lstat, mkdtemp, readFile, realpath, rmdir, unlink, writeFile } from 'no
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-export const compilerFixtureControllerDigest = 'c18efc9fd97d39b2cbde8a085138d4dd02e427bfc9b048d77fc71c747017d829';
+export const compilerFixtureControllerDigest = '0dbc52703d58664d586ac21f25d6a44e1207bc7ad6a0fb3ad24ff4d721177a41';
 export const compilerFixturePowerShellDigest = 'f1f0ba58b157a1e4509d67f49266be9c94c463636c76d368e375a235cbaeee1d';
 export const compilerFixtureHostEnvironmentDigest = '1345cf3f71cbaa7a7083004a003e23c8ad0efc8a810117c87ae18bc662c74581';
 const stages = [

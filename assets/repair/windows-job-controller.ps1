@@ -21,6 +21,21 @@ param(
     [Parameter(Mandatory = $true)]
     [string]$InvocationId,
 
+    [Parameter(Mandatory = $true)]
+    [string]$ExpectedPowerShellPath,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ExpectedPowerShellDigest,
+
+    [Parameter(Mandatory = $true)]
+    [UInt16]$ExpectedPowerShellMachine,
+
+    [Parameter(Mandatory = $true)]
+    [int]$ExpectedPointerBytes,
+
+    [Parameter(Mandatory = $true)]
+    [string]$ExpectedModuleRoot,
+
     [switch]$CaptureLifecycle,
 
     [string]$DiagnosticBinding = ''
@@ -35,6 +50,98 @@ function Write-LifecycleStage([string]$Stage) {
 }
 
 Write-LifecycleStage 'script-started'
+
+function Assert-BuiltinEntry([string]$Name, [bool]$Directory) {
+    if ($Name -notmatch '^[A-Za-z]:\\' -or
+        -not [StringComparer]::OrdinalIgnoreCase.Equals($Name, [IO.Path]::GetFullPath($Name))) { throw 'Noncanonical runtime entry.' }
+    if ([IO.DriveInfo]::new([IO.Path]::GetPathRoot($Name)).DriveType -ne [IO.DriveType]::Fixed) { throw 'Nonlocal runtime entry.' }
+    $entry = if ($Directory) { [IO.DirectoryInfo]::new($Name) } else { [IO.FileInfo]::new($Name) }
+    if (-not $entry.Exists -or ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Missing or reparse runtime entry.' }
+    $cursor = if ($Directory) { $entry } else { $entry.Directory }
+    while ($null -ne $cursor) {
+        if (-not $cursor.Exists -or ($cursor.Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw 'Reparse runtime ancestor.' }
+        $cursor = $cursor.Parent
+    }
+    return $entry.FullName
+}
+
+function Assert-RuntimeDigest([string]$Executable) {
+    $file = [IO.FileInfo]::new($Executable)
+    if ($file.Length -lt 64 -or $file.Length -gt 16777216 -or $ExpectedPowerShellDigest -notmatch '^[a-f0-9]{64}$') { throw 'Invalid runtime identity.' }
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::Open($Executable, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::Read)
+    try {
+        $reader = [IO.BinaryReader]::new($stream)
+        if ($reader.ReadUInt16() -ne 0x5a4d) { throw 'Invalid runtime image.' }
+        $stream.Position = 60
+        $offset = $reader.ReadUInt32()
+        if ($offset -lt 64 -or $offset -gt $stream.Length - 26) { throw 'Invalid runtime image header.' }
+        $stream.Position = $offset
+        if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne $ExpectedPowerShellMachine) { throw 'Runtime machine mismatch.' }
+        $stream.Position = $offset + 24
+        $expectedMagic = if ($ExpectedPointerBytes -eq 4) { 0x10b } else { 0x20b }
+        if ($reader.ReadUInt16() -ne $expectedMagic) { throw 'Runtime image width mismatch.' }
+        $stream.Position = 0
+        $actual = [BitConverter]::ToString($algorithm.ComputeHash($stream)).Replace('-', '').ToLowerInvariant()
+        if ($actual -ne $ExpectedPowerShellDigest) { throw 'Runtime digest drift.' }
+    } finally { $stream.Dispose(); $algorithm.Dispose() }
+}
+
+try {
+    if ($ExpectedPointerBytes -notin @(4, 8) -or [IntPtr]::Size -ne $ExpectedPointerBytes) { throw 'Runtime pointer width mismatch.' }
+    $windows = [Environment]::GetFolderPath([Environment+SpecialFolder]::Windows)
+    $nativeHome = [IO.Path]::Combine($windows, 'System32', 'WindowsPowerShell', 'v1.0')
+    $redirectedHome = [IO.Path]::Combine($windows, 'SysWOW64', 'WindowsPowerShell', 'v1.0')
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($PSHOME, $nativeHome) -and
+        -not [StringComparer]::OrdinalIgnoreCase.Equals($PSHOME, $redirectedHome)) { throw 'Foreign PowerShell home.' }
+    $systemHome = $PSHOME
+    $actualExecutable = Assert-BuiltinEntry ([Diagnostics.Process]::GetCurrentProcess().MainModule.FileName) $false
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($actualExecutable, [IO.Path]::Combine($systemHome, 'powershell.exe')) -or
+        -not [StringComparer]::OrdinalIgnoreCase.Equals($actualExecutable, $ExpectedPowerShellPath)) { throw 'Runtime path mismatch.' }
+    $builtinRoot = Assert-BuiltinEntry ([IO.Path]::Combine($systemHome, 'Modules')) $true
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($builtinRoot, $ExpectedModuleRoot)) { throw 'Module root mismatch.' }
+    Assert-RuntimeDigest $actualExecutable
+    $Env:PSModulePath = $builtinRoot
+    $requiredCmdlets = @(
+        @('Get-Command', 'Microsoft.PowerShell.Core'),
+        @('ForEach-Object', 'Microsoft.PowerShell.Core'),
+        @('Out-Null', 'Microsoft.PowerShell.Core'),
+        @('Add-Type', 'Microsoft.PowerShell.Utility'),
+        @('New-Object', 'Microsoft.PowerShell.Utility'),
+        @('ConvertTo-Json', 'Microsoft.PowerShell.Utility'),
+        @('ConvertFrom-Json', 'Microsoft.PowerShell.Utility'),
+        @('Write-Error', 'Microsoft.PowerShell.Utility'),
+        @('Start-Sleep', 'Microsoft.PowerShell.Utility')
+    )
+    foreach ($required in $requiredCmdlets) {
+        $resolved = Get-Command -Name $required[0] -CommandType Cmdlet -ErrorAction Stop
+        if ($resolved.Name -ne $required[0]) { throw 'Unexpected cmdlet identity.' }
+        $assemblyInfo = $resolved.ImplementingType.Assembly
+        $assembly = Assert-BuiltinEntry $assemblyInfo.Location $false
+        if ($required[1] -eq 'Microsoft.PowerShell.Core') {
+            if ($assemblyInfo -ne [System.Management.Automation.PSObject].Assembly) { throw 'Foreign core cmdlet.' }
+        } else {
+            $assemblyName = $assemblyInfo.GetName()
+            $publicKeyToken = [BitConverter]::ToString($assemblyName.GetPublicKeyToken()).Replace('-', '').ToLowerInvariant()
+            if ($resolved.ModuleName -ne $required[1] -or $assemblyName.Name -ne 'Microsoft.PowerShell.Commands.Utility' -or
+                $publicKeyToken -ne '31bf3856ad364e35') { throw 'Foreign utility cmdlet.' }
+            $binary = [IO.Path]::Combine($systemHome, 'Microsoft.PowerShell.Commands.Utility.dll')
+            if (-not [StringComparer]::OrdinalIgnoreCase.Equals($assembly, $binary) -and -not $assemblyInfo.GlobalAssemblyCache) { throw 'Unqualified utility assembly.' }
+            $moduleFile = Assert-BuiltinEntry $resolved.Module.Path $false
+            $manifest = [IO.Path]::Combine($builtinRoot, 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Utility.psd1')
+            if (-not [StringComparer]::OrdinalIgnoreCase.Equals($moduleFile, $manifest) -and
+                -not [StringComparer]::OrdinalIgnoreCase.Equals($moduleFile, $binary)) { throw 'Foreign utility module.' }
+        }
+    }
+    if (-not [StringComparer]::OrdinalIgnoreCase.Equals($Env:PSModulePath, $builtinRoot)) { throw 'Module scope drift.' }
+    [void](Assert-BuiltinEntry $actualExecutable $false)
+    [void](Assert-BuiltinEntry $builtinRoot $true)
+    Assert-RuntimeDigest $actualExecutable
+    Write-LifecycleStage 'module-scope-verified'
+} catch {
+    [Console]::Error.WriteLine('LIFTOFF_CONTROLLER_RUNTIME_REJECTED')
+    exit 1
+}
 
 # Define Win32 interop for Job Objects and CreateProcessW with STARTUPINFOEX
 $win32TypeDef = @"

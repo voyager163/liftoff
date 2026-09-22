@@ -8,7 +8,7 @@ import {
 } from '../src/adapters/process/windows-job-runner.js';
 
 const safeCodes = new Set([
-  'ABORTED', 'CORRUPTED_CONTROLLER_ASSET', 'UNSUPPORTED_PROCESS_SETTLEMENT', 'ENOENT',
+  'ABORTED', 'CORRUPTED_CONTROLLER_ASSET', 'UNSUPPORTED_PROCESS_SETTLEMENT', 'UNSUPPORTED_CONTROLLER_RUNTIME', 'ENOENT',
   'LOG_CLEANUP_FAILED', 'SUPERVISOR_TIMEOUT', 'INVALID_CONTROL_FRAME', 'CONTROL_PIPE_ERROR',
   'CONTROL_PIPE_DISCONNECTED', 'AUTHENTICATION_FAILED', 'SPAWN_REQUEST_FAILED', 'ADMISSION_DENIED',
   'INVALID_CONTROL_RESPONSE', 'JOB_EXECUTION_ERROR', 'POWERSHELL_SPAWN_FAILED',
@@ -33,20 +33,25 @@ afterEach(() => {
   recorder = undefined; completed = undefined; hostEnvironment = undefined;
 });
 
-it.runIf(process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC === '1')(
-  'records actual controller stages for a non-writing native Node target without changing settlement requirements',
-  async () => {
+it.runIf(process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_CONTROLLER_DIAGNOSTIC === '1').each(['absent', 'explicit'] as const)(
+  'records actual controller stages and preserves %s target module environment without changing settlement requirements',
+  async targetModule => {
     const host = buildWindowsControllerHostEnvironment();
     hostEnvironment = {
       keys: Object.keys(host).sort(),
       digest: createHash('sha256').update(JSON.stringify(Object.entries(host).sort())).digest('hex')
     };
     recorder = createWindowsJobDiagnosticRecorder();
+    const target = {
+      SystemRoot: host.SystemRoot, PATH: path.dirname(process.execPath), TEMP: os.tmpdir(), TMP: os.tmpdir(),
+      ...(targetModule === 'explicit' ? { PSModulePath: 'NONFUNCTIONAL_TARGET_MODULE_SCOPE' } : {})
+    };
+    const expected = targetModule === 'explicit' ? JSON.stringify('NONFUNCTIONAL_TARGET_MODULE_SCOPE') : 'undefined';
     const result = await runWindowsJobCommand(
-      { executable: process.execPath, args: ['-e', 'process.exit(0)'] },
+      { executable: process.execPath, args: ['-e', `process.exit(process.env.PSModulePath === ${expected} ? 0 : 97)`] },
       {
         timeoutMs: 10_000, maxOutputBytes: 1024,
-        env: { SystemRoot: host.SystemRoot, PATH: path.dirname(process.execPath), TEMP: os.tmpdir(), TMP: os.tmpdir() }
+        env: target
       },
       { diagnosticRecorder: recorder }
     );

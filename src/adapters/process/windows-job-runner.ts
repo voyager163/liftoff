@@ -9,6 +9,7 @@ import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
 import { resolvePackageFile } from '../packaged-assets/package-root.js';
+import { inspectWindowsControllerRuntime, revalidateWindowsControllerRuntime, type WindowsControllerRuntime } from './windows-controller-runtime.js';
 import {
   defaultWindowsJobControllerId,
   deriveInvocationDigest,
@@ -25,7 +26,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'c18efc9fd97d39b2cbde8a085138d4dd02e427bfc9b048d77fc71c747017d829';
+export const windowsJobControllerAssetDigest = '0dbc52703d58664d586ac21f25d6a44e1207bc7ad6a0fb3ad24ff4d721177a41';
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -40,7 +41,7 @@ export interface WindowsJobDiagnostic {
     | 'controller-exit' | 'client-connected' | 'authenticated' | 'spawn-dispatched' | 'acknowledged'
     | 'response-received' | 'supervisor-timeout' | 'abort-received' | 'server-error' | 'finishing'
     | 'controller-stop-requested' | 'controller-stop-wait-ended' | 'reading-output' | 'cleaning-output' | 'finished'
-    | 'controller-script-started' | 'controller-interop-loading' | 'controller-interop-ready'
+    | 'controller-script-started' | 'controller-module-scope-verified' | 'controller-interop-loading' | 'controller-interop-ready'
     | 'controller-pipe-connecting' | 'controller-pipe-connected' | 'controller-ready-sent' | 'controller-marker-rejected';
   elapsedMs: number;
   controllerPidKnown: boolean;
@@ -51,30 +52,44 @@ export interface WindowsJobDiagnostic {
 }
 
 export type WindowsJobCommandResult = CommandResult & {
-  controllerDiagnostics?: { events: WindowsJobDiagnostic[]; bytes: number; truncated: boolean; complete: boolean };
+  controllerDiagnostics?: {
+    events: WindowsJobDiagnostic[]; bytes: number; truncated: boolean; complete: boolean;
+    runtime: ControllerRuntimeDiagnostic | null;
+  };
 };
 
+interface ControllerRuntimeDiagnostic {
+  architecture: WindowsControllerRuntime['architecture'];
+  peMachine: number;
+  pointerBytes: 4 | 8;
+  binaryDigest: string;
+  executablePathDigest: string;
+  moduleRootDigest: string;
+}
 export interface WindowsJobDiagnosticRecorder { readonly kind: 'windows-job-diagnostic-recorder'; }
 const diagnosticRecorders = new WeakMap<WindowsJobDiagnosticRecorder, {
   events: WindowsJobDiagnostic[]; bytes: number; truncated: boolean; complete: boolean; claimed: boolean;
+  runtime: ControllerRuntimeDiagnostic | null;
 }>();
 
 export function createWindowsJobDiagnosticRecorder(): WindowsJobDiagnosticRecorder {
   const recorder = Object.freeze({ kind: 'windows-job-diagnostic-recorder' as const });
-  diagnosticRecorders.set(recorder, { events: [], bytes: 0, truncated: false, complete: false, claimed: false });
+  diagnosticRecorders.set(recorder, { events: [], bytes: 0, truncated: false, complete: false, claimed: false, runtime: null });
   return recorder;
 }
 
 export function readWindowsJobDiagnosticRecorder(recorder: WindowsJobDiagnosticRecorder) {
   const state = diagnosticRecorders.get(recorder);
   if (!state) throw new Error('Unknown Windows controller diagnostic recorder.');
-  return { events: state.events.map(event => ({ ...event })), bytes: state.bytes, truncated: state.truncated, complete: state.complete };
+  return { events: state.events.map(event => ({ ...event })), bytes: state.bytes, truncated: state.truncated,
+    complete: state.complete, runtime: state.runtime ? { ...state.runtime } : null };
 }
 
 export function createWindowsControllerStageDecoder(binding: string) {
   if (!/^[a-f0-9]{64}$/.test(binding)) throw new Error('Invalid Windows controller diagnostic binding.');
   const stages = [
-    ['script-started', 'controller-script-started'], ['interop-loading', 'controller-interop-loading'],
+    ['script-started', 'controller-script-started'], ['module-scope-verified', 'controller-module-scope-verified'],
+    ['interop-loading', 'controller-interop-loading'],
     ['interop-ready', 'controller-interop-ready'], ['pipe-connecting', 'controller-pipe-connecting'],
     ['pipe-connected', 'controller-pipe-connected'], ['ready-sent', 'controller-ready-sent']
   ] as const;
@@ -353,6 +368,31 @@ export async function runWindowsJobCommand(
     };
   }
 
+  let controllerRuntime: WindowsControllerRuntime | undefined;
+  if (!runnerOptions.skipAssetVerification) {
+    try {
+      controllerRuntime = await inspectWindowsControllerRuntime(
+        powershellPath, process.env.SystemRoot ?? process.env.WINDIR ?? 'C:\\Windows'
+      );
+      if (externalDiagnostics) {
+        externalDiagnostics.runtime = {
+          architecture: controllerRuntime.architecture, peMachine: controllerRuntime.peMachine,
+          pointerBytes: controllerRuntime.pointerBytes, binaryDigest: controllerRuntime.binaryDigest,
+          executablePathDigest: createHash('sha256').update(controllerRuntime.executable.toLowerCase()).digest('hex'),
+          moduleRootDigest: createHash('sha256').update(controllerRuntime.moduleRoot.toLowerCase()).digest('hex')
+        };
+        externalDiagnostics.bytes += Buffer.byteLength(JSON.stringify(externalDiagnostics.runtime));
+      }
+    } catch {
+      return {
+        command, displayCommand, status: null, signal: null, stdout: '', stderr: '',
+        timedOut: false, processTreeSettled: false, processSpawned: false,
+        errorCode: 'UNSUPPORTED_CONTROLLER_RUNTIME',
+        errorMessage: 'The system Windows PowerShell runtime or built-in module directory could not be verified.'
+      };
+    }
+  }
+
   const nonce = randomBytes(32).toString('hex');
   const workspaceId = randomBytes(32).toString('hex');
   const pipeName = `liftoff-job-${randomUUID()}`;
@@ -438,7 +478,9 @@ export async function runWindowsJobCommand(
       ? createHash('sha256').update(`liftoff-controller-diagnostic\0${invocationId}\0${nonce}`).digest('hex') : null;
     const decodeControllerStage = diagnosticBinding ? createWindowsControllerStageDecoder(diagnosticBinding) : null;
     const diagnosticStart = captureDiagnostics ? performance.now() : 0;
-    const diagnostics = externalDiagnostics ?? { events: [] as WindowsJobDiagnostic[], bytes: 0, truncated: false, complete: false, claimed: true };
+    const diagnostics = externalDiagnostics ?? {
+      events: [] as WindowsJobDiagnostic[], bytes: 0, truncated: false, complete: false, claimed: true, runtime: null
+    };
     const trace = (phase: WindowsJobDiagnostic['phase']) => {
       if (!captureDiagnostics || diagnostics.complete) return;
       if (diagnostics.events.length >= 64) { diagnostics.truncated = true; return; }
@@ -549,7 +591,8 @@ export async function runWindowsJobCommand(
         ...(captureDiagnostics
           ? { controllerDiagnostics: {
             events: diagnostics.events.map(event => ({ ...event })), bytes: diagnostics.bytes,
-            truncated: diagnostics.truncated, complete: diagnostics.complete
+            truncated: diagnostics.truncated, complete: diagnostics.complete,
+            runtime: diagnostics.runtime ? { ...diagnostics.runtime } : null
           } } : {})
       });
     };
@@ -732,7 +775,7 @@ export async function runWindowsJobCommand(
       }
     }
 
-    server.listen(pipePath, () => {
+    server.listen(pipePath, async () => {
       trace('server-listening');
       if (settled || options.signal?.aborted) {
         void finish({
@@ -745,6 +788,22 @@ export async function runWindowsJobCommand(
         return;
       }
 
+      if (controllerRuntime) {
+        try { await revalidateWindowsControllerRuntime(controllerRuntime); }
+        catch {
+          void finish({
+            processTreeSettled: false, processSpawned: false,
+            errorCode: 'UNSUPPORTED_CONTROLLER_RUNTIME',
+            errorMessage: 'The verified Windows PowerShell runtime changed before controller launch.'
+          });
+          return;
+        }
+        if (settled || options.signal?.aborted) {
+          void finish({ signal: 'SIGABRT', processTreeSettled: false, processSpawned: false, errorCode: 'ABORTED',
+            errorMessage: 'Command was aborted before controller launch.' });
+          return;
+        }
+      }
       const psArgs = [
         '-NoProfile',
         '-NonInteractive',
@@ -759,11 +818,18 @@ export async function runWindowsJobCommand(
         '-InvocationId',
         invocationId
       ];
+      if (controllerRuntime) psArgs.push(
+        '-ExpectedPowerShellPath', controllerRuntime.executable,
+        '-ExpectedPowerShellDigest', controllerRuntime.binaryDigest,
+        '-ExpectedPowerShellMachine', String(controllerRuntime.peMachine),
+        '-ExpectedPointerBytes', String(controllerRuntime.pointerBytes),
+        '-ExpectedModuleRoot', controllerRuntime.moduleRoot
+      );
       if (diagnosticBinding) psArgs.push('-CaptureLifecycle', '-DiagnosticBinding', diagnosticBinding);
 
       const hostEnv = buildWindowsControllerHostEnvironment();
       trace('controller-spawn-requested');
-      psProcess = spawn(powershellPath, psArgs, {
+      psProcess = spawn(controllerRuntime?.executable ?? powershellPath, psArgs, {
         cwd: process.cwd(),
         env: hostEnv,
         shell: false,
@@ -798,7 +864,10 @@ export async function runWindowsJobCommand(
           let errorCode = 'CONTROLLER_LAUNCH_FAILED';
           let errorMessage = `Windows PowerShell controller exited with code ${code}. Stderr: ${psStderr.trim()}`;
 
-          if (/about_Execution_Policies|running scripts is disabled|execution policy/iu.test(psStderr)) {
+          if (psStderr.includes('LIFTOFF_CONTROLLER_RUNTIME_REJECTED')) {
+            errorCode = 'UNSUPPORTED_CONTROLLER_RUNTIME';
+            errorMessage = 'The controller could not verify its system runtime and built-in module scope.';
+          } else if (/about_Execution_Policies|running scripts is disabled|execution policy/iu.test(psStderr)) {
             errorCode = 'RESTRICTED_EXECUTION_POLICY';
             errorMessage =
               'Windows PowerShell execution policy (e.g. Restricted or AllSigned) prevents running the controller script. Adjust execution policy (e.g. Set-ExecutionPolicy RemoteSigned -Scope CurrentUser) to permit script execution; Liftoff does not bypass execution policies.';

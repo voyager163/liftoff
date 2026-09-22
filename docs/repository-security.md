@@ -134,6 +134,40 @@ resource qualification: without independent descendant-settlement proof their
 job remains unsuccessful, even if compilation finishes. They are diagnostic
 jobs, not proposed required green gates or proof of a production fix.
 
+The authorized module-scope comparison subsequently established the isolated
+cause: the original-discovery case stalled before command discovery, while the
+same pinned C# compiled at 5.52 seconds after selecting the verified builtin
+root. Binary, module root and original host/child-environment identities matched;
+only the intended post-startup discovery scope changed. The untouched controller
+still timed out, and compile-only descendant settlement remained unqualified.
+
+A local production correction is now prepared, not yet hosted-qualified. The
+runner binds each invocation to the actual canonical system PowerShell PE
+and sibling builtin directory, rejects foreign/reparse roots and detects drift.
+It does not impose the single hosted machine's binary hash or Node caller
+architecture on user systems. The image's PE machine and pointer width are bound
+independently, including an OS-resolved System32-to-SysWOW64 redirect rather than
+a search fallback. The child verifies its actual image and native pointer width;
+recognizing an image format is not qualification of an untested architecture.
+The controller independently checks its OS Windows directory, actual executable
+path/digest and local builtin root with .NET primitives before selecting its
+process-local module scope. Every later cmdlet is inventoried: Core command/
+pipeline primitives must come from the running PowerShell assembly; Utility
+cmdlets must resolve from the builtin manifest/system binary with the expected
+Microsoft assembly identity, including normal Framework GAC loading. Unknown
+bindings fail explicitly before target dispatch; unrecognized image formats
+remain unqualified instead of falling back to another runtime.
+
+The C# definition and all controller bytes after this bootstrap remain unchanged.
+Execution policy, privileges, authentication/ready/ACK, command deadlines and
+kernel settlement requirements are preserved. The target still receives its
+separately encoded environment block, never the controller's selected module
+scope. The native diagnostic will exercise both absent and explicitly supplied
+target module environments at the existing per-test limits. Runtime identities
+are retained only as bounded hashes in the opt-in recorder; default calls do not
+gain logging. Actual patched controller/target and required-suite results are
+still needed before describing Windows behavior as fixed.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
