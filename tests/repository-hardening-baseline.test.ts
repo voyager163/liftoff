@@ -69,7 +69,7 @@ describe('repository hardening baseline and acceptance plan', () => {
       }
     }
     expect(Object.keys(matrix.requirements).sort()).toEqual(requirements.sort());
-    expect(requirements).toHaveLength(38);
+    expect(requirements).toHaveLength(39);
     expect(scenarioCount).toBeGreaterThan(100);
     expect(matrix.admissionContract).toEqual({
       routes: ['normal', 'policy-maintenance'],

@@ -210,6 +210,43 @@ inspection and cwd inspection, retaining only allowlisted outer/cause codes.
 Until a newly authorized comparison reaches those stages, all four earlier
 cases remain unqualified.
 
+The corrected native comparison then reached all four launch cases with the same
+verified Node executable, environment and command budget. The existing 49-unit
+cwd launched through both paths, and the controller proved kernel settlement
+and owned cleanup. The existing 283-unit repair cwd failed before target spawn:
+direct launch reported `ENOENT`, while the authenticated controller reported
+Win32 `ERROR_DIRECTORY` (267). This does not mean Node or the directory was
+missing, and root exit in the direct control still does not prove descendants.
+
+The owner selected preserving the existing workspace layout and adding early
+Windows cwd admission, not compacting identities or relocating state. The local
+guard counts UTF-16 code units against the documented native 260-unit limit,
+including a trailing separator and NUL. It checks the planned project/home roles
+and every declared/resolved check and preparation cwd before new workspace
+registry/allocation effects, then rechecks the actual cwd before activity and
+target launch. The error is an explicit `unsupported-native-cwd` blocker, not
+an inferred missing executable. Traversal/unknown bindings retain their separate
+validation; Linux and macOS are unchanged.
+
+Schema 1, full project/workspace identities, authenticated registry paths,
+ownership and legacy recovery are unchanged. Inspection and authorized cleanup
+of previously retained long workspaces do not pass through new-allocation
+admission. An operator may explicitly select an existing supported shorter
+user-local storage location (on Windows, the documented `LOCALAPPDATA` selection)
+before obtaining a fresh preview. This does not move or delete records at the old
+location; recovery still needs their original storage context. No global
+long-path setting, junction, `subst`, extended-prefix fallback or automatic
+relocation is introduced.
+
+Ordinary Windows success fixtures use separately owned representative storage
+through test options, with spaces and full identities retained. The explicit
+283-unit fixture remains a native negative: it must now block before allocation
+and launch, with no registry/directory effects. Earlier failed launch and
+uncertain-owner evidence is preserved, not retroactively cleared. The new
+admission behavior and repaired Windows fixtures still need their own exact
+hosted qualification; independent npm tool-admission failures are not assumed
+resolved by this change.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.

@@ -89,6 +89,7 @@ jobs:
           tests/repair-application.test.ts tests/repair-integrations.test.ts
           tests/repair-workspaces.test.ts tests/repair-framework.test.ts
           tests/windows-job-protocol.test.ts tests/windows-job-runner.test.ts
+          tests/windows-native-cwd.test.ts tests/repair-windows-native-cwd.test.ts
           tests/activation-history.test.ts tests/migration-revalidation.test.ts tests/migration-inspection.test.ts tests/reviewed-update.test.ts
           tests/import-boundaries.test.ts tests/contract.test.ts tests/infrastructure-layout.test.ts
           tests/governance-assessment.test.ts tests/governance-assessment-engine.test.ts tests/governance-assessment-history.test.ts

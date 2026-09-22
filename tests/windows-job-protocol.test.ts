@@ -352,7 +352,7 @@ describe('Fail-before-target-spawn admission guard on Windows', () => {
       process.env.SystemRoot = 'C:\\NonExistentSystemRoot';
       const runner = new NodeCommandRunner();
       const command = { executable: 'node.exe', args: ['--test', 'test.js'] };
-      const result = await runner.run(command, { ensureProcessTreeSettled: true });
+      const result = await runner.run(command, { ensureProcessTreeSettled: true, cwd: 'C:\\fixture' });
       expect(result.status).toBeNull();
       expect(result.processSpawned).toBe(false);
       expect(result.processTreeSettled).toBe(false);

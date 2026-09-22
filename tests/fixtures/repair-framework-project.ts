@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { buildArtifacts } from '../../src/templates.js';
 import { buildProjectPlan } from '../../src/planner.js';
@@ -16,7 +17,8 @@ export async function writeFrameworkFixtureFile(root: string, parts: readonly st
 }
 
 export async function createNodeFrameworkRepairFixture() {
-  const dir = path.resolve(`.liftoff-framework-fixture-${randomUUID()}`);
+  const dir = process.platform === 'win32'
+    ? await mkdtemp(path.join(os.tmpdir(), 'lf-fw-')) : path.resolve(`.liftoff-framework-fixture-${randomUUID()}`);
   await mkdir(dir, { recursive: true });
   const parent = await realpath(dir);
   try {

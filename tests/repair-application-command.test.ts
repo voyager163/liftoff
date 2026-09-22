@@ -30,7 +30,7 @@ async function put(root: string, parts: string[], content: string) {
 }
 
 async function fixture(network = false) {
-  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), "liftoff-guided repair's-")));
+  const parent = await realpath(await mkdtemp(path.join(os.tmpdir(), process.platform === 'win32' ? "lf repair's-" : "liftoff-guided repair's-")));
   roots.push(parent);
   const root = path.join(parent, 'project'), stage = path.join(parent, 'staged patch'), home = path.join(parent, 'home');
   await Promise.all([root, stage, home].map((folder) => mkdir(folder)));
@@ -104,7 +104,7 @@ async function json(project: Awaited<ReturnType<typeof fixture>>, args: string[]
   const stdout = new CaptureStream(), stderr = new CaptureStream();
   const code = await runCommand(parseArgs(['repair', project.root, ...args, '--json']), {
     cwd: path.dirname(project.root), stdout, stderr, runner, updateNow: () => now,
-    updatePreview: { homedir: project.home, env: {} }
+    updatePreview: { homedir: project.home, env: process.platform === 'win32' ? { LOCALAPPDATA: project.home } : {} }
   });
   return { code, report: JSON.parse(stdout.text()), runner, stderr: stderr.text() };
 }
@@ -116,7 +116,7 @@ async function interactive(
   const stdout = new CaptureStream(), stderr = ttyCaptureStream();
   const code = await runCommand(parseArgs(['repair', project.root, '--application-patch', project.patch]), {
     cwd: path.dirname(project.root), stdin, stdout, stderr, runner, updateNow: clock,
-    updatePreview: { homedir: project.home, env: {} }, approveRepairPlan: prompt
+    updatePreview: { homedir: project.home, env: process.platform === 'win32' ? { LOCALAPPDATA: project.home } : {} }, approveRepairPlan: prompt
   });
   return { code, stdout: stdout.text(), stderr: stderr.text(), runner };
 }

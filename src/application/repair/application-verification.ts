@@ -15,9 +15,26 @@ import { applicationPackageSources, applicationPreparationBounds } from './appli
 import { assertApplicationToolsCurrent } from './application-toolchain.js';
 import { loadRepairPreview } from './preview.js';
 import { createRepairVerificationWorkspace } from './workspaces.js';
-import type { RepairVerificationWorkspace } from './workspaces-types.js';
+import { RepairWorkspaceError, type RepairVerificationWorkspace } from './workspaces-types.js';
 import type { ApplicationPatchCandidate, ApplicationVerificationCommand, ApplicationVerificationResult } from './application-types.js';
 import type { ApplicationResolvedPreparation, ApplicationVerificationOptions } from './application-preparation-types.js';
+import { assertRepairWorkspaceNativeCwds, repairWorkspaceLocation } from '../../adapters/filesystem/repair-workspaces.js';
+import { assertWindowsNativeCwd, WindowsNativeCwdError } from '../../adapters/process/windows-native-cwd.js';
+
+export function applicationVerificationCwdParts(policy: {
+  commands: readonly { cwdPathParts: readonly string[] }[];
+  executionCommands: readonly { cwdPathParts: readonly string[] }[];
+  preparation: readonly { cwdPathParts: readonly string[]; commands: readonly { cwdPathParts: readonly string[] }[] }[];
+}): string[][] {
+  return [
+    ...policy.commands.map(command => applicationParts(command.cwdPathParts, true)),
+    ...policy.executionCommands.map(command => applicationParts(command.cwdPathParts, true)),
+    ...policy.preparation.flatMap(preparation => [
+      applicationParts(preparation.cwdPathParts, true),
+      ...preparation.commands.map(command => applicationParts(command.cwdPathParts, true))
+    ])
+  ];
+}
 
 async function copyCandidate(candidate: ApplicationPatchCandidate, project: string): Promise<void> {
   for (const directory of candidate.scope.directoryInventory) {
@@ -136,6 +153,15 @@ export async function verifyApplicationPatch(
     if (candidate.networkRequired && !options.allowNetwork) {
       throw new ApplicationInspectionError('[network-consent] Declared network effects need separate approval before any preparation/check command (or explicit --allow-network automation).');
     }
+    if (process.platform === 'win32') {
+      const location = await repairWorkspaceLocation(root, options.storage ?? {});
+      try {
+        assertRepairWorkspaceNativeCwds(location.root, applicationVerificationCwdParts(policy));
+      } catch (error) {
+        if (error instanceof WindowsNativeCwdError) throw new ApplicationInspectionError(`[unsupported-native-cwd] ${error.message}`);
+        throw error;
+      }
+    }
     const preview = await loadRepairPreview(root, options.preview.fingerprint, options.storage?.clock?.() ?? new Date(), options.storage);
     if (canonicalSha256(preview) !== canonicalSha256(options.preview) || preview.applicationPatchPath !== candidate.patchPath ||
         preview.recipe.id !== 'application-layout-patch' || preview.verificationDigest !== result.verificationPolicyDigest) {
@@ -153,6 +179,13 @@ export async function verifyApplicationPatch(
     kind: 'preparation' | 'verification', index: number, metadata = false, preparation?: ApplicationResolvedPreparation
   ) => {
     let captured: { result?: CommandResult; error?: unknown } | undefined;
+    const selectedCwd = metadata ? workspace!.roles.home
+      : path.join(workspace!.roles.project, ...applicationParts(logical.cwdPathParts, true));
+    try { assertWindowsNativeCwd(selectedCwd); }
+    catch (error) {
+      if (error instanceof WindowsNativeCwdError) throw new ApplicationInspectionError(`[unsupported-native-cwd] ${error.message}`);
+      throw error;
+    }
     try {
       await workspace!.runOwned({
         kind, commandDigest: canonicalSha256({ command: actual, cwdPathParts: logical.cwdPathParts, metadata, policy: result.verificationPolicyDigest }),
@@ -160,7 +193,7 @@ export async function verifyApplicationPatch(
       }, async () => {
         try {
           const actualResult = await runner.run(actual, {
-            cwd: metadata ? workspace!.roles.home : path.join(workspace!.roles.project, ...logical.cwdPathParts), env,
+            cwd: selectedCwd, env,
             timeoutMs: logical.timeoutMs, maxOutputBytes: logical.maxOutputBytes, stream: false,
             ensureProcessTreeSettled: true
           });
@@ -171,7 +204,7 @@ export async function verifyApplicationPatch(
             Boolean(actualResult.errorCode && [
               'RESTRICTED_EXECUTION_POLICY', 'CONSTRAINED_LANGUAGE_MODE', 'UNSUPPORTED_PROCESS_SETTLEMENT',
               'CORRUPTED_CONTROLLER_ASSET', 'POWERSHELL_SPAWN_FAILED', 'CONTROLLER_LAUNCH_FAILED',
-              'AUTHENTICATION_FAILED', 'SPAWN_REQUEST_FAILED',
+              'AUTHENTICATION_FAILED', 'SPAWN_REQUEST_FAILED', 'UNSUPPORTED_NATIVE_CWD', 'UNSUPPORTED_CONTROLLER_RUNTIME',
               'ENOENT', 'EACCES', 'ENOEXEC'
             ].includes(actualResult.errorCode));
           const settled = knownSettlement(runner, actualResult) || definitivePreExecutionFailure;
@@ -326,6 +359,7 @@ export async function verifyApplicationPatch(
   } catch (error) {
     result.status = workspace ? 'failed' : 'blocked';
     result.blockers.push(error instanceof ApplicationInspectionError ? error.message :
+      error instanceof RepairWorkspaceError && error.code === 'unsupported-native-cwd' ? `[unsupported-native-cwd] ${error.message}` :
       '[verification-failed] Registered private preparation/verification could not complete; unsafe diagnostic values are withheld.');
     if (workspace) {
       try { await workspace.checkpoint('failed'); } catch { /* Cleanup remains guarded by the workspace owner. */ }

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, currentApplicationTargets } from '../src/application/repair/application-inventory.js';
@@ -17,7 +18,7 @@ import { NodeCommandRunner, type CommandResult, type CommandRunner } from '../sr
 import { projectMutationLockPath, withProjectMutationLock } from '../src/adapters/filesystem/project-lock.js';
 import {
   applicationFixtureExcluded, applicationFixtureSources, createApplicationRepairFixture,
-  putApplicationFixtureFile, stageApplicationRepairFixture, applicationVerificationFixtureContext
+  putApplicationFixtureFile, stageApplicationRepairFixture, applicationVerificationFixtureContext, applicationFixtureHomeName
 } from './fixtures/repair-application.js';
 
 vi.mock('node:fs/promises', async (original) => {
@@ -27,7 +28,8 @@ vi.mock('node:fs/promises', async (original) => {
 
 const directories: string[] = [];
 async function fixture() {
-  const directory = path.resolve(`.repair application ${randomUUID()}`);
+  const directory = process.platform === 'win32'
+    ? await mkdtemp(path.join(os.tmpdir(), 'lf app-')) : path.resolve(`.repair application ${randomUUID()}`);
   directories.push(directory);
   return { directory, ...await createApplicationRepairFixture(directory) };
 }
@@ -216,7 +218,7 @@ describe('bounded application inventory and executable staged patch', () => {
     expect(JSON.stringify(verified)).not.toContain('PRIVATE_');
     expect(await readFile(path.join(root, 'liftoff.manifest.json'))).toEqual(manifestBefore);
     await expect(lstat(path.join(root, 'backend'))).rejects.toMatchObject({ code: 'ENOENT' });
-    expect((await readdir(directory)).sort()).toEqual(['project', 'stage', 'verification-records-home']);
+    expect((await readdir(directory)).sort()).toEqual(['project', 'stage', applicationFixtureHomeName].sort());
   });
 
   it('provides exact private originals and destination absences for coordinator-owned backups', async () => {
@@ -586,7 +588,7 @@ describe('bounded application inventory and executable staged patch', () => {
     expect(blocked.status).toBe('blocked');
     expect(blocked.blockers.join(' ')).toContain('--allow-network');
     expect(runner.run).not.toHaveBeenCalled();
-    expect((await readdir(directory)).sort()).toEqual(['project', 'stage', 'verification-records-home']);
+    expect((await readdir(directory)).sort()).toEqual(['project', 'stage', applicationFixtureHomeName].sort());
     const verified = await verifyApplicationPatch(root, candidate, runner,
       await applicationVerificationFixtureContext(root, candidate, { projectCode: true, dependencyPreparation: false, network: true }));
     expect(verified.status).toBe('passed');
@@ -1036,7 +1038,8 @@ describe('bounded application inventory and executable staged patch', () => {
     ['standard', 'node-fastify', undefined, true, 'frontend-app', '<template><p>kept-customer-rule</p></template>\n'],
     ['standard', 'node-fastify', undefined, false, 'database-schema', '-- kept-customer-rule\nCREATE TABLE custom_prices (cents integer);\n']
   ] as const)('stages real selected-component file mappings for %s/%s (%s, target %s)', async (kind, apiStack, pattern, frontend, logicalName, content) => {
-    const directory = path.resolve(`.repair application ${randomUUID()}`);
+    const directory = process.platform === 'win32'
+      ? await mkdtemp(path.join(os.tmpdir(), 'lf app-')) : path.resolve(`.repair application ${randomUUID()}`);
     directories.push(directory);
     const root = path.join(directory, 'project'), stage = path.join(directory, 'stage');
     const plan = buildProjectPlan({
@@ -1112,7 +1115,7 @@ assert.ok((await readFile('source/business.txt', 'utf8')).includes('kept-custome
       expect(result.status, result.blockers.join('; ')).toBe('passed');
       expect(result.cleanupComplete).toBe(true);
       expect((await lstat(path.join(root, 'read-only'))).mode & 0o777).toBe(0o555);
-      expect((await readdir(directory)).sort()).toEqual(['project', 'stage', 'verification-records-home']);
+      expect((await readdir(directory)).sort()).toEqual(['project', 'stage', applicationFixtureHomeName].sort());
     } finally {
       await chmod(path.join(root, 'read-only'), 0o755);
     }

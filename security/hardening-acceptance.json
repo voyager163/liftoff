@@ -38,6 +38,7 @@
     "Fork and Dependabot execution remain unprivileged": {"tasks": ["3.3", "9.3"], "evidence": ["deterministic-test", "hosted-behavior"], "role": "policy"},
     "Execution and artifact trust are bounded": {"tasks": ["2.3", "3.4", "9.4"], "evidence": ["deterministic-test", "hosted-behavior"], "role": "policy"},
     "Security coverage is an explicit cross-platform inventory": {"tasks": ["2.1", "2.2", "2.7", "8.4"], "evidence": ["deterministic-test", "local-execution", "hosted-behavior"], "role": "generated-output"},
+    "Windows repair qualification preserves native cwd admission and retained storage": {"tasks": ["1.4", "8.4", "9.5", "12.12"], "evidence": ["owner-input", "deterministic-test", "local-execution", "hosted-behavior"], "role": "functional"},
     "Source analysis success and source findings are independently gated": {"tasks": ["5.1", "5.2", "5.5", "9.2", "9.3"], "evidence": ["deterministic-test", "real-scanner", "hosted-behavior"], "role": "source-findings"},
     "Secret assessments establish complete declared scope": {"tasks": ["1.6", "5.6", "5.7", "9.7"], "evidence": ["deterministic-test", "real-scanner", "readback"], "role": "secrets-intake"},
     "Secret assessment evidence cannot disclose credentials": {"tasks": ["2.8", "5.6", "9.7"], "evidence": ["deterministic-test", "real-scanner"], "role": "secrets-intake"},

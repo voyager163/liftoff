@@ -10,6 +10,7 @@ import type { ExternalCommand } from '../../domain/project/contracts.js';
 import type { CommandResult, RunCommandOptions } from '../../process-runner.js';
 import { resolvePackageFile } from '../packaged-assets/package-root.js';
 import { inspectWindowsControllerRuntime, revalidateWindowsControllerRuntime, type WindowsControllerRuntime } from './windows-controller-runtime.js';
+import { assertWindowsNativeCwd, WindowsNativeCwdError } from './windows-native-cwd.js';
 import {
   defaultWindowsJobControllerId,
   deriveInvocationDigest,
@@ -312,6 +313,17 @@ export async function runWindowsJobCommand(
       errorCode: 'ABORTED',
       errorMessage: 'Command was aborted before execution.'
     };
+  }
+
+  if (process.platform === 'win32') {
+    try { assertWindowsNativeCwd(path.win32.resolve(options.cwd ?? process.cwd())); }
+    catch (error) {
+      if (!(error instanceof WindowsNativeCwdError)) throw error;
+      return {
+        command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+        errorCode: error.code, errorMessage: error.message, processSpawned: false, processTreeSettled: false
+      };
+    }
   }
 
   let scriptPath: string;
@@ -708,6 +720,7 @@ export async function runWindowsJobCommand(
 
         try {
           // Controller is authenticated; send the spawn request now
+          if (process.platform === 'win32') assertWindowsNativeCwd(path.win32.resolve(invocation.cwd));
           const spawnReq = session.requestRootStart();
           const framed = frameControlMessage(spawnReq);
           clientSocket?.write(framed);
@@ -717,7 +730,7 @@ export async function runWindowsJobCommand(
           void finish({
             processTreeSettled: false,
             processSpawned: false,
-            errorCode: 'SPAWN_REQUEST_FAILED',
+            errorCode: err instanceof WindowsNativeCwdError ? err.code : 'SPAWN_REQUEST_FAILED',
             errorMessage: err instanceof Error ? err.message : String(err)
           });
         }

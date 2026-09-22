@@ -3,6 +3,7 @@ import { spawn as spawnProcess, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { StringDecoder } from 'node:string_decoder';
 import type { ExternalCommand } from './domain/project/contracts.js';
+import { assertWindowsNativeCwd, WindowsNativeCwdError } from './adapters/process/windows-native-cwd.js';
 
 export interface RunCommandOptions {
   cwd?: string;
@@ -156,6 +157,16 @@ export class NodeCommandRunner implements CommandRunner {
         aborted: true, errorCode: 'ABORT_ERR', errorMessage: 'Command was cancelled before it started.',
         ...(options.maxOutputBytes === undefined ? {} : { outputLimitExceeded: false })
       };
+    }
+    if (process.platform === 'win32') {
+      try { assertWindowsNativeCwd(path.win32.resolve(options.cwd ?? process.cwd())); }
+      catch (error) {
+        if (!(error instanceof WindowsNativeCwdError)) throw error;
+        return {
+          command, displayCommand, status: null, signal: null, stdout: '', stderr: '', timedOut: false,
+          errorCode: error.code, errorMessage: error.message, processSpawned: false, processTreeSettled: false
+        };
+      }
     }
     if (options.ensureProcessTreeSettled && process.platform === 'win32') {
       const { runWindowsJobCommand } = await import('./adapters/process/windows-job-runner.js');

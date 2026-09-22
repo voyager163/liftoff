@@ -43,7 +43,7 @@ export interface RepairWorkspaceIssue {
     | 'invalid-request' | 'registry-unavailable' | 'registry-busy' | 'registry-invalid'
     | 'unsupported-record' | 'unauthenticated-record' | 'scope-mismatch'
     | 'owner-active' | 'owner-uncertain' | 'identity-changed' | 'unsafe-path'
-    | 'workspace-missing' | 'cleanup-failed' | 'limits-exceeded' | 'permission-denied';
+    | 'workspace-missing' | 'cleanup-failed' | 'limits-exceeded' | 'permission-denied' | 'unsupported-native-cwd';
   message: string;
 }
 

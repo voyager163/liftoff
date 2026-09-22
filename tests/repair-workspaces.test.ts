@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -19,6 +20,8 @@ import {
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
+import * as workspacePaths from '../src/adapters/filesystem/repair-workspaces.js';
+import { WindowsNativeCwdError } from '../src/adapters/process/windows-native-cwd.js';
 
 const execute = promisify(execFile);
 const roots: string[] = [];
@@ -43,13 +46,14 @@ async function tree(root: string): Promise<Record<string, string>> {
 }
 
 async function fixture() {
-  const directory = path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
+  const directory = process.platform === 'win32'
+    ? await mkdtemp(path.join(os.tmpdir(), 'lf-ws-')) : path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
   roots.push(directory);
   const repository = path.join(directory, 'repository');
   const project = path.join(repository, 'Project with spaces');
   const staging = path.join(directory, 'patch staging');
   const home = path.join(directory, 'home');
-  await mkdir(directory);
+  if (process.platform !== 'win32') await mkdir(directory);
   await Promise.all([mkdir(path.join(repository, '.git'), { recursive: true }),
     mkdir(project, { recursive: true }), mkdir(staging), mkdir(home)]);
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{invalid manifest: this service must not read it}\n');
@@ -59,7 +63,7 @@ async function fixture() {
   await mkdir(path.join(home, 'global-cache'));
   await writeFile(path.join(home, 'global-cache', 'never-delete.txt'), 'global cache remains\n');
   const storage: RepairWorkspaceStorageOptions = {
-    homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: undefined }
+    homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: process.platform === 'win32' ? home : undefined }
   };
   const request: CreateRepairVerificationWorkspaceOptions = {
     planFingerprint: canonicalSha256('exact reviewed repair'),
@@ -102,6 +106,29 @@ async function mutateAuthenticated(
 }
 
 describe('private repair workspace registration', () => {
+  it('rejects an unlaunchable planned cwd before registry, workspace or command effects', async () => {
+    const f = await fixture(), before = await tree(f.home);
+    const operations: string[] = [];
+    const gate = vi.spyOn(workspacePaths, 'assertRepairWorkspaceNativeCwds').mockImplementation(() => { throw new WindowsNativeCwdError(); });
+    await expect(createRepairVerificationWorkspace(f.project, f.request, {
+      ...f.storage, beforeWorkspaceOperation: async operation => { operations.push(operation); }
+    })).rejects.toMatchObject({ code: 'unsupported-native-cwd' });
+    expect(gate).toHaveBeenCalledTimes(1);
+    expect(operations).toEqual([]);
+    expect(await tree(f.home)).toEqual(before);
+    expect((await inspectRepairVerificationWorkspaces(f.project, f.storage)).status).toBe('absent');
+  });
+  it('keeps inspection and authenticated cleanup of existing records independent of new-allocation path admission', async () => {
+    const f = await fixture(), handle = await createRepairVerificationWorkspace(f.project, f.request, f.storage);
+    expect(handle.workspaceId).toMatch(/^[a-f0-9]{64}$/);
+    await handle.releaseOwner();
+    const gate = vi.spyOn(workspacePaths, 'assertRepairWorkspaceNativeCwds').mockImplementation(() => { throw new WindowsNativeCwdError(); });
+    const inspection = await inspectRepairVerificationWorkspaces(f.project, f.storage);
+    expect(inspection.workspaces[0]).toMatchObject({ workspaceId: handle.workspaceId, owner: 'released' });
+    const recovered = await recoverRepairVerificationWorkspaces(f.project, f.storage);
+    expect(recovered.cleanupComplete).toBe(true);
+    expect(gate).not.toHaveBeenCalled();
+  });
   it('creates fixed private roles only after authenticated registration and preserves project/staging/backup bytes', async () => {
     const f = await fixture();
     const projectBefore = await tree(f.project);

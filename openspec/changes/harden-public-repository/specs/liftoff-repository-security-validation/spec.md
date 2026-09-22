@@ -67,6 +67,24 @@ Validation SHALL maintain named source, dependency, generated-case, IaC and arti
 - **THEN** its inapplicable or deferred status is explicit
 - **AND** it does not silently enter a supported generated graph or pretend container scan
 
+### Requirement: Windows repair qualification preserves native cwd admission and retained storage
+Windows baseline remediation SHALL preserve the existing physical private-workspace layout, schema, full project/workspace identities, authenticated records and cleanup authority. Before allocating a new verification workspace or requesting a target process, admission SHALL check the planned base and every declared preparation/check working directory against the documented native process cwd limit, counting UTF-16 units including the required separator and terminator. It SHALL revalidate the selected cwd before launch and report an explicit causal unsupported-native-cwd blocker rather than infer a missing executable. It SHALL NOT silently relocate state, truncate identities, change global path policy, introduce reparse aliases or broaden runtime paths. Existing retained-workspace inspection and authorized cleanup SHALL remain independent of new-allocation admission.
+
+#### Scenario: A declared nested Windows cwd exceeds the native limit
+- **WHEN** the planned registered base fits but a preparation or check cwd exceeds the native limit
+- **THEN** admission blocks before new workspace registry/allocation and requested command effects
+- **AND** no shorter substitute, timeout increase or successful verification receipt is supplied
+
+#### Scenario: A prior long workspace needs safe recovery
+- **WHEN** a retained workspace predates the new allocation check
+- **THEN** inspection and cleanup still use its unchanged authenticated location, full identities and ownership/settlement evidence
+- **AND** a different explicitly selected user-local storage location does not move, erase or adopt the prior records
+
+#### Scenario: Windows boundary and non-ASCII paths are checked
+- **WHEN** a selected cwd reaches the native limit or contains non-ASCII characters
+- **THEN** the same UTF-16 separator/terminator accounting determines admission without using UTF-8 byte length
+- **AND** representative success fixtures retain spaces and full identities alongside explicit over-limit negatives, while Linux and macOS behavior remains unchanged
+
 ### Requirement: Source analysis success and source findings are independently gated
 The repository SHALL use advanced CodeQL with explicit supported languages/categories and appropriate extended security queries for actual source. It SHALL require successful analysis for every applicable category and independently block policy-level findings through source-result evaluation and available native code-scanning merge protection. It SHALL NOT treat successful analysis/upload as absence of findings or rely exclusively on PR-diff annotation coverage. A distinct qualified maintenance-admission decision SHALL NOT alter the source-finding verdict or bypass native hosted rules.
 

@@ -52,7 +52,7 @@ async function json(
   const stdout = new CaptureStream(), stderr = new CaptureStream();
   const code = await runCommand(parseArgs(['repair', projectRoot, ...args, '--json']), {
     cwd: path.dirname(projectRoot), stdout, stderr, runner, updateNow: clock,
-    updatePreview: { homedir: home, repositoryRoot: projectRoot, env: {} }
+    updatePreview: { homedir: home, repositoryRoot: projectRoot, env: process.platform === 'win32' ? { LOCALAPPDATA: home } : {} }
   });
   return { code, report: JSON.parse(stdout.text()), stderr: stderr.text() };
 }

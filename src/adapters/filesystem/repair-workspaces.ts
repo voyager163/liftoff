@@ -9,6 +9,7 @@ import {
 } from '../../application/repair/workspaces-types.js';
 import { sameWorkspaceFileIdentity, workspaceDigest } from '../../application/repair/workspaces-records.js';
 import { resolveUpdatePreviewLocation, getUpdatePreviewDirectory, type UpdatePreviewPathOptions } from './update-previews.js';
+import { assertWindowsNativeCwd } from '../process/windows-native-cwd.js';
 
 export const repairWorkspaceDirectoryParts = ['repair-workspaces'] as const;
 export const maximumWorkspaceCleanupEntries = 250_000;
@@ -158,6 +159,27 @@ export async function repairWorkspaceLocation(
 export function repairWorkspaceDirectory(location: RepairWorkspaceLocation, workspaceId: string): string {
   workspaceDigest(workspaceId);
   return path.join(location.root, workspaceId);
+}
+
+/** Checks allocation geometry only; the actual 256-bit identity and retained record layout are unchanged. */
+export function assertRepairWorkspaceNativeCwds(
+  workspaceRoot: string, projectCwds: readonly (readonly string[])[] = [],
+  platform: NodeJS.Platform = process.platform
+): void {
+  if (platform !== 'win32') return;
+  const paths = path.win32, directory = paths.join(workspaceRoot, '0'.repeat(64));
+  const project = paths.join(directory, 'project');
+  assertWindowsNativeCwd(project, platform);
+  assertWindowsNativeCwd(paths.join(directory, 'home'), platform);
+  for (const parts of projectCwds) {
+    const validated = parts.length ? validateArtifactPathParts(parts, 'Verification working directory') : [];
+    const cwd = paths.join(project, ...validated);
+    const relative = paths.relative(project, cwd);
+    if (relative === '..' || relative.startsWith(`..${paths.sep}`) || paths.isAbsolute(relative)) {
+      throw new RepairWorkspaceError('scope-mismatch', 'Declared working directory escapes its registered project role.');
+    }
+    assertWindowsNativeCwd(cwd, platform);
+  }
 }
 
 export async function ensureRepairWorkspaceParents(location: RepairWorkspaceLocation): Promise<WorkspaceDirectorySnapshot> {

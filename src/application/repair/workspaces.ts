@@ -10,7 +10,7 @@ import {
   assertRegisteredWorkspace, assertWorkspaceDisjoint, canonicalWorkspaceBoundary,
   createRegisteredWorkspaceDirectory, deleteRegisteredWorkspace, ensureRepairWorkspaceParents,
   hasRepairWorkspaceCleanupLease, repairWorkspaceDirectory, repairWorkspaceLocation, withRepairWorkspaceCleanupLease,
-  type RepairWorkspaceLocation
+  assertRepairWorkspaceNativeCwds, type RepairWorkspaceLocation
 } from '../../adapters/filesystem/repair-workspaces.js';
 import {
   maximumRepairWorkspaces, openWorkspaceSeal, repairWorkspaceAuthorityKey, repairWorkspaceIndexKey,
@@ -24,6 +24,7 @@ import {
   type RepairWorkspaceIssue, type RepairWorkspaceRecord, type RepairWorkspaceRecoveryResult,
   type RepairWorkspaceStorageOptions, type RepairWorkspaceSummary
 } from './workspaces-types.js';
+import { WindowsNativeCwdError } from '../../adapters/process/windows-native-cwd.js';
 
 export * from './workspaces-types.js';
 export { getRepairWorkspaceRoot } from '../../adapters/filesystem/repair-workspaces.js';
@@ -278,6 +279,7 @@ export async function createRepairVerificationWorkspace(
     const staging = await canonicalWorkspaceBoundary(input.patchStagingRoot);
     const intended = await repairWorkspaceLocation(project.directory, storage);
     assertWorkspaceDisjoint(project.directory, staging.directory, intended.registryDirectory);
+    assertRepairWorkspaceNativeCwds(intended.root);
     const context = await openContext(project.directory, storage, true);
     if (!context) throw new RepairWorkspaceError('registry-unavailable', 'Workspace registration could not be created.');
     assertWorkspaceDisjoint(project.directory, staging.directory, context.location.root);
@@ -416,7 +418,10 @@ export async function createRepairVerificationWorkspace(
       }),
       cleanup: () => exclusive(() => cleanupOne(context, workspaceId))
     });
-  } catch (error) { throw workspaceError(error); }
+  } catch (error) {
+    if (error instanceof WindowsNativeCwdError) throw new RepairWorkspaceError('unsupported-native-cwd', error.message);
+    throw workspaceError(error);
+  }
 }
 
 export async function inspectRepairVerificationWorkspaces(

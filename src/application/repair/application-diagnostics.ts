@@ -1,5 +1,6 @@
 import type { CommandResult } from '../../process-runner.js';
 import { applicationBounds, type ApplicationVerificationCommand } from './application-types.js';
+import { windowsNativeCwdGuidance } from '../../adapters/process/windows-native-cwd.js';
 
 export interface ApplicationCommandFailure {
   kind: 'missing-executable' | 'missing-dependencies' | 'execution-failed' | 'check-failed' |
@@ -48,6 +49,7 @@ export function applicationDiagnosticMatches(
 export function applicationCommandFailure(
   command: ApplicationVerificationCommand, result: CommandResult
 ): ApplicationCommandFailure | null {
+  if (result.errorCode === 'UNSUPPORTED_NATIVE_CWD') return failure('execution-failed', `[unsupported-native-cwd] ${windowsNativeCwdGuidance}`);
   if (result.errorCode === 'PROCESS_TREE_TERMINATION_FAILED' ||
       result.errorCode === 'DESCENDANT_PROCESSES_ACTIVE' ||
       result.errorCode === 'UNSUPPORTED_PROCESS_SETTLEMENT') {

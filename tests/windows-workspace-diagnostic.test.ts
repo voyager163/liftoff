@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -12,6 +12,8 @@ import { createRepairVerificationWorkspace } from '../src/application/repair/wor
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
+import { repairWorkspaceDirectory, repairWorkspaceLocation } from '../src/adapters/filesystem/repair-workspaces.js';
+import { windowsNativeCwdUnits } from '../src/adapters/process/windows-native-cwd.js';
 
 const nativeEnabled = process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_WORKSPACE_DIAGNOSTIC === '1';
 const targetArgs = ['-e', 'process.exit(0)'];
@@ -22,7 +24,8 @@ const codes = new Set([
   'ADMISSION_DENIED', 'JOB_EXECUTION_ERROR', 'CONTROL_PIPE_ERROR', 'CONTROL_PIPE_DISCONNECTED',
   'POWERSHELL_SPAWN_FAILED', 'CONTROLLER_LAUNCH_FAILED', 'owner-uncertain', 'identity-changed',
   'unsafe-path', 'scope-mismatch', 'permission-denied',
-  'preview-storage', 'registry-unavailable', 'registry-invalid', 'invalid-request', 'unsupported-record'
+  'preview-storage', 'registry-unavailable', 'registry-invalid', 'invalid-request', 'unsupported-record',
+  'unsupported-native-cwd', 'UNSUPPORTED_NATIVE_CWD'
 ]);
 function boundedCode(value: unknown): string | null {
   return value === undefined || value === null ? null : typeof value === 'string' && codes.has(value) ? value : 'unclassified-failure';
@@ -38,8 +41,10 @@ interface Outcome {
 interface Observation {
   transport: 'direct' | 'controller'; directory: 'short' | 'repair';
   phase: 'root-creation' | 'short-control-creation' | 'root-identities' | 'fixture-directories' | 'workspace-registration'
-    | 'executable-inspection' | 'cwd-inspection' | 'registered' | 'launch' | 'result' | 'cleanup' | 'complete';
+    | 'executable-inspection' | 'cwd-inspection' | 'registered' | 'launch' | 'result' | 'cleanup' | 'complete' | 'native-cwd-rejected';
   rootsCreated: number; workspaceReturned: boolean;
+  plannedCwdLength: number | null; plannedNativeUnits: number | null; allocationOperations: number;
+  admissionRejectedBeforeAllocation: boolean;
   executable: { digest: string; pathDigest: string; exists: boolean; regular: boolean; reparse: boolean; unchanged: boolean | null } | null;
   environmentDigest: string; commandDigest: string;
   cwd: { length: number; digest: string; exists: boolean; directory: boolean; reparse: boolean } | null;
@@ -49,7 +54,8 @@ let active: { observation: Observation; recorder: WindowsJobDiagnosticRecorder |
 
 async function workspaceFixture(
   root: string, commandDigest: string, repositoryMarker = true,
-  stage: (value: Observation['phase']) => void = () => {}
+  stage: (value: Observation['phase']) => void = () => {},
+  options: { localAppData?: string; planned?: (cwd: string) => void; allocation?: () => void } = {}
 ) {
   stage('fixture-directories');
   const repository = path.join(root, 'repository'), project = path.join(repository, 'Project with spaces');
@@ -60,6 +66,14 @@ async function workspaceFixture(
   if (repositoryMarker) await mkdir(path.join(repository, '.git'), { mode: 0o700 });
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{"diagnosticOnly":true}\n', { flag: 'wx' });
   stage('workspace-registration');
+  const storage = {
+    homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: options.localAppData },
+    beforeWorkspaceOperation: async () => { options.allocation?.(); }
+  };
+  if (options.planned) {
+    const location = await repairWorkspaceLocation(project, storage);
+    options.planned(path.join(repairWorkspaceDirectory(location, '0'.repeat(64)), 'project'));
+  }
   return createRepairVerificationWorkspace(project, {
     planFingerprint: canonicalSha256('nonwriting-native-workspace-launch'),
     repairIdentity: repairExecutionIdentity(liftoffVersion, 'application-layout-patch'), patchStagingRoot: staging,
@@ -68,7 +82,7 @@ async function workspaceFixture(
       providerDigest: canonicalSha256(null), toolchainDigest: canonicalSha256(process.execPath)
     },
     approvedScopes: { projectCode: true, dependencyPreparation: false, network: false, lifecycle: false }
-  }, { homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: undefined } });
+  }, storage);
 }
 
 async function removeOwnedRoot(root: { name: string; device: bigint; inode: bigint }) {
@@ -122,8 +136,9 @@ it('keeps workspace diagnostic projections finite and rejects arbitrary error te
 });
 
 it('creates the actual paired fixture outside its nested repository and cleans only released owned scope without commands', async () => {
-  const name = path.join(process.cwd(), `.repair-workspaces-fixture-${randomUUID()}`);
-  await mkdir(name, { mode: 0o700 });
+  const name = process.platform === 'win32' ? await mkdtemp(path.join(os.tmpdir(), 'lf-ws-'))
+    : path.join(process.cwd(), `.repair-workspaces-fixture-${randomUUID()}`);
+  if (process.platform !== 'win32') await mkdir(name, { mode: 0o700 });
   await mkdir(path.join(name, '.git'), { mode: 0o700 });
   const identity = await lstat(name, { bigint: true });
   let released = false;
@@ -164,6 +179,7 @@ it.runIf(nativeEnabled).each([
   const env = { SystemRoot: host.SystemRoot, PATH: path.dirname(process.execPath), TEMP: os.tmpdir(), TMP: os.tmpdir() };
   const observation: Observation = {
     transport, directory, phase: 'root-creation', rootsCreated: 0, workspaceReturned: false,
+    plannedCwdLength: null, plannedNativeUnits: null, allocationOperations: 0, admissionRejectedBeforeAllocation: false,
     executable: null, environmentDigest: canonicalSha256(env),
     commandDigest: canonicalSha256({ executable: process.execPath, args: targetArgs, timeoutMs }),
     cwd: null, result: null, failureCode: null, causeCode: null, ownerCleanupComplete: false
@@ -184,7 +200,11 @@ it.runIf(nativeEnabled).each([
       const identity = await lstat(name, { bigint: true });
       roots.push({ name, device: identity.dev, inode: identity.ino });
     }
-    const workspace = await workspaceFixture(root, observation.commandDigest, true, phase => { observation.phase = phase; });
+    const workspace = await workspaceFixture(root, observation.commandDigest, true, phase => { observation.phase = phase; }, {
+      ...(directory === 'short' ? { localAppData: short } : {}),
+      planned: cwd => { observation.plannedCwdLength = cwd.length; observation.plannedNativeUnits = windowsNativeCwdUnits(cwd); },
+      allocation: () => { observation.allocationOperations++; }
+    });
     observation.workspaceReturned = true;
     observation.phase = 'executable-inspection';
     const cwd = directory === 'short' ? short : workspace.roles.project;
@@ -243,6 +263,15 @@ it.runIf(nativeEnabled).each([
     observation.failureCode = boundedCode(error !== null && typeof error === 'object' && 'code' in error ? error.code : 'unclassified-failure');
     const cause = error !== null && typeof error === 'object' && 'cause' in error ? error.cause : null;
     observation.causeCode = boundedCode(cause !== null && typeof cause === 'object' && 'code' in cause ? cause.code : null);
+    if (directory === 'repair' && observation.failureCode === 'unsupported-native-cwd' &&
+        !observation.workspaceReturned && observation.result === null && observation.allocationOperations === 0 &&
+        observation.plannedNativeUnits !== null && observation.plannedNativeUnits > 260) {
+      expect(await readdir(path.join(root, 'home'))).toEqual([]);
+      observation.admissionRejectedBeforeAllocation = true;
+      observation.phase = 'native-cwd-rejected';
+      cleanupAuthorized = true;
+      return;
+    }
     throw new Error('Native workspace launch remains unqualified; bounded observations and uncertain owned resources retained.');
   } finally {
     if (cleanupAuthorized) for (const root of roots) await removeOwnedRoot(root);

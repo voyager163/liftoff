@@ -402,3 +402,21 @@ are not application-patch targets. Interrupted approved transaction effects use
 the separate `--recover` path. A later behavior correction requires a new reviewed
 patch or user-controlled version-history recovery—not automatic restoration of
 old bytes over subsequent developer work.
+## Windows verification working-directory limit
+
+Windows process creation has a native current-directory limit of 260 UTF-16
+code units, including its trailing separator and terminating NUL. A directory
+can exist and be readable through filesystem APIs yet remain unusable as a
+process working directory. Liftoff reports `unsupported-native-cwd` before
+allocating a new verification workspace or starting a requested target when
+the planned private workspace and any declared nested command cwd exceed that
+limit. Non-ASCII characters count as UTF-16 units, not UTF-8 bytes.
+
+Choose an explicitly selected shorter supported user-local storage location
+before requesting a new preview; Windows storage already honors `LOCALAPPDATA`.
+Do not treat a changed selection as migration: previous records and retained
+workspaces stay at the original location and require that original context for
+inspection/recovery. Liftoff does not truncate identifiers, relocate state,
+change global long-path policy, add junctions or substitute extended paths to
+work around this process limit. Existing authenticated cleanup remains available
+for old long workspaces without rerunning verification.
