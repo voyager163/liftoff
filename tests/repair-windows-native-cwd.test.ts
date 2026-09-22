@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -11,6 +11,7 @@ import { NodeCommandRunner } from '../src/process-runner.js';
 import {
   createApplicationRepairFixture, stageApplicationRepairFixture, applicationVerificationFixtureContext
 } from './fixtures/repair-application.js';
+import { createOwnedFixtureRoot } from './fixtures/owned-root.js';
 
 const owned: string[] = [];
 afterEach(async () => {
@@ -29,7 +30,7 @@ describe('complete pre-allocation Windows command-cwd admission', () => {
     })).toThrow('portable');
   });
   it('reports a causal cwd blocker with no new registry/workspace allocation or requested command', async () => {
-    const root = await mkdtemp(path.join(os.tmpdir(), 'lf-cwd-')); owned.push(root);
+    const root = (await createOwnedFixtureRoot(os.tmpdir(), 'lf-cwd-')).name; owned.push(root);
     const fixture = await createApplicationRepairFixture(root);
     const patch = await stageApplicationRepairFixture(fixture.root, fixture.stage, fixture.manifest);
     const candidate = await inspectApplicationPatch(fixture.root, fixture.manifest, patch.patchPath);

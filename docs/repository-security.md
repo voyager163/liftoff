@@ -242,10 +242,48 @@ Ordinary Windows success fixtures use separately owned representative storage
 through test options, with spaces and full identities retained. The explicit
 283-unit fixture remains a native negative: it must now block before allocation
 and launch, with no registry/directory effects. Earlier failed launch and
-uncertain-owner evidence is preserved, not retroactively cleared. The new
-admission behavior and repaired Windows fixtures still need their own exact
-hosted qualification; independent npm tool-admission failures are not assumed
-resolved by this change.
+uncertain-owner evidence is preserved, not retroactively cleared. The subsequent
+native run confirmed both 283-unit/285-accounted-unit cases reject with zero
+allocation operations, no returned workspace and no target dispatch. Both fresh
+controller/environment cases also passed. These are separate from full Windows
+qualification, independent npm admission, and the direct control's incomplete
+descendant settlement.
+
+That run exposed an introduced fixture self-test setup failure at the existing
+ancestor realpath-equality guard, before its containment assertion. The local
+fixture correction binds the same newly created directory's identity before and
+after selecting its canonical spelling. Its expected storage boundary comes
+from explicit fixture options, including Windows `LOCALAPPDATA` precedence, and
+must independently belong to that owned root before workspace registration.
+Native-relative containment, foreign/sibling-prefix/alias negatives and owned
+cleanup replace the raw home-prefix assumption without changing production
+allocation or alias guards. The same owned-root helper also corrects the new
+raw temporary-root spelling in the application/workspace admission fixtures.
+Storage-overlap negatives explicitly override Windows `LOCALAPPDATA`, rather
+than changing only the lower-precedence home option.
+
+The required Windows run had 112 failures, a new regression boundary rather than
+a collection of pre-existing failures. Forty-four workspace failures bind to the
+ancestor realpath guard; the remaining assertions are not automatically assigned
+that cause. The framework fixture already canonicalizes its root and separately
+reported the npm version/declared-identity compatibility gate. Its exact native
+version predicate and full selected nested-cwd geometry are not established by
+the short fixture prefix or by these local repairs. These fixture corrections
+still need their own native qualification.
+
+The Windows framework test records bounded metadata from its existing real
+version probes, not replacement probes or synthetic version success. Canonical
+binary/launcher/declaration digests, identity stability, recognized numeric
+versions and finite predicate codes are recorded without raw output, paths or
+environment values. The same configured storage selector supplies read-only
+canonical-base and complete declared/preparation cwd measurements without
+allocating a new workspace. Metadata failures are explicit, and the original
+runner inputs, result, exception, deadlines and test assertions remain unchanged.
+These observations diagnose a failure; they do not override it.
+
+The same run's two compiler comparisons did not complete
+discovery/compilation within their unchanged deadlines; earlier successful
+comparisons do not substitute for those unsuccessful observations.
 
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;

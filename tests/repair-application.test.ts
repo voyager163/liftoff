@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -20,6 +20,7 @@ import {
   applicationFixtureExcluded, applicationFixtureSources, createApplicationRepairFixture,
   putApplicationFixtureFile, stageApplicationRepairFixture, applicationVerificationFixtureContext, applicationFixtureHomeName
 } from './fixtures/repair-application.js';
+import { createOwnedFixtureRoot } from './fixtures/owned-root.js';
 
 vi.mock('node:fs/promises', async (original) => {
   const actual = await original<typeof import('node:fs/promises')>();
@@ -29,7 +30,7 @@ vi.mock('node:fs/promises', async (original) => {
 const directories: string[] = [];
 async function fixture() {
   const directory = process.platform === 'win32'
-    ? await mkdtemp(path.join(os.tmpdir(), 'lf app-')) : path.resolve(`.repair application ${randomUUID()}`);
+    ? (await createOwnedFixtureRoot(os.tmpdir(), 'lf app-')).name : path.resolve(`.repair application ${randomUUID()}`);
   directories.push(directory);
   return { directory, ...await createApplicationRepairFixture(directory) };
 }
@@ -1039,7 +1040,7 @@ describe('bounded application inventory and executable staged patch', () => {
     ['standard', 'node-fastify', undefined, false, 'database-schema', '-- kept-customer-rule\nCREATE TABLE custom_prices (cents integer);\n']
   ] as const)('stages real selected-component file mappings for %s/%s (%s, target %s)', async (kind, apiStack, pattern, frontend, logicalName, content) => {
     const directory = process.platform === 'win32'
-      ? await mkdtemp(path.join(os.tmpdir(), 'lf app-')) : path.resolve(`.repair application ${randomUUID()}`);
+      ? (await createOwnedFixtureRoot(os.tmpdir(), 'lf app-')).name : path.resolve(`.repair application ${randomUUID()}`);
     directories.push(directory);
     const root = path.join(directory, 'project'), stage = path.join(directory, 'stage');
     const plan = buildProjectPlan({

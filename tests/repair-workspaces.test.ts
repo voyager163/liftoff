@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -22,6 +22,7 @@ import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
 import * as workspacePaths from '../src/adapters/filesystem/repair-workspaces.js';
 import { WindowsNativeCwdError } from '../src/adapters/process/windows-native-cwd.js';
+import { createOwnedFixtureRoot } from './fixtures/owned-root.js';
 
 const execute = promisify(execFile);
 const roots: string[] = [];
@@ -47,7 +48,7 @@ async function tree(root: string): Promise<Record<string, string>> {
 
 async function fixture() {
   const directory = process.platform === 'win32'
-    ? await mkdtemp(path.join(os.tmpdir(), 'lf-ws-')) : path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
+    ? (await createOwnedFixtureRoot(os.tmpdir(), 'lf-ws-')).name : path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
   roots.push(directory);
   const repository = path.join(directory, 'repository');
   const project = path.join(repository, 'Project with spaces');
@@ -201,7 +202,11 @@ describe('private repair workspace registration', () => {
   it.each(['project', 'staging'])('rejects storage overlapping %s before private metadata writes', async (which) => {
     const f = await fixture();
     const before = await tree(f.directory);
-    const storage = { ...f.storage, homedir: which === 'project' ? f.project : f.staging };
+    const overlapping = which === 'project' ? f.project : f.staging;
+    const storage = {
+      ...f.storage, homedir: overlapping,
+      env: { ...f.storage.env, ...(process.platform === 'win32' ? { LOCALAPPDATA: overlapping } : {}) }
+    };
     await expect(createRepairVerificationWorkspace(f.project, f.request, storage)).rejects.toThrow();
     expect(await tree(f.directory)).toEqual(before);
   });

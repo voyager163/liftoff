@@ -9,6 +9,7 @@ import { parseArgs } from '../src/args.js';
 import { CaptureStream } from './helpers.js';
 import { NodeCommandRunner, type CommandRunner, type RunCommandOptions } from '../src/process-runner.js';
 import type { ExternalCommand } from '../src/domain/project/contracts.js';
+import { frameworkFixtureStorage, frameworkProbeRecorder, frameworkStorageObservation } from './fixtures/framework-diagnostic.js';
 
 const roots: string[] = [];
 const now = new Date('2026-09-13T12:00:00Z');
@@ -52,7 +53,7 @@ async function json(
   const stdout = new CaptureStream(), stderr = new CaptureStream();
   const code = await runCommand(parseArgs(['repair', projectRoot, ...args, '--json']), {
     cwd: path.dirname(projectRoot), stdout, stderr, runner, updateNow: clock,
-    updatePreview: { homedir: home, repositoryRoot: projectRoot, env: process.platform === 'win32' ? { LOCALAPPDATA: home } : {} }
+    updatePreview: frameworkFixtureStorage(projectRoot, home)
   });
   return { code, report: JSON.parse(stdout.text()), stderr: stderr.text() };
 }
@@ -66,7 +67,15 @@ describe('real framework repair fixture', () => {
       { provider: 'npm-ci', version: 1, cwdPathParts: ['frontend'], packageSource: 'npmjs', network: true, lifecycle: 'disabled' }
     ];
     await writeFile(fixture.patchPath, `${JSON.stringify(fixture.document, null, 2)}\n`);
-    const candidate = await inspectApplicationPatch(fixture.root, await loadManifest(fixture.root), fixture.patchPath);
+    const diagnostic = process.platform === 'win32' ? frameworkProbeRecorder() : undefined;
+    const candidate = await inspectApplicationPatch(fixture.root, await loadManifest(fixture.root), fixture.patchPath,
+      diagnostic ? { runner: diagnostic.runner } : {});
+    if (diagnostic) console.log(JSON.stringify({
+      kind: 'native-framework-existing-probe-diagnostic',
+      probes: diagnostic.snapshot(), storage: await frameworkStorageObservation(fixture, candidate.verificationPolicy),
+      rawOutputRecorded: false, rawPathsRecorded: false, environmentRecorded: false,
+      resultUnchanged: true, completeFrameworkQualification: false
+    }));
     expect(candidate.blockers).toEqual([]);
     expect(candidate.report.status).toBe('proposed');
     expect(candidate.verificationPolicy.effects.preparation).toBe(true);

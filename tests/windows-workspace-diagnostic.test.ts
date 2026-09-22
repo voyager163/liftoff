@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
-import { lstat, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, expect, it } from 'vitest';
@@ -12,8 +12,11 @@ import { createRepairVerificationWorkspace } from '../src/application/repair/wor
 import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
 import { repairExecutionIdentity } from '../src/domain/repair/identity.js';
 import { liftoffVersion } from '../src/version.js';
-import { repairWorkspaceDirectory, repairWorkspaceLocation } from '../src/adapters/filesystem/repair-workspaces.js';
+import {
+  canonicalWorkspaceBoundary, getRepairWorkspaceRoot, repairWorkspaceDirectory, repairWorkspaceLocation
+} from '../src/adapters/filesystem/repair-workspaces.js';
 import { windowsNativeCwdUnits } from '../src/adapters/process/windows-native-cwd.js';
+import { bindCreatedFixtureRoot, createOwnedFixtureRoot, type OwnedFixtureRoot } from './fixtures/owned-root.js';
 
 const nativeEnabled = process.platform === 'win32' && process.env.LIFTOFF_WINDOWS_WORKSPACE_DIAGNOSTIC === '1';
 const targetArgs = ['-e', 'process.exit(0)'];
@@ -52,10 +55,40 @@ interface Observation {
 }
 let active: { observation: Observation; recorder: WindowsJobDiagnosticRecorder | null } | undefined;
 
+function fixtureStorage(root: string, localAppData?: string) {
+  return { homedir: path.join(root, 'home'), env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: localAppData } };
+}
+function nativeContains(root: string, candidate: string): boolean {
+  const relative = path.relative(root, candidate);
+  return path.isAbsolute(root) && path.isAbsolute(candidate) &&
+    (relative === '' || relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative));
+}
+async function ownedFixtureStorageBoundary(owner: OwnedFixtureRoot, storage: ReturnType<typeof fixtureStorage>): Promise<string> {
+  const current = await canonicalWorkspaceBoundary(owner.name);
+  if (current.identity.device !== owner.device.toString() || current.identity.inode !== owner.inode.toString()) {
+    throw new Error('Owned fixture storage identity changed.');
+  }
+  for (const directory of [storage.homedir, storage.env.LOCALAPPDATA]) {
+    if (directory === undefined) continue;
+    if (!nativeContains(owner.name, directory)) throw new Error('Fixture storage is outside its independently owned root.');
+    await canonicalWorkspaceBoundary(directory);
+  }
+  const boundary = getRepairWorkspaceRoot(storage);
+  if (!nativeContains(owner.name, boundary)) throw new Error('Selected fixture storage is not owned.');
+  return boundary;
+}
+function diagnosticFixtureRoot(): Promise<OwnedFixtureRoot> {
+  return createOwnedFixtureRoot(process.platform === 'win32' ? os.tmpdir() : process.cwd(),
+    process.platform === 'win32' ? 'lf-ws-' : '.repair-workspaces-fixture-');
+}
+
 async function workspaceFixture(
   root: string, commandDigest: string, repositoryMarker = true,
   stage: (value: Observation['phase']) => void = () => {},
-  options: { localAppData?: string; planned?: (cwd: string) => void; allocation?: () => void } = {}
+  options: {
+    localAppData?: string; planned?: (cwd: string) => void; allocation?: () => void;
+    beforeRegistration?: (storage: ReturnType<typeof fixtureStorage>) => Promise<void>;
+  } = {}
 ) {
   stage('fixture-directories');
   const repository = path.join(root, 'repository'), project = path.join(repository, 'Project with spaces');
@@ -67,9 +100,10 @@ async function workspaceFixture(
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{"diagnosticOnly":true}\n', { flag: 'wx' });
   stage('workspace-registration');
   const storage = {
-    homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: options.localAppData },
+    ...fixtureStorage(root, options.localAppData),
     beforeWorkspaceOperation: async () => { options.allocation?.(); }
   };
+  await options.beforeRegistration?.(storage);
   if (options.planned) {
     const location = await repairWorkspaceLocation(project, storage);
     options.planned(path.join(repairWorkspaceDirectory(location, '0'.repeat(64)), 'project'));
@@ -85,7 +119,7 @@ async function workspaceFixture(
   }, storage);
 }
 
-async function removeOwnedRoot(root: { name: string; device: bigint; inode: bigint }) {
+async function removeOwnedRoot(root: OwnedFixtureRoot) {
   const current = await lstat(root.name, { bigint: true });
   if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== root.device || current.ino !== root.inode) {
     throw new Error('Owned diagnostic root identity changed; cleanup refused.');
@@ -135,22 +169,97 @@ it('keeps workspace diagnostic projections finite and rejects arbitrary error te
   expect(win32Code('CreateProcessW failed with Win32 error 123456')).toBeNull();
 });
 
-it('creates the actual paired fixture outside its nested repository and cleans only released owned scope without commands', async () => {
-  const name = process.platform === 'win32' ? await mkdtemp(path.join(os.tmpdir(), 'lf-ws-'))
-    : path.join(process.cwd(), `.repair-workspaces-fixture-${randomUUID()}`);
-  if (process.platform !== 'win32') await mkdir(name, { mode: 0o700 });
-  await mkdir(path.join(name, '.git'), { mode: 0o700 });
-  const identity = await lstat(name, { bigint: true });
+it.each(['home-fallback', 'explicit-local-app-data'] as const)(
+  'creates the paired fixture within independently owned %s storage and cleans only released scope without commands', async selection => {
+  const owner = await diagnosticFixtureRoot();
+  await mkdir(path.join(owner.name, '.git'), { mode: 0o700 });
+  const localAppData = selection === 'explicit-local-app-data' ? path.join(owner.name, 'user local') : undefined;
+  if (localAppData) await mkdir(localAppData, { mode: 0o700 });
+  let expectedBoundary: string | undefined;
   let released = false;
   try {
-    const workspace = await workspaceFixture(name, canonicalSha256('no-command-setup-qualification'));
-    expect((await lstat(workspace.roles.project)).isDirectory()).toBe(true);
-    expect(workspace.roles.project.startsWith(path.join(name, 'home'))).toBe(true);
+    const workspace = await workspaceFixture(owner.name, canonicalSha256('no-command-setup-qualification'), true, undefined, {
+      localAppData,
+      beforeRegistration: async storage => { expectedBoundary = await ownedFixtureStorageBoundary(owner, storage); }
+    });
+    if (!expectedBoundary) throw new Error('Fixture storage ownership was not checked before registration.');
+    await canonicalWorkspaceBoundary(expectedBoundary);
+    await canonicalWorkspaceBoundary(workspace.roles.project);
+    expect(nativeContains(expectedBoundary, workspace.roles.project)).toBe(true);
+    expect(path.relative(expectedBoundary, workspace.roles.project).split(path.sep)).toEqual([
+      expect.stringMatching(/^[a-f0-9]{64}$/), expect.stringMatching(/^[a-f0-9]{64}$/), 'project'
+    ]);
     await workspace.releaseOwner();
     expect((await workspace.cleanup()).cleanupComplete).toBe(true);
     released = true;
   } finally {
-    if (released) await removeOwnedRoot({ name, device: identity.dev, inode: identity.ino });
+    if (released) {
+      await removeOwnedRoot(owner);
+      await expect(lstat(owner.name)).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  }
+});
+
+it('derives the Windows storage boundary from explicit LOCALAPPDATA before the fixture home fallback', () => {
+  const home = 'C:\\fixture\\home', local = 'C:\\fixture\\user local';
+  const selected = getRepairWorkspaceRoot({ platform: 'win32', homedir: home, env: { LOCALAPPDATA: local } });
+  const fallback = getRepairWorkspaceRoot({ platform: 'win32', homedir: home, env: {} });
+  expect(path.win32.relative(local, selected).split(path.win32.sep)[0]).not.toBe('..');
+  expect(path.win32.relative(home, selected).split(path.win32.sep)[0]).toBe('..');
+  expect(path.win32.relative(path.win32.join(home, 'AppData', 'Local'), fallback)).toBe(path.win32.relative(local, selected));
+});
+
+it.each(['foreign', 'sibling-prefix', 'alias'] as const)(
+  'rejects %s storage before the fixture can register a workspace', async kind => {
+  const parent = await diagnosticFixtureRoot();
+  const name = path.join(parent.name, 'private');
+  await mkdir(name, { mode: 0o700 });
+  const identity = await lstat(name, { bigint: true });
+  const owner = { name, device: identity.dev, inode: identity.ino };
+  const selected = kind === 'foreign' ? path.join(parent.name, 'foreign')
+    : kind === 'sibling-prefix' ? path.join(parent.name, 'private-sibling') : path.join(name, 'alias');
+  try {
+    if (kind === 'alias') {
+      const actual = path.join(name, 'actual');
+      await mkdir(actual, { mode: 0o700 });
+      await symlink(actual, selected, process.platform === 'win32' ? 'junction' : 'dir');
+    } else await mkdir(selected, { mode: 0o700 });
+    await expect(ownedFixtureStorageBoundary(owner, {
+      homedir: selected, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: selected }
+    })).rejects.toThrow();
+  } finally {
+    await removeOwnedRoot(parent);
+    await expect(lstat(parent.name)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+});
+
+it('rejects changed creation identity rather than accepting an existing fixture path as ownership', async () => {
+  const owner = await diagnosticFixtureRoot();
+  const storage = fixtureStorage(owner.name);
+  await mkdir(storage.homedir, { mode: 0o700 });
+  try {
+    await expect(ownedFixtureStorageBoundary({ ...owner, inode: owner.inode + 1n }, storage))
+      .rejects.toThrow('Owned fixture storage identity changed.');
+  } finally {
+    await removeOwnedRoot(owner);
+    await expect(lstat(owner.name)).rejects.toMatchObject({ code: 'ENOENT' });
+  }
+});
+
+it.each(['replacement', 'reparse'] as const)('rejects %s of a newly created fixture root during canonicalization', async kind => {
+  const parent = await diagnosticFixtureRoot();
+  const allocated = path.join(parent.name, 'created'), retained = path.join(parent.name, 'retained');
+  await mkdir(allocated, { mode: 0o700 });
+  const identity = await lstat(allocated, { bigint: true });
+  await rename(allocated, retained);
+  try {
+    if (kind === 'replacement') await mkdir(allocated, { mode: 0o700 });
+    else await symlink(retained, allocated, process.platform === 'win32' ? 'junction' : 'dir');
+    await expect(bindCreatedFixtureRoot(allocated, identity)).rejects.toThrow('New fixture root changed during canonicalization.');
+    expect((await lstat(retained, { bigint: true })).ino).toBe(identity.ino);
+  } finally {
+    await removeOwnedRoot(parent);
+    await expect(lstat(parent.name)).rejects.toMatchObject({ code: 'ENOENT' });
   }
 });
 
