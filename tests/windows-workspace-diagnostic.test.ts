@@ -21,7 +21,8 @@ const codes = new Set([
   'SUPERVISOR_TIMEOUT', 'UNSUPPORTED_CONTROLLER_RUNTIME', 'UNSUPPORTED_PROCESS_SETTLEMENT',
   'ADMISSION_DENIED', 'JOB_EXECUTION_ERROR', 'CONTROL_PIPE_ERROR', 'CONTROL_PIPE_DISCONNECTED',
   'POWERSHELL_SPAWN_FAILED', 'CONTROLLER_LAUNCH_FAILED', 'owner-uncertain', 'identity-changed',
-  'unsafe-path', 'scope-mismatch', 'permission-denied'
+  'unsafe-path', 'scope-mismatch', 'permission-denied',
+  'preview-storage', 'registry-unavailable', 'registry-invalid', 'invalid-request', 'unsupported-record'
 ]);
 function boundedCode(value: unknown): string | null {
   return value === undefined || value === null ? null : typeof value === 'string' && codes.has(value) ? value : 'unclassified-failure';
@@ -36,13 +37,47 @@ interface Outcome {
 }
 interface Observation {
   transport: 'direct' | 'controller'; directory: 'short' | 'repair';
-  phase: 'create' | 'registered' | 'launch' | 'result' | 'cleanup' | 'complete';
+  phase: 'root-creation' | 'short-control-creation' | 'root-identities' | 'fixture-directories' | 'workspace-registration'
+    | 'executable-inspection' | 'cwd-inspection' | 'registered' | 'launch' | 'result' | 'cleanup' | 'complete';
+  rootsCreated: number; workspaceReturned: boolean;
   executable: { digest: string; pathDigest: string; exists: boolean; regular: boolean; reparse: boolean; unchanged: boolean | null } | null;
   environmentDigest: string; commandDigest: string;
   cwd: { length: number; digest: string; exists: boolean; directory: boolean; reparse: boolean } | null;
-  result: Outcome | null; failureCode: string | null; ownerCleanupComplete: boolean;
+  result: Outcome | null; failureCode: string | null; causeCode: string | null; ownerCleanupComplete: boolean;
 }
 let active: { observation: Observation; recorder: WindowsJobDiagnosticRecorder | null } | undefined;
+
+async function workspaceFixture(
+  root: string, commandDigest: string, repositoryMarker = true,
+  stage: (value: Observation['phase']) => void = () => {}
+) {
+  stage('fixture-directories');
+  const repository = path.join(root, 'repository'), project = path.join(repository, 'Project with spaces');
+  const staging = path.join(root, 'patch staging'), home = path.join(root, 'home');
+  await Promise.all([
+    mkdir(project, { recursive: true, mode: 0o700 }), mkdir(staging, { mode: 0o700 }), mkdir(home, { mode: 0o700 })
+  ]);
+  if (repositoryMarker) await mkdir(path.join(repository, '.git'), { mode: 0o700 });
+  await writeFile(path.join(project, 'liftoff.manifest.json'), '{"diagnosticOnly":true}\n', { flag: 'wx' });
+  stage('workspace-registration');
+  return createRepairVerificationWorkspace(project, {
+    planFingerprint: canonicalSha256('nonwriting-native-workspace-launch'),
+    repairIdentity: repairExecutionIdentity(liftoffVersion, 'application-layout-patch'), patchStagingRoot: staging,
+    bindings: {
+      inputDigest: canonicalSha256('nonwriting-diagnostic-input'), verificationPolicyDigest: commandDigest,
+      providerDigest: canonicalSha256(null), toolchainDigest: canonicalSha256(process.execPath)
+    },
+    approvedScopes: { projectCode: true, dependencyPreparation: false, network: false, lifecycle: false }
+  }, { homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: undefined } });
+}
+
+async function removeOwnedRoot(root: { name: string; device: bigint; inode: bigint }) {
+  const current = await lstat(root.name, { bigint: true });
+  if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== root.device || current.ino !== root.inode) {
+    throw new Error('Owned diagnostic root identity changed; cleanup refused.');
+  }
+  await rm(root.name, { recursive: true });
+}
 afterEach(() => {
   if (!active) return;
   const value = active;
@@ -86,15 +121,52 @@ it('keeps workspace diagnostic projections finite and rejects arbitrary error te
   expect(win32Code('CreateProcessW failed with Win32 error 123456')).toBeNull();
 });
 
+it('creates the actual paired fixture outside its nested repository and cleans only released owned scope without commands', async () => {
+  const name = path.join(process.cwd(), `.repair-workspaces-fixture-${randomUUID()}`);
+  await mkdir(name, { mode: 0o700 });
+  await mkdir(path.join(name, '.git'), { mode: 0o700 });
+  const identity = await lstat(name, { bigint: true });
+  let released = false;
+  try {
+    const workspace = await workspaceFixture(name, canonicalSha256('no-command-setup-qualification'));
+    expect((await lstat(workspace.roles.project)).isDirectory()).toBe(true);
+    expect(workspace.roles.project.startsWith(path.join(name, 'home'))).toBe(true);
+    await workspace.releaseOwner();
+    expect((await workspace.cleanup()).cleanupComplete).toBe(true);
+    released = true;
+  } finally {
+    if (released) await removeOwnedRoot({ name, device: identity.dev, inode: identity.ino });
+  }
+});
+
+it('preserves the production storage rejection when a diagnostic omits its repository boundary', async () => {
+  const name = path.join(process.cwd(), `.repair-workspaces-fixture-${randomUUID()}`);
+  await mkdir(name, { mode: 0o700 });
+  await mkdir(path.join(name, '.git'), { mode: 0o700 });
+  const identity = await lstat(name, { bigint: true });
+  let rejectedBeforeAllocation = false;
+  try {
+    await workspaceFixture(name, canonicalSha256('invalid-no-command-setup'), false);
+    throw new Error('Missing repository boundary was not rejected.');
+  } catch (error) {
+    const cause = error !== null && typeof error === 'object' && 'cause' in error ? error.cause : error;
+    rejectedBeforeAllocation = cause !== null && typeof cause === 'object' && 'code' in cause && cause.code === 'preview-storage';
+    expect(rejectedBeforeAllocation).toBe(true);
+  } finally {
+    if (rejectedBeforeAllocation) await removeOwnedRoot({ name, device: identity.dev, inode: identity.ino });
+  }
+});
+
 it.runIf(nativeEnabled).each([
   ['direct', 'short'], ['direct', 'repair'], ['controller', 'short'], ['controller', 'repair']
 ] as const)('compares %s launch in the independently owned %s directory at the unchanged command budget', async (transport, directory) => {
   const host = buildWindowsControllerHostEnvironment();
   const env = { SystemRoot: host.SystemRoot, PATH: path.dirname(process.execPath), TEMP: os.tmpdir(), TMP: os.tmpdir() };
   const observation: Observation = {
-    transport, directory, phase: 'create', executable: null, environmentDigest: canonicalSha256(env),
+    transport, directory, phase: 'root-creation', rootsCreated: 0, workspaceReturned: false,
+    executable: null, environmentDigest: canonicalSha256(env),
     commandDigest: canonicalSha256({ executable: process.execPath, args: targetArgs, timeoutMs }),
-    cwd: null, result: null, failureCode: null, ownerCleanupComplete: false
+    cwd: null, result: null, failureCode: null, causeCode: null, ownerCleanupComplete: false
   };
   const recorder = transport === 'controller' ? createWindowsJobDiagnosticRecorder() : null;
   active = { observation, recorder };
@@ -103,25 +175,20 @@ it.runIf(nativeEnabled).each([
   let cleanupAuthorized = false;
   try {
     await mkdir(root, { mode: 0o700 });
+    observation.rootsCreated++;
+    observation.phase = 'short-control-creation';
     const short = await mkdtemp(path.join(os.tmpdir(), 'lf-wd-'));
+    observation.rootsCreated++;
+    observation.phase = 'root-identities';
     for (const name of [root, short]) {
       const identity = await lstat(name, { bigint: true });
       roots.push({ name, device: identity.dev, inode: identity.ino });
     }
-    const project = path.join(root, 'project'), staging = path.join(root, 'staging'), home = path.join(root, 'home');
-    await Promise.all([project, staging, home].map(name => mkdir(name, { mode: 0o700 })));
-    await writeFile(path.join(project, 'liftoff.manifest.json'), '{"diagnosticOnly":true}\n', { flag: 'wx' });
-    const workspace = await createRepairVerificationWorkspace(project, {
-      planFingerprint: canonicalSha256('nonwriting-native-workspace-launch'),
-      repairIdentity: repairExecutionIdentity(liftoffVersion, 'application-layout-patch'), patchStagingRoot: staging,
-      bindings: {
-        inputDigest: canonicalSha256('nonwriting-diagnostic-input'), verificationPolicyDigest: observation.commandDigest,
-        providerDigest: canonicalSha256(null), toolchainDigest: canonicalSha256(process.execPath)
-      },
-      approvedScopes: { projectCode: true, dependencyPreparation: false, network: false, lifecycle: false }
-    }, { homedir: home, env: { XDG_STATE_HOME: undefined, LOCALAPPDATA: undefined } });
+    const workspace = await workspaceFixture(root, observation.commandDigest, true, phase => { observation.phase = phase; });
+    observation.workspaceReturned = true;
+    observation.phase = 'executable-inspection';
     const cwd = directory === 'short' ? short : workspace.roles.project;
-    const executable = await lstat(process.execPath, { bigint: true }), target = await lstat(cwd);
+    const executable = await lstat(process.execPath, { bigint: true });
     if (executable.size < 1n || executable.size > 256n * 1024n * 1024n || !executable.isFile() || executable.isSymbolicLink()) {
       throw new Error('Unqualified diagnostic executable.');
     }
@@ -139,6 +206,8 @@ it.runIf(nativeEnabled).each([
       if (!unchanged) throw new Error('Diagnostic executable identity drift.');
     };
     await verifyExecutable();
+    observation.phase = 'cwd-inspection';
+    const target = await lstat(cwd);
     observation.cwd = { length: cwd.length, digest: canonicalSha256(cwd), exists: true, directory: target.isDirectory(), reparse: target.isSymbolicLink() };
     if (!observation.executable.regular || observation.executable.reparse || !observation.cwd.directory || observation.cwd.reparse) {
       throw new Error('Unqualified diagnostic file or directory.');
@@ -172,14 +241,10 @@ it.runIf(nativeEnabled).each([
     expect(observation.result).toMatchObject({ status: 0, errorCode: null, spawned: true, treeSettled: true, timedOut: false });
   } catch (error) {
     observation.failureCode = boundedCode(error !== null && typeof error === 'object' && 'code' in error ? error.code : 'unclassified-failure');
+    const cause = error !== null && typeof error === 'object' && 'cause' in error ? error.cause : null;
+    observation.causeCode = boundedCode(cause !== null && typeof cause === 'object' && 'code' in cause ? cause.code : null);
     throw new Error('Native workspace launch remains unqualified; bounded observations and uncertain owned resources retained.');
   } finally {
-    if (cleanupAuthorized) for (const root of roots) {
-      const current = await lstat(root.name, { bigint: true });
-      if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== root.device || current.ino !== root.inode) {
-        throw new Error('Owned diagnostic root identity changed; cleanup refused.');
-      }
-      await rm(root.name, { recursive: true });
-    }
+    if (cleanupAuthorized) for (const root of roots) await removeOwnedRoot(root);
   }
 }, 15_000);

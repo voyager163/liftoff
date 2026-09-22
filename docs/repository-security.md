@@ -196,6 +196,20 @@ Production storage roots and deadlines are not shortened or weakened to pass
 the comparison. Its execution remains subject to a new exact hosted-effects
 approval.
 
+The initial workspace comparison failed during fixture setup in all four cases,
+before recording an executable, working directory or launch result. It supplies
+no path-length or process-launch conclusion. A local reproduction found that the
+diagnostic omitted the original fixture's nested repository marker; the normal
+private-storage guard correctly rejected its home inside the containing worktree.
+The prepared fixture correction restores the original nested repository,
+project-with-spaces, staging and home layout without changing production path
+policy. Ordinary tests now exercise actual registration/release/cleanup and
+prove that omitting the marker still triggers the storage guard. Native metadata
+separates root creation, fixture preparation, workspace registration, executable
+inspection and cwd inspection, retaining only allowlisted outer/cause codes.
+Until a newly authorized comparison reaches those stages, all four earlier
+cases remain unqualified.
+
 `npm test` now starts Vitest with canonical temporary storage outside the source
 checkout. An inherited temporary path inside the checkout fails explicitly;
 `LIFTOFF_TEST_TEMP_PARENT` can select an existing external private parent.
