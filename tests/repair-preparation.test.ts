@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { chmod, copyFile, lstat, mkdir, readFile, rm, symlink } from 'node:fs/promises';
+import { chmod, copyFile, lstat, mkdir, mkdtemp, readFile, realpath, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, inspectApplicationPatch, applicationCandidateDigest, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
@@ -12,7 +12,7 @@ import type { ApplicationPatchCandidate } from '../src/application/repair/applic
 
 const roots: string[] = [];
 async function fixture(options: Parameters<typeof createPreparationFixture>[1] = {}) {
-  const root = path.resolve(`.repair preparation ${randomUUID()}`);
+  const root = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf prep ')));
   roots.push(root);
   return createPreparationFixture(root, options);
 }
