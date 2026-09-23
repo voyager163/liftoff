@@ -997,9 +997,10 @@ describe('bounded application inventory and executable staged patch', () => {
     expect(candidate.mutations).toEqual([]);
   });
 
-  it('keeps the documented patch example aligned with the implemented strict schema', async () => {
-    const documentation = await readFile(new URL('../docs/application-repair.md', import.meta.url), 'utf8');
-    const example = documentation.match(/```json\n([\s\S]*?)\n```/u)?.[1];
+  it.each(['\n', '\r\n'])('keeps the documented patch example aligned with the implemented strict schema with %j line endings', async (newline) => {
+    const source = await readFile(new URL('../docs/application-repair.md', import.meta.url), 'utf8');
+    const documentation = source.replace(/\r?\n/gu, newline);
+    const example = documentation.match(/```json\r?\n([\s\S]*?)\r?\n```/u)?.[1];
     expect(example).toBeDefined();
     const parsed = parseApplicationPatch(Buffer.from(example!, 'utf8'));
     expect(parsed.schemaVersion).toBe(1);
