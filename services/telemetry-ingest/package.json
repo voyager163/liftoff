@@ -16,13 +16,13 @@
     "node": ">=24.20"
   },
   "dependencies": {
-    "@azure/identity": "4.13.2",
+    "@azure/identity": "4.13.3",
     "@azure/monitor-ingestion": "1.2.0"
   },
   "devDependencies": {
-    "@types/node": "^24.6.0",
+    "@types/node": "^24.13.6",
     "typescript": "^7.0.2",
-    "vite": "8.2.2",
-    "vitest": "5.0.0"
+    "vite": "8.3.0",
+    "vitest": "5.0.1"
   }
 }
