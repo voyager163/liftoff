@@ -40,6 +40,14 @@ safeguards and preservation of current publishing behavior remain in scope.
 
 ## 6. Activate branch and Actions controls with explicit authority
 
+The owner chose to leave remaining check activation pending after the initial
+Ubuntu native Go preparation failure and Windows boundary-coverage failure.
+Application investigation/remediation remains out of scope. Existing `main`
+checks and its legacy rule are retained; no merge is authorized. The manual
+verification run also exposed an outdated workflow-only test reference to the
+old `publish` job; that assertion now targets `qualify`, without changing repair
+behavior. Hosted re-verification of that correction remains pending.
+
 - [x] 6.1 Present the fresh live GitHub settings diff, workflow-breaking effects, excluded npm-account scope, and exact intended Git publication operations; obtain explicit authority before any branch creation/switch, commit, push, PR publication, merge, or hosted mutation, and verify the recorded approval covers the actual targets.
 - [x] 6.2 Activate foundational PR/conversation/force-push/deletion rules for both `develop` and `main`, with zero approvals and no standing branch bypass; retain existing `main` required checks during migration and verify effective protection readback on both branches.
 - [x] 6.3 Apply the approved action allowlist and SHA enforcement, read-only defaults, disabled bot approvals, all-outside-contributor run approval, and only necessary issue labels; verify every referenced action is allowed and private reporting, secret scanning/push protection, and existing Dependabot configuration remain enabled without reviewing their findings.
