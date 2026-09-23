@@ -66,6 +66,13 @@ jobs:
           if ($version -ne "12.0.2") { throw "Expected npm 12.0.2 at the selected prefix; found $version." }
           $prefix | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
+      - name: Use runner-owned short temporary paths on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          "TEMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "TMP=$env:RUNNER_TEMP" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
       - name: Install dependencies
         run: npm ci
 
