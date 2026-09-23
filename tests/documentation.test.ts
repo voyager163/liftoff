@@ -82,7 +82,7 @@ describe('public documentation', () => {
     const setup = '/liftoff-setup';
     const workloadSection = readme.indexOf('## One flow, two workloads');
 
-    expect(readme.split('\n').length).toBeLessThan(165);
+    expect(readme.split('\n').length).toBeLessThan(135);
     expect(readme).not.toContain('Status: implemented');
     expect(readme.indexOf(install)).toBeGreaterThan(-1);
     expect(readme.indexOf(init)).toBeGreaterThan(readme.indexOf(install));
@@ -102,7 +102,7 @@ describe('public documentation', () => {
     expect(readme).toContain('exact current Git root');
     expect(readme).toContain('docs/safety-and-consent.md');
     expect(readme).toContain('liftoff update --check');
-    expect(readme).toContain('--approve-plan <fingerprint>');
+    expect(await repositoryFile('docs/cli-reference.md')).toContain('--approve-plan <fingerprint>');
     expect(readme).toContain('liftoff upgrade --check');
     expect(readme).toMatch(
       /replaces the CLI only; generated projects use `liftoff update` separately\s+for reviewed project maintenance/
@@ -118,7 +118,7 @@ describe('public documentation', () => {
 
   it('documents the executable local repair lane without claiming agent installation or public stateful execution', async () => {
     const docs = await Promise.all([
-      repositoryFile('README.md'), repositoryFile('docs/cli-reference.md'),
+      repositoryFile('docs/getting-started.md'), repositoryFile('docs/cli-reference.md'),
       repositoryFile('docs/repository-governance.md')
     ]);
     for (const content of docs) {
@@ -167,7 +167,7 @@ describe('public documentation', () => {
   });
 
   it('ships every progressive guide and resolves all local Markdown links', async () => {
-    for (const file of ['README.md', 'CONTRIBUTING.md', 'DEVELOPER.md', ...requiredDocs]) {
+    for (const file of ['README.md', 'CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md', 'DEVELOPER.md', ...requiredDocs]) {
       await access(path.join(repositoryRoot, file));
       await expectLocalLinksToResolve(file);
     }
@@ -175,6 +175,9 @@ describe('public documentation', () => {
     const packageJson = JSON.parse(await repositoryFile('package.json'));
     expect(packageJson.files).toContain('docs');
     expect(packageJson.files).toContain('DEVELOPER.md');
+    for (const file of ['CONTRIBUTING.md', 'CODE_OF_CONDUCT.md', 'SECURITY.md', 'GOVERNANCE.md', 'SUPPORT.md']) {
+      expect(packageJson.files).toContain(file);
+    }
   });
 
   it('documents distinct workload questions, outputs, prerequisites, and deferred actions', async () => {

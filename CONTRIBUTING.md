@@ -2,6 +2,22 @@
 
 Thank you for helping improve Mission Control Liftoff.
 
+Documentation, bug reproductions, design discussions, and answers to other
+users are as welcome as code. See [SUPPORT.md](SUPPORT.md) for the right channel,
+[GOVERNANCE.md](GOVERNANCE.md) for project decisions, and
+[CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) for community expectations.
+
+Discuss substantial changes in an issue before starting an implementation.
+For normal contributions, create a feature branch from `develop`, in a fork
+if needed, and open a pull request targeting **`develop`**, not `main`.
+There is no guaranteed review or response time.
+
+Issues and PRs are public. Use synthetic examples and manually inspect any
+logs or attachments before sharing them. Never post credentials, personal
+data, private source, `.env` contents, or sensitive findings. Report
+vulnerabilities privately through [SECURITY.md](SECURITY.md) and conduct
+concerns through the [separate conduct contact](CODE_OF_CONDUCT.md#reporting-and-enforcement).
+
 ## Development setup
 
 Install the toolchains exercised by the complete suite:
@@ -114,6 +130,7 @@ publishing requirements live in [DEVELOPER.md](DEVELOPER.md).
 When editing documentation:
 
 ```bash
+npm run check:repository
 npx vitest run tests/documentation.test.ts
 npm pack --dry-run --json
 ```
@@ -270,6 +287,22 @@ openspec validate <change-name> --strict
 
 ## Pull requests
 
+All changes, including maintainer-authored changes, go through a PR. The
+single-maintainer policy requires zero approving reviews, but still requires
+deliberate review, resolved conversations, and successful up-to-date checks.
+CODEOWNERS routes review; it is not a requirement for a second person.
+
+Squash ordinary PRs into `develop`. Release promotion from canonical `develop`
+into `main` and back-synchronization use merge commits. When both branches have
+advanced, create a temporary sync branch from current `develop`, merge `main`
+into it, and PR it into `develop` with a merge commit before promotion.
+See [branch policy](GOVERNANCE.md#branches-and-pull-requests).
+
+Outside contributors' fork workflows require maintainer approval before
+running. That approval grants no secrets or publishing authority. Workflow,
+policy, validation, and release changes need deliberate maintainer review;
+do not blindly auto-merge a green check or an automated suggestion.
+
 - Keep changes focused and include tests for changed behavior.
 - Update user and contributor documentation when commands, generated output,
   or workflows change.
@@ -288,6 +321,27 @@ Liftoff` workflow runs package checks, package smoke, a pack inspection, and
 release-identity validation before publishing. It uses npm trusted publishing
 with provenance and verifies the published dist-tag from canonical npm
 afterward.
+
+Manual dispatch is verification-only and has no publish switch. For an actual
+release, promote the reviewed revision from `develop` into `main` with a merge
+commit, then create the matching version tag with explicit release authority.
+Qualification checks canonical tag ancestry and package identity, then records
+the packed tarball's SHA-256 digest, source commit, and workflow run. The
+workflow smoke-tests that exact file before uploading it. For a previously
+packed candidate, use `npm run smoke:package -- --tarball <path-to-package.tgz>`;
+the candidate is inspected and installed in isolation, not repacked or replaced.
+The separate publishing job rechecks those identities and waits for your approval
+in the GitHub `npm-release` environment before publishing that exact tarball.
+The sole maintainer can approve their own release; this is not two-person review.
+
+Before publishing an immutable GitHub release, add all intended assets to its
+draft. Do not move tags or replace immutable assets afterward; issue a corrected
+version. Historical releases are not retroactively made immutable.
+
+GitHub environment approval does not establish npm account policy. npm
+trusted-publisher, token, and account settings are not inspected or changed by
+the repository-setup work. Migration away from npm is a separate change; the
+current publishing integration remains supported in the meantime.
 
 Before tagging, update package and lockfile metadata together and run:
 
@@ -361,6 +415,17 @@ npm view @msn-control/liftoff@0.2.1 dist.tarball --registry=https://registry.npm
 
 By contributing, you agree that your contribution is licensed under
 GPL-3.0-only.
+
+Submit only work you created or have permission to contribute under that
+license, identify third-party material and its license, and preserve required
+notices. There is no mandatory CLA, DCO sign-off, or signed-commit requirement.
+
+AI-assisted contributions are welcome on the same terms. You are responsible
+for reviewing the result, verifying your right to contribute it, and reporting
+what you actually checked. Explain material AI assistance when it affects
+provenance or review; do not submit private prompts or transcripts as proof.
+Never send someone else's confidential material to an AI service without
+permission.
 
 Report security vulnerabilities through the private process in
 [SECURITY.md](SECURITY.md), not a public issue.

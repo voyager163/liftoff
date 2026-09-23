@@ -1,0 +1,36 @@
+name: Feature request
+description: Describe a problem and the outcome you would like.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start with the problem, not just a proposed implementation.
+        A feature request is a discussion, not a commitment to ship.
+        Do not include credentials, personal data, private source, or sensitive findings.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem to solve
+      description: Who is affected, and what is difficult with the current behavior?
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Desired outcome
+      description: What should someone be able to do?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Include any current workaround and its limitations.
+  - type: checkboxes
+    id: contribution
+    attributes:
+      label: Participation
+      options:
+        - label: I would be interested in helping with a reviewed implementation or documentation.

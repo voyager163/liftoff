@@ -36,6 +36,11 @@
     "assets/supported-stack.json",
     "docs",
     "README.md",
+    "CONTRIBUTING.md",
+    "CODE_OF_CONDUCT.md",
+    "SECURITY.md",
+    "GOVERNANCE.md",
+    "SUPPORT.md",
     "DEVELOPER.md",
     "LICENSE"
   ],
@@ -55,6 +60,8 @@
     "verify:standard-node-templates": "npm run build && node scripts/verify-standard-node-templates.mjs",
     "verify:generated-containers": "npm run build && node scripts/verify-generated-containers.mjs",
     "verify:release-identity": "npm run build && node scripts/verify-release-identity.mjs",
+    "prepare:release": "node scripts/release-artifact.mjs pack",
+    "check:repository": "node scripts/check-repository-policy.mjs",
     "verify:published": "npm run build && node scripts/verify-published-package.mjs",
     "check": "npm run check:supported-stack && npm run build && npm test"
   },
