@@ -313,6 +313,7 @@ public static class Win32JobNative {
 "@
 
 try {
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
     Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop
 } catch {
     Write-Error "Failed to load Win32 Job API definitions. Check LanguageMode and ExecutionPolicy: $_"
@@ -322,7 +323,9 @@ try {
 # Connect to the private control pipe
 $pipe = New-Object System.IO.Pipes.NamedPipeClientStream('.', $ControlPipeName, [System.IO.Pipes.PipeDirection]::InOut, [System.IO.Pipes.PipeOptions]::Asynchronous)
 try {
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: connecting")
     $pipe.Connect(30000)
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: connected")
 } catch {
     Write-Error "Failed to connect to control pipe $ControlPipeName : $_"
     exit 1

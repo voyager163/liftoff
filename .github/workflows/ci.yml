@@ -89,6 +89,10 @@ jobs:
           LIFTOFF_FRAMEWORK_SMOKE: "1"
         run: npx vitest run tests/framework-smoke.test.ts
 
+      - name: Verify native Windows controller admission
+        if: runner.os == 'Windows'
+        run: npx vitest run tests/windows-job-runner.test.ts -t "settles a real native Node command"
+
       - name: Run Windows project and packaging boundary coverage
         if: runner.os == 'Windows'
         run: >-
