@@ -202,6 +202,12 @@ investigation, disabling tests, lowering thresholds, or silently omitting a
 planned gate. The repository remains partially configured until the owner
 resolves the blocker or explicitly revises the plan.
 
+The owner has now authorized a narrow exception for diagnosing and repairing
+the Windows CI blocker. Keep the repair tied to the failing Windows paths,
+retain all existing assertions and deadlines, and distinguish portable protocol
+fixtures from real Windows controller qualification. Other application failures
+and general auditing remain outside scope.
+
 Check source binding prevents unrelated status producers from satisfying a
 gate but does not make a contributor-edited GitHub Actions workflow independent
 review. The maintainer still reviews changes to workflows and checks before

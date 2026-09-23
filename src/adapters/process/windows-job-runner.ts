@@ -462,7 +462,7 @@ export async function runWindowsJobCommand(
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement.`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement (connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
         });
       }, timeoutMs + 5000);
     }

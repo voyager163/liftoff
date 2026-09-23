@@ -119,9 +119,14 @@ Required checks SHALL be bound to observed successful hosted contexts and their 
 - **AND** the required workflow runs for relevant PRs without path filters that leave the context pending
 
 #### Scenario: Existing application qualification fails during setup
-- **WHEN** an existing application check prevents activation of a planned required context
+- **WHEN** an existing application check prevents activation of a planned required context and no narrowly scoped repair has been explicitly authorized
 - **THEN** setup reports the blocked context without investigating or remediating application code
 - **AND** it does not remove existing gates, disable tests, lower thresholds, or silently declare the planned gate unnecessary
+
+#### Scenario: Owner authorizes the Windows CI compatibility repair
+- **WHEN** the owner explicitly authorizes repairing the Windows CI blocker
+- **THEN** diagnosis and changes remain limited to the failing Windows execution and test paths needed for qualification
+- **AND** existing assertions, checks, and execution deadlines remain enforced without expanding into general application auditing or npm-account configuration
 
 #### Scenario: A future rewrite changes a required check
 - **WHEN** the project replaces a workflow or job identity

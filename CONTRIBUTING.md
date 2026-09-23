@@ -56,6 +56,13 @@ timeouts are unchanged, including the migration inspection suite's 90-second
 limit. Use these defaults for CI qualification rather than increasing timeouts
 or excluding slow cases.
 
+Windows CI explicitly places its selected npm installation ahead of the Node
+distribution's bundled npm on PATH. Controller protocol fixtures use native
+PowerShell launchers on Windows and POSIX launchers on macOS/Linux; passing a
+mock protocol case is not evidence of native Job Object settlement. The separate
+Windows-only smoke case runs the packaged controller against a real Node process
+within the existing execution deadline.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash

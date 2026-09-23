@@ -42,7 +42,10 @@ safeguards and preservation of current publishing behavior remain in scope.
 
 The owner chose to leave remaining check activation pending after the initial
 Ubuntu native Go preparation failure and Windows boundary-coverage failure.
-Application investigation/remediation remains out of scope. Existing `main`
+The owner subsequently authorized diagnosis and repair of the Windows CI blocker
+only, including necessary application/test changes, without a general audit,
+disabled tests, weaker assertions, or npm-account changes. All other application
+investigation/remediation remains out of scope. Existing `main`
 checks and its legacy rule are retained; no merge is authorized. The manual
 verification run also exposed an outdated workflow-only test reference to the
 old `publish` job; that assertion now targets `qualify`, without changing repair
