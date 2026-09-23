@@ -46,7 +46,14 @@ Application investigation/remediation remains out of scope. Existing `main`
 checks and its legacy rule are retained; no merge is authorized. The manual
 verification run also exposed an outdated workflow-only test reference to the
 old `publish` job; that assertion now targets `qualify`, without changing repair
-behavior. Hosted re-verification of that correction remains pending.
+behavior. The corrected verification-only run `35853212074` passed on revision
+`06d69606c1cc52207a4d4a8b755f0aee5ca93941`; its publishing job was skipped.
+
+On resumption, the current revision passed the Ubuntu, macOS, repository-policy,
+telemetry-infrastructure, and both template checks. Windows still fails in the
+application repair/job-runner cases. Live-control readback is complete, with
+the missing new required-check bindings and legacy `main` cutover explicitly
+recorded as gaps rather than represented as active enforcement.
 
 - [x] 6.1 Present the fresh live GitHub settings diff, workflow-breaking effects, excluded npm-account scope, and exact intended Git publication operations; obtain explicit authority before any branch creation/switch, commit, push, PR publication, merge, or hosted mutation, and verify the recorded approval covers the actual targets.
 - [x] 6.2 Activate foundational PR/conversation/force-push/deletion rules for both `develop` and `main`, with zero approvals and no standing branch bypass; retain existing `main` required checks during migration and verify effective protection readback on both branches.
@@ -60,10 +67,36 @@ behavior. Hosted re-verification of that correction remains pending.
 - [x] 7.1 Create the approved `npm-release` environment with `voyager163` confirmation, self-approval allowed for the sole maintainer, administrative bypass disabled, and selected `v*` tags only; verify reviewer, bypass, and ref-type restrictions through readback before treating the release gate as active.
 - [x] 7.2 Apply separate version-tag creation-authority and update/deletion-prohibition rulesets using supported personal-repository actor types; verify the creation exception cannot bypass tag immutability and record the access-review obligation before another administrator is added.
 - [x] 7.3 Enable future GitHub release immutability and document draft-first assets plus new-version recovery; verify the setting is enabled while historical releases/tags remain unchanged, without creating or publishing a release.
-- [ ] 7.4 With explicit dispatch authority, run the verification-only release path from the reviewed setup revision; verify it has no publishing/OIDC/environment-approval path and retains qualification behavior, recording real OIDC publication as unexercised and npm-account settings as outside this change.
+- [x] 7.4 With explicit dispatch authority, run the verification-only release path from the reviewed setup revision; verify it has no publishing/OIDC/environment-approval path and retains qualification behavior, recording real OIDC publication as unexercised and npm-account settings as outside this change.
 
 ## 8. Confirm effective setup and hand off
 
-- [ ] 8.1 Read back all effective branch/tag rules, Actions permissions, merge settings, environment restrictions, reporting controls, and immutable-release state; compare them with the approved settings inventory and verify any capability/permission gaps are reported explicitly.
+- [x] 8.1 Read back all effective branch/tag rules, Actions permissions, merge settings, environment restrictions, reporting controls, and immutable-release state; compare them with the approved settings inventory and verify any capability/permission gaps are reported explicitly.
 - [ ] 8.2 Confirm the public README/community links and configured issue/PR entry points correspond to the approved published revision and that package documentation remains self-contained; verify original artwork attribution/provenance and no claims of application security certification or completed rewrite.
-- [ ] 8.3 Produce a concise setup handoff identifying locally prepared artifacts, published revision, effective GitHub controls, excluded npm-account scope, and blocked or unexercised items; verify every completed task has its stated evidence and no npm-account mutation, package publication, history rewrite, cloud deployment, or automatic main-spec archival was performed as part of setup.
+- [x] 8.3 Produce a concise setup handoff identifying locally prepared artifacts, published revision, effective GitHub controls, excluded npm-account scope, and blocked or unexercised items; verify every completed task has its stated evidence and no npm-account mutation, package publication, history rewrite, cloud deployment, or automatic main-spec archival was performed as part of setup.
+
+## Execution handoff
+
+- Setup implementation is published in draft PR #96. The qualified implementation
+  revision is `06d69606c1cc52207a4d4a8b755f0aee5ca93941`.
+- [Verification-only release run](https://github.com/voyager163/liftoff/actions/runs/35853212074)
+  passed qualification, package checks, exact-tarball smoke, and artifact upload.
+  Publication was skipped; no publishing environment was entered.
+- [Repository policy](https://github.com/voyager163/liftoff/actions/runs/35847485911)
+  passed. [Application CI](https://github.com/voyager163/liftoff/actions/runs/35847485917)
+  passed Linux, macOS, infrastructure, and both template lanes; Windows failed
+  in application repair/job-runner cases. No application-source diagnosis or
+  remediation was performed.
+- Readback confirms foundational branch ruleset `23872385`, tag creation rule
+  `23872476`, tag immutability rule `23872477`, the pinned Actions allowlist,
+  outside-contributor approval, the protected `npm-release` environment, and
+  future-release immutability.
+- Full enforcement is not complete: the new branch ruleset has no required-check
+  bindings yet; legacy `main` check requirements, administrator exemption, and
+  linear-history restriction remain pending replacement. No failing gate was
+  removed or bypassed.
+- Tasks 6.4, 6.5, 6.6, and 8.2 remain blocked. Merges are not authorized, and
+  the new README/community files are not on the default branch yet.
+- npm account/publisher settings, the distribution migration, application
+  hardening, releases, and cloud deployment remain outside this change.
+  Real OIDC publication is unexercised; this change has not been archived.
