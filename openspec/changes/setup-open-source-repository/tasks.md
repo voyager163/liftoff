@@ -46,7 +46,9 @@ The owner subsequently authorized diagnosis and repair of the Windows CI blocker
 only, including necessary application/test changes, without a general audit,
 disabled tests, weaker assertions, or npm-account changes. All other application
 investigation/remediation remains out of scope. Existing `main`
-checks and its legacy rule are retained; no merge is authorized. The manual
+checks and its legacy rule are retained. The owner has now authorized the setup
+merge into `develop` and the canonical `develop` to `main` promotion only after
+all required checks and protections pass, without bypasses or publication. The manual
 verification run also exposed an outdated workflow-only test reference to the
 old `publish` job; that assertion now targets `qualify`, without changing repair
 behavior. The corrected verification-only run `35853212074` passed on revision
@@ -98,7 +100,8 @@ recorded as gaps rather than represented as active enforcement.
   bindings yet; legacy `main` check requirements, administrator exemption, and
   linear-history restriction remain pending replacement. No failing gate was
   removed or bypassed.
-- Tasks 6.4, 6.5, 6.6, and 8.2 remain blocked. Merges are not authorized, and
+- Tasks 6.4, 6.5, 6.6, and 8.2 remain blocked until qualification completes.
+  Conditional merge authority is recorded, and
   the new README/community files are not on the default branch yet.
 - npm account/publisher settings, the distribution migration, application
   hardening, releases, and cloud deployment remain outside this change.

@@ -169,6 +169,9 @@ export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
   if (process.env.USERPROFILE) {
     env.USERPROFILE = process.env.USERPROFILE;
   }
+  for (const name of ['APPDATA', 'LOCALAPPDATA'] as const) {
+    if (process.env[name]) env[name] = process.env[name];
+  }
   // Preserve inherited process-scope execution policy preference so it is not accidentally relaxed
   if (process.env.PSExecutionPolicyPreference !== undefined) {
     env.PSExecutionPolicyPreference = process.env.PSExecutionPolicyPreference;

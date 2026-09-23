@@ -85,6 +85,27 @@ describe('Windows Job Object controller asset integrity and host environment', (
       }
     }
   });
+
+  it('preserves compiler profile directories without inheriting runtime injection or arbitrary credentials', () => {
+    const keys = ['APPDATA', 'LOCALAPPDATA', 'NODE_OPTIONS', 'UNTRUSTED_TARGET_ENV_VAR'] as const;
+    const previous = Object.fromEntries(keys.map(key => [key, process.env[key]]));
+    try {
+      process.env.APPDATA = path.join(os.tmpdir(), 'controller-profile', 'roaming');
+      process.env.LOCALAPPDATA = path.join(os.tmpdir(), 'controller-profile', 'local');
+      process.env.NODE_OPTIONS = '--untrusted-runtime-option';
+      process.env.UNTRUSTED_TARGET_ENV_VAR = 'not-a-controller-setting';
+      const env = buildWindowsControllerHostEnvironment();
+      expect(env.APPDATA).toBe(process.env.APPDATA);
+      expect(env.LOCALAPPDATA).toBe(process.env.LOCALAPPDATA);
+      expect(env.NODE_OPTIONS).toBeUndefined();
+      expect(env.UNTRUSTED_TARGET_ENV_VAR).toBeUndefined();
+    } finally {
+      for (const key of keys) {
+        if (previous[key] === undefined) delete process.env[key];
+        else process.env[key] = previous[key];
+      }
+    }
+  });
 });
 
 describe('Windows Job Runner protocol execution and policy admission blockers', () => {
