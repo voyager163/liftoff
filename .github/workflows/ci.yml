@@ -98,7 +98,7 @@ jobs:
 
       - name: Verify native Windows controller admission
         if: runner.os == 'Windows'
-        run: npx vitest run tests/windows-job-runner.test.ts -t "settles a real native Node command"
+        run: npx vitest run tests/windows-job-runner.test.ts tests/repair-preparation.test.ts -t "settles a real native Node command|detects unref descendant"
 
       - name: Run Windows project and packaging boundary coverage
         if: runner.os == 'Windows'

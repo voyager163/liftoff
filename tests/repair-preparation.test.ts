@@ -259,9 +259,21 @@ describe('registered locked preparation input and tool contracts', () => {
     const scriptPath = ['backend', 'test', 'spawn-descendant.cjs'];
     const scriptContent = `
       const { spawn } = require('node:child_process');
-      const descendant = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 8000)'], { stdio: 'ignore' });
-      descendant.unref();
-      process.exit(0);
+      const descendant = spawn(process.execPath, ['-e', 'process.stdout.write("ready"); setTimeout(() => {}, 8000)'], {
+        stdio: ['ignore', 'pipe', 'ignore'],
+        // Outlive Node's Windows root cleanup while remaining inside the outer owned Job.
+        detached: process.platform === 'win32'
+      });
+      descendant.once('error', () => process.exit(2));
+      let startup = '';
+      descendant.stdout.on('data', (bytes) => {
+        startup += bytes.toString();
+        if (startup.length < 5) return;
+        if (startup !== 'ready') process.exit(3);
+        descendant.stdout.destroy();
+        descendant.unref();
+        process.exit(0);
+      });
     `;
     await putApplicationFixtureFile(f.root, scriptPath, scriptContent);
     f.document.verification.commands = [{
