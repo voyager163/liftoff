@@ -313,8 +313,10 @@ public static class Win32JobNative {
 "@
 
 try {
+    [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: loading-compiler")
+    Import-Module ([System.IO.Path]::Combine($PSHOME, 'Modules', 'Microsoft.PowerShell.Utility', 'Microsoft.PowerShell.Utility.psd1')) -ErrorAction Stop
     [Console]::Error.WriteLine("LIFTOFF_CONTROLLER_STAGE: compiling")
-    Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop
+    Microsoft.PowerShell.Utility\Add-Type -TypeDefinition $win32TypeDef -ErrorAction Stop
 } catch {
     Write-Error "Failed to load Win32 Job API definitions. Check LanguageMode and ExecutionPolicy: $_"
     exit 1

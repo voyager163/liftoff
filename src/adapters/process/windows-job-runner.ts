@@ -25,7 +25,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = '84294e17f22ed9405c8956b8d5cf96e1f394c4ba4152d83cf899df236c027b38';
+export const windowsJobControllerAssetDigest = '4093404187e1bc51067c60393626bcb0f8c036f4575813ecad4e3cd4f008daa7';
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -168,9 +168,6 @@ export function buildWindowsControllerHostEnvironment(): NodeJS.ProcessEnv {
   }
   if (process.env.USERPROFILE) {
     env.USERPROFILE = process.env.USERPROFILE;
-  }
-  for (const name of ['APPDATA', 'LOCALAPPDATA'] as const) {
-    if (process.env[name]) env[name] = process.env[name];
   }
   // Preserve inherited process-scope execution policy preference so it is not accidentally relaxed
   if (process.env.PSExecutionPolicyPreference !== undefined) {
@@ -460,7 +457,7 @@ export async function runWindowsJobCommand(
 
     if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
       supervisorTimer = setTimeout(() => {
-        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
+        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
         void finish({
           timedOut: true,
           processTreeSettled: false,
