@@ -25,7 +25,7 @@ import {
 } from './windows-job-protocol.js';
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
-export const windowsJobControllerAssetDigest = 'c91996e7d63b20fe3a571eb2100357f3f2e5018a909f8af818c39c183ba99ec6';
+export const windowsJobControllerAssetDigest = '4093404187e1bc51067c60393626bcb0f8c036f4575813ecad4e3cd4f008daa7';
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -457,12 +457,13 @@ export async function runWindowsJobCommand(
 
     if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
       supervisorTimer = setTimeout(() => {
+        const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
         void finish({
           timedOut: true,
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement.`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement (controller=${controllerStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
         });
       }, timeoutMs + 5000);
     }

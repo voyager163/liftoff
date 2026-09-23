@@ -62,11 +62,11 @@ The guided flow asks for:
 3. Whether to generate the default single-maintainer GitFlow repository-
    governance handoff. Accepting it creates local files only.
 4. OpenSpec or Spec Kit.
-5. One or both coding agents. On a real TTY, Space toggles agents and Enter
+5. One or more coding agents. On a real TTY, Space toggles agents and Enter
    confirms the selection.
 6. Whether to configure the default-off GitHub-hosted Copilot coding agent when
    OpenSpec and GitHub Copilot are selected.
-7. A Spec Kit default agent when both agents are selected.
+7. A Spec Kit default agent when multiple agents are selected.
 8. Plan confirmation, workstation readiness, and any separate install or
    overwrite permissions that are needed.
 
@@ -84,6 +84,9 @@ syncs, and archives `bootstrap-<project>`; Spec Kit validates and finalizes
 work. Missing approval-persistence, credential-enrollment, and production phase
 executors remain specific blockers. Commit and push are never implicit in
 `liftoff init`, `--yes`, or read-only checks.
+
+`/liftoff-setup` is a Copilot/Claude agent invocation, not a `liftoff setup`
+shell command. Codex uses `$liftoff-setup` or selects the native skill.
 
 For deterministic generic generation, use `--type genai --pattern generic`.
 
@@ -157,6 +160,51 @@ workflow. Repository publication and production activation remain separate:
   flows follow the governed GitFlow plan after activation evidence is green.
 
 See [workloads](workloads.md) for exact generated outputs and deferred actions.
+
+## Maintain or repair an existing project
+
+Start with `liftoff update --check`, then run `liftoff update` and approve the
+matching plan. Check leaves project bytes unchanged and saves a disclosed
+preview receipt outside the repository. Missing or stale previews block apply.
+Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
+Supported activation-v1/v2 migration preserves original in-project records and
+creates a linked v3 activation. Failed revalidation remains blocked and resumable,
+not reset to an older contract. Application source, dependencies, schemas,
+containers, environments, documentation, and infrastructure remain project-owned,
+including when `--force` is used.
+
+For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
+verification**, not an OpenSpec feature change. Start with:
+
+```bash
+liftoff repair "path/to/existing project" --check
+```
+
+Ordinary check makes no cloud calls. Bare interactive `liftoff repair` shows
+the exact plan and asks Yes/No, default No. Eligibility for the local recipe
+requires explicitly requested `--check --live --subscription <UUID>` discovery
+with existing authentication, authoritatively absent resource groups, and no
+local state/backend metadata. Missing state files alone do not establish safety.
+Deployed, unknown, and unsupported cases remain plan-only, with source and state
+untouched. Agent installation and the public stateful migration coordinator are
+not implemented.
+
+After an eligible, separately approved repair, run `liftoff update --check --project
+"path/to/existing project"` and resume native setup. Interrupted repair writes
+use `liftoff repair [project-path] --recover`, not update recovery. JSON/non-TTY
+repair previews unless the exact automation flags authorize changes. The local
+recipe preserves legacy flat-root semantics while creating a shared module and
+independent environment roots. See [repair modes](cli-reference.md#repair-modes)
+for flags and limits, and use native `/liftoff-repair` (Codex: `$liftoff-repair`)
+for reviewed [application patches](application-repair.md).
+Repair contract 1 is available in 0.12.3; inspect support with
+`liftoff repair --capabilities --json`.
+
+Older projects may show the retired `/liftoff-repository-governance` alias.
+Review `liftoff update --check`; approved `liftoff update --force` removes only
+exact recorded aliases. Do not reinitialize a project to resolve a blocker.
+For read-only assessment of any Git repository, without initialization, use
+`liftoff governance assess --json`. Missing proof is partial coverage, not success.
 
 ## Noninteractive automation
 

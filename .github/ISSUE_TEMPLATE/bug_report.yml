@@ -1,0 +1,62 @@
+name: Bug report
+description: Report a reproducible problem with Liftoff.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for helping improve Liftoff. Search existing issues first.
+        This report is public: do not include credentials, personal data, private
+        source, .env contents, or raw sensitive diagnostics.
+        For vulnerabilities, follow [SECURITY.md](https://github.com/voyager163/liftoff/blob/develop/SECURITY.md).
+        For conduct concerns, follow [CODE_OF_CONDUCT.md](https://github.com/voyager163/liftoff/blob/develop/CODE_OF_CONDUCT.md).
+  - type: input
+    id: version
+    attributes:
+      label: Liftoff version
+      description: Run liftoff --version, or identify the source revision if contributing.
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Provide the command and minimal steps using synthetic, non-sensitive inputs.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior
+      description: Include only the relevant, manually sanitized error.
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Additional context
+      description: Relevant runtime versions or managed-registry constraints, without private configuration.
+  - type: checkboxes
+    id: public-report
+    attributes:
+      label: Public report
+      options:
+        - label: I have reviewed this report and its attachments for sensitive information.
+          required: true

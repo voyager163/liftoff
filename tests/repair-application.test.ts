@@ -1,5 +1,5 @@
-import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, open, opendir, readFile, readdir, rm, symlink } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, open, opendir, readFile, readdir, realpath, rm, symlink } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationLayout, currentApplicationTargets } from '../src/application/repair/application-inventory.js';
@@ -26,9 +26,14 @@ vi.mock('node:fs/promises', async (original) => {
 });
 
 const directories: string[] = [];
-async function fixture() {
-  const directory = path.resolve(`.repair application ${randomUUID()}`);
+async function fixtureDirectory() {
+  // Leave room for the two full workspace identities within Windows' process cwd limit.
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf app ')));
   directories.push(directory);
+  return directory;
+}
+async function fixture() {
+  const directory = await fixtureDirectory();
   return { directory, ...await createApplicationRepairFixture(directory) };
 }
 async function stagedFixture() {
@@ -89,9 +94,7 @@ describe('bounded application inventory and executable staged patch', () => {
     ['genai', 'python-fastapi', 'rag', true, 'function-worker-app'],
     ['genai', 'python-fastapi', 'chatbot', false, 'backend-pattern-routes']
   ] as const)('derives real %s/%s targets with selected optional components (%s)', async (kind, apiStack, pattern, frontend, expected) => {
-    const directory = path.resolve(`.repair application ${randomUUID()}`);
-    directories.push(directory);
-    await mkdir(directory);
+    const directory = await fixtureDirectory();
     const plan = buildProjectPlan({
       projectName: 'target-layout', projectType: kind, apiStack, ...(pattern ? { pattern } : {}),
       cloud: 'azure', region: 'eastus', environments: ['dev', 'prod'], specWorkflow: 'openspec',
@@ -994,9 +997,10 @@ describe('bounded application inventory and executable staged patch', () => {
     expect(candidate.mutations).toEqual([]);
   });
 
-  it('keeps the documented patch example aligned with the implemented strict schema', async () => {
-    const documentation = await readFile(new URL('../docs/application-repair.md', import.meta.url), 'utf8');
-    const example = documentation.match(/```json\n([\s\S]*?)\n```/u)?.[1];
+  it.each(['\n', '\r\n'])('keeps the documented patch example aligned with the implemented strict schema with %j line endings', async (newline) => {
+    const source = await readFile(new URL('../docs/application-repair.md', import.meta.url), 'utf8');
+    const documentation = source.replace(/\r?\n/gu, newline);
+    const example = documentation.match(/```json\r?\n([\s\S]*?)\r?\n```/u)?.[1];
     expect(example).toBeDefined();
     const parsed = parseApplicationPatch(Buffer.from(example!, 'utf8'));
     expect(parsed.schemaVersion).toBe(1);
@@ -1036,8 +1040,7 @@ describe('bounded application inventory and executable staged patch', () => {
     ['standard', 'node-fastify', undefined, true, 'frontend-app', '<template><p>kept-customer-rule</p></template>\n'],
     ['standard', 'node-fastify', undefined, false, 'database-schema', '-- kept-customer-rule\nCREATE TABLE custom_prices (cents integer);\n']
   ] as const)('stages real selected-component file mappings for %s/%s (%s, target %s)', async (kind, apiStack, pattern, frontend, logicalName, content) => {
-    const directory = path.resolve(`.repair application ${randomUUID()}`);
-    directories.push(directory);
+    const directory = await fixtureDirectory();
     const root = path.join(directory, 'project'), stage = path.join(directory, 'stage');
     const plan = buildProjectPlan({
       projectName: 'component-repair', projectType: kind, apiStack, ...(pattern ? { pattern } : {}),

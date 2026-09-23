@@ -8,7 +8,8 @@ import {
   buildWindowsControllerHostEnvironment,
   runWindowsJobCommand,
   verifyWindowsJobControllerAsset,
-  windowsJobControllerAssetDigest
+  windowsJobControllerAssetDigest,
+  type WindowsJobRunnerOptions
 } from '../src/adapters/process/windows-job-runner.js';
 import {
   frameControlMessage,
@@ -18,6 +19,19 @@ import {
 } from '../src/adapters/process/windows-job-protocol.js';
 
 const tempDirs: string[] = [];
+async function mockControllerLauncher(directory: string, script: string): Promise<WindowsJobRunnerOptions> {
+  if (process.platform === 'win32') {
+    const launcher = path.join(directory, 'mock-launcher.ps1');
+    const literal = (value: string) => `'${value.replaceAll("'", "''")}'`;
+    await writeFile(launcher, `& ${literal(process.execPath)} ${literal(script)} @args\nexit $LASTEXITCODE\n`);
+    return { assetPath: launcher, skipAssetVerification: true };
+  }
+  const launcher = path.join(directory, 'mock-launcher.sh');
+  const literal = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
+  await writeFile(launcher, `#!/bin/sh\nexec ${literal(process.execPath)} ${literal(script)} "$@"\n`, { mode: 0o755 });
+  return { powershellPath: launcher, skipAssetVerification: true };
+}
+
 afterEach(async () => {
   for (const dir of tempDirs.splice(0)) {
     await rm(dir, { recursive: true, force: true });
@@ -71,6 +85,7 @@ describe('Windows Job Object controller asset integrity and host environment', (
       }
     }
   });
+
 });
 
 describe('Windows Job Runner protocol execution and policy admission blockers', () => {
@@ -78,23 +93,16 @@ describe('Windows Job Runner protocol execution and policy admission blockers', 
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-policy-'));
     tempDirs.push(tempDir);
 
-    // Create a mock powershell executable (script) that outputs the standard Windows execution policy error
-    const mockPs = path.join(tempDir, 'mock-powershell.sh');
+    const mockPs = path.join(tempDir, 'mock-powershell.mjs');
     await writeFile(
       mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-File C:\\repair\\windows-job-controller.ps1 cannot be loaded because running scripts is disabled on this system. For more information, see about_Execution_Policies at https:/go.microsoft.com/fwlink/?LinkID=135170.
-EOF
-exit 1
-`,
-      { mode: 0o755 }
+      `process.stderr.write("The controller cannot be loaded because running scripts is disabled on this system. See about_Execution_Policies.\\n");\nprocess.exitCode = 1;\n`
     );
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       {},
-      { powershellPath: mockPs, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -107,22 +115,16 @@ exit 1
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-lang-'));
     tempDirs.push(tempDir);
 
-    const mockPs = path.join(tempDir, 'mock-powershell-lang.sh');
+    const mockPs = path.join(tempDir, 'mock-powershell-lang.mjs');
     await writeFile(
       mockPs,
-      `#!/bin/sh
-cat << 'EOF' >&2
-Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).
-EOF
-exit 1
-`,
-      { mode: 0o755 }
+      `process.stderr.write("Cannot add type. Definition of new types is not supported in this language mode (ConstrainedLanguage / AppLocker).\\n");\nprocess.exitCode = 1;\n`
     );
 
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       {},
-      { powershellPath: mockPs, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -217,19 +219,10 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -328,19 +321,10 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000, maxOutputBytes: 25 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -387,19 +371,10 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -489,19 +464,10 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 10_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(true);
@@ -545,19 +511,10 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 `
     );
 
-    const mockLauncher = path.join(tempDir, 'mock-launcher.sh');
-    await writeFile(
-      mockLauncher,
-      `#!/bin/sh
-exec node "${mockPs}" "$@"
-`,
-      { mode: 0o755 }
-    );
-
     const result = await runWindowsJobCommand(
       { executable: process.execPath, args: ['--test'] },
       { timeoutMs: 5_000 },
-      { powershellPath: mockLauncher, skipAssetVerification: true }
+      await mockControllerLauncher(tempDir, mockPs)
     );
 
     expect(result.processTreeSettled).toBe(false);
@@ -703,6 +660,26 @@ exec node "${mockPs}" "$@"
     expect(result.processSpawned).toBe(false);
     expect(result.errorCode).toBe('ENOENT');
     expect(result.errorMessage).toContain('could not be resolved against the admitted target environment PATH');
+  });
+
+  it.runIf(process.platform === 'win32')('settles a real native Node command through the packaged Windows controller', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), "liftoff native controller's "));
+    tempDirs.push(directory);
+    const result = await runWindowsJobCommand(
+      { executable: process.execPath, args: ['-e', 'process.stdout.write("native controller ready")'] },
+      {
+        cwd: directory,
+        timeoutMs: 10_000,
+        env: { SystemRoot: process.env.SystemRoot, PATH: path.dirname(process.execPath), TEMP: directory, TMP: directory }
+      }
+    );
+    expect(result, JSON.stringify({
+      errorCode: result.errorCode, errorMessage: result.errorMessage,
+      timedOut: result.timedOut, spawned: result.processSpawned
+    })).toMatchObject({
+      status: 0, processSpawned: true, processTreeSettled: true,
+      timedOut: false, stdout: 'native controller ready'
+    });
   });
 
   it('ensures environmentValue does not let undefined Path shadow valid PATH and rejects conflicting aliases', async () => {

@@ -1,0 +1,41 @@
+name: Repository setup
+
+on:
+  pull_request:
+  push:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: repository-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  policy:
+    name: Repository policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install locked check dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Check repository policy and promotion route
+        run: npm run check:repository
+
+      - name: Verify setup contracts
+        run: npx vitest run tests/repository-policy.test.ts tests/release-artifact.test.ts tests/release-workflow.test.ts tests/documentation.test.ts
