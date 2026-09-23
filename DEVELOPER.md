@@ -353,9 +353,30 @@ npm run verify:release-identity
 
 ## Trusted npm publishing overview
 
-The `Release Liftoff` workflow builds, tests, packs, verifies release identity,
-publishes with npm trusted publishing and provenance, then verifies the canonical
-dist-tag. Do not place npm tokens, registry credentials, PATs, cloud secrets, or
+The `Release Liftoff` workflow qualifies and packs the exact source revision
+without publishing credentials. Tag-triggered publication requires a canonical
+version tag reachable from `main`; manual dispatch is verification-only.
+The tarball, source commit, workflow run, package identity, and SHA-256 digest
+are bound together before upload. A separate job downloads that artifact by
+its immutable workflow artifact ID, revalidates its identity, and waits for
+explicit approval through the GitHub `npm-release` environment before publishing
+with trusted publishing and provenance. It publishes the qualified tarball,
+not a rebuild; afterward the existing verifier builds its helper code and
+checks the canonical dist-tag.
+
+The sole maintainer may approve their own release, without an administrator
+bypass. This is deliberate confirmation, not independent review. Use merge
+commits for `develop` to `main` promotion and ancestry-preserving sync PRs as
+described in [GOVERNANCE.md](GOVERNANCE.md). Prepare immutable GitHub releases
+as drafts with all assets attached before publication.
+
+npm account, publisher, token, and 2FA settings are outside the repository-setup
+change, as is the planned distribution migration. Preserve the existing
+repository/workflow publishing identity; GitHub environment approval does not
+prove npm-side restrictions. Non-publishing verification does not exercise a
+real OIDC publication.
+
+Do not place npm tokens, registry credentials, PATs, cloud secrets, or
 signing material in repository files, workflow logs, chat, screenshots, or
 evidence. Failed post-publish verification requires a dist-tag correction when
 the immutable package is correct, or a corrected patch release; do not unpublish

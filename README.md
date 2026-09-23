@@ -1,163 +1,115 @@
+<div align="center">
+
+![Liftoff: a rocket rising through deep space above a blue planetary horizon, leaving an illuminated amber trail](docs/assets/liftoff-hero.svg)
+
 # Liftoff
 
-**Initialize governed GenAI applications and APIs from one
-interactive CLI.** Liftoff combines reviewable starter projects with OpenSpec or
-Spec Kit and integrates GitHub Copilot, Claude Code, and Codex in any selected
-combination.
+### Launch governed GenAI applications and APIs.
 
-[![npm version](https://img.shields.io/npm/v/%40msn-control%2Fliftoff?logo=npm)](https://www.npmjs.com/package/@msn-control/liftoff)
-[![CI](https://github.com/voyager163/liftoff/actions/workflows/ci.yml/badge.svg)](https://github.com/voyager163/liftoff/actions/workflows/ci.yml)
-[![license](https://img.shields.io/github/license/voyager163/liftoff)](LICENSE)
-[![Node.js](https://img.shields.io/node/v/%40msn-control%2Fliftoff)](package.json)
+Reviewable starter projects, spec-driven workflows, and your choice of coding agents.
+One interactive CLI to give your next project a considered start.
 
-## Start here
+[![npm version](https://img.shields.io/npm/v/%40msn-control%2Fliftoff?logo=npm&color=547da0)](https://www.npmjs.com/package/@msn-control/liftoff) [![CI](https://github.com/voyager163/liftoff/actions/workflows/ci.yml/badge.svg)](https://github.com/voyager163/liftoff/actions/workflows/ci.yml) [![Node.js](https://img.shields.io/node/v/%40msn-control%2Fliftoff?color=547da0)](docs/prerequisites.md) [![GPL-3.0-only license](https://img.shields.io/github/license/voyager163/liftoff?color=ad7546)](LICENSE)
 
-Install the published CLI from canonical npm:
+[Quick start](#quick-start) · [Documentation](#documentation) · [Contributing](#contributing) · [Security](SECURITY.md)
+
+</div>
+
+## Quick start
+
+Use **Node.js 24 LTS, version 24.20.0 or newer within that line**.
+Check the [prerequisites](docs/prerequisites.md) for your chosen workload.
 
 ```bash
 npm install -g @msn-control/liftoff@latest
-```
-
-Primary path:
-
-```text
+liftoff --version
 liftoff init my-project
 cd my-project
-/liftoff-setup
 ```
 
-`liftoff init` asks for workload, spec workflow, agents, readiness, and plan
-confirmation before writing local files. Repository governance is enabled by
-default as a deterministic setup handoff. For OpenSpec, `/liftoff-setup` completes,
-syncs, and archives the generated bootstrap seed. Spec Kit finalizes its one-time
-bootstrap bundle locally, without an OpenSpec archive or new Git branch.
-No model selection is required for setup; the CLI phase graph, evidence, and
-approvals are authoritative. Setup coordinates reviewed repairs and local readiness,
-then separately approved publication, Azure activation, deployment, and governance.
-Local-only use remains supported. Codex invokes `$liftoff-setup` or selects the native skill.
-These are coding-agent invocations, not a `liftoff setup` shell command.
-`liftoff init` creates a scaffold; do not reinitialize an existing Liftoff project
-to resolve a verification blocker.
+Then invoke `/liftoff-setup` in **GitHub Copilot** or **Claude Code**.
+In **Codex**, use `$liftoff-setup` or select the native skill.
+These are agent invocations, not a `liftoff setup` shell command.
 
-After global npm install, later releases use `liftoff upgrade --check` then `liftoff upgrade`.
-This replaces the CLI only; generated projects use `liftoff update` separately
-for reviewed project maintenance. Useful project-read-only checks:
+Choose your workload, spec workflow, and agents; review the plan before files are
+written. No model selection is required for setup. Local-only use is supported;
+publication, cloud activation, deployment, and live governance need separate approval.
 
-```bash
-liftoff validate
-liftoff doctor
-liftoff upgrade --check
-liftoff update --check
-```
-
-Start with `liftoff update --check`, then run `liftoff update` and approve the
-matching plan. Check leaves project bytes unchanged and discloses a preview
-receipt saved outside the repository. Missing or stale previews block apply.
-Automation uses `--approve-plan <fingerprint>`; `--json` only selects formatting.
-
-Supported activation-v1/v2 migration preserves original records inside the project
-and creates a linked v3 activation. Failed revalidation leaves v3 blocked and
-resumable, not reset to an older contract. Application source, dependencies, schemas,
-containers, environments, documentation, and infrastructure remain project-owned
-and outside template replacement, including `--force`.
-
-For legacy OpenTofu layout blockers, `seed-verified` means **Local baseline
-verification**, not an OpenSpec feature change. Start with:
-
-```bash
-liftoff repair "path/to/existing project" --check
-```
-
-Ordinary check makes no cloud calls. Bare interactive `liftoff repair` shows the
-exact plan and asks Yes/No, default No; no fingerprint copying is needed.
-The supported local recipe preserves legacy flat-root semantics while creating
-the shared application module and selected independent environment roots.
-Eligibility requires bounded, explicitly requested
-`--check --live --subscription <UUID>` metadata discovery with existing authentication,
-authoritatively absent resource groups in that subscription, and no local
-state/backend metadata. Missing state files alone never establish safety.
-JSON/non-TTY repair only previews unless exact automation flags are supplied.
-After an eligible, separately approved repair, run `liftoff update --check --project
-"path/to/existing project"` and resume native setup's local governance planning.
-Interrupted writes use `liftoff repair [project-path] --recover`, not update recovery.
-Repair accepts neither `--force`, `--yes`, nor `--add-agents`.
-Agent installation and the public stateful migration coordinator are not
-implemented; the internal stateful engine is not an executable public command.
-Deployed, unknown, or unsupported cases remain plan-only, with source and state
-untouched. Use native `/liftoff-repair` (Codex: `$liftoff-repair`) for reviewed
-[application patches](docs/application-repair.md); see [repair modes](docs/cli-reference.md#repair-modes).
-Repair contract 1 is available in 0.12.3;
-negotiate capabilities directly with `liftoff repair --capabilities --json`.
-
-Older projects may display the retired `/liftoff-repository-governance` alias.
-Review `liftoff update --check`; `liftoff update --force` removes only exact recorded aliases.
+For OpenSpec, setup completes, syncs, and archives the generated bootstrap seed.
+Spec Kit finalizes its bootstrap bundle locally, without an OpenSpec archive or new Git branch.
+Using a managed registry? Follow the [installation and mirror guidance](docs/getting-started.md#1-install-the-cli);
+do not bypass your organization's registry policy.
 
 ![Liftoff terminal showing interactive workload, workflow, multi-agent, readiness, and safe completion steps](docs/assets/liftoff-terminal.svg)
 
 ## One flow, two workloads
 
-| Workload | Generated foundation | Deferred until you choose |
+| Start with | Build on | Choose later |
 | --- | --- | --- |
-| **GenAI application** | Python, FastAPI, PydanticAI, data and messaging boundaries, optional frontend, Docker, and Azure OpenTofu | Model credentials, specialized behavior, cloud sign-in, deployment |
-| **API application** | Python/FastAPI, Node.js/Fastify, or Go/Huma API, database assets, optional frontend, Docker, and Azure OpenTofu | Service configuration, cloud sign-in, deployment |
+| **GenAI application** | Python, FastAPI, PydanticAI, optional frontend, Docker, and Azure OpenTofu | Model credentials, specialization, and deployment |
+| **API application** | Python/FastAPI, Node.js/Fastify, or Go/Huma, plus database and optional frontend assets | Service configuration, cloud sign-in, and deployment |
 
-If the GenAI specialization is not yet known, choose **I'm not sure yet -
-Generic GenAI starter** or use `--pattern generic`. It creates a neutral
-PydanticAI invocation foundation without assuming RAG, chat, agents, streaming,
-fine-tuning, or workflows.
+Not sure about your GenAI architecture yet? Choose **Generic GenAI starter**
+(`--pattern generic`) for a neutral foundation, without assuming RAG or agents.
 
-Both workloads can use **OpenSpec** or **Spec Kit** with **GitHub Copilot**,
-**Claude Code**, **Codex**, or any combination. Official stable and preview releases
-are accepted; runtime and framework pins remain enforced.
+Both workloads support **OpenSpec** or **Spec Kit**, with **GitHub Copilot**,
+**Claude Code**, **Codex**, or a combination. See [workloads](docs/workloads.md)
+and [workflows and agents](docs/spec-workflows-and-agents.md).
+Power Apps is retired; it is not an available creation or conversion path.
 
-Power Apps is retired. Existing Power Apps projects receive an unsupported-workload
-error without changing files; `--force` does not provide a conversion path.
+## Work with an existing project
 
-[Compare workload questions and outputs](docs/workloads.md) |
-[Choose a spec workflow and agents](docs/spec-workflows-and-agents.md)
+Run `liftoff init` at the **exact current Git root** to initialize in place.
+Liftoff stages and validates output, asks before replacing files, and keeps
+installation and overwrite permissions separate. Do not reinitialize a project
+to fix a verification blocker.
 
-## Existing repository friendly
+For maintenance, `liftoff upgrade --check` previews a CLI upgrade;
+`liftoff update --check` previews managed project changes before explicit approval.
+An upgrade replaces the CLI only; generated projects use `liftoff update` separately
+for reviewed project maintenance. Application files remain project-owned.
 
-Run `liftoff init` at the exact current Git root to initialize that repository in
-place; Liftoff does not create an unnecessary child folder. In other locations, a
-project name creates a named child directory.
-
-All output is rendered and validated in temporary staging first. Liftoff discloses
-regular-file replacements, asks before overwrite, rejects structural and symlink
-conflicts, keeps tool/dependency permissions independent, and rolls back handled
-write failures.
-
-To assess any Git repository without initializing it, run
-`liftoff governance assess --json`. The default is local-only and read-only.
-Missing or unsupported proof is reported as partial coverage, not success.
-
-[Initialize an existing repository](docs/existing-repositories.md) |
-[Understand target and consent safety](docs/safety-and-consent.md)
+[Existing repositories](docs/existing-repositories.md) ·
+[Safety and consent](docs/safety-and-consent.md) ·
+[Repair modes](docs/cli-reference.md#repair-modes) ·
+[Application repair](docs/application-repair.md)
 
 ## Documentation
 
-| Guide | Use it to |
+| Guide | Start here when you need to |
 | --- | --- |
-| [Getting started](docs/getting-started.md) | Install safely and complete the first interactive project |
-| [Workloads](docs/workloads.md) | Compare GenAI/API choices and understand retired-workload handling |
-| [Spec workflows and agents](docs/spec-workflows-and-agents.md) | Configure OpenSpec, Spec Kit, Copilot, and Claude |
-| [Repository governance](docs/repository-governance.md) | Review `/liftoff-setup`, read-only `/liftoff-governance-assess`, authority gates, evidence, and compatibility |
-| [Existing repositories](docs/existing-repositories.md) | Understand in-place, child-directory, and migration behavior |
-| [Prerequisites](docs/prerequisites.md) | Review plan-derived runtimes, tools, authentication, and dependency setup |
-| [Supported stack baseline](docs/supported-stack.md) | Review pinned runtimes, frameworks, dependency locks, images, and refresh policy |
-| [Safety and consent](docs/safety-and-consent.md) | Review staging, overwrite, setup authority, credential, rollback, and ownership guarantees |
-| [Telemetry and privacy](docs/telemetry.md) | Review collected fields, opt-outs, Azure processing, and retention |
-| [CLI reference](docs/cli-reference.md) | Find commands, flags, terminal modes, JSON, and exit-code contracts |
-| [Generated project structure](docs/project-structure.md) | Locate workload-specific and conditional generated areas |
-| [Configuration and manifests](docs/configuration-and-manifests.md) | Edit desired state, manifest v7, activation identity, and managed artifacts |
-| [Azure deployment](docs/azure-deployment.md) | Review generated Azure and OpenTofu contracts for API workloads |
-| [Troubleshooting](docs/troubleshooting.md) | Recover from registry, readiness, validation, update, and retired-workload issues |
-| [Developer guide](DEVELOPER.md) | Maintain version vectors, compatibility maps, release checks, and publishing |
+| [Getting started](docs/getting-started.md) | Install and complete your first local setup |
+| [Prerequisites](docs/prerequisites.md) · [Supported stack](docs/supported-stack.md) | Check toolchains and tested version baselines |
+| [Repository governance](docs/repository-governance.md) | Understand generated setup, approval gates, and read-only assessment |
+| [CLI reference](docs/cli-reference.md) | Find commands, automation flags, repair modes, and exit codes |
+| [Project structure](docs/project-structure.md) · [Configuration](docs/configuration-and-manifests.md) | Navigate generated files, ownership, and manifests |
+| [Azure deployment](docs/azure-deployment.md) | Review infrastructure and deployment boundaries |
+| [Telemetry and privacy](docs/telemetry.md) | Understand collected fields, retention, and opt-outs |
+| [Troubleshooting](docs/troubleshooting.md) | Resolve registry, readiness, migration, and update blockers |
+| [Developer guide](DEVELOPER.md) | Maintain compatibility, packaging, and release procedures |
 
-## Contributing and security
+## Project status
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [DEVELOPER.md](DEVELOPER.md) for build,
-test, packaging, baseline-refresh, compatibility, and release procedures. Report
-vulnerabilities through the private process in [SECURITY.md](SECURITY.md).
+Liftoff is actively developed. The current published CLI and its documented
+support policy remain available while a larger rewrite is planned separately.
+Planned work is not a shipped capability, and `develop` may be ahead of the
+latest release. Use [release notes](https://github.com/voyager163/liftoff/releases)
+and [SECURITY.md](SECURITY.md) for version-specific guidance.
 
-Liftoff is licensed under [GPL-3.0-only](LICENSE).
+## Contributing
+
+Bug reproductions, documentation, feature discussions, and code are welcome.
+Start with [CONTRIBUTING.md](CONTRIBUTING.md), and send normal pull requests
+to **`develop`**. Discuss substantial changes in an issue first.
+
+[Get help](SUPPORT.md) · [Report a bug or suggest a feature](https://github.com/voyager163/liftoff/issues/new/choose) ·
+[Project governance](GOVERNANCE.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
+
+Report vulnerabilities **privately** through [SECURITY.md](SECURITY.md).
+Use the separate [conduct contact](CODE_OF_CONDUCT.md#reporting-and-enforcement)
+for community concerns. Never include credentials or private data in public reports.
+
+## License
+
+Liftoff is open source under **[GPL-3.0-only](LICENSE)**.
+Contributions use the same license; preserve applicable third-party notices.

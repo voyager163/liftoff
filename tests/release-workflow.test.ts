@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { parse } from 'yaml';
 
 describe('release workflow', () => {
   it('gates publishing on release identity and then runs strict canonical verification', async () => {
@@ -23,9 +24,34 @@ describe('release workflow', () => {
     expect(identityStep).toContain('npm run verify:release-identity');
     expect(identityStep).not.toContain('continue-on-error');
     const verificationStep = workflow.slice(verificationIndex);
-    expect(verificationStep).toContain('npm run verify:published -- "${{ steps.dist-tag.outputs.tag }}"');
+    expect(verificationStep).toContain('npm run verify:published -- "$DIST_TAG"');
     expect(verificationStep).not.toContain('--allow-legacy-version-command');
     expect(verificationStep).not.toContain('continue-on-error');
+    const definition = parse(workflow);
+    expect(definition.permissions).toEqual({ contents: 'read' });
+    expect(definition.on.workflow_dispatch).toBeNull();
+    expect(definition.jobs.publish.needs).toBe('qualify');
+    expect(definition.jobs.publish.environment).toBe('npm-release');
+    expect(definition.jobs.publish.permissions).toEqual({ contents: 'read', 'id-token': 'write' });
+    const qualify = definition.jobs.qualify.steps;
+    const publish = definition.jobs.publish.steps;
+    expect(qualify.some((step: { run?: string }) => step.run === 'node scripts/release-artifact.mjs check-ref')).toBe(true);
+    expect(qualify.findIndex((step: { id?: string }) => step.id === 'bundle')).toBeGreaterThan(
+      qualify.findIndex((step: { name?: string }) => step.name === 'Verify release identity')
+    );
+    const exactSmokeIndex = qualify.findIndex((step: { name?: string }) => step.name === 'Smoke-test the exact release tarball');
+    expect(qualify[exactSmokeIndex].run).toContain('npm run smoke:package -- --tarball');
+    expect(exactSmokeIndex).toBeGreaterThan(qualify.findIndex((step: { id?: string }) => step.id === 'bundle'));
+    expect(exactSmokeIndex).toBeLessThan(qualify.findIndex((step: { id?: string }) => step.id === 'upload'));
+    const download = publish.find((step: { uses?: string }) => step.uses?.startsWith('actions/download-artifact@'));
+    expect(download.with['artifact-ids']).toBe('${{ needs.qualify.outputs.artifact_id }}');
+    const revalidate = publish.find((step: { id?: string }) => step.id === 'artifact');
+    expect(revalidate.env.EXPECTED_SHA256).toBe('${{ needs.qualify.outputs.sha256 }}');
+    expect(publish.find((step: { name?: string }) => step.name === 'Publish to npm').run)
+      .toContain('npm publish "$RUNNER_TEMP/liftoff-release/$RELEASE_FILENAME" --ignore-scripts');
+    expect(publish.findIndex((step: { id?: string }) => step.id === 'artifact')).toBeLessThan(
+      publish.findIndex((step: { name?: string }) => step.name === 'Publish to npm')
+    );
   });
 
   it('keeps package and smoke verification on Linux, macOS, and Windows CI', async () => {

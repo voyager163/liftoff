@@ -17,3 +17,12 @@ https://github.com/voyager163/liftoff/security/advisories/new
 Include the affected Liftoff version, operating system, reproduction steps, impact, and any suggested mitigation. Avoid including real credentials, customer data, or other sensitive material.
 
 Maintainers will assess the report privately, coordinate remediation, and publish an advisory when disclosure is appropriate.
+
+If the private form is unavailable, do not post the finding publicly. This
+project does not promise a response time or operate a paid bug-bounty program.
+
+## Other concerns
+
+Use [SUPPORT.md](SUPPORT.md) for public technical help and the separate private
+contact in [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md#reporting-and-enforcement)
+for conduct concerns. Do not use security advisories to report conduct issues.

@@ -1,6 +1,6 @@
 import { execFile } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
-import { chmod, link, lstat, mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -43,13 +43,12 @@ async function tree(root: string): Promise<Record<string, string>> {
 }
 
 async function fixture() {
-  const directory = path.resolve(`.repair-workspaces-fixture-${randomUUID()}`);
+  const directory = await realpath(await mkdtemp(path.join(os.tmpdir(), 'lf-ws-')));
   roots.push(directory);
   const repository = path.join(directory, 'repository');
   const project = path.join(repository, 'Project with spaces');
   const staging = path.join(directory, 'patch staging');
   const home = path.join(directory, 'home');
-  await mkdir(directory);
   await Promise.all([mkdir(path.join(repository, '.git'), { recursive: true }),
     mkdir(project, { recursive: true }), mkdir(staging), mkdir(home)]);
   await writeFile(path.join(project, 'liftoff.manifest.json'), '{invalid manifest: this service must not read it}\n');
@@ -111,6 +110,7 @@ describe('private repair workspace registration', () => {
     const beforeBackup = await backup.write(backupKey, { kind: 'original-backup', bytes: 'private original bytes' });
     const backupBytes = await readFile(beforeBackup.path);
     const handle = await createRepairVerificationWorkspace(f.project, f.request, f.storage);
+    if (process.platform === 'win32') expect(handle.roles.project.length).toBeLessThan(258);
     expect(path.relative(getRepairWorkspaceRoot(f.storage), handle.directory).startsWith('..')).toBe(false);
     expect(Object.keys(handle.roles)).toEqual(['project', 'home', 'cache', 'scratch']);
     for (const role of ['project', 'home', 'cache', 'scratch'] as const) {

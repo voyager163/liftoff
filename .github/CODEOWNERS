@@ -1,0 +1,19 @@
+* @voyager163
+
+/.github/CODEOWNERS @voyager163
+/.github/workflows/ @voyager163
+/.github/ISSUE_TEMPLATE/ @voyager163
+/.github/PULL_REQUEST_TEMPLATE.md @voyager163
+/.github/dependabot.yml @voyager163
+/GOVERNANCE.md @voyager163
+/SUPPORT.md @voyager163
+/CONTRIBUTING.md @voyager163
+/CODE_OF_CONDUCT.md @voyager163
+/SECURITY.md @voyager163
+/LICENSE @voyager163
+/package.json @voyager163
+/package-lock.json @voyager163
+/scripts/check-repository-policy.mjs @voyager163
+/scripts/release-artifact.mjs @voyager163
+/scripts/verify-release-identity.mjs @voyager163
+/scripts/verify-published-package.mjs @voyager163

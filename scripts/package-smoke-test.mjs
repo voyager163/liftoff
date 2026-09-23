@@ -12,6 +12,14 @@ import {
 } from './template-dependency-security.mjs';
 
 const packageRoot = process.cwd();
+const smokeArgs = process.argv.slice(2);
+if (smokeArgs.length !== 0 && (smokeArgs.length !== 2 || smokeArgs[0] !== '--tarball' || smokeArgs[1].startsWith('-'))) {
+  throw new Error('Usage: npm run smoke:package -- [--tarball <qualified-package.tgz>]');
+}
+const suppliedTarball = smokeArgs.length === 2 ? path.resolve(smokeArgs[1]) : undefined;
+const suppliedDigest = suppliedTarball
+  ? createHash('sha256').update(await readFile(suppliedTarball)).digest('hex')
+  : undefined;
 const tempRoot = await mkdtemp(path.join(os.tmpdir(), 'liftoff-package-smoke-'));
 const npmCliPath = process.env.npm_execpath;
 
@@ -118,7 +126,9 @@ try {
   await mkdir(homeDirectory, { recursive: true });
   await mkdir(outsideDirectory, { recursive: true });
 
-  const pack = runNpm(['pack', '--json', '--pack-destination', packDirectory]);
+  const pack = runNpm(suppliedTarball
+    ? ['pack', '--dry-run', '--json', suppliedTarball]
+    : ['pack', '--json', '--pack-destination', packDirectory]);
   const packResults = JSON.parse(pack.stdout);
   const packResult = firstPackResult(packResults);
   if (!packResult?.filename) {
@@ -130,6 +140,11 @@ try {
   assertPackageContains(packResult, 'DEVELOPER.md');
   assertPackageContains(packResult, 'LICENSE');
   for (const documentationPath of [
+    'CONTRIBUTING.md',
+    'CODE_OF_CONDUCT.md',
+    'SECURITY.md',
+    'GOVERNANCE.md',
+    'SUPPORT.md',
     'docs/getting-started.md',
     'docs/workloads.md',
     'docs/spec-workflows-and-agents.md',
@@ -145,7 +160,8 @@ try {
     'docs/configuration-and-manifests.md',
     'docs/azure-deployment.md',
     'docs/troubleshooting.md',
-    'docs/assets/liftoff-terminal.svg'
+    'docs/assets/liftoff-terminal.svg',
+    'docs/assets/liftoff-hero.svg'
   ]) {
     assertPackageContains(packResult, documentationPath);
   }
@@ -207,7 +223,7 @@ try {
     throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
   }
 
-  const tarballPath = path.join(packDirectory, packResult.filename);
+  const tarballPath = suppliedTarball ?? path.join(packDirectory, packResult.filename);
   const npmEnv = {
     ...process.env,
     HOME: homeDirectory,
@@ -640,6 +656,9 @@ try {
     throw new Error('Installed assessment did not preserve and explain unsupported activation state.');
   }
 
+  if (suppliedTarball && createHash('sha256').update(await readFile(suppliedTarball)).digest('hex') !== suppliedDigest) {
+    throw new Error('The qualified release tarball changed during package smoke verification.');
+  }
   console.log(`Package smoke test passed for ${packResult.name}@${packResult.version}`);
 } finally {
   await rm(tempRoot, { recursive: true, force: true });
