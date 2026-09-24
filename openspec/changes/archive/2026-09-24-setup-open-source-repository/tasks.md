@@ -40,32 +40,30 @@ safeguards and preservation of current publishing behavior remain in scope.
 
 ## 6. Activate branch and Actions controls with explicit authority
 
-The owner chose to leave remaining check activation pending after the initial
-Ubuntu native Go preparation failure and Windows boundary-coverage failure.
-The owner subsequently authorized diagnosis and repair of the Windows CI blocker
-only, including necessary application/test changes, without a general audit,
-disabled tests, weaker assertions, or npm-account changes. All other application
-investigation/remediation remains out of scope. Existing `main`
-checks and its legacy rule are retained. The owner has now authorized the setup
-merge into `develop` and the canonical `develop` to `main` promotion only after
-all required checks and protections pass, without bypasses or publication. The manual
-verification run also exposed an outdated workflow-only test reference to the
-old `publish` job; that assertion now targets `qualify`, without changing repair
-behavior. The corrected verification-only run `35853212074` passed on revision
-`06d69606c1cc52207a4d4a8b755f0aee5ca93941`; its publishing job was skipped.
+The owner authorized the narrow Windows CI compatibility repair and conditional
+merges after every required check passes. The repair uses portable controller
+fixtures, explicit built-in PowerShell module loading, valid native process
+working-directory lengths, CRLF-aware documentation fixtures, and a descendant
+fixture that proves startup and outlives the root while remaining in the owned
+Windows Job. Assertions, deadlines, full identifiers, and security boundaries
+were preserved; no general audit or npm-account change was performed.
 
-On resumption, the current revision passed the Ubuntu, macOS, repository-policy,
-telemetry-infrastructure, and both template checks. Windows still fails in the
-application repair/job-runner cases. Live-control readback is complete, with
-the missing new required-check bindings and legacy `main` cutover explicitly
-recorded as gaps rather than represented as active enforcement.
+All seven planned contexts passed for `41ebd75613f47e264ad092197073164813024c0a`
+with GitHub Actions producer 15368. A single unchanged macOS job retry resolved
+the intermittent native Go inspection failure. The final verification-only
+release run `35884191636` also passed; publication was skipped.
+
+Ruleset `23872385` now requires all seven observed checks with strict freshness
+on both branches. Legacy `main` protection was removed only after replacement
+readback. Additional rule `23888994` requires merge-commit promotion into `main`,
+without a linear-history restriction or standing bypass.
 
 - [x] 6.1 Present the fresh live GitHub settings diff, workflow-breaking effects, excluded npm-account scope, and exact intended Git publication operations; obtain explicit authority before any branch creation/switch, commit, push, PR publication, merge, or hosted mutation, and verify the recorded approval covers the actual targets.
 - [x] 6.2 Activate foundational PR/conversation/force-push/deletion rules for both `develop` and `main`, with zero approvals and no standing branch bypass; retain existing `main` required checks during migration and verify effective protection readback on both branches.
 - [x] 6.3 Apply the approved action allowlist and SHA enforcement, read-only defaults, disabled bot approvals, all-outside-contributor run approval, and only necessary issue labels; verify every referenced action is allowed and private reporting, secret scanning/push protection, and existing Dependabot configuration remain enabled without reviewing their findings.
-- [ ] 6.4 Publish the prepared setup through the explicitly authorized working branch/PR and observe hosted results; verify the changed path/link/package cases in Windows CI and macOS/Linux lanes and each planned context from design section 4 against its actual successful run, revision, event, and producer App ID, leaving application failures as out-of-scope blockers without investigation or bypass.
-- [ ] 6.5 Bind the observed contexts as strict required checks and reconcile legacy `main` protection with the ancestry-preserving promotion model; verify no protection gap or linear-history conflict, rebase/automatic merging disabled, intended merge methods available, and the documented sync route workable.
-- [ ] 6.6 After exact merge authority and all gates are satisfied, integrate the setup PR into `develop`, perform any required checked sync-branch PR, and promote it through the canonical `develop` to `main` PR; verify the intended setup/release workflow revision is present on both long-lived branches without a direct push, bypass, release tag, or package publication.
+- [x] 6.4 Publish the prepared setup through the explicitly authorized working branch/PR and observe hosted results; verify the changed path/link/package cases in Windows CI and macOS/Linux lanes and each planned context from design section 4 against its actual successful run, revision, event, and producer App ID, leaving application failures as out-of-scope blockers without investigation or bypass.
+- [x] 6.5 Bind the observed contexts as strict required checks and reconcile legacy `main` protection with the ancestry-preserving promotion model; verify no protection gap or linear-history conflict, rebase/automatic merging disabled, intended merge methods available, and the documented sync route workable.
+- [x] 6.6 After exact merge authority and all gates are satisfied, integrate the setup PR into `develop`, perform any required checked sync-branch PR, and promote it through the canonical `develop` to `main` PR; verify the intended setup/release workflow revision is present on both long-lived branches without a direct push, bypass, release tag, or package publication.
 
 ## 7. Activate the separate release boundary
 
@@ -77,32 +75,41 @@ recorded as gaps rather than represented as active enforcement.
 ## 8. Confirm effective setup and hand off
 
 - [x] 8.1 Read back all effective branch/tag rules, Actions permissions, merge settings, environment restrictions, reporting controls, and immutable-release state; compare them with the approved settings inventory and verify any capability/permission gaps are reported explicitly.
-- [ ] 8.2 Confirm the public README/community links and configured issue/PR entry points correspond to the approved published revision and that package documentation remains self-contained; verify original artwork attribution/provenance and no claims of application security certification or completed rewrite.
+- [x] 8.2 Confirm the public README/community links and configured issue/PR entry points correspond to the approved published revision and that package documentation remains self-contained; verify original artwork attribution/provenance and no claims of application security certification or completed rewrite.
 - [x] 8.3 Produce a concise setup handoff identifying locally prepared artifacts, published revision, effective GitHub controls, excluded npm-account scope, and blocked or unexercised items; verify every completed task has its stated evidence and no npm-account mutation, package publication, history rewrite, cloud deployment, or automatic main-spec archival was performed as part of setup.
 
 ## Execution handoff
 
-- Setup implementation is published in draft PR #96. The qualified implementation
-  revision is `06d69606c1cc52207a4d4a8b755f0aee5ca93941`.
-- [Verification-only release run](https://github.com/voyager163/liftoff/actions/runs/35853212074)
+- Setup PR #96 was squash-merged into `develop` at
+  `df16453d23e212c6587576272ddaec1ef256192e`. The qualified implementation
+  revision was `41ebd75613f47e264ad092197073164813024c0a`.
+- Promotion PR #97 was merged into `main` with an ancestry-preserving merge
+  commit `7fc17188bde3594a0428861bf275c26d1937d53f`. The branches were identical
+  before setup integration, so no preliminary sync PR was needed. Both final
+  branches have tree `fb3440dabf8013a866aa5d80a7a953b1431249c8`.
+- [Verification-only release run](https://github.com/voyager163/liftoff/actions/runs/35884191636)
   passed qualification, package checks, exact-tarball smoke, and artifact upload.
   Publication was skipped; no publishing environment was entered.
-- [Repository policy](https://github.com/voyager163/liftoff/actions/runs/35847485911)
-  passed. [Application CI](https://github.com/voyager163/liftoff/actions/runs/35847485917)
-  passed Linux, macOS, infrastructure, and both template lanes; Windows failed
-  in application repair/job-runner cases. No application-source diagnosis or
-  remediation was performed.
-- Readback confirms foundational branch ruleset `23872385`, tag creation rule
-  `23872476`, tag immutability rule `23872477`, the pinned Actions allowlist,
-  outside-contributor approval, the protected `npm-release` environment, and
-  future-release immutability.
-- Full enforcement is not complete: the new branch ruleset has no required-check
-  bindings yet; legacy `main` check requirements, administrator exemption, and
-  linear-history restriction remain pending replacement. No failing gate was
-  removed or bypassed.
-- Tasks 6.4, 6.5, 6.6, and 8.2 remain blocked until qualification completes.
-  Conditional merge authority is recorded, and
-  the new README/community files are not on the default branch yet.
-- npm account/publisher settings, the distribution migration, application
-  hardening, releases, and cloud deployment remain outside this change.
-  Real OIDC publication is unexercised; this change has not been archived.
+- All seven required contexts passed on the implementation, integration branch,
+  and [promotion candidate](https://github.com/voyager163/liftoff/actions/runs/35886523722).
+  The native Go inspection was intermittent on Linux/macOS; one unchanged
+  affected-job retry was used for each affected final run, not an assertion,
+  timeout, or policy relaxation.
+- Readback confirms branch ruleset `23872385` with all seven exact check/App
+  bindings and strict freshness, main merge-method rule `23888994`, tag creation
+  rule `23872476`, tag immutability rule `23872477`, the pinned Actions allowlist,
+  outside-contributor approval, protected `npm-release` environment, and future
+  release immutability. There are no standing branch or tag-mutation bypasses.
+  Legacy protection was removed only after equivalent replacement was active.
+- Twelve published README/community artifacts match the approved default-branch
+  revision; CODEOWNERS reports no errors on either branch. The local package
+  link graph includes all 23 linked Markdown documents.
+- All 33 tasks are complete. The owner explicitly requested verification,
+  archival, and a closeout PR on 2026-09-24. Verification found all 19 requirements
+  implemented, assessed all 73 scenarios, and reported no critical issues or
+  warnings. The focused suite passed 383 tests; the local Windows-only skip is
+  covered by successful hosted Windows qualification.
+- npm account/publisher settings, distribution migration, general application
+  auditing/hardening, releases, and cloud deployment remain outside scope.
+  The owner-approved Windows CI repair was bounded to the observed compatibility
+  failures. Real OIDC publication remains intentionally unexercised.
