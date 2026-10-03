@@ -5,8 +5,9 @@ import type { ModernPhaseGraph } from './modern-graph.js';
 export type ModernGovernanceProfile = 'single-maintainer-gitflow' | 'team-gitflow';
 export type ModernWorkflow = ManifestV8WorkflowId;
 export type ModernDigest = `sha256:${string}`;
+export const modernLocalRevalidationPhases = Object.freeze(['local-inputs-valid', 'local-baseline-verified', 'local-complete'] as const);
 export type ModernPhaseId = Exclude<Released.ReleasedV3PhaseId, 'seed-valid' | 'seed-verified' | 'seed-archived'> |
-  'local-inputs-valid' | 'local-baseline-verified' | 'local-complete';
+  typeof modernLocalRevalidationPhases[number];
 export type ModernMutationClass = Released.ReleasedMutationClassV3 |
   'write-spec-kit-seed' | 'write-spec-kit-governance' | 'write-operational-plan';
 

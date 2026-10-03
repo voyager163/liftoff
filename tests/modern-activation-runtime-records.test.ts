@@ -13,6 +13,9 @@ import { canonicalApprovalEnvelopeValues, normalizeApprovalScopeValues } from '.
 import { capturedV3Records } from './fixtures/activation-v3/fixture.js';
 import { historyRecord } from '../src/governance-activation/history-contracts.js';
 import { validateHistoricalV3CredentialPolicy } from '../src/governance-activation/historical-v3.js';
+import { createLocalEvidencePlan, type LocalEvidenceReview } from '../src/application/governance/modern-local-evidence.js';
+import { specKitCompletionPolicy, type SpecKitWorkflowOutcome } from '../src/domain/governance/activation/modern-local-completion.js';
+import { fixture as revalidationWireFixture, at } from './fixtures/modern-revalidation-values.js';
 
 const timestamp = '2026-09-01T00:00:00.000Z', expiry = '2026-09-02T00:00:00.000Z';
 const repository = { id: 'local:11111111-1111-4111-8111-111111111111', name: 'runtime-fixture', defaultBranch: 'develop' };
@@ -178,6 +181,85 @@ describe('modern terminal outcomes bind their selected original plan', () => {
     fabricated.payload = { ...payload, planDigest: unrelated.planDigest, savedPlanDigest: canonicalSha256(unrelated) };
     fabricated.header.bodyDigest = canonicalSha256({ payload: fabricated.payload, liveReadback: [] });
     expect(() => api.readEvidence(fabricated, { plans: [baselinePlan, unrelated], evidence: [baseline] })).toThrow(/baseline/);
+  });
+});
+
+describe('portable local-evidence plan construction from format-only records', () => {
+  const phases = ['local-inputs-valid', 'local-baseline-verified', 'local-complete'] as const;
+  function readyState(api: Contract, target: typeof phases[number]) {
+    let state = initial(api);
+    const refs: { plans: ReturnType<Contract['createPlan']>[]; evidence: ReturnType<Contract['createEvidence']>[] } = { plans: [], evidence: [] };
+    for (const phase of phases) {
+      if (phase === target) break;
+      const plan = api.createPlan(planInput(api, phase));
+      const evidence = proof(api, plan, { kind: `${phase}.v1`,
+        ...(phase === 'local-baseline-verified' ? { checks: [{ id: 'synthetic-format-only-check', status: 'passed' }] } : {}) });
+      refs.plans.push(plan); refs.evidence.push(evidence);
+      state = api.stateAfterOutcome({ state, plan, phaseState: 'verified', evidenceId: evidence.evidenceId, updatedAt: timestamp }, refs);
+    }
+    return state;
+  }
+  function review(kind: LocalEvidenceReview['kind'] = 'revalidation'): LocalEvidenceReview {
+    const intent = revalidationWireFixture().intent;
+    return { kind, fingerprint: intent.fingerprint, projectRoot: intent.projectRoot, expiresAt: intent.expiresAt, execution: intent.execution };
+  }
+  function workflowOutcome(disposition: SpecKitWorkflowOutcome['disposition'] = 'changed'): SpecKitWorkflowOutcome {
+    return { kind: 'spec-kit-bootstrap-finalization', schemaVersion: 1, inputDigest: '1'.repeat(64), originalTaskArtifactKey: '2'.repeat(64),
+      originalTaskHash: '3'.repeat(64), targetTaskHash: (disposition === 'changed' ? '4' : '3').repeat(64), taskMode: 0o600, disposition,
+      taskPathParts: specKitCompletionPolicy.taskPath, completedTaskIds: specKitCompletionPolicy.taskIds,
+      executionCheckSetDigest: 'a'.repeat(64), afterInputDigest: '5'.repeat(64) };
+  }
+  it.each((['manual', 'spec-kit', 'openspec'] as const).flatMap(workflow =>
+    (['finalization', 'revalidation'] as const).flatMap(kind => phases.map(phase => ({ workflow, kind, phase })))))
+  ('binds $workflow $kind $phase to exact state, native commitments and its own review domain', ({ workflow, kind, phase }) => {
+    const api = contract(workflow), state = readyState(api, phase), input = review(kind);
+    const plan = createLocalEvidencePlan(api, input, state, phase, at(10));
+    const commitment = kind === 'finalization' ? { finalizationFingerprint: input.fingerprint } : { revalidationFingerprint: input.fingerprint };
+    expect(plan).toMatchObject({ phaseId: phase, createdAt: at(10), expiresAt: input.expiresAt, stateHash: canonicalSha256(state),
+      baselineDigest: input.execution.baselineDigest, inputDigest: input.execution.observationDigest,
+      transitionDigest: canonicalSha256({ ...commitment, phaseId: phase, execution: input.execution }), noSecrets: true });
+    expect(plan.operations).toHaveLength(1);
+    expect(plan.operations[0]).toMatchObject({ adapter: 'local-evidence', actionId: `governance.local.${phase}`, mutationClass: 'write-evidence',
+      phaseId: phase, inputs: { ...commitment, executionResultDigest: input.execution.resultDigest },
+      destination: { type: 'local', identity: input.projectRoot }, remote: false, destructive: false });
+    expect(plan.approval).toMatchObject({ required: false, envelopeId: null, envelopeHash: null });
+  });
+  it.each(['local-baseline-verified', 'local-complete'] as const)('refuses %s before its real graph dependency is satisfied', phase => {
+    const api = contract();
+    expect(() => createLocalEvidencePlan(api, review(), initial(api), phase, at(10))).toThrow(/dependency is not actually satisfied/);
+  });
+  it('does not admit an unregistered phase, a nonlocal phase or an unknown review domain', () => {
+    const api = contract(), state = initial(api), input = review(), nonlocal = api.graph.phases.find(phase => !phase.id.startsWith('local-'))!;
+    expect(() => createLocalEvidencePlan(api, input, state, nonlocal.id, at(10))).toThrow(/registered local phase/);
+    // @ts-expect-error Invalid runtime input must fail even if a caller escapes the phase union.
+    expect(() => createLocalEvidencePlan(api, input, state, 'local-invented', at(10))).toThrow(/registered local phase/);
+    // @ts-expect-error Invalid runtime input must not fall through to the other review domain.
+    expect(() => createLocalEvidencePlan(api, { ...input, kind: 'unknown' }, state, 'local-inputs-valid', at(10))).toThrow(/Unknown local evidence review/);
+  });
+  it('never grants a workflow transformation to a successor revalidation plan', () => {
+    const api = contract('spec-kit');
+    expect(() => createLocalEvidencePlan(api, review(), readyState(api, 'local-complete'), 'local-complete', at(10), workflowOutcome()))
+      .toThrow(/cannot authorize a workflow transformation/);
+  });
+  it.each([
+    { workflow: 'manual', phase: 'local-complete' }, { workflow: 'openspec', phase: 'local-complete' },
+    { workflow: 'spec-kit', phase: 'local-inputs-valid' }, { workflow: 'spec-kit', phase: 'local-baseline-verified' }
+  ] as const)('rejects workflow transformations for $workflow $phase', ({ workflow, phase }) => {
+    const api = contract(workflow);
+    expect(() => createLocalEvidencePlan(api, review('finalization'), readyState(api, phase), phase, at(10), workflowOutcome()))
+      .toThrow(/Only Spec Kit local completion/);
+  });
+  it.each(['changed', 'already-finalized'] as const)('preserves finalization-only %s task commitments and exact mutation selection', disposition => {
+    const api = contract('spec-kit'), outcome = workflowOutcome(disposition);
+    const plan = createLocalEvidencePlan(api, review('finalization'), readyState(api, 'local-complete'), 'local-complete', at(10), outcome);
+    expect(plan.inputDigest).toBe(outcome.inputDigest);
+    expect(plan.fileChanges).toEqual([{ pathParts: specKitCompletionPolicy.taskPath, beforeHash: outcome.originalTaskHash, afterHash: outcome.targetTaskHash }]);
+    expect(plan.operations).toHaveLength(disposition === 'changed' ? 2 : 1);
+    if (disposition === 'changed') expect(plan.operations[1]).toMatchObject({
+      adapter: 'selected-spec-workflow', actionId: 'governance.local.finalize-spec-kit-tasks', mutationClass: 'write-spec-kit-seed',
+      inputs: { workflow: outcome }, destination: { identity: specKitCompletionPolicy.taskPath.join('/'), pathParts: specKitCompletionPolicy.taskPath },
+      remote: false, destructive: false
+    });
   });
 });
 

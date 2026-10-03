@@ -7,10 +7,10 @@ import {captureCompletionInputs,compareCompletionInputs,completionPreconditions,
 import {localExecutionRoot,readCompletedModernLocalExecution,readCompletedLocalExecutionRecords} from './modern-local-approval.js';
 import {copyModernLocalData,localInputFailure,rawLocalDigest,capturedFileBytes} from '../../domain/governance/activation/modern-local-inputs.js';
 import {canonicalJson} from '../../domain/governance/activation/canonical-json.js';
-import {createModernActivationRecordContract,type ModernRelatedRecords,type ModernActivationRecordContract} from '../../domain/governance/activation/modern-records.js';
+import {createModernActivationRecordContract,type ModernRelatedRecords} from '../../domain/governance/activation/modern-records.js';
+import {createLocalEvidencePlan} from './modern-local-evidence.js';
 import {projectCatalog} from '../project/catalog.js';
 import {createManifestV8ProjectReader} from '../../domain/project/manifest/v8-project.js';
-import type {ModernActivationState,ModernPhaseId,ModernSavedTransitionPlan} from '../../domain/governance/activation/modern-record-contracts.js';
 import type {ProjectFileMutation,ProjectFileSnapshot} from '../../adapters/filesystem/project-transaction.js';
 import {exactRecord} from '../../domain/project/manifest/fields.js';
 import {createManifestV8Reader,type LiftoffManifestV8} from '../../domain/project/manifest/v8.js';
@@ -212,19 +212,6 @@ export async function changeCompletionState(store:LocalFinalizationRecordStore,p
   const value=validateFinalizationState({...state,updatedAt:new Date().toISOString()},p);
   return store.compareExchangeState(p.fingerprint,expectedDigest,value);
 }
-function phasePlan(api:ModernActivationRecordContract,p:LocalFinalizationPreview,state:ModernActivationState,id:ModernPhaseId,createdAt:string,workflow?:SpecKitWorkflowOutcome):ModernSavedTransitionPlan{
-  const node=api.graph.phases.find(phase=>phase.id===id)!;
-  for(const dep of node.dependencies)if(!dep.anyOf.some(phase=>dep.accepts.includes(state.phases[phase].state as typeof dep.accepts[number])))localInputFailure('Native local phase dependency is not actually satisfied.');
-  return api.createPlan({phaseId:id,createdAt,expiresAt:p.expiresAt,stateHash:completionDigest(state),baselineDigest:p.execution.baselineDigest,inputDigest:p.execution.observationDigest,
-    transitionDigest:completionDigest({finalizationFingerprint:p.fingerprint,phaseId:id,execution:p.execution}),
-    operations:[{adapter:'local-evidence',actionId:`governance.local.${id}`,mutationClass:'write-evidence',phaseId:id,inputs:{finalizationFingerprint:p.fingerprint,executionResultDigest:p.execution.resultDigest},
-      destination:{type:'local',identity:p.projectRoot},remote:false,destructive:false},
-      ...(workflow?.disposition==='changed'?[{adapter:'selected-spec-workflow' as const,actionId:'governance.local.finalize-spec-kit-tasks',mutationClass:'write-spec-kit-seed' as const,phaseId:id,
-        inputs:{workflow},destination:{type:'local' as const,identity:specKitCompletionPolicy.taskPath.join('/'),pathParts:[...specKitCompletionPolicy.taskPath]},remote:false,destructive:false}]:[])],
-    approval:{gateKind:node.approvalGate.kind,required:false,envelopeId:null,envelopeHash:null,evaluation:{phaseId:id,gateKind:node.approvalGate.kind,questionKind:null,approvalRequired:false,status:'not-required',envelopeId:null,envelopeHash:null,reasons:[],expansionReasons:[]}},
-    rollbackPlan:{phaseId:id,strategy:node.rollback.kind,target:node.rollback.target,operations:[],retained:[],cleanupWarnings:[]},noSecrets:true,
-    ...(workflow?{inputDigest:workflow.inputDigest,fileChanges:[{pathParts:[...specKitCompletionPolicy.taskPath],beforeHash:workflow.originalTaskHash,afterHash:workflow.targetTaskHash}]}:{})});
-}
 export async function finalizeModernLocalCompletion(root:string,fingerprint:string):Promise<LocalFinalizationResult>{
   ({root,fingerprint}=copyModernLocalData({root,fingerprint}));
   const {root:canonical}=await requireIdleCompletionBoundary(root),store=finalizationStore(canonical),p=await readFinalizationPreview(canonical,fingerprint,store);
@@ -265,7 +252,8 @@ export async function finalizeModernLocalCompletion(root:string,fingerprint:stri
       const old=current.inspection.installed.current,refs:{plans:unknown[];evidence:unknown[];approvals:unknown[]}={plans:[...old?.records.plans??[]],evidence:[...old?.records.evidence??[]],approvals:[...old?.records.approvals??[]]};
       let activation=old?.state??api.createInitialState({repository:{id:`local:${randomUUID()}`,name:current.manifest.project.name,defaultBranch:'undiscovered'},
         applicability:{statePath:'none',privateStagingDast:'unknown',credentialRequired:'unknown'},createdAt:new Date().toISOString()});
-      const inputPlan=phasePlan(api,p,activation,'local-inputs-valid',new Date().toISOString());
+      const evidenceReview={kind:'finalization' as const,fingerprint:p.fingerprint,projectRoot:p.projectRoot,expiresAt:p.expiresAt,execution:p.execution};
+      const inputPlan=createLocalEvidencePlan(api,evidenceReview,activation,'local-inputs-valid',new Date().toISOString());
       const actual=await readCompletedModernLocalExecution(canonical,p.execution.executionFingerprint);
       if(completionDigest(actual.preview)!==p.execution.previewDigest)localInputFailure('Actual input phase changed after its plan was prepared.');
       const plans=[inputPlan,current.preview.selectedPlan!];
@@ -274,7 +262,7 @@ export async function finalizeModernLocalCompletion(root:string,fingerprint:stri
         const node=api.graph.phases.find(phase=>phase.id===id)!;
         for(const dep of node.dependencies)if(!dep.anyOf.some(phase=>dep.accepts.includes(activation.phases[phase].state as typeof dep.accepts[number])))localInputFailure('Actual local evidence dependency is missing.');
         if(position===2){
-          plans.push(phasePlan(api,p,activation,id,new Date().toISOString(),workflow));
+          plans.push(createLocalEvidencePlan(api,evidenceReview,activation,id,new Date().toISOString(),workflow));
           if(workflow){
             actualTask=Buffer.from(completedSpecKitTasks(originalTask!.toString('utf8')));
             if(!actualTask.equals(plannedTask!))localInputFailure('Spec Kit finalization differs from its prepared plan.');

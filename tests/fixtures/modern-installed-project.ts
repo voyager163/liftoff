@@ -42,9 +42,18 @@ export function selected(leaf: ManifestV8ProjectLeaf, profile: 'none' | 'single-
   return { selection: { ...leaf, profile }, plugins, activeLayout: { schemaVersion: 1 as const, state: 'unresolved' as const, bindings: [] as const } };
 }
 
-export async function writeModernHistoricalSource(directory: string, version: 1 | 2 | 3, retained = false) {
+export async function writeModernHistoricalSource(directory: string, version: 1 | 2 | 3, retained = false, workflow?: 'spec-kit') {
   const sample = capturedV3Successor(version === 1 ? 1 : 2);
-  const manifest = version === 3 ? capturedV3Records().manifest : parseHistoryJson(sample.files.get('liftoff.manifest.json')!, 'original manifest');
+  let manifest = version === 3 ? capturedV3Records().manifest : parseHistoryJson(sample.files.get('liftoff.manifest.json')!, 'original manifest');
+  if (workflow) {
+    const raw = historyRecord(manifest, 'synthetic workflow source'), original = parseManifest(raw);
+    manifest = {
+      ...raw, project: { ...historyRecord(raw.project, 'synthetic workflow project'), specWorkflow: workflow,
+        agents: original.project.agents, defaultAgent: original.project.agents[0] },
+      framework: { state: 'initialized', adapter: workflow, contractVersion: projectCatalog.getFrameworkDefinition(workflow).version }
+    };
+    parseManifest(manifest);
+  }
   const state = structuredClone(version === 3 ? historyRecord(sample.state, 'state') :
     historyRecord(parseHistoryJson(sample.files.get('governance/activation-state.json')!, 'state'), 'state'));
   for (const field of ['bootstrapState', 'successorHistory', 'phaseOutputs', 'taskProjection', 'activationInputs']) delete state[field];
@@ -78,15 +87,17 @@ export async function writeModernHistoricalSource(directory: string, version: 1 
 }
 
 /** Constructs record/storage fixtures; this does not qualify approved publication or native execution. */
-export async function writeModernSuccessor(directory: string, version: 1 | 2 | 3, retained = false, nested = false, overlap = false) {
+export async function writeModernSuccessor(directory: string, version: 1 | 2 | 3, retained = false, nested = false, overlap = false,
+  options: { layout?: ManifestActiveLayout; workflow?: 'spec-kit' } = {}) {
+  if (nested && options.workflow) throw new Error('A nested historical fixture cannot be relabeled as another workflow.');
   if (nested) await writeCapturedV3Successor(directory, 2);
-  else await writeModernHistoricalSource(directory, version, retained);
+  else await writeModernHistoricalSource(directory, version, retained, options.workflow);
   const original = await readModernActivationSuccessorSource(directory);
   const originalManifest = parseManifest(parseHistoryJson(original.captures.find(file => file.pathParts.join('/') === 'liftoff.manifest.json')!.content!, 'source manifest'));
   const leaf = createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({ project: originalManifest.project, framework: originalManifest.framework });
   const selection = selected(leaf, 'single-maintainer-gitflow');
-  const activeLayout: ManifestActiveLayout = overlap
-    ? { schemaVersion: 1, state: 'bound', bindings: [{ kind: 'component', component: 'backend', pathParts: ['protected'] }] } : selection.activeLayout;
+  const activeLayout: ManifestActiveLayout = options.layout ?? (overlap
+    ? { schemaVersion: 1, state: 'bound', bindings: [{ kind: 'component', component: 'backend', pathParts: ['protected'] }] } : selection.activeLayout);
   const input = { ...selection, activeLayout }, core = buildModernManagedCore(input);
   const managed = [
     ...core.map(({ logicalName, category, pathParts, content }) => ({ kind: 'bytes' as const, logicalName, category, pathParts, content })),

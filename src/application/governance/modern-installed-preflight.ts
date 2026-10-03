@@ -23,7 +23,7 @@ import { installedLocalBounds, installedLocalBinding, reservedLocalVerificationJ
 import { createModernActivationRecordContract, type ModernRelatedRecords } from '../../domain/governance/activation/modern-records.js';
 import type { BootstrapStateRetentionFieldsV1 } from '../../domain/governance/activation/record-contracts.js';
 import { isReleasedV3ActivationIdentity } from '../../domain/governance/policy/identity.js';
-import { createModernHistoryContract } from '../../governance-activation/modern-history-contracts.js';
+import { createModernHistoryContract, type ModernMigrationJournalV2 } from '../../governance-activation/modern-history-contracts.js';
 import { parseHistoryJson, historyRecord, validateFrozenActivationHistoryIndex, validateFrozenV3SourceIndex } from '../../governance-activation/history-contracts.js';
 import { validateCapturedHistoricalSnapshot, validateCapturedV3SourceSnapshot, validateCapturedReleasedSource,
   assertCapturedHistoricalAncestor, assertCapturedV3SourceAncestor, assertCapturedV3MetadataAncestry,
@@ -94,8 +94,12 @@ async function validateHistory(snapshot:InstalledLocalSnapshot,reference:{snapsh
 
 async function validateCapturedModernActivation(
   input:InstalledLocalSnapshot, requireCurrentCore:boolean
-):Promise<Extract<InstalledLocalPreflight,{status:'observed'}>>{
+):Promise<{
+  observation:Extract<InstalledLocalPreflight,{status:'observed'}>;
+  successor:{manifest:LiftoffManifestV8;journal:ModernMigrationJournalV2}|null;
+}>{
   const snapshot=copyModernLocalData(input);validateInstalledLocalSnapshot(snapshot);
+  let successor:{manifest:LiftoffManifestV8;journal:ModernMigrationJournalV2}|null=null;
   const files=new Map(snapshot.files.map(file=>[key(file.pathParts),file]));
   function bytes(parts:readonly string[],required=false):Buffer|undefined{
     const file=files.get(key(parts));if(!file)localInputFailure(`${key(parts)}: installed input was not captured.`);
@@ -115,8 +119,9 @@ async function validateCapturedModernActivation(
   const list=(name:typeof collections[number])=>observedCollections.find(item=>item.name===name)!.files;
   const result=(classification:Extract<InstalledLocalPreflight,{status:'observed'}>['classification'],
     retained:readonly InstalledRetentionObligation[],current:Extract<InstalledLocalPreflight,{status:'observed'}>['current'])=>({
-    status:'observed' as const,classification,snapshot,binding:installedLocalBinding(snapshot),retention:retained,current,
-    localPublication:'codec-unavailable-not-authorized' as const
+    observation:{status:'observed' as const,classification,snapshot,binding:installedLocalBinding(snapshot),retention:retained,current,
+      localPublication:'codec-unavailable-not-authorized' as const},
+    successor
   });
   if(raw.artifactVersion!==8){
     const manifest=parseManifest(raw);
@@ -200,6 +205,7 @@ async function validateCapturedModernActivation(
     const journal=contract.readJournal(parseHistoryJson(journalBytes,'modern migration journal'),expected,snapshot.observedAt,{state,records:refs});
     if(journal.successor.repositoryId!==state.repository.id||journal.successor.createdAt!==state.createdAt)localInputFailure('Installed successor state differs from its preparation anchor.');
     retained.push(...history.inventories.flatMap(source=>retention(canonicalSha256(source.state.identity),source.state.repository.id,source.state.bootstrapState)));
+    successor={manifest,journal};
     return result('successor',retained,{state,records:refs});
   }
   if(journalBytes||state.successorHistory)localInputFailure('Current state names a missing or mismatched source history.');
@@ -208,12 +214,28 @@ async function validateCapturedModernActivation(
 
 /** Reconstructs record and source relations from bounded captured bytes, never embedded success flags. */
 export async function validateCapturedModernInstalledActivation(input:InstalledLocalSnapshot):Promise<Extract<InstalledLocalPreflight,{status:'observed'}>>{
-  return validateCapturedModernActivation(input,true);
+  return (await validateCapturedModernActivation(input,true)).observation;
 }
+
+/** The original transition is reconstructed from preserved bytes before exposing journal progress. */
+export async function validateCapturedModernSuccessorSource(input:InstalledLocalSnapshot){
+  const {observation:observed,successor}=await validateCapturedModernActivation(input,true);
+  if(!successor||observed.classification!=='successor'||!observed.current){
+    localInputFailure('Modern revalidation requires an independently valid installed activation successor.');
+  }
+  return {
+    kind:'liftoff-modern-successor-source' as const,
+    manifest:successor.manifest,journal:successor.journal,snapshot:observed.snapshot,
+    current:observed.current,retention:observed.retention,
+    binding:canonicalSha256({kind:'liftoff-modern-successor-source',installedBinding:observed.binding}),
+    execution:'not-authorized' as const,publication:'not-authorized' as const
+  };
+}
+export type ModernSuccessorSource=Awaited<ReturnType<typeof validateCapturedModernSuccessorSource>>;
 
 /** Source observation permits core drift, but cannot be supplied as installed execution readiness. */
 export async function validateCapturedModernMaintenanceSource(input:InstalledLocalSnapshot){
-  const observed=await validateCapturedModernActivation(input,false);
+  const {observation:observed}=await validateCapturedModernActivation(input,false);
   if((observed.classification!=='current'&&observed.classification!=='successor')||!observed.current){
     localInputFailure('Active maintenance requires a valid current activation boundary.');
   }
