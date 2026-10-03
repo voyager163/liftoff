@@ -1,8 +1,11 @@
 import path from 'node:path';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
+import { denseArray, exactRecord } from '../../domain/project/manifest/fields.js';
+import { validateSuccessorPreparation, type SuccessorPreparationV1 } from '../../governance-activation/modern-history-contracts.js';
 import { formatUpdateCommand, type UpdateGuidanceContext } from './command-guidance.js';
 
 export const updatePreviewSchemaVersion = 1;
+export const preparedUpdatePreviewSchemaVersion = 2 as const;
 export const updatePreviewDirectoryParts: readonly string[] = Object.freeze(['liftoff', 'update-previews']);
 
 export type UpdatePreviewMode = 'normal' | 'force';
@@ -89,8 +92,22 @@ export interface UpdatePreviewIssuance {
   issuedAt: string;
 }
 
+export interface PreparedUpdatePublication {
+  readonly semanticTransitionDigest: string;
+  readonly sourceBinding: string;
+  readonly preparation: SuccessorPreparationV1;
+}
+
+export interface PreparedUpdatePreviewReceipt extends Omit<UpdatePreviewReceipt, 'schemaVersion'> {
+  readonly schemaVersion: typeof preparedUpdatePreviewSchemaVersion;
+  readonly publication: PreparedUpdatePublication;
+}
+
 const digestPattern = /^[0-9a-f]{64}$/u;
 const receiptIdPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/u;
+const descriptorFields = [
+  'projectRoot', 'cliVersion', 'mode', 'sourceDigest', 'targetDigest', 'operationsDigest', 'fingerprint'
+] as const;
 
 function invalid(message: string): never {
   throw new UpdatePreviewError('preview-invalid', message);
@@ -215,9 +232,7 @@ export function createUpdatePreviewDescriptor(input: UpdatePreviewInput): Update
 
 export function validateUpdatePreviewDescriptor(value: unknown): UpdatePreviewDescriptor {
   if (!isRecord(value)) invalid('Preview descriptor must be an object.');
-  strictKeys(value, [
-    'projectRoot', 'cliVersion', 'mode', 'sourceDigest', 'targetDigest', 'operationsDigest', 'fingerprint'
-  ], 'Preview descriptor');
+  strictKeys(value, descriptorFields, 'Preview descriptor');
   if (value.mode !== 'normal' && value.mode !== 'force') invalid('Preview mode must be normal or force.');
   const descriptor = descriptorFromDigests({
     projectRoot: text(value.projectRoot, 'Preview project root'),
@@ -282,6 +297,14 @@ export function validateUpdatePreviewReceipt(
   if (value.projectRoot !== receipt.projectRoot || value.projectKey !== receipt.projectKey) {
     invalid('Preview receipt project identity is inconsistent.');
   }
+  validateReceiptContext(receipt, options);
+  return receipt;
+}
+
+function validateReceiptContext(
+  receipt: Pick<UpdatePreviewReceipt, 'projectRoot' | 'issuedAt'>,
+  options: { projectRoot?: string; now?: Date }
+): void {
   if (options.projectRoot !== undefined &&
       receipt.projectRoot !== normalizeUpdatePreviewProjectRoot(options.projectRoot)) {
     throw new UpdatePreviewError('preview-mismatch',
@@ -291,7 +314,95 @@ export function validateUpdatePreviewReceipt(
       (!Number.isFinite(options.now.getTime()) || Date.parse(receipt.issuedAt) > options.now.getTime())) {
     invalid('Preview receipt is dated in the future or the current clock is invalid.');
   }
+}
+
+/** Prepared values are a preview, never consent or evidence that publication committed. */
+export function validatePreparedUpdatePublication(value: unknown, observedAt: string): PreparedUpdatePublication {
+  const fields = exactRecord(value, ['semanticTransitionDigest', 'sourceBinding', 'preparation'], 'Prepared preview publication');
+  const supplied = exactRecord(fields.preparation, [
+    'schemaVersion', 'preparationId', 'preparedAt', 'localRepositoryId'
+  ], 'Prepared preview preparation');
+  if (supplied.schemaVersion !== 1 || typeof supplied.preparationId !== 'string' ||
+      typeof supplied.preparedAt !== 'string' || typeof supplied.localRepositoryId !== 'string') {
+    invalid('Prepared preview requires the complete schema-one construction parameters.');
+  }
+  return Object.freeze({
+    semanticTransitionDigest: digest(fields.semanticTransitionDigest, 'Prepared semantic transition digest'),
+    sourceBinding: digest(fields.sourceBinding, 'Prepared source binding'),
+    preparation: validateSuccessorPreparation({
+      schemaVersion: 1, preparationId: supplied.preparationId,
+      preparedAt: supplied.preparedAt, localRepositoryId: supplied.localRepositoryId
+    }, observedAt)
+  });
+}
+
+export function createPreparedUpdatePreviewReceipt(
+  descriptors: readonly UpdatePreviewDescriptor[],
+  publication: PreparedUpdatePublication,
+  issuance: UpdatePreviewIssuance
+): PreparedUpdatePreviewReceipt {
+  const issued = exactRecord(issuance, ['receiptId', 'issuedAt'], 'Prepared preview issuance');
+  const base = createUpdatePreviewReceipt(
+    denseArray(descriptors, 2, 'Prepared preview variants').map(validatePreparedDescriptor),
+    { receiptId: text(issued.receiptId, 'Prepared preview receiptId'), issuedAt: text(issued.issuedAt, 'Prepared preview issuedAt') }
+  );
+  const checked = validatePreparedUpdatePublication(publication, base.issuedAt);
+  const preparation = checked.preparation;
+  if (preparation.preparationId !== base.receiptId || preparation.preparedAt !== base.issuedAt) {
+    invalid('Prepared preview must retain its actual once-issued preparation identity and construction time.');
+  }
+  return Object.freeze({
+    ...base,
+    schemaVersion: preparedUpdatePreviewSchemaVersion,
+    publication: checked
+  });
+}
+
+function validatePreparedDescriptor(value: unknown): UpdatePreviewDescriptor {
+  return validateUpdatePreviewDescriptor(exactRecord(value, descriptorFields, 'Prepared preview descriptor'));
+}
+
+export function validatePreparedUpdatePreviewReceipt(
+  value: unknown,
+  options: { projectRoot?: string; now?: Date } = {}
+): PreparedUpdatePreviewReceipt {
+  if (!isRecord(value) || Object.getOwnPropertyDescriptor(value, 'schemaVersion')?.value !== preparedUpdatePreviewSchemaVersion) {
+    throw new UpdatePreviewError('preview-unsupported', 'Prepared successor publication requires preview receipt schema 2.');
+  }
+  const item = exactRecord(value, [
+    'schemaVersion', 'kind', 'projectRoot', 'projectKey', 'receiptId', 'issuedAt', 'variants', 'publication'
+  ], 'Prepared update preview');
+  const issuedAt = text(item.issuedAt, 'Prepared preview issuedAt');
+  const receipt = createPreparedUpdatePreviewReceipt(
+    denseArray(item.variants, 2, 'Prepared preview variants').map(validatePreparedDescriptor),
+    validatePreparedUpdatePublication(item.publication, issuedAt),
+    { receiptId: text(item.receiptId, 'Prepared preview receiptId'), issuedAt }
+  );
+  if (item.kind !== receipt.kind || item.projectRoot !== receipt.projectRoot || item.projectKey !== receipt.projectKey) {
+    invalid('Prepared preview receipt project identity or kind is inconsistent.');
+  }
+  validateReceiptContext(receipt, options);
   return receipt;
+}
+
+export function matchPreparedUpdatePreviewReceipt(
+  receipt: unknown,
+  currentDescriptor: UpdatePreviewDescriptor,
+  currentPublication: PreparedUpdatePublication
+): UpdatePreviewDescriptor {
+  const current = validatePreparedDescriptor(currentDescriptor);
+  const saved = validatePreparedUpdatePreviewReceipt(receipt, { projectRoot: current.projectRoot });
+  const matched = saved.variants.find(variant => variant.mode === current.mode);
+  if (!matched || matched.fingerprint !== current.fingerprint ||
+      canonicalSha256(saved.publication) !== semanticDigest(currentPublication)) {
+    throw new UpdatePreviewError('preview-mismatch',
+      'The prepared successor differs from its saved source, preparation or complete publication candidate.',
+      { projectRoot: current.projectRoot, mode: current.mode });
+  }
+  createPreparedUpdatePreviewReceipt([current], currentPublication, {
+    receiptId: saved.receiptId, issuedAt: saved.issuedAt
+  });
+  return current;
 }
 
 export function matchUpdatePreviewReceipt(

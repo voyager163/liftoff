@@ -42,8 +42,10 @@ async function readDisk(projectRoot: string, pathParts: string[]): Promise<Buffe
 export async function reconcileProject(
   manifest: LiftoffManifest,
   render: GeneratedArtifact[],
-  projectRoot: string
+  projectRoot: string,
+  options: { readFile?: typeof readDisk } = {}
 ): Promise<ReconcileEntry[]> {
+  const readFile = options.readFile ?? readDisk;
   const recordedByName = new Map(
     manifest.managedArtifacts.map((artifact) => [artifact.logicalName, artifact])
   );
@@ -58,7 +60,7 @@ export async function reconcileProject(
     const renderHash = hashBytes(artifact.content);
 
     if (!recorded) {
-      const destination = await readDisk(projectRoot, artifact.pathParts);
+      const destination = await readFile(projectRoot, artifact.pathParts);
       if (destination !== undefined && destination.toString('utf8') === artifact.content) {
         entries.push({
           logicalName: artifact.logicalName,
@@ -93,8 +95,8 @@ export async function reconcileProject(
 
     const samePath = recorded.pathParts.join('\0') === artifact.pathParts.join('\0');
     if (!samePath) {
-      const priorDisk = await readDisk(projectRoot, recorded.pathParts);
-      const newDisk = await readDisk(projectRoot, artifact.pathParts);
+      const priorDisk = await readFile(projectRoot, recorded.pathParts);
+      const newDisk = await readFile(projectRoot, artifact.pathParts);
       if (priorDisk === undefined) {
         if (newDisk !== undefined && newDisk.toString('utf8') === artifact.content) {
           entries.push({
@@ -167,7 +169,7 @@ export async function reconcileProject(
       continue;
     }
 
-    const disk = await readDisk(projectRoot, artifact.pathParts);
+    const disk = await readFile(projectRoot, artifact.pathParts);
     if (disk === undefined) {
       entries.push({
         logicalName: artifact.logicalName,
@@ -229,7 +231,7 @@ export async function reconcileProject(
         });
         continue;
       }
-      const disk = await readDisk(projectRoot, recorded.pathParts);
+      const disk = await readFile(projectRoot, recorded.pathParts);
       if (disk === undefined) {
         entries.push({
           logicalName: recorded.logicalName,
@@ -259,7 +261,7 @@ export async function reconcileProject(
       });
       continue;
     }
-    const disk = await readDisk(projectRoot, recorded.pathParts);
+    const disk = await readFile(projectRoot, recorded.pathParts);
     if (disk === undefined) {
       continue; // already removed by the user; nothing to report or retain
     }
