@@ -33,6 +33,7 @@ import { executeActivationApproval } from '../src/governance-activation/phase-go
 import type { PhaseAdapterExecutionInput } from '../src/governance-activation/transition-ports.js';
 import { applyProjectFileTransaction } from '../src/adapters/filesystem/project-transaction.js';
 import { planGovernanceTaskProjection } from '../src/governance-activation/task-writes.js';
+import { renderGovernanceSourceFiles } from '../src/application/governance/source-rendering.js';
 
 const scratchRoot = path.join(process.cwd(), '.cache', `governance-source-of-truth-tests-${process.pid}`);
 afterAll(async () => { await rm(scratchRoot, { recursive: true, force: true }); });
@@ -360,6 +361,12 @@ describe('governance active source-of-truth inspection', () => {
 });
 
 describe('canonical governance change rendering and reconciliation', () => {
+  it.each(['manual', 'future'])('never renders %s as an implicit Spec Kit source', (workflow) => {
+    const metadata = structuredClone(renderGovernanceChangeWritePlan(facts()).metadata);
+    Reflect.set(metadata, 'workflowKind', workflow);
+    expect(() => renderGovernanceSourceFiles(metadata, facts())).toThrow(/explicitly selected external workflow/);
+  });
+
   it('preserves a concurrent file created after the approval handler planned new artifacts', async () => {
     const root = await writeProject('demo');
     const activationState = state();

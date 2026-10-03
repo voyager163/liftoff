@@ -769,8 +769,20 @@ manifest content hashes exist, without a placeholder root; the complete-root
 validator then checks the resulting W1 candidate. Its same-intent successor lanes are
 source-contract-only, not installed execution capabilities. Pure constructors
 supply no clocks, randomness, provider observations or publication authority.
-Modern source-metadata2 creation and task projection remain unavailable; the
-graph does not allocate that mutation.
+`createModernGovernanceSourceContract` supplies private source-metadata2 values
+bound to the complete selected identity, graph and external workflow. It requires
+every phase mapping, distinct evidence references and explicit supplied
+acknowledgment/fact metadata. It does not verify those references as execution
+proof. Its pure checkbox projection preserves unrelated bytes and CRLF, rejects
+ambiguous markers, and bounds task input to 256 KiB of UTF-8. Evidence references
+are capped at 128 and use the same portable-name and native-alias rules as
+modern manifest paths. Manual has no external source or task projection.
+`src/application/governance/source-rendering.ts` shares the existing deterministic
+OpenSpec/Spec Kit artifact rendering without changing schema1 output.
+Modern source-metadata2 publication and runtime task projection remain
+unavailable; the graph does not allocate the checkbox mutation, and installed
+preflight still rejects unimplemented active-source bindings. Pure metadata and
+rendering helpers do not establish approval, storage ownership or readiness.
 `buildModernManagedCore` now produces immutable managed content from an explicit
 validated selection, plugin resolution and active layout. It uses the real
 modern registry's exact policy bytes, canonical graph, source-context

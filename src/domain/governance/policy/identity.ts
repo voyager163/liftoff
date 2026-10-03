@@ -15,6 +15,7 @@ export const approvalEnvelopeSchemaVersion = 3 as const;
 export const compatibilityMetadataSchemaVersion = 4 as const;
 export const supersessionSchemaVersion = 1 as const;
 export const credentialPolicySchemaVersion = 1 as const;
+export const modernGovernanceSourceMetadataSchemaVersion = 2 as const;
 
 export const knownActivationVersions = {
   liftoffVersion: [liftoffActivationPackageVersion],
