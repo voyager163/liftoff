@@ -1,8 +1,11 @@
 import { createHash } from 'node:crypto';
 import { liftoffVersion } from '../../version.js';
 import { createUpdatePreviewDescriptor } from './preview.js';
-import { uniqueUpdateSnapshots, type UpdateInspection } from './inspection.js';
-import { planUpdateWrites } from './write-plan.js';
+import { uniqueUpdateSnapshots, UpdatePlanError, type ModernSuccessorUpdateInspection, type UpdateInspection } from './inspection.js';
+import { planManagedCoreWrites, planUpdateWrites } from './write-plan.js';
+import { prepareActivationHistorySuccessor } from '../../governance-activation/migration-history.js';
+import type { SuccessorPreparationV1 } from '../../governance-activation/modern-history-contracts.js';
+import type { ProjectFileMutation } from '../../adapters/filesystem/project-transaction.js';
 import type { UpdatePlanSummary } from './output.js';
 import { prepareUpdateRevalidation } from './revalidation-plan.js';
 import type { CommandRunner } from '../../process-runner.js';
@@ -10,6 +13,7 @@ import {
   inspectReviewedUpdateCandidate, type ReviewedUpdateCandidate
 } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { FileSystemError } from '../../domain/project/errors.js';
+import { copySourceHistoryData, copySourceHistoryObservations } from '../../governance-activation/source-history-capture.js';
 
 export type UpdateCandidateAdmission =
   | { status: 'complete'; candidate: ReviewedUpdateCandidate }
@@ -19,6 +23,70 @@ export type UpdateCandidateAdmission =
 function digest(content: string | Buffer): string {
   return createHash('sha256').update(content).digest('hex');
 }
+
+export async function prepareModernSuccessorReview(
+  inspection: ModernSuccessorUpdateInspection,
+  force: boolean,
+  preparation: SuccessorPreparationV1,
+  observedAt: string
+) {
+  const projectRoot = inspection.projectRoot;
+  const sourceBinding = inspection.source.sourceBinding;
+  const snapshots = copySourceHistoryObservations(inspection.snapshots);
+  const historyRoot = ['governance', 'history', inspection.successorPlan.semanticInput.history.snapshotId].join('\0') + '\0';
+  const core = copySourceHistoryData(planManagedCoreWrites(inspection.entries, inspection.oldByName, force), 'successor core writes');
+  if (core.skipped.length) {
+    throw new UpdatePlanError(`Required successor managed-core conflicts remain: ${core.skipped.map(entry => entry.pathParts.join('/')).join(', ')}.`,
+      'successor-core-conflict', 'Review an eligible force variant or resolve unowned destinations; no partial successor can be published.');
+  }
+  const prepared = await prepareActivationHistorySuccessor(
+    inspection.successorPlan, Buffer.from(inspection.successorPlan.manifest.content), preparation, observedAt
+  );
+  const history = prepared.mutations.filter(mutation => mutation.pathParts.join('\0').startsWith(historyRoot));
+  const successor = prepared.mutations.filter(mutation => !mutation.pathParts.join('\0').startsWith(historyRoot));
+  const mutations: ProjectFileMutation[] = [
+    ...history.map(mutation => ({ ...mutation, pathParts: [...mutation.pathParts] })),
+    ...core.mutations,
+    ...successor.map(mutation => ({ ...mutation, pathParts: [...mutation.pathParts] })),
+    { type: 'write', pathParts: ['liftoff.manifest.json'], content: prepared.manifestBytes }
+  ];
+  const preconditions = uniqueUpdateSnapshots([
+    ...snapshots, ...prepared.preconditions
+  ], projectRoot).sort((left, right) => left.pathParts.join('\0').localeCompare(right.pathParts.join('\0'), 'en'));
+  const candidate = await inspectReviewedUpdateCandidate(projectRoot, mutations, preconditions);
+  const publication = {
+    semanticTransitionDigest: prepared.semanticTransitionDigest,
+    sourceBinding,
+    preparation: prepared.preparation
+  };
+  const descriptor = createUpdatePreviewDescriptor({
+    projectRoot, cliVersion: liftoffVersion, mode: force ? 'force' : 'normal',
+    source: {
+      sourceBinding: publication.sourceBinding,
+      files: preconditions.map(snapshot => ({
+        pathParts: snapshot.pathParts, contentDigest: snapshot.content === undefined ? null : digest(snapshot.content),
+        mode: snapshot.mode ?? null
+      }))
+    },
+    target: mutations.map(mutation => ({
+      type: mutation.type, pathParts: mutation.pathParts,
+      ...(mutation.type === 'write' ? { contentDigest: digest(mutation.content), mode: mutation.mode ?? null } : {})
+    })),
+    operations: {
+      publication, candidateAdmission: { binding: candidate.binding, size: candidate.size },
+      revalidation: 'separate-reviewed-operation-required'
+    }
+  });
+  return {
+    descriptor, publication, candidate, mutations, preconditions, prepared, core,
+    summary: {
+      mode: descriptor.mode, fingerprint: descriptor.fingerprint, eligible: true,
+      writeCount: mutations.length, blockers: []
+    } satisfies UpdatePlanSummary
+  };
+}
+
+export type ReviewedModernSuccessorPlan = Awaited<ReturnType<typeof prepareModernSuccessorReview>>;
 
 export async function prepareUpdateReview(
   inspection: UpdateInspection,

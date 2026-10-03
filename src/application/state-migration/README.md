@@ -15,7 +15,9 @@ Manifest v2-v7 readers, private v8 candidate writers and activation-record
 successors concern Liftoff control records, not infrastructure state. They
 preserve original source/history and retention obligations; their approval
 cannot authorize any state operation below. Public v8 migration itself remains
-gated on the real modern runtime. See
+gated on the real modern runtime. Private reviewed publication can write a linked
+v8/state4 control-record successor; it neither completes local revalidation nor
+grants deployment-state permission. See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.
 

@@ -215,6 +215,10 @@ function captureRecoveryExpectation(options: { expectedTransaction?: ReviewedRec
   return Object.freeze({ planFingerprint, transactionDigest });
 }
 
+export async function assertNoPendingReviewedUpdate(projectRoot: string): Promise<void> {
+  await assertNoPendingTransactions(await canonicalRoot(projectRoot), 'update', true);
+}
+
 async function assertNoPendingTransactions(root: string, kind: ReviewedTransactionKind, propagateReadErrors = false): Promise<void> {
   for (const pendingKind of transactionKinds) {
     const parts = journalParts(pendingKind);

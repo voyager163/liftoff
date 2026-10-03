@@ -1,5 +1,9 @@
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
-import { normalizeUpdatePreviewProjectRoot, updatePreviewProjectKey } from './preview.js';
+import {
+  normalizeUpdatePreviewProjectRoot, updatePreviewProjectKey, validatePreparedUpdatePublication,
+  type PreparedUpdatePublication
+} from './preview.js';
+import { exactRecord } from '../../domain/project/manifest/fields.js';
 
 export const updateTransactionApprovalSchemaVersion = 1;
 export const localVerificationTransactionAuthoritySchemaVersion = 1 as const;
@@ -41,6 +45,94 @@ export class UpdateTransactionApprovalError extends Error {
     super(message, options);
     this.name = 'UpdateTransactionApprovalError';
   }
+}
+
+export interface UpdateSuccessorApprovalAudit {
+  readonly schemaVersion: 1;
+  readonly kind: 'liftoff-update-successor-approval';
+  readonly projectRoot: string;
+  readonly projectKey: string;
+  readonly publication: PreparedUpdatePublication;
+  readonly planFingerprint: string;
+  readonly candidateBinding: string;
+  readonly approvalMethod: 'fingerprint' | 'interactive';
+  readonly approvedAt: string;
+}
+
+export function createUpdateSuccessorApprovalAudit(
+  input: Omit<UpdateSuccessorApprovalAudit, 'schemaVersion' | 'kind' | 'projectKey'>
+): UpdateSuccessorApprovalAudit {
+  const fields = exactRecord(input, [
+    'projectRoot', 'publication', 'planFingerprint', 'candidateBinding', 'approvalMethod', 'approvedAt'
+  ], 'Successor approval audit input');
+  if (typeof fields.projectRoot !== 'string' || typeof fields.approvedAt !== 'string' ||
+      typeof fields.planFingerprint !== 'string' || typeof fields.candidateBinding !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(fields.planFingerprint) || !/^[a-f0-9]{64}$/u.test(fields.candidateBinding) ||
+      fields.approvalMethod !== 'fingerprint' && fields.approvalMethod !== 'interactive') {
+    invalid('Successor approval audit requires its root, full review and candidate digests, approval method and actual approval time.');
+  }
+  const approvedAt = Date.parse(fields.approvedAt);
+  if (!Number.isFinite(approvedAt) || new Date(approvedAt).toISOString() !== fields.approvedAt) {
+    invalid('Successor approval audit time must be a canonical ISO UTC timestamp.');
+  }
+  const projectRoot = normalizeUpdatePreviewProjectRoot(fields.projectRoot);
+  return Object.freeze({
+    schemaVersion: 1, kind: 'liftoff-update-successor-approval', projectRoot,
+    projectKey: updatePreviewProjectKey(projectRoot),
+    publication: validatePreparedUpdatePublication(fields.publication, fields.approvedAt),
+    planFingerprint: fields.planFingerprint, candidateBinding: fields.candidateBinding,
+    approvalMethod: fields.approvalMethod, approvedAt: fields.approvedAt
+  });
+}
+
+export function validateUpdateSuccessorApprovalAudit(
+  value: unknown, options: { projectRoot?: string; now?: Date } = {}
+): UpdateSuccessorApprovalAudit {
+  const fields = exactRecord(value, [
+    'schemaVersion', 'kind', 'projectRoot', 'projectKey', 'publication', 'planFingerprint',
+    'candidateBinding', 'approvalMethod', 'approvedAt'
+  ], 'Successor approval audit');
+  if (fields.schemaVersion !== 1 || fields.kind !== 'liftoff-update-successor-approval' ||
+      typeof fields.projectRoot !== 'string' || typeof fields.approvedAt !== 'string' ||
+      typeof fields.planFingerprint !== 'string' || typeof fields.candidateBinding !== 'string' ||
+      fields.approvalMethod !== 'fingerprint' && fields.approvalMethod !== 'interactive') {
+    invalid('Invalid successor approval audit; preview metadata and transaction seals are not approval audit records.');
+  }
+  const audit = createUpdateSuccessorApprovalAudit({
+    projectRoot: fields.projectRoot,
+    publication: validatePreparedUpdatePublication(fields.publication, fields.approvedAt),
+    planFingerprint: fields.planFingerprint, candidateBinding: fields.candidateBinding,
+    approvalMethod: fields.approvalMethod, approvedAt: fields.approvedAt
+  });
+  if (audit.projectRoot !== fields.projectRoot || audit.projectKey !== fields.projectKey ||
+      options.projectRoot !== undefined && audit.projectRoot !== normalizeUpdatePreviewProjectRoot(options.projectRoot)) {
+    invalid('Successor approval audit has an inconsistent or different canonical project identity.');
+  }
+  if (options.now !== undefined &&
+      (!Number.isFinite(options.now.getTime()) || Date.parse(audit.approvedAt) > options.now.getTime())) {
+    invalid('Successor approval audit is dated in the future or the current clock is invalid.');
+  }
+  return audit;
+}
+
+export interface UpdateSuccessorApprovalAuditLookup {
+  readonly projectRoot: string;
+  readonly semanticTransitionDigest: string;
+  readonly preparationId: string;
+}
+
+export function updateSuccessorApprovalAuditKey(value: UpdateSuccessorApprovalAuditLookup): string {
+  const fields = exactRecord(value, ['projectRoot', 'semanticTransitionDigest', 'preparationId'], 'Successor approval audit lookup');
+  if (typeof fields.projectRoot !== 'string' || typeof fields.semanticTransitionDigest !== 'string' ||
+      !/^[a-f0-9]{64}$/u.test(fields.semanticTransitionDigest) || typeof fields.preparationId !== 'string' ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/u.test(fields.preparationId)) {
+    invalid('Successor approval audit lookup requires a project root, semantic digest and actual preparation UUID.');
+  }
+  return canonicalSha256({
+    schemaVersion: 1, kind: 'liftoff-update-successor-approval-key',
+    projectRoot: normalizeUpdatePreviewProjectRoot(fields.projectRoot),
+    semanticTransitionDigest: fields.semanticTransitionDigest, preparationId: fields.preparationId
+  });
 }
 
 function invalid(message: string): never {

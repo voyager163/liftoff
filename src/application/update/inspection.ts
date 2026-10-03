@@ -5,16 +5,24 @@ import { readProjectFile } from '../../adapters/filesystem/project-files.js';
 import { errorCode } from '../../adapters/filesystem/errors.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { manifestHadFilteredLegacyNonDurableOwnership } from '../../domain/project/manifest/reader.js';
-import type { CodingAgentId, LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
+import type { CodingAgentId, GeneratedArtifact, LiftoffManifest, ProjectPlan } from '../../domain/project/contracts.js';
+import { isRetiredManagedCoreArtifactIdentity } from '../../domain/project/artifact-lifecycle.js';
 import { activationStateFilePathParts } from '../../governance-activation/activation-state.js';
 import { planHistoricalActivationStateMigration } from '../../governance-activation/migration.js';
-import { planActivationHistoryMigration } from '../../governance-activation/migration-history.js';
+import {
+  planActivationHistoryMigration, planModernActivationSuccessor, readModernActivationSuccessorSource,
+  type ModernSuccessorTarget
+} from '../../governance-activation/migration-history.js';
+import { validateCapturedReleasedSource } from '../../governance-activation/historical-state.js';
+import { copySourceHistoryData, createSourceHistoryCapture } from '../../governance-activation/source-history-capture.js';
+import { buildModernManagedCore, type ModernManagedCoreInput } from '../project/modern-managed-core.js';
+import type { ManagedManifestDecision } from '../project/manifest-writer.js';
 import { migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
 import {
   activationSensitivePathExclusions, isSensitiveActivationPath, normalizeSensitivePathExclusions, readActivationInputSnapshot
 } from '../../governance-activation/inputs.js';
 import { phaseIds } from '../../domain/governance/activation/types.js';
-import { inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
+import { assertNoPendingReviewedUpdate, inspectReviewedUpdateTransaction } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import type { CommandRunner } from '../../process-runner.js';
 import { captureMigrationRetainedProjectInputs, migrationSensitivePathExclusions } from '../../governance-activation/historical-inputs.js';
 import { formatUpdateGuidanceText, type UpdateGuidanceContext, type UpdateGuidanceText } from './command-guidance.js';
@@ -60,6 +68,57 @@ export class UpdatePlanError extends Error {
     return formatUpdateGuidanceText(this.remedyText, context);
   }
 }
+
+/** Private advancing-family path; the released CLI still selects its released update contract. */
+export async function inspectModernSuccessorUpdate(projectRoot: string, selected: ModernManagedCoreInput) {
+  const targetInput = copySourceHistoryData(selected, 'modern successor update selection');
+  await assertNoPendingReviewedUpdate(projectRoot);
+  const source = await readModernActivationSuccessorSource(projectRoot);
+  const inventory = await validateCapturedReleasedSource(source.captures);
+  const manifest = inventory.manifest;
+  const render: GeneratedArtifact[] = buildModernManagedCore(targetInput).map(artifact => ({
+    ...artifact, pathParts: [...artifact.pathParts]
+  }));
+  const reader = await createSourceHistoryCapture(source.projectRoot);
+  const names = new Set(render.map(artifact => artifact.logicalName));
+  for (const artifact of render) await reader.capture(artifact.pathParts, true);
+  for (const previous of manifest.managedArtifacts) {
+    if (names.has(previous.logicalName) ||
+        isRetiredManagedCoreArtifactIdentity(previous.logicalName, previous.category, previous.pathParts)) {
+      await reader.capture(previous.pathParts, true);
+    }
+  }
+  const snapshots = uniqueUpdateSnapshots([...source.captures, ...reader.observations()], source.projectRoot);
+  const byPath = new Map(snapshots.map(snapshot => [snapshot.pathParts.join('\0'), snapshot]));
+  const entries = await reconcileProject(manifest, render, source.projectRoot, {
+    readFile: async (_root, parts) => {
+      const snapshot = byPath.get(parts.join('\0'));
+      if (!snapshot) throw new FileSystemError('Modern successor reconciliation requires an actual captured file or absence.');
+      return snapshot.content;
+    }
+  });
+  const managed: ManagedManifestDecision[] = render.map(artifact => ({
+    kind: 'bytes', logicalName: artifact.logicalName, category: artifact.category,
+    pathParts: [...artifact.pathParts], content: artifact.content
+  }));
+  for (const previous of manifest.managedArtifacts) {
+    if (names.has(previous.logicalName)) continue;
+    managed.push({
+      kind: isRetiredManagedCoreArtifactIdentity(previous.logicalName, previous.category, previous.pathParts) ? 'retire-alias' : 'retain',
+      logicalName: previous.logicalName
+    });
+  }
+  const target: ModernSuccessorTarget = { ...targetInput, managed };
+  const successorPlan = await planModernActivationSuccessor(source, target);
+  await reader.assertRoot();
+  return {
+    projectRoot: source.projectRoot, source, manifest, target, successorPlan, render, entries, snapshots,
+    oldByName: new Map(manifest.managedArtifacts.map(artifact => [artifact.logicalName, artifact])),
+    sourceRepositoryId: inventory.state.repository.id
+  };
+}
+
+export type ModernSuccessorUpdateInspection = Awaited<ReturnType<typeof inspectModernSuccessorUpdate>>;
 
 export interface DeferredAgentRepair {
   kind: 'agent-integration';

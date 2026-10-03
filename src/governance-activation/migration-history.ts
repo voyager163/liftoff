@@ -359,7 +359,9 @@ export async function activeActivationRecordsWithoutState(projectRoot: string): 
 }
 
 export async function verifyActivationHistoryBeforeReplacement(
-  projectRoot: string, plan: EligibleActivationHistoryMigration, mutation: { pathParts: readonly string[] }
+  projectRoot: string,
+  plan: { index: ActivationHistoryIndex | FrozenV3SourceIndexV1; indexDigest: string },
+  mutation: { pathParts: readonly string[] }
 ): Promise<void> {
   const original = plan.index.files.find((file) =>
     historyPathKey(file.originalPathParts) === historyPathKey(mutation.pathParts));

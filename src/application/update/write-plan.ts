@@ -1,4 +1,5 @@
 import type { ProjectFileMutation } from '../../adapters/filesystem/project-transaction.js';
+import type { ManifestManagedArtifact } from '../../domain/project/contracts.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { parseManifest } from '../project/manifest.js';
 import type { ReconcileEntry } from '../../reconcile.js';
@@ -6,8 +7,11 @@ import { buildManifest } from '../../templates.js';
 import { appendProvisionedProjectArtifacts, isUnownedUpdateConflict, type ProvisioningEntry } from './planning.js';
 import { preserveDiagnosticGovernanceIdentity, type UpdateInspection } from './inspection.js';
 
-export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
-  const { manifest, entries, oldByName, provisioningPlans, plan, renderPlan, render } = inspection;
+export function planManagedCoreWrites(
+  entries: readonly ReconcileEntry[],
+  oldByName: ReadonlyMap<string, ManifestManagedArtifact>,
+  force: boolean
+) {
   const written: ReconcileEntry[] = [];
   const retired: ReconcileEntry[] = [];
   const skipped: ReconcileEntry[] = [];
@@ -47,6 +51,12 @@ export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
         break;
     }
   }
+  return { written, retired, skipped, mutations };
+}
+
+export function planUpdateWrites(inspection: UpdateInspection, force: boolean) {
+  const { manifest, entries, oldByName, provisioningPlans, plan, renderPlan, render } = inspection;
+  const { written, retired, skipped, mutations } = planManagedCoreWrites(entries, oldByName, force);
   const provisioned: ProvisioningEntry[] = [];
   for (const group of provisioningPlans) {
     if (group.blocked) continue;

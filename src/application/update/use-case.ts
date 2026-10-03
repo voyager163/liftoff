@@ -1,34 +1,48 @@
 import path from 'node:path';
+import os from 'node:os';
 import {
+  consumePreparedUpdatePreviewReceipt,
   consumeUpdatePreviewReceipt,
   createUpdateTransactionApprovalStore,
   issueUpdatePreviewReceipt,
+  issuePreparedUpdatePreviewReceipt,
   loadUpdatePreviewReceipt,
+  loadPreparedUpdatePreviewReceipt,
+  retainUpdateSuccessorApprovalAudit,
   resolveUpdatePreviewLocation,
   type UpdatePreviewOptions
 } from '../../adapters/filesystem/update-previews.js';
 import {
   applyReviewedUpdateTransaction,
   inspectReviewedUpdateTransaction,
-  recoverReviewedUpdateTransaction
+  recoverReviewedUpdateTransaction,
+  type ReviewedUpdateTransactionCheckpoint
 } from '../../adapters/filesystem/reviewed-update-transaction.js';
 import { findProjectRoot } from '../../adapters/filesystem/project-discovery.js';
 import { manifestDisplayPath } from '../../domain/project/paths.js';
 import type { ExecutionContext } from '../context.js';
 import { loadManifest } from '../project/manifest.js';
-import { requestUpdateApproval } from './approval.js';
+import { requestUpdateApproval, type UpdateApprovalContext } from './approval.js';
 import {
   formatUpdateCommand, formatUpdateValidationCommands, type UpdateCommandMode, type UpdateGuidanceContext
 } from './command-guidance.js';
 import { resolveUpdateGuidanceContext } from './guidance-context.js';
-import { inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
+import { inspectModernSuccessorUpdate, inspectProjectUpdate, UpdatePlanError, type UpdateInspection } from './inspection.js';
 import {
   buildUpdateReport, renderDeferredAgentRepair, renderInfrastructureRepair, renderUpdateApprovalScope, renderUpdatePreview, renderUpdateSkipped,
   type UpdateMigrationSummary, type UpdateRevalidationSummary, type UpdateReportInput
 } from './output.js';
 import { assertAuthorizedUpdateMutations, preflightUpdate } from './planning.js';
-import { formatUpdatePreviewRemedy, matchUpdatePreviewReceipt, UpdatePreviewError } from './preview.js';
-import { prepareUpdateReview, type ReviewedUpdatePlan } from './review-plan.js';
+import { formatUpdatePreviewRemedy, matchPreparedUpdatePreviewReceipt, matchUpdatePreviewReceipt, UpdatePreviewError } from './preview.js';
+import { prepareModernSuccessorReview, prepareUpdateReview, type ReviewedUpdatePlan, type ReviewedModernSuccessorPlan } from './review-plan.js';
+import { planManagedCoreWrites } from './write-plan.js';
+import { createUpdateSuccessorApprovalAudit } from './transaction-approval.js';
+import type { ModernManagedCoreInput } from '../project/modern-managed-core.js';
+import { copySourceHistoryData } from '../../governance-activation/source-history-capture.js';
+import { ActivationHistoryError, createReleasedSourceHistoryIndex, rawHistoryDigest } from '../../governance-activation/history-contracts.js';
+import { FileSystemError } from '../../domain/project/errors.js';
+import { validateCapturedReleasedSource } from '../../governance-activation/historical-state.js';
+import { verifyActivationHistoryBeforeReplacement } from '../../governance-activation/migration-history.js';
 import { entryDisplay, maybeInjectUpdateFailure } from './reporting.js';
 import {
   describeUpdateMigration, describeUpdateRevalidation, materializeUpdateMutations,
@@ -43,6 +57,138 @@ export interface UpdateRequest {
   jsonMode: boolean;
   project?: string;
   approvePlan?: string;
+}
+
+function preparedStoreOptions(options: UpdatePreviewOptions): UpdatePreviewOptions {
+  const env = options.env ?? process.env;
+  return {
+    ...options, platform: options.platform ?? process.platform, homedir: options.homedir ?? os.homedir(),
+    env: { XDG_STATE_HOME: env.XDG_STATE_HOME, LOCALAPPDATA: env.LOCALAPPDATA },
+    clock: options.clock ?? (() => new Date())
+  };
+}
+
+function previewObservedAt(options: UpdatePreviewOptions): string {
+  const now = options.clock?.() ?? new Date();
+  if (!Number.isFinite(now.getTime())) throw new UpdatePreviewError('preview-invalid', 'The preview clock is invalid.');
+  return now.toISOString();
+}
+
+/** Private advancing-family integration; no public CLI version or capability is enabled here. */
+export async function previewModernSuccessorUpdate(
+  projectRoot: string, selection: ModernManagedCoreInput, options: UpdatePreviewOptions = {}
+) {
+  const selected = copySourceHistoryData(selection, 'prepared successor selection');
+  const storage = preparedStoreOptions(options);
+  const inspection = await inspectModernSuccessorUpdate(projectRoot, selected);
+  const eligible = [false, true].filter(force =>
+    planManagedCoreWrites(inspection.entries, inspection.oldByName, force).skipped.length === 0);
+  if (!eligible.length) {
+    throw new UpdatePlanError('No complete successor variant can preserve the unowned managed-core destinations.',
+      'successor-core-conflict', 'Resolve the reported managed-core conflicts before preparing a successor; force cannot replace unowned destinations.');
+  }
+  const reviews: ReviewedModernSuccessorPlan[] = [];
+  const stored = await issuePreparedUpdatePreviewReceipt(inspection.projectRoot, inspection.sourceRepositoryId, async preparation => {
+    for (const force of eligible) {
+      reviews.push(await prepareModernSuccessorReview(inspection, force, preparation, previewObservedAt(storage)));
+    }
+    return {
+      semanticTransitionDigest: inspection.successorPlan.semanticTransitionDigest,
+      sourceBinding: inspection.source.sourceBinding,
+      descriptors: reviews.map(review => review.descriptor)
+    };
+  }, storage);
+  return {
+    ...stored, plans: reviews.map(review => review.summary),
+    scope: 'history-core-state-manifest-publication-only' as const,
+    revalidation: 'separate-reviewed-operation-required' as const
+  };
+}
+
+export interface ApplyModernSuccessorRequest {
+  readonly projectRoot: string;
+  readonly selection: ModernManagedCoreInput;
+  readonly force: boolean;
+  readonly approvePlan?: string;
+}
+
+export async function applyModernSuccessorUpdate(
+  input: ApplyModernSuccessorRequest,
+  approvalContext: UpdateApprovalContext,
+  options: UpdatePreviewOptions & { onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void> } = {}
+) {
+  const request = copySourceHistoryData(input, 'prepared successor apply request');
+  const onCheckpoint = options.onCheckpoint;
+  if (typeof request.force !== 'boolean') throw new UpdatePreviewError('preview-invalid', 'Prepared update mode must be explicit.');
+  const storage = preparedStoreOptions(options);
+  const location = await resolveUpdatePreviewLocation(request.projectRoot, storage);
+  const projectRoot = location.projectRoot;
+  const approvalStore = createUpdateTransactionApprovalStore(projectRoot, storage);
+  const recovery = await inspectReviewedUpdateTransaction(projectRoot, { approvalStore });
+  if (recovery.status !== 'absent') {
+    if (recovery.status === 'blocked') return { status: 'recovery-blocked' as const, recovery };
+    if (!recovery.planFingerprint || !recovery.transactionDigest) {
+      throw new FileSystemError('The interrupted update lacks an exact recovery identity; its journal was preserved.');
+    }
+    const outcome = await recoverReviewedUpdateTransaction(projectRoot, {
+      approvalStore, expectedTransaction: {
+        planFingerprint: recovery.planFingerprint, transactionDigest: recovery.transactionDigest
+      }
+    });
+    if (outcome.status === 'blocked' || outcome.rollbackFailures.length || outcome.cleanupFailures.length) {
+      return { status: 'recovery-incomplete' as const, outcome };
+    }
+    return { status: 'recovered' as const, outcome, requiresFreshPreview: true as const };
+  }
+  const stored = await loadPreparedUpdatePreviewReceipt(projectRoot, storage);
+  const preparation = stored.receipt.publication.preparation;
+  const inspect = () => inspectModernSuccessorUpdate(projectRoot, request.selection);
+  const inspection = await inspect();
+  const review = await prepareModernSuccessorReview(inspection, request.force, preparation, previewObservedAt(storage));
+  matchPreparedUpdatePreviewReceipt(stored.receipt, review.descriptor, review.publication);
+  const approval = await requestUpdateApproval({
+    fingerprint: review.descriptor.fingerprint,
+    ...(request.approvePlan === undefined ? {} : { approvePlan: request.approvePlan }),
+    message: `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
+  }, approvalContext);
+  if (approval.status !== 'approved') return { status: 'approval-blocked' as const, approval };
+
+  const audit = await retainUpdateSuccessorApprovalAudit(createUpdateSuccessorApprovalAudit({
+    projectRoot, publication: review.publication, planFingerprint: review.descriptor.fingerprint,
+    candidateBinding: review.candidate.binding, approvalMethod: approval.method, approvedAt: previewObservedAt(storage)
+  }), storage);
+  const source = await validateCapturedReleasedSource(inspection.source.captures);
+  const index = createReleasedSourceHistoryIndex(source.state.identity, source.files.map(file => ({
+    kind: file.kind, originalPathParts: file.pathParts, digest: file.digest, mode: file.mode
+  })));
+  const preserved = { index, indexDigest: rawHistoryDigest(inspection.source.indexContent) };
+  const outcome = await applyReviewedUpdateTransaction(projectRoot, review.mutations, {
+    planFingerprint: review.descriptor.fingerprint, approvalStore,
+    expectedCandidateBinding: review.candidate.binding, preconditions: review.preconditions,
+    validatePlan: async () => {
+      const current = await prepareModernSuccessorReview(await inspect(), request.force, preparation, previewObservedAt(storage));
+      matchPreparedUpdatePreviewReceipt(stored.receipt, current.descriptor, current.publication);
+      if (current.candidate.binding !== review.candidate.binding) {
+        throw new UpdatePreviewError('preview-mismatch', 'The exact successor candidate changed after approval.');
+      }
+    },
+    onBeforeMutation: mutation => verifyActivationHistoryBeforeReplacement(projectRoot, preserved, mutation),
+    ...(onCheckpoint ? { onCheckpoint } : {})
+  });
+  if (!outcome.committed) return { status: 'publication-failed' as const, outcome, audit };
+  const cleanupFailures = [...outcome.cleanupFailures];
+  if (!cleanupFailures.length) {
+    try { await consumePreparedUpdatePreviewReceipt(projectRoot, stored.receipt, storage); }
+    catch (error) {
+      if (!(error instanceof UpdatePreviewError) && !(error instanceof FileSystemError) && !(error instanceof ActivationHistoryError)) throw error;
+      cleanupFailures.push(error.message);
+    }
+  }
+  return {
+    status: cleanupFailures.length ? 'committed-cleanup-pending' as const : 'committed-incomplete' as const,
+    committed: true as const,
+    outcome, audit, cleanupFailures, revalidation: 'separate-reviewed-operation-required' as const
+  };
 }
 
 function storeOptions(context: ExecutionContext, inspection?: UpdateInspection): UpdatePreviewOptions {

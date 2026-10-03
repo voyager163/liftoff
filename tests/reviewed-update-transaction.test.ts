@@ -173,31 +173,12 @@ async function interrupted(phase: ReviewedUpdateTransactionCheckpoint['phase'], 
   const originalTree = await tree(context.root);
   if (historyMode !== undefined && context.mutations[0].type === 'write') context.mutations[0].mode = historyMode;
   const moduleUrl = new URL('../src/adapters/filesystem/reviewed-update-transaction.ts', import.meta.url).href;
-  const sourceRoot = new URL('../src/', import.meta.url).href;
+  const loaderUrl = new URL('./fixtures/source-typescript-loader.mjs', import.meta.url).href;
   const serialized = context.mutations.map((entry) => entry.type === 'write'
     ? { ...entry, content: Buffer.from(entry.content).toString('base64') } : entry);
-  const child = spawnSync(process.execPath, ['--input-type=module', '-e', `
-    import { registerHooks } from 'node:module';
-    import { readFileSync } from 'node:fs';
+  const child = spawnSync(process.execPath, ['--import', loaderUrl, '--input-type=module', '-e', `
     import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
     import path from 'node:path';
-    import { transformSync } from 'rolldown/utils';
-    registerHooks({
-      resolve(specifier, context, nextResolve) {
-        if (context.parentURL?.startsWith(${JSON.stringify(sourceRoot)}) && specifier.endsWith('.js')) {
-          return nextResolve(new URL(specifier.slice(0, -3) + '.ts', context.parentURL).href, context);
-        }
-        return nextResolve(specifier, context);
-      },
-      load(url, context, nextLoad) {
-        if (url.startsWith(${JSON.stringify(sourceRoot)}) && url.endsWith('.ts')) {
-          return { format: 'module', shortCircuit: true, source: transformSync(
-            url, readFileSync(new URL(url), 'utf8'), { lang: 'ts' }
-          ).code };
-        }
-        return nextLoad(url, context);
-      }
-    });
     const { applyReviewedUpdateTransaction } = await import(${JSON.stringify(moduleUrl)});
     const { canonicalJson } = await import(${JSON.stringify(new URL('../src/domain/governance/activation/canonical-json.ts', import.meta.url).href)});
     const directory = ${JSON.stringify(context.store.directory)};

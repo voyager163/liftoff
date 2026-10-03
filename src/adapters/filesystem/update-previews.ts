@@ -5,28 +5,35 @@ import { lstat, mkdir, open, realpath, rename, unlink } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {
+  createPreparedUpdatePreviewReceipt,
   createUpdatePreviewReceipt,
   normalizeUpdatePreviewProjectRoot,
   updatePreviewDirectoryParts,
   updatePreviewProjectKey,
   UpdatePreviewError,
-  validateUpdatePreviewReceipt
+  validateUpdatePreviewReceipt,
+  validatePreparedUpdatePreviewReceipt
 } from '../../application/update/preview.js';
-import type { UpdatePreviewDescriptor, UpdatePreviewReceipt } from '../../application/update/preview.js';
+import type { PreparedUpdatePreviewReceipt, UpdatePreviewDescriptor, UpdatePreviewReceipt } from '../../application/update/preview.js';
+import { isProtectedSourceAnchor, validateSuccessorPreparation, type SuccessorPreparationV1 } from '../../governance-activation/modern-history-contracts.js';
 import {
   createUpdateTransactionApprovalSeal,
   createLocalVerificationTransactionAuthority,
   localVerificationTransactionAuthorityKey,
   validateLocalVerificationTransactionAuthority,
   updateTransactionApprovalKey,
+  updateSuccessorApprovalAuditKey,
   UpdateTransactionApprovalError,
   validateUpdateTransactionApprovalDigests,
-  validateUpdateTransactionApprovalSeal
+  validateUpdateTransactionApprovalSeal,
+  validateUpdateSuccessorApprovalAudit
 } from '../../application/update/transaction-approval.js';
 import type {
   UpdateTransactionApprovalBinding,
   UpdateTransactionApprovalSeal,
   UpdateTransactionApprovalStore,
+  UpdateSuccessorApprovalAudit,
+  UpdateSuccessorApprovalAuditLookup,
   LocalVerificationTransactionAuthorityStore
 } from '../../application/update/transaction-approval.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
@@ -82,6 +89,11 @@ export interface UpdatePreviewLocation {
 export interface StoredUpdatePreview {
   readonly location: UpdatePreviewLocation;
   readonly receipt: UpdatePreviewReceipt;
+}
+
+export interface StoredPreparedUpdatePreview {
+  readonly location: UpdatePreviewLocation;
+  readonly receipt: PreparedUpdatePreviewReceipt;
 }
 
 export const nodeUpdatePreviewFileSystem: UpdatePreviewFileSystem = {
@@ -448,13 +460,33 @@ async function readText(storage: Storage, filePath: string, snapshot: DirectoryS
   }, () => io('close', filePath, () => handle.close()));
 }
 
-function parseReceipt(content: string, storage: Storage): UpdatePreviewReceipt {
+function parseReceiptData(content: string, storage: Storage): unknown {
   let value: unknown;
   try { value = JSON.parse(content); }
   catch (error) {
     throw new UpdatePreviewError('preview-invalid', `Malformed preview receipt JSON: ${storage.location.receiptPath}`, { cause: error });
   }
-  return validateUpdatePreviewReceipt(value, { projectRoot: storage.location.projectRoot, now: storage.now() });
+  return value;
+}
+
+function parseReceipt(content: string, storage: Storage): UpdatePreviewReceipt {
+  return validateUpdatePreviewReceipt(parseReceiptData(content, storage), {
+    projectRoot: storage.location.projectRoot, now: storage.now()
+  });
+}
+
+function parsePreparedReceipt(content: string, storage: Storage): PreparedUpdatePreviewReceipt {
+  return validatePreparedUpdatePreviewReceipt(parseReceiptData(content, storage), {
+    projectRoot: storage.location.projectRoot, now: storage.now()
+  });
+}
+
+function validateStoredReceipt(content: string, storage: Storage): void {
+  const value = parseReceiptData(content, storage);
+  const options = { projectRoot: storage.location.projectRoot, now: storage.now() };
+  if (typeof value === 'object' && value !== null && 'schemaVersion' in value && value.schemaVersion === 2) {
+    validatePreparedUpdatePreviewReceipt(value, options);
+  } else validateUpdatePreviewReceipt(value, options);
 }
 
 function missing(storage: Storage): never {
@@ -476,6 +508,18 @@ export async function loadUpdatePreviewReceipt(
   const content = await readText(storage, storage.location.receiptPath, snapshot);
   if (content === undefined) missing(storage);
   return { location: storage.location, receipt: parseReceipt(content, storage) };
+}
+
+export async function loadPreparedUpdatePreviewReceipt(
+  projectRoot: string,
+  options: UpdatePreviewOptions = {}
+): Promise<StoredPreparedUpdatePreview> {
+  const storage = await storageFor(projectRoot, options);
+  const snapshot = await directories(storage, false);
+  if (!snapshot) missing(storage);
+  const content = await readText(storage, storage.location.receiptPath, snapshot);
+  if (content === undefined) missing(storage);
+  return { location: storage.location, receipt: parsePreparedReceipt(content, storage) };
 }
 
 async function assertOwnedFile(storage: Storage, filePath: string, owned: UpdatePreviewFileStat): Promise<void> {
@@ -596,8 +640,45 @@ export async function issueUpdatePreviewReceipt(
   if (!snapshot) throw storageError(`Unable to create preview storage: ${storage.location.directory}`);
   return withStoreLock(storage, snapshot, async () => {
     const before = await readText(storage, storage.location.receiptPath, snapshot);
-    if (before !== undefined) parseReceipt(before, storage);
+    if (before !== undefined) validateStoredReceipt(before, storage);
     await writeAtomicMetadata(storage, snapshot, storage.location.receiptPath, canonicalJson(receipt), before);
+    return { location: storage.location, receipt };
+  });
+}
+
+export async function issuePreparedUpdatePreviewReceipt(
+  projectRoot: string,
+  sourceRepositoryId: string,
+  prepare: (preparation: SuccessorPreparationV1) => Promise<{
+    semanticTransitionDigest: string;
+    sourceBinding: string;
+    descriptors: readonly UpdatePreviewDescriptor[];
+  }>,
+  options: UpdatePreviewOptions = {}
+): Promise<StoredPreparedUpdatePreview> {
+  if (typeof sourceRepositoryId !== 'string' || !sourceRepositoryId.length) {
+    throw new UpdatePreviewError('preview-invalid', 'Prepared publication requires the validated source repository identity.');
+  }
+  const storage = await storageFor(projectRoot, options);
+  const now = storage.now();
+  if (!Number.isFinite(now.getTime())) throw new UpdatePreviewError('preview-invalid', 'The preview clock is invalid.');
+  const issuedAt = now.toISOString();
+  const preparation = validateSuccessorPreparation({
+    schemaVersion: 1, preparationId: randomUUID(), preparedAt: issuedAt,
+    localRepositoryId: isProtectedSourceAnchor(sourceRepositoryId) ? sourceRepositoryId : `local:${randomUUID()}`
+  }, issuedAt);
+  const candidate = await prepare(preparation);
+  const receipt = validatePreparedUpdatePreviewReceipt(createPreparedUpdatePreviewReceipt(candidate.descriptors, {
+    semanticTransitionDigest: candidate.semanticTransitionDigest, sourceBinding: candidate.sourceBinding, preparation
+  }, { receiptId: preparation.preparationId, issuedAt }), {
+    projectRoot: storage.location.projectRoot, now: new Date(issuedAt)
+  });
+  const snapshot = await directories(storage, true);
+  if (!snapshot) throw storageError(`Unable to create preview storage: ${storage.location.directory}`);
+  return withStoreLock(storage, snapshot, async () => {
+    const before = await readText(storage, storage.location.receiptPath, snapshot);
+    if (before !== undefined) validateStoredReceipt(before, storage);
+    await writeAtomicMetadata(storage, snapshot, storage.location.receiptPath, canonicalJson(receipt), before, true);
     return { location: storage.location, receipt };
   });
 }
@@ -735,12 +816,33 @@ export async function consumeUpdatePreviewReceipt(
 ): Promise<void> {
   const storage = await storageFor(projectRoot, options);
   const expected = validateUpdatePreviewReceipt(expectedReceipt, { projectRoot: storage.location.projectRoot, now: storage.now() });
+  await consumeStoredPreview(storage, expected, parseReceipt);
+}
+
+export async function consumePreparedUpdatePreviewReceipt(
+  projectRoot: string,
+  expectedReceipt: PreparedUpdatePreviewReceipt,
+  options: UpdatePreviewOptions = {}
+): Promise<void> {
+  const captured = validatePreparedUpdatePreviewReceipt(expectedReceipt);
+  const storage = await storageFor(projectRoot, options);
+  const expected = validatePreparedUpdatePreviewReceipt(captured, {
+    projectRoot: storage.location.projectRoot, now: storage.now()
+  });
+  await consumeStoredPreview(storage, expected, parsePreparedReceipt);
+}
+
+async function consumeStoredPreview(
+  storage: Storage,
+  expected: UpdatePreviewReceipt | PreparedUpdatePreviewReceipt,
+  parse: (content: string, storage: Storage) => UpdatePreviewReceipt | PreparedUpdatePreviewReceipt
+): Promise<void> {
   const snapshot = await directories(storage, false);
   if (!snapshot) missing(storage);
   await withStoreLock(storage, snapshot, async () => {
     const content = await readText(storage, storage.location.receiptPath, snapshot);
     if (content === undefined) missing(storage);
-    const current = parseReceipt(content, storage);
+    const current = parse(content, storage);
     if (canonicalJson(current) !== canonicalJson(expected)) {
       throw new UpdatePreviewError('preview-mismatch', 'A newer or different preview receipt was found; it was preserved.');
     }
@@ -761,6 +863,52 @@ export interface ScopedUserLocalRecord {
   value: unknown;
 }
 
+export async function readUpdateSuccessorApprovalAudit(
+  input: UpdateSuccessorApprovalAuditLookup,
+  options: UpdatePreviewOptions = {}
+): Promise<{ path: string; audit: UpdateSuccessorApprovalAudit } | null> {
+  updateSuccessorApprovalAuditKey(input);
+  input = { ...input };
+  const location = await resolveUpdatePreviewLocation(input.projectRoot, options);
+  const lookup = { ...input, projectRoot: location.projectRoot };
+  const key = updateSuccessorApprovalAuditKey(lookup);
+  const store = createScopedUserLocalRecordStore(location.projectRoot, 'update-successor-approval', options);
+  const stored = await store.read(key);
+  if (!stored) return null;
+  const audit = validateUpdateSuccessorApprovalAudit(stored.value, {
+    projectRoot: location.projectRoot, now: options.clock?.() ?? new Date()
+  });
+  if (updateSuccessorApprovalAuditKey({
+    projectRoot: audit.projectRoot, semanticTransitionDigest: audit.publication.semanticTransitionDigest,
+    preparationId: audit.publication.preparation.preparationId
+  }) !== key) throw storageError('Successor approval audit belongs to a different preparation or semantic transition.');
+  return { path: stored.path, audit };
+}
+
+/** Retains the first explicit approval only; never substitutes for a live transaction seal. */
+export async function retainUpdateSuccessorApprovalAudit(
+  input: UpdateSuccessorApprovalAudit,
+  options: UpdatePreviewOptions = {}
+): Promise<{ path: string; audit: UpdateSuccessorApprovalAudit }> {
+  const captured = validateUpdateSuccessorApprovalAudit(input, { now: options.clock?.() ?? new Date() });
+  const location = await resolveUpdatePreviewLocation(captured.projectRoot, options);
+  const audit = validateUpdateSuccessorApprovalAudit(captured, { projectRoot: location.projectRoot });
+  const lookup = {
+    projectRoot: audit.projectRoot, semanticTransitionDigest: audit.publication.semanticTransitionDigest,
+    preparationId: audit.publication.preparation.preparationId
+  };
+  const existing = await readUpdateSuccessorApprovalAudit(lookup, options);
+  if (existing && (existing.audit.planFingerprint !== audit.planFingerprint ||
+      existing.audit.candidateBinding !== audit.candidateBinding ||
+      canonicalJson(existing.audit.publication) !== canonicalJson(audit.publication))) {
+    throw storageError('A different successor approval audit already exists for this preparation; obtain a fresh review.');
+  }
+  const retained = existing?.audit ?? audit;
+  const store = createScopedUserLocalRecordStore(location.projectRoot, 'update-successor-approval', options);
+  const stored = await store.write(updateSuccessorApprovalAuditKey(lookup), retained);
+  return { path: stored.path, audit: retained };
+}
+
 export function createScopedUserLocalRecordStore(
   projectRoot: string,
   namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' |
@@ -768,7 +916,7 @@ export function createScopedUserLocalRecordStore(
     'repair-workspace-authority' | 'local-execution-preview' | 'local-execution-consent' |
     'local-execution-result' | 'local-execution-workspace-authority' |
     'local-finalization-preview' | 'local-finalization-consent' | 'local-finalization-result' |
-    'local-finalization-artifact' | 'local-publication-consent',
+    'local-finalization-artifact' | 'local-publication-consent' | 'update-successor-approval',
   options: UpdatePreviewOptions = {}
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;

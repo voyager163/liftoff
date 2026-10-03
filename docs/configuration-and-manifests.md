@@ -266,6 +266,7 @@ times OpenSpec, Spec Kit and Manual, with six actual computed graph hashes.
 | Phase graph / saved transition plan | 3 |
 | Compatibility metadata | 5 |
 | Supersession / credential policy / migration journal | 2 |
+| Prepared successor preview / retained approval-only audit | 2 / 1 |
 | Single-maintainer policy / team policy | 7 / 1 |
 
 `createManifestV8Reader` validates the complete source contract independently of
@@ -290,6 +291,17 @@ workflow/profile/layout intent, original bytes, modes, line endings, nested
 history and retention due times. Unknown or mixed identities, broken links and
 changed inputs block preparation rather than filling in missing history.
 Historical approval and evidence never authorize current effects.
+
+Private `previewModernSuccessorUpdate` / `applyModernSuccessorUpdate` compose
+guarded publication for same-workflow single-maintainer activation sources.
+The saved schema-2 preview contains genuine construction parameters so apply
+reconstructs the exact already-reviewed bytes, without generating replacement
+timestamps or local anchors. No new preparation expiry is inferred.
+A separate user-local approval-only audit is not a transaction seal or proof
+of commit. The actual sealed transaction preserves history before replacing
+control records. Publication leaves local revalidation pending; interrupted
+recovery and postcommit failures must preserve that distinction.
+These APIs do not enable public routing or manifest-only/no-activation upgrades.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured

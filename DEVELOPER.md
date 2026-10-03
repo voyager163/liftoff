@@ -644,10 +644,11 @@ size and physical directory identities. The saved candidate binding is checked
 again under the mutation lock before effects. Whole-inventory consistency checks
 run after the complete reserved-temporary inspection, before the first approval
 seal, and again immediately before journal creation; their read count does not
-grow once per mutation. Activation-successor and finite-revalidation candidates
-remain explicitly not materialized by this admission path, not silently approved.
-This boundary does not solve the embedded approval-fingerprint/target-byte cycle
-for complete history-preserving migration.
+grow once per mutation. Released-family activation-successor and finite-revalidation
+candidates remain explicitly not materialized by this admission path, not silently
+approved. The separate private advancing-family publisher below uses prepared
+receipt2 and journal2 to avoid the embedded approval-fingerprint/target-byte cycle;
+it does not change the released migration or revalidation contracts.
 
 `commands.ts`, `args.ts`, `file-system.ts`, `self-upgrade.ts`, `package-identity.ts`, `repository-governance.ts`,
 `governance-activation/commands.ts`, and the project/catalog entry modules
@@ -837,8 +838,46 @@ manifest, state, journal and retirement effects exactly once, then perform
 physical revalidation through `inspectReviewedUpdateCandidate`. Its separate
 16 MiB original-plus-target snapshot limit is not the 32 MiB source-history
 budget; captures and semantic digests are not approval or current storage
-proof. Reviewed publication, outer transaction/recovery seals and subsequent
+proof.
+
+`previewModernSuccessorUpdate` and `applyModernSuccessorUpdate` now compose those
+private APIs for same-workflow, single-maintainer activation-v1/v2/v3 sources.
+They do not enable a public CLI target or cover manifest-only/no-activation
+successors. Safe transaction-presence checks precede source interpretation.
+Reconciliation consumes the captured file/absence observations rather than
+classifying one filesystem read and approving another. Normal and force remain
+distinct; force never grants ownership of an unowned destination.
+
+The ordering is actual source/manifest, semantic transition **T**, once-issued
+preparation **P**, complete target bytes, physical candidate **C**, then full
+review fingerprint **F**. Prepared preview schema2 retains T, source binding,
+P and the eligible descriptors in the existing guarded 64-KiB preview store.
+P supplies actual construction time and UUIDv4 values, preserving an existing
+valid local repository anchor. Apply reloads P before reconstruction and never
+substitutes a new target timestamp or UUID. Future times and changed bindings
+are refused; no preparation TTL is invented. Ordinary previews remain schema1
+and are not accepted as prepared-successor authority.
+
+After explicit approval, the separate `update-successor-approval` namespace
+retains the first approval's T/P/C/F, method and actual approval time. Its closed
+schema1, write-once 64-KiB record is an audit, not an unforgeable capability,
+commit timestamp or recovery seal. Missing audit on another machine remains
+unavailable audit. Preview consumption never removes that retained record.
+
+Publication uses the existing sealed update transaction, with exact candidate
+and source revalidation under its lock. All history copies and their index
+precede managed-core replacement, proof retirement, pending state4/journal2
+and the final manifest write; original bytes are checked before replacement.
+Recovery binds the observed fingerprint and transaction digest under lock, uses
+existing transaction seals and does not start another successor. A stopped
+process's stale lock still requires explicit ownership review; the publisher
+does not automatically reap locks.
+Postcommit cleanup failure reports the committed successor rather than
+downgrading it. Successful publication returns `committed-incomplete`: local
+revalidation remains separately reviewed work, not inherited historical proof.
+Public routing, manifest-only successor publication and modern finite
 local revalidation remain unwired for this modern lane.
+
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
 remain unchanged, including original graph/policy bytes and generation output.
 `domain/project/manifest/history.ts` defines pure source-only history metadata
