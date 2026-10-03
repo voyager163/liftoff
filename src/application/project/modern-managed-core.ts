@@ -29,8 +29,7 @@ export type ModernManagedCoreArtifact = Readonly<Pick<GeneratedArtifact, 'logica
   readonly pathParts: readonly string[];
 };
 
-/** Produces source-only managed content. No framework tools, project writes, credentials or providers are invoked. */
-export function buildModernManagedCore(value: unknown): readonly ModernManagedCoreArtifact[] {
+export function resolveModernManagedCoreInput(value: unknown) {
   assertModernRecordData(value, 'modern managed-core input');
   const input = exactRecord(value, ['selection', 'plugins', 'activeLayout'], 'Modern managed-core input');
   const selected = exactRecord(input.selection, ['project', 'framework', 'profile'], 'Modern managed-core selection');
@@ -48,6 +47,13 @@ export function buildModernManagedCore(value: unknown): readonly ModernManagedCo
   });
   const source = resolveModernManifestV8SourceContract({ selection, recordedPlugins: plugins });
   const activeLayout = validateManifestActiveLayout(input.activeLayout, source.layoutDescriptor);
+  return { selection, plugins, activeLayout, source };
+}
+
+/** Produces source-only managed content. No framework tools, project writes, credentials or providers are invoked. */
+export function buildModernManagedCore(value: unknown): readonly ModernManagedCoreArtifact[] {
+  const { selection, plugins, activeLayout, source } = resolveModernManagedCoreInput(value);
+  const leaf = selection, profile = selection.profile;
   const contentByName = new Map<string, string>();
   const contracts = { catalog: projectCatalog, resolveSourceContract: resolveModernManifestV8SourceContract };
   if (profile !== 'none') {

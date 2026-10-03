@@ -108,8 +108,11 @@ export async function previewModernSuccessorUpdate(
     ...stored, plans: reviews.map(review => review.summary),
     scope: inspection.kind === 'activation-successor'
       ? 'history-core-state-manifest-publication-only' as const
-      : 'history-core-manifest-publication-only' as const,
-    revalidation: 'separate-reviewed-operation-required' as const
+      : inspection.kind === 'manifest-successor'
+        ? 'history-core-manifest-publication-only' as const
+        : 'core-manifest-maintenance-only' as const,
+    revalidation: inspection.kind === 'manifest-maintenance'
+      ? 'not-required-no-activation' as const : 'separate-reviewed-operation-required' as const
   };
 }
 
@@ -154,10 +157,15 @@ export async function applyModernSuccessorUpdate(
   const inspection = await inspect();
   const review = await prepareModernSuccessorReview(inspection, request.force, preparation, previewObservedAt(storage));
   matchPreparedUpdatePreviewReceipt(stored.receipt, review.descriptor, review.publication);
+  if (review.mutations.length === 0) {
+    return { status: 'current' as const, committed: false as const, revalidation: review.revalidation };
+  }
   const approval = await requestUpdateApproval({
     fingerprint: review.descriptor.fingerprint,
     ...(request.approvePlan === undefined ? {} : { approvePlan: request.approvePlan }),
-    message: `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
+    message: inspection.kind === 'manifest-maintenance'
+      ? `Apply this exact ${review.mutations.length}-operation managed maintenance (${review.descriptor.fingerprint})? Application and history bytes remain protected; no activation is started.`
+      : `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
   }, approvalContext);
   if (approval.status !== 'approved') return { status: 'approval-blocked' as const, approval };
 
@@ -173,7 +181,9 @@ export async function applyModernSuccessorUpdate(
     const preserved = { index, indexDigest: rawHistoryDigest(inspection.source.indexContent) };
     return (mutation: { pathParts: readonly string[] }) =>
       verifyActivationHistoryBeforeReplacement(projectRoot, preserved, mutation);
-  })() : async (mutation: { pathParts: readonly string[] }) => {
+  })() : inspection.kind === 'manifest-maintenance' ? async () => {
+    await assertManifestOnlyActivationCollectionsEmpty(projectRoot);
+  } : async (mutation: { pathParts: readonly string[] }) => {
     if (mutation.pathParts.join('/') !== 'liftoff.manifest.json') return;
     await assertManifestOnlyActivationCollectionsEmpty(projectRoot);
     const expected = prepareStandaloneManifestHistory(inspection.historyInput);
@@ -194,6 +204,9 @@ export async function applyModernSuccessorUpdate(
       }
     },
     onBeforeMutation: verifyPreservation,
+    ...(inspection.kind !== 'activation-successor' ? {
+      onBeforeCommit: () => assertManifestOnlyActivationCollectionsEmpty(projectRoot)
+    } : {}),
     ...(onCheckpoint ? { onCheckpoint } : {})
   });
   if (!outcome.committed) return { status: 'publication-failed' as const, outcome, audit };
@@ -206,9 +219,10 @@ export async function applyModernSuccessorUpdate(
     }
   }
   return {
-    status: cleanupFailures.length ? 'committed-cleanup-pending' as const : 'committed-incomplete' as const,
+    status: cleanupFailures.length ? 'committed-cleanup-pending' as const :
+      inspection.kind === 'manifest-maintenance' ? 'committed' as const : 'committed-incomplete' as const,
     committed: true as const,
-    outcome, audit, cleanupFailures, revalidation: 'separate-reviewed-operation-required' as const
+    outcome, audit, cleanupFailures, revalidation: review.revalidation
   };
 }
 

@@ -7,9 +7,9 @@ import { reviewedUpdateTransactionPathParts, reviewedRepairTransactionPathParts 
 import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-transaction.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader } from '../../domain/project/manifest/v8-project.js';
-import { manifestHistoryPaths, validateManifestHistoryIndex } from '../../domain/project/manifest/history.js';
+import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
 import { validateManifestPathParts } from '../../domain/project/manifest/layout.js';
-import { prepareStandaloneManifestHistory } from '../update/manifest-history.js';
+import { readPreservedStandaloneManifest } from '../update/manifest-history.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { projectCatalog } from '../project/catalog.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
@@ -141,16 +141,10 @@ export async function validateCapturedModernInstalledActivation(input:InstalledL
   let retained:InstalledRetentionObligation[]=[];
   if(manifest.sourceManifestHistory?.kind==='manifest-history'){
     const paths=manifestHistoryPaths(manifest.sourceManifestHistory),indexBytes=bytes(paths.indexPathParts,true)!;
-    if(rawLocalDigest(indexBytes)!==manifest.sourceManifestHistory.indexDigest)localInputFailure('Manifest-only history digest mismatch.');
-    const index=validateManifestHistoryIndex(parseHistoryJson(indexBytes,'manifest-only index')),copy=bytes(paths.manifestPathParts,true)!;
-    const prepared=prepareStandaloneManifestHistory({
-      sourceManifest:{pathParts:['liftoff.manifest.json'],content:copy,mode:index.source.mode},
-      destinations:{directory:{pathParts:paths.indexPathParts.slice(0,-1),kind:'directory'},
-        index:{pathParts:paths.indexPathParts,content:indexBytes,mode:files.get(key(paths.indexPathParts))!.mode!},
-        copy:{pathParts:paths.manifestPathParts,content:copy,mode:files.get(key(paths.manifestPathParts))!.mode!}}
-    });
-    if(canonicalJson(prepared.reference)!==canonicalJson(manifest.sourceManifestHistory))localInputFailure('Manifest-only source history reference mismatch.');
-    if(canonicalJson(parseManifest(parseHistoryJson(copy,'original manifest')).project)!==canonicalJson(manifest.project)) {
+    const original=readPreservedStandaloneManifest(manifest.sourceManifestHistory,
+      {pathParts:paths.indexPathParts,content:indexBytes,mode:files.get(key(paths.indexPathParts))!.mode!},
+      {pathParts:paths.manifestPathParts,content:bytes(paths.manifestPathParts,true)!,mode:files.get(key(paths.manifestPathParts))!.mode!});
+    if(canonicalJson(original.project)!==canonicalJson(manifest.project)) {
       localInputFailure('Manifest-only source history belongs to a different project selection.');
     }
   }

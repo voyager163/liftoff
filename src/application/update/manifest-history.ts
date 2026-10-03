@@ -226,3 +226,25 @@ export function prepareManifestSchemaSuccessor(
     })
   };
 }
+
+export function readPreservedStandaloneManifest(
+  reference: ManifestSourceHistoryReference, observedIndex: CapturedPresentFile, observedCopy: CapturedPresentFile
+) {
+  const expected = validateManifestSourceHistoryReference(reference);
+  if (expected.kind !== 'manifest-history') invalid('standalone history requires a manifest-only reference.');
+  const paths = manifestHistoryPaths(expected);
+  const indexFile = capturedFile(observedIndex, paths.indexPathParts, 'stored index');
+  const copyFile = capturedFile(observedCopy, paths.manifestPathParts, 'stored copy');
+  if (indexFile.content === undefined || copyFile.content === undefined) invalid('stored history must be present.');
+  if (rawHistoryDigest(indexFile.content) !== expected.indexDigest) invalid('stored history index digest differs from its reference.');
+  const index = validateManifestHistoryIndex(parseHistoryJson(indexFile.content, 'stored manifest history index'));
+  const prepared = prepareStandaloneManifestHistory({
+    sourceManifest: { pathParts: ['liftoff.manifest.json'], content: copyFile.content, mode: index.source.mode },
+    destinations: {
+      directory: { pathParts: paths.indexPathParts.slice(0, -1), kind: 'directory' },
+      index: indexFile, copy: copyFile
+    }
+  });
+  if (canonicalSha256(prepared.reference) !== canonicalSha256(expected)) invalid('stored history names a different source.');
+  return parseManifest(parseHistoryJson(copyFile.content, 'preserved source manifest'));
+}

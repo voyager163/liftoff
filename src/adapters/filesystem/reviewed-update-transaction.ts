@@ -61,6 +61,7 @@ export interface ReviewedUpdateTransactionOptions {
   expectedCandidateBinding?: string;
   validatePlan?: () => Promise<void>;
   onBeforeMutation?: (mutation: ProjectFileMutation, index: number) => Promise<void>;
+  onBeforeCommit?: () => Promise<void>;
   onCheckpoint?: (checkpoint: ReviewedUpdateTransactionCheckpoint) => Promise<void>;
 }
 
@@ -994,6 +995,7 @@ async function applyTransaction(
       }
       operation = `commit reviewed ${kind}`;
       await options.onCheckpoint?.({ phase: 'before-commit' });
+      await options.onBeforeCommit?.();
       await lease.assertHeld();
       if (validateCurrentInputs) {
         await validateCurrentInputs('before-commit');
