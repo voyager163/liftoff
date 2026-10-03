@@ -23,7 +23,7 @@ export const coverageGateJobs = {
 export const gatewayInstallCommand = 'npm ci --prefix services/telemetry-ingest';
 export const independentStepCondition = '${{ !cancelled() }}';
 export const platformShardCheckCommand = 'npm run check:supported-stack && npm run build && ' +
-  'npm test -- --shard=${{ matrix.shard }}/2 --allowOnly=false ' +
+  'npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false ' +
   '--reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json';
 export const pluginPathTestCommand = 'npx vitest run tests/plugin-native-paths.test.ts tests/plugin-packaged-lookup-native.test.ts ' +
   'tests/plugin-generation-parity.test.ts tests/plugin-composition.test.ts ' +

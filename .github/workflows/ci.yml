@@ -218,7 +218,7 @@ jobs:
       - name: Run package check
         run: >-
           npm run check:supported-stack && npm run build &&
-          npm test -- --shard=${{ matrix.shard }}/2 --allowOnly=false
+          npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false
           --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
 
       - name: Store platform test evidence

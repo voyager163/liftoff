@@ -10,4 +10,4 @@
 /assets/templates/** text eol=lf
 # Frozen contract evidence is compared byte-for-byte on every host.
 /tests/fixtures/contract-baseline-0.12.3/** text eol=lf
-/tests/fixtures/activation-v3/records.json -text whitespace=cr-at-eol
+/tests/fixtures/activation-v3/records.json -text !eol whitespace=cr-at-eol
