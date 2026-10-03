@@ -153,7 +153,7 @@ export async function captureOpenSpecDistribution(input:OpenSpecDistributionLoca
       }
       return resolved;
     }
-    for(const link of inventory.links)link.canonicalTargetParts=resolve([...link.pathParts.slice(0,-1),...link.linkText.split('/')]);
+    for(const link of inventory.links)link.canonicalTargetParts=resolve([...link.pathParts.slice(0,-1),...distributionLinkTarget(link.linkText)]);
     // Support the installed npm package layout, not arbitrary Node loaders.
     for(const [packageDir,raw]of metadata){
       if(!raw||typeof raw!=='object'||Array.isArray(raw))localInputFailure('Malformed installed package metadata.');

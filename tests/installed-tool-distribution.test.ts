@@ -119,9 +119,11 @@ describe('bounded complete installed distribution identity',()=>{
     const f=await fixture();await mkdir(path.join(f.pkg,'resources'));
     await writeFile(path.join(f.pkg,'resources/empty'),'');await writeFile(path.join(f.pkg,'resources/policy'),'original\r\n');
     await symlink('resources',path.join(f.pkg,'linked'));await symlink('linked/policy',path.join(f.pkg,'via'));
+    await symlink('via',path.join(f.pkg,'outer'));
     const first=await captureOpenSpecDistribution(f.locator),second=await assertOpenSpecDistributionCurrent(f.locator,first.commitment);
     expect(second.commitment).toEqual(first.commitment);expect(first.inventory.files.some(f=>f.bytes===0)).toBe(true);
     expect(first.inventory.links.find(l=>l.pathParts[0]==='via')?.canonicalTargetParts).toEqual(['resources','policy']);
+    expect(first.inventory.links.find(l=>l.pathParts[0]==='outer')?.canonicalTargetParts).toEqual(['resources','policy']);
     expect(first.inventory.links.find(l=>l.pathParts[0]==='via')?.linkText).toBe(await readlink(path.join(f.pkg,'via')));
     expect(Buffer.byteLength(canonicalJson(first.commitment))).toBeLessThan(8192);
     await writeFile(path.join(f.pkg,'resources/policy'),'changed\r\n');
