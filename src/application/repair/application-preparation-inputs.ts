@@ -52,7 +52,7 @@ function publicUrl(value: unknown, source: ApplicationPackageSourceId): string {
   catch { reject('unsupported-package-source', 'A package artifact source is not a supported URL.'); }
   const origins: readonly string[] = applicationPackageSources[source].artifactOrigins;
   if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash ||
-      !origins.includes(url.origin) || /%(?:2f|5c|2e|00)/iu.test(url.pathname) ||
+      !origins.includes(url.origin) || /%(?:2f|5c|2e|00)/iu.test(value) ||
       /(?:^|\/)\.{1,2}(?:\/|$)/u.test(value) ||
       url.pathname.split('/').some((part) => part === '..' || part === '.')) {
     reject('unsupported-package-source', 'Authenticated, queried, escaping, local, VCS, and unregistered package URLs are unsupported.');
@@ -327,9 +327,15 @@ function goInputs(manifest: Buffer, lock: Buffer) {
 export function resolveApplicationPreparationInputs(
   candidate: ApplicationPatchCandidate, requests: readonly ApplicationPreparationRequest[]
 ): ApplicationResolvedPreparation[] {
-  const files = new Map(applicationCandidateFiles(candidate).filter((item) => item.content !== undefined)
+  return resolveCapturedApplicationPreparationInputs(applicationCandidateFiles(candidate), candidate.scope.target?.artifacts ?? [], requests);
+}
+
+export function resolveCapturedApplicationPreparationInputs(
+  snapshots: readonly ProjectFileSnapshot[], targets: readonly import('./application-types.js').ApplicationTargetArtifact[],
+  requests: readonly ApplicationPreparationRequest[]
+): ApplicationResolvedPreparation[] {
+  const files = new Map(snapshots.filter((item) => item.content !== undefined)
     .map((item) => [applicationPathKey(item.pathParts), item]));
-  const targets = candidate.scope.target?.artifacts ?? [];
   const seen = new Set<string>();
   const read = (parts: string[]): ProjectFileSnapshot => {
     const value = files.get(applicationPathKey(parts));

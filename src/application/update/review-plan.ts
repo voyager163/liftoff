@@ -6,6 +6,15 @@ import { planUpdateWrites } from './write-plan.js';
 import type { UpdatePlanSummary } from './output.js';
 import { prepareUpdateRevalidation } from './revalidation-plan.js';
 import type { CommandRunner } from '../../process-runner.js';
+import {
+  inspectReviewedUpdateCandidate, type ReviewedUpdateCandidate
+} from '../../adapters/filesystem/reviewed-update-transaction.js';
+import { FileSystemError } from '../../domain/project/errors.js';
+
+export type UpdateCandidateAdmission =
+  | { status: 'complete'; candidate: ReviewedUpdateCandidate }
+  | { status: 'blocked'; reason: string }
+  | { status: 'not-materialized' };
 
 function digest(content: string | Buffer): string {
   return createHash('sha256').update(content).digest('hex');
@@ -38,6 +47,19 @@ export async function prepareUpdateReview(
     ? (history.historyDisposition === 'create' ? history.index.files.length + 1 : 0) +
       history.requiredRetirements.length + 2
     : 0;
+  let candidateAdmission: UpdateCandidateAdmission = { status: 'not-materialized' };
+  if (history.status !== 'eligible' && !needsRevalidation) {
+    try {
+      candidateAdmission = {
+        status: 'complete',
+        candidate: await inspectReviewedUpdateCandidate(inspection.projectRoot, writePlan.mutations, preconditions)
+      };
+    } catch (error) {
+      if (!(error instanceof FileSystemError)) throw error;
+      candidateAdmission = { status: 'blocked', reason: error.message };
+      blockers.push(error.message);
+    }
+  }
   const descriptor = createUpdatePreviewDescriptor({
     projectRoot: inspection.projectRoot,
     cliVersion: liftoffVersion,
@@ -65,6 +87,11 @@ export async function prepareUpdateReview(
       }))
     },
     operations: {
+      ...(candidateAdmission.status === 'complete' ? {
+        candidateAdmission: { binding: candidateAdmission.candidate.binding, size: candidateAdmission.candidate.size }
+      } : candidateAdmission.status === 'blocked' ? {
+        candidateAdmission: { blocked: candidateAdmission.reason }
+      } : {}),
       mutations: writePlan.mutations.map((mutation) => ({
         type: mutation.type,
         pathParts: mutation.pathParts,
@@ -92,7 +119,7 @@ export async function prepareUpdateReview(
     blockers
   };
   return {
-    descriptor, summary, writePlan, preconditions, revalidation, needsRevalidation,
+    descriptor, summary, writePlan, preconditions, revalidation, needsRevalidation, candidateAdmission,
     requiresApproval: writePlan.hasWrites || history.status === 'eligible' || needsRevalidation
   };
 }

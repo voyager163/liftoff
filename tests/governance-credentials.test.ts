@@ -114,14 +114,14 @@ class CapturingRunner implements CommandRunner {
   }
 }
 
-function patPolicy(overrides: Partial<CredentialPolicy> = {}): CredentialPolicy {
+function patPolicy(overrides: Partial<CredentialPolicy> = {}, createdAt = now): CredentialPolicy {
   return {
     ...buildFineGrainedPatCredentialPolicy({
       repository: repository(),
       allowedWorkflows: allowlist(),
-      createdAt: now,
+      createdAt,
       proof: {
-        verifiedAt: now.toISOString(),
+        verifiedAt: createdAt.toISOString(),
         readbackDigest: digest,
         readbackProvider: 'adapter-fixture',
         payloadFree: true
@@ -372,13 +372,18 @@ describe('credential leak detection and fixtures', () => {
     expect(policies[0].allowedWorkflows).not.toEqual(policies[1].allowedWorkflows);
   });
 
-  it('exposes read-only credential plan and status when credential-ready applies', async () => {
+  it.each([
+    { policyState: 'fresh', ageDays: 0, policyStatus: 'valid', issue: 'Independent credential readback' },
+    { policyState: 'rotation-due', ageDays: 24, policyStatus: 'not-ready', issue: 'rotation lead window' },
+    { policyState: 'expired', ageDays: 31, policyStatus: 'not-ready', issue: 'expired' }
+  ])('exposes read-only credential plan and status when credential-ready applies ($policyState)', async ({ ageDays, policyStatus, issue }) => {
     const root = await writeProject();
+    const policyCreatedAt = new Date(Date.now() - ageDays * 24 * 60 * 60 * 1000);
     const credentialDirectory = path.join(root, ...credentialPolicyPathParts.slice(0, -1));
     await mkdir(credentialDirectory, { recursive: true });
     await writeFile(
       path.join(root, ...credentialPolicyPathParts),
-      `${JSON.stringify(patPolicy(), null, 2)}\n`,
+      `${JSON.stringify(patPolicy({}, policyCreatedAt), null, 2)}\n`,
       'utf8'
     );
     await mkdir(path.join(root, 'governance'), { recursive: true });
@@ -397,13 +402,14 @@ describe('credential leak detection and fixtures', () => {
     const status = await run(['governance', 'status', '--json'], root);
     expect(status.code).toBe(0);
     const body = JSON.parse(status.out);
-    expect(body.credential).toMatchObject({ applicable: true, readOnly: true, ready: false });
-    expect(body.credential.issues.join(' ')).toContain('Independent credential readback');
+    expect(body.credential).toMatchObject({ applicable: true, readOnly: true, status: policyStatus, ready: false });
+    expect(body.credential.issues.join(' ')).toContain(issue);
     expect(status.out).not.toContain(syntheticToken);
 
     const plan = await run(['governance', 'plan', '--json'], root);
     expect(plan.code).toBe(0);
     expect(JSON.parse(plan.out).credential.readOnly).toBe(true);
+    expect(JSON.parse(plan.out).credential.status).toBe(policyStatus);
 
     const verify = await run(['governance', 'verify', '--json'], root);
     expect(JSON.parse(verify.out).checks.some((check: { id: string; status: string }) =>

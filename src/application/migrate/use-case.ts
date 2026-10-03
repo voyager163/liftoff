@@ -308,6 +308,7 @@ async function executeMigration(
       ? (presentation.definitions('Resolved migration plan', projectPlanEntries(plan)), true)
       : await prompter!.confirmPlan(plan, undefined, 'Migrate project?');
     if (!confirmed) {
+      context.outcome?.record('cancelled');
       presentation.cancellation('Migration stopped; the source and destination were not modified.');
       return 0;
     }

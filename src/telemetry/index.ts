@@ -10,18 +10,19 @@ import {
   recordTelemetryNotice,
   type TelemetryConfigOptions
 } from './config.js';
+import {
+  createTelemetryDelivery, isTelemetryEnabled, maximumTelemetryDeliveryMs,
+  type TelemetryDelivery, type TelemetryFetch
+} from './delivery.js';
+export { isTelemetryEnabled } from './delivery.js';
+export type { TelemetryFetch } from './delivery.js';
 
 export const productionTelemetryEndpoint =
   'https://ca-liftoff-telemetry-f5be1618.politetree-7a65ae27.koreacentral.azurecontainerapps.io/api/events';
-export const telemetryRequestTimeoutMs = 1_000;
+export const telemetryRequestTimeoutMs = maximumTelemetryDeliveryMs;
 export const telemetryNotice =
   'Telemetry: Liftoff sends command name, CLI version, and zero/nonzero outcome with no persistent identifier. ' +
   'Opt out with LIFTOFF_TELEMETRY=0 or DO_NOT_TRACK=1.\n';
-
-export type TelemetryFetch = (
-  input: string | URL | Request,
-  init?: RequestInit
-) => Promise<Response>;
 
 export interface TelemetryRuntimeOptions {
   env?: NodeJS.ProcessEnv;
@@ -30,14 +31,7 @@ export interface TelemetryRuntimeOptions {
   timeoutMs?: number;
   config?: TelemetryConfigOptions;
   stderr?: NodeJS.WritableStream;
-}
-
-export function isTelemetryEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  return (
-    env.LIFTOFF_TELEMETRY !== '0' &&
-    env.DO_NOT_TRACK !== '1' &&
-    env.CI !== 'true'
-  );
+  delivery?: TelemetryDelivery;
 }
 
 export function telemetryCommandFor(parsed: ParsedArgs): TelemetryCommand | undefined {
@@ -110,29 +104,16 @@ export async function trackCommand(
     return;
   }
 
-  let url: URL;
+  const delivery = options.delivery ?? createTelemetryDelivery({
+    env: options.env, fetch: options.fetch, timeoutMs: options.timeoutMs
+  });
   try {
-    url = new URL(endpoint);
-  } catch {
-    return;
-  }
-  if (url.protocol !== 'https:') {
-    return;
-  }
-
-  const fetchTelemetry = options.fetch ?? globalThis.fetch.bind(globalThis);
-  try {
-    const response = await fetchTelemetry(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(createTelemetryEvent(command, cliVersion, exitCode)),
-      redirect: 'error',
-      signal: AbortSignal.timeout(options.timeoutMs ?? telemetryRequestTimeoutMs)
+    await delivery.deliver({
+      command: { endpoint, event: createTelemetryEvent(command, cliVersion, exitCode) }
     });
-    if (!response.ok) {
-      return;
-    }
   } catch {
-    // Delivery is deliberately best-effort and never retried or persisted.
+    // The legacy API deliberately discards delivery failures.
+  } finally {
+    if (!options.delivery) delivery.close();
   }
 }

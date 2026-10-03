@@ -58,11 +58,13 @@ import {
   upgradeCommand
 } from './upgrade.js';
 import { repairCommand } from './repair.js';
+import { capabilitiesCommand } from './capabilities.js';
 
 export async function runCommand(parsed: ParsedArgs, context: CommandContext): Promise<number> {
   const helpRequested = parsed.command !== undefined && readBooleanFlag(parsed.flags, 'help') === true;
   const jsonMode = !helpRequested && (
     parsed.command === 'doctor' ||
+    parsed.command === 'capabilities' ||
     parsed.command === 'update' ||
     parsed.command === 'repair' ||
     parsed.command === 'governance' ||
@@ -101,6 +103,8 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
         return await planCommand(parsed, executionContext);
       case 'patterns':
         return patternsCommand(executionContext);
+      case 'capabilities':
+        return capabilitiesCommand(parsed, executionContext);
       case 'providers':
         return providersCommand(executionContext);
       case 'regions':
@@ -132,9 +136,11 @@ export async function runCommand(parsed: ParsedArgs, context: CommandContext): P
     }
   } catch (error) {
     if (error instanceof InteractiveCancelledError) {
+      context.outcome?.record('cancelled');
       presentation.cancellation('Interactive operation stopped.');
       return 0;
     }
+    context.outcome?.record('failure');
     if (error instanceof PlanValidationError) {
       presentation.error(
         error.issues.join('\n'),

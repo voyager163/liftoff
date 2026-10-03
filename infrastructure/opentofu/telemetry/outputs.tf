@@ -3,6 +3,11 @@ output "telemetry_endpoint" {
   value       = "https://${azurerm_container_app.telemetry.ingress[0].fqdn}/api/events"
 }
 
+output "project_telemetry_endpoint" {
+  description = "Project endpoint; unavailable until separately enabled and verified. Not client enrollment."
+  value       = "https://${azurerm_container_app.telemetry.ingress[0].fqdn}/api/projects"
+}
+
 output "resource_group_name" {
   description = "Fixed production resource group managed by this OpenTofu root."
   value       = azurerm_resource_group.telemetry.name

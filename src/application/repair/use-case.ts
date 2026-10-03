@@ -199,6 +199,7 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
         blockers,
         nextActions: [repairCheckAction(root)]
       });
+      context.outcome?.record(isBlocked || blockers.length ? 'failure' : allAbsent ? 'success' : 'attention-required');
       return allAbsent ? 0 : 2;
     }
     if (pending.status !== 'absent' || pendingWorkspaces.status !== 'absent') {
@@ -258,6 +259,7 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
       }
       emit({ ...report, message: 'Infrastructure repair is plan-only; no project or state files were changed.',
         blockers: inspection.blockers, operations: mutationDescriptors(inspection.mutations), nextActions });
+      context.outcome?.record('failure');
       return 2;
     }
     if (inspection.candidate.layout === 'independent') {
@@ -295,6 +297,7 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
       approval = await requestRepairApproval(request, preview.fingerprint,
         'Run the displayed isolated OpenTofu validation and apply these exact infrastructure, manifest and history changes?', context);
       if (approval.status !== 'approved') {
+        context.outcome?.record(approval.status === 'declined' ? 'cancelled' : approval.status === 'required' ? 'attention-required' : 'failure');
         if (approval.status !== 'required') emit({
           ...report, approval, message: 'Repair approval was declined or cancelled; no validation or project file transaction ran.',
           nextActions: [repairCheckAction(root), ...broader]
@@ -330,6 +333,7 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
     });
     committed = outcome.committed;
     if (!committed) {
+      context.outcome?.record('failure');
       emit({ ...report, approval, committed, status: 'failed',
         message: 'The approved local repair did not commit.', blockers: [...outcome.rollbackFailures, ...outcome.cleanupFailures],
         nextActions: [recoverAction()] });
@@ -346,8 +350,10 @@ export async function repairProject(request: RepairRequest, context: ExecutionCo
       blockers: outcome.cleanupFailures,
       nextActions: outcome.cleanupFailures.length ? [recoverAction()] : broader
     });
+    context.outcome?.record(outcome.cleanupFailures.length ? 'failure' : 'success');
     return outcome.cleanupFailures.length ? 2 : 0;
   } catch (error) {
+    context.outcome?.record('failure');
     emit({
       ...base(), status: committed ? 'partial' : 'failed', verification: committed ? 'incomplete' : 'not-run',
       message: committed ? 'Infrastructure repair committed, but follow-up verification or cleanup is incomplete.' : 'Local repair stopped; no successful commit was reported.',

@@ -14,14 +14,69 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
+  qualify-isolated-hcl:
+    name: Isolated HCL parser (macOS ARM64)
+    runs-on: macos-15
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      LIFTOFF_HCL_TEST_LANE: native
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.21.0"
+          architecture: arm64
+          cache: npm
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+      - name: Install dependencies
+        run: npm ci
+      - name: Require qualified parser runtime
+        run: node scripts/check-repository-policy.mjs --hcl-runtime
+      - name: Run required native parser qualification
+        run: >-
+          npx vitest run tests/modern-local-inputs.test.ts tests/modern-local-check-plans.test.ts tests/isolated-hcl-parser.test.ts
+          --maxWorkers=1 --no-file-parallelism --reporter=default --reporter=json --outputFile.json=qualification/isolated-hcl.json
+      - name: Verify nonempty complete parser qualification
+        run: node scripts/check-repository-policy.mjs --hcl-report qualification/isolated-hcl.json
+      - name: Store parser qualification evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-isolated-hcl-ci-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/isolated-hcl.json
+          if-no-files-found: error
+          retention-days: 14
+
   test:
     name: Test (${{ matrix.os }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    if: ${{ always() }}
+    needs: test-shards
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Require every platform shard
+        env:
+          SHARD_RESULT: ${{ needs.test-shards.result }}
+        run: test "$SHARD_RESULT" = success
+
+  test-shards:
+    name: Platform tests (${{ matrix.os }}, shard ${{ matrix.shard }}/2)
     runs-on: ${{ matrix.os }}
     timeout-minutes: 45
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        shard: [1, 2]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -76,11 +131,30 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Qualify native plugin paths
+        run: >-
+          npx vitest run tests/plugin-native-paths.test.ts tests/plugin-packaged-lookup-native.test.ts
+          tests/plugin-generation-parity.test.ts tests/plugin-composition.test.ts
+          --maxWorkers=1 --no-file-parallelism --coverage.enabled=false --allowOnly=false
+          --reporter=dot --reporter=json --outputFile.json=qualification/plugin-paths.json
+
+      - name: Verify complete native plugin path report
+        run: node scripts/check-repository-policy.mjs --plugin-path-report qualification/plugin-paths.json
+
+      - name: Store native plugin path evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-plugin-paths-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/plugin-paths.json
+          if-no-files-found: error
+          retention-days: 14
+
       - name: Install telemetry gateway dependencies
         run: npm ci --prefix services/telemetry-ingest
 
       - name: Install isolated pinned framework smoke tools
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         env:
           UV_TOOL_DIR: ${{ runner.temp }}/liftoff-framework-tools
           UV_TOOL_BIN_DIR: ${{ runner.temp }}/liftoff-framework-bin
@@ -91,17 +165,17 @@ jobs:
           echo "$UV_TOOL_BIN_DIR" >> "$GITHUB_PATH"
 
       - name: Run pinned framework integration smoke
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         env:
           LIFTOFF_FRAMEWORK_SMOKE: "1"
         run: npx vitest run tests/framework-smoke.test.ts
 
       - name: Verify native Windows controller admission
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.shard == 1
         run: npx vitest run tests/windows-job-runner.test.ts tests/repair-preparation.test.ts -t "settles a real native Node command|detects unref descendant"
 
       - name: Run Windows project and packaging boundary coverage
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && matrix.shard == 1
         run: >-
           npx vitest run
           tests/init-filesystem.test.ts tests/project-discovery.test.ts
@@ -124,6 +198,7 @@ jobs:
           tests/cli-telemetry.test.ts tests/telemetry-infrastructure.test.ts
 
       - name: Validate local repair with native OpenTofu
+        if: matrix.shard == 1
         env:
           LIFTOFF_REPAIR_NATIVE: "1"
         run: npx vitest run tests/repair-command.test.ts -t "native backend-disabled"
@@ -135,23 +210,125 @@ jobs:
           chmod -R o-w "$RUNNER_TEMP" 2>/dev/null || true
 
       - name: Validate locked preparation and framework qualification with native toolchains
-        if: runner.os != 'Windows'
+        if: runner.os != 'Windows' && matrix.shard == 1
         env:
           LIFTOFF_REPAIR_PREPARATION_NATIVE: "1"
         run: npx vitest run tests/repair-preparation-native.test.ts tests/repair-framework.test.ts
 
       - name: Run package check
-        run: npm run check
+        run: >-
+          npm run check:supported-stack && npm run build &&
+          npx vitest run --shard=${{ matrix.shard }}/2 --allowOnly=false
+          --reporter=default --reporter=json --outputFile.json=qualification/platform-tests.json
+
+      - name: Store platform test evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-platform-tests-${{ runner.os }}-${{ matrix.shard }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: qualification/platform-tests.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Run telemetry gateway check
+        if: matrix.shard == 1
         run: npm run check --prefix services/telemetry-ingest
 
       - name: Run package smoke test
+        if: matrix.shard == 1
         run: npm run smoke:package
 
       - name: Verify generated containers
-        if: runner.os == 'Linux'
+        if: runner.os == 'Linux' && matrix.shard == 1
         run: npm run verify:generated-containers
+
+  coverage-cli:
+    name: CLI coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            services/telemetry-ingest/package-lock.json
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14.7"
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7
+        with:
+          go-version: "1.27.0"
+          cache-dependency-path: assets/supported-stack.json
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2
+        with:
+          tofu_version: 1.12.6
+          tofu_wrapper: false
+
+      - name: Install uv
+        run: python -m pip install uv==0.12.7
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Run source-complete CLI coverage gate
+        run: npm run coverage:cli
+
+      - name: Store CLI coverage evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-coverage-cli-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage/cli/
+          if-no-files-found: error
+          retention-days: 14
+
+  coverage-gateway:
+    name: Telemetry gateway coverage gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "24.20.0"
+          cache: npm
+          cache-dependency-path: services/telemetry-ingest/package-lock.json
+
+      - name: Select supported npm
+        run: npm install --global "npm@12.0.2"
+
+      - name: Install telemetry gateway dependencies
+        run: npm ci --prefix services/telemetry-ingest
+
+      - name: Run source-complete telemetry gateway coverage gate
+        run: npm run coverage:gateway
+
+      - name: Store telemetry gateway coverage evidence
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: liftoff-coverage-gateway-${{ github.run_id }}-${{ github.run_attempt }}
+          path: coverage/gateway/
+          if-no-files-found: error
+          retention-days: 14
 
   telemetry-infrastructure:
     name: Telemetry OpenTofu

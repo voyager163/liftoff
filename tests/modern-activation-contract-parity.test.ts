@@ -1,0 +1,61 @@
+import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { describe, expect, expectTypeOf, it } from 'vitest';
+import {
+  canonicalPhaseGraph, canonicalPhaseGraphJson, canonicalPhaseGraphHash, canonicalPhaseContractDigests
+} from '../src/domain/governance/activation/graph.js';
+import { canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
+import * as identities from '../src/domain/governance/policy/identity.js';
+import { historicalV3PhaseGraph } from '../src/governance-activation/historical-v3.js';
+import type { ModernActivationState, ModernApprovalEnvelope, ModernCredentialPolicy, ModernEvidenceHeader,
+  ModernPhaseId, ModernSavedTransitionPlan, ModernSupersessionRecord, NativeLocalCompletionPayload } from '../src/domain/governance/activation/modern-record-contracts.js';
+import type { CurrentActivationIdentity } from '../src/domain/governance/policy/identity.js';
+import { currentActivationRecordValidators } from '../src/domain/governance/activation/record-validation.js';
+
+const hash = (bytes: string | Uint8Array) => createHash('sha256').update(bytes).digest('hex');
+describe('current/released contracts stay separate from modern source allocation', () => {
+  it('preserves every current graph byte and behavior hash through shared definitions', () => {
+    const bytes = readFileSync('assets/governance/single-maintainer-gitflow/activation-v3-graph.json');
+    expect(hash(bytes)).toBe('2e214353fe73edeea246dac49aa5126c3d1e50afb3e12801940b661afb853703');
+    expect(canonicalPhaseGraphJson).toBe(bytes.toString('utf8'));
+    expect(canonicalPhaseGraph).toEqual(historicalV3PhaseGraph());
+    expect(canonicalPhaseGraphHash).toBe(identities.releasedV3ActivationIdentity.phaseGraphHash);
+    for (const { label: _label, ...behavior } of historicalV3PhaseGraph().phases) {
+      expect(canonicalPhaseContractDigests[behavior.id]).toBe(canonicalSha256(behavior));
+    }
+  });
+
+  it('does not advance current versions, publish a version, widen legacy selectors or change policy6', () => {
+    expect(identities.createActivationIdentity(canonicalPhaseGraphHash)).toEqual(identities.releasedV3ActivationIdentity);
+    expect(identities.liftoffActivationPackageVersion).toBe('0.12.0');
+    expect(identities.liftoffManifestArtifactVersion).toBe(7);
+    expect(identities.activationContractVersion).toBe(3);
+    expect(identities.phaseGraphSchemaVersion).toBe(2);
+    expect(identities.historicalActivationIdentities).toHaveLength(2);
+    expect(JSON.parse(readFileSync('package.json', 'utf8')).version).toBe('0.12.3');
+    expect(hash(readFileSync('assets/governance/single-maintainer-gitflow/policy.md')))
+      .toBe('9444e7339ea7747e49b8c11bada6ebc2f52e3e53cee7e1e8fd593353ce1ab149');
+    const modern = identities.modernActivationSourceContracts()[0].identity;
+    expect(identities.isHistoricalActivationIdentity(modern)).toBe(false);
+    expect(identities.isReleasedV3ActivationIdentity(modern)).toBe(false);
+    expect(() => currentActivationRecordValidators().validateActivationIdentity(modern)).toThrow();
+    expectTypeOf<ReturnType<ReturnType<typeof currentActivationRecordValidators>['validateActivationIdentity']>>()
+      .toEqualTypeOf<CurrentActivationIdentity>();
+  });
+
+  it('allocates real new record shapes without claiming their C2 runtime readers exist', () => {
+    expectTypeOf<ModernActivationState['schemaVersion']>().toEqualTypeOf<4>();
+    expectTypeOf<ModernEvidenceHeader['schemaVersion']>().toEqualTypeOf<4>();
+    expectTypeOf<ModernApprovalEnvelope['schemaVersion']>().toEqualTypeOf<4>();
+    expectTypeOf<ModernSavedTransitionPlan['schemaVersion']>().toEqualTypeOf<3>();
+    expectTypeOf<ModernCredentialPolicy['schemaVersion']>().toEqualTypeOf<2>();
+    expectTypeOf<ModernSupersessionRecord['schemaVersion']>().toEqualTypeOf<2>();
+    expectTypeOf<'seed-archived'>().not.toExtend<ModernPhaseId>();
+    expectTypeOf<'local-complete'>().toExtend<ModernPhaseId>();
+    expectTypeOf<NativeLocalCompletionPayload['frameworkValidation']>().toEqualTypeOf<'not-required'>();
+    expectTypeOf<NativeLocalCompletionPayload['frameworkFinalization']>().toEqualTypeOf<'not-required'>();
+    const sources = identities.modernActivationSourceContracts();
+    expect(sources.every(source => !Object.hasOwn(source.identity, 'pluginResolutionDigest') &&
+      !Object.hasOwn(source.identity, 'activeLayoutDigest') && !Object.hasOwn(source.identity, 'sourceSelectionDigest'))).toBe(true);
+  });
+});

@@ -24,6 +24,11 @@ Before applying, review:
 - The Container App's HTTPS-only ingress, single revision, 0.25 vCPU, 0.5 GiB,
   one minimum replica, five maximum replicas, HTTP scaling, and TCP probes.
 - The six-column `LiftoffCommandEvents_CL` table and 180-day retention.
+- The separate nine-column `LiftoffProjectEvents_CL` table, its explicit DCR
+  projection and 180-day analytics/total retention. The command table and
+  existing data are preserved.
+- `project_ingestion_enabled=false` until separately approved synthetic
+  verification; enabling the project endpoint does not grant client consent.
 - The Log Analytics daily quota and absence of Application Insights, ingress
   diagnostics, registry credentials, storage credentials, and secret outputs.
 
@@ -45,6 +50,39 @@ The package and container smoke tests use the same compiled server artifact. The
 provider lock file and Docker base digest are reviewed and committed.
 
 ## Remote state and deployment
+
+### Backward-compatible schema rollout
+
+The command/project schema additions in this checkout are **not yet deployed**.
+The gateway continues accepting command schema 1 with its original zero/nonzero
+outcomes. Command schema 2 adds semantic `attention-required` and `cancelled`
+alongside `success` and `failure`; the schema column preserves that distinction.
+The existing client continues to emit schema 1 until its separate rollout.
+
+Project schema 2 uses `/api/projects` and `Custom-LiftoffProjectEvents`, never the
+command stream. The table has exactly `TimeGenerated`, `EventName`,
+`SchemaVersion`, `ProjectId`, `CliVersion`, `PolicyProfile`, `PolicyVersion`,
+`TemplateSetDigest`, and `Source`. Policy versions are strings in storage.
+Both endpoints reject additional fields and count streamed bytes against 1 KiB.
+Gateway time is authoritative; no request, IP, console or client-time fields
+are added.
+
+Deploy the backward-compatible table/DCR and qualified gateway image first,
+using the existing reviewed production inputs and preserving Korea Central,
+workspace, accepted data, resource identities, backend and perimeter. The
+project endpoint is disabled unless the exact project stream is configured.
+After separate operator approval, enable it and qualify synthetic project
+observations, rejection paths, managed-identity query access, retention and
+logging exclusions before enabling a reporting client or heartbeat.
+No client is enrolled by enabling this endpoint. Keep synthetic UUIDs in an
+operator-controlled exclusion inventory rather than an additional payload field.
+These offline tests do not prove Azure deployment or real identity access.
+
+Set `project_ingestion_enabled=false` in the same reviewed production variable
+file to stop project ingestion while retaining both tables and command delivery.
+This flag only controls the project-stream environment setting, not resource
+counts or destruction. Do not remove the table/DCR from configuration to disable
+reporting. Client disablement is independent and does not delete accepted data.
 
 Copy `backend.hcl.example` and `production.tfvars.example` outside the
 repository, replace their placeholders, and keep Azure credentials out of both

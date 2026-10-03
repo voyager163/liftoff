@@ -1,0 +1,257 @@
+{
+  "existingFixtures": {
+    "tests/fixtures/manifest-v2.json": "d815b7350c06ccba30929dc557c4af1ff4dceb35102dfce229c6ace0fa54b48a",
+    "tests/fixtures/manifest-v3.json": "6ea6f238aaf0cd43ec543ea1858cb7d8d5b3aa43f14cb67c8e578e1d523dbba0",
+    "tests/fixtures/manifest-v4-genai.json": "c92ad4cd94e6f05f75570f80d0ce9a78084ce010610f81d5342f966e269119c2",
+    "tests/fixtures/manifest-v4-standard.json": "da918816577d04e14db483aa21f6a927481ba0a9f3930077d50ac4f110177a67",
+    "tests/fixtures/manifest-v4-power-apps.json": "8daefb6279fcf80e8daf2a58363f16bcde8a7b522c89f5e6e2777957d26026ad"
+  },
+  "capturedManifests": [
+    {
+      "file": "manifests/0.3.4-standard-go.json",
+      "writer": "0.3.4",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.3.4-genai-rag.json",
+      "writer": "0.3.4",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.4.1-standard-go.json",
+      "writer": "0.4.1",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.4.1-genai-rag.json",
+      "writer": "0.4.1",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.7.0-standard-go.json",
+      "writer": "0.7.0",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.7.0-genai-rag.json",
+      "writer": "0.7.0",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.8.0-standard-go.json",
+      "writer": "0.8.0",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.8.0-genai-rag.json",
+      "writer": "0.8.0",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.9.9-standard-go.json",
+      "writer": "0.9.9",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.9.9-genai-rag.json",
+      "writer": "0.9.9",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.10.0-standard-go.json",
+      "writer": "0.10.0",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.10.0-genai-rag.json",
+      "writer": "0.10.0",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.11.3-standard-go.json",
+      "writer": "0.11.3",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.11.3-genai-rag.json",
+      "writer": "0.11.3",
+      "case": "genai-rag"
+    },
+    {
+      "file": "manifests/0.12.3-standard-go.json",
+      "writer": "0.12.3",
+      "case": "standard-go"
+    },
+    {
+      "file": "manifests/0.12.3-genai-rag.json",
+      "writer": "0.12.3",
+      "case": "genai-rag"
+    }
+  ],
+  "interpretations": {
+    "manifests/0.3.4-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 2,
+      "liftoffVersion": "0.3.4",
+      "managedArtifacts": 0,
+      "projectArtifacts": 25,
+      "generationHashes": "f9c91f35e5628f7a35cc66f78747d1e1cee213c24a9866fa6424665b7204a83b",
+      "interpretationSha256": "478b3c11840149608dc3e713730dc9b595499cd66740ba58061d45228eb5e89a"
+    },
+    "manifests/0.3.4-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 2,
+      "liftoffVersion": "0.3.4",
+      "managedArtifacts": 0,
+      "projectArtifacts": 69,
+      "generationHashes": "cb9c043beac461d743ee9cf3abe67a0cef69e02c51c0905c748c9b0c293418f2",
+      "interpretationSha256": "1c9fa356dca7ae89c4ccb52d265495dba15209e3d079fda78429e019db7577ec"
+    },
+    "manifests/0.4.1-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 3,
+      "liftoffVersion": "0.4.1",
+      "managedArtifacts": 0,
+      "projectArtifacts": 25,
+      "generationHashes": "1f412f8166863efc09e73a89cb017b1870c4ab37e553afb4f9a8ebccc79345b9",
+      "interpretationSha256": "0f0a9e12abf6cb1f2726de7c2eb95d3d742a9c3ca5bb1747f8ebb13a5d9e07fe"
+    },
+    "manifests/0.4.1-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 3,
+      "liftoffVersion": "0.4.1",
+      "managedArtifacts": 0,
+      "projectArtifacts": 70,
+      "generationHashes": "4ae657891084d698b65df3dd69114864ddfe396cb8fbbec4774c8697dcda5931",
+      "interpretationSha256": "eb234e888a8beb97c9298810212a9f325e46d2a9b9fea15b4c3b9147b5797420"
+    },
+    "manifests/0.7.0-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 4,
+      "liftoffVersion": "0.7.0",
+      "managedArtifacts": 0,
+      "projectArtifacts": 25,
+      "generationHashes": "3c5ff276e7d156fb31f2efe9ce5be7417acc868cdab9178b4d333d8cacd64ad2",
+      "interpretationSha256": "f62a6c6b4878fe5e88bf13428c4b38570f4288c9d78ce05c0dc0a5876bd33ed9"
+    },
+    "manifests/0.7.0-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 4,
+      "liftoffVersion": "0.7.0",
+      "managedArtifacts": 0,
+      "projectArtifacts": 70,
+      "generationHashes": "dc6dfd0eb2ec7a76d0ad1a9269cc47720b4facac5b0cc55ff439961dc60468f7",
+      "interpretationSha256": "bd8d99da04b0d84166893177b2d7e0438fd66d67278badba48187ade55e41678"
+    },
+    "manifests/0.8.0-standard-go.json": {
+      "ok": false,
+      "error": "Enabled manifest governance is missing artifact repository-governance-phase-graph."
+    },
+    "manifests/0.8.0-genai-rag.json": {
+      "ok": false,
+      "error": "Enabled manifest governance is missing artifact repository-governance-phase-graph."
+    },
+    "manifests/0.9.9-standard-go.json": {
+      "ok": false,
+      "error": "Enabled manifest governance is missing artifact repository-governance-phase-graph."
+    },
+    "manifests/0.9.9-genai-rag.json": {
+      "ok": false,
+      "error": "Enabled manifest governance is missing artifact repository-governance-phase-graph."
+    },
+    "manifests/0.10.0-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.10.0",
+      "managedArtifacts": 8,
+      "projectArtifacts": 26,
+      "generationHashes": "859e48f592c20166604627fda77552ef39f597c946b41597817e93d0a0f2504d",
+      "interpretationSha256": "f8557a41f02b0f67234fd3ddb219e76f1e628ffa060ba5875580b20a34083b4a"
+    },
+    "manifests/0.10.0-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.10.0",
+      "managedArtifacts": 8,
+      "projectArtifacts": 72,
+      "generationHashes": "308b12f8ba0e8c00e4086863eb6f1559a9668065e5c4989104cae05d457de106",
+      "interpretationSha256": "114c9ee7734291315378128fc5fdeba654d20720d143e1eaedfa4aeb08dd8567"
+    },
+    "manifests/0.11.3-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.11.3",
+      "managedArtifacts": 8,
+      "projectArtifacts": 33,
+      "generationHashes": "a8893bae86d6c86866585ea101789d6a4da26592e681664b7eced6c0eaa0802f",
+      "interpretationSha256": "bd3ffa3ad339eab83da8546bbbd3a87beb2d1b1b220ca4353722fe2c0c7d1958"
+    },
+    "manifests/0.11.3-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.11.3",
+      "managedArtifacts": 8,
+      "projectArtifacts": 86,
+      "generationHashes": "d36d053c0c132e1d6cce63bc2466dac389e4b6269da3052895c6c8eae264b277",
+      "interpretationSha256": "f06be24a2322503d951908e85b25f12ab1a5b7eb32502423d0f5ad5f4467cdd4"
+    },
+    "manifests/0.12.3-standard-go.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.12.3",
+      "managedArtifacts": 9,
+      "projectArtifacts": 33,
+      "generationHashes": "5da730ebe8915cad76ebaee8c471d00c0d4e6496ffbd4a06bae62f60ffa11903",
+      "interpretationSha256": "7674e7da368c4c4281260da580c96c520bbb66549e00feca01e7af25db0bff84"
+    },
+    "manifests/0.12.3-genai-rag.json": {
+      "ok": true,
+      "artifactVersion": 7,
+      "liftoffVersion": "0.12.3",
+      "managedArtifacts": 9,
+      "projectArtifacts": 86,
+      "generationHashes": "c3996902fd8df08ac094011e54975b6e8d9963d6fc5980881327319f869a19ef",
+      "interpretationSha256": "8f2b290be8bc3b6db4862c7e889a3acae0ac8438165fc020d0462accb06dbc41"
+    },
+    "tests/fixtures/manifest-v2.json": {
+      "ok": true,
+      "artifactVersion": 2,
+      "liftoffVersion": "0.2.0",
+      "managedArtifacts": 0,
+      "projectArtifacts": 68,
+      "generationHashes": "c8d3feb9abf13e8ca00a60a3a361f00fdd111fedb01abe74fecdc9084368a0f6",
+      "interpretationSha256": "c3033e3e2d9dba3e7c6f63278ccb5def3a9f8280d7dc02f53535edceb663bad6"
+    },
+    "tests/fixtures/manifest-v3.json": {
+      "ok": true,
+      "artifactVersion": 3,
+      "liftoffVersion": "0.4.0",
+      "managedArtifacts": 0,
+      "projectArtifacts": 0,
+      "generationHashes": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "interpretationSha256": "192779f99134cce820a4be48276fda8b94570e37775dcdf6dcba86beab2fb7f1"
+    },
+    "tests/fixtures/manifest-v4-genai.json": {
+      "ok": true,
+      "artifactVersion": 4,
+      "liftoffVersion": "0.4.1",
+      "managedArtifacts": 0,
+      "projectArtifacts": 0,
+      "generationHashes": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "interpretationSha256": "9748457ce1044a6b6711cb9fbf5e8c2b73a19e2877396fe7874ce14867272d73"
+    },
+    "tests/fixtures/manifest-v4-standard.json": {
+      "ok": true,
+      "artifactVersion": 4,
+      "liftoffVersion": "0.4.1",
+      "managedArtifacts": 0,
+      "projectArtifacts": 0,
+      "generationHashes": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "interpretationSha256": "4e119237b2ddb592867ef87f839ae7a0d248425c7ada8ce6f47665ef34c7918b"
+    },
+    "tests/fixtures/manifest-v4-power-apps.json": {
+      "ok": false,
+      "error": "Power Apps code app workload \"power-apps-code-app\" is retired and unsupported by Liftoff. Choose a GenAI or standard API workload."
+    }
+  }
+}

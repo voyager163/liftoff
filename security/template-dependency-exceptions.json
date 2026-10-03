@@ -6,7 +6,8 @@
       "package": "esbuild",
       "manifestPathParts": [
         "assets",
-        "locks",
+        "plugins",
+        "node-fastify",
         "node-backend",
         "package-lock.json"
       ],

@@ -457,6 +457,10 @@ execution. `governance plan` can preview dependency-ready work before approval.
 authority, with a separate project-bound user-local issue record. Imported
 project JSON is not permission. Final enforcement can bind both its approval
 and subsequent exact ruleset operations without granting other phase authority.
+`governance approve` and `governance apply-next --execute` refuse a phase whose
+production capability is blocked or unavailable in the installed release, before
+writing a plan, approval, authority record, or activation state. A previously
+issued approval does not override that refusal.
 
 ## Credentials for runner preflight
 
@@ -477,11 +481,12 @@ If no approved App is available, the narrowly scoped fallback is:
 | Writes | none |
 | Workflow/job allowlist | `.github/workflows/bootstrap-import-preflight.yml` job `bootstrap-import-preflight`; `.github/workflows/private-dast-preflight.yml` job `private-dast-preflight` |
 
-After reviewing and approving the credential-ready plan, use
-`liftoff governance credential-enroll --plan <fingerprint>`. The default input
-channel is a private TTY; `--protected-stdin` explicitly selects a protected
-automation channel. The published allowlisted workflow must prove actual
-credential use; the secret name or a policy file alone cannot establish readiness.
+Public credential readiness and enrollment are currently unavailable pending
+independently verified provider wiring. `governance approve` refuses the
+credential-ready plan, and `liftoff governance credential-enroll --plan <fingerprint>`
+remains registered but refuses before selecting or reading any input channel; it
+writes no Actions secret, credential policy, or evidence. A secret name or a
+policy file alone cannot establish readiness.
 Never paste or show the value in chat, argv, command arguments,
 logs, evidence, files, or screenshots. A disclosed value is
 compromised and must be revoked and rotated through its owner-controlled system.

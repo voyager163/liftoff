@@ -8,6 +8,8 @@ import { NodeCommandRunner } from '../src/process-runner.js';
 
 const roots: string[] = [];
 const migrationFile = 'tests/migration-inspection.test.ts';
+const distributionFile = 'tests/installed-tool-distribution.test.ts';
+const preparationFile = 'tests/repair-preparation-execution.test.ts';
 const repairFile = 'tests/repair-command.test.ts';
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
 
@@ -29,7 +31,12 @@ export default { ...createRootTestConfig('win32'), root: ${JSON.stringify(root)}
 
   const ordinary = files.filter((file) => file !== migrationFile);
   const completed = ordinary.map((_, index) => path.join(root, `completed-${index}`));
+  const group = (file: string) => file === preparationFile ? 1 : file === distributionFile ? 2
+    : file === migrationFile ? 3 : 0;
   for (const file of files) {
+    const predecessors = verifyBarrier
+      ? ordinary.filter((previous) => group(previous) < group(file)).map((previous) => completed[ordinary.indexOf(previous)])
+      : [];
     const destination = path.join(root, file);
     await mkdir(path.dirname(destination), { recursive: true });
     const source = file === migrationFile
@@ -45,9 +52,14 @@ it('selected migration inspection', async () => {
 it('other migration inspection', () => {});
 `
       : `
-import { afterAll, it } from 'vitest';
-import { writeFile } from 'node:fs/promises';
+import { afterAll, beforeAll, expect, it } from 'vitest';
+import { readFile, writeFile } from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
+beforeAll(async () => {
+  for (const marker of ${JSON.stringify(predecessors)}) {
+    expect(await readFile(marker, 'utf8')).toBe('done');
+  }
+});
 afterAll(() => writeFile(${JSON.stringify(completed[ordinary.indexOf(file)])}, 'done'));
 ${(file === repairFile ? ['native backend-disabled', 'other repair'] : ['ordinary test'])
   .map((name) => `it(${JSON.stringify(name)}, () => delay(20));`).join('\n')}
@@ -102,21 +114,49 @@ function expectRun(report: unknown, root: string, files: string[], passed: numbe
 
 async function ciCommand(name: string): Promise<string> {
   const workflow: unknown = parseYaml(await readFile(new URL('../.github/workflows/ci.yml', import.meta.url), 'utf8'));
-  if (!isRecord(workflow) || !isRecord(workflow.jobs) || !isRecord(workflow.jobs.test) ||
-    !Array.isArray(workflow.jobs.test.steps)) {
+  if (!isRecord(workflow) || !isRecord(workflow.jobs) || !isRecord(workflow.jobs['test-shards']) ||
+    !Array.isArray(workflow.jobs['test-shards'].steps)) {
     throw new Error('Expected the platform test workflow.');
   }
-  const step: unknown = workflow.jobs.test.steps.find((entry: unknown) => isRecord(entry) && entry.name === name);
+  const step: unknown = workflow.jobs['test-shards'].steps.find((entry: unknown) => isRecord(entry) && entry.name === name);
   if (!isRecord(step) || typeof step.run !== 'string') throw new Error(`Missing CI command: ${name}`);
   return step.run.trim();
 }
 
 describe('Windows test-project execution and filters', () => {
+  it('runs every file and case exactly once across the two CI shards', async () => {
+    const current = await fixture([
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, preparationFile, distributionFile, migrationFile
+    ]);
+    const reports = [];
+    for (const shard of [1, 2]) reports.push(await runTests(current.root, [`--shard=${shard}/2`]));
+    const files: string[] = [];
+    const cases: string[] = [];
+    for (const report of reports) {
+      expect(report).toMatchObject({ success: true, numFailedTests: 0, numPendingTests: 0 });
+      if (!isRecord(report) || !Array.isArray(report.testResults)) throw new Error('Expected a shard inventory.');
+      for (const suite of report.testResults) {
+        if (!isRecord(suite) || typeof suite.name !== 'string' || !Array.isArray(suite.assertionResults)) {
+          throw new Error('Expected a shard file and its cases.');
+        }
+        files.push(path.relative(current.root, suite.name).split(path.sep).join('/'));
+        for (const result of suite.assertionResults) {
+          if (!isRecord(result) || typeof result.fullName !== 'string') throw new Error('Expected a case identity.');
+          expect(result.status).toBe('passed');
+          cases.push(`${suite.name}:${result.fullName}`);
+        }
+      }
+    }
+    expect(files.sort()).toEqual(current.files.sort());
+    expect(cases).toHaveLength(8);
+    expect(new Set(cases).size).toBe(8);
+  });
+
   it('runs the intact migration file after all ordinary hooks in the same invocation', async () => {
     const current = await fixture([
-      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, migrationFile
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, preparationFile, distributionFile, migrationFile
     ], true);
-    expectRun(await runTests(current.root), current.root, current.files, 6);
+    expectRun(await runTests(current.root), current.root, current.files, 8);
     expect(await readFile(path.join(current.root, 'selected-migration-ran'), 'utf8')).toBe('done');
   });
 
@@ -127,6 +167,18 @@ describe('Windows test-project execution and filters', () => {
     const current = await fixture(['tests/ordinary.test.ts', migrationFile]);
     expectRun(await runTests(current.root, filters), current.root, [migrationFile], passed, skipped);
     expect(await readFile(path.join(current.root, 'selected-migration-ran'), 'utf8')).toBe('done');
+  });
+
+  it('preserves direct distribution file and name filters in its separate Windows group', async () => {
+    const current = await fixture(['tests/ordinary.test.ts', distributionFile, migrationFile]);
+    expectRun(await runTests(current.root, [distributionFile, '-t', 'ordinary test']),
+      current.root, [distributionFile], 1);
+  });
+
+  it('preserves direct preparation file and name filters in its separate Windows group', async () => {
+    const current = await fixture(['tests/ordinary.test.ts', preparationFile, distributionFile, migrationFile]);
+    expectRun(await runTests(current.root, [preparationFile, '-t', 'ordinary test']),
+      current.root, [preparationFile], 1);
   });
 
   it('preserves every existing Windows boundary CLI file selector exactly once', async () => {
@@ -146,7 +198,9 @@ describe('Windows test-project execution and filters', () => {
       return { file: path.relative(current.root, entry.file).split(path.sep).join('/'), projectName: entry.projectName };
     });
     const expected = files.map((file) => ({
-      file, projectName: file === migrationFile ? 'migration-inspection' : 'root-tests'
+      file, projectName: file === migrationFile ? 'migration-inspection'
+        : file === preparationFile ? 'repair-preparation-execution'
+          : file === distributionFile ? 'installed-tool-distribution' : 'root-tests'
     }));
     expect(observed.sort((a, b) => a.file.localeCompare(b.file)))
       .toEqual(expected.sort((a, b) => a.file.localeCompare(b.file)));

@@ -82,6 +82,55 @@ describe('telemetry OpenTofu privacy contract', () => {
     }
   });
 
+  it('keeps project observations in a distinct nine-column stream and table with 180-day retention', async () => {
+    const source = await tofuFile('main.tf');
+    const projectTable = source.slice(
+      source.indexOf('resource "azurerm_log_analytics_workspace_table_custom_log" "project_events"'),
+      source.indexOf('resource "azurerm_monitor_data_collection_endpoint"')
+    );
+    expect(projectTable).toContain('"LiftoffProjectEvents_CL"');
+    expect(projectTable).toMatch(/retention_in_days\s*=\s*180/);
+    expect(projectTable).toMatch(/total_retention_in_days\s*=\s*180/);
+    const columns = [
+      'TimeGenerated', 'EventName', 'SchemaVersion', 'ProjectId', 'CliVersion',
+      'PolicyProfile', 'PolicyVersion', 'TemplateSetDigest', 'Source'
+    ];
+    expect([...projectTable.matchAll(/name = "([^"]+)"/g)].map((match) => match[1])).toEqual(columns);
+    expect(source).toContain(`transform_kql = "source | project ${columns.join(', ')}"`);
+    expect(source).toContain('streams       = [local.project_input_stream_name]');
+    expect(source).toContain('output_stream = local.project_output_stream_name');
+    expect(source).toContain('stream_name = local.project_input_stream_name');
+    expect(source).toMatch(/depends_on = \[[\s\S]*?custom_log\.command_events,[\s\S]*?custom_log\.project_events/);
+  });
+
+  it('defaults project ingestion off and disables its route without destroying retained tables', async () => {
+    const [variables, target, outputs, source] = await Promise.all([
+      tofuFile('variables.tf'), tofuFile('container-app.tf'), tofuFile('outputs.tf'), tofuFile('main.tf')
+    ]);
+    expect(variables).toMatch(/variable "project_ingestion_enabled"[\s\S]*?default\s*=\s*false/);
+    expect(target).toContain('for_each = var.project_ingestion_enabled ? [local.project_input_stream_name] : []');
+    expect(target).toContain('name  = "TELEMETRY_PROJECT_STREAM_NAME"');
+    expect(outputs).toContain('/api/projects');
+    expect(source).not.toContain('var.project_ingestion_enabled');
+    expect(source).not.toMatch(/\bcount\s*=/);
+  });
+
+  it('documents candidate rollout and preserves independent client consent and historical semantics', async () => {
+    const [guide, readme] = await Promise.all([
+      readFile(path.join(process.cwd(), 'docs', 'telemetry.md'), 'utf8'),
+      readFile(path.join(infrastructureRoot, 'README.md'), 'utf8')
+    ]);
+    for (const text of [guide, readme]) {
+      expect(text).toContain('project_ingestion_enabled=false');
+      expect(text).toContain('attention-required');
+      expect(text).toContain('LiftoffProjectEvents_CL');
+      expect(text).toContain('not yet deployed');
+    }
+    expect(guide).toContain('A public project ID is not authentication');
+    expect(readme).toContain('Korea Central');
+    expect(readme).toContain('No client is enrolled by enabling this endpoint');
+  });
+
   it('builds one immutable image from a full public commit SHA', async () => {
     const [target, variables] = await Promise.all([
       tofuFile('container-app.tf'),

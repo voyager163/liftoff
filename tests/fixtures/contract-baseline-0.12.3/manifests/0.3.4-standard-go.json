@@ -1,0 +1,298 @@
+{
+  "artifactVersion": 2,
+  "generatedBy": "Mission Control Liftoff",
+  "liftoffVersion": "0.3.4",
+  "project": {
+    "name": "Contract Baseline",
+    "projectType": "standard",
+    "apiStack": "go-huma",
+    "cloud": "azure",
+    "region": "eastus",
+    "frontend": false,
+    "specWorkflow": "openspec",
+    "environments": [
+      "dev"
+    ]
+  },
+  "artifacts": [
+    {
+      "logicalName": "root-readme",
+      "category": "documentation",
+      "pathParts": [
+        "README.md"
+      ],
+      "contentHash": "sha256:904cebece332d19d8612a7a7a054ac81ca8e81ac5925b9e736abc4bc5fb2561c"
+    },
+    {
+      "logicalName": "root-gitignore",
+      "category": "project",
+      "pathParts": [
+        ".gitignore"
+      ],
+      "contentHash": "sha256:950b1cd8ee12f7f1cd9e6b96cecced438012a3c78fafe3a9100c9b864b71ea95"
+    },
+    {
+      "logicalName": "liftoff-config",
+      "category": "project",
+      "pathParts": [
+        "liftoff.config.json"
+      ],
+      "contentHash": "sha256:463f49614b8ed90d11a298568d487e89e58d5caaceeeb9f2bb0543821a2b9dc8"
+    },
+    {
+      "logicalName": "env-example",
+      "category": "configuration",
+      "pathParts": [
+        ".env.example"
+      ],
+      "contentHash": "sha256:df8b53fbc1f62416827c144ac0e8ede6678275d72dcb8ae2afd6d8d05965d9f1"
+    },
+    {
+      "logicalName": "backend-dockerfile",
+      "category": "runtime",
+      "pathParts": [
+        "Dockerfile"
+      ],
+      "contentHash": "sha256:218c62669ffc51fd8a6a94e2c61370f988960cea7ed1b9e5e8acc4a1984b7f3d"
+    },
+    {
+      "logicalName": "go-backend-module",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "go.mod"
+      ],
+      "contentHash": "sha256:6d066c8a6d828b92c993bf8795b1d419981b5057f37f5072269543f1e1f317e3"
+    },
+    {
+      "logicalName": "go-backend-checksums",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "go.sum"
+      ],
+      "contentHash": "sha256:7ddbaf39c9d245e35939920839d14d1c56688622a1b9edf21b96ddc7320da963"
+    },
+    {
+      "logicalName": "go-backend-makefile",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "Makefile"
+      ],
+      "contentHash": "sha256:b214f33018d9969d50aee4905b67ecc6e8c480ed6139d970069b99bbd9deb31d"
+    },
+    {
+      "logicalName": "go-backend-main",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "cmd",
+        "api",
+        "main.go"
+      ],
+      "contentHash": "sha256:529612bcc11bf6e4b0c63b0899fccdfd6368ce53a0a9d785bce5a4bec0bb7094"
+    },
+    {
+      "logicalName": "go-backend-api",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "internal",
+        "api",
+        "api.go"
+      ],
+      "contentHash": "sha256:95759e3718cbd4323bb6ddb824388b75f9ca3ba8be1bedd6d5d8082fdfb044aa"
+    },
+    {
+      "logicalName": "go-backend-config",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "internal",
+        "config",
+        "config.go"
+      ],
+      "contentHash": "sha256:11e399f8ccc7c991da6e7d65fff07342d14c767c95807530e97f0c81beea5278"
+    },
+    {
+      "logicalName": "go-backend-database",
+      "category": "backend",
+      "pathParts": [
+        "backend",
+        "internal",
+        "database",
+        "database.go"
+      ],
+      "contentHash": "sha256:ac8d32143570e1606bd0f3c96d30857e8796f8be45f49d785dd9114f578ac1ed"
+    },
+    {
+      "logicalName": "go-backend-test-health",
+      "category": "backend-test",
+      "pathParts": [
+        "backend",
+        "internal",
+        "api",
+        "api_test.go"
+      ],
+      "contentHash": "sha256:83d8d2a3d618092925e7ea211a033e86092f6e9dcd56b1dc16f23d2aeae17655"
+    },
+    {
+      "logicalName": "database-go-migration",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "migrations",
+        "0001_initial.sql"
+      ],
+      "contentHash": "sha256:3403577f0d242157894d436fcef5a6aebf57e52f2a44241e0965a923572a678b"
+    },
+    {
+      "logicalName": "database-schema",
+      "category": "database",
+      "pathParts": [
+        "database",
+        "models",
+        "schema.sql"
+      ],
+      "contentHash": "sha256:3d3c6ab097fc94417f0042076a20e2e0abbbe24688ea9b3e4be8cb0a5b6d7a1e"
+    },
+    {
+      "logicalName": "environment-dev-backend",
+      "category": "environment",
+      "pathParts": [
+        "environments",
+        "dev",
+        "backend.env"
+      ],
+      "contentHash": "sha256:df8b53fbc1f62416827c144ac0e8ede6678275d72dcb8ae2afd6d8d05965d9f1"
+    },
+    {
+      "logicalName": "docker-compose",
+      "category": "local-development",
+      "pathParts": [
+        "docker-compose.yml"
+      ],
+      "contentHash": "sha256:e8f29e9d5fc6f9ad1f7a4df395155167e4e062f69418c8baf0b8d8302ed232af"
+    },
+    {
+      "logicalName": "opentofu-versions",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "versions.tf"
+      ],
+      "contentHash": "sha256:0ebd70c51f8df017a9c932979cdaba49f84beba0b5bd95f7b7413cc2193b3e96"
+    },
+    {
+      "logicalName": "opentofu-providers",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "providers.tf"
+      ],
+      "contentHash": "sha256:86f53e037a5b8c98f06133e05ce13f7f213f451d1c529e08780ef875abcd012f"
+    },
+    {
+      "logicalName": "opentofu-variables",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "variables.tf"
+      ],
+      "contentHash": "sha256:5c6c0c9ddeb340f4d490fff7a29ac0c88357a1005df1689581c0d4168f826c8a"
+    },
+    {
+      "logicalName": "opentofu-main",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "main.tf"
+      ],
+      "contentHash": "sha256:92432cae10f2680adcbd3df6abaae60d3ff0444ab47fc7a62e9d6388540b2bb7"
+    },
+    {
+      "logicalName": "opentofu-outputs",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "outputs.tf"
+      ],
+      "contentHash": "sha256:128efc261af4d3060166cb467242eddba2a901cc64df6bb4a3a1089ca8cf636b"
+    },
+    {
+      "logicalName": "opentofu-local-state",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.local.tf"
+      ],
+      "contentHash": "sha256:f8ce688a69f00cddea7c7427713e4f3cc094fd073d2848629f1dd1ca547a9a8d"
+    },
+    {
+      "logicalName": "opentofu-remote-state-example",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "backend.remote.example.tf"
+      ],
+      "contentHash": "sha256:af9457a84a1373665ccd17821a81fd4697de67038ae618d4b21227fcda965127"
+    },
+    {
+      "logicalName": "opentofu-readme",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "README.md"
+      ],
+      "contentHash": "sha256:2cf4ad484d429e5cc46764ecdced67d8b216378de57b5658f00c4b1afebba9dd"
+    },
+    {
+      "logicalName": "opentofu-dev-tfvars",
+      "category": "infrastructure",
+      "pathParts": [
+        "infrastructure",
+        "opentofu",
+        "azure",
+        "environments",
+        "dev.tfvars"
+      ],
+      "contentHash": "sha256:dc135c40c9414e6ffcc89b8b45319dc3f13b42b39dd29fab20ba8f25730886a7"
+    },
+    {
+      "logicalName": "openspec-config",
+      "category": "governance",
+      "pathParts": [
+        "openspec",
+        "config.yaml"
+      ],
+      "contentHash": "sha256:2a5fafa194a7a792fc03b923d76475078cbe73d874df080ea696338959624212"
+    },
+    {
+      "logicalName": "openspec-spec-placeholder",
+      "category": "governance",
+      "pathParts": [
+        "openspec",
+        "specs",
+        ".gitkeep"
+      ],
+      "contentHash": "sha256:01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b"
+    }
+  ]
+}

@@ -1,11 +1,13 @@
 locals {
-  resource_group_name = "rg-liftoff-prod"
-  identity_name       = "id-liftoff-telemetry-${var.resource_suffix}"
-  workspace_name      = "log-liftoff-telemetry-${var.resource_suffix}"
-  dce_name            = "dce-liftoff-telemetry-${var.resource_suffix}"
-  dcr_name            = "dcr-liftoff-telemetry-${var.resource_suffix}"
-  input_stream_name   = "Custom-LiftoffCommandEvents"
-  output_stream_name  = "Custom-LiftoffCommandEvents_CL"
+  resource_group_name        = "rg-liftoff-prod"
+  identity_name              = "id-liftoff-telemetry-${var.resource_suffix}"
+  workspace_name             = "log-liftoff-telemetry-${var.resource_suffix}"
+  dce_name                   = "dce-liftoff-telemetry-${var.resource_suffix}"
+  dcr_name                   = "dcr-liftoff-telemetry-${var.resource_suffix}"
+  input_stream_name          = "Custom-LiftoffCommandEvents"
+  output_stream_name         = "Custom-LiftoffCommandEvents_CL"
+  project_input_stream_name  = "Custom-LiftoffProjectEvents"
+  project_output_stream_name = "Custom-LiftoffProjectEvents_CL"
   common_tags = {
     application = "liftoff"
     component   = "cli-telemetry"
@@ -50,7 +52,7 @@ resource "azurerm_log_analytics_workspace_table_custom_log" "command_events" {
   plan                    = "Analytics"
   retention_in_days       = 180
   total_retention_in_days = 180
-  description             = "Non-identifying Liftoff CLI command and zero/nonzero outcome aggregates."
+  description             = "Anonymous Liftoff commands: schema 1 zero/nonzero outcomes and schema 2 semantic outcomes."
 
   column {
     name = "TimeGenerated"
@@ -78,13 +80,59 @@ resource "azurerm_log_analytics_workspace_table_custom_log" "command_events" {
   }
 }
 
+resource "azurerm_log_analytics_workspace_table_custom_log" "project_events" {
+  name                    = "LiftoffProjectEvents_CL"
+  workspace_id            = azurerm_log_analytics_workspace.telemetry.id
+  plan                    = "Analytics"
+  retention_in_days       = 180
+  total_retention_in_days = 180
+  description             = "Explicitly consented pseudonymous project observations, not a project census or compliance proof."
+
+  column {
+    name = "TimeGenerated"
+    type = "dateTime"
+  }
+  column {
+    name = "EventName"
+    type = "string"
+  }
+  column {
+    name = "SchemaVersion"
+    type = "int"
+  }
+  column {
+    name = "ProjectId"
+    type = "string"
+  }
+  column {
+    name = "CliVersion"
+    type = "string"
+  }
+  column {
+    name = "PolicyProfile"
+    type = "string"
+  }
+  column {
+    name = "PolicyVersion"
+    type = "string"
+  }
+  column {
+    name = "TemplateSetDigest"
+    type = "string"
+  }
+  column {
+    name = "Source"
+    type = "string"
+  }
+}
+
 resource "azurerm_monitor_data_collection_endpoint" "telemetry" {
   name                          = local.dce_name
   resource_group_name           = azurerm_resource_group.telemetry.name
   location                      = var.location
   kind                          = "Linux"
   public_network_access_enabled = true
-  description                   = "Regional endpoint for validated Liftoff CLI command events."
+  description                   = "Regional endpoint for separately validated Liftoff command and project events."
   tags                          = local.common_tags
 }
 
@@ -93,7 +141,7 @@ resource "azurerm_monitor_data_collection_rule" "telemetry" {
   resource_group_name         = azurerm_resource_group.telemetry.name
   location                    = var.location
   data_collection_endpoint_id = azurerm_monitor_data_collection_endpoint.telemetry.id
-  description                 = "Projects only the six approved Liftoff telemetry columns."
+  description                 = "Projects the separate command and project event column allowlists."
   tags                        = local.common_tags
 
   destinations {
@@ -108,6 +156,13 @@ resource "azurerm_monitor_data_collection_rule" "telemetry" {
     destinations  = ["liftoff-command-events"]
     output_stream = local.output_stream_name
     transform_kql = "source | project TimeGenerated, EventName, SchemaVersion, Command, CliVersion, Outcome"
+  }
+
+  data_flow {
+    streams       = [local.project_input_stream_name]
+    destinations  = ["liftoff-command-events"]
+    output_stream = local.project_output_stream_name
+    transform_kql = "source | project TimeGenerated, EventName, SchemaVersion, ProjectId, CliVersion, PolicyProfile, PolicyVersion, TemplateSetDigest, Source"
   }
 
   stream_declaration {
@@ -139,8 +194,50 @@ resource "azurerm_monitor_data_collection_rule" "telemetry" {
     }
   }
 
+  stream_declaration {
+    stream_name = local.project_input_stream_name
+
+    column {
+      name = "TimeGenerated"
+      type = "datetime"
+    }
+    column {
+      name = "EventName"
+      type = "string"
+    }
+    column {
+      name = "SchemaVersion"
+      type = "int"
+    }
+    column {
+      name = "ProjectId"
+      type = "string"
+    }
+    column {
+      name = "CliVersion"
+      type = "string"
+    }
+    column {
+      name = "PolicyProfile"
+      type = "string"
+    }
+    column {
+      name = "PolicyVersion"
+      type = "string"
+    }
+    column {
+      name = "TemplateSetDigest"
+      type = "string"
+    }
+    column {
+      name = "Source"
+      type = "string"
+    }
+  }
+
   depends_on = [
-    azurerm_log_analytics_workspace_table_custom_log.command_events
+    azurerm_log_analytics_workspace_table_custom_log.command_events,
+    azurerm_log_analytics_workspace_table_custom_log.project_events
   ]
 }
 

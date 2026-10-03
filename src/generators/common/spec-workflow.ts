@@ -13,24 +13,40 @@ export function addSpecWorkflowArtifacts(
   plan: ProjectPlan
 ): void {
   if (plan.specWorkflow.id === 'openspec') {
-    const changeName = `bootstrap-${plan.safeProjectName}`;
-    addSeed('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
-    addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
-    addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
-    addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
-    addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks(plan));
-    addSeed('openspec-seed-spec', 'seed', ['openspec', 'changes', changeName, 'specs', seedCapabilityId(plan), 'spec.md'], renderSeedSpec(plan));
-    addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
+    addOpenSpecArtifacts(addSeed, addFramework, plan);
   } else {
-    addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
-    addFramework('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
-    addFramework('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
-    addSeed('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
-    const bootstrap = ['specs', '000-liftoff-bootstrap'];
-    addSeed('spec-kit-bootstrap-spec', 'seed', [...bootstrap, 'spec.md'], renderSpecKitBootstrapSpec(plan));
-    addSeed('spec-kit-bootstrap-plan', 'seed', [...bootstrap, 'plan.md'], renderSpecKitBootstrapPlan(plan));
-    addSeed('spec-kit-bootstrap-tasks', 'seed', [...bootstrap, 'tasks.md'], renderSpecKitBootstrapTasks(plan));
+    addSpecKitArtifacts(addSeed, addFramework, plan);
   }
+}
+
+export function addOpenSpecArtifacts(
+  addSeed: AddArtifact,
+  addFramework: AddArtifact,
+  plan: ProjectPlan
+): void {
+  const changeName = `bootstrap-${plan.safeProjectName}`;
+  addSeed('openspec-config', 'seed', ['openspec', 'config.yaml'], renderOpenSpecConfig(plan));
+  addSeed('openspec-seed-change-metadata', 'seed', ['openspec', 'changes', changeName, '.openspec.yaml'], 'schema: spec-driven');
+  addSeed('openspec-seed-proposal', 'seed', ['openspec', 'changes', changeName, 'proposal.md'], renderSeedProposal(plan));
+  addSeed('openspec-seed-design', 'seed', ['openspec', 'changes', changeName, 'design.md'], renderSeedDesign(plan));
+  addSeed('openspec-seed-tasks', 'seed', ['openspec', 'changes', changeName, 'tasks.md'], renderSeedTasks(plan));
+  addSeed('openspec-seed-spec', 'seed', ['openspec', 'changes', changeName, 'specs', seedCapabilityId(plan), 'spec.md'], renderSeedSpec(plan));
+  addSeed('openspec-spec-placeholder', 'seed', ['openspec', 'specs', '.gitkeep'], '');
+}
+
+export function addSpecKitArtifacts(
+  addSeed: AddArtifact,
+  addFramework: AddArtifact,
+  plan: ProjectPlan
+): void {
+  addSeed('spec-kit-constitution', 'seed', ['.specify', 'memory', 'constitution.md'], renderSpecKitConstitution(plan));
+  addFramework('spec-kit-spec-template', 'framework', ['.specify', 'templates', 'spec-template.md'], renderSpecKitSpecTemplate());
+  addFramework('spec-kit-plan-template', 'framework', ['.specify', 'templates', 'plan-template.md'], renderSpecKitPlanTemplate());
+  addSeed('specs-placeholder', 'seed', ['specs', '.gitkeep'], '');
+  const bootstrap = ['specs', '000-liftoff-bootstrap'];
+  addSeed('spec-kit-bootstrap-spec', 'seed', [...bootstrap, 'spec.md'], renderSpecKitBootstrapSpec(plan));
+  addSeed('spec-kit-bootstrap-plan', 'seed', [...bootstrap, 'plan.md'], renderSpecKitBootstrapPlan(plan));
+  addSeed('spec-kit-bootstrap-tasks', 'seed', [...bootstrap, 'tasks.md'], renderSpecKitBootstrapTasks(plan));
 }
 
 export function renderOpenSpecCopilotConfig(plan: ProjectPlan): string {

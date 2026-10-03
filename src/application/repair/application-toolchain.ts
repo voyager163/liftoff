@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { nativeExecutableObserver } from '../../adapters/filesystem/executables.js';
+import { workspaceFileIdentity } from '../../adapters/filesystem/repair-workspaces.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { compareVersionCores, extractVersion, isPrereleaseVersion, matchesReleaseLine } from '../../domain/workstation/versions.js';
 import { NodeCommandRunner } from '../../process-runner.js';
@@ -13,6 +14,7 @@ import {
 import { createApplicationEnvironment } from './application-environment.js';
 import { applicationCommandFailure } from './application-diagnostics.js';
 import { applicationPreparationBounds, applicationToolRequirement } from './application-preparation-policy.js';
+import { sameWorkspaceFileIdentity } from './workspaces-records.js';
 import type {
   ApplicationInspectionOptions, ApplicationResolvedPreparation, ApplicationToolFileIdentity,
   ApplicationToolId, ApplicationToolIdentity
@@ -21,7 +23,7 @@ import type {
 const cachedIdentities = new Map<string, ApplicationToolFileIdentity>();
 const nativeHeaders = new Set(['7f454c46', 'feedface', 'feedfacf', 'cefaedfe', 'cffaedfe', 'cafebabe', 'bebafeca', 'cafebabf', 'bfbafeca']);
 
-async function toolFile(
+export async function toolFile(
   supplied: string, projectRoot: string, stagingRoot: string, binary: boolean
 ): Promise<ApplicationToolFileIdentity> {
   const target = await realpath(supplied);
@@ -77,7 +79,7 @@ async function toolFile(
   }
 }
 
-async function readNpmIdentity(file: string): Promise<{ name: string; version: string }> {
+export async function readNpmIdentity(file: string): Promise<{ name: string; version: string }> {
   const handle = await open(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
   try {
     const details = await handle.stat();
@@ -100,11 +102,27 @@ export async function resolveApplicationPreparationTools(
   options: ApplicationInspectionOptions = {}, additionalTools: readonly ApplicationToolId[] = []
 ): Promise<ApplicationToolIdentity[]> {
   if (!preparation.length) return [];
+  return resolveApplicationToolValues(projectRoot, stagingRoot,
+    () => new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]), options, false);
+}
+
+export async function resolveApplicationToolsForLocalChecks(
+  projectRoot: string, stagingRoot: string, toolIds: readonly ApplicationToolId[], options: ApplicationInspectionOptions = {},
+  requireSettlement = false
+): Promise<ApplicationToolIdentity[]> {
+  const captured = [...toolIds];
+  return resolveApplicationToolValues(projectRoot, stagingRoot, () => new Set(captured), options, requireSettlement);
+}
+
+async function resolveApplicationToolValues(
+  projectRoot: string, stagingRoot: string, requestedTools: () => Set<ApplicationToolId>,
+  options: ApplicationInspectionOptions, requireSettlement: boolean
+): Promise<ApplicationToolIdentity[]> {
   const platform = process.platform;
   if (platform !== 'darwin' && platform !== 'linux' && platform !== 'win32') {
     throw new ApplicationInspectionError('[unsupported-tool-platform] Preparation tool identities cannot be observed on this platform.');
   }
-  const requested = new Set([...preparation.flatMap((item) => item.tools), ...additionalTools]);
+  const requested = requestedTools();
   const order: ApplicationToolId[] = ['node', 'npm', 'python', 'uv', 'go'];
   const probeRoot = path.join(path.dirname(stagingRoot), `.liftoff-preparation-probe-${randomUUID()}`);
   if (applicationWithin(projectRoot, probeRoot) || applicationWithin(stagingRoot, probeRoot)) {
@@ -112,7 +130,7 @@ export async function resolveApplicationPreparationTools(
   }
   await assertApplicationNoLinkAncestors(path.dirname(probeRoot));
   await mkdir(probeRoot, { mode: 0o700 });
-  const created = await lstat(probeRoot);
+  const created = workspaceFileIdentity(await lstat(probeRoot, { bigint: true }));
   const tools: ApplicationToolIdentity[] = [];
   let unsafeCleanup = false;
   try {
@@ -167,10 +185,17 @@ export async function resolveApplicationPreparationTools(
         executable: executablePath,
         args: [...prefixArgs, ...(id === 'go' ? ['version'] : id === 'python' ? ['-I', '-S', '--version'] : ['--version'])]
       };
+      if (requireSettlement) unsafeCleanup = true;
       const actual = await runner.run(probe, {
         cwd: probeRoot, env, timeoutMs: applicationPreparationBounds.probeTimeoutMs,
-        maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false
+        maxOutputBytes: applicationPreparationBounds.probeOutputBytes, stream: false,
+        ...(requireSettlement ? { ensureProcessTreeSettled: true } : {})
       });
+      if (requireSettlement && (actual.processTreeSettled === true || actual.processSpawned === false)) unsafeCleanup = false;
+      if (requireSettlement && actual.processTreeSettled !== true) {
+        unsafeCleanup = actual.processSpawned !== false;
+        throw new ApplicationInspectionError('[tool-probe-cleanup] Local execution requires actual metadata process-tree settlement.');
+      }
       const diagnostic = applicationCommandFailure({
         executable: id, args: probe.args, cwdPathParts: [], network: false,
         timeoutMs: applicationPreparationBounds.probeTimeoutMs, maxOutputBytes: applicationPreparationBounds.probeOutputBytes
@@ -206,8 +231,8 @@ export async function resolveApplicationPreparationTools(
     if (unsafeCleanup) {
       throw new ApplicationInspectionError(`[tool-probe-cleanup] Tool probe termination is uncertain; probe workspace was retained at ${probeRoot}. No preparation or project checks were authorized.`);
     }
-    const current = await lstat(probeRoot);
-    if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== created.dev || current.ino !== created.ino) {
+    const current = await lstat(probeRoot, { bigint: true });
+    if (!current.isDirectory() || current.isSymbolicLink() || !sameWorkspaceFileIdentity(created, workspaceFileIdentity(current))) {
       throw new ApplicationInspectionError('[tool-probe-cleanup] Probe workspace identity changed; cleanup was refused.');
     }
     await rm(probeRoot, { recursive: true, force: true });

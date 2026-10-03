@@ -1,6 +1,7 @@
 import { lstat, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { builtinAssets } from '../src/plugins/builtin/assets.ts';
 
 export const canonicalNpmRegistry = 'https://registry.npmjs.org';
 const repositoryRoot = fileURLToPath(new URL('..', import.meta.url));
@@ -19,12 +20,12 @@ export const templateDependencyInventory = Object.freeze([
   Object.freeze({
     id: 'node-backend',
     label: 'Standard Node.js backend',
-    pathParts: Object.freeze(['assets', 'locks', 'node-backend', 'package-lock.json'])
+    pathParts: Object.freeze(['assets', 'plugins', 'node-fastify', 'node-backend', 'package-lock.json'])
   }),
   Object.freeze({
     id: 'standard-frontend',
     label: 'Standard frontend',
-    pathParts: Object.freeze(['assets', 'locks', 'frontend', 'package-lock.json'])
+    pathParts: Object.freeze(['assets', 'templates', 'common', 'frontend', 'package-lock.json'])
   })
 ]);
 
@@ -61,6 +62,72 @@ export const templateDependencyPolicyPathParts = Object.freeze([
   'template-dependency-exceptions.json'
 ]);
 
+// Tooling metadata for the six packaged template dependency sets. Members, paths and roles come
+// from the C1 declaration table; this list adds only the ecosystem, the audit coverage and
+// baseline pointers (key paths into assets/supported-stack.json). It holds no paths or hashes.
+export const templateDependencySets = Object.freeze([
+  Object.freeze({
+    id: 'node-backend',
+    ecosystem: 'npm',
+    audit: Object.freeze({ mode: 'npm-audit', inventoryId: 'node-backend' }),
+    baselineViews: Object.freeze([Object.freeze(['npmProjects', 'node-backend'])])
+  }),
+  Object.freeze({
+    id: 'frontend',
+    ecosystem: 'npm',
+    audit: Object.freeze({ mode: 'npm-audit', inventoryId: 'standard-frontend' }),
+    baselineViews: Object.freeze([Object.freeze(['npmProjects', 'frontend'])])
+  }),
+  Object.freeze({
+    id: 'python-standard',
+    ecosystem: 'pypi',
+    audit: Object.freeze({
+      mode: 'unaudited',
+      reason: 'No PyPI advisory source is configured for this release.'
+    }),
+    baselineViews: Object.freeze([Object.freeze(['pythonProjects', 'standard-backend'])])
+  }),
+  Object.freeze({
+    id: 'python-genai',
+    ecosystem: 'pypi',
+    audit: Object.freeze({
+      mode: 'unaudited',
+      reason: 'No PyPI advisory source is configured for this release.'
+    }),
+    baselineViews: Object.freeze([
+      Object.freeze(['pythonProjects', 'genai-backend']),
+      Object.freeze(['pythonProjects', 'function-worker'])
+    ])
+  }),
+  Object.freeze({
+    id: 'go-backend',
+    ecosystem: 'go',
+    audit: Object.freeze({
+      mode: 'unaudited',
+      reason: 'No Go module advisory source is configured for this release.'
+    }),
+    baselineViews: Object.freeze([Object.freeze(['goModules', 'go-backend'])]),
+    toolPins: Object.freeze([
+      Object.freeze(['goModules', 'go-backend', 'tools', 'github.com/pressly/goose/v3'])
+    ])
+  }),
+  Object.freeze({
+    id: 'opentofu-azure',
+    ecosystem: 'opentofu',
+    audit: Object.freeze({
+      mode: 'unaudited',
+      reason: 'No OpenTofu provider advisory source is configured for this release.'
+    }),
+    // The shared view also covers the repository's own infrastructure, so it is a superset.
+    baselineViews: Object.freeze([Object.freeze(['opentofu'])])
+  })
+]);
+
+export const templateDependencyStructure = Object.freeze({
+  assets: builtinAssets,
+  sets: templateDependencySets
+});
+
 const allowedDispositions = new Set(['vulnerable-code-not-used', 'mitigated']);
 const advisoryPattern = /^GHSA-[A-Z0-9]{4}-[A-Z0-9]{4}-[A-Z0-9]{4}$/;
 const isoDatePattern = /^\d{4}-\d{2}-\d{2}$/;
@@ -77,6 +144,20 @@ export class TemplateDependencyAuditError extends Error {
   constructor(message) {
     super(message);
     this.name = 'TemplateDependencyAuditError';
+  }
+}
+
+export class TemplateDependencyStructureError extends TemplateDependencyPolicyError {
+  constructor(issues) {
+    const details = issues.map((issue) => {
+      const subject = [issue.set, issue.path].filter(Boolean).join(' ') || 'structure';
+      return `[${issue.code}] ${subject}: ${issue.detail}`;
+    });
+    super(
+      `Template dependency structure is invalid (${issues.length} ${issues.length === 1 ? 'issue' : 'issues'}): ${details.join('; ')}.`
+    );
+    this.name = 'TemplateDependencyStructureError';
+    this.issues = Object.freeze(issues.map((issue) => Object.freeze({ ...issue })));
   }
 }
 
@@ -325,6 +406,403 @@ export async function validateTemplateDependencyInventory(
   }
 
   return resolved;
+}
+
+const dependencyEcosystems = Object.freeze(['npm', 'pypi', 'go', 'opentofu']);
+const dependencyRoles = new Set(['manifest', 'lock', 'export']);
+const dependencySetKeys = new Set(['id', 'ecosystem', 'audit', 'baselineViews', 'toolPins']);
+// Mirrors the registry's packaged-asset rule without importing it: portable names only, so drive
+// prefixes, stream colons, separators, trailing dots and Windows device names are all rejected.
+const portableMemberPartPattern = /^[A-Za-z0-9._-]+$/;
+const windowsReservedNamePattern = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\.|$)/i;
+const packageEntryPatternCharacters = /[*?[\]{}()!+@]/;
+// Reporting order: declaration issues first, then filesystem and package declaration issues.
+const structureIssueCodes = Object.freeze([
+  'invalid-dependency-member',
+  'duplicate-dependency-member',
+  'invalid-dependency-set',
+  'undeclared-dependency-set',
+  'empty-dependency-set',
+  'dependency-set-shape',
+  'npm-set-layout',
+  'missing-audit-inventory',
+  'audit-inventory-mismatch',
+  'unowned-audit-inventory',
+  'unreadable-package-manifest',
+  'missing-dependency-member',
+  'non-regular-dependency-member',
+  'undeclared-package-member',
+  'unexpected-package-entry'
+]);
+
+// Index-based so that holes in sparse arrays are checked instead of skipped.
+function isStringList(value) {
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  for (let index = 0; index < value.length; index += 1) {
+    if (typeof value[index] !== 'string') {
+      return false;
+    }
+  }
+  return true;
+}
+
+function compareText(left, right) {
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+
+function compareStructureIssues(left, right) {
+  return structureIssueCodes.indexOf(left.code) - structureIssueCodes.indexOf(right.code) ||
+    compareText(left.set ?? '', right.set ?? '') ||
+    compareText(left.path ?? '', right.path ?? '') ||
+    compareText(left.detail, right.detail);
+}
+
+function memberOwnerKey(owner) {
+  if (!isRecord(owner)) {
+    return undefined;
+  }
+  const keys = Object.keys(owner).sort().join(',');
+  if (owner.kind === 'core' && keys === 'kind') {
+    return 'core';
+  }
+  if (
+    owner.kind === 'plugin' &&
+    keys === 'category,id,kind' &&
+    typeof owner.category === 'string' && owner.category !== '' &&
+    typeof owner.id === 'string' && owner.id !== ''
+  ) {
+    return `plugin:${owner.category}:${owner.id}`;
+  }
+  return undefined;
+}
+
+function dependencyMemberProblem(member) {
+  if (!isRecord(member)) {
+    return 'must be an object';
+  }
+  if (memberOwnerKey(member.owner) === undefined) {
+    return 'owner must be the core owner or a plugin owner with a category and id';
+  }
+  if (typeof member.id !== 'string' || member.id.trim() === '') {
+    return 'id must be a nonempty string';
+  }
+  if (typeof member.set !== 'string' || member.set.trim() === '') {
+    return 'set must be a nonempty string';
+  }
+  if (!dependencyRoles.has(member.role)) {
+    return 'role must be manifest, lock or export';
+  }
+  if (!Array.isArray(member.pathParts) || member.pathParts.length < 2 || member.pathParts[0] !== 'assets') {
+    return 'pathParts must name a file below assets';
+  }
+  // Index-based: undefined parts and holes are rejected like any other non-string part.
+  for (let index = 0; index < member.pathParts.length; index += 1) {
+    const part = member.pathParts[index];
+    if (
+      typeof part !== 'string' ||
+      !portableMemberPartPattern.test(part) ||
+      part.endsWith('.') ||
+      windowsReservedNamePattern.test(part)
+    ) {
+      const shown = typeof part === 'string' ? JSON.stringify(part) : part === null ? 'null' : typeof part;
+      return `path part ${index} (${shown}) is not a portable name`;
+    }
+  }
+  return undefined;
+}
+
+function dependencySetProblem(set) {
+  if (!isRecord(set)) {
+    return 'must be an object';
+  }
+  const unexpected = Object.keys(set).filter((key) => !dependencySetKeys.has(key));
+  if (unexpected.length > 0) {
+    return `contains unsupported fields: ${unexpected.sort().join(', ')}`;
+  }
+  if (typeof set.id !== 'string' || set.id.trim() === '') {
+    return 'id must be a nonempty string';
+  }
+  if (!dependencyEcosystems.includes(set.ecosystem)) {
+    return `ecosystem must be one of ${dependencyEcosystems.join(', ')}`;
+  }
+  const audit = set.audit;
+  const auditKeys = isRecord(audit) ? Object.keys(audit).sort().join(',') : '';
+  if (isRecord(audit) && audit.mode === 'npm-audit') {
+    if (set.ecosystem !== 'npm') {
+      return 'npm-audit applies only to the npm ecosystem';
+    }
+    return auditKeys === 'inventoryId,mode' && typeof audit.inventoryId === 'string' && audit.inventoryId.trim() !== ''
+      ? undefined
+      : 'npm-audit must name exactly one nonempty inventoryId';
+  }
+  if (isRecord(audit) && audit.mode === 'unaudited') {
+    return auditKeys === 'mode,reason' && typeof audit.reason === 'string' && audit.reason.trim() !== ''
+      ? undefined
+      : 'unaudited must give exactly one nonempty reason';
+  }
+  return 'audit.mode must be npm-audit or unaudited';
+}
+
+// Portable comparison key: case-insensitive and normalization-insensitive hosts treat these as the
+// same path, so an alias such as ASSETS/plugins is classified like assets/plugins.
+function foldedPath(value) {
+  return value.normalize('NFKC').toLowerCase();
+}
+
+// True when a package.json files entry equals, lies inside or contains the set directory, or is a
+// pattern or negation whose literal prefix is related to it, compared as portable aliases. Such an
+// entry would package the set by directory, pattern or alias instead of by exact member paths.
+function packageEntryTouchesDirectory(entry, directory) {
+  const normalized = foldedPath(entry.replaceAll('\\', '/').replace(/^!+/, '').replace(/^(?:\.\/|\/)+/, '').replace(/\/+$/, ''));
+  const target = foldedPath(directory);
+  const patternIndex = normalized.search(packageEntryPatternCharacters);
+  if (patternIndex !== -1) {
+    const literal = normalized.slice(0, patternIndex);
+    const prefix = literal.slice(0, literal.lastIndexOf('/') + 1).replace(/\/$/, '');
+    return prefix === '' || prefix === target || target.startsWith(`${prefix}/`) || prefix.startsWith(`${target}/`);
+  }
+  return normalized === target || normalized.startsWith(`${target}/`) || target.startsWith(`${normalized}/`);
+}
+
+/**
+ * Structural preflight for the packaged template dependency sets. Phase A checks declarations
+ * without touching the filesystem; phase B checks that every declared member exists as a regular
+ * file and is an exact package.json files entry. Structural problems throw one
+ * TemplateDependencyStructureError; unexpected filesystem errors propagate unchanged.
+ */
+export async function validateTemplateDependencyStructure({ repositoryRoot, inventory, structure }) {
+  if (typeof repositoryRoot !== 'string' || repositoryRoot === '') {
+    throw new TypeError('repositoryRoot must be a nonempty string.');
+  }
+  if (!Array.isArray(inventory)) {
+    throw new TypeError('inventory must be an array.');
+  }
+  if (!isRecord(structure) || !Array.isArray(structure.assets) || !Array.isArray(structure.sets)) {
+    throw new TypeError('structure must provide assets and sets arrays.');
+  }
+  const issues = [];
+  const report = (code, set, filePath, detail) => {
+    issues.push({ code, set: set ?? null, path: filePath ?? null, detail });
+  };
+  const fail = () => {
+    throw new TemplateDependencyStructureError(issues.sort(compareStructureIssues));
+  };
+
+  const members = [];
+  const identities = new Set();
+  const aliasPaths = new Set();
+  for (const [index, member] of structure.assets.entries()) {
+    const set = isRecord(member) && typeof member.set === 'string' ? member.set : undefined;
+    const memberPath = isRecord(member) && isStringList(member.pathParts) ? stablePath(member.pathParts) : undefined;
+    const problem = dependencyMemberProblem(member);
+    if (problem) {
+      report('invalid-dependency-member', set, memberPath, `assets[${index}] ${problem}`);
+      continue;
+    }
+    const identity = `${memberOwnerKey(member.owner)}\0${member.id}`;
+    const alias = memberPath.normalize('NFC').toLowerCase();
+    if (identities.has(identity)) {
+      report('duplicate-dependency-member', set, memberPath, `assets[${index}] repeats owner and id ${member.id}`);
+    } else if (aliasPaths.has(alias)) {
+      report('duplicate-dependency-member', set, memberPath, `assets[${index}] repeats a declared path`);
+    } else {
+      identities.add(identity);
+      aliasPaths.add(alias);
+      members.push(member);
+    }
+  }
+
+  const declaredSetIds = new Set();
+  const setsById = new Map();
+  for (const [index, set] of structure.sets.entries()) {
+    const id = isRecord(set) && typeof set.id === 'string' ? set.id : undefined;
+    const problem = dependencySetProblem(set);
+    if (id !== undefined) {
+      declaredSetIds.add(id);
+    }
+    if (problem) {
+      report('invalid-dependency-set', id, undefined, `sets[${index}] ${problem}`);
+    } else if (setsById.has(id)) {
+      report('invalid-dependency-set', id, undefined, `sets[${index}] repeats set id ${id}`);
+    } else {
+      setsById.set(id, set);
+    }
+  }
+
+  const membersBySet = new Map();
+  for (const member of members) {
+    membersBySet.set(member.set, [...(membersBySet.get(member.set) ?? []), member]);
+  }
+  for (const id of membersBySet.keys()) {
+    if (!declaredSetIds.has(id)) {
+      report('undeclared-dependency-set', id, undefined, 'C1 declares members for a set without dependency metadata');
+    }
+  }
+  for (const id of setsById.keys()) {
+    if (!membersBySet.has(id)) {
+      report('empty-dependency-set', id, undefined, 'dependency metadata names a set without C1 members');
+    }
+  }
+
+  const directories = new Map();
+  for (const [id, setMembers] of membersBySet) {
+    const owners = new Set(setMembers.map((member) => memberOwnerKey(member.owner)));
+    const setDirectories = new Set(setMembers.map((member) => stablePath(member.pathParts.slice(0, -1))));
+    const count = (role) => setMembers.filter((member) => member.role === role).length;
+    if (owners.size !== 1) {
+      report('dependency-set-shape', id, undefined, `members have ${owners.size} owners; expected 1`);
+    }
+    if (setDirectories.size !== 1) {
+      report('dependency-set-shape', id, undefined, `members span ${setDirectories.size} directories; expected 1`);
+    }
+    if (count('manifest') !== 1) {
+      report('dependency-set-shape', id, undefined, `declares ${count('manifest')} manifests; expected 1`);
+    }
+    if (count('lock') !== 1) {
+      report('dependency-set-shape', id, undefined, `declares ${count('lock')} locks; expected 1`);
+    }
+    if (count('export') > 1) {
+      report('dependency-set-shape', id, undefined, `declares ${count('export')} exports; expected at most 1`);
+    }
+    for (const directory of setDirectories) {
+      if (directories.has(directory)) {
+        report('dependency-set-shape', id, directory, `shares its directory with set ${directories.get(directory)}`);
+      } else {
+        directories.set(directory, id);
+      }
+    }
+  }
+
+  const inventoryById = new Map();
+  for (const entry of inventory) {
+    if (isRecord(entry) && typeof entry.id === 'string' && !inventoryById.has(entry.id)) {
+      inventoryById.set(entry.id, entry);
+    }
+  }
+  const auditingSets = new Map();
+  for (const [id, set] of setsById) {
+    if (set.audit.mode !== 'npm-audit') {
+      continue;
+    }
+    const inventoryId = set.audit.inventoryId;
+    auditingSets.set(inventoryId, (auditingSets.get(inventoryId) ?? 0) + 1);
+    const setMembers = membersBySet.get(id) ?? [];
+    for (const [role, fileName] of [['manifest', 'package.json'], ['lock', 'package-lock.json']]) {
+      for (const member of setMembers.filter((candidate) => candidate.role === role)) {
+        if (member.pathParts.at(-1) !== fileName) {
+          report('npm-set-layout', id, stablePath(member.pathParts), `npm audit reads ${fileName} as the ${role}`);
+        }
+      }
+    }
+    const entry = inventoryById.get(inventoryId);
+    if (!entry) {
+      report('missing-audit-inventory', id, undefined, `inventory has no entry ${inventoryId}`);
+      continue;
+    }
+    const locks = setMembers.filter((member) => member.role === 'lock');
+    const entryPath = isStringList(entry.pathParts) ? stablePath(entry.pathParts) : undefined;
+    if (locks.length === 1 && entryPath !== stablePath(locks[0].pathParts)) {
+      report(
+        'audit-inventory-mismatch',
+        id,
+        entryPath,
+        `inventory ${inventoryId} does not name the declared lock ${stablePath(locks[0].pathParts)}`
+      );
+    }
+  }
+  for (const entry of inventory) {
+    if (!isRecord(entry) || !isStringList(entry.pathParts) || foldedPath(entry.pathParts[0] ?? '') !== 'assets') {
+      continue;
+    }
+    const namedBy = typeof entry.id === 'string' ? auditingSets.get(entry.id) ?? 0 : 0;
+    if (namedBy !== 1) {
+      const id = typeof entry.id === 'string' ? entry.id : `(${entry.id === null ? 'null' : typeof entry.id} id)`;
+      report(
+        'unowned-audit-inventory',
+        undefined,
+        stablePath(entry.pathParts),
+        `inventory ${id} is named by ${namedBy} npm-audit sets; expected 1`
+      );
+    }
+  }
+  if (issues.length > 0) {
+    fail();
+  }
+
+  let packageFiles;
+  try {
+    const manifest = JSON.parse(await readFile(path.join(repositoryRoot, 'package.json'), 'utf8'));
+    if (isRecord(manifest) && isStringList(manifest.files)) {
+      packageFiles = manifest.files;
+    } else {
+      report('unreadable-package-manifest', undefined, 'package.json', 'files must be an array of strings');
+    }
+  } catch (error) {
+    if (error instanceof SyntaxError) {
+      report('unreadable-package-manifest', undefined, 'package.json', 'is not valid JSON');
+    } else if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+      report('unreadable-package-manifest', undefined, 'package.json', 'is missing');
+    } else {
+      throw error;
+    }
+  }
+
+  const sortedMembers = [...members].sort((left, right) =>
+    compareText(stablePath(left.pathParts), stablePath(right.pathParts))
+  );
+  for (const member of sortedMembers) {
+    const memberPath = stablePath(member.pathParts);
+    let memberStats;
+    try {
+      memberStats = await stat(resolveTemplateDependencyPath(repositoryRoot, member.pathParts));
+    } catch (error) {
+      if (error?.code === 'ENOENT' || error?.code === 'ENOTDIR') {
+        report('missing-dependency-member', member.set, memberPath, `${member.role} is missing`);
+        continue;
+      }
+      throw error;
+    }
+    if (!memberStats.isFile()) {
+      report('non-regular-dependency-member', member.set, memberPath, `${member.role} is not a regular file`);
+    }
+  }
+
+  if (packageFiles !== undefined) {
+    const declared = new Set(packageFiles);
+    const memberPaths = new Set(members.map((member) => stablePath(member.pathParts)));
+    for (const member of sortedMembers) {
+      const memberPath = stablePath(member.pathParts);
+      if (!declared.has(memberPath)) {
+        report('undeclared-package-member', member.set, memberPath, 'is not an exact package.json files entry');
+      }
+    }
+    for (const entry of new Set(packageFiles)) {
+      if (memberPaths.has(entry)) {
+        continue;
+      }
+      for (const [directory, id] of directories) {
+        if (packageEntryTouchesDirectory(entry, directory)) {
+          report('unexpected-package-entry', id, entry, `package.json files entry is not an exact member of ${directory}`);
+        }
+      }
+    }
+  }
+  if (issues.length > 0) {
+    fail();
+  }
+
+  return Object.freeze([...setsById.values()].map((set) => Object.freeze({
+    id: set.id,
+    ecosystem: set.ecosystem,
+    audit: set.audit,
+    members: Object.freeze(membersBySet.get(set.id).map((member) => Object.freeze({
+      id: member.id,
+      role: member.role,
+      path: stablePath(member.pathParts)
+    })))
+  })));
 }
 
 export function parseTemplateDependencyPolicy(
@@ -716,8 +1194,25 @@ export function evaluateTemplateDependencyAudits({
   auditResults,
   policy,
   today = new Date(),
-  resolvedAdvisories = resolvedTemplateAdvisories
+  resolvedAdvisories = resolvedTemplateAdvisories,
+  sets
 }) {
+  if (!Array.isArray(sets)) {
+    throw new TypeError('sets must be an array of template dependency sets.');
+  }
+  for (const set of sets) {
+    if (
+      set.audit.mode === 'npm-audit' &&
+      !auditResults.some(({ entry }) => entry.id === set.audit.inventoryId)
+    ) {
+      throw new TemplateDependencyPolicyError(
+        `Template dependency set ${set.id} has no npm audit result for ${set.audit.inventoryId}.`
+      );
+    }
+  }
+  const unaudited = Object.freeze(sets
+    .filter((set) => set.audit.mode === 'unaudited')
+    .map((set) => Object.freeze({ id: set.id, ecosystem: set.ecosystem, reason: set.audit.reason })));
   const findings = auditResults.flatMap(({ entry, auditReport }) =>
     normalizeNpmAuditReport(entry, auditReport)
   );
@@ -826,6 +1321,7 @@ export function evaluateTemplateDependencyAudits({
     fixed,
     reviewed,
     clean,
+    unaudited,
     issues
   };
 }
@@ -848,6 +1344,9 @@ export function formatTemplateDependencyAudit(result) {
   }
   for (const entry of result.clean) {
     lines.push(`[clean] ${entry.stablePath ?? stablePath(entry.pathParts)}`);
+  }
+  for (const entry of result.unaudited) {
+    lines.push(`[not audited] ${entry.id} (${entry.ecosystem}): ${entry.reason}`);
   }
   for (const issue of result.issues) {
     lines.push(`[${issue.code}] ${issue.message}`);
@@ -876,6 +1375,12 @@ export function formatTemplateDependencyAuditMarkdown(result) {
       lines.push(
         `- \`${finding.advisoryId}\` in \`${finding.manifestPath}\` — severity ${finding.severity}, ${exception.disposition}, review by ${exception.reviewBy}; affected nodes: ${formatAffectedNodes(finding.affectedNodes)}; dependency chains: ${formatDependencyChains(exception.dependencyChains)}.`
       );
+    }
+  }
+  if (result.unaudited.length > 0) {
+    lines.push('', '### Not audited', '');
+    for (const entry of result.unaudited) {
+      lines.push(`- \`${entry.id}\` (${entry.ecosystem}): ${entry.reason}`);
     }
   }
   return `${lines.join('\n')}\n`;
@@ -922,11 +1427,13 @@ export function parseNpmAuditCommandResult(entry, commandResult) {
 export async function auditTemplateDependencyInventory({
   repositoryRoot,
   inventory = templateDependencyInventory,
+  structure,
   runAudit
 }) {
   if (typeof runAudit !== 'function') {
     throw new TypeError('runAudit must be a function.');
   }
+  await validateTemplateDependencyStructure({ repositoryRoot, inventory, structure });
   const resolvedInventory = await validateTemplateDependencyInventory(
     repositoryRoot,
     inventory

@@ -649,6 +649,7 @@ describe('seed artifact lifecycle', () => {
 
   it.for(['fresh', 'seed-valid-completed'] as const)(
     'completes an active bootstrap without repeating completed seed validation (%s)',
+    { timeout: 60_000 },
     async (entryPoint, { skip }) => {
       if (!(await openspecAvailable())) {
         skip();
@@ -719,8 +720,7 @@ describe('seed artifact lifecycle', () => {
           ['validate', '--all', '--strict']
         ]);
       expect(runner.calls.some(({ command }) => ['git', 'gh', 'az'].includes(command.executable))).toBe(false);
-    },
-    60_000
+    }
   );
 
   it.each(['missing-artifact', 'recorded-archive', 'overlapping-seed'] as const)(
@@ -1117,7 +1117,7 @@ describe('seed artifact lifecycle', () => {
     await writeFile(path.join(root, '.env'), await readFile(path.join(root, '.env.example'), 'utf8'));
     const stagingRoot = await testWorkspace('liftoff-staging');
     process.env.LIFTOFF_STAGING_ROOT = stagingRoot;
-    const commandContext = {
+    const commandContext: Parameters<typeof runCli>[2] = {
       stableReleaseLookup: async () => ({
         name: liftoffPackageName,
         version: liftoffVersion

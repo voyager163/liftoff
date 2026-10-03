@@ -283,7 +283,7 @@ async function inspectInternalFileLink(target: string, workspace: string): Promi
 }
 
 async function scanWorkspace(
-  record: RepairWorkspaceRecord,
+  record: Pick<RepairWorkspaceRecord, 'directory'>,
   pinnedRootIdentity: RepairWorkspaceFileIdentity,
   pinnedRoleIdentities: ReadonlyMap<string, RepairWorkspaceFileIdentity>
 ): Promise<{ entries: CleanupEntry[]; inodeCounts: Map<string, bigint>; peerPathsByInode: Map<string, Set<string>> }> {
@@ -439,6 +439,25 @@ export async function deleteRegisteredWorkspace(
 ): Promise<number> {
   const exists = await assertRegisteredWorkspace(record, location, true);
   if (!exists) return 0;
+  return deleteCapturedWorkspace({
+    directory: record.directory, creationIdentity: record.creationIdentity, roles: record.roles,
+    privateBoundaries: [location.privateRoot, location.registryDirectory, path.dirname(location.root), location.root],
+    protectedRoots: [record.projectRoot, record.patchStagingRoot]
+  }, options, progress, () => assertRegisteredWorkspace(record, location, true));
+}
+
+export interface CapturedWorkspaceScope {
+  readonly directory: string;
+  readonly creationIdentity: RepairWorkspaceFileIdentity | null;
+  readonly roles: RepairWorkspaceRecord['roles'];
+  readonly privateBoundaries: readonly string[];
+  readonly protectedRoots: readonly string[];
+}
+
+export async function deleteCapturedWorkspace(
+  record: CapturedWorkspaceScope, options: RepairWorkspaceStorageOptions,
+  progress: (removedEntries: number) => Promise<void>, assertCurrent: () => Promise<unknown>
+): Promise<number> {
   if (!record.creationIdentity) {
     throw new RepairWorkspaceError('identity-changed', 'Registered workspace has no recorded creation identity.');
   }
@@ -450,9 +469,9 @@ export async function deleteRegisteredWorkspace(
   }
 
   await options.beforeWorkspaceOperation?.('scan', record.directory);
-  await assertRegisteredWorkspace(record, location, true);
+  await assertCurrent();
   const { entries, inodeCounts, peerPathsByInode } = await scanWorkspace(record, pinnedRootIdentity, pinnedRoleIdentities);
-  await assertRegisteredWorkspace(record, location, true);
+  await assertCurrent();
 
   const directories = new Map(await captureWorkspaceDirectoryChain(path.dirname(record.directory)));
   directories.set(record.directory, pinnedRootIdentity);
@@ -472,13 +491,12 @@ export async function deleteRegisteredWorkspace(
   }
 
   const privateBoundaries = [
-    location.privateRoot, location.registryDirectory, path.dirname(location.root),
-    location.root, record.directory, ...repairWorkspaceRoleNames.map((role) => record.roles[role].path)
+    ...record.privateBoundaries, record.directory, ...repairWorkspaceRoleNames.map((role) => record.roles[role].path)
   ];
-  const protectedDirectories = new Map([
-    ...await captureWorkspaceDirectoryChain(record.projectRoot),
-    ...await captureWorkspaceDirectoryChain(record.patchStagingRoot)
-  ]);
+  const protectedDirectories = new Map<string, RepairWorkspaceFileIdentity>();
+  for (const protectedRoot of record.protectedRoots) {
+    for (const [directory, identity] of await captureWorkspaceDirectoryChain(protectedRoot)) protectedDirectories.set(directory, identity);
+  }
 
   const remainingOwnedLinks = new Map<string, bigint>(inodeCounts);
   const remainingPeersByInode = new Map<string, Set<string>>();

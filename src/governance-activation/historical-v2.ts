@@ -5,13 +5,13 @@ import {
   historicalV1ActivationIdentity, historicalV2ActivationIdentity,
   type HistoricalV2ActivationIdentity
 } from '../domain/governance/policy/identity.js';
-import type { PhaseExecutionState } from '../domain/governance/activation/types.js';
+import type { PhaseExecutionStateFieldsV1, SavedTransitionPlanFieldsV1 } from '../domain/governance/activation/record-contracts.js';
 import {
   historicalPhaseIds, assertHistoricalPhasesComplete, readHistoricalApprovalFields,
   readHistoricalEvidenceReference, readHistoricalEvidenceTransition, readHistoricalSavedTransitionPlan,
   validateHistoricalBootstrapState, validateHistoricalEmbeddedPaths,
   type HistoricalActivationState, type HistoricalApprovalEnvelope,
-  type HistoricalEvidenceHeader, type HistoricalLiveReadbackProof, type HistoricalSavedTransitionPlan
+  type HistoricalEvidenceHeader, type HistoricalLiveReadbackProof, type HistoricalV2MutationClass
 } from './historical-common.js';
 import {
   historyArray, historyBoolean, historyDigest, historyEnum, historyExact, historyFail,
@@ -79,9 +79,9 @@ export type HistoricalV2ApprovalEnvelope = Omit<HistoricalApprovalEnvelope, 'sch
   schemaVersion: 2;
   identity: HistoricalV2ActivationIdentity;
 };
-export type HistoricalV2SavedTransitionPlan = Omit<HistoricalSavedTransitionPlan, 'identity'> & {
-  identity: HistoricalV2ActivationIdentity;
-};
+export type HistoricalV2SavedTransitionPlan = SavedTransitionPlanFieldsV1<
+  HistoricalV2ActivationIdentity, typeof historicalPhaseIds[number], HistoricalV2MutationClass
+>;
 
 export function validateHistoricalV2ActivationState(value: unknown): HistoricalV2ActivationState {
   const label = 'historicalV2ActivationState';
@@ -96,7 +96,7 @@ export function validateHistoricalV2ActivationState(value: unknown): HistoricalV
   if (repositoryId === 'unbound') historyFail(`${label}.repository.id`, 'persisted v2 state requires an execution anchor.');
   const applicability = historyExact(item.applicability, ['statePath', 'privateStagingDast', 'credentialRequired'], `${label}.applicability`);
   const rawPhases = historyExact(item.phases, historicalPhaseIds, `${label}.phases`);
-  const phases: Partial<Record<typeof historicalPhaseIds[number], PhaseExecutionState>> = {};
+  const phases: Partial<Record<typeof historicalPhaseIds[number], PhaseExecutionStateFieldsV1<typeof historicalPhaseIds[number]>>> = {};
   for (const id of historicalPhaseIds) {
     const at = `${label}.phases.${id}`;
     const phase = historyExact(rawPhases[id], ['state', 'updatedAt', 'evidence', 'approvals', 'blockers'], at);

@@ -278,7 +278,7 @@ export type ManifestGovernance =
       activationIdentity?: ActivationIdentity;
     };
 
-export interface LiftoffManifest {
+export interface HistoricalLiftoffManifest {
   artifactVersion: 2 | 3 | 4 | 5 | 6 | 7;
   generatedBy: 'Mission Control Liftoff';
   liftoffVersion: string;
@@ -297,6 +297,34 @@ export interface LiftoffManifest {
   governance: ManifestGovernance;
   managedArtifacts: ManifestManagedArtifact[];
   projectArtifacts: ManifestProjectArtifact[];
+}
+
+export type LiftoffManifest = HistoricalLiftoffManifest;
+
+export type ManifestLayoutComponentId =
+  | 'backend'
+  | 'database'
+  | 'frontend'
+  | 'function-worker'
+  | 'opentofu-application'
+  | `opentofu-environment:${EnvironmentId}`;
+
+export type ManifestLayoutBinding =
+  | { readonly kind: 'component'; readonly component: ManifestLayoutComponentId; readonly pathParts: readonly string[] }
+  | { readonly kind: 'artifact'; readonly logicalName: string; readonly pathParts: readonly string[] };
+
+export type ManifestActiveLayout =
+  | { readonly schemaVersion: 1; readonly state: 'unresolved'; readonly bindings: readonly [] }
+  | { readonly schemaVersion: 1; readonly state: 'bound'; readonly bindings: readonly ManifestLayoutBinding[] };
+
+/** Release-owned interpretation only; neither a file inventory nor write authority. */
+export interface ManifestLayoutDescriptor {
+  readonly components: readonly ManifestLayoutComponentId[];
+  readonly artifacts: readonly {
+    readonly logicalName: string;
+    readonly component?: ManifestLayoutComponentId;
+  }[];
+  readonly protectedPaths: readonly (readonly string[])[];
 }
 
 export interface ParsedArgs {

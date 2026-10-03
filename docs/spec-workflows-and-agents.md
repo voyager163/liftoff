@@ -88,6 +88,12 @@ The canonical IDs and order are `github-copilot`, `claude`, `codex`. The CLI
 also accepts `copilot` for GitHub Copilot, and normalizes aliases and duplicates
 without adding unselected agents.
 
+These are **coding-agent hosts, not model identities**. Choose the model and
+configure its access in the selected host; choosing a Liftoff integration does
+not select a model or enroll model credentials. A generated GenAI application's
+model/provider configuration is separate from coding assistance. Host autonomy
+or model confidence never substitutes for the developer's approval of a CLI plan.
+
 On a real TTY, use the arrow keys to move, Space to mark or unmark an agent,
 and Enter to confirm. At least one agent is required.
 
@@ -121,6 +127,29 @@ setup entry point:
 | GitHub Copilot | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |
 | Claude Code | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |
 | OpenAI Codex | `$liftoff-setup` | `$liftoff-repair` | `$liftoff-governance-assess` |
+
+Each operation uses one release-owned instruction body in the installed CLI's
+`assets/skills/` directory. Host adapters add the native header and invocation;
+there is no model-specific policy fork. These packaged sources are not project
+directories to overwrite: existing logical names, generated paths and managed
+update ownership stay unchanged.
+
+On builds that provide [capability discovery](cli-reference.md#capability-discovery),
+`liftoff capabilities --json` describes installed public commands, schemas and
+executor limitations without accessing a project or sending telemetry.
+The existing `liftoff repair --capabilities --json` remains the authority for
+repair schemas, recipes and dependency-preparation support. Missing capabilities
+are blockers, not permission for an agent to emulate a command or write receipts.
+Use the separately approved CLI upgrade path and negotiate the actual interfaces
+again; a package version, generated skill or successful discovery grants no
+execution authority.
+
+Generated setup and governance-assessment instructions perform this negotiation
+before reading the project; repair begins with its dedicated capability contract.
+They stop on missing or incompatible support instead of treating a newer skill as
+proof that an older CLI implements it. Existing projects receive this wording
+through a separately reviewed managed `liftoff update`, not by reinstalling
+frameworks or replacing neighboring user-owned skills.
 
 Repair is also generated when governance is `none`. That does not generate
 policy, setup, assessment, activation state or evidence, or enable governance.
@@ -167,10 +196,12 @@ Repair, protected state reads/writes, installation, global profiles, publication
 credentials, billed infrastructure, and final enforcement retain independent
 authority. `liftoff governance approve --plan <fingerprint>` persists only the
 explicitly reviewed approval; setup never approves automatically or executes as
-a side effect of approval. Credential enrollment uses the reported
-`liftoff governance credential-enroll --plan <fingerprint>` private operator
-channel. Automation explicitly selects `--protected-stdin` and supplies the value
-through an operator-controlled protected channel, never chat or arguments.
+a side effect of approval. Approve and apply-next refuse blocked or unavailable
+capabilities. Public credential readiness and enrollment are currently
+unavailable pending independently verified provider wiring: approve refuses the
+credential-ready plan, and `liftoff governance credential-enroll --plan <fingerprint>`
+refuses before reading any input. Never request or accept a credential through
+chat, arguments, or files.
 
 Schema-2 governance results distinguish `localSetup`, `migration`, `activation`,
 and `lifecycle`. `nextPlannablePhase` can precede approval; `nextReadyPhase`
@@ -271,11 +302,18 @@ The permission must come from the actual user for the same immutable plan and
 action scopes. A generic repair request, unrelated approval, autopilot mode or
 agent-generated Yes supplies no action-specific consent.
 
-Missing verification tools or dependencies are explicit blockers. This repair
-interface supplies no `npm ci`/`npm install` or Python environment preparation.
-Do not invent an installer, copy live dependency trees, inherit credentials or
-regenerate locks to make verification pass. `go test`/`go vet` may download modules;
-declare and separately approve those network effects before execution.
+Missing verification tools or dependencies remain explicit blockers unless the
+installed capability matrix advertises a matching reviewed preparation provider.
+The current providers are `npm-ci`, `uv-locked-sync` and `go-mod-download`, each
+version 1. Locked dependency preparation uses private environments with lifecycle
+scripts disabled and needs its own consent, separate from project-code execution,
+declared network effects and the final file transaction. This is not permission
+for arbitrary `npm install`, global installs, live dependency reuse, credential
+inheritance or lock upgrades. Unsupported sources, tools or hooks remain blocked;
+do not invent an installer to bypass them. See the exact
+[application repair preparation contract](application-repair.md).
+`go test`/`go vet` may download modules; declare and separately approve those
+network effects before execution.
 Report only actual declared checks: a frontend with no test script has build-only
 evidence, not passing tests. Unavailable Node/Vue dependencies mean verification
 is blocked, not that framework qualification succeeded.

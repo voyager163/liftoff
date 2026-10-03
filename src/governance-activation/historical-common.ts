@@ -1,10 +1,8 @@
 import { canonicalSha256, isRecord } from '../domain/governance/activation/canonical-json.js';
+import type * as Records from '../domain/governance/activation/record-contracts.js';
 import type {
-  ApprovalEnvelope, ApprovalEvaluation, BootstrapStateRetention, EvidenceHeader,
-  EvidenceReference, LiveReadbackProof, PhaseExecutionState, SavedTransitionPlan,
-  TransitionOperation, TransitionOperationDestination, TransitionRollbackPlan
-} from '../domain/governance/activation/types.js';
-import type { HistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+  HistoricalActivationIdentity, HistoricalV1ActivationIdentity, HistoricalV2ActivationIdentity
+} from '../domain/governance/policy/identity.js';
 import {
   historicalIdentity, historyArray, historyBoolean, historyDigest, historyEnum, historyExact,
   historyFail, historyLiteral, historyPathParts, historyRecord, historyRecordId, historyString,
@@ -50,32 +48,24 @@ export const historicalPhaseGates = {
   'live-readback': 'none', 'bootstrap-state-disposed': 'destructive-disposal'
 } as const;
 
-export interface HistoricalActivationState {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-  repository: { id: string; name: string; defaultBranch: string };
-  activeChange: { id: string; kind: 'openspec' | 'spec-kit' } | null;
-  applicability: {
-    statePath: 'existing-private' | 'bootstrap-local' | 'none';
-    privateStagingDast: boolean;
-    credentialRequired: boolean;
-  };
-  bootstrapState?: BootstrapStateRetention;
-  phases: Record<HistoricalPhaseId, PhaseExecutionState>;
-  createdAt: string;
-  updatedAt: string;
-}
+type ApprovalEvaluation = Records.ApprovalEvaluationFieldsV1<HistoricalPhaseId>;
+type BootstrapStateRetention = Records.BootstrapStateRetentionFieldsV1;
+type EvidenceReference = Records.EvidenceReferenceFieldsV3<HistoricalPhaseId>;
+type TransitionOperationDestination = Records.TransitionOperationDestinationFieldsV1;
+export type HistoricalV1MutationClass = typeof historicalMutationClasses[number];
+export type HistoricalV2MutationClass = HistoricalV1MutationClass | 'write-seed-tasks';
+type HistoricalMutationClass = HistoricalV2MutationClass;
+type TransitionOperation = Records.TransitionOperationFieldsV1<HistoricalPhaseId, HistoricalMutationClass>;
+type TransitionRollbackPlan = Records.TransitionRollbackPlanFieldsV1<HistoricalPhaseId, HistoricalMutationClass>;
 
-export type HistoricalEvidenceHeader = Pick<EvidenceHeader,
-  'repositoryId' | 'phaseGraphHash' | 'phaseId' | 'phaseContractDigest' | 'inputDigest' |
-  'baselineSha' | 'transition' | 'producedAt' | 'producer' | 'result'
+export interface HistoricalActivationState
+  extends Records.UserActivationStateFieldsV1<HistoricalV1ActivationIdentity, HistoricalPhaseId> {}
+
+export type HistoricalEvidenceHeader = Records.EvidenceHeaderFieldsV1<HistoricalV1ActivationIdentity, HistoricalPhaseId>;
+export type HistoricalLiveReadbackProof = Omit<
+  Records.LiveReadbackProofFieldsV3<HistoricalV1ActivationIdentity, HistoricalPhaseId>, 'schemaVersion'
 > & {
   schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
-export type HistoricalLiveReadbackProof = Omit<LiveReadbackProof, 'schemaVersion' | 'identity'> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
 };
 export interface HistoricalEvidenceRecord {
   evidenceId: string;
@@ -83,20 +73,10 @@ export interface HistoricalEvidenceRecord {
   payload?: unknown;
   liveReadback?: HistoricalLiveReadbackProof[];
 }
-export type HistoricalApprovalEnvelope = Pick<ApprovalEnvelope,
-  'id' | 'phaseId' | 'gateKind' | 'baselineSha' | 'planDigest' | 'resources' | 'destinations' |
-  'permissions' | 'costCeiling' | 'policyExceptions' | 'destructiveScope' | 'expiresAt' | 'approvedAt' | 'approver'
-> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
-export type HistoricalSavedTransitionPlan = Pick<SavedTransitionPlan,
-  'phaseId' | 'createdAt' | 'expiresAt' | 'graphHash' | 'stateHash' | 'baselineDigest' | 'inputDigest' |
-  'transitionDigest' | 'planDigest' | 'mutationClasses' | 'operations' | 'approval' | 'rollbackPlan' | 'noSecrets'
-> & {
-  schemaVersion: 1;
-  identity: HistoricalActivationIdentity;
-};
+export type HistoricalApprovalEnvelope = Records.ApprovalEnvelopeFieldsV1<HistoricalV1ActivationIdentity, HistoricalPhaseId>;
+export type HistoricalSavedTransitionPlan = Records.SavedTransitionPlanFieldsV1<
+  HistoricalV1ActivationIdentity, HistoricalPhaseId, HistoricalV1MutationClass
+>;
 
 export function phaseId(value: unknown, label: string): HistoricalPhaseId {
   return historyEnum(value, historicalPhaseIds, label);
@@ -147,7 +127,7 @@ export function validateHistoricalBootstrapState(value: unknown, label: string):
   };
 }
 
-export function readHistoricalEvidenceTransition(value: unknown, label: string): EvidenceHeader['transition'] {
+export function readHistoricalEvidenceTransition(value: unknown, label: string): HistoricalEvidenceHeader['transition'] {
   const item = historyExact(value, ['phaseId', 'baselineSha', 'inputDigest', 'transitionDigest'], label);
   return {
     phaseId: phaseId(item.phaseId, `${label}.phaseId`),
@@ -285,8 +265,17 @@ export function rollbackPlan(
 }
 
 export function readHistoricalSavedTransitionPlan(
+  value: unknown, identityReader: (value: unknown, label: string) => HistoricalV1ActivationIdentity
+): HistoricalSavedTransitionPlan;
+export function readHistoricalSavedTransitionPlan(
+  value: unknown, identityReader: (value: unknown, label: string) => HistoricalV2ActivationIdentity
+): Records.SavedTransitionPlanFieldsV1<HistoricalV2ActivationIdentity, HistoricalPhaseId, HistoricalV2MutationClass>;
+export function readHistoricalSavedTransitionPlan(
   value: unknown, identityReader: typeof historicalIdentity
-): HistoricalSavedTransitionPlan {
+): Records.SavedTransitionPlanFieldsV1<HistoricalActivationIdentity, HistoricalPhaseId, HistoricalMutationClass>;
+export function readHistoricalSavedTransitionPlan(
+  value: unknown, identityReader: typeof historicalIdentity
+): Records.SavedTransitionPlanFieldsV1<HistoricalActivationIdentity, HistoricalPhaseId, HistoricalMutationClass> {
   const label = 'historicalTransitionPlan';
   assertSafeHistoricalRecord(value, label);
   const item = historyExact(value, [

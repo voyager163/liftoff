@@ -56,11 +56,23 @@ describe('release workflow', () => {
 
   it('keeps package and smoke verification on Linux, macOS, and Windows CI', async () => {
     const workflow = await readFile(path.join(process.cwd(), '.github', 'workflows', 'ci.yml'), 'utf8');
+    const definition = parse(workflow);
+    const shards = definition.jobs['test-shards'];
 
-    expect(workflow.match(/os: \[ubuntu-latest, macos-latest, windows-latest]/g)).toHaveLength(1);
+    expect(shards.strategy.matrix).toEqual({
+      os: ['ubuntu-latest', 'macos-latest', 'windows-latest'], shard: [1, 2]
+    });
+    expect(shards['runs-on']).toBe('${{ matrix.os }}');
+    expect(definition.jobs.test.needs).toBe('test-shards');
+    expect(definition.jobs.test.if).toBe('${{ always() }}');
+    const check = shards.steps.find((step: { name?: string }) => step.name === 'Run package check');
+    expect(check.if).toBeUndefined();
+    expect(check.run).toContain('npm run check:supported-stack && npm run build && npx vitest run');
+    expect(check.run).toContain('--shard=${{ matrix.shard }}/2 --allowOnly=false');
+    const smoke = shards.steps.find((step: { name?: string }) => step.name === 'Run package smoke test');
+    expect(smoke).toMatchObject({ if: 'matrix.shard == 1', run: 'npm run smoke:package' });
     expect(workflow).toMatch(/^  workflow_dispatch:$/m);
     expect(workflow).not.toContain('npm publish');
-    expect(workflow).toContain('run: npm run check');
     expect(workflow).toContain('run: npm run smoke:package');
     expect(workflow).toContain('tests/interactive.test.ts');
     expect(workflow).toContain('tests/project-dependencies.test.ts');

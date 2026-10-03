@@ -85,7 +85,7 @@ export interface PreflightEntry {
   stagedHash?: string;
   stagedMode?: number;
   destination: {
-    type: 'missing' | TreeEntryType;
+    type: 'missing' | 'alias' | TreeEntryType;
     contentHash?: string;
     mode?: number;
   };
@@ -462,13 +462,30 @@ export async function validateStagedTree(area: StagingArea): Promise<ValidatedSt
 async function inspectDestination(
   targetRoot: string,
   pathParts: readonly string[]
-): Promise<{ type: 'missing' | TreeEntryType; contentHash?: string; mode?: number; detail?: string }> {
+): Promise<
+  | { type: 'alias'; detail: string; contentHash?: undefined; mode?: undefined }
+  | { type: 'missing' | TreeEntryType; contentHash?: string; mode?: number; detail?: string }
+> {
   let current = targetRoot;
   for (const [index, part] of pathParts.entries()) {
+    const parent = current;
     current = path.join(current, part);
+    const prefix = portablePath(pathParts.slice(0, index + 1));
     let details;
     try {
+      // As for reviewed updates, any other spelling that folds to this part is an alias, even beside
+      // the exact entry. Only the staged spelling is reported, never an on-disk name.
+      const folded = part.normalize('NFC').toLowerCase();
+      const aliases = (await readdir(parent)).filter((name) => name.normalize('NFC').toLowerCase() === folded);
+      if (aliases.length > 1 || aliases.length === 1 && aliases[0] !== part) {
+        return { type: 'alias', detail: `case or Unicode alias at ${prefix}` };
+      }
       details = await lstat(current);
+      // The host resolved a name its listing did not contain: an alias it does not list, or an entry
+      // created after the listing. Either way it is not the listed exact entry.
+      if (aliases.length === 0) {
+        return { type: 'alias', detail: `unlisted or aliased destination entry at ${prefix}` };
+      }
     } catch (error) {
       if (errorCode(error) === 'ENOENT') {
         return { type: 'missing' };
@@ -574,7 +591,10 @@ export async function buildMergePreflight(
     const stagedFile = fileMap.get(portableRelativePath);
     let action: PreflightAction;
     let detail: string;
-    if (portableRelativePath === 'liftoff.manifest.json' && destination.type !== 'missing') {
+    if (destination.type === 'alias') {
+      action = 'blocked';
+      detail = destination.detail;
+    } else if (portableRelativePath === 'liftoff.manifest.json' && destination.type !== 'missing') {
       action = 'blocked';
       detail = 'an existing Liftoff manifest must use liftoff update for managed-core maintenance, not reinitialization';
     } else if (destination.type === 'missing') {

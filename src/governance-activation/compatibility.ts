@@ -21,7 +21,14 @@ import {
   liftoffActivationPackageVersion,
   liftoffManifestArtifactVersion,
   phaseGraphSchemaVersion,
-  supersessionSchemaVersion
+  supersessionSchemaVersion,
+  isHistoricalV1ActivationIdentity,
+  isHistoricalV2ActivationIdentity,
+  isReleasedV3ActivationIdentity,
+  type HistoricalV1ActivationIdentity,
+  type HistoricalV2ActivationIdentity,
+  type ReleasedV3ActivationIdentity,
+  type ReleasedActivationIdentity
 } from '../domain/governance/policy/identity.js';
 import type {
   ActivationIdentity,
@@ -30,6 +37,10 @@ import type {
   PhaseId
 } from '../domain/governance/activation/types.js';
 import { phaseIds } from '../domain/governance/activation/types.js';
+import type { ActivationIdentityFieldsV1 } from '../domain/governance/activation/record-contracts.js';
+import { releasedV3CompatibilityContract } from './released-managed-metadata.js';
+import { historyPathParts } from './history-contracts.js';
+import { assertSafeHistoricalRecord } from './historical-safety.js';
 
 export const governanceCompatibilitySchemaVersion = compatibilityMetadataSchemaVersion;
 export const minimumLiftoffForManifestV7 = '0.10.0' as const;
@@ -137,6 +148,51 @@ export type CurrentGovernanceCompatibilityMetadata = Omit<GovernanceCompatibilit
     successorMigrations: readonly ActivationSuccessorMigration[];
   };
 };
+
+export interface ReleasedV3GovernanceCompatibilityMetadata {
+  schemaVersion: 4;
+  generatedBy: 'Mission Control Liftoff';
+  liftoffVersion: '0.12.0';
+  minimumLiftoffVersions: { manifestWriteVersion7: '0.10.0'; remedy: string };
+  manifest: {
+    readVersions: readonly number[];
+    writeVersion: 7;
+    hashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash';
+  };
+  activation: {
+    currentCompatibleTuples: readonly ReleasedV3ActivationIdentity[];
+    historicalReadability: {
+      tuples: readonly (HistoricalV1ActivationIdentity | HistoricalV2ActivationIdentity)[];
+      readers: readonly ['activation-v1', 'activation-v2'];
+      execution: 'diagnostic-only';
+      migration: 'explicit-successor-preserve-bytes';
+    };
+    recognizedGraphHashes: readonly string[];
+    graphMappings: readonly [];
+    historicalStateMigrations: readonly [];
+    successorMigrations: readonly ((
+      | { id: 'activation-v1-to-v3'; fromIdentity: HistoricalV1ActivationIdentity }
+      | { id: 'activation-v2-to-v3'; fromIdentity: HistoricalV2ActivationIdentity }
+    ) & {
+      toIdentity: ReleasedV3ActivationIdentity;
+      strategy: 'preserve-history-revalidate';
+      historySchemaVersion: 1;
+      journalSchemaVersion: 1;
+    })[];
+    unsupportedRemedy: string;
+  };
+  managedCore: {
+    logicalNameAllowlist: readonly string[];
+    pathAllowlist: readonly (readonly string[])[];
+    updateInventory: readonly ManagedCompatibilityInventoryEntry[];
+    validation: {
+      strictJson: true;
+      crossPlatformPathParts: true;
+      noSetupSkillVersion: true;
+      checkModeWritesBytes: 0;
+    };
+  };
+}
 
 const identityFields = [
   'liftoffVersion',
@@ -339,8 +395,8 @@ function numberField(value: Record<string, unknown>, key: string, label: string)
 }
 
 function assertIdentity(
-  actual: ActivationIdentity,
-  expected: ActivationIdentity,
+  actual: ActivationIdentityFieldsV1,
+  expected: ActivationIdentityFieldsV1,
   label: string
 ): void {
   for (const field of identityFields) {
@@ -453,6 +509,67 @@ export function validateGovernanceCompatibilityMetadata(
     agents?: readonly CodingAgentId[];
   }
 ): GovernanceCompatibilityMetadata {
+  const parsed = readCompatibilityMetadata(value, 'current', expected);
+  if (parsed.kind !== 'current') throw new Error('Current compatibility reader selected another contract.');
+  return parsed.metadata;
+}
+
+export function validateReleasedV3CompatibilityMetadata(value: unknown): ReleasedV3GovernanceCompatibilityMetadata {
+  assertSafeHistoricalRecord(value, 'released v3 compatibility');
+  const parsed = readCompatibilityMetadata(value, 'released-v3');
+  if (parsed.kind !== 'released-v3') throw new Error('Released compatibility reader selected another contract.');
+  for (const parts of parsed.metadata.managedCore.pathAllowlist) historyPathParts(parts, 'compatibility.managedCore.pathAllowlist');
+  for (const entry of parsed.metadata.managedCore.updateInventory) historyPathParts(entry.pathParts, 'compatibility.managedCore.updateInventory.pathParts');
+  return parsed.metadata;
+}
+
+function compatibilityContract(kind: 'current' | 'released-v3') {
+  if (kind === 'released-v3') return releasedV3CompatibilityContract;
+  return {
+    schemaVersion: governanceCompatibilitySchemaVersion,
+    liftoffVersion: liftoffActivationPackageVersion,
+    minimumManifestWriter: minimumLiftoffForManifestV7,
+    manifestReadVersions: supportedManifestReadVersions,
+    manifestWriteVersion: liftoffManifestArtifactVersion,
+    currentIdentity: currentActivationIdentity,
+    graphHash: canonicalPhaseGraphHash,
+    historicalIdentities: historicalActivationIdentities,
+    readers: ['activation-v1', 'activation-v2'] as const,
+    logicalInventories: managedCoreLogicalNameInventories,
+    managedMetadata: [...managedCoreArtifactPaths].map(([logicalName, pathParts]) => ({ logicalName, pathParts }))
+  };
+}
+
+function releasedMetadataIdentity(value: unknown, label: string): ReleasedActivationIdentity {
+  if (isHistoricalV1ActivationIdentity(value) || isHistoricalV2ActivationIdentity(value) || isReleasedV3ActivationIdentity(value)) {
+    return { ...value };
+  }
+  throw new Error(`${label} must be an exact released v1, v2 or v3 activation identity.`);
+}
+
+function assertReleasedIdentity(actual: ReleasedActivationIdentity, expected: ActivationIdentityFieldsV1, label: string): void {
+  for (const [field, value] of Object.entries(expected)) {
+    if (!Object.hasOwn(actual, field) || record(actual, label)[field] !== value) {
+      throw new Error(`${label}.${field} expected ${JSON.stringify(value)}, found ${JSON.stringify(record(actual, label)[field])}.`);
+    }
+  }
+}
+
+type CompatibilityRead =
+  | { kind: 'current'; metadata: GovernanceCompatibilityMetadata }
+  | { kind: 'released-v3'; metadata: ReleasedV3GovernanceCompatibilityMetadata };
+
+function readCompatibilityMetadata(
+  value: unknown,
+  kind: 'current' | 'released-v3',
+  expected?: Parameters<typeof validateGovernanceCompatibilityMetadata>[1]
+): CompatibilityRead {
+  const contract = compatibilityContract(kind);
+  const readIdentity = kind === 'current' ? activationIdentity : releasedMetadataIdentity;
+  const checkIdentity = (actual: ActivationIdentityFieldsV1, declared: ActivationIdentityFieldsV1, label: string) => {
+    if (kind === 'current') assertIdentity(actual, declared, label);
+    else assertReleasedIdentity(releasedMetadataIdentity(actual, label), declared, label);
+  };
   const item = exact(value, [
     'schemaVersion',
     'generatedBy',
@@ -463,26 +580,29 @@ export function validateGovernanceCompatibilityMetadata(
     'managedCore'
   ], 'compatibility');
   const schemaVersion = numberField(item, 'schemaVersion', 'compatibility');
-  if (![2, 3, governanceCompatibilitySchemaVersion].includes(schemaVersion)) {
-    throw new Error(`compatibility.schemaVersion must be 2, 3, or ${governanceCompatibilitySchemaVersion}; historical metadata requires its version-specific reader.`);
+  if (kind === 'released-v3' ? schemaVersion !== contract.schemaVersion : ![2, 3, contract.schemaVersion].includes(schemaVersion)) {
+    if (kind === 'released-v3') throw new Error('compatibility.schemaVersion must be 4 for the released v3 contract.');
+    throw new Error(`compatibility.schemaVersion must be 2, 3, or ${contract.schemaVersion}; historical metadata requires its version-specific reader.`);
   }
+  const namedReaders = kind === 'released-v3' || schemaVersion === contract.schemaVersion;
+  const hasSuccessors = kind === 'released-v3' || schemaVersion === 3 || schemaVersion === contract.schemaVersion;
   if (item.generatedBy !== 'Mission Control Liftoff') {
     throw new Error('compatibility.generatedBy must be Mission Control Liftoff.');
   }
-  if (item.liftoffVersion !== liftoffActivationPackageVersion) {
-    throw new Error(`compatibility.liftoffVersion must be ${liftoffActivationPackageVersion}.`);
+  if (item.liftoffVersion !== contract.liftoffVersion) {
+    throw new Error(`compatibility.liftoffVersion must be ${contract.liftoffVersion}.`);
   }
   const minimum = exact(item.minimumLiftoffVersions, ['manifestWriteVersion7', 'remedy'], 'compatibility.minimumLiftoffVersions');
-  if (minimum.manifestWriteVersion7 !== minimumLiftoffForManifestV7) {
-    throw new Error(`compatibility.minimumLiftoffVersions.manifestWriteVersion7 must be ${minimumLiftoffForManifestV7}.`);
+  if (minimum.manifestWriteVersion7 !== contract.minimumManifestWriter) {
+    throw new Error(`compatibility.minimumLiftoffVersions.manifestWriteVersion7 must be ${contract.minimumManifestWriter}.`);
   }
   const manifest = exact(item.manifest, ['readVersions', 'writeVersion', 'hashAuthority'], 'compatibility.manifest');
   const readVersions = numberArray(manifest.readVersions, 'compatibility.manifest.readVersions');
-  if (readVersions.join(',') !== supportedManifestReadVersions.join(',')) {
-    throw new Error(`compatibility.manifest.readVersions must be ${supportedManifestReadVersions.join(', ')}.`);
+  if (readVersions.join(',') !== contract.manifestReadVersions.join(',')) {
+    throw new Error(`compatibility.manifest.readVersions must be ${contract.manifestReadVersions.join(', ')}.`);
   }
-  if (manifest.writeVersion !== liftoffManifestArtifactVersion) {
-    throw new Error(`compatibility.manifest.writeVersion must be ${liftoffManifestArtifactVersion}.`);
+  if (manifest.writeVersion !== contract.manifestWriteVersion) {
+    throw new Error(`compatibility.manifest.writeVersion must be ${contract.manifestWriteVersion}.`);
   }
   if (manifest.hashAuthority !== 'liftoff.manifest.json managedArtifacts[].contentHash') {
     throw new Error('compatibility.manifest.hashAuthority must be liftoff.manifest.json managedArtifacts[].contentHash.');
@@ -493,22 +613,22 @@ export function validateGovernanceCompatibilityMetadata(
     'recognizedGraphHashes',
     'graphMappings',
     'historicalStateMigrations',
-    ...(schemaVersion >= 3 ? ['successorMigrations'] : []),
+    ...(hasSuccessors ? ['successorMigrations'] : []),
     'unsupportedRemedy'
   ], 'compatibility.activation');
   const historical = exact(activation.historicalReadability, [
     'tuples',
-    ...(schemaVersion >= 4 ? ['readers'] : ['activationContractVersion', 'activationStateSchemaVersion', 'evidenceHeaderSchemaVersion']),
+    ...(namedReaders ? ['readers'] : ['activationContractVersion', 'activationStateSchemaVersion', 'evidenceHeaderSchemaVersion']),
     'execution',
     'migration'
   ], 'compatibility.activation.historicalReadability');
-  if (!Array.isArray(historical.tuples) || historical.tuples.length !== historicalActivationIdentities.length) throw new Error('Historical diagnostic identity inventory differs from the packaged known history.');
-  for (const [index, identity] of historicalActivationIdentities.entries()) {
-    assertIdentity(activationIdentity(historical.tuples[index], `compatibility.activation.historicalReadability.tuples[${index}]`),
+  if (!Array.isArray(historical.tuples) || historical.tuples.length !== contract.historicalIdentities.length) throw new Error('Historical diagnostic identity inventory differs from the packaged known history.');
+  for (const [index, identity] of contract.historicalIdentities.entries()) {
+    checkIdentity(readIdentity(historical.tuples[index], `compatibility.activation.historicalReadability.tuples[${index}]`),
       identity, `compatibility.activation.historicalReadability.tuples[${index}]`);
   }
   const historicalMigration = schemaVersion === 2 ? 'unsupported-preserve-bytes' : 'explicit-successor-preserve-bytes';
-  if ((schemaVersion >= 4 && stringArray(historical.readers, 'compatibility.activation.historicalReadability.readers').join(',') !== 'activation-v1,activation-v2') ||
+  if ((namedReaders && stringArray(historical.readers, 'compatibility.activation.historicalReadability.readers').join(',') !== contract.readers.join(',')) ||
     historical.execution !== 'diagnostic-only' ||
     historical.migration !== historicalMigration) {
     throw new Error('Historical activation v1/v2 must remain diagnostic-only with exact declared readers and successor lanes.');
@@ -516,19 +636,29 @@ export function validateGovernanceCompatibilityMetadata(
   if (!Array.isArray(activation.currentCompatibleTuples)) {
     throw new Error('compatibility.activation.currentCompatibleTuples must be an array.');
   }
-  const currentTuples = activation.currentCompatibleTuples.map((entry, index) =>
-    activationIdentity(entry, `compatibility.activation.currentCompatibleTuples[${index}]`)
-  );
-  if (currentTuples.length !== 1) {
+  const currentTuples: ActivationIdentity[] = [];
+  const parsedTuples = activation.currentCompatibleTuples.map((entry, index) => {
+    const label = `compatibility.activation.currentCompatibleTuples[${index}]`;
+    if (kind === 'current') {
+      const identity = activationIdentity(entry, label);
+      currentTuples.push(identity);
+      return identity;
+    }
+    return releasedMetadataIdentity(entry, label);
+  });
+  if (parsedTuples.length !== 1) {
     throw new Error('compatibility.activation.currentCompatibleTuples must contain exactly the current tuple.');
   }
-  assertIdentity(currentTuples[0]!, currentActivationIdentity, 'compatibility.activation.currentCompatibleTuples[0]');
+  checkIdentity(parsedTuples[0]!, contract.currentIdentity, 'compatibility.activation.currentCompatibleTuples[0]');
   const recognizedGraphHashes = stringArray(activation.recognizedGraphHashes, 'compatibility.activation.recognizedGraphHashes');
-  if (recognizedGraphHashes.length !== 1 || recognizedGraphHashes[0] !== canonicalPhaseGraphHash) {
-    throw new Error(`compatibility.activation.recognizedGraphHashes must contain only ${canonicalPhaseGraphHash}.`);
+  if (recognizedGraphHashes.length !== 1 || recognizedGraphHashes[0] !== contract.graphHash) {
+    throw new Error(`compatibility.activation.recognizedGraphHashes must contain only ${contract.graphHash}.`);
   }
   if (!Array.isArray(activation.graphMappings)) {
     throw new Error('compatibility.activation.graphMappings must be an array.');
+  }
+  if (kind === 'released-v3' && activation.graphMappings.length !== 0) {
+    throw new Error('Project-edited compatibility metadata cannot introduce graph mappings.');
   }
   const graphMappings = activation.graphMappings.map((entry, index) =>
     graphMapping(entry, `compatibility.activation.graphMappings[${index}]`)
@@ -538,6 +668,9 @@ export function validateGovernanceCompatibilityMetadata(
   }
   if (!Array.isArray(activation.historicalStateMigrations)) {
     throw new Error('compatibility.activation.historicalStateMigrations must be an array.');
+  }
+  if (kind === 'released-v3' && activation.historicalStateMigrations.length !== 0) {
+    throw new Error('Project-edited compatibility metadata cannot introduce in-place state migrations.');
   }
   const historicalStateMigrations = activation.historicalStateMigrations.map((entry, index): HistoricalActivationStateMigration => {
     const migration = exact(entry, [
@@ -580,8 +713,9 @@ export function validateGovernanceCompatibilityMetadata(
     throw new Error('Project-edited compatibility metadata cannot introduce in-place state migrations.');
   }
   const successorMigrations: ActivationSuccessorMigration[] = [];
-  if (schemaVersion >= 3) {
-    const expectedMigrations = packagedActivationSuccessorMigrations();
+  if (hasSuccessors) {
+    const expectedMigrations = kind === 'released-v3'
+      ? releasedV3CompatibilityContract.successorMigrations : packagedActivationSuccessorMigrations();
     if (!Array.isArray(activation.successorMigrations) ||
       activation.successorMigrations.length !== expectedMigrations.length) {
       throw new Error('compatibility.activation.successorMigrations must match the packaged migration inventory.');
@@ -595,11 +729,22 @@ export function validateGovernanceCompatibilityMetadata(
         migration.historySchemaVersion !== 1 || migration.journalSchemaVersion !== 1) {
         throw new Error(`${label} does not match the packaged history-preserving successor contract.`);
       }
-      assertIdentity(activationIdentity(migration.fromIdentity, `${label}.fromIdentity`),
+      const currentFrom = kind === 'current' ? activationIdentity(migration.fromIdentity, `${label}.fromIdentity`) : undefined;
+      checkIdentity(currentFrom ?? releasedMetadataIdentity(migration.fromIdentity, `${label}.fromIdentity`),
         expectedMigration.fromIdentity, `${label}.fromIdentity`);
-      assertIdentity(activationIdentity(migration.toIdentity, `${label}.toIdentity`),
+      const currentTo = kind === 'current' ? activationIdentity(migration.toIdentity, `${label}.toIdentity`) : undefined;
+      checkIdentity(currentTo ?? releasedMetadataIdentity(migration.toIdentity, `${label}.toIdentity`),
         expectedMigration.toIdentity, `${label}.toIdentity`);
-      successorMigrations.push(expectedMigration);
+      if (currentFrom && currentTo) {
+        successorMigrations.push({
+          id: expectedMigration.id,
+          fromIdentity: currentFrom,
+          toIdentity: currentTo,
+          strategy: expectedMigration.strategy,
+          historySchemaVersion: expectedMigration.historySchemaVersion,
+          journalSchemaVersion: expectedMigration.journalSchemaVersion
+        });
+      }
     }
   }
   const managedCore = exact(item.managedCore, [
@@ -634,21 +779,21 @@ export function validateGovernanceCompatibilityMetadata(
     }
   }
   const emptyInventory = logicalNameAllowlist.length === 0 && pathAllowlist.length === 0 && updateInventory.length === 0;
-  if (!emptyInventory && !managedCoreLogicalNameInventories.some((names) =>
+  if (!emptyInventory && !contract.logicalInventories.some((names) =>
     logicalNameAllowlist.join('\0') === names.join('\0')
   )) {
     throw new Error('compatibility.managedCore.logicalNameAllowlist is not an exact supported current or historical managed-core inventory.');
   }
-  const applicableIntegrations = expected?.agents === undefined ? undefined :
+  const applicableIntegrations = kind !== 'current' || expected?.agents === undefined ? undefined :
     new Set<string>(expected.agents.flatMap((agent) => {
       const integration = governanceAgentIntegrations[agent];
       return [integration.setup.logicalName, integration.assessment.logicalName, integration.repair.logicalName];
     }));
-  const integrationNames = new Set<string>(Object.values(governanceAgentIntegrations).flatMap((integration) =>
+  const integrationNames = new Set<string>(kind === 'current' ? Object.values(governanceAgentIntegrations).flatMap((integration) =>
     [integration.setup.logicalName, integration.assessment.logicalName, integration.repair.logicalName]
-  ));
+  ) : []);
   for (const entry of updateInventory) {
-    const expectedPath = managedCoreArtifactPaths.get(entry.logicalName);
+    const expectedPath = contract.managedMetadata.find(file => file.logicalName === entry.logicalName)?.pathParts;
     if (!logicalNameAllowlist.includes(entry.logicalName) || !expectedPath ||
       expectedPath.join('\0') !== entry.pathParts.join('\0')) {
       throw new Error(`compatibility.managedCore.updateInventory has invalid exact managed identity ${entry.logicalName}.`);
@@ -678,24 +823,53 @@ export function validateGovernanceCompatibilityMetadata(
   ) {
     throw new Error('compatibility.managedCore.validation must require strict JSON, path parts, no setup-skill version, and zero-byte check mode.');
   }
-  return {
+  const common = {
+    generatedBy: 'Mission Control Liftoff' as const,
+    remedy: stringField(minimum, 'remedy', 'compatibility.minimumLiftoffVersions'),
+    managedCore: {
+      logicalNameAllowlist, pathAllowlist, updateInventory,
+      validation: { strictJson: true, crossPlatformPathParts: true, noSetupSkillVersion: true, checkModeWritesBytes: 0 } as const
+    }
+  };
+  if (kind === 'released-v3') {
+    const released = releasedV3CompatibilityContract;
+    return { kind, metadata: {
+      schemaVersion: released.schemaVersion,
+      generatedBy: common.generatedBy,
+      liftoffVersion: released.liftoffVersion,
+      minimumLiftoffVersions: { manifestWriteVersion7: released.minimumManifestWriter, remedy: common.remedy },
+      manifest: {
+        readVersions, writeVersion: released.manifestWriteVersion,
+        hashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
+      },
+      activation: {
+        currentCompatibleTuples: [{ ...released.currentIdentity }],
+        historicalReadability: {
+          tuples: released.historicalIdentities.map(identity => ({ ...identity })),
+          readers: [...released.readers],
+          execution: 'diagnostic-only', migration: 'explicit-successor-preserve-bytes'
+        },
+        recognizedGraphHashes, graphMappings: [], historicalStateMigrations: [],
+        successorMigrations: structuredClone(released.successorMigrations),
+        unsupportedRemedy: stringField(activation, 'unsupportedRemedy', 'compatibility.activation')
+      },
+      managedCore: common.managedCore
+    } };
+  }
+  return { kind, metadata: {
     schemaVersion,
     generatedBy: 'Mission Control Liftoff',
     liftoffVersion: liftoffActivationPackageVersion,
-    minimumLiftoffVersions: {
-      manifestWriteVersion7: minimumLiftoffForManifestV7,
-      remedy: stringField(minimum, 'remedy', 'compatibility.minimumLiftoffVersions')
-    },
+    minimumLiftoffVersions: { manifestWriteVersion7: minimumLiftoffForManifestV7, remedy: common.remedy },
     manifest: {
-      readVersions,
-      writeVersion: liftoffManifestArtifactVersion,
+      readVersions, writeVersion: liftoffManifestArtifactVersion,
       hashAuthority: 'liftoff.manifest.json managedArtifacts[].contentHash'
     },
     activation: {
       currentCompatibleTuples: currentTuples,
       historicalReadability: {
         tuples: historicalActivationIdentities.map(stableIdentity),
-        ...(schemaVersion >= 4 ? { readers: ['activation-v1', 'activation-v2'] } : {
+        ...(namedReaders ? { readers: ['activation-v1', 'activation-v2'] } : {
           activationContractVersion: 1,
           activationStateSchemaVersion: 1,
           evidenceHeaderSchemaVersion: 1
@@ -705,19 +879,9 @@ export function validateGovernanceCompatibilityMetadata(
       recognizedGraphHashes,
       graphMappings,
       historicalStateMigrations,
-      ...(schemaVersion >= 3 ? { successorMigrations } : {}),
+      ...(hasSuccessors ? { successorMigrations } : {}),
       unsupportedRemedy: stringField(activation, 'unsupportedRemedy', 'compatibility.activation')
     },
-    managedCore: {
-      logicalNameAllowlist,
-      pathAllowlist,
-      updateInventory,
-      validation: {
-        strictJson: true,
-        crossPlatformPathParts: true,
-        noSetupSkillVersion: true,
-        checkModeWritesBytes: 0
-      }
-    }
-  };
+    managedCore: common.managedCore
+  } };
 }

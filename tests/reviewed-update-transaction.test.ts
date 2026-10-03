@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash, randomUUID } from 'node:crypto';
+import { constants } from 'node:fs';
 import { chmod, lstat, mkdir, readFile, readdir, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -31,6 +32,7 @@ const faults = vi.hoisted(() => ({
   journalWrite: false, targetWrite: false, targetRename: false, retirement: false,
   intentAppend: false, commitAppend: false, journalCleanup: false, modeChange: false
 }));
+const deniedReads = vi.hoisted(() => new Map<string, 'EACCES' | 'EPERM'>());
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
@@ -44,8 +46,12 @@ vi.mock('node:fs/promises', async (importOriginal) => {
       return actual.chmod(...args);
     },
     open: async (...args: Parameters<typeof actual.open>) => {
-      const handle = await actual.open(...args);
       const name = String(args[0]);
+      const code = deniedReads.get(name);
+      if (code && typeof args[1] === 'number' && (args[1] & (constants.O_WRONLY | constants.O_RDWR)) === 0) {
+        throw Object.assign(new Error(`${code}: injected read denied, open '${name}'`), { code, path: name, syscall: 'open' });
+      }
+      const handle = await actual.open(...args);
       if (name.endsWith('reviewed-update-transaction.json') || name.endsWith('-target.tmp')) {
         const write = handle.writeFile.bind(handle);
         vi.spyOn(handle, 'writeFile').mockImplementation(async (content, options) => {
@@ -164,6 +170,7 @@ async function migrationFixture() {
 
 async function interrupted(phase: ReviewedUpdateTransactionCheckpoint['phase'], index?: number, historyMode?: number) {
   const context = await migrationFixture();
+  const originalTree = await tree(context.root);
   if (historyMode !== undefined && context.mutations[0].type === 'write') context.mutations[0].mode = historyMode;
   const moduleUrl = new URL('../src/adapters/filesystem/reviewed-update-transaction.ts', import.meta.url).href;
   const sourceRoot = new URL('../src/', import.meta.url).href;
@@ -219,11 +226,12 @@ async function interrupted(phase: ReviewedUpdateTransactionCheckpoint['phase'], 
   expect(child.status, child.stderr).toBe(73);
   const lock = await projectMutationLockPath(context.root);
   expect(JSON.parse(await readFile(lock, 'utf8')).pid).toBe(child.pid);
-  return { ...context, lock };
+  return { ...context, lock, originalTree };
 }
 
 afterEach(async () => {
   for (const name of Object.keys(faults) as (keyof typeof faults)[]) faults[name] = false;
+  deniedReads.clear();
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
@@ -908,5 +916,200 @@ describe('untrusted recovery journals and no-write inspection', () => {
       release.resolve();
       await holder;
     }
+  });
+});
+
+describe('denied reads and external commit seal failures', () => {
+  it('rejects a denied protected-source read without treating it as missing or writing approval', async () => {
+    const { root, parent, store } = await fixture();
+    const sourceParts = ['protected', 'source.bin'];
+    const sourcePath = path.join(root, ...sourceParts);
+    await put(root, sourceParts, raw, 0o640);
+    const source = await captureProjectFileSnapshot(root, sourceParts);
+    const before = await tree(parent);
+    const onBeforeMutation = vi.fn();
+    deniedReads.set(sourcePath, 'EACCES');
+
+    await expect(applyReviewedUpdateTransaction(root, [
+      { type: 'write', pathParts: ['destination.bin'], content: raw }
+    ], {
+      planFingerprint: fingerprint, approvalStore: store, preconditions: [source], onBeforeMutation
+    })).rejects.toMatchObject({ code: 'EACCES', path: sourcePath, syscall: 'open' });
+
+    expect(await tree(parent)).toEqual(before);
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.remove).not.toHaveBeenCalled();
+    expect(onBeforeMutation).not.toHaveBeenCalled();
+    expect(await inspectReviewedUpdateTransaction(root, { approvalStore: store }))
+      .toMatchObject({ status: 'absent', committed: false });
+  });
+
+  it('preflights a denied later destination before writing an earlier safe destination', async () => {
+    const { root, parent, store } = await fixture();
+    const destination = path.join(root, 'later.bin');
+    await put(root, ['later.bin'], raw, 0o750);
+    const before = await tree(parent);
+    const onBeforeMutation = vi.fn();
+    deniedReads.set(destination, 'EPERM');
+
+    await expect(applyReviewedUpdateTransaction(root, [
+      { type: 'write', pathParts: ['first.bin'], content: 'must not be written' },
+      { type: 'write', pathParts: ['later.bin'], content: 'must not replace source bytes' }
+    ], {
+      planFingerprint: fingerprint, approvalStore: store, onBeforeMutation
+    })).rejects.toMatchObject({ code: 'EPERM', path: destination, syscall: 'open' });
+
+    expect(await tree(parent)).toEqual(before);
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.remove).not.toHaveBeenCalled();
+    expect(onBeforeMutation).not.toHaveBeenCalled();
+    expect(await inspectReviewedUpdateTransaction(root, { approvalStore: store }))
+      .toMatchObject({ status: 'absent', committed: false });
+  });
+
+  it('reports denied journal inspection as blocked while preserving exact progress and authority', async () => {
+    const context = await interrupted('after-mutation', 3);
+    await unlink(context.lock);
+    const before = await tree(context.parent);
+    expect(await inspectReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({ status: 'interrupted', committed: false });
+    expect(await readdir(context.store.directory)).not.toHaveLength(0);
+    deniedReads.set(context.journal, 'EACCES');
+
+    expect(await inspectReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({
+        status: 'blocked', committed: false,
+        reason: expect.stringContaining(`EACCES: injected read denied, open '${context.journal}'`)
+      });
+
+    expect(await tree(context.parent)).toEqual(before);
+    expect(context.store.write).not.toHaveBeenCalled();
+    expect(context.store.remove).not.toHaveBeenCalled();
+  });
+
+  it('retains the journal and authority when a recovery destination cannot be read, then retries exactly once', async () => {
+    const context = await interrupted('after-mutation', 3);
+    await unlink(context.lock);
+    const destination = path.join(context.root, 'liftoff.manifest.json');
+    const before = await tree(context.parent);
+    expect(await readFile(destination, 'utf8')).toBe('v2 manifest\n');
+    deniedReads.set(destination, 'EACCES');
+
+    expect(await recoverReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({
+        status: 'blocked', committed: false, cleanupFailures: [],
+        rollbackFailures: [expect.stringContaining(`EACCES: injected read denied, open '${destination}'`)]
+      });
+    expect(await tree(context.parent)).toEqual(before);
+    expect(context.store.write).not.toHaveBeenCalled();
+    expect(context.store.remove).not.toHaveBeenCalled();
+
+    deniedReads.delete(destination);
+    expect(await inspectReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({ status: 'interrupted', committed: false });
+    expect(await recoverReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({ status: 'rolled-back', committed: false, rollbackFailures: [], cleanupFailures: [] });
+    expect(await tree(context.root)).toEqual(context.originalTree);
+    expect(await readdir(context.store.directory)).toEqual([]);
+    const recovered = await tree(context.parent);
+    context.store.remove.mockClear();
+    expect(await recoverReviewedUpdateTransaction(context.root, { approvalStore: context.store }))
+      .toMatchObject({ status: 'absent', committed: false });
+    expect(await tree(context.parent)).toEqual(recovered);
+    expect(context.store.write).not.toHaveBeenCalled();
+    expect(context.store.remove).not.toHaveBeenCalled();
+  });
+
+  it('keeps the successor committed when the external commit seal persists but its acknowledgement fails', async () => {
+    const { root, parent, store, journal, mutations } = await migrationFixture();
+    const persistSeal = store.write.getMockImplementation();
+    if (!persistSeal) throw new Error('Missing fixture approval writer.');
+    let committedTree: Awaited<ReturnType<typeof tree>> | undefined;
+    const onBeforeMutation = vi.fn();
+    const commitWrite = vi.fn(async (plan: string, digest: string) => {
+      await persistSeal(plan, digest);
+      expect(await store.verify(plan, digest)).toBe(true);
+      expect(await inspectReviewedUpdateTransaction(root, { approvalStore: store }))
+        .toMatchObject({ status: 'committed', committed: true, planFingerprint: fingerprint });
+      committedTree = await tree(root);
+      throw new Error('injected commit seal acknowledgement failure');
+    });
+    const result = await applyReviewedUpdateTransaction(root, mutations, {
+      planFingerprint: fingerprint, approvalStore: store, onBeforeMutation,
+      async onCheckpoint({ phase }) {
+        if (phase !== 'before-commit') return;
+        const text = await readFile(journal, 'utf8');
+        const header = JSON.parse(text.split('\n')[0]);
+        const digest = canonicalSha256({ schemaVersion: 1, transactionDigest: header.transactionDigest, phase: 'committed' });
+        expect(text).not.toContain(canonicalJson({ phase: 'committed' }));
+        expect(await store.verify(fingerprint, digest)).toBe(false);
+        store.write.mockImplementationOnce(async (plan, requestedDigest) => {
+          expect([plan, requestedDigest]).toEqual([fingerprint, digest]);
+          await commitWrite(plan, requestedDigest);
+        });
+      }
+    });
+
+    expect(commitWrite).toHaveBeenCalledOnce();
+    expect(result).toMatchObject({
+      status: 'committed', committed: true, rollbackFailures: [],
+      cleanupFailures: [expect.stringContaining('injected commit seal acknowledgement failure')]
+    });
+    expect(onBeforeMutation).toHaveBeenCalledTimes(mutations.length);
+    if (!committedTree) throw new Error('Commit seal was not durably observed.');
+    delete committedTree[reviewedUpdateTransactionPathParts.join('/')];
+    expect(await tree(root)).toEqual(committedTree);
+    expect(await readdir(store.directory)).toEqual([]);
+    const recovered = await tree(parent);
+    store.write.mockClear();
+    store.remove.mockClear();
+    expect(await recoverReviewedUpdateTransaction(root, { approvalStore: store }))
+      .toMatchObject({ status: 'absent', committed: false });
+    expect(await tree(parent)).toEqual(recovered);
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.remove).not.toHaveBeenCalled();
+  });
+
+  it('rolls back attributable bytes when the external commit seal fails before persistence', async () => {
+    const { root, parent, store, journal, mutations } = await migrationFixture();
+    const before = await tree(root);
+    let commitDigest: string | undefined;
+    const commitWrite = vi.fn(async () => {
+      throw new Error('injected commit seal persistence failure');
+    });
+    const onBeforeMutation = vi.fn();
+    await expect(applyReviewedUpdateTransaction(root, mutations, {
+      planFingerprint: fingerprint, approvalStore: store, onBeforeMutation,
+      async onCheckpoint({ phase }) {
+        if (phase !== 'before-commit') return;
+        const header = JSON.parse((await readFile(journal, 'utf8')).split('\n')[0]);
+        commitDigest = canonicalSha256({ schemaVersion: 1, transactionDigest: header.transactionDigest, phase: 'committed' });
+        expect(await store.verify(fingerprint, commitDigest)).toBe(false);
+        store.write.mockImplementationOnce(async (plan, digest) => {
+          expect([plan, digest]).toEqual([fingerprint, commitDigest]);
+          await commitWrite();
+        });
+      }
+    })).rejects.toMatchObject({
+      name: 'ReviewedUpdateTransactionError', committed: false, rollbackFailures: [],
+      message: expect.stringContaining('injected commit seal persistence failure')
+    });
+
+    expect(commitWrite).toHaveBeenCalledOnce();
+    expect(onBeforeMutation).toHaveBeenCalledTimes(mutations.length);
+    if (!commitDigest) throw new Error('The commit seal boundary was not reached.');
+    expect(await store.verify(fingerprint, commitDigest)).toBe(false);
+    expect(await tree(root)).toEqual(before);
+    expect(await readdir(store.directory)).toEqual([]);
+    expect(await inspectReviewedUpdateTransaction(root, { approvalStore: store }))
+      .toMatchObject({ status: 'absent', committed: false });
+    const recovered = await tree(parent);
+    store.write.mockClear();
+    store.remove.mockClear();
+    expect(await recoverReviewedUpdateTransaction(root, { approvalStore: store }))
+      .toMatchObject({ status: 'absent', committed: false });
+    expect(await tree(parent)).toEqual(recovered);
+    expect(store.write).not.toHaveBeenCalled();
+    expect(store.remove).not.toHaveBeenCalled();
   });
 });

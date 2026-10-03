@@ -8,6 +8,7 @@ import { phaseIds } from '../domain/governance/activation/types.js';
 import { validateGraphReconciliationRecord } from '../domain/governance/activation/validators.js';
 import { canonicalSha256 } from '../domain/governance/activation/canonical-json.js';
 import { isHistoricalActivationIdentity } from '../domain/governance/policy/identity.js';
+import { assertGraphMappingDigests } from '../domain/governance/activation/source-values.js';
 
 export interface GraphReconciliationResult {
   record: GraphReconciliationRecord;
@@ -40,14 +41,7 @@ function assertMappingMatchesGraph(
 ): void {
   const fromDigests = phaseContractDigests(fromGraph);
   const toDigests = phaseContractDigests(toGraph);
-  for (const mapping of record.phaseMappings) {
-    if (fromDigests[mapping.phaseId] !== mapping.fromContractDigest) {
-      throw new Error(`graphReconciliation phase ${mapping.phaseId} fromContractDigest does not match the recognized source graph.`);
-    }
-    if (toDigests[mapping.phaseId] !== mapping.toContractDigest) {
-      throw new Error(`graphReconciliation phase ${mapping.phaseId} toContractDigest does not match the recognized target graph.`);
-    }
-  }
+  assertGraphMappingDigests(record.phaseMappings, fromDigests, toDigests);
 }
 
 export function calculateGraphReconciliation(

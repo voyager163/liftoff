@@ -33,7 +33,7 @@ updates:
         update-types:
           - version-update:semver-major
   - package-ecosystem: npm
-    directory: /assets/locks/node-backend
+    directory: /assets/plugins/node-fastify/node-backend
     schedule:
       interval: weekly
     groups:
@@ -47,7 +47,7 @@ updates:
         update-types:
           - version-update:semver-major
   - package-ecosystem: npm
-    directory: /assets/locks/frontend
+    directory: /assets/templates/common/frontend
     schedule:
       interval: weekly
     groups:

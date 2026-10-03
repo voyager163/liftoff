@@ -1,3 +1,4 @@
+import { semanticPlanDigest, projectionOperation, assertProjectionDestination } from './source-values.js';
 import type { GovernanceTaskProjectionContract, LiveReadbackProvider, MutationClass, PhaseGraphNode, PhaseId, SavedTransitionPlan, TransitionOperation } from './types.js';
 import { canonicalSha256 } from './canonical-json.js';
 import { canonicalPhaseGraph } from './graph.js';
@@ -7,19 +8,10 @@ import { validateGovernanceTaskProjectionContract } from './validators.js';
 export const governanceTaskProjectionAction = 'governance.tasks.project' as const;
 
 export function taskProjectionContract(operations: readonly TransitionOperation[]): GovernanceTaskProjectionContract | undefined {
-  const projections = operations.filter((operation) => operation.actionId === governanceTaskProjectionAction);
-  if (projections.length > 1) throw new Error('A phase can project only one exact current governance task document.');
-  if (!projections.length) return undefined;
-  const operation = projections[0];
-  if (Object.keys(operation.inputs).join(',') !== 'projection') throw new Error('Task projection has no unbounded adapter inputs.');
+  const operation = projectionOperation(operations);
+  if (!operation) return undefined;
   const contract = validateGovernanceTaskProjectionContract(operation.inputs.projection);
-  if (operation.adapter !== 'local-evidence' || operation.mutationClass !== 'project-governance-tasks' ||
-    operation.remote || operation.destructive || operation.effects?.length ||
-    operation.destination.type !== 'local' || operation.destination.identity !== contract.taskPathParts.join('/') ||
-    operation.destination.pathParts?.join('/') !== contract.taskPathParts.join('/') ||
-    Object.keys(operation.destination).some((key) => !['type', 'identity', 'pathParts'].includes(key))) {
-    throw new Error('Task projection must name only its exact local checkbox destination.');
-  }
+  assertProjectionDestination(operation, contract);
   return contract;
 }
 
@@ -126,12 +118,7 @@ export interface PlanDigestInput {
 }
 
 export function planDigestFor(input: PlanDigestInput): string {
-  return canonicalSha256({
-    phaseId: input.phase.id,
-    transitionDigest: input.transitionDigest,
-    approvalPlanDigest: input.approvalPlanDigest,
-    operations: input.operations
-  });
+  return semanticPlanDigest(input);
 }
 
 const persistence = ['governance.evidence.write', 'governance.activation-state.write'];

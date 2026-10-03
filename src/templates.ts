@@ -1,8 +1,5 @@
 import { createGeneratorContext } from './generators/context.js';
-import {
-  packagedTemplateAssets,
-  type PackagedTemplateAssetContext
-} from './adapters/packaged-assets/template-assets.js';
+import type { PackagedTemplateAssetContext } from './adapters/packaged-assets/template-assets.js';
 import { packagedSupportedStack } from './adapters/packaged-assets/supported-stack.js';
 import type { GeneratorContext } from './generators/context.js';
 import type { AddArtifact } from './template-types.js';
@@ -10,10 +7,8 @@ import { addBaseArtifacts } from './generators/common/base.js';
 import { addDockerArtifacts } from './generators/containers/compose.js';
 import { addEnvironmentArtifacts } from './generators/common/environments.js';
 import { addFrontendArtifacts } from './generators/common/frontend.js';
-import { addGenAiExtensionArtifacts } from './generators/genai/index.js';
-import { addInfrastructureArtifacts } from './generators/infrastructure/azure.js';
-import { addSpecWorkflowArtifacts } from './generators/common/spec-workflow.js';
-import { addStandardStackArtifacts } from './generators/standard/index.js';
+import { boundRenderers, type BoundRenderers } from './application/project/plugin-renderers.js';
+import { builtinTemplateAssets, composeProjectPlugins } from './application/project/plugins.js';
 import type { ApiProjectPlan } from './domain/project/contracts.js';
 import { assertImmutableGeneratedContainerReferences } from './container-validation.js';
 import { buildRepositoryGovernanceArtifacts } from './repository-governance.js';
@@ -35,12 +30,15 @@ export type { AzureResourceNames } from './generators/infrastructure/names.js';
 
 export function resolveGeneratorContext(
   plan: ApiProjectPlan,
-  assets: PackagedTemplateAssetContext = packagedTemplateAssets
+  assets: PackagedTemplateAssetContext = builtinTemplateAssets()
 ): GeneratorContext {
   return createGeneratorContext(plan, assets, packagedSupportedStack);
 }
 
 export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = resolveGeneratorContext(plan)): GeneratedArtifact[] {
+  // Resolve, materialize and validate every identity before any renderer runs.
+  const composition = composeProjectPlugins(plan);
+  const renderers = boundRenderers(composition.resolution);
   const artifacts: GeneratedArtifact[] = [];
   const addProject = createArtifactAdder(artifacts, 'project', 'base');
   const addDesiredState = createArtifactAdder(artifacts, 'desired-state');
@@ -49,13 +47,13 @@ export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = re
 
   switch (plan.workload) {
     case 'genai':
-      addGenAiWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context);
+      addGenAiWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
       break;
     case 'standard':
-      addStandardWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context);
+      addStandardWorkloadArtifacts(addProject, addDesiredState, artifacts, plan, context, renderers);
       break;
   }
-  addSpecWorkflowArtifacts(addSeed, addFramework, plan);
+  renderers.renderWorkflow(addSeed, addFramework, plan);
   for (const artifact of buildRepositoryGovernanceArtifacts(plan)) {
     artifacts.push({ ...artifact, content: ensureTrailingNewline(artifact.content) });
   }
@@ -76,6 +74,8 @@ export function buildArtifacts(plan: ProjectPlan, context: GeneratorContext = re
     content: `${JSON.stringify(manifest, null, 2)}\n`
   });
 
+  // Nothing is returned, and so nothing can be written, unless every rendered identity verifies.
+  composition.verify(artifacts);
   return artifacts;
 }
 
@@ -83,32 +83,35 @@ function addGenAiWorkloadArtifacts(
   add: AddArtifact,
   addDesiredState: AddArtifact,
   artifacts: GeneratedArtifact[],
-  plan: GenAiProjectPlan, context: GeneratorContext
+  plan: GenAiProjectPlan, context: GeneratorContext,
+  renderers: BoundRenderers
 ): void {
   addBaseArtifacts(add, addDesiredState, plan, context);
-  addGenAiExtensionArtifacts(add, plan, context);
-  addApiWorkloadOperations(add, artifacts, plan, context);
+  renderers.renderGenAiStack(add, plan, context);
+  addApiWorkloadOperations(add, artifacts, plan, context, renderers);
 }
 
 function addStandardWorkloadArtifacts(
   add: AddArtifact,
   addDesiredState: AddArtifact,
   artifacts: GeneratedArtifact[],
-  plan: Extract<ProjectPlan, { workload: 'standard' }>, context: GeneratorContext
+  plan: Extract<ProjectPlan, { workload: 'standard' }>, context: GeneratorContext,
+  renderers: BoundRenderers
 ): void {
   addBaseArtifacts(add, addDesiredState, plan, context);
-  addStandardStackArtifacts(add, plan, context);
-  addApiWorkloadOperations(add, artifacts, plan, context);
+  renderers.renderStandardStack(add, plan, context);
+  addApiWorkloadOperations(add, artifacts, plan, context, renderers);
 }
 
 function addApiWorkloadOperations(
   add: AddArtifact,
   artifacts: GeneratedArtifact[],
-  plan: ApiProjectPlan, context: GeneratorContext
+  plan: ApiProjectPlan, context: GeneratorContext,
+  renderers: BoundRenderers
 ): void {
   addEnvironmentArtifacts(artifacts, plan);
   addDockerArtifacts(add, plan, context);
-  addInfrastructureArtifacts(add, artifacts, plan, context);
+  renderers.renderCloud(add, artifacts, plan, context);
 }
 
 export function partitionGeneratedArtifacts(artifacts: GeneratedArtifact[]): {

@@ -184,7 +184,7 @@ describe('registered locked preparation input and tool contracts', () => {
     const baseline = await inspectApplicationPatch(f.root, f.manifest, f.patchPath);
     expect(baseline.blockers).toEqual([]);
     const probes: CommandRunner = { run: vi.fn(async (command) => successful(command,
-      command.args.some((arg) => arg.endsWith('npm-cli.js'))
+      command.args.some((arg: string) => arg.endsWith('npm-cli.js'))
         ? baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'npm')!.version
         : baseline.verificationPolicy.toolchain.find((tool) => tool.id === 'node')!.version)) };
     const candidate = await inspectApplicationPatch(f.root, f.manifest, f.patchPath, { env, runner: probes });

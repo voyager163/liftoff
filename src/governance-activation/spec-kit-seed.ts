@@ -1,10 +1,9 @@
+import { specKitBootstrapId, specKitBootstrapPath, specKitBootstrapTaskIds, appendSpecKitDocumentIssues, appendSpecKitTaskIssues } from '../domain/governance/activation/local-check-values.js';
+export { specKitBootstrapId, specKitBootstrapPath, specKitBootstrapTaskIds };
 import { readProjectFile } from '../adapters/filesystem/project-files.js';
 import { validateFrameworkInstallation } from '../framework-validation.js';
 import type { LiftoffManifest } from '../domain/project/contracts.js';
 
-export const specKitBootstrapId = '000-liftoff-bootstrap';
-export const specKitBootstrapPath = ['specs', specKitBootstrapId] as const;
-export const specKitBootstrapTaskIds = ['B001', 'B002', 'B003', 'B004', 'B005', 'B006'] as const;
 
 export async function inspectSpecKitBootstrap(
   projectRoot: string,
@@ -20,20 +19,10 @@ export async function inspectSpecKitBootstrap(
       continue;
     }
     const text = bytes.toString('utf8');
-    if (!text.includes(`Bootstrap identity: \`${specKitBootstrapId}\``)) {
-      issues.push(`${parts.join('/')} must declare the real ${specKitBootstrapId} bootstrap identity, not a framework template.`);
-    }
-    if (name === 'spec' && !/^## Requirements\s*$/m.test(text)) issues.push('Bootstrap spec requires explicit requirements.');
-    if (name === 'plan' && (!/^## Verification\s*$/m.test(text) || !text.includes('specs/000-liftoff-bootstrap/spec.md'))) {
-      issues.push('Bootstrap plan must reference its real spec and local verification plan.');
-    }
+    appendSpecKitDocumentIssues(name, text, parts, issues);
     if (name === 'tasks') {
       tasks = text;
-      for (const id of specKitBootstrapTaskIds) {
-        if ([...text.matchAll(new RegExp(`^\\s*- \\[[ xX]\\] ${id} `, 'gm'))].length !== 1) {
-          issues.push(`Bootstrap task ${id} must occur exactly once.`);
-        }
-      }
+      appendSpecKitTaskIssues(text, issues);
     }
   }
   // Official installation state is independent of the project-owned bundle.

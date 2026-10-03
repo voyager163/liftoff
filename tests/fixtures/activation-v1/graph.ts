@@ -1,7 +1,18 @@
 import type {
-  ManagedPhaseGraph, MutationClass, PhaseGraphNode, PhaseId, LiveReadbackProvider
-} from '../../../src/domain/governance/activation/types.js';
+  ManagedPhaseGraphFieldsV2, PhaseGraphNodeFieldsV2, ReleasedLiveReadbackProviderV3 as LiveReadbackProvider
+} from '../../../src/domain/governance/activation/record-contracts.js';
+import type {
+  HistoricalPhaseId as PhaseId, HistoricalSavedTransitionPlan
+} from '../../../src/governance-activation/historical-state.js';
 import { historicalActivationIdentities } from '../../../src/domain/governance/policy/identity.js';
+
+type MutationClass = HistoricalSavedTransitionPlan['mutationClasses']['local'][number];
+type PhaseGraphNode = Omit<PhaseGraphNodeFieldsV2<PhaseId>, 'allowedMutations'> & {
+  allowedMutations: HistoricalSavedTransitionPlan['mutationClasses'];
+};
+type ManagedPhaseGraph = Omit<ManagedPhaseGraphFieldsV2<PhaseId>, 'completionGroups' | 'phases'> & {
+  phases: readonly PhaseGraphNode[];
+};
 
 // Frozen pre-v2 graph from git show 57eba97^:src/governance-activation/graph.ts.
 // Its canonical digest must equal the registered v1 graph, not the current graph.

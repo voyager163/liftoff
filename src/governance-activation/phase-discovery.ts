@@ -1,8 +1,18 @@
 import type { PhaseAdapterExecutionInput, PhaseAdapterOutcome, Phase0DiscoveryFacts } from './transition-ports.js';
-import { runCommand, commandSucceeded, commandFailure, errorMessage } from './transition-process.js';
+import { runCommand, commandSucceeded } from './transition-process.js';
 import { inspectGitRepository, reviewedPushUrl } from './phase-publication.js';
 import { githubRepositoryFromPushUrl } from '../domain/governance/activation/inputs.js';
 import { cloneState, readbackProof } from './transition-records.js';
+import type { CommandResult } from '../process-runner.js';
+
+// Fixed, actionable wording: raw CLI output and JSON parser snippets can echo provider data into persisted state.
+function discoveryReadFailure(result: CommandResult): string {
+  const reason = result.timedOut ? 'the bounded read timed out'
+    : result.errorCode ? 'GitHub CLI could not be started'
+      : 'GitHub CLI did not confirm read access';
+  return `Phase 0 GitHub read-only discovery failed: ${reason}. Check the GitHub CLI installation, approved identity, ` +
+    'and repository visibility; provider diagnostics were withheld.';
+}
 
 export async function discoverPhase0(input: PhaseAdapterExecutionInput): Promise<PhaseAdapterOutcome | null> {
   if (input.phase.id !== 'phase-0-complete') return null;
@@ -14,17 +24,17 @@ export async function discoverPhase0(input: PhaseAdapterExecutionInput): Promise
   if (!commandSucceeded(gh)) {
     return {
       status: 'blocked',
-      blocker: `Phase 0 GitHub read-only discovery failed: ${commandFailure(gh)}`,
+      blocker: discoveryReadFailure(gh),
       completedOperations: []
     };
   }
   let repo: { id?: string; nameWithOwner?: string; defaultBranchRef?: { name?: string }; isPrivate?: boolean };
   try {
     repo = JSON.parse(gh.stdout) as typeof repo;
-  } catch (error) {
+  } catch {
     return {
       status: 'blocked',
-      blocker: `Phase 0 GitHub discovery returned invalid JSON: ${errorMessage(error)}`,
+      blocker: 'Phase 0 GitHub discovery returned invalid JSON; response bytes were withheld.',
       completedOperations: []
     };
   }

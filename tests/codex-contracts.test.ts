@@ -146,8 +146,9 @@ describe('native Codex governance integrations', () => {
         'Plan saves a disclosed external preview, not approval',
         'Apply-next without `--execute` is strictly read-only',
         '--inputs <public-json-file>',
-        '--protected-stdin',
-        'operator-controlled protected channel',
+        'Credential enrollment is currently unavailable pending independently verified provider wiring',
+        'productionExecutorAvailable: true', 'no blocker, actual readiness and independent approval',
+        'approve/apply-next refuse unavailable capabilities',
         'nextActions', 'command.executable', 'command.args', 'cwd', 'scope', 'approvalRequired',
         'Never automatically approve a plan',
         'approval does not execute',
@@ -159,6 +160,8 @@ describe('native Codex governance integrations', () => {
       ]) expect(content).toContain(fragment);
       expect(content).not.toContain('Status, plan, and resume are read-only');
       expect(content).not.toContain('supported secure reference');
+      expect(content).not.toContain('--protected-stdin');
+      expect(content).not.toContain('operator-controlled protected channel');
     }
   });
 
@@ -211,7 +214,7 @@ describe('native Codex governance integrations', () => {
       expect(artifact.logicalName).not.toContain('claude');
     }
     expect(setup.content.match(/`(liftoff [^`]+)`/)?.[1])
-      .toBe('liftoff governance status --scope local --json');
+      .toBe('liftoff capabilities --json');
     for (const fragment of [
       'command.executable', 'command.args', 'cwd', 'approvalRequired',
       'nextPlannablePhase', 'nextReadyPhase', 'post-operation readiness',
@@ -220,13 +223,16 @@ describe('native Codex governance integrations', () => {
       'liftoff governance apply-next --scope local --json --execute',
       'liftoff governance plan --scope activation --json',
       'Never automatically approve a plan',
-      'private operator channel', 'local-only request', 'declined later authority',
-      'disclosed external preview', '--inputs <public-json-file>', '--protected-stdin',
+      'Credential enrollment is currently unavailable', 'local-only request', 'declined later authority',
+      'disclosed external preview', '--inputs <public-json-file>', 'approve/apply-next refuse unavailable capabilities',
       'exit 2 means consistent but', 'indeterminate readiness',
       'Do not repeat an unchanged failure', 'actual deployment',
       'matching live enforcement', 'future'
     ]) expect(setup.content).toContain(fragment);
+    expect(setup.content).not.toContain('private operator channel');
+    expect(setup.content).not.toContain('--protected-stdin');
     expect([...assessment.content.matchAll(/`(liftoff [^`]+)`/g)].map((match) => match[1])).toEqual([
+      'liftoff capabilities --json', 'liftoff --help',
       'liftoff governance assess --json', 'liftoff governance assess --live --json'
     ]);
     expect(assessment.content).toContain('Only when the developer explicitly requests live reads');

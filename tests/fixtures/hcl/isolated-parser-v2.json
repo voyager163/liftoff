@@ -1,0 +1,748 @@
+{
+  "kind": "liftoff-isolated-hcl-recorded-validator-specimens",
+  "schemaVersion": 1,
+  "provenance": {
+    "runtime": {
+      "platform": "darwin",
+      "arch": "arm64",
+      "node": "24.21.0"
+    },
+    "parserPackage": "@cdktf/hcl2json",
+    "parserPackageVersion": "0.21.0",
+    "protocolVersion": 2,
+    "policyDigest": "72e2ce845c9432a9b26677f1e97b15b6ba4ad72a65006f88998e51c57879142b",
+    "helperSha256": "658d49054bbf41adba16b6ee92b659ef1675701bac20f7eebb9685ff4305b4fa"
+  },
+  "use": "Pure validator unit data only; never supplied to parser/planner. Native qualification freshly compares each specimen.",
+  "specimens": [
+    {
+      "id": "literal-file",
+      "request": {
+        "schemaVersion": 2,
+        "policyDigest": "72e2ce845c9432a9b26677f1e97b15b6ba4ad72a65006f88998e51c57879142b",
+        "expressionAllowance": 2048,
+        "replyAllowance": 8388608,
+        "documents": [
+          {
+            "id": "0",
+            "text": "locals { policy = file(\"./policy.json\") }",
+            "sourceSha256": "0e5263f1697591f86a6441261cd03112131f0795c804e86b707804d9e8803009"
+          }
+        ],
+        "requestId": "dfa58e31bbe32d9db01cf7596f2498502fe89e2be2e3e0daaf9d00a1d2afcb8b"
+      },
+      "reply": {
+        "schemaVersion": 2,
+        "policyDigest": "72e2ce845c9432a9b26677f1e97b15b6ba4ad72a65006f88998e51c57879142b",
+        "requestId": "dfa58e31bbe32d9db01cf7596f2498502fe89e2be2e3e0daaf9d00a1d2afcb8b",
+        "status": "ok",
+        "results": [
+          {
+            "id": "0",
+            "sourceSha256": "0e5263f1697591f86a6441261cd03112131f0795c804e86b707804d9e8803009",
+            "parsed": {
+              "locals": [
+                {
+                  "policy": "${file(\"./policy.json\")}"
+                }
+              ]
+            }
+          }
+        ],
+        "expressions": [
+          {
+            "value": "${file(\"./policy.json\")}",
+            "sourceSha256": "4e4031f069436478e5a9454431cea54a51840aeb3dae7cfe4ca639bfc848e5e6",
+            "ast": {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "type": "literalValue",
+                          "meta": {
+                            "type": "string",
+                            "value": "./policy.json"
+                          },
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 9,
+                              "byte": 36
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 22,
+                              "byte": 49
+                            }
+                          }
+                        }
+                      ],
+                      "type": "template",
+                      "meta": {
+                        "value": "\"./policy.json\""
+                      },
+                      "range": {
+                        "start": {
+                          "line": 1,
+                          "column": 9,
+                          "byte": 36
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 22,
+                          "byte": 49
+                        }
+                      }
+                    }
+                  ],
+                  "type": "function",
+                  "meta": {
+                    "argsRanges": [
+                      {
+                        "start": {
+                          "line": 1,
+                          "column": 8,
+                          "byte": 35
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 23,
+                          "byte": 50
+                        }
+                      }
+                    ],
+                    "closeParenRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 23,
+                        "byte": 50
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 24,
+                        "byte": 51
+                      }
+                    },
+                    "expandedFinalArgument": false,
+                    "name": "file",
+                    "nameRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 3,
+                        "byte": 30
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 7,
+                        "byte": 34
+                      }
+                    },
+                    "openParenRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 7,
+                        "byte": 34
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 8,
+                        "byte": 35
+                      }
+                    },
+                    "value": "file(\"./policy.json\")"
+                  },
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "column": 3,
+                      "byte": 30
+                    },
+                    "end": {
+                      "line": 1,
+                      "column": 8,
+                      "byte": 35
+                    }
+                  }
+                },
+                {
+                  "children": [],
+                  "type": "literalValue",
+                  "meta": {
+                    "type": "string",
+                    "value": "\n"
+                  },
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "column": 25,
+                      "byte": 52
+                    },
+                    "end": {
+                      "line": 2,
+                      "column": 1,
+                      "byte": 53
+                    }
+                  }
+                }
+              ],
+              "type": "template",
+              "meta": {
+                "value": "<<LIFTOFF_REPAIR_EXPRESSION\n${file(\"./policy.json\")}\nLIFTOFF_REPAIR_EXPRESSION"
+              },
+              "range": {
+                "start": {
+                  "line": 1,
+                  "column": 3,
+                  "byte": 30
+                },
+                "end": {
+                  "line": 1,
+                  "column": 8,
+                  "byte": 35
+                }
+              }
+            }
+          }
+        ],
+        "expressionCalls": 1
+      }
+    },
+    {
+      "id": "literal-object",
+      "request": {
+        "schemaVersion": 2,
+        "policyDigest": "72e2ce845c9432a9b26677f1e97b15b6ba4ad72a65006f88998e51c57879142b",
+        "expressionAllowance": 2048,
+        "replyAllowance": 8388608,
+        "documents": [
+          {
+            "id": "0",
+            "text": "locals { payload = merge({ prefix = \"é🌍\" }, { first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") }) }\n",
+            "sourceSha256": "43be99be0aa8144e1e0da1e64e08d77cdbc0c5a9aa46e56069510596ec307a65"
+          }
+        ],
+        "requestId": "1a3371cad5fd74774c4fb5c6b6a159fede02a38a6f759ef54043e37b9c533500"
+      },
+      "reply": {
+        "schemaVersion": 2,
+        "policyDigest": "72e2ce845c9432a9b26677f1e97b15b6ba4ad72a65006f88998e51c57879142b",
+        "requestId": "1a3371cad5fd74774c4fb5c6b6a159fede02a38a6f759ef54043e37b9c533500",
+        "status": "ok",
+        "results": [
+          {
+            "id": "0",
+            "sourceSha256": "43be99be0aa8144e1e0da1e64e08d77cdbc0c5a9aa46e56069510596ec307a65",
+            "parsed": {
+              "locals": [
+                {
+                  "payload": "${merge({ prefix = \"é🌍\" }, { first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") })}"
+                }
+              ]
+            }
+          }
+        ],
+        "expressions": [
+          {
+            "value": "${merge({ prefix = \"é🌍\" }, { first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") })}",
+            "sourceSha256": "17b539953f6bcb5e712e8859f374d4395de806ecaa508665a77b776ff6c26fa7",
+            "ast": {
+              "children": [
+                {
+                  "children": [
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "type": "",
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 11,
+                              "byte": 38
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 17,
+                              "byte": 44
+                            }
+                          }
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [],
+                              "type": "literalValue",
+                              "meta": {
+                                "type": "string",
+                                "value": "é🌍"
+                              },
+                              "range": {
+                                "start": {
+                                  "line": 1,
+                                  "column": 21,
+                                  "byte": 48
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 23,
+                                  "byte": 54
+                                }
+                              }
+                            }
+                          ],
+                          "type": "template",
+                          "meta": {
+                            "value": "\"é🌍\""
+                          },
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 21,
+                              "byte": 48
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 23,
+                              "byte": 54
+                            }
+                          }
+                        }
+                      ],
+                      "type": "object",
+                      "meta": {
+                        "items": {
+                          "prefix": "\"é🌍\""
+                        },
+                        "value": "{ prefix = \"é🌍\" }"
+                      },
+                      "range": {
+                        "start": {
+                          "line": 1,
+                          "column": 9,
+                          "byte": 36
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 10,
+                          "byte": 37
+                        }
+                      }
+                    },
+                    {
+                      "children": [
+                        {
+                          "children": [],
+                          "type": "",
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 30,
+                              "byte": 61
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 35,
+                              "byte": 66
+                            }
+                          }
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [],
+                              "type": "",
+                              "range": {
+                                "start": {
+                                  "line": 1,
+                                  "column": 40,
+                                  "byte": 71
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 46,
+                                  "byte": 77
+                                }
+                              }
+                            },
+                            {
+                              "children": [
+                                {
+                                  "children": [],
+                                  "type": "literalValue",
+                                  "meta": {
+                                    "type": "string",
+                                    "value": "actual"
+                                  },
+                                  "range": {
+                                    "start": {
+                                      "line": 1,
+                                      "column": 50,
+                                      "byte": 81
+                                    },
+                                    "end": {
+                                      "line": 1,
+                                      "column": 56,
+                                      "byte": 87
+                                    }
+                                  }
+                                }
+                              ],
+                              "type": "template",
+                              "meta": {
+                                "value": "\"actual\""
+                              },
+                              "range": {
+                                "start": {
+                                  "line": 1,
+                                  "column": 50,
+                                  "byte": 81
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 56,
+                                  "byte": 87
+                                }
+                              }
+                            }
+                          ],
+                          "type": "object",
+                          "meta": {
+                            "items": {
+                              "nested": "\"actual\""
+                            },
+                            "value": "{ nested = \"actual\" }"
+                          },
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 38,
+                              "byte": 69
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 39,
+                              "byte": 70
+                            }
+                          }
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "children": [],
+                                  "type": "literalValue",
+                                  "meta": {
+                                    "type": "string",
+                                    "value": "second-key"
+                                  },
+                                  "range": {
+                                    "start": {
+                                      "line": 1,
+                                      "column": 62,
+                                      "byte": 93
+                                    },
+                                    "end": {
+                                      "line": 1,
+                                      "column": 72,
+                                      "byte": 103
+                                    }
+                                  }
+                                }
+                              ],
+                              "type": "template",
+                              "meta": {
+                                "value": "\"second-key\""
+                              },
+                              "range": {
+                                "start": {
+                                  "line": 1,
+                                  "column": 62,
+                                  "byte": 93
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 72,
+                                  "byte": 103
+                                }
+                              }
+                            }
+                          ],
+                          "type": "",
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 62,
+                              "byte": 93
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 72,
+                              "byte": 103
+                            }
+                          }
+                        },
+                        {
+                          "children": [
+                            {
+                              "children": [
+                                {
+                                  "children": [],
+                                  "type": "literalValue",
+                                  "meta": {
+                                    "type": "string",
+                                    "value": "./policy.json"
+                                  },
+                                  "range": {
+                                    "start": {
+                                      "line": 1,
+                                      "column": 82,
+                                      "byte": 113
+                                    },
+                                    "end": {
+                                      "line": 1,
+                                      "column": 95,
+                                      "byte": 126
+                                    }
+                                  }
+                                }
+                              ],
+                              "type": "template",
+                              "meta": {
+                                "value": "\"./policy.json\""
+                              },
+                              "range": {
+                                "start": {
+                                  "line": 1,
+                                  "column": 82,
+                                  "byte": 113
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 95,
+                                  "byte": 126
+                                }
+                              }
+                            }
+                          ],
+                          "type": "function",
+                          "meta": {
+                            "argsRanges": [
+                              {
+                                "start": {
+                                  "line": 1,
+                                  "column": 81,
+                                  "byte": 112
+                                },
+                                "end": {
+                                  "line": 1,
+                                  "column": 96,
+                                  "byte": 127
+                                }
+                              }
+                            ],
+                            "closeParenRange": {
+                              "start": {
+                                "line": 1,
+                                "column": 96,
+                                "byte": 127
+                              },
+                              "end": {
+                                "line": 1,
+                                "column": 97,
+                                "byte": 128
+                              }
+                            },
+                            "expandedFinalArgument": false,
+                            "name": "file",
+                            "nameRange": {
+                              "start": {
+                                "line": 1,
+                                "column": 76,
+                                "byte": 107
+                              },
+                              "end": {
+                                "line": 1,
+                                "column": 80,
+                                "byte": 111
+                              }
+                            },
+                            "openParenRange": {
+                              "start": {
+                                "line": 1,
+                                "column": 80,
+                                "byte": 111
+                              },
+                              "end": {
+                                "line": 1,
+                                "column": 81,
+                                "byte": 112
+                              }
+                            },
+                            "value": "file(\"./policy.json\")"
+                          },
+                          "range": {
+                            "start": {
+                              "line": 1,
+                              "column": 76,
+                              "byte": 107
+                            },
+                            "end": {
+                              "line": 1,
+                              "column": 81,
+                              "byte": 112
+                            }
+                          }
+                        }
+                      ],
+                      "type": "object",
+                      "meta": {
+                        "items": {
+                          "\"second-key\"": "file(\"./policy.json\")",
+                          "first": "{ nested = \"actual\" }"
+                        },
+                        "value": "{ first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") }"
+                      },
+                      "range": {
+                        "start": {
+                          "line": 1,
+                          "column": 28,
+                          "byte": 59
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 29,
+                          "byte": 60
+                        }
+                      }
+                    }
+                  ],
+                  "type": "function",
+                  "meta": {
+                    "argsRanges": [
+                      {
+                        "start": {
+                          "line": 1,
+                          "column": 9,
+                          "byte": 36
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 26,
+                          "byte": 57
+                        }
+                      },
+                      {
+                        "start": {
+                          "line": 1,
+                          "column": 28,
+                          "byte": 59
+                        },
+                        "end": {
+                          "line": 1,
+                          "column": 99,
+                          "byte": 130
+                        }
+                      }
+                    ],
+                    "closeParenRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 99,
+                        "byte": 130
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 100,
+                        "byte": 131
+                      }
+                    },
+                    "expandedFinalArgument": false,
+                    "name": "merge",
+                    "nameRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 3,
+                        "byte": 30
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 8,
+                        "byte": 35
+                      }
+                    },
+                    "openParenRange": {
+                      "start": {
+                        "line": 1,
+                        "column": 8,
+                        "byte": 35
+                      },
+                      "end": {
+                        "line": 1,
+                        "column": 9,
+                        "byte": 36
+                      }
+                    },
+                    "value": "merge({ prefix = \"é🌍\" }, { first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") })"
+                  },
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "column": 3,
+                      "byte": 30
+                    },
+                    "end": {
+                      "line": 1,
+                      "column": 9,
+                      "byte": 36
+                    }
+                  }
+                },
+                {
+                  "children": [],
+                  "type": "literalValue",
+                  "meta": {
+                    "type": "string",
+                    "value": "\n"
+                  },
+                  "range": {
+                    "start": {
+                      "line": 1,
+                      "column": 101,
+                      "byte": 132
+                    },
+                    "end": {
+                      "line": 2,
+                      "column": 1,
+                      "byte": 133
+                    }
+                  }
+                }
+              ],
+              "type": "template",
+              "meta": {
+                "value": "<<LIFTOFF_REPAIR_EXPRESSION\n${merge({ prefix = \"é🌍\" }, { first = { nested = \"actual\" }, \"second-key\" = file(\"./policy.json\") })}\nLIFTOFF_REPAIR_EXPRESSION"
+              },
+              "range": {
+                "start": {
+                  "line": 1,
+                  "column": 3,
+                  "byte": 30
+                },
+                "end": {
+                  "line": 1,
+                  "column": 9,
+                  "byte": 36
+                }
+              }
+            }
+          }
+        ],
+        "expressionCalls": 1
+      }
+    }
+  ]
+}

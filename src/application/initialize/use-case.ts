@@ -114,12 +114,14 @@ export async function initializeProject(input: ProjectOptions, context: Executio
         : await prompter!.confirmPlan(plan);
     } catch (error) {
       if (error instanceof InteractiveCancelledError) {
+        context.outcome?.record('cancelled');
         presentation.cancellation('Initialization stopped; no destination files were changed.');
         return 0;
       }
       throw error;
     }
     if (!confirmed) {
+      context.outcome?.record('cancelled');
       presentation.cancellation('Initialization stopped; no destination files were changed.');
       return 0;
     }
@@ -193,6 +195,7 @@ export async function initializeProject(input: ProjectOptions, context: Executio
       });
 
       if (staged.status === 'declined') {
+        context.outcome?.record('cancelled');
         presentation.cancellation('No destination files were changed.');
         return 0;
       }
@@ -399,6 +402,7 @@ export async function ensureWorkstationReady(
         streamOptions: presentation.childStreams()
       });
       installationResults.set(probe.requirement.id, installation);
+      if (installation.state === 'failed') context.outcome?.record('failure');
       updates.set(probe.requirement.id, installation.probe);
       const kind = installation.state === 'installed' || installation.state === 'not-needed'
         ? 'success'
@@ -475,30 +479,29 @@ export async function ensureOpenSpecProfileReady(
   }
 
   const commands = buildOpenSpecProfileWriteCommands(plan.framework.executable);
-  const authorized = options.configureOpenSpecProfile === true ||
-    (
-      options.configureOpenSpecProfile === undefined &&
-      prompter !== undefined &&
-      await prompter.confirmOpenSpecProfileConfiguration({
-        observed: [
-          { label: 'Profile', value: inspection.state.profile },
-          { label: 'Delivery', value: inspection.state.delivery },
-          {
-            label: 'Workflows',
-            value: inspection.state.workflows.length > 0
-              ? inspection.state.workflows.join(', ')
-              : '(none)'
-          }
-        ],
-        required: [
-          { label: 'Profile', value: OPEN_SPEC_PROFILE },
-          { label: 'Delivery', value: OPEN_SPEC_DELIVERY },
-          { label: 'Workflows', value: OPEN_SPEC_WORKFLOW_IDS.join(', ') }
-        ],
-        differences: inspection.differences,
-        commands: commands.map((command) => formatCommand(command))
-      })
-    );
+  let authorized = options.configureOpenSpecProfile === true;
+  if (options.configureOpenSpecProfile === undefined && prompter !== undefined) {
+    authorized = await prompter.confirmOpenSpecProfileConfiguration({
+      observed: [
+        { label: 'Profile', value: inspection.state.profile },
+        { label: 'Delivery', value: inspection.state.delivery },
+        {
+          label: 'Workflows',
+          value: inspection.state.workflows.length > 0
+            ? inspection.state.workflows.join(', ')
+            : '(none)'
+        }
+      ],
+      required: [
+        { label: 'Profile', value: OPEN_SPEC_PROFILE },
+        { label: 'Delivery', value: OPEN_SPEC_DELIVERY },
+        { label: 'Workflows', value: OPEN_SPEC_WORKFLOW_IDS.join(', ') }
+      ],
+      differences: inspection.differences,
+      commands: commands.map((command) => formatCommand(command))
+    });
+    if (!authorized) context.outcome?.record('cancelled');
+  }
 
   if (!authorized) {
     presentation.error(
@@ -562,6 +565,7 @@ export async function handleProjectDependencies(
     }
   });
   if (!result.success) {
+    context.outcome?.record('failure');
     presentation.error(
       'Project dependencies failed',
       `${result.failed?.label ?? 'dependency command'}: ${result.detail ?? 'unknown failure'}`

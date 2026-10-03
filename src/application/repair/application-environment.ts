@@ -2,6 +2,16 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { applicationWithin } from './application-files.js';
 
+export function applicationConfigurationFiles(platform: NodeJS.Platform = process.platform) {
+  return [
+    ...['npm-user.rc', 'npm-global.rc', 'pip.conf', 'gitconfig'].map(name => ({ pathParts: [name], content: '' })),
+    {
+      pathParts: [...(platform === 'darwin' ? ['Library', 'Application Support'] : []), 'go', 'telemetry', 'mode'],
+      content: 'off\n'
+    }
+  ];
+}
+
 export function applicationSearchEnvironment(
   inherited: NodeJS.ProcessEnv, projectRoot: string, stagingRoot: string, cwd: string
 ): NodeJS.ProcessEnv {
@@ -35,8 +45,11 @@ export async function createApplicationEnvironment(
   const environment = applicationSearchEnvironment(inherited, projectRoot, stagingRoot, workspace);
   const home = path.join(workspace, 'home'), cache = path.join(workspace, 'cache'), scratch = path.join(workspace, 'scratch');
   for (const directory of [home, cache, scratch]) await mkdir(directory, { recursive: true, mode: 0o700 });
-  for (const name of ['npm-user.rc', 'npm-global.rc', 'pip.conf', 'gitconfig']) {
-    await writeFile(path.join(home, name), '', { mode: 0o600, flag: 'wx' });
+  for (const configuration of applicationConfigurationFiles()) {
+    const file = path.join(home, ...configuration.pathParts);
+    await mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+    // GOENV=off does not disable Go counters; their mode lives under UserConfigDir.
+    await writeFile(file, configuration.content, { mode: 0o600, flag: 'wx' });
   }
   Object.assign(environment, {
     HOME: home, USERPROFILE: home, APPDATA: home, LOCALAPPDATA: home,

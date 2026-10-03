@@ -23,6 +23,7 @@ import { phaseIds } from './types.js';
 import { validateEvidenceHeader, validateLiveReadbackProof, validateSavedTransitionPlan } from './validators.js';
 import { assertPlanOperationsAllowed, planDigestFor } from './operations.js';
 import { savedPlanAuthorityDigest } from './approvals.js';
+import { outputBindingsMatch, outputResourcesMatch, validatePhasePayloadValues } from './source-values.js';
 
 export interface PhaseEvidenceSource {
   evidence: readonly PhaseEvidenceRecord[];
@@ -118,81 +119,16 @@ export function assertPhaseOutputsBound(state: UserActivationState, evidence: re
   for (const id of phaseIds) {
     const outputs = state.phaseOutputs?.[id];
     if (!outputs) continue;
-    const bound = evidence.find((record) => record.header.phaseId === id && record.header.result === 'verified' &&
-      state.phases[id].evidence.some((reference) => reference.evidenceId === record.evidenceId && reference.headerDigest === evidenceHeaderDigest(record.header)) &&
-      isRecord(record.payload) && canonicalSha256(record.payload.outputBindings ?? null) === canonicalSha256(outputs) &&
+    const bound = evidence.find((record) => outputBindingsMatch(record, id, state.phases[id].evidence, outputs) &&
       record.header.bodyDigest === evidenceBodyDigest(record.payload, record.liveReadback));
-    if (!bound || outputs.resources.some((resource) => !bound.liveReadback?.some((proof) =>
-      proof.provider === resource.provider && proof.resourceId === resource.resourceId &&
-      proof.resourceType === resource.resourceType && proof.matches))) {
+    if (!outputResourcesMatch(outputs, bound)) {
       throw new Error(`Phase output bindings for ${id} have no matching authoritative resource receipt; hand-edited state is not proof.`);
     }
   }
 }
 
 function validatePhasePayload(record: PhaseEvidenceRecord): string[] {
-  if (record.header.result === 'failed' || record.header.result === 'inapplicable') return [];
-  const payload = record.payload;
-  if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) {
-    return [`${record.header.phaseId} requires a phase-specific evidence payload.`];
-  }
-  const value = payload as Record<string, unknown>;
-  const expected = record.header.phaseId === 'phase-0-complete' ? 'phase-0-discovery.v1' : `${record.header.phaseId}.v1`;
-  const issues = value.kind === expected ? [] : [`${record.header.phaseId} payload kind must be ${expected}.`];
-  if (record.header.phaseId === 'seed-verified') {
-    if (!Array.isArray(value.checks) || value.checks.length === 0 || value.checks.some((check) =>
-      typeof check !== 'object' || check === null || !['passed', 'inapplicable'].includes(String(check.status)))) {
-      issues.push('Local baseline evidence requires successful applicable check outcomes.');
-    }
-  }
-  if (record.header.phaseId === 'phase-0-complete') {
-    if (!Array.isArray(value.facts) || !['repository.id', 'repository.nameWithOwner', 'repository.defaultBranch']
-      .every((id) => (value.facts as Array<{ id?: unknown; value?: unknown }>).some((fact) => fact.id === id && typeof fact.value === 'string' && fact.value))) {
-      issues.push('Phase 0 requires independently observed repository identity facts.');
-    }
-  }
-  if (['committed', 'pushed'].includes(record.header.phaseId) &&
-    (typeof value.head !== 'string' || !/^[a-f0-9]{40,64}$/.test(value.head))) {
-    issues.push('Publication evidence must record the actual Git HEAD separately from the SHA-256 baseline.');
-  }
-  if (['committed', 'pushed'].includes(record.header.phaseId) && record.header.inputBindings?.git &&
-    value.head !== record.header.inputBindings.git.after.head) {
-    issues.push('Publication evidence must match the independently observed resulting Git object ID.');
-  }
-  if (record.header.phaseId === 'runner-ready') {
-    if (typeof value.organization !== 'string' || !Number.isInteger(value.runnerId) || Number(value.runnerId) <= 0 ||
-      !(value.groupId === null || Number.isInteger(value.groupId)) ||
-      !(value.networkConfigurationId === null || typeof value.networkConfigurationId === 'string')) {
-      issues.push('Runner proof requires an explicit organization, runner ID, group, and network-configuration binding.');
-    }
-    if (!(record.liveReadback ?? []).some((proof) => proof.provider === 'github' &&
-      (proof.resourceId === String(value.runnerId) || proof.resourceId.endsWith(`/hosted-runners/${value.runnerId}`)))) {
-      issues.push('Runner payload ID has no matching independent runner resource readback.');
-    }
-  }
-  if (record.header.phaseId === 'state-path-selected' && !['existing-private', 'bootstrap-local'].includes(String(value.statePath))) {
-    issues.push('State-path selection requires an explicit applicable backend path.');
-  }
-  if (record.header.phaseId === 'workflow-source-ready' && (typeof value.rulesetSourceDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.rulesetSourceDigest))) {
-    issues.push('Workflow-source evidence must bind the reviewed ruleset source digest.');
-  }
-  if (record.header.phaseId === 'credential-ready' && (typeof value.policyDigest !== 'string' || !/^[a-f0-9]{64}$/.test(value.policyDigest))) {
-    issues.push('Credential evidence must bind the public credential policy and independent readback.');
-  }
-  const scope = typeof value.assessmentScope === 'object' && value.assessmentScope !== null
-    ? value.assessmentScope as Record<string, unknown> : undefined;
-  if (scope?.azure !== undefined) {
-    if (!Array.isArray(scope.azure)) issues.push('Azure evidence scope must be an explicit resource inventory.');
-    else for (const resource of scope.azure) {
-      if (typeof resource !== 'object' || resource === null ||
-        typeof resource.resourceId !== 'string' || typeof resource.resourceType !== 'string' ||
-        !['dev', 'staging', 'prod'].includes(resource.environment) || typeof resource.role !== 'string' ||
-        !(record.liveReadback ?? []).some((proof) => proof.provider === 'azure' && proof.resourceId === resource.resourceId && proof.resourceType === resource.resourceType)) {
-        issues.push('Azure payload scope requires an explicit environment/role and matching resource readback.');
-      }
-    }
-  }
-  return issues;
+  return validatePhasePayloadValues(record);
 }
 
 function issue(

@@ -75,6 +75,16 @@ function contrast(left: string, right: string): number {
 }
 
 describe('public documentation', () => {
+  it('states public-input read bounds, platform limits and credential-pattern false positives', async () => {
+    const cli = await repositoryFile('docs/cli-reference.md');
+    expect(cli).toContain('at most 65,537 bytes');
+    expect(cli).toMatch(/not\s+atomic no-follow protection/);
+    expect(cli).toContain('Windows qualification is pending');
+    expect(cli).toContain('`basic setup` or `acme/ghs_tools`');
+    expect(cli).toContain('Persisted configuration acceptance is unchanged');
+    expect(cli).toContain('malformed approval-JSON diagnostics omit parser payload snippets');
+  });
+
   it('keeps the root README concise and puts the interactive first-use path first', async () => {
     const readme = await repositoryFile('README.md');
     const install = 'npm install -g @msn-control/liftoff@latest';
@@ -265,6 +275,12 @@ describe('public documentation', () => {
     for (const flag of ['--yes', '--force', '--install-tools', '--install-dependencies']) {
       expect(safety).toContain(`\`${flag}\``);
     }
+    expect(safety).toContain('even beside the exact spelling');
+    expect(safety).toContain('`Unable to inspect destination`');
+    expect(safety).toMatch(/before applying generated destination files, not before all\s+side effects/);
+    expect(safety).toMatch(/do not provide atomic race protection or universal Unicode-alias\s+detection/);
+    expect(existing).toContain('case or NFC-normalization aliases in destination paths');
+    expect(cli).toContain('blocking conflicts, not forceable replacements');
     expect(integrations).toContain('official initializer');
     expect(cli).toContain('TTYs at least 96 columns');
     expect(cli).toContain('64 through 95 columns');
@@ -537,7 +553,10 @@ describe('public documentation', () => {
     expect(contributing).toContain("npm deprecate '@msn-control/liftoff@<0.3.0'");
     expect(contributing).toContain('withhold internal installation guidance');
     expect(contributing).toContain('Liftoff must not silently downgrade');
-    expect(contributing).toContain('approval v2 and compatibility metadata v3');
+    expect(contributing).toContain('src/generators/governance/');
+    expect(contributing).toContain('src/domain/governance/policy/identity.ts');
+    expect(contributing).toContain('independently versioned constants');
+    expect(contributing).not.toContain('approval v2 and compatibility metadata v3');
     expect(contributing).not.toContain('compatibility metadata v2');
     expect(security).toContain('Versions before 0.3.0 are unsupported');
     expect(security).toContain('A successful installation of an older mirrored version does not make that version supported');
@@ -625,7 +644,9 @@ describe('public documentation', () => {
   });
 
   it('describes the implemented eight responsibility groups and current canonical ports', async () => {
-    const developer = await repositoryFile('DEVELOPER.md');
+    const [developer, contributing] = await Promise.all([
+      repositoryFile('DEVELOPER.md'), repositoryFile('CONTRIBUTING.md')
+    ]);
     const architecture = developer.split('## Functional engines and implementation boundaries')[1]
       .split('## Activation completeness')[0];
     const systems = architecture.split('| Subsystem | Current implementation |')[1]
@@ -639,14 +660,46 @@ describe('public documentation', () => {
       'src/application/update/use-case.ts',
       'src/application/migrate/use-case.ts',
       'src/application/upgrade/use-case.ts',
+      'src/application/upgrade/self-upgrade.ts',
+      'src/adapters/distribution/npm.ts',
+      'src/adapters/distribution/upgrade-host.ts',
+      'src/cli/commands/upgrade.ts',
+      'src/application/workstation/probe.ts',
+      'src/application/workstation/remediation.ts',
+      'src/adapters/filesystem/host-environment.ts',
+      'src/application/governance/inspection.ts',
+      'src/application/governance/verification.ts',
+      'src/cli/commands/governance.ts',
+      'src/cli/commands/governance-output.ts',
+      'src/domain/governance/policy/policy-contract.ts',
+      'src/domain/governance/policy/context.ts',
       'src/domain/project/contracts.ts',
       'src/domain/project/catalog.ts',
       'src/domain/project/planning.ts',
       'src/domain/project/manifest/reader.ts',
       'src/application/project/manifest.ts',
+      'src/plugins/contracts.ts',
+      'src/plugins/registry.ts',
+      'src/plugins/builtin/assets.ts',
+      'src/plugins/builtin/index.ts',
+      'src/plugins/builtin/core.ts',
+      'src/plugins/builtin/release.ts',
+      'src/application/project/plugins.ts',
+      'src/application/project/plugin-renderers.ts',
+      'src/domain/project/artifact-path-tokens.ts',
       'src/generators/context.ts',
       'src/adapters/packaged-assets/package-root.ts',
+      'src/adapters/packaged-assets/plugin-assets.ts',
       'src/adapters/packaged-assets/template-assets.ts',
+      'src/adapters/packaged-assets/governance-policy.ts',
+      'src/adapters/packaged-assets/skill-sources.ts',
+      'tests/plugin-native-paths.test.ts',
+      'tests/plugin-packaged-lookup-native.test.ts',
+      'tests/fixtures/native-path-capabilities.ts',
+      'scripts/template-dependency-security.mjs',
+      'scripts/package-smoke-contract.mjs',
+      'tests/dependency-set-inventory.test.ts',
+      'src/adapters/filesystem/governance-records.ts',
       'src/adapters/filesystem/project-lock.ts',
       'src/domain/project/infrastructure-layout.ts',
       'src/governance-activation/read-only.ts',
@@ -666,6 +719,79 @@ describe('public documentation', () => {
       'ExecutionContext', 'narrow', 'do not import adapters',
       'rather than routing back through facades', 'assertHeld()'
     ]) expect(architecture).toContain(phrase);
+    expect(architecture).toContain('Project generation now uses the bundled plugin registry');
+    expect(architecture).not.toContain('not yet wired into project generation');
+    const pluginGuidance = architecture.replace(/\s+/g, ' ');
+    for (const phrase of [
+      'all 13 declared template assets on first use',
+      'not an atomic snapshot',
+      'rejects malformed or raised limit overrides before calling the reader',
+      'verifies rendered identities before returning any artifacts',
+      'not native platform qualification',
+      'Content digests do not hash renderer implementation',
+      'Lexical containment is not realpath confinement',
+      'host-neutral, not native Windows evidence',
+      'path-length selection omissions and uncovered directories',
+      'local macOS results do not qualify unrun Windows, Linux or macOS CI lanes',
+      'retained byte-for-byte in the repository and excluded from the package',
+      'before any npm request',
+      'explicitly reported as not audited, not as clean',
+      '13 template assets and twelve core ancillary assets',
+      '`resolveModernManifestV8SourceContract`',
+      'verifies all 16 declared asset byte streams',
+      'Failed initialization is not cached',
+      '`createManifestV8Reader` now validates a complete independent v8 root',
+      '`createManifestV8Candidate` provides an independent origin-aware candidate writer',
+      'Static modern policy/graph checks cover both new bytes and retained hashes',
+      '`createModernActivationRecordContract` provides independent state4, evidence4',
+      'Terminal outcomes bind their referenced evidence to the exact saved plan',
+      '`buildModernCompatibilityMetadataForSource` also validates an explicit selection',
+      'Modern source-metadata2 creation and task projection remain unavailable',
+      '`buildModernManagedCore` now produces immutable managed content',
+      '`createModernGovernanceContextContract` binds context2 to the actual source',
+      '`renderModernCredentialPolicySchema` binds schema2 to that validated identity',
+      'This managed context is not activation source-metadata2',
+      'preserving existing schema1 and integration bytes',
+      'Modern guidance stops on unsupported v8 execution',
+      '`readModernActivationSuccessorSource` captures actual released activation v1/v2/v3 sources',
+      '`planModernActivationSuccessor` binds that capture to a validated same-intent target',
+      '`prepareActivationHistorySuccessor` reconstructs the plan',
+      'copy bounded caller-owned inputs synchronously before their first await',
+      'Every named evidence reference resolves the actual phase, repository, state reference, result',
+      'only complete phases require verified outcomes',
+      '16 MiB original-plus-target snapshot limit is not the 32 MiB source-history budget',
+      'initial phases remain pending',
+      'local revalidation remain unwired for this modern lane',
+      'Generation provenance and adoption observations remain separate historical records, not current ownership',
+      'Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior remain unchanged',
+      'do not replace installed-package or native qualification'
+    ]) expect(pluginGuidance).toContain(phrase);
+    expect(pluginGuidance).not.toContain('still packaged pending');
+    const contributionGuidance = contributing.replace(/\s+/g, ' ');
+    for (const phrase of [
+      'src/plugins/builtin/release.ts',
+      'independently reviewed literal descriptor digests',
+      'renderer behavior change also requires a reviewed `contentVersion` advance',
+      'Existing refresh commands do not update or approve these literals',
+      'do not add a startup or test helper that automatically blesses current bytes',
+      'validates all six sets against `src/plugins/builtin/assets.ts`',
+      'Structural failures are policy failures and send no audit requests',
+      'structural validation is not a security claim',
+      'scripts/template-dependency-security.mjs',
+      'tests/dependency-set-inventory.test.ts',
+      'scripts/package-smoke-contract.mjs',
+      'must be exact files, not directory or glob entries',
+      'egg-info files under `assets/locks/` remain unchanged and are not packaged'
+    ]) expect(contributionGuidance).toContain(phrase);
+    expect(architecture).toContain('assets/plugins/<plugin-id>/<set>/');
+    expect(architecture).toContain('assets/templates/common/frontend/');
+    expect(architecture).toMatch(/Directory\s+placement grants no whole-directory ownership/);
+    expect(architecture).toContain('tests/plugin-execution-isolation.test.ts');
+    expect(architecture).toMatch(/cycle check\s+remains static-only/);
+    expect(architecture).toContain('not\ncomplete data-flow analysis or installed-startup isolation');
+    expect(architecture).toContain('trusted first-party code, not a security sandbox');
+    expect(architecture).toContain('matching digests never grant mutation approval');
+    expect(architecture).toMatch(/empty agent selection[\s\S]*No agent is\s+implicitly selected or emitted[\s\S]*Fresh-project planning still requires an agent/);
     for (const phase of Object.entries(phaseCapabilities).filter(([, value]) => value.executor !== 'built-in').map(([id]) => id)) {
       expect(developer).toContain(`\`${phase}\``);
     }
@@ -772,6 +898,37 @@ describe('public documentation', () => {
     expect(developer).toContain('validateReadableActivationIdentity');
     expect(developer).toContain('scope use strict current validation');
     expect(configuration).toMatch(/readable historical record never authorizes current provider scope/);
+  });
+
+  it('separates agent hosts from models and preserves capability, staging and ownership boundaries', async () => {
+    const workflow = await repositoryFile('docs/spec-workflows-and-agents.md');
+    const text = workflow.replace(/\s+/gu, ' ');
+    expect(text).toContain('coding-agent hosts, not model identities');
+    expect(text).toContain('does not select a model or enroll model credentials');
+    expect(text).toContain("Host autonomy or model confidence never substitutes for the developer's approval");
+    expect(text).toContain('liftoff capabilities --json');
+    expect(text).toContain('liftoff repair --capabilities --json');
+    expect(text).toContain('Missing capabilities are blockers');
+    expect(text).toContain('grants no execution authority');
+    expect(text).toContain('Ownership is an exact logical-name/path lookup');
+    expect(text).toContain('not independent SemVer');
+    expect(text).toContain('not an OS or network sandbox');
+    expect(text).toContain('outside the project');
+    expect(text).toContain('separate from project-code execution');
+    expect(text).not.toContain('supplies no `npm ci`');
+    for (const provider of ['npm-ci', 'uv-locked-sync', 'go-mod-download']) expect(text).toContain(`\`${provider}\``);
+    for (const row of [
+      '| GitHub Copilot | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |',
+      '| Claude Code | `/liftoff-setup` | `/liftoff-repair` | `/liftoff-governance-assess` |',
+      '| OpenAI Codex | `$liftoff-setup` | `$liftoff-repair` | `$liftoff-governance-assess` |'
+    ]) expect(workflow).toContain(row);
+    for (const file of [
+      '.github/prompts/liftoff-repair.prompt.md', '.claude/commands/liftoff-repair.md',
+      '.agents/skills/liftoff-repair/SKILL.md'
+    ]) expect(workflow).toContain(file);
+    for (const link of ['cli-reference.md#capability-discovery', 'application-repair.md', 'repository-governance.md']) {
+      expect(workflow).toContain(`](${link})`);
+    }
   });
 
   it('keeps the docs directory limited to Markdown and static assets', async () => {

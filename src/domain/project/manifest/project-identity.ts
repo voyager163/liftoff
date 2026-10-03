@@ -6,6 +6,7 @@ import { assertOnlyFields, isRecord, optionalString, requiredBoolean, requiredSt
 export function createManifestProjectReader(catalog: ManifestContractContext['catalog']) {
   const { getApiStack, canonicalizeCodingAgents, getEnvironment, getCodingAgent, getPattern,
     getProvider, getProjectType, getSpecWorkflow, listRegions } = catalog;
+  const normalizeV4ManifestWorkload = createManifestWorkloadReader(catalog);
 
   function normalizeManifestProject(project: unknown, artifactVersion: number): LiftoffManifest['project'] {
     if (!isRecord(project)) {
@@ -187,6 +188,67 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
     };
   }
 
+  function normalizeManifestFramework(
+    value: unknown,
+    artifactVersion: number,
+    project: LiftoffManifest['project']
+  ): LiftoffManifest['framework'] {
+    if (artifactVersion === 2) {
+      return { state: 'legacy', adapter: project.specWorkflow };
+    }
+    if (!isRecord(value)) {
+      throw new FileSystemError('Manifest.framework must be a JSON object.');
+    }
+    if (artifactVersion >= 5) {
+      assertOnlyFields(
+        value,
+        ['state', 'adapter', 'contractVersion'],
+        'Manifest.framework'
+      );
+    }
+    const state = requiredString(value, 'state', 'Manifest.framework');
+    if (state !== 'initialized' && state !== 'legacy') {
+      throw new FileSystemError('Manifest.framework.state must be "initialized" or "legacy".');
+    }
+    const adapterValue = requiredString(value, 'adapter', 'Manifest.framework');
+    const adapter = getSpecWorkflow(adapterValue);
+    if (!adapter || adapter.id !== adapterValue || adapter.id !== project.specWorkflow) {
+      throw new FileSystemError('Manifest.framework.adapter must match Manifest.project.specWorkflow.');
+    }
+    const contractVersion = optionalString(value, 'contractVersion', 'Manifest.framework');
+    if (contractVersion && !SEMVER_PATTERN.test(contractVersion)) {
+      throw new FileSystemError('Manifest.framework.contractVersion must be a valid semantic version.');
+    }
+    if (state === 'legacy') {
+      if (contractVersion || project.agents.length > 0 || project.defaultAgent) {
+        throw new FileSystemError('Legacy framework state cannot claim a contract version or configured agents.');
+      }
+      return { state, adapter: adapter.id };
+    }
+    if (!contractVersion) {
+      throw new FileSystemError('Initialized framework state requires Manifest.framework.contractVersion.');
+    }
+    if (project.agents.length === 0) {
+      throw new FileSystemError('Initialized framework state requires at least one configured agent.');
+    }
+    if (adapter.id === 'spec-kit') {
+      if (!project.defaultAgent || !project.agents.includes(project.defaultAgent)) {
+        throw new FileSystemError('Spec Kit manifests require a selected defaultAgent.');
+      }
+    } else if (project.defaultAgent) {
+      throw new FileSystemError('OpenSpec manifests cannot record a defaultAgent.');
+    }
+    return { state, adapter: adapter.id, contractVersion };
+  }
+
+  return { normalizeManifestProject, normalizeManifestFramework };
+}
+
+export function createManifestWorkloadReader(
+  catalog: Pick<ManifestContractContext['catalog'], 'getApiStack' | 'getPattern' | 'getProvider' | 'listRegions' | 'getEnvironment'>
+) {
+  const { getApiStack, getPattern, getProvider, listRegions, getEnvironment } = catalog;
+
   function normalizeV4ManifestWorkload(
     workload: Record<string, unknown>
   ): LiftoffManifest['project']['workload'] {
@@ -247,58 +309,5 @@ export function createManifestProjectReader(catalog: ManifestContractContext['ca
       : { kind, ...common };
   }
 
-  function normalizeManifestFramework(
-    value: unknown,
-    artifactVersion: number,
-    project: LiftoffManifest['project']
-  ): LiftoffManifest['framework'] {
-    if (artifactVersion === 2) {
-      return { state: 'legacy', adapter: project.specWorkflow };
-    }
-    if (!isRecord(value)) {
-      throw new FileSystemError('Manifest.framework must be a JSON object.');
-    }
-    if (artifactVersion >= 5) {
-      assertOnlyFields(
-        value,
-        ['state', 'adapter', 'contractVersion'],
-        'Manifest.framework'
-      );
-    }
-    const state = requiredString(value, 'state', 'Manifest.framework');
-    if (state !== 'initialized' && state !== 'legacy') {
-      throw new FileSystemError('Manifest.framework.state must be "initialized" or "legacy".');
-    }
-    const adapterValue = requiredString(value, 'adapter', 'Manifest.framework');
-    const adapter = getSpecWorkflow(adapterValue);
-    if (!adapter || adapter.id !== adapterValue || adapter.id !== project.specWorkflow) {
-      throw new FileSystemError('Manifest.framework.adapter must match Manifest.project.specWorkflow.');
-    }
-    const contractVersion = optionalString(value, 'contractVersion', 'Manifest.framework');
-    if (contractVersion && !SEMVER_PATTERN.test(contractVersion)) {
-      throw new FileSystemError('Manifest.framework.contractVersion must be a valid semantic version.');
-    }
-    if (state === 'legacy') {
-      if (contractVersion || project.agents.length > 0 || project.defaultAgent) {
-        throw new FileSystemError('Legacy framework state cannot claim a contract version or configured agents.');
-      }
-      return { state, adapter: adapter.id };
-    }
-    if (!contractVersion) {
-      throw new FileSystemError('Initialized framework state requires Manifest.framework.contractVersion.');
-    }
-    if (project.agents.length === 0) {
-      throw new FileSystemError('Initialized framework state requires at least one configured agent.');
-    }
-    if (adapter.id === 'spec-kit') {
-      if (!project.defaultAgent || !project.agents.includes(project.defaultAgent)) {
-        throw new FileSystemError('Spec Kit manifests require a selected defaultAgent.');
-      }
-    } else if (project.defaultAgent) {
-      throw new FileSystemError('OpenSpec manifests cannot record a defaultAgent.');
-    }
-    return { state, adapter: adapter.id, contractVersion };
-  }
-
-  return { normalizeManifestProject, normalizeManifestFramework };
+  return normalizeV4ManifestWorkload;
 }

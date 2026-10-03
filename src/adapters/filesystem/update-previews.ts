@@ -15,6 +15,9 @@ import {
 import type { UpdatePreviewDescriptor, UpdatePreviewReceipt } from '../../application/update/preview.js';
 import {
   createUpdateTransactionApprovalSeal,
+  createLocalVerificationTransactionAuthority,
+  localVerificationTransactionAuthorityKey,
+  validateLocalVerificationTransactionAuthority,
   updateTransactionApprovalKey,
   UpdateTransactionApprovalError,
   validateUpdateTransactionApprovalDigests,
@@ -23,9 +26,11 @@ import {
 import type {
   UpdateTransactionApprovalBinding,
   UpdateTransactionApprovalSeal,
-  UpdateTransactionApprovalStore
+  UpdateTransactionApprovalStore,
+  LocalVerificationTransactionAuthorityStore
 } from '../../application/update/transaction-approval.js';
 import { canonicalJson } from '../../domain/governance/activation/canonical-json.js';
+import { copyModernLocalData } from '../../domain/governance/activation/modern-local-inputs.js';
 import { errorCode, errorMessage } from './errors.js';
 
 export type { UpdateTransactionApprovalStore } from '../../application/update/transaction-approval.js';
@@ -619,6 +624,27 @@ export function createUpdateTransactionApprovalStore(
   projectRoot: string,
   options: UpdatePreviewOptions = {}
 ): UpdateTransactionApprovalStore {
+  return createTransactionAuthorityStore(projectRoot, options, 'update');
+}
+
+export function createLocalVerificationTransactionAuthorityStore(
+  projectRoot: string, options: UpdatePreviewOptions = {}
+): LocalVerificationTransactionAuthorityStore {
+  const root = normalizeUpdatePreviewProjectRoot(projectRoot);
+  const store = {
+    ...createTransactionAuthorityStore(root, options, 'local-verification'),
+    transactionKind: 'local-verification' as const, projectRoot: root
+  };
+  Object.defineProperties(store, {
+    transactionKind: { writable: false, configurable: false },
+    projectRoot: { writable: false, configurable: false }
+  });
+  return store;
+}
+
+function createTransactionAuthorityStore(
+  projectRoot: string, options: UpdatePreviewOptions, kind: 'update' | 'local-verification'
+): UpdateTransactionApprovalStore {
   const env = options.env ?? process.env;
   const capturedOptions: UpdatePreviewOptions = {
     ...options,
@@ -630,25 +656,38 @@ export function createUpdateTransactionApprovalStore(
   const resolveBinding = async (planFingerprint: string, transactionDigest: string) => {
     validateUpdateTransactionApprovalDigests(planFingerprint, transactionDigest);
     const storage = await storageFor(projectRoot, capturedOptions);
+    if (kind === 'local-verification' && storage.location.projectRoot !== projectRoot) {
+      throw new UpdateTransactionApprovalError('Local-verification authority requires its exact canonical project root.');
+    }
     if (boundLocation && canonicalJson(boundLocation) !== canonicalJson(storage.location)) {
       throw new UpdateTransactionApprovalError('The transaction approval project or user-local storage boundary changed.');
     }
     boundLocation = storage.location;
     const binding: UpdateTransactionApprovalBinding = { projectRoot: storage.location.projectRoot, planFingerprint, transactionDigest };
-    return { storage, binding, filePath: approvalPath(storage, binding) };
+    return { storage, binding, filePath: kind === 'update' ? approvalPath(storage, binding)
+      : storage.paths.join(storage.location.directory, `local-verification-authority-${localVerificationTransactionAuthorityKey(binding)}.json`) };
+  };
+  const parse = (content: string, storage: Storage, binding: UpdateTransactionApprovalBinding, filePath: string) => {
+    if (kind === 'update') return parseApproval(content, storage, binding, filePath);
+    let value: unknown;
+    try { value = JSON.parse(content); }
+    catch (error) { throw new UpdateTransactionApprovalError(`Malformed local-verification authority JSON: ${filePath}`, { cause: error }); }
+    return validateLocalVerificationTransactionAuthority(value, binding, storage.now());
   };
   return {
     write: async (planFingerprint, transactionDigest) => {
       const { storage, binding, filePath } = await resolveBinding(planFingerprint, transactionDigest);
       const now = storage.now();
       if (!Number.isFinite(now.getTime())) throw new UpdateTransactionApprovalError('The transaction approval clock is invalid.');
-      const seal = createUpdateTransactionApprovalSeal(binding, { approvalId: randomUUID(), approvedAt: now.toISOString() });
+      const issuance = { approvalId: randomUUID(), approvedAt: now.toISOString() };
+      const seal = kind === 'update' ? createUpdateTransactionApprovalSeal(binding, issuance)
+        : createLocalVerificationTransactionAuthority(binding, issuance);
       const snapshot = await directories(storage, true);
       if (!snapshot) throw storageError(`Unable to create transaction approval storage: ${storage.location.directory}`);
       await withStoreLock(storage, snapshot, async () => {
         const before = await readText(storage, filePath, snapshot);
         if (before !== undefined) {
-          parseApproval(before, storage, binding, filePath);
+          parse(before, storage, binding, filePath);
           await io('flush existing approval seal directory', storage.location.directory,
             () => storage.fs.syncDirectory(storage.location.directory));
           return;
@@ -662,7 +701,7 @@ export function createUpdateTransactionApprovalStore(
       if (!snapshot) return false;
       const content = await readText(storage, filePath, snapshot);
       if (content === undefined) return false;
-      parseApproval(content, storage, binding, filePath);
+      parse(content, storage, binding, filePath);
       return true;
     },
     remove: async (planFingerprint, transactionDigest) => {
@@ -672,7 +711,7 @@ export function createUpdateTransactionApprovalStore(
       await withStoreLock(storage, snapshot, async () => {
         const content = await readText(storage, filePath, snapshot);
         if (content !== undefined) {
-          parseApproval(content, storage, binding, filePath);
+          parse(content, storage, binding, filePath);
           const owned = await inspect(storage.fs, filePath);
           if (!owned || await readText(storage, filePath, snapshot) !== content) {
             throw storageError(`Transaction approval seal changed during removal: ${filePath}`);
@@ -726,7 +765,10 @@ export function createScopedUserLocalRecordStore(
   projectRoot: string,
   namespace: 'governance-preview' | 'governance-approval' | 'workstation-remediation' |
     'repair-preview' | 'repair-approval' | 'repair-verification' | 'repair-backup' |
-    'repair-workspace-authority',
+    'repair-workspace-authority' | 'local-execution-preview' | 'local-execution-consent' |
+    'local-execution-result' | 'local-execution-workspace-authority' |
+    'local-finalization-preview' | 'local-finalization-consent' | 'local-finalization-result' |
+    'local-finalization-artifact' | 'local-publication-consent',
   options: UpdatePreviewOptions = {}
 ): {
   read(key: string): Promise<ScopedUserLocalRecord | null>;
@@ -779,12 +821,21 @@ export function createRepairWorkspaceRegistryStore(
   read(key: string): Promise<RepairWorkspaceRegistryValue | null>;
   compareExchange(key: string, expectedDigest: string | null, value: unknown): Promise<RepairWorkspaceRegistryValue>;
 } {
+  return createPrivateRegistryStore(projectRoot, options, 'repair-workspace-registry');
+}
+
+function createPrivateRegistryStore(
+  projectRoot: string, options: UpdatePreviewOptions, namespace: 'repair-workspace-registry' | 'local-execution-state' | 'local-finalization-state'
+): {
+  read(key: string): Promise<RepairWorkspaceRegistryValue | null>;
+  compareExchange(key: string, expectedDigest: string | null, value: unknown): Promise<RepairWorkspaceRegistryValue>;
+} {
   const digest = (content: string) => createHash('sha256').update(content).digest('hex');
   const location = async (key: string) => {
     if (!/^[a-f0-9]{64}$/u.test(key)) throw storageError('A workspace registry key must be a complete lowercase SHA-256 digest.');
     const storage = await storageFor(projectRoot, options);
     const filePath = storage.paths.join(storage.location.directory,
-      `repair-workspace-registry-${storage.location.projectKey}-${key}.json`);
+      `${namespace}-${storage.location.projectKey}-${key}.json`);
     return { storage, filePath };
   };
   const parse = (content: string): unknown => {
@@ -824,4 +875,109 @@ export function createRepairWorkspaceRegistryStore(
       });
     }
   };
+}
+
+export interface LocalExecutionRecordStore {
+  readonly operationKind: 'local-execution';
+  readonly projectRoot: string;
+  read(kind: 'preview' | 'consent' | 'result' | 'workspace-authority', key: string): Promise<ScopedUserLocalRecord | null>;
+  write(kind: 'preview' | 'consent' | 'result' | 'workspace-authority', key: string, value: unknown): Promise<ScopedUserLocalRecord>;
+  readState(key: string): Promise<RepairWorkspaceRegistryValue | null>;
+  compareExchangeState(key: string, expectedDigest: string | null, value: unknown): Promise<RepairWorkspaceRegistryValue>;
+}
+
+export function createLocalExecutionRecordStore(projectRoot: string, options: UpdatePreviewOptions = {}): LocalExecutionRecordStore {
+  const root = normalizeUpdatePreviewProjectRoot(projectRoot);
+  const captured: UpdatePreviewOptions = {
+    ...options, env: { XDG_STATE_HOME: (options.env ?? process.env).XDG_STATE_HOME, LOCALAPPDATA: (options.env ?? process.env).LOCALAPPDATA },
+    homedir: options.homedir ?? os.homedir(), platform: options.platform ?? process.platform
+  };
+  const names = {
+    preview: 'local-execution-preview', consent: 'local-execution-consent',
+    result: 'local-execution-result', 'workspace-authority': 'local-execution-workspace-authority'
+  } as const;
+  const stores = {
+    preview: createScopedUserLocalRecordStore(root, names.preview, captured),
+    consent: createScopedUserLocalRecordStore(root, names.consent, captured),
+    result: createScopedUserLocalRecordStore(root, names.result, captured),
+    'workspace-authority': createScopedUserLocalRecordStore(root, names['workspace-authority'], captured)
+  };
+  const registry = createPrivateRegistryStore(root, captured, 'local-execution-state');
+  const assertRoot = async () => {
+    if ((await resolveUpdatePreviewLocation(root, captured)).projectRoot !== root) {
+      throw storageError('Local execution storage requires its exact canonical project root.');
+    }
+  };
+  return Object.freeze({
+    operationKind: 'local-execution', projectRoot: root,
+    async read(kind, key) {
+      if (!Object.hasOwn(stores, kind)) throw storageError('Unknown local execution record kind.');
+      const store = stores[kind]; await assertRoot(); return store.read(key);
+    },
+    async write(kind, key, value) {
+      if (!Object.hasOwn(stores, kind)) throw storageError('Unknown local execution record kind.');
+      const content = canonicalJson(copyModernLocalData(value));
+      if (Buffer.byteLength(content) > maximumReceiptBytes) throw storageError('Local execution record exceeds64KiB.');
+      const snapshot: unknown = JSON.parse(content);
+      if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot) ||
+          !('kind' in snapshot) || snapshot.kind !== `liftoff-${names[kind]}` ||
+          !('projectRoot' in snapshot) || snapshot.projectRoot !== root) throw storageError('Local execution record wire kind/root mismatch.');
+      const store = stores[kind]; await assertRoot(); return store.write(key, snapshot);
+    },
+    async readState(key) { await assertRoot(); return registry.read(key); },
+    async compareExchangeState(key, expectedDigest, value) {
+      const content = canonicalJson(copyModernLocalData(value));
+      if (Buffer.byteLength(content) > maximumReceiptBytes) throw storageError('Local execution state exceeds64KiB.');
+      const snapshot: unknown = JSON.parse(content);
+      if (typeof snapshot !== 'object' || snapshot === null || Array.isArray(snapshot) ||
+          !('kind' in snapshot) || snapshot.kind !== 'liftoff-local-execution-state' ||
+          !('projectRoot' in snapshot) || snapshot.projectRoot !== root) throw storageError('Local execution state wire kind/root mismatch.');
+      await assertRoot(); return registry.compareExchange(key, expectedDigest, snapshot);
+    }
+  } satisfies LocalExecutionRecordStore);
+}
+
+export type LocalFinalizationRecordKind='preview'|'consent'|'result'|'artifact'|'publication-consent';
+export interface LocalFinalizationRecordStore {
+  readonly operationKind:'local-finalization';
+  readonly projectRoot:string;
+  read(kind:LocalFinalizationRecordKind,key:string):Promise<ScopedUserLocalRecord|null>;
+  write(kind:LocalFinalizationRecordKind,key:string,value:unknown):Promise<ScopedUserLocalRecord>;
+  readState(key:string):Promise<RepairWorkspaceRegistryValue|null>;
+  compareExchangeState(key:string,expectedDigest:string|null,value:unknown):Promise<RepairWorkspaceRegistryValue>;
+}
+export function createLocalFinalizationRecordStore(projectRoot:string,options:UpdatePreviewOptions={}):LocalFinalizationRecordStore{
+  const root=normalizeUpdatePreviewProjectRoot(projectRoot);
+  const captured:UpdatePreviewOptions={...options,env:{XDG_STATE_HOME:(options.env??process.env).XDG_STATE_HOME,LOCALAPPDATA:(options.env??process.env).LOCALAPPDATA},
+    homedir:options.homedir??os.homedir(),platform:options.platform??process.platform};
+  const names={preview:'local-finalization-preview',consent:'local-finalization-consent',result:'local-finalization-result',
+    artifact:'local-finalization-artifact','publication-consent':'local-publication-consent'} as const;
+  const stores={
+    preview:createScopedUserLocalRecordStore(root,names.preview,captured),consent:createScopedUserLocalRecordStore(root,names.consent,captured),
+    result:createScopedUserLocalRecordStore(root,names.result,captured),artifact:createScopedUserLocalRecordStore(root,names.artifact,captured),
+    'publication-consent':createScopedUserLocalRecordStore(root,names['publication-consent'],captured)
+  };
+  const registry=createPrivateRegistryStore(root,captured,'local-finalization-state');
+  const assertRoot=async()=>{
+    if((await resolveUpdatePreviewLocation(root,captured)).projectRoot!==root)throw storageError('Local finalization requires its exact canonical project root.');
+  };
+  const capture=(value:unknown,kind:string)=>{
+    const snapshot=copyModernLocalData(value),content=canonicalJson(snapshot);
+    if(Buffer.byteLength(content)>maximumReceiptBytes)throw storageError('Local finalization record exceeds64KiB.');
+    if(!snapshot||typeof snapshot!=='object'||Array.isArray(snapshot)||!('kind'in snapshot)||snapshot.kind!==kind||
+      !('projectRoot'in snapshot)||snapshot.projectRoot!==root)throw storageError('Local finalization wire kind/root mismatch.');
+    return snapshot;
+  };
+  return Object.freeze({
+    operationKind:'local-finalization',projectRoot:root,
+    async read(kind,key){if(!Object.hasOwn(stores,kind))throw storageError('Unknown local finalization record kind.');await assertRoot();return stores[kind].read(key);},
+    async write(kind,key,value){
+      if(!Object.hasOwn(stores,kind))throw storageError('Unknown local finalization record kind.');
+      const snapshot=capture(value,`liftoff-${names[kind]}`);await assertRoot();return stores[kind].write(key,snapshot);
+    },
+    async readState(key){await assertRoot();return registry.read(key);},
+    async compareExchangeState(key,expectedDigest,value){
+      const snapshot=capture(value,'liftoff-local-finalization-state');await assertRoot();return registry.compareExchange(key,expectedDigest,snapshot);
+    }
+  } satisfies LocalFinalizationRecordStore);
 }

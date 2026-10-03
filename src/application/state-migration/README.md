@@ -4,6 +4,27 @@
 contracts live in `src/domain/repair/stateful.ts`. These functions do not inherit
 authority from local repair, update, activation-record migration, `--yes`, or force.
 
+**This is a private API, not an enabled public existing-deployment migration
+command.** The current modernization keeps pre-existing Azure resource/state
+adoption, import, partition, relocation and address migration planning-only.
+Internal implementations and synthetic tests do not enable those operations.
+An unknown resource owner or missing local state file is not evidence of an
+undeployed environment.
+
+Manifest v2-v7 readers, private v8 candidate writers and activation-record
+successors concern Liftoff control records, not infrastructure state. They
+preserve original source/history and retention obligations; their approval
+cannot authorize any state operation below. Public v8 migration itself remains
+gated on the real modern runtime. See
+[configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
+for the separate source contracts and unchanged public defaults.
+
+Approved new-environment activation may eventually reuse these primitives only
+for a separately qualified protected bootstrap/handover whose resources were
+created by that same recorded operation. It must retain exact ownership,
+locking, backups, no-change verification and due-time custody/disposal proof.
+This narrow exception does not authorize arbitrary brownfield state access.
+
 ## Coordinator integration
 
 Every function takes `StateMigrationDependencies` and a typed request.

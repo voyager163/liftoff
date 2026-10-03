@@ -273,6 +273,8 @@ describe('framework adapter lifecycle', () => {
       await writeStagedArtifacts(area, [{
         logicalName: 'readme',
         category: 'test',
+        lifecycle: 'project',
+        provisioningGroup: 'base',
         pathParts: ['README.md'],
         content: 'durable\n'
       }], 'liftoff');

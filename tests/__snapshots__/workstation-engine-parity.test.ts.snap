@@ -1,0 +1,6773 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`workstation installer parity > a Homebrew formula prefix discovery req… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "unchanged",
+      "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "The remedy exited zero, but spawn node ENOENT Existing executable candidates were observed at /opt/homebrew/opt/node@24/bin/node; this does not prove the installer wrote them.",
+    "discovery": {
+      "checkedLocations": [
+        "/opt/homebrew/opt/node@24/bin/node",
+      ],
+      "complete": true,
+      "found": [
+        {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/opt/node@24/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/opt/node@24/bin/node",
+        },
+      ],
+    },
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "outcome": "unchanged",
+          "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "recipeId": "node:darwin:brew:install",
+        },
+      ],
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "executable-discovery",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Run \`brew --prefix node@24\`, ensure its bin directory is on PATH, open a new terminal, then retry node.",
+    "requirement": "node",
+    "state": "restart-required",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "outcome": "unchanged",
+        "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "recipeId": "node:darwin:brew:install",
+      },
+      "store": "record",
+    },
+    {
+      "run": {
+        "command": "brew --prefix node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "/opt/homebrew/opt/node@24/bin/node",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > a Linux manual remedy has no recipe 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "No safe automatic Node.js remedy is registered for missing-executable from unknown on linux.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "reasonCode": "recipe-unavailable",
+    "recipe": null,
+    "remedy": "Install Node.js. Follow the official Arch Linux installation guide: https://nodejs.org/en/download/package-manager Review the installation origin and required version/channel; Liftoff will not uninstall, downgrade, or repeat a missing-tool installer to guess a repair.",
+    "requirement": "node",
+    "state": "manual",
+  },
+  "trace": [],
+}
+`;
+
+exports[`workstation installer parity > a compatible requirement is not remedia… 1`] = `
+{
+  "before": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "result": {
+    "detail": "Node.js is already compatible.",
+    "probe": {
+      "detail": "Version 24.21.0",
+      "detectedBy": "node",
+      "detectedVersion": "24.21.0",
+      "identity": {
+        "evidence": "path-search",
+        "executable": "node",
+        "kind": "executable",
+        "origin": "brew",
+        "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+        "resolution": "resolved",
+        "resolvedPath": "/opt/homebrew/bin/node",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "detectedVersion": "24.21.0",
+          "identity": {
+            "evidence": "path-search",
+            "executable": "node",
+            "kind": "executable",
+            "origin": "brew",
+            "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+            "resolution": "resolved",
+            "resolvedPath": "/opt/homebrew/bin/node",
+          },
+          "reasonCode": "compatible",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "compatible",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "ready",
+    },
+    "progress": "ready",
+    "reasonCode": "verified",
+    "recipe": null,
+    "requirement": "node",
+    "state": "not-needed",
+  },
+  "trace": [],
+}
+`;
+
+exports[`workstation installer parity > a failed no-progress receipt write is r… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "unchanged",
+      "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "The authorized remedy exited zero and the independent probe is unchanged, but its no-progress receipt could not be preserved. fixture receipt write failure",
+    "historyError": "record",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "outcome": "unchanged",
+          "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "recipeId": "node:darwin:brew:install",
+        },
+      ],
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "history-storage-failed",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Resolve the private workstation remediation history error before retrying; history is not silently ignored or replaced.",
+    "requirement": "node",
+    "state": "failed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "outcome": "unchanged",
+        "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "recipeId": "node:darwin:brew:install",
+      },
+      "store": "record",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > a failing installer reports execution f… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "failed",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "Error: node@24 formula failure",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "indeterminate",
+    "reasonCode": "execution-failed",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "The install failed; no successful installation or rollback is inferred. Install Node.js manually and retry.",
+    "requirement": "node",
+    "state": "failed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > a non-error history failure is reported… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "Workstation no-progress history could not be read. No remedy command was run. The private no-progress store is unavailable.",
+    "historyError": "lookup",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "indeterminate",
+    "reasonCode": "history-storage-failed",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Resolve the private workstation remediation history error before retrying; history is not silently ignored or replaced.",
+    "requirement": "node",
+    "state": "failed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > a version change requires its own expli… 1`] = `
+{
+  "before": {
+    "detail": "Found 1.11.4; Liftoff tested this integration with exactly 1.11.0.",
+    "detectedBy": "openspec",
+    "detectedVersion": "1.11.4",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "openspec",
+      "kind": "executable",
+      "origin": "npm",
+      "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/local/bin/openspec",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "detectedVersion": "1.11.4",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "openspec",
+          "kind": "executable",
+          "origin": "npm",
+          "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/local/bin/openspec",
+        },
+        "reasonCode": "exact-version-mismatch",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "exact-version-mismatch",
+    "remedy": "Install OpenSpec 1.11.0.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "result": {
+    "detail": "The change-version recipe requires separate review because it can replace the installed version or channel.",
+    "probe": {
+      "detail": "Found 1.11.4; Liftoff tested this integration with exactly 1.11.0.",
+      "detectedBy": "openspec",
+      "detectedVersion": "1.11.4",
+      "identity": {
+        "evidence": "path-search",
+        "executable": "openspec",
+        "kind": "executable",
+        "origin": "npm",
+        "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+        "resolution": "resolved",
+        "resolvedPath": "/usr/local/bin/openspec",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "openspec",
+          },
+          "detectedVersion": "1.11.4",
+          "identity": {
+            "evidence": "path-search",
+            "executable": "openspec",
+            "kind": "executable",
+            "origin": "npm",
+            "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+            "resolution": "resolved",
+            "resolvedPath": "/usr/local/bin/openspec",
+          },
+          "reasonCode": "exact-version-mismatch",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "exact-version-mismatch",
+      "remedy": "Install OpenSpec 1.11.0.",
+      "required": {
+        "allowPrerelease": false,
+        "exactVersion": "1.11.0",
+        "releaseLine": "1.11",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "openspec",
+        "exactVersion": "1.11.0",
+        "id": "openspec",
+        "minimumVersion": undefined,
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "1.11",
+        "severity": "blocking",
+      },
+      "state": "outdated",
+    },
+    "reasonCode": "review-required",
+    "recipe": "openspec:darwin:npm:change-version",
+    "remedy": "Review npm install -g @fission-ai/openspec@1.11.0 and explicitly approve remedy openspec:darwin:npm:change-version; generic tool-install consent does not authorize a downgrade or channel change.",
+    "requirement": "openspec",
+    "state": "manual",
+  },
+  "trace": [],
+}
+`;
+
+exports[`workstation installer parity > a zero exit that leaves the tool outdat… 1`] = `
+{
+  "before": {
+    "detail": "Found 24.0.0; version 24.20.0 or newer is required.",
+    "detectedBy": "node",
+    "detectedVersion": "24.0.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.0.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "below-minimum",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "below-minimum",
+    "remedy": "Upgrade Node.js to 24.20.0 or newer.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "9096204e1dc318e0c36ec26ec0b0626d7983314bd2d60e97150e11529fb2a4f4",
+      "outcome": "improved",
+      "outputFingerprint": "6fbb65b357a5edc950d0964641b289782f79b5234cad3aca6069a89d56338661",
+      "recipeId": "node:darwin:brew:upgrade",
+    },
+    "command": "brew upgrade node@24",
+    "detail": "The remedy exited zero; Found 24.10.0; version 24.20.0 or newer is required. No installer file changes were verified.",
+    "probe": {
+      "detail": "Found 24.10.0; version 24.20.0 or newer is required.",
+      "detectedBy": "node",
+      "detectedVersion": "24.10.0",
+      "identity": {
+        "evidence": "path-search",
+        "executable": "node",
+        "kind": "executable",
+        "origin": "brew",
+        "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+        "resolution": "resolved",
+        "resolvedPath": "/opt/homebrew/bin/node",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "detectedVersion": "24.10.0",
+          "identity": {
+            "evidence": "path-search",
+            "executable": "node",
+            "kind": "executable",
+            "origin": "brew",
+            "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+            "resolution": "resolved",
+            "resolvedPath": "/opt/homebrew/bin/node",
+          },
+          "reasonCode": "below-minimum",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "below-minimum",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "9096204e1dc318e0c36ec26ec0b0626d7983314bd2d60e97150e11529fb2a4f4",
+          "outcome": "improved",
+          "outputFingerprint": "6fbb65b357a5edc950d0964641b289782f79b5234cad3aca6069a89d56338661",
+          "recipeId": "node:darwin:brew:upgrade",
+        },
+      ],
+      "remedy": "Upgrade Node.js to 24.20.0 or newer.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "outdated",
+    },
+    "progress": "improved",
+    "reasonCode": "verification-unresolved",
+    "recipe": "node:darwin:brew:upgrade",
+    "remedy": "Upgrade Node.js to 24.20.0 or newer. Review the installation origin and supported version/channel operation instead of repeating the same installer.",
+    "requirement": "node",
+    "state": "unresolved",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "9096204e1dc318e0c36ec26ec0b0626d7983314bd2d60e97150e11529fb2a4f4",
+      "recipeId": "node:darwin:brew:upgrade",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew upgrade node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an empty uv tool directory reports no p… 1`] = `
+{
+  "before": {
+    "detail": "spawn specify ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "specify",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "specify",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "specify",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Spec Kit.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.0.1",
+      "releaseLine": "1.0",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "spec-kit",
+      "exactVersion": "1.0.1",
+      "id": "spec-kit",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.0",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+      "outcome": "unchanged",
+      "outputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+      "recipeId": "spec-kit:linux:uv:install",
+    },
+    "command": "uv tool install specify-cli==1.0.1",
+    "detail": "The remedy exited zero, but spawn specify ENOENT No executable candidate was observed in the documented install locations. No file changes were verified.",
+    "discovery": {
+      "checkedLocations": [
+        "/fixture/uv-bin/specify",
+      ],
+      "complete": true,
+      "found": [],
+    },
+    "probe": {
+      "detail": "spawn specify ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "specify",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "specify",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "specify",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+          "outcome": "unchanged",
+          "outputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+          "recipeId": "spec-kit:linux:uv:install",
+        },
+      ],
+      "remedy": "Install Spec Kit.",
+      "required": {
+        "allowPrerelease": false,
+        "exactVersion": "1.0.1",
+        "releaseLine": "1.0",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "spec-kit",
+        "exactVersion": "1.0.1",
+        "id": "spec-kit",
+        "minimumVersion": undefined,
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "1.0",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "no-progress",
+    "recipe": "spec-kit:linux:uv:install",
+    "remedy": "Inspect the installation and its documented executable location before selecting another remedy.",
+    "requirement": "spec-kit",
+    "state": "unchanged",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+      "recipeId": "spec-kit:linux:uv:install",
+      "store": "find",
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "uv",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "uv",
+    },
+    {
+      "run": {
+        "command": "uv --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "uv tool install specify-cli==1.0.1",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "spec-kit",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "specify",
+    },
+    {
+      "run": {
+        "command": "specify --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+        "outcome": "unchanged",
+        "outputFingerprint": "2bbd349932ed9d765bf9472ce6c756b30f1ada30c6cf8e1db4e5b72830b1abcf",
+        "recipeId": "spec-kit:linux:uv:install",
+      },
+      "store": "record",
+    },
+    {
+      "run": {
+        "command": "uv tool dir --bin",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "spec-kit",
+      "observer": "inspect",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "/fixture/uv-bin/specify",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an incompletely observed WinGet locatio… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+      "outcome": "unchanged",
+      "outputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+      "recipeId": "node:win32:winget:install",
+    },
+    "command": "winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements",
+    "detail": "The remedy exited zero, but spawn node ENOENT Documented install locations could not be fully observed. No file changes were verified.",
+    "discovery": {
+      "checkedLocations": [
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.exe",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.cmd",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.bat",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.com",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.exe",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.cmd",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.bat",
+        "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.com",
+      ],
+      "complete": false,
+      "found": [],
+    },
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+          "outcome": "unchanged",
+          "outputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+          "recipeId": "node:win32:winget:install",
+        },
+      ],
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "no-progress",
+    "recipe": "node:win32:winget:install",
+    "remedy": "Inspect the installation and its documented executable location before selecting another remedy.",
+    "requirement": "node",
+    "state": "unchanged",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+      "recipeId": "node:win32:winget:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "winget --version",
+        "cwd": "C:\\fixture\\project",
+        "env": [
+          [
+            "APPDATA",
+            "C:\\fixture\\home\\AppData\\Roaming",
+          ],
+          [
+            "HOME",
+            "C:\\fixture\\home",
+          ],
+          [
+            "LOCALAPPDATA",
+            "C:\\fixture\\home\\AppData\\Local",
+          ],
+          [
+            "PATH",
+            "C:\\fixture\\bin",
+          ],
+          [
+            "PATHEXT",
+            ".COM;.EXE;.BAT;.CMD",
+          ],
+          [
+            "USERPROFILE",
+            "C:\\fixture\\home",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "winget install --id OpenJS.NodeJS.LTS --exact --accept-package-agreements --accept-source-agreements",
+        "cwd": "C:\\fixture\\project",
+        "env": [
+          [
+            "APPDATA",
+            "C:\\fixture\\home\\AppData\\Roaming",
+          ],
+          [
+            "HOME",
+            "C:\\fixture\\home",
+          ],
+          [
+            "LOCALAPPDATA",
+            "C:\\fixture\\home\\AppData\\Local",
+          ],
+          [
+            "PATH",
+            "C:\\fixture\\bin",
+          ],
+          [
+            "PATHEXT",
+            ".COM;.EXE;.BAT;.CMD",
+          ],
+          [
+            "USERPROFILE",
+            "C:\\fixture\\home",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "C:\\fixture\\project",
+        "env": [
+          [
+            "APPDATA",
+            "C:\\fixture\\home\\AppData\\Roaming",
+          ],
+          [
+            "HOME",
+            "C:\\fixture\\home",
+          ],
+          [
+            "LOCALAPPDATA",
+            "C:\\fixture\\home\\AppData\\Local",
+          ],
+          [
+            "PATH",
+            "C:\\fixture\\bin",
+          ],
+          [
+            "PATHEXT",
+            ".COM;.EXE;.BAT;.CMD",
+          ],
+          [
+            "USERPROFILE",
+            "C:\\fixture\\home",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+        "outcome": "unchanged",
+        "outputFingerprint": "34d0a669cab945a75d73997682d1778c8d6456c943aca1f40c0c9d11d63c631d",
+        "recipeId": "node:win32:winget:install",
+      },
+      "store": "record",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.exe",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.cmd",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.bat",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WindowsApps\\node.com",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.exe",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.cmd",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.bat",
+    },
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "inspect",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "C:\\fixture\\home\\AppData\\Local\\Microsoft\\WinGet\\Links\\node.com",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an installed tool is verified independe… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "ready",
+      "outputFingerprint": "13a093922e42a0165b9693ddabf18496e1ac5fb04ddeaacc1c7e3c953bc1f7ad",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "Node.js is ready after verification; installer file changes were not observed.",
+    "probe": {
+      "detail": "Version 24.21.0",
+      "detectedBy": "node",
+      "detectedVersion": "24.21.0",
+      "identity": {
+        "evidence": "path-search",
+        "executable": "node",
+        "kind": "executable",
+        "origin": "brew",
+        "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+        "resolution": "resolved",
+        "resolvedPath": "/opt/homebrew/bin/node",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "detectedVersion": "24.21.0",
+          "identity": {
+            "evidence": "path-search",
+            "executable": "node",
+            "kind": "executable",
+            "origin": "brew",
+            "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+            "resolution": "resolved",
+            "resolvedPath": "/opt/homebrew/bin/node",
+          },
+          "reasonCode": "compatible",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "compatible",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "outcome": "ready",
+          "outputFingerprint": "13a093922e42a0165b9693ddabf18496e1ac5fb04ddeaacc1c7e3c953bc1f7ad",
+          "recipeId": "node:darwin:brew:install",
+        },
+      ],
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "ready",
+    },
+    "progress": "ready",
+    "reasonCode": "verified",
+    "recipe": "node:darwin:brew:install",
+    "requirement": "node",
+    "state": "installed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an installer timeout reports execution … 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "failed",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "Node.js installation timed out.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "indeterminate",
+    "reasonCode": "execution-failed",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "The install failed; no successful installation or rollback is inferred. Install Node.js manually and retry.",
+    "requirement": "node",
+    "state": "failed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an npm global install found outside PAT… 1`] = `
+{
+  "before": {
+    "detail": "spawn openspec ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "openspec",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "openspec",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install OpenSpec.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+      "outcome": "unchanged",
+      "outputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+      "recipeId": "openspec:linux:npm:install",
+    },
+    "command": "npm install -g @fission-ai/openspec@1.11.0",
+    "detail": "The remedy exited zero, but spawn openspec ENOENT Existing executable candidates were observed at /fixture/npm-global/bin/openspec; this does not prove the installer wrote them.",
+    "discovery": {
+      "checkedLocations": [
+        "/fixture/npm-global/bin/openspec",
+      ],
+      "complete": true,
+      "found": [
+        {
+          "evidence": "path-search",
+          "executable": "openspec",
+          "kind": "executable",
+          "origin": "npm",
+          "realPath": "/fixture/npm-global/bin/openspec",
+          "resolution": "resolved",
+          "resolvedPath": "/fixture/npm-global/bin/openspec",
+        },
+      ],
+    },
+    "probe": {
+      "detail": "spawn openspec ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "openspec",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "openspec",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "openspec",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+          "outcome": "unchanged",
+          "outputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+          "recipeId": "openspec:linux:npm:install",
+        },
+      ],
+      "remedy": "Install OpenSpec.",
+      "required": {
+        "allowPrerelease": false,
+        "exactVersion": "1.11.0",
+        "releaseLine": "1.11",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "openspec",
+        "exactVersion": "1.11.0",
+        "id": "openspec",
+        "minimumVersion": undefined,
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "1.11",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "executable-discovery",
+    "recipe": "openspec:linux:npm:install",
+    "remedy": "Run \`npm prefix -g\`, add that installation's bin directory to PATH, open a new terminal, then retry openspec.",
+    "requirement": "openspec",
+    "state": "restart-required",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+      "recipeId": "openspec:linux:npm:install",
+      "store": "find",
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "npm",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "npm",
+    },
+    {
+      "run": {
+        "command": "npm --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "npm install -g @fission-ai/openspec@1.11.0",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "openspec",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "openspec",
+    },
+    {
+      "run": {
+        "command": "openspec --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+        "outcome": "unchanged",
+        "outputFingerprint": "4be5c761143cf10ee4f3b2dfcb883a683391f495855976a51855f659267864ae",
+        "recipeId": "openspec:linux:npm:install",
+      },
+      "store": "record",
+    },
+    {
+      "run": {
+        "command": "npm prefix -g",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "openspec",
+      "observer": "inspect",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "/fixture/npm-global/bin/openspec",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an unauthorized remedy is declined 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "Tool remediation was not authorized.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "reasonCode": "not-authorized",
+    "recipe": null,
+    "remedy": "Install Node.js.",
+    "requirement": "node",
+    "state": "declined",
+  },
+  "trace": [],
+}
+`;
+
+exports[`workstation installer parity > an unavailable Homebrew is not bootstra… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "brew is unavailable, incompatible, or unhealthy; Liftoff does not bootstrap package managers.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "reasonCode": "manager-unavailable",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Prepare a compatible brew through its official instructions, then retry.",
+    "requirement": "node",
+    "state": "manual",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an unavailable npm is not bootstrapped 1`] = `
+{
+  "before": {
+    "detail": "spawn openspec ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "openspec",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "openspec",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install OpenSpec.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "npm is unavailable, incompatible, or unhealthy; Liftoff does not bootstrap package managers.",
+    "probe": {
+      "detail": "spawn openspec ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "openspec",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "openspec",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "openspec",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install OpenSpec.",
+      "required": {
+        "allowPrerelease": false,
+        "exactVersion": "1.11.0",
+        "releaseLine": "1.11",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "openspec",
+        "exactVersion": "1.11.0",
+        "id": "openspec",
+        "minimumVersion": undefined,
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "1.11",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "reasonCode": "manager-unavailable",
+    "recipe": "openspec:linux:npm:install",
+    "remedy": "Prepare a compatible npm through its official instructions, then retry.",
+    "requirement": "openspec",
+    "state": "manual",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "416b55ed21e0562bc7c90fd48935fef24f998ae8fe9e377c094f417197ba2d93",
+      "recipeId": "openspec:linux:npm:install",
+      "store": "find",
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "npm",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "linux",
+      "target": "npm",
+    },
+    {
+      "run": {
+        "command": "npm --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an unchanged attempt is recorded and no… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "repeated": {
+    "detail": "The same node:darwin:brew:install remedy already made no progress for this executable and constraint; it was not run again.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "no-progress",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Reinspect after the installation or environment changes, or review a different registered remedy. Do not repeat the unchanged command.",
+    "requirement": "node",
+    "state": "unchanged",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "unchanged",
+      "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "command": "brew install node@24",
+    "detail": "The remedy exited zero, but spawn node ENOENT Documented install locations could not be fully observed. No file changes were verified.",
+    "discovery": {
+      "checkedLocations": [],
+      "complete": false,
+      "found": [],
+    },
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remediationAttempts": [
+        {
+          "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "outcome": "unchanged",
+          "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+          "recipeId": "node:darwin:brew:install",
+        },
+      ],
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "no-progress",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Inspect the installation and its documented executable location before selecting another remedy.",
+    "requirement": "node",
+    "state": "unchanged",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+    {
+      "run": {
+        "command": "brew --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "run": {
+        "command": "brew install node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 1048576,
+        "stderr": "harness.stderr",
+        "stdout": "harness.stdout",
+        "stream": true,
+        "timeoutMs": 600000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "attempt": {
+        "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "outcome": "unchanged",
+        "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+        "recipeId": "node:darwin:brew:install",
+      },
+      "store": "record",
+    },
+    {
+      "run": {
+        "command": "brew --prefix node@24",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 10000,
+      },
+    },
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > an unreadable no-progress history block… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "detail": "Workstation no-progress history could not be read. No remedy command was run. fixture no-progress store unavailable",
+    "historyError": "lookup",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "indeterminate",
+    "reasonCode": "history-storage-failed",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Resolve the private workstation remediation history error before retrying; history is not silently ignored or replaced.",
+    "requirement": "node",
+    "state": "failed",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+  ],
+}
+`;
+
+exports[`workstation installer parity > persisted no-progress history suppresse… 1`] = `
+{
+  "before": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "result": {
+    "attempt": {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "outcome": "unchanged",
+      "outputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+    },
+    "detail": "The same node:darwin:brew:install remedy already made no progress for this executable and constraint; it was not run again.",
+    "probe": {
+      "detail": "spawn node ENOENT",
+      "identity": {
+        "evidence": "unavailable",
+        "executable": "node",
+        "origin": "unknown",
+        "resolution": "missing",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "errorCode": "ENOENT",
+          "identity": {
+            "evidence": "unavailable",
+            "executable": "node",
+            "origin": "unknown",
+            "resolution": "missing",
+          },
+          "reasonCode": "missing-executable",
+          "status": null,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "missing-executable",
+      "remedy": "Install Node.js.",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "missing",
+    },
+    "progress": "unchanged",
+    "reasonCode": "no-progress",
+    "recipe": "node:darwin:brew:install",
+    "remedy": "Reinspect after the installation or environment changes, or review a different registered remedy. Do not repeat the unchanged command.",
+    "requirement": "node",
+    "state": "unchanged",
+  },
+  "trace": [
+    {
+      "inputFingerprint": "211394d2476bb5cdf382f0f5f6ff6f908bc2fc41edfe6ac90f26978859194389",
+      "recipeId": "node:darwin:brew:install",
+      "store": "find",
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > A compatible Node reports a newer avail… 1`] = `
+{
+  "result": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [
+      {
+        "code": "update-available",
+        "detail": "Version 24.22.0 is available (fixture feed); installed 24.21.0 remains compatible.",
+        "label": "Node.js update",
+        "state": "notice",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > A runner exception is normalized into a… 1`] = `
+{
+  "result": {
+    "detail": "fixture spawn failure",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "EACCES",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "probe-failed",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "probe-failed",
+    "remedy": "Repair Node.js and retry.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "unhealthy",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > An injected runner without an observer … 1`] = `
+{
+  "result": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > An unregistered requested pin is unsupp… 1`] = `
+{
+  "result": {
+    "detail": "The registered OpenSpec pin is 1.11.0; another requested pin is unsupported.",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "openspec",
+      "origin": "unknown",
+      "resolution": "not-observable",
+    },
+    "notices": [],
+    "observations": [],
+    "reasonCode": "unsupported-constraint",
+    "remedy": "Use the registered tested tool constraints; no installation or PATH change can repair an unsupported requirement.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "9.9.9",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "9.9.9",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "not-observable",
+  },
+  "trace": [],
+}
+`;
+
+exports[`workstation probe parity > Azure CLI is compatible and authenticat… 1`] = `
+{
+  "result": {
+    "detail": "Version 2.75.0",
+    "detectedBy": "az",
+    "detectedVersion": "2.75.0",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "az",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [
+      {
+        "code": "authentication",
+        "detail": "Health probe succeeded.",
+        "label": "Azure authentication",
+        "state": "ready",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "version",
+            "--output",
+            "json",
+          ],
+          "executable": "az",
+        },
+        "detectedVersion": "2.75.0",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "az",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "azure-cli",
+      "exactVersion": undefined,
+      "id": "azure-cli",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "advisory",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "azure-cli",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "az",
+    },
+    {
+      "run": {
+        "command": "az version --output json",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "az account show --output none --only-show-errors",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 20000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Claude doctor is healthy 1`] = `
+{
+  "result": {
+    "detail": "Version 2.1.0",
+    "detectedBy": "claude",
+    "detectedVersion": "2.1.0",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "claude",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [
+      {
+        "code": "health",
+        "detail": "Health probe succeeded.",
+        "label": "Claude Code doctor",
+        "state": "ready",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "claude",
+        },
+        "detectedVersion": "2.1.0",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "claude",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": true,
+    },
+    "requirement": {
+      "allowPrerelease": true,
+      "definition": "claude",
+      "exactVersion": undefined,
+      "id": "claude",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "claude",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "claude",
+    },
+    {
+      "run": {
+        "command": "claude --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "claude doctor",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 20000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Codex reports an owned authentication n… 1`] = `
+{
+  "result": {
+    "detail": "Version 0.40.0",
+    "detectedBy": "codex",
+    "detectedVersion": "0.40.0",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "codex",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [
+      {
+        "code": "authentication",
+        "detail": "Authentication remains owned by Codex; Liftoff does not collect or persist credentials.",
+        "label": "OpenAI Codex authentication",
+        "remedy": "Run \`codex\` and sign in if prompted.",
+        "state": "not-observable",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "codex",
+        },
+        "detectedVersion": "0.40.0",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "codex",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": true,
+    },
+    "requirement": {
+      "allowPrerelease": true,
+      "definition": "codex",
+      "exactVersion": undefined,
+      "id": "codex",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "codex",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "codex",
+    },
+    {
+      "run": {
+        "command": "codex --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Copilot VS Code discovery fails 1`] = `
+{
+  "result": {
+    "detail": "code failed",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "code",
+      "kind": "executable",
+      "origin": "unknown",
+      "realPath": "/usr/local/bin/code",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/local/bin/code",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "copilot",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "copilot",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+      {
+        "command": {
+          "args": [
+            "--list-extensions",
+          ],
+          "executable": "code",
+        },
+        "identity": {
+          "evidence": "path-search",
+          "executable": "code",
+          "kind": "executable",
+          "origin": "unknown",
+          "realPath": "/usr/local/bin/code",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/local/bin/code",
+        },
+        "reasonCode": "probe-failed",
+        "status": 1,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "probe-failed",
+    "remedy": "Run \`code --list-extensions\` and repair the VS Code CLI before retrying.",
+    "required": {
+      "allowPrerelease": true,
+    },
+    "requirement": {
+      "allowPrerelease": true,
+      "definition": "github-copilot",
+      "exactVersion": undefined,
+      "id": "github-copilot",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "blocking",
+    },
+    "state": "unhealthy",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "copilot",
+    },
+    {
+      "run": {
+        "command": "copilot --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "code",
+    },
+    {
+      "run": {
+        "command": "code --list-extensions",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Copilot cannot be observed without CLIs 1`] = `
+{
+  "result": {
+    "detail": "Copilot CLI and the VS Code CLI are unavailable, so agent presence cannot be observed.",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "code",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "copilot",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "copilot",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+      {
+        "command": {
+          "args": [
+            "--list-extensions",
+          ],
+          "executable": "code",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "code",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "observation-unavailable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "observation-unavailable",
+    "remedy": "Install the Copilot CLI, or verify that GitHub.copilot or GitHub.copilot-chat is enabled in VS Code.",
+    "required": {
+      "allowPrerelease": true,
+    },
+    "requirement": {
+      "allowPrerelease": true,
+      "definition": "github-copilot",
+      "exactVersion": undefined,
+      "id": "github-copilot",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "blocking",
+    },
+    "state": "not-observable",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "copilot",
+    },
+    {
+      "run": {
+        "command": "copilot --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "code",
+    },
+    {
+      "run": {
+        "command": "code --list-extensions",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Copilot is observed through the VS Code… 1`] = `
+{
+  "result": {
+    "detail": "GitHub Copilot is installed as a VS Code extension.",
+    "detectedBy": "code --list-extensions",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "code",
+      "kind": "executable",
+      "origin": "unknown",
+      "realPath": "/usr/local/bin/code",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/local/bin/code",
+    },
+    "notices": [
+      {
+        "code": "authentication",
+        "detail": "Authentication is managed by the selected editor or agent.",
+        "label": "GitHub Copilot authentication",
+        "remedy": "Open GitHub Copilot and sign in if prompted.",
+        "state": "not-observable",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "copilot",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "copilot",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+      {
+        "command": {
+          "args": [
+            "--list-extensions",
+          ],
+          "executable": "code",
+        },
+        "identity": {
+          "evidence": "path-search",
+          "executable": "code",
+          "kind": "executable",
+          "origin": "unknown",
+          "realPath": "/usr/local/bin/code",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/local/bin/code",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": true,
+    },
+    "requirement": {
+      "allowPrerelease": true,
+      "definition": "github-copilot",
+      "exactVersion": undefined,
+      "id": "github-copilot",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "copilot",
+    },
+    {
+      "run": {
+        "command": "copilot --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-copilot",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "code",
+    },
+    {
+      "run": {
+        "command": "code --list-extensions",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Docker is compatible but its daemon is … 1`] = `
+{
+  "result": {
+    "detail": "Version 28.1.1",
+    "detectedBy": "docker",
+    "detectedVersion": "28.1.1",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "docker",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [
+      {
+        "code": "health",
+        "detail": "Cannot connect to the Docker daemon",
+        "label": "Docker daemon",
+        "remedy": "Start Docker Desktop or the Docker daemon.",
+        "state": "unhealthy",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "docker",
+        },
+        "detectedVersion": "28.1.1",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "docker",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "docker",
+      "exactVersion": undefined,
+      "id": "docker",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "advisory",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "docker",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "docker",
+    },
+    {
+      "run": {
+        "command": "docker --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "docker info --format {{.ServerVersion}}",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 20000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > GitHub CLI authentication is unhealthy 1`] = `
+{
+  "result": {
+    "detail": "Version 2.80.0",
+    "detectedBy": "gh",
+    "detectedVersion": "2.80.0",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "gh",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [
+      {
+        "code": "authentication",
+        "detail": "You are not logged into any GitHub hosts. <redacted>",
+        "label": "GitHub authentication",
+        "remedy": "Run \`gh auth login\` with the required account and scope.",
+        "state": "unhealthy",
+      },
+    ],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "gh",
+        },
+        "detectedVersion": "2.80.0",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "gh",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "github-cli",
+      "exactVersion": undefined,
+      "id": "github-cli",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": undefined,
+      "severity": "advisory",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "github-cli",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "gh",
+    },
+    {
+      "run": {
+        "command": "gh --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "run": {
+        "command": "gh auth status",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 20000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Go probe exceeds its output bound 1`] = `
+{
+  "result": {
+    "detail": "go version probe exceeded the output limit.",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "go",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "version",
+          ],
+          "executable": "go",
+        },
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "go",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "probe-failed",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "probe-failed",
+    "remedy": "Repair Go and retry.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "1.27.0",
+      "releaseLine": "1.27",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "go",
+      "exactVersion": undefined,
+      "id": "go",
+      "minimumVersion": "1.27.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.27",
+      "severity": "blocking",
+    },
+    "state": "unhealthy",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "go",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "go",
+    },
+    {
+      "run": {
+        "command": "go version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Node is below the supported minimum 1`] = `
+{
+  "result": {
+    "detail": "Found 24.0.0; version 24.20.0 or newer is required.",
+    "detectedBy": "node",
+    "detectedVersion": "24.0.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.0.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "below-minimum",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "below-minimum",
+    "remedy": "Upgrade Node.js to 24.20.0 or newer.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Node is missing 1`] = `
+{
+  "result": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Node outside the release line 1`] = `
+{
+  "result": {
+    "detail": "Found 26.1.0; the supported release line is 24.",
+    "detectedBy": "node",
+    "detectedVersion": "26.1.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "26.1.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "release-line-mismatch",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "release-line-mismatch",
+    "remedy": "Install Node.js 24.x at or above 24.20.0.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Node prerelease is an incompatible chan… 1`] = `
+{
+  "result": {
+    "detail": "Found prerelease 24.21.1-rc.1; a stable release is required.",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.1-rc.1",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.1-rc.1",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "incompatible-channel",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "incompatible-channel",
+    "remedy": "Install a stable Node.js release in the supported 24 line.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > OpenSpec does not match its tested pin 1`] = `
+{
+  "result": {
+    "detail": "Found 1.11.4; Liftoff tested this integration with exactly 1.11.0.",
+    "detectedBy": "openspec",
+    "detectedVersion": "1.11.4",
+    "identity": {
+      "evidence": "version-probe",
+      "executable": "openspec",
+      "origin": "unknown",
+      "resolution": "resolved",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "detectedVersion": "1.11.4",
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "openspec",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "exact-version-mismatch",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "exact-version-mismatch",
+    "remedy": "Install OpenSpec 1.11.0.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "openspec",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "openspec",
+    },
+    {
+      "run": {
+        "command": "openspec --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > Python version output cannot be parsed … 1`] = `
+{
+  "result": {
+    "detail": "Unable to parse a supported Python version from the successful probe output.",
+    "detectedBy": "python3",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "python3",
+      "kind": "executable",
+      "origin": "unknown",
+      "realPath": "/usr/bin/python3",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/bin/python3",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "python3",
+        },
+        "identity": {
+          "evidence": "path-search",
+          "executable": "python3",
+          "kind": "executable",
+          "origin": "unknown",
+          "realPath": "/usr/bin/python3",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/bin/python3",
+        },
+        "reasonCode": "version-unparseable",
+        "status": 0,
+        "timedOut": false,
+      },
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "python",
+        },
+        "identity": {
+          "evidence": "version-probe",
+          "executable": "python",
+          "origin": "unknown",
+          "resolution": "resolved",
+        },
+        "reasonCode": "version-unparseable",
+        "status": 0,
+        "timedOut": false,
+      },
+      {
+        "command": {
+          "args": [
+            "-3",
+            "--version",
+          ],
+          "executable": "py",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "py",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "version-unparseable",
+    "remedy": "Verify the Python executable and its version output before selecting a remedy.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "3.14.0",
+      "releaseLine": "3.14",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "python",
+      "exactVersion": undefined,
+      "id": "python",
+      "minimumVersion": "3.14.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "3.14",
+      "severity": "blocking",
+    },
+    "state": "unhealthy",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "python",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "python3",
+    },
+    {
+      "run": {
+        "command": "python3 --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "python",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "python",
+    },
+    {
+      "run": {
+        "command": "python --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+    {
+      "cwd": "/fixture/project",
+      "definition": "python",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "py",
+    },
+    {
+      "run": {
+        "command": "py -3 --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > darwin Node is compatible 1`] = `
+{
+  "result": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > keeps probeWorkstation results in requirement order 1`] = `
+{
+  "eventsByTarget": {
+    "observer:docker": [
+      "{"observer":"resolve","target":"docker","platform":"darwin","cwd":"/fixture/project","path":"/fixture/bin","definition":"docker"}",
+    ],
+    "observer:node": [
+      "{"observer":"resolve","target":"node","platform":"darwin","cwd":"/fixture/project","path":"/fixture/bin","definition":"node"}",
+    ],
+    "observer:npm": [
+      "{"observer":"resolve","target":"npm","platform":"darwin","cwd":"/fixture/project","path":"/fixture/bin","definition":"npm"}",
+    ],
+    "run:docker": [
+      "{"run":{"command":"docker --version","cwd":"/fixture/project","env":[["HOME","/fixture/home"],["PATH","/fixture/bin"]],"timeoutMs":15000,"maxOutputBytes":16384,"stream":null,"stdout":null,"stderr":null}}",
+      "{"run":{"command":"docker info --format {{.ServerVersion}}","cwd":"/fixture/project","env":[["HOME","/fixture/home"],["PATH","/fixture/bin"]],"timeoutMs":20000,"maxOutputBytes":16384,"stream":null,"stdout":null,"stderr":null}}",
+    ],
+    "run:node": [
+      "{"run":{"command":"node --version","cwd":"/fixture/project","env":[["HOME","/fixture/home"],["PATH","/fixture/bin"]],"timeoutMs":15000,"maxOutputBytes":16384,"stream":null,"stdout":null,"stderr":null}}",
+    ],
+    "run:npm": [
+      "{"run":{"command":"npm --version","cwd":"/fixture/project","env":[["HOME","/fixture/home"],["PATH","/fixture/bin"]],"timeoutMs":15000,"maxOutputBytes":16384,"stream":null,"stdout":null,"stderr":null}}",
+    ],
+  },
+  "results": [
+    {
+      "detail": "Version 28.1.1",
+      "detectedBy": "docker",
+      "detectedVersion": "28.1.1",
+      "identity": {
+        "evidence": "version-probe",
+        "executable": "docker",
+        "origin": "unknown",
+        "resolution": "resolved",
+      },
+      "notices": [
+        {
+          "code": "health",
+          "detail": "Health probe succeeded.",
+          "label": "Docker daemon",
+          "state": "ready",
+        },
+      ],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "docker",
+          },
+          "detectedVersion": "28.1.1",
+          "identity": {
+            "evidence": "version-probe",
+            "executable": "docker",
+            "origin": "unknown",
+            "resolution": "resolved",
+          },
+          "reasonCode": "compatible",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "compatible",
+      "required": {
+        "allowPrerelease": false,
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "docker",
+        "exactVersion": undefined,
+        "id": "docker",
+        "minimumVersion": undefined,
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": undefined,
+        "severity": "advisory",
+      },
+      "state": "ready",
+    },
+    {
+      "detail": "Version 24.21.0",
+      "detectedBy": "node",
+      "detectedVersion": "24.21.0",
+      "identity": {
+        "evidence": "path-search",
+        "executable": "node",
+        "kind": "executable",
+        "origin": "brew",
+        "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+        "resolution": "resolved",
+        "resolvedPath": "/opt/homebrew/bin/node",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "node",
+          },
+          "detectedVersion": "24.21.0",
+          "identity": {
+            "evidence": "path-search",
+            "executable": "node",
+            "kind": "executable",
+            "origin": "brew",
+            "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+            "resolution": "resolved",
+            "resolvedPath": "/opt/homebrew/bin/node",
+          },
+          "reasonCode": "compatible",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "compatible",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "24.20.0",
+        "releaseLine": "24",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "node",
+        "exactVersion": undefined,
+        "id": "node",
+        "minimumVersion": "24.20.0",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "24",
+        "severity": "blocking",
+      },
+      "state": "ready",
+    },
+    {
+      "detail": "Version 12.0.2",
+      "detectedBy": "npm",
+      "detectedVersion": "12.0.2",
+      "identity": {
+        "evidence": "version-probe",
+        "executable": "npm",
+        "origin": "unknown",
+        "resolution": "resolved",
+      },
+      "notices": [],
+      "observations": [
+        {
+          "command": {
+            "args": [
+              "--version",
+            ],
+            "executable": "npm",
+          },
+          "detectedVersion": "12.0.2",
+          "identity": {
+            "evidence": "version-probe",
+            "executable": "npm",
+            "origin": "unknown",
+            "resolution": "resolved",
+          },
+          "reasonCode": "compatible",
+          "status": 0,
+          "timedOut": false,
+        },
+      ],
+      "reasonCode": "compatible",
+      "required": {
+        "allowPrerelease": false,
+        "minimumVersion": "12.0.2",
+        "releaseLine": "12",
+      },
+      "requirement": {
+        "allowPrerelease": false,
+        "definition": "npm",
+        "exactVersion": undefined,
+        "id": "npm",
+        "minimumVersion": "12.0.2",
+        "reasons": [
+          "characterization",
+        ],
+        "releaseLine": "12",
+        "severity": "blocking",
+      },
+      "state": "ready",
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > uv probe times out 1`] = `
+{
+  "result": {
+    "detail": "uv version probe timed out.",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "uv",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "uv",
+        },
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "uv",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "probe-failed",
+        "status": null,
+        "timedOut": true,
+      },
+    ],
+    "reasonCode": "probe-failed",
+    "remedy": "Repair uv and retry.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "0.12.7",
+      "releaseLine": "0.12",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "uv",
+      "exactVersion": undefined,
+      "id": "uv",
+      "minimumVersion": "0.12.7",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "0.12",
+      "severity": "blocking",
+    },
+    "state": "unhealthy",
+  },
+  "trace": [
+    {
+      "cwd": "/fixture/project",
+      "definition": "uv",
+      "observer": "resolve",
+      "path": "/fixture/bin",
+      "platform": "darwin",
+      "target": "uv",
+    },
+    {
+      "run": {
+        "command": "uv --version",
+        "cwd": "/fixture/project",
+        "env": [
+          [
+            "HOME",
+            "/fixture/home",
+          ],
+          [
+            "PATH",
+            "/fixture/bin",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation probe parity > win32 Node resolves with pinned environ… 1`] = `
+{
+  "result": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "unknown",
+      "realPath": "C:\\Program Files\\nodejs\\node.exe",
+      "resolution": "resolved",
+      "resolvedPath": "C:\\Program Files\\nodejs\\node.exe",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "unknown",
+          "realPath": "C:\\Program Files\\nodejs\\node.exe",
+          "resolution": "resolved",
+          "resolvedPath": "C:\\Program Files\\nodejs\\node.exe",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "trace": [
+    {
+      "cwd": "C:\\fixture\\project",
+      "definition": "node",
+      "observer": "resolve",
+      "path": "C:\\fixture\\bin",
+      "platform": "win32",
+      "target": "node",
+    },
+    {
+      "run": {
+        "command": "node --version",
+        "cwd": "C:\\fixture\\project",
+        "env": [
+          [
+            "APPDATA",
+            "C:\\fixture\\home\\AppData\\Roaming",
+          ],
+          [
+            "HOME",
+            "C:\\fixture\\home",
+          ],
+          [
+            "LOCALAPPDATA",
+            "C:\\fixture\\home\\AppData\\Local",
+          ],
+          [
+            "PATH",
+            "C:\\fixture\\bin",
+          ],
+          [
+            "PATHEXT",
+            ".COM;.EXE;.BAT;.CMD",
+          ],
+          [
+            "USERPROFILE",
+            "C:\\fixture\\home",
+          ],
+        ],
+        "maxOutputBytes": 16384,
+        "stderr": null,
+        "stdout": null,
+        "stream": null,
+        "timeoutMs": 15000,
+      },
+    },
+  ],
+}
+`;
+
+exports[`workstation progress and host parity > classifies remediation progress between observations 1`] = `
+{
+  "changed": "changed",
+  "channel": "improved",
+  "discovered": "changed",
+  "lowered": "changed",
+  "parsed": "improved",
+  "raised": "improved",
+  "ready": "ready",
+  "unchanged": "unchanged",
+}
+`;
+
+exports[`workstation progress and host parity > parses Linux families and detects hosts without reading on macOS or Windows 1`] = `
+{
+  "darwin": {
+    "linuxFamily": "unknown",
+    "platform": "darwin",
+  },
+  "detected": {
+    "alpine": {
+      "linuxFamily": "unknown",
+      "platform": "linux",
+    },
+    "manjaro": {
+      "linuxFamily": "arch",
+      "platform": "linux",
+    },
+    "mint": {
+      "linuxFamily": "debian",
+      "platform": "linux",
+    },
+    "rocky": {
+      "linuxFamily": "fedora",
+      "platform": "linux",
+    },
+    "ubuntu": {
+      "linuxFamily": "debian",
+      "platform": "linux",
+    },
+  },
+  "missing": {
+    "linuxFamily": "unknown",
+    "platform": "linux",
+  },
+  "parsed": {
+    "alpine": "unknown",
+    "manjaro": "arch",
+    "mint": "debian",
+    "rocky": "fedora",
+    "ubuntu": "debian",
+  },
+  "win32": {
+    "linuxFamily": "unknown",
+    "platform": "win32",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > a compatible requirement needs no remedy 1`] = `
+{
+  "probe": {
+    "detail": "Version 24.21.0",
+    "detectedBy": "node",
+    "detectedVersion": "24.21.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "brew",
+      "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/opt/homebrew/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.21.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "brew",
+          "realPath": "/opt/homebrew/Cellar/node@24/24.21.0/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/opt/homebrew/bin/node",
+        },
+        "reasonCode": "compatible",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "compatible",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "ready",
+  },
+  "selection": {
+    "detail": "Node.js is already compatible.",
+    "reasonCode": "compatible",
+    "recipe": null,
+    "state": "not-needed",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > a probe for another constraint is never… 1`] = `
+{
+  "probe": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "No safe automatic Node.js remedy is registered for missing-executable from unknown on darwin.",
+    "reasonCode": "missing-executable",
+    "recipe": null,
+    "remedy": "Install Node.js. Install Node.js manually and retry. Review the installation origin and required version/channel; Liftoff will not uninstall, downgrade, or repeat a missing-tool installer to guess a repair.",
+    "state": "manual",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > an explicitly requested unmatched recip… 1`] = `
+{
+  "probe": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "No safe automatic Node.js remedy is registered for missing-executable from unknown on darwin.",
+    "reasonCode": "missing-executable",
+    "recipe": null,
+    "remedy": "Install Node.js. Install Node.js manually and retry. Review the installation origin and required version/channel; Liftoff will not uninstall, downgrade, or repeat a missing-tool installer to guess a repair.",
+    "state": "manual",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > an npm-owned OpenSpec pin mismatch offe… 1`] = `
+{
+  "probe": {
+    "detail": "Found 1.11.4; Liftoff tested this integration with exactly 1.11.0.",
+    "detectedBy": "openspec",
+    "detectedVersion": "1.11.4",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "openspec",
+      "kind": "executable",
+      "origin": "npm",
+      "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/local/bin/openspec",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "detectedVersion": "1.11.4",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "openspec",
+          "kind": "executable",
+          "origin": "npm",
+          "realPath": "/usr/local/lib/node_modules/@fission-ai/openspec/bin/openspec.js",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/local/bin/openspec",
+        },
+        "reasonCode": "exact-version-mismatch",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "exact-version-mismatch",
+    "remedy": "Install OpenSpec 1.11.0.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "selection": {
+    "detail": "change-version OpenSpec using its registered npm recipe.",
+    "reasonCode": "exact-version-mismatch",
+    "recipe": {
+      "causes": [
+        "exact-version-mismatch",
+        "release-line-mismatch",
+      ],
+      "command": {
+        "args": [
+          "install",
+          "-g",
+          "@fission-ai/openspec@1.11.0",
+        ],
+        "executable": "npm",
+      },
+      "id": "openspec:darwin:npm:change-version",
+      "manager": "npm",
+      "operation": "change-version",
+      "origins": [
+        "npm",
+      ],
+      "platforms": [
+        "darwin",
+      ],
+      "requiresExplicitReview": true,
+    },
+    "state": "available",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > an unknown-origin outdated Node stays m… 1`] = `
+{
+  "probe": {
+    "detail": "Found 24.0.0; version 24.20.0 or newer is required.",
+    "detectedBy": "node",
+    "detectedVersion": "24.0.0",
+    "identity": {
+      "evidence": "path-search",
+      "executable": "node",
+      "kind": "executable",
+      "origin": "unknown",
+      "realPath": "/usr/local/bin/node",
+      "resolution": "resolved",
+      "resolvedPath": "/usr/local/bin/node",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "detectedVersion": "24.0.0",
+        "identity": {
+          "evidence": "path-search",
+          "executable": "node",
+          "kind": "executable",
+          "origin": "unknown",
+          "realPath": "/usr/local/bin/node",
+          "resolution": "resolved",
+          "resolvedPath": "/usr/local/bin/node",
+        },
+        "reasonCode": "below-minimum",
+        "status": 0,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "below-minimum",
+    "remedy": "Upgrade Node.js to 24.20.0 or newer.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "outdated",
+  },
+  "selection": {
+    "detail": "No safe automatic Node.js remedy is registered for below-minimum from unknown on darwin.",
+    "reasonCode": "below-minimum",
+    "recipe": null,
+    "remedy": "Upgrade Node.js to 24.20.0 or newer. Install Node.js manually and retry. Review the installation origin and required version/channel; Liftoff will not uninstall, downgrade, or repeat a missing-tool installer to guess a repair.",
+    "state": "manual",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > darwin missing Node selects the registe… 1`] = `
+{
+  "probe": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "install Node.js using its registered brew recipe.",
+    "reasonCode": "missing-executable",
+    "recipe": {
+      "causes": [
+        "missing-executable",
+        "observation-unavailable",
+      ],
+      "command": {
+        "args": [
+          "install",
+          "node@24",
+        ],
+        "executable": "brew",
+      },
+      "id": "node:darwin:brew:install",
+      "manager": "brew",
+      "operation": "install",
+      "origins": [
+        "unknown",
+      ],
+      "platforms": [
+        "darwin",
+      ],
+    },
+    "state": "available",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > linux missing Node falls back to the De… 1`] = `
+{
+  "probe": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "No safe automatic Node.js remedy is registered for missing-executable from unknown on linux.",
+    "reasonCode": "missing-executable",
+    "recipe": null,
+    "remedy": "Install Node.js. Follow the official Debian/Ubuntu installation guide: https://nodejs.org/en/download/package-manager Review the installation origin and required version/channel; Liftoff will not uninstall, downgrade, or repeat a missing-tool installer to guess a repair.",
+    "state": "manual",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > linux missing OpenSpec selects the npm … 1`] = `
+{
+  "probe": {
+    "detail": "spawn openspec ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "openspec",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "openspec",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "openspec",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install OpenSpec.",
+    "required": {
+      "allowPrerelease": false,
+      "exactVersion": "1.11.0",
+      "releaseLine": "1.11",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "openspec",
+      "exactVersion": "1.11.0",
+      "id": "openspec",
+      "minimumVersion": undefined,
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "1.11",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "install OpenSpec using its registered npm recipe.",
+    "reasonCode": "missing-executable",
+    "recipe": {
+      "causes": [
+        "missing-executable",
+        "observation-unavailable",
+      ],
+      "command": {
+        "args": [
+          "install",
+          "-g",
+          "@fission-ai/openspec@1.11.0",
+        ],
+        "executable": "npm",
+      },
+      "id": "openspec:linux:npm:install",
+      "manager": "npm",
+      "operation": "install",
+      "origins": [
+        "unknown",
+      ],
+      "platforms": [
+        "linux",
+      ],
+    },
+    "state": "available",
+  },
+}
+`;
+
+exports[`workstation remediation selection parity > win32 missing Node selects the register… 1`] = `
+{
+  "probe": {
+    "detail": "spawn node ENOENT",
+    "identity": {
+      "evidence": "unavailable",
+      "executable": "node",
+      "origin": "unknown",
+      "resolution": "missing",
+    },
+    "notices": [],
+    "observations": [
+      {
+        "command": {
+          "args": [
+            "--version",
+          ],
+          "executable": "node",
+        },
+        "errorCode": "ENOENT",
+        "identity": {
+          "evidence": "unavailable",
+          "executable": "node",
+          "origin": "unknown",
+          "resolution": "missing",
+        },
+        "reasonCode": "missing-executable",
+        "status": null,
+        "timedOut": false,
+      },
+    ],
+    "reasonCode": "missing-executable",
+    "remedy": "Install Node.js.",
+    "required": {
+      "allowPrerelease": false,
+      "minimumVersion": "24.20.0",
+      "releaseLine": "24",
+    },
+    "requirement": {
+      "allowPrerelease": false,
+      "definition": "node",
+      "exactVersion": undefined,
+      "id": "node",
+      "minimumVersion": "24.20.0",
+      "reasons": [
+        "characterization",
+      ],
+      "releaseLine": "24",
+      "severity": "blocking",
+    },
+    "state": "missing",
+  },
+  "selection": {
+    "detail": "install Node.js using its registered winget recipe.",
+    "reasonCode": "missing-executable",
+    "recipe": {
+      "causes": [
+        "missing-executable",
+        "observation-unavailable",
+      ],
+      "command": {
+        "args": [
+          "install",
+          "--id",
+          "OpenJS.NodeJS.LTS",
+          "--exact",
+          "--accept-package-agreements",
+          "--accept-source-agreements",
+        ],
+        "executable": "winget",
+      },
+      "id": "node:win32:winget:install",
+      "manager": "winget",
+      "operation": "install",
+      "origins": [
+        "unknown",
+      ],
+      "platforms": [
+        "win32",
+      ],
+    },
+    "state": "available",
+  },
+}
+`;

@@ -155,6 +155,14 @@ resource "azurerm_container_app" "telemetry" {
         value = local.input_stream_name
       }
 
+      dynamic "env" {
+        for_each = var.project_ingestion_enabled ? [local.project_input_stream_name] : []
+        content {
+          name  = "TELEMETRY_PROJECT_STREAM_NAME"
+          value = env.value
+        }
+      }
+
       startup_probe {
         failure_count_threshold = 30
         interval_seconds        = 2

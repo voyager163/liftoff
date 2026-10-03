@@ -3,6 +3,7 @@ import { Readable } from 'node:stream';
 import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import { describe, expect, it } from 'vitest';
+import { expectBoundedCapabilitySkill } from './fixtures/reviewed-rendering.js';
 import {
   commandDefinitions,
   formatCommandHelp,
@@ -809,7 +810,7 @@ describe('commands', () => {
       expect(governancePolicy).toContain('30 days read-only after verified remote import');
       expect(governancePolicy).toContain('Microsoft.Network');
       expect(governancePolicy).toContain('GitHub.Network');
-      expect(governanceLauncher.length).toBeLessThan(3_000);
+      expectBoundedCapabilitySkill(governanceLauncher, 'setup');
       expect(governanceLauncher).toContain('liftoff governance status --json');
       expect(governanceLauncher).toContain('liftoff governance verify --json');
       expect(governanceLauncher).not.toMatch(/\bmodel\b/i);

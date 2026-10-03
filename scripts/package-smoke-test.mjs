@@ -7,6 +7,15 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { pathToFileURL } from 'node:url';
 import {
+  assertUnpackedPackageSize,
+  formatSmokeIssues,
+  installedAssetByteIssues,
+  installedPlanCases,
+  installedRetainedAssetIssues,
+  packagedAssetIssues,
+  planContractIssues
+} from './package-smoke-contract.mjs';
+import {
   templateDependencyInventory,
   validateTemplateDependencyInventory
 } from './template-dependency-security.mjs';
@@ -33,6 +42,7 @@ function run(command, args, options = {}) {
     env: options.env ?? process.env,
     encoding: 'utf8',
     shell: false,
+    stdio: options.stdio ?? 'pipe',
     timeout: options.timeout ?? 300_000,
     maxBuffer: 10 * 1024 * 1024
   });
@@ -125,6 +135,7 @@ try {
   await mkdir(packDirectory, { recursive: true });
   await mkdir(homeDirectory, { recursive: true });
   await mkdir(outsideDirectory, { recursive: true });
+  await mkdir(path.join(tempRoot, 'outside with spaces'), { recursive: true });
 
   const pack = runNpm(suppliedTarball
     ? ['pack', '--dry-run', '--json', suppliedTarball]
@@ -186,27 +197,16 @@ try {
   assertPackageContains(packResult, 'dist/governance-assessment/live.js');
   assertPackageContains(packResult, 'dist/governance-assessment/catalog.js');
   assertPackageContains(packResult, 'dist/supported-stack.js');
-  assertPackageContains(packResult, 'assets/supported-stack.json');
-  assertPackageContains(packResult, 'assets/repair/windows-job-controller.ps1');
-  assertPackageContains(
-    packResult,
-    'assets/governance/single-maintainer-gitflow/policy.md'
-  );
-  assertPackageContains(packResult, 'assets/governance/single-maintainer-gitflow/assessment-controls.json');
-  assertPackageContains(packResult, 'assets/locks/node-backend/package.json');
-  assertPackageContains(packResult, 'assets/locks/node-backend/package-lock.json');
-  assertPackageContains(packResult, 'assets/locks/frontend/package.json');
-  assertPackageContains(packResult, 'assets/locks/frontend/package-lock.json');
-  assertPackageContains(packResult, 'assets/locks/go-backend/go.mod');
-  assertPackageContains(packResult, 'assets/locks/go-backend/go.sum');
-  assertPackageContains(packResult, 'assets/locks/python-standard/pyproject.toml');
-  assertPackageContains(packResult, 'assets/locks/python-standard/uv.lock');
-  assertPackageContains(packResult, 'assets/locks/python-genai/pyproject.toml');
-  assertPackageContains(packResult, 'assets/locks/python-genai/uv.lock');
-  assertPackageContains(packResult, 'assets/locks/python-genai/function-requirements.txt');
-  assertPackageContains(packResult, 'assets/locks/opentofu-azure/versions.tf');
-  assertPackageContains(packResult, 'assets/locks/opentofu-azure/.terraform.lock.hcl');
+  const declaredPackage = JSON.parse(await readFile(path.join(packageRoot, 'package.json'), 'utf8'));
+  const packedAssetIssues = packagedAssetIssues({
+    packedPaths: packResult.files.map((file) => file.path),
+    declaredFiles: declaredPackage.files
+  });
+  if (packedAssetIssues.length > 0) {
+    throw new Error(formatSmokeIssues('Packed asset inventory mismatch', packedAssetIssues));
+  }
   assertPackageExcludes(packResult, 'assets/power-apps-code-app');
+  assertPackageExcludes(packResult, 'assets/locks');
   assertPackageExcludes(packResult, 'src');
   assertPackageExcludes(packResult, 'tests');
   assertPackageExcludes(packResult, 'scripts');
@@ -219,9 +219,7 @@ try {
     templateDependencyInventory,
     packResult.files.map((file) => file.path)
   );
-  if (packResult.unpackedSize > 8 * 1024 * 1024) {
-    throw new Error(`Packed package unexpectedly exceeds the 8 MiB unpacked-size budget: ${packResult.unpackedSize}`);
-  }
+  assertUnpackedPackageSize(packResult.unpackedSize);
 
   const tarballPath = suppliedTarball ?? path.join(packDirectory, packResult.filename);
   const npmEnv = {
@@ -247,6 +245,13 @@ try {
     throw new Error(`Installed liftoff entrypoint not found at ${liftoffEntrypoint}`);
   }
   const installedPackageRoot = path.dirname(path.dirname(liftoffEntrypoint));
+  const installedAssetIssues = [
+    ...await installedAssetByteIssues({ installedRoot: installedPackageRoot, sourceRoot: packageRoot }),
+    ...await installedRetainedAssetIssues({ installedRoot: installedPackageRoot })
+  ];
+  if (installedAssetIssues.length > 0) {
+    throw new Error(formatSmokeIssues('Installed package asset mismatch', installedAssetIssues));
+  }
 
   const help = run(process.execPath, [liftoffEntrypoint, 'help'], {
     cwd: outsideDirectory,
@@ -433,19 +438,23 @@ try {
   }
 
   const beforePlan = await readdir(outsideDirectory);
-  const plan = run(process.execPath, [
-    liftoffEntrypoint, 'plan', '--no-genai', '--api', 'node', '--cloud', 'azure',
-    '--region', 'eastus', '--spec', 'openspec', '--agents', 'copilot', '--no-frontend'
-  ], {
-    cwd: outsideDirectory,
-    env: npmEnv
-  });
-  if (!plan.stdout.includes('Artifacts') || !plan.stdout.includes('Workstation requirements')) {
-    throw new Error('Installed liftoff plan did not render artifacts and requirements');
-  }
-  const afterPlan = await readdir(outsideDirectory);
-  if (JSON.stringify(afterPlan) !== JSON.stringify(beforePlan)) {
-    throw new Error(`Installed liftoff plan changed the working directory: ${afterPlan.join(', ')}`);
+  for (const planCase of installedPlanCases) {
+    const planDirectory = path.join(tempRoot, planCase.directory);
+    const beforeCase = await readdir(planDirectory);
+    // Plain layout and no color are requested explicitly: stdout is a pipe and NO_COLOR is set.
+    const plan = run(process.execPath, [liftoffEntrypoint, 'plan', ...planCase.args], {
+      cwd: planDirectory,
+      env: { ...npmEnv, NO_COLOR: '1' },
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    const planIssues = planContractIssues(plan.stdout, planCase);
+    if (planIssues.length > 0) {
+      throw new Error(formatSmokeIssues(`Installed liftoff plan ${planCase.id} did not match its contract`, planIssues));
+    }
+    const afterCase = await readdir(planDirectory);
+    if (JSON.stringify(afterCase) !== JSON.stringify(beforeCase)) {
+      throw new Error(`Installed liftoff plan ${planCase.id} changed the working directory: ${afterCase.join(', ')}`);
+    }
   }
 
   const retiredPlan = runFailure(process.execPath, [

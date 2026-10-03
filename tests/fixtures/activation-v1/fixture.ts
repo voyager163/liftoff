@@ -1,7 +1,6 @@
 import { chmod, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { canonicalJson, canonicalSha256 } from '../../../src/domain/governance/activation/canonical-json.js';
-import type { PhaseExecutionState, TransitionOperation } from '../../../src/domain/governance/activation/types.js';
 import { historicalActivationIdentities, historicalV2ActivationIdentity } from '../../../src/domain/governance/policy/identity.js';
 import {
   assertHistoricalPhasesComplete, historicalPhaseIds, historicalTransitionPlanPathParts,
@@ -14,6 +13,9 @@ import { buildRepositoryGovernanceArtifacts } from '../../../src/repository-gove
 import { validateGovernanceCompatibilityMetadata } from '../../../src/governance-activation/compatibility.js';
 import { historicalFixtureGraph } from './graph.js';
 import { historicalV2PhaseGraph } from '../../../src/governance-activation/historical-v2.js';
+
+type PhaseExecutionState = HistoricalActivationState['phases'][HistoricalPhaseId];
+type TransitionOperation = HistoricalSavedTransitionPlan['operations'][number];
 
 export const historicalFixtureIdentity = historicalActivationIdentities[0];
 export const historicalFixtureCreatedAt = '2026-08-30T09:00:00.000Z';

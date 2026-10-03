@@ -101,12 +101,12 @@ const baseline = {
   npmProjects: {
     liftoff: await npmProject(['package.json'], ['package-lock.json']),
     'telemetry-ingest': await npmProject(['services', 'telemetry-ingest', 'package.json']),
-    'node-backend': await npmProject(['assets', 'locks', 'node-backend', 'package.json']),
-    frontend: await npmProject(['assets', 'locks', 'frontend', 'package.json'])
+    'node-backend': await npmProject(['assets', 'plugins', 'node-fastify', 'node-backend', 'package.json']),
+    frontend: await npmProject(['assets', 'templates', 'common', 'frontend', 'package.json'])
   },
   pythonProjects: {
     'genai-backend': {
-      lockTemplatePathParts: ['assets', 'locks', 'python-genai', 'uv.lock'],
+      lockTemplatePathParts: ['assets', 'plugins', 'python-fastapi', 'python-genai', 'uv.lock'],
       requiresPython: '>=3.14,<3.15',
       dependencies: {
         alembic: '1.19.1',
@@ -132,7 +132,7 @@ const baseline = {
       }
     },
     'standard-backend': {
-      lockTemplatePathParts: ['assets', 'locks', 'python-standard', 'uv.lock'],
+      lockTemplatePathParts: ['assets', 'plugins', 'python-fastapi', 'python-standard', 'uv.lock'],
       requiresPython: '>=3.14,<3.15',
       dependencies: {
         alembic: '1.19.1',
@@ -154,7 +154,7 @@ const baseline = {
       }
     },
     'function-worker': {
-      lockTemplatePathParts: ['assets', 'locks', 'python-genai', 'uv.lock'],
+      lockTemplatePathParts: ['assets', 'plugins', 'python-fastapi', 'python-genai', 'uv.lock'],
       requiresPython: '>=3.14,<3.15',
       dependencies: { 'azure-functions': '2.3.0' },
       optionalDependencies: { test: { pytest: '9.1.1' } }
@@ -162,7 +162,7 @@ const baseline = {
   },
   goModules: {
     'go-backend': {
-      moduleTemplatePathParts: ['assets', 'locks', 'go-backend', 'go.mod'],
+      moduleTemplatePathParts: ['assets', 'plugins', 'go-huma', 'go-backend', 'go.mod'],
       goVersion: '1.27.0',
       dependencies: {
         'github.com/danielgtaylor/huma/v2': 'v2.39.1',

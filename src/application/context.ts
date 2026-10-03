@@ -6,8 +6,10 @@ import type { PresentationSession, PresentationSessionOptions } from '../termina
 import type { UpdateApprovalPrompt } from './update/approval.js';
 import type { resolveUpdatePreviewLocation } from '../adapters/filesystem/update-previews.js';
 import type { WorkstationNoProgressStore, WorkstationProbeOptions } from '../workstation.js';
+import type { CommandOutcome } from './command-outcome.js';
 
 export interface CommandContext {
+  outcome?: CommandOutcome;
   cwd: string;
   stdout: NodeJS.WritableStream;
   stderr: NodeJS.WritableStream;
