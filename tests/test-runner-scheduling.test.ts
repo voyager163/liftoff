@@ -10,6 +10,7 @@ const roots: string[] = [];
 const migrationFile = 'tests/migration-inspection.test.ts';
 const distributionFile = 'tests/installed-tool-distribution.test.ts';
 const preparationFile = 'tests/repair-preparation-execution.test.ts';
+const cancellationFile = 'tests/repair-cancellation.test.ts';
 const repairFile = 'tests/repair-command.test.ts';
 const vitestCli = fileURLToPath(new URL('../node_modules/vitest/vitest.mjs', import.meta.url));
 
@@ -31,8 +32,8 @@ export default { ...createRootTestConfig('win32'), root: ${JSON.stringify(root)}
 
   const ordinary = files.filter((file) => file !== migrationFile);
   const completed = ordinary.map((_, index) => path.join(root, `completed-${index}`));
-  const group = (file: string) => file === preparationFile ? 1 : file === distributionFile ? 2
-    : file === migrationFile ? 3 : 0;
+  const group = (file: string) => file === cancellationFile ? 1 : file === preparationFile ? 2
+    : file === distributionFile ? 3 : file === migrationFile ? 4 : 0;
   for (const file of files) {
     const predecessors = verifyBarrier
       ? ordinary.filter((previous) => group(previous) < group(file)).map((previous) => completed[ordinary.indexOf(previous)])
@@ -126,7 +127,7 @@ async function ciCommand(name: string): Promise<string> {
 describe('Windows test-project execution and filters', () => {
   it('runs every file and case exactly once across the two CI shards', async () => {
     const current = await fixture([
-      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, preparationFile, distributionFile, migrationFile
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, cancellationFile, preparationFile, distributionFile, migrationFile
     ]);
     const reports = [];
     for (const shard of [1, 2]) reports.push(await runTests(current.root, [`--shard=${shard}/2`]));
@@ -148,15 +149,15 @@ describe('Windows test-project execution and filters', () => {
       }
     }
     expect(files.sort()).toEqual(current.files.sort());
-    expect(cases).toHaveLength(8);
-    expect(new Set(cases).size).toBe(8);
+    expect(cases).toHaveLength(9);
+    expect(new Set(cases).size).toBe(9);
   });
 
   it('runs the intact migration file after all ordinary hooks in the same invocation', async () => {
     const current = await fixture([
-      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, preparationFile, distributionFile, migrationFile
+      'tests/ordinary-a.test.ts', 'tests/ordinary-b.test.ts', repairFile, cancellationFile, preparationFile, distributionFile, migrationFile
     ], true);
-    expectRun(await runTests(current.root), current.root, current.files, 8);
+    expectRun(await runTests(current.root), current.root, current.files, 9);
     expect(await readFile(path.join(current.root, 'selected-migration-ran'), 'utf8')).toBe('done');
   });
 
@@ -181,6 +182,12 @@ describe('Windows test-project execution and filters', () => {
       current.root, [preparationFile], 1);
   });
 
+  it('preserves direct cancellation file and name filters in its separate Windows group', async () => {
+    const current = await fixture(['tests/ordinary.test.ts', cancellationFile, preparationFile, distributionFile, migrationFile]);
+    expectRun(await runTests(current.root, [cancellationFile, '-t', 'ordinary test']),
+      current.root, [cancellationFile], 1);
+  });
+
   it('preserves every existing Windows boundary CLI file selector exactly once', async () => {
     const command = (await ciCommand('Run Windows project and packaging boundary coverage')).split(/\s+/);
     expect(command.slice(0, 3)).toEqual(['npx', 'vitest', 'run']);
@@ -200,7 +207,8 @@ describe('Windows test-project execution and filters', () => {
     const expected = files.map((file) => ({
       file, projectName: file === migrationFile ? 'migration-inspection'
         : file === preparationFile ? 'repair-preparation-execution'
-          : file === distributionFile ? 'installed-tool-distribution' : 'root-tests'
+          : file === distributionFile ? 'installed-tool-distribution'
+            : file === cancellationFile ? 'repair-cancellation' : 'root-tests'
     }));
     expect(observed.sort((a, b) => a.file.localeCompare(b.file)))
       .toEqual(expected.sort((a, b) => a.file.localeCompare(b.file)));
