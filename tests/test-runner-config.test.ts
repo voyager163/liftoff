@@ -22,7 +22,7 @@ describe('root test runner configuration', () => {
   it('partitions Windows discovery into disjoint ordered groups without dropping the migration file', () => {
     const windows = createRootTestConfig('win32');
     const projects = windows.test.projects;
-    expect(projects).toHaveLength(3);
+    expect(projects).toHaveLength(4);
     if (!projects) throw new Error('Expected all Windows test projects.');
 
     expect(projects[0]).toMatchObject({
@@ -30,28 +30,38 @@ describe('root test runner configuration', () => {
       test: {
         name: 'root-tests',
         include: ['tests/**/*.test.ts'],
-        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts', 'tests/installed-tool-distribution.test.ts'],
+        exclude: [...defaultExclude, 'tests/migration-inspection.test.ts', 'tests/installed-tool-distribution.test.ts',
+          'tests/repair-preparation-execution.test.ts'],
         sequence: { groupOrder: 0 }
       }
     });
     expect(projects[1]).toMatchObject({
       extends: false,
       test: {
-        name: 'installed-tool-distribution',
-        include: ['tests/installed-tool-distribution.test.ts'],
+        name: 'repair-preparation-execution',
+        include: ['tests/repair-preparation-execution.test.ts'],
         sequence: { groupOrder: 1 }
       }
     });
     expect(projects[2]).toMatchObject({
       extends: false,
       test: {
+        name: 'installed-tool-distribution',
+        include: ['tests/installed-tool-distribution.test.ts'],
+        sequence: { groupOrder: 2 }
+      }
+    });
+    expect(projects[3]).toMatchObject({
+      extends: false,
+      test: {
         name: 'migration-inspection',
         include: ['tests/migration-inspection.test.ts'],
-        sequence: { groupOrder: 2 }
+        sequence: { groupOrder: 3 }
       }
     });
     expect(projects[1].test).not.toHaveProperty('exclude');
     expect(projects[2].test).not.toHaveProperty('exclude');
+    expect(projects[3].test).not.toHaveProperty('exclude');
   });
 
   it('retains the worker cap and test semantics in all Windows groups', () => {

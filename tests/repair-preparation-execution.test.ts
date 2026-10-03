@@ -137,7 +137,13 @@ describe('frozen npm preparation effects stay inside their registered private ro
   });
 
   it('permits a leaf link to the approved installed interpreter and unlinks only the link', async ({ skip }) => {
+    const started = performance.now();
+    const phase = (stage: string) => console.info('REPAIR_INTERPRETER_LINK_TIMING ' + JSON.stringify({
+      platform: process.platform, stage, elapsedMs: Math.round(performance.now() - started)
+    }));
+    phase('start');
     const state = await prepared({}, ['node'], undefined, true);
+    phase('fixture-ready');
     const node = state.candidate.verificationPolicy.toolchain.find((tool) => tool.id === 'node')!.executablePath;
     expect(node).toBe(await realpath(state.tools!.node!));
     const before = await stat(node);
@@ -150,6 +156,7 @@ describe('frozen npm preparation effects stay inside their registered private ro
       throw error;
     }
     await unlink(probe);
+    phase('link-probe-complete');
     let linked = false;
     const { result } = await verify(state, async (call) => {
       if (!isNpmCi(call.command)) return undefined;
@@ -160,6 +167,7 @@ describe('frozen npm preparation effects stay inside their registered private ro
       linked = (await lstat(path.join(bin, 'node'))).isSymbolicLink();
       return outcome;
     });
+    phase('verification-complete');
     expect(linked).toBe(true);
     expect(result.status, result.blockers.join('; ')).toBe('passed');
     expect(result.preparation[0]?.status).toBe('passed');
