@@ -288,11 +288,19 @@ describe('registered locked preparation input and tool contracts', () => {
       projectCode: true, dependencyPreparation: false, network: false
     });
     const runner = new NodeCommandRunner();
+    const observations: CommandResult[] = [], nativeRun = runner.run.bind(runner);
+    vi.spyOn(runner, 'run').mockImplementation(async (...args) => {
+      const result = await nativeRun(...args);
+      observations.push(result);
+      return result;
+    });
     const verified = await verifyApplicationPatch(f.root, candidate, runner, context);
     expect(verified.status).toBe('failed');
     if (process.platform === 'win32') {
+      const last = observations.at(-1), detail = JSON.stringify({ errorCode: last?.errorCode, errorMessage: last?.errorMessage,
+        processSpawned: last?.processSpawned, processTreeSettled: last?.processTreeSettled, blockers: verified.blockers });
       expect(verified.commands[0]?.timedOut).toBe(true);
-      expect(verified.cleanupComplete).toBe(true);
+      expect(verified.cleanupComplete, detail).toBe(true);
       expect(verified.retainedWorkspace).toBeUndefined();
     } else {
       expect(verified.cleanupComplete).toBe(false);

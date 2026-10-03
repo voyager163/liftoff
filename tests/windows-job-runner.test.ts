@@ -3,7 +3,8 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { ApplicationResolvedPreparation } from '../src/application/repair/application-preparation-types.js';
 import {
   buildWindowsControllerHostEnvironment,
   runWindowsJobCommand,
@@ -14,6 +15,7 @@ import {
 import {
   frameControlMessage,
   unframeControlMessages,
+  WindowsJobExecutionSession,
   type WindowsJobControlAck,
   type WindowsJobControlResponse
 } from '../src/adapters/process/windows-job-protocol.js';
@@ -30,6 +32,51 @@ async function mockControllerLauncher(directory: string, script: string): Promis
   const literal = (value: string) => `'${value.replaceAll("'", "'\\''")}'`;
   await writeFile(launcher, `#!/bin/sh\nexec ${literal(process.execPath)} ${literal(script)} "$@"\n`, { mode: 0o755 });
   return { powershellPath: launcher, skipAssetVerification: true };
+}
+
+async function timedProtocolController(directory: string,
+  mode: 'slow-ready' | 'no-ready' | 'no-ack' | 'no-result' | 'bad-ack' | 'duplicate-ack' | 'late-ack') {
+  const script = path.join(directory, 'timed-protocol-controller.mjs');
+  await writeFile(script, `
+import net from 'node:net';
+const mode = ${JSON.stringify(mode)};
+const arg = name => process.argv[process.argv.indexOf(name) + 1];
+const common = { schemaVersion: 1, controllerId: 'liftoff-windows-job-controller-v1',
+  workspaceId: arg('-WorkspaceId'), invocationId: arg('-InvocationId'), nonce: arg('-ExpectedNonce') };
+const pipe = arg('-ControlPipeName');
+const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\\' + pipe) : pipe);
+function frame(fields) {
+  const bytes = Buffer.from(JSON.stringify({ ...common, ...fields })), header = Buffer.alloc(4);
+  header.writeUInt32BE(bytes.length); return Buffer.concat([header, bytes]);
+}
+function send(...messages) {
+  socket.write(Buffer.concat(messages.map(frame)));
+}
+socket.on('error', () => process.exit(0));
+socket.on('close', () => process.exit(0));
+socket.on('connect', () => {
+  if (mode !== 'no-ready') setTimeout(() => send({ kind: 'ready' }), mode === 'slow-ready' ? 5500 : 0);
+});
+let pending = Buffer.alloc(0);
+socket.on('data', chunk => {
+  pending = Buffer.concat([pending, chunk]);
+  if (pending.length < 4 || pending.length < 4 + pending.readUInt32BE(0)) return;
+  const request = JSON.parse(pending.subarray(4, 4 + pending.readUInt32BE(0)).toString());
+  if (request.kind !== 'spawn' || request.timeoutMs !== 50) process.exit(2);
+  if (mode === 'no-ack') return;
+  const ack = { kind: 'ack', sequence: 1, admitted: true };
+  const response = { kind: 'response', sequence: 1, phase: 'completed', status: 0,
+    signal: null, activeProcesses: 0, jobTerminated: false, settled: true };
+  if (mode === 'bad-ack') send({ ...ack, nonce: 'not-the-bound-nonce' }, response);
+  else if (mode === 'duplicate-ack') send(ack, ack, response);
+  else if (mode === 'late-ack') send(ack, response, ack);
+  else {
+    send(ack);
+    if (mode !== 'no-result') send(response);
+  }
+});
+`);
+  return mockControllerLauncher(directory, script);
 }
 
 afterEach(async () => {
@@ -89,6 +136,54 @@ describe('Windows Job Object controller asset integrity and host environment', (
 });
 
 describe('Windows Job Runner protocol execution and policy admission blockers', () => {
+  it('keeps a short target deadline separate from slow authenticated controller startup', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-clock-'));
+    tempDirs.push(directory);
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
+      await timedProtocolController(directory, 'slow-ready'));
+    expect(result, JSON.stringify({ errorCode: result.errorCode, errorMessage: result.errorMessage }))
+      .toMatchObject({ status: 0, timedOut: false, processSpawned: true, processTreeSettled: true });
+  });
+
+  it.each(['no-ready', 'no-ack'] as const)('retains a finite startup deadline with %s rather than granting execution time', async mode => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-startup-'));
+    tempDirs.push(directory);
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
+      await timedProtocolController(directory, mode));
+    expect(result).toMatchObject({ status: null, timedOut: true, processSpawned: mode === 'no-ack',
+      processTreeSettled: false, errorCode: 'SUPERVISOR_TIMEOUT' });
+    expect(result.errorMessage).toContain('exceeded 15000ms during startup');
+  });
+
+  it('keeps the target deadline and existing settlement grace finite after a valid acknowledgement', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-execution-'));
+    tempDirs.push(directory);
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
+      await timedProtocolController(directory, 'no-result'));
+    expect(result).toMatchObject({ status: null, timedOut: true, processSpawned: true,
+      processTreeSettled: false, errorCode: 'SUPERVISOR_TIMEOUT' });
+    expect(result.errorMessage).toContain('exceeded 5050ms during execution');
+  });
+
+  it.each(['bad-ack', 'duplicate-ack'] as const)('rejects %s instead of extending the execution deadline or accepting later success', async mode => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-ack-'));
+    tempDirs.push(directory);
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
+      await timedProtocolController(directory, mode));
+    expect(result).toMatchObject({ status: null, timedOut: false, processSpawned: true,
+      processTreeSettled: false, errorCode: 'INVALID_CONTROL_RESPONSE' });
+  });
+
+  it('ignores an acknowledgement queued after terminal settlement rather than reentering admission', async () => {
+    const directory = await mkdtemp(path.join(os.tmpdir(), 'liftoff-controller-late-ack-'));
+    tempDirs.push(directory);
+    const acknowledged = vi.spyOn(WindowsJobExecutionSession.prototype, 'onRootStartAcknowledged');
+    const result = await runWindowsJobCommand({ executable: process.execPath, args: ['--test'] }, { timeoutMs: 50 },
+      await timedProtocolController(directory, 'late-ack'));
+    expect(result).toMatchObject({ status: 0, timedOut: false, processSpawned: true, processTreeSettled: true });
+    expect(acknowledged).toHaveBeenCalledTimes(1);
+  });
+
   it('detects Restricted execution policy from PowerShell exit and fails closed before target execution', async () => {
     const tempDir = await mkdtemp(path.join(os.tmpdir(), 'liftoff-ps-policy-'));
     tempDirs.push(tempDir);
@@ -567,14 +662,15 @@ const socket = net.connect(process.platform === 'win32' ? ('\\\\\\\\.\\\\pipe\\\
 
     // Locked preparation must also preserve these causal diagnostics
     const { applicationPreparationFailure } = await import('../src/application/repair/application-preparation-diagnostics.js');
-    const dummyPrep = {
-      provider: 'npm-ci' as const,
+    const dummyPrep: ApplicationResolvedPreparation = {
+      schemaVersion: 1, provider: 'npm-ci', version: 1,
+      component: { logicalName: 'node-backend-package', category: 'backend', pathParts: ['backend', 'package.json'],
+        provisioningGroup: 'base', component: 'backend', componentRootPathParts: ['backend'] },
       cwdPathParts: [],
-      packageSource: 'public-default' as const,
+      packageSource: 'npmjs',
       registry: 'https://registry.npmjs.org',
-      network: false,
-      lockPathParts: ['package-lock.json'],
-      manifestPathParts: ['package.json']
+      network: false, lifecycle: 'disabled', inputs: [], commands: [], tools: [], outputRoles: [],
+      packageCount: 0, suppressedLifecyclePackages: 0, pythonExtras: [], toolRequirements: {}, digest: '0'.repeat(64)
     };
     const prepPolicyFailure = applicationPreparationFailure(dummyPrep, dummyCommand, {
       command: { executable: 'node.exe', args: [] },

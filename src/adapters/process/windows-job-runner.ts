@@ -26,6 +26,8 @@ import {
 
 export const windowsJobControllerAssetPathParts = ['assets', 'repair', 'windows-job-controller.ps1'] as const;
 export const windowsJobControllerAssetDigest = '4093404187e1bc51067c60393626bcb0f8c036f4575813ecad4e3cd4f008daa7';
+const controllerStartupTimeoutMs = 15_000;
+const controllerSettlementGraceMs = 5_000;
 
 export interface WindowsJobRunnerOptions {
   assetPath?: string;
@@ -455,7 +457,9 @@ export async function runWindowsJobCommand(
       options.signal.addEventListener('abort', abortHandler, { once: true });
     }
 
-    if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
+    function armSupervisor(budgetMs: number, phase: 'startup' | 'execution') {
+      if (settled || !(timeoutMs > 0 && Number.isFinite(timeoutMs))) return;
+      if (supervisorTimer) clearTimeout(supervisorTimer);
       supervisorTimer = setTimeout(() => {
         const controllerStage = [...psStderr.matchAll(/LIFTOFF_CONTROLLER_STAGE: (loading-compiler|compiling|connecting|connected)/gu)].at(-1)?.[1] ?? 'not-reported';
         void finish({
@@ -463,10 +467,11 @@ export async function runWindowsJobCommand(
           processTreeSettled: false,
           processSpawned: spawnRequestDispatched,
           errorCode: 'SUPERVISOR_TIMEOUT',
-          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${timeoutMs}ms without reporting settlement (controller=${controllerStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
+          errorMessage: `Supervisor timeout: Windows Job Object controller exceeded ${budgetMs}ms during ${phase} without reporting settlement (controller=${controllerStage}, connected=${connected}, authenticated=${authenticated}, state=${session.getState()}).`
         });
-      }, timeoutMs + 5000);
+      }, budgetMs);
     }
+    armSupervisor(controllerStartupTimeoutMs, 'startup');
 
     const server = net.createServer((socket) => {
       if (connected) {
@@ -521,6 +526,7 @@ export async function runWindowsJobCommand(
     server.maxConnections = 1;
 
     function handleIncomingMessage(raw: unknown) {
+      if (settled) return;
       if (typeof raw !== 'object' || raw === null) return;
       const r = raw as Record<string, unknown>;
 
@@ -572,6 +578,8 @@ export async function runWindowsJobCommand(
       } else if (r.kind === 'ack') {
         try {
           session.onRootStartAcknowledged(r as unknown as WindowsJobControlAck);
+          // PowerShell/C# startup must not consume the target's runtime or settlement budget.
+          armSupervisor(timeoutMs + controllerSettlementGraceMs, 'execution');
         } catch (err) {
           if (err instanceof WindowsJobAdmissionDeniedError) {
             void finish({

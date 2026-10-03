@@ -124,6 +124,14 @@ within the existing execution deadline. The controller explicitly loads the
 built-in compiler module from `PSHOME`, without inheriting an ambient module
 search path or bypassing execution policy.
 
+For timed invocations, the Windows supervisor bounds controller startup and
+authenticated admission separately at 15 seconds. After the single valid admission acknowledgement, it
+uses the unchanged requested target timeout plus the existing five-second
+settlement grace. Cold PowerShell/C# startup cannot consume a short target's
+settlement window. Missing readiness, acknowledgement or terminal proof still
+fails closed; the supervisor never treats its own timeout as kernel settlement.
+This does not increase test or CI job deadlines.
+
 Before a change is release-ready, also verify the packed artifact:
 
 ```bash
