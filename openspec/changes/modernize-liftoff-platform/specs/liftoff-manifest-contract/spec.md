@@ -127,6 +127,17 @@ Commands SHALL preserve documented per-command scopes and use versioned JSON. Go
 ### Requirement: Activation identity changes are committed with their migration history
 A supported modernization successor SHALL preserve original manifests and exact activation records before atomically publishing the compatible v8 manifest, active successor and linked migration record. Identity migration SHALL not overwrite project source, turn history into current proof, or authorize cloud/OpenTofu-state movement. Already compatible same-contract maintenance SHALL not create unnecessary successor history.
 
+Metadata-changing maintenance of an activation-history successor SHALL preserve its actual original target manifest before replacement, with a strict optional `activationTargetHistory` reference binding the raw digest, byte count and mode to a deterministic path in the reserved `.liftoff/activation-target-history` namespace. The reference and copy SHALL preserve the original transition relationship, not create a migration or grant execution authority. Fresh projects, no-op maintenance and core-only maintenance SHALL NOT manufacture this history.
+
+#### Scenario: Active successor metadata changes without changing its execution contract
+- **WHEN** exact reviewed maintenance changes a successor manifest's permitted metadata
+- **THEN** original target bytes and mode are preserved before replacement
+- **AND** the current manifest links to that original while the migration transition, preparation, source history and active proof remain unchanged
+
+#### Scenario: Original target preservation is damaged or contradictory
+- **WHEN** a declared original target copy is missing, changed, unsafe or belongs to different immutable project intent
+- **THEN** maintenance and installed interpretation reject it rather than derive original bytes from a journal or approval audit
+
 #### Scenario: A historical project is migrated
 - **WHEN** an exact supported source is approved for the current successor
 - **THEN** target identity and linkage agree while original source/provenance bytes remain preserved

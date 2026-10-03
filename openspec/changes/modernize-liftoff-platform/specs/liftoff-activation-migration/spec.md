@@ -97,6 +97,18 @@ Commit SHALL be persisted separately from revalidation. A current successor SHAL
 ### Requirement: Historical records remain separate from current proof across consumers
 All consumers SHALL share validated source-history/current-successor relationships for every supported family, including released v3 and modernization targets. Historical presence SHALL not poison valid current progress or become execution proof. Broken links, unsafe paths and contradictory current evidence remain errors; no consumer resets the project or substitutes old success for current proof.
 
+Same-contract maintenance source observation SHALL remain distinct from installed execution readiness. If maintenance changes a successor's manifest bytes, consumers SHALL reconstruct its original transition from the actual preserved original target manifest rather than substitute the latest manifest digest or trust an embedded journal value alone. Original transition and preparation identities SHALL remain unchanged.
+
+#### Scenario: Managed core drifts in an otherwise valid active project
+- **WHEN** read-only maintenance inspection captures missing or changed core and valid active/history relationships
+- **THEN** it may report maintenance source data without authorizing execution
+- **AND** installed readiness continues to reject the drift
+
+#### Scenario: A maintained successor is inspected
+- **WHEN** its current manifest names valid preserved original target bytes
+- **THEN** the original journal is checked against those bytes and unchanged project intent
+- **AND** current execution proof is validated separately rather than inherited from the preservation copy
+
 #### Scenario: Valid history coexists with current evidence
 - **WHEN** a current target retains valid older snapshots
 - **THEN** consumers report history separately and use current proof for readiness

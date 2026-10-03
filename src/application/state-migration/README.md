@@ -21,7 +21,18 @@ grants deployment-state permission. Its manifest-only path can preserve and
 upgrade v2-v7 metadata without inventing activation records. Current-v8
 no-activation maintenance preserves existing history and project provenance;
 observed absence of activation does not authorize deployed-state inspection or
-mutation. Active-state maintenance remains separate. See
+mutation. Active-state maintenance has a separate private scope. Its read-only source
+observer can retain valid active/history relationships while reporting missing or
+changed managed-core inputs; this is not installed execution readiness or write
+approval. The installed execution preflight still requires exact current core.
+Reviewed metadata-changing maintenance of an activation-history successor
+preserves its original target manifest bytes and mode before replacement. The
+strict `activationTargetHistory` reference identifies that copy under the reserved
+`.liftoff/activation-target-history/` namespace. Readback validates actual bytes
+and unchanged intent against the original transition; it cannot reconstruct
+missing originals from an audit, retag proof, authorize state access or complete
+local revalidation.
+See
 [configuration and manifests](../../../docs/configuration-and-manifests.md#private-modernization-contracts)
 for the separate source contracts and unchanged public defaults.
 

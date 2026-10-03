@@ -3,29 +3,29 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { inspectModernInstalledActivation, validateCapturedModernInstalledActivation } from '../src/application/governance/modern-installed-preflight.js';
+import {
+  inspectModernInstalledActivation, validateCapturedModernInstalledActivation,
+  inspectModernMaintenanceSource, validateCapturedModernMaintenanceSource
+} from '../src/application/governance/modern-installed-preflight.js';
 import { inspectModernLocalRuntime, planModernLocalRuntime, reinspectModernLocalRuntime } from '../src/application/governance/modern-local-inputs.js';
 import { projectCatalog } from '../src/application/project/catalog.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../src/application/project/manifest.js';
-import { composeModernManifestPlugins } from '../src/application/project/plugins.js';
 import { buildModernManagedCore } from '../src/application/project/modern-managed-core.js';
 import { createManifestV8Reader } from '../src/domain/project/manifest/v8.js';
-import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from '../src/domain/project/manifest/v8-project.js';
-import { readManifestPluginMetadata } from '../src/domain/project/manifest/plugins.js';
+import { createManifestV8ProjectReader } from '../src/domain/project/manifest/v8-project.js';
 import { createModernGovernanceContextContract } from '../src/domain/governance/policy/modern-context.js';
-import { createModernActivationRecordContract, type ModernPlanInput } from '../src/domain/governance/activation/modern-records.js';
+import { createModernActivationRecordContract } from '../src/domain/governance/activation/modern-records.js';
 import { modernActivationSourceContracts } from '../src/domain/governance/policy/identity.js';
 import { canonicalJson, canonicalSha256 } from '../src/domain/governance/activation/canonical-json.js';
-import { toSafeProjectName } from '../src/domain/project/planning.js';
 import { reservedLocalVerificationJournalPath } from '../src/domain/governance/activation/modern-local-runtime.js';
 import { createManifestHistoryIndex, encodeManifestHistoryIndex, manifestHistoryPaths } from '../src/domain/project/manifest/history.js';
+import { activationTargetHistoryPathParts, validateActivationTargetHistoryReference } from '../src/domain/project/manifest/activation-target-history.js';
+import { readPreservedActivationTargetManifest } from '../src/application/update/activation-target-history.js';
 import { createManifestV8Candidate } from '../src/application/project/manifest-writer.js';
 import { parseHistoryJson, historyRecord, rawHistoryDigest } from '../src/governance-activation/history-contracts.js';
-import { readModernActivationSuccessorSource, planModernActivationSuccessor, prepareActivationHistorySuccessor } from '../src/governance-activation/migration-history.js';
-import { capturedV3Records, capturedV3Successor, writeFixtureBytes, writeCapturedV3Successor } from './fixtures/activation-v3/fixture.js';
+import { writeFixtureBytes } from './fixtures/activation-v3/fixture.js';
 import { writeHistoricalV1Fixture } from './fixtures/activation-v1/fixture.js';
-import { historicalV2EvidenceBodyDigest, historicalV2PhaseContractDigest, validateHistoricalV2EvidenceRecord } from '../src/governance-activation/historical-v2.js';
-import type { ManifestActiveLayout } from '../src/domain/project/contracts.js';
+import { selected, writeModernHistoricalSource, writeModernSuccessor, localInputsPlanFixture as planInput } from './fixtures/modern-installed-project.js';
 
 const io=vi.hoisted(()=>({opens:[] as string[],afterOpen:undefined as undefined|((target:string)=>Promise<void>)}));
 vi.mock('node:fs/promises',async importOriginal=>{
@@ -40,15 +40,6 @@ afterEach(async()=>{io.afterOpen=undefined;io.opens=[];for(const root of roots.s
 const contracts={catalog:projectCatalog,resolveSourceContract:resolveModernManifestV8SourceContract};
 const timestamp='2026-09-01T12:00:00.000Z',expiry='2026-09-01T13:00:00.000Z';
 async function root(){const directory=await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(),'installed-preflight-')));roots.push(directory);return directory;}
-function selected(leaf:ManifestV8ProjectLeaf,profile:'none'|'single-maintainer-gitflow'|'team-gitflow'){
-  const work=leaf.project.workload;
-  const resolution=composeModernManifestPlugins({workload:work.kind,...(work.kind==='genai'?{variant:work.pattern}:{}),stack:work.apiStack,cloud:work.cloud,
-    workflow:leaf.project.specWorkflow,agents:leaf.project.agents,frontend:work.frontend?'included':'omitted',environments:work.environments,governanceProfile:profile},
-    {safeProjectName:toSafeProjectName(leaf.project.name)}).resolution;
-  const plugins=readManifestPluginMetadata({schemaVersion:1,resolutionDigest:resolution.digest,selections:resolution.plugins},
-    {stack:work.apiStack,cloud:work.cloud,workflow:leaf.project.specWorkflow,agents:leaf.project.agents});
-  return {selection:{...leaf,profile},plugins,activeLayout:{schemaVersion:1 as const,state:'unresolved' as const,bindings:[] as const}};
-}
 async function fixture(workflow:'manual'|'openspec'|'spec-kit'='manual',profile:'none'|'single-maintainer-gitflow'|'team-gitflow'='single-maintainer-gitflow'){
   const directory=await root(),leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
     project:{name:'Installed local fixture',workload:{kind:'standard',apiStack:'node-fastify',cloud:'azure',region:'eastus',frontend:false,environments:['dev']},
@@ -74,12 +65,6 @@ async function fixture(workflow:'manual'|'openspec'|'spec-kit'='manual',profile:
     applicability:{statePath:'none',privateStagingDast:'unknown',credentialRequired:'unknown'},createdAt:timestamp});
   return {root:directory,manifest,input,api,state,write:(parts:readonly string[],bytes:string|Buffer,mode=0o600)=>writeFixtureBytes(directory,parts,bytes,mode)};
 }
-function planInput(api:NonNullable<Awaited<ReturnType<typeof fixture>>['api']>):ModernPlanInput{
-  const id='local-inputs-valid',phase=api.graph.phases.find(phase=>phase.id===id)!;
-  return {phaseId:id,createdAt:timestamp,expiresAt:expiry,stateHash:null,baselineDigest:'a'.repeat(64),inputDigest:'b'.repeat(64),transitionDigest:'c'.repeat(64),operations:[],
-    approval:{gateKind:'none',required:false,envelopeId:null,envelopeHash:null,evaluation:{phaseId:id,gateKind:'none',questionKind:null,approvalRequired:false,status:'not-required',envelopeId:null,envelopeHash:null,reasons:[],expansionReasons:[]}},
-    rollbackPlan:{phaseId:id,strategy:phase.rollback.kind,target:phase.rollback.target,operations:[],retained:[],cleanupWarnings:[]},noSecrets:true};
-}
 async function completedCurrent(){
   const f=await fixture(),api=f.api!,plan=api.createPlan(planInput(api));
   const proof=api.createEvidence({plan,evidenceId:'original-local-input',repositoryId:f.state!.repository.id,producedAt:timestamp,producer:'record-format-fixture-not-execution',result:'verified',payload:{kind:'local-inputs-valid.v1'}});
@@ -89,56 +74,227 @@ async function completedCurrent(){
   await f.write(['governance','activation-state.json'],canonicalJson(state));
   return {...f,plan,proof,state};
 }
+const installedRecordFaults=['missing-proof','missing-plan','wrong-repository','future-state','mixed-identity','bad-json','orphan','duplicate-plan','reconciliation'] as const;
+async function corruptCurrentRecord(f:Awaited<ReturnType<typeof completedCurrent>>,fault:typeof installedRecordFaults[number]){
+  if(fault==='missing-proof')await fs.rm(path.join(f.root,'governance/evidence/original-local-input.json'));
+  if(fault==='missing-plan')await fs.rm(path.join(f.root,'governance/plans/plan.json'));
+  if(fault==='wrong-repository')await f.write(['governance','evidence','original-local-input.json'],canonicalJson({...f.proof,header:{...f.proof.header,repositoryId:'other'}}));
+  if(fault==='future-state')await f.write(['governance','activation-state.json'],canonicalJson({...f.state,schemaVersion:99}));
+  if(fault==='mixed-identity')await f.write(['governance','activation-state.json'],canonicalJson({...f.state,identity:{...f.state.identity,policyVersion:'future'}}));
+  if(fault==='bad-json')await f.write(['governance','activation-state.json'],'not JSON');
+  if(fault==='orphan')await fs.rm(path.join(f.root,'governance/activation-state.json'));
+  if(fault==='duplicate-plan')await f.write(['governance','plans','duplicate.json'],canonicalJson(f.plan));
+  if(fault==='reconciliation')await f.write(['governance','reconciliation','future.json'],'{}');
+}
 async function source(version:1|2|3,retained=false){
-  const directory=await root(),sample=capturedV3Successor(version===1?1:2);
-  const manifest=version===3?capturedV3Records().manifest:parseHistoryJson(sample.files.get('liftoff.manifest.json')!,'original manifest');
-  const state=structuredClone(version===3?historyRecord(sample.state,'state'):historyRecord(parseHistoryJson(sample.files.get('governance/activation-state.json')!,'state'),'state'));
-  for(const field of ['bootstrapState','successorHistory','phaseOutputs','taskProjection','activationInputs'])delete state[field];
-  state.activeChange=null;
-  for(const value of Object.values(historyRecord(state.phases,'phases'))){
-    const phase=historyRecord(value,'phase');Object.assign(phase,{state:'pending',evidence:[],approvals:[],blockers:[]});delete phase.operation;delete phase.executionPlanDigest;
-  }
-  if(retained){
-    if(version!==2)throw new Error('This retention fixture is exact v2.');
-    const file=sample.index.files.find(file=>file.kind==='evidence')!,original=validateHistoricalV2EvidenceRecord(parseHistoryJson(sample.files.get(file.originalPathParts.join('/'))!,'proof'));
-    const id='remote-import-verified',payload={kind:`${id}.v1`},header={...original.header,phaseId:id,phaseContractDigest:historicalV2PhaseContractDigest(id),
-      transition:{...original.header.transition,phaseId:id},result:'verified',producer:'original-retention-format-fixture',bodyDigest:historicalV2EvidenceBodyDigest(payload)};
-    const proof={evidenceId:'original-import',header,payload};
-    await writeFixtureBytes(directory,['governance','evidence','original-import.json'],canonicalJson(proof));
-    state.bootstrapState={status:'retained',remoteImportEvidenceId:'original-import',remoteImportEvidenceDigest:canonicalSha256(header),
-      retainedAt:'2026-08-01T00:00:00.000Z',disposeAfter:'2026-08-31T00:00:00.000Z',encryptedStatePathParts:[['protected','state.enc']],encryptionKeyPathParts:[['protected','key']]};
-  }
-  await writeFixtureBytes(directory,['liftoff.manifest.json'],JSON.stringify(manifest,null,'\t')+'\r\n',0o640);
-  await writeFixtureBytes(directory,['governance','activation-state.json'],canonicalJson(state),0o600);
-  return directory;
+  return writeModernHistoricalSource(await root(),version,retained);
 }
 async function successor(version:1|2|3,retained=false,nested=false,overlap=false){
-  const directory=nested?await root():await source(version,retained);
-  if(nested)await writeCapturedV3Successor(directory,2);
-  const original=await readModernActivationSuccessorSource(directory);
-  const originalManifest=parseManifest(parseHistoryJson(original.captures.find(file=>file.pathParts.join('/')==='liftoff.manifest.json')!.content!,'source manifest'));
-  const leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({project:originalManifest.project,framework:originalManifest.framework});
-  const selection=selected(leaf,'single-maintainer-gitflow');
-  const activeLayout:ManifestActiveLayout=overlap?{schemaVersion:1,state:'bound',bindings:[{kind:'component',component:'backend',pathParts:['protected']}]}:selection.activeLayout;
-  const input={...selection,activeLayout},core=buildModernManagedCore(input);
-  const managed=[
-    ...core.map(({logicalName,category,pathParts,content})=>({kind:'bytes' as const,logicalName,category,pathParts,content})),
-    ...originalManifest.managedArtifacts.filter(file=>!core.some(target=>target.logicalName===file.logicalName)).map(file=>({kind:'retire-alias' as const,logicalName:file.logicalName}))
-  ];
-  const plan=await planModernActivationSuccessor(original,{...input,managed});
-  const originalState=historyRecord(parseHistoryJson(original.captures.find(file=>file.pathParts.join('/')==='governance/activation-state.json')!.content!,'original state'),'original state');
-  const anchor=String(historyRecord(originalState.repository,'repository').id);
-  const preparation={schemaVersion:1 as const,preparationId:'22222222-2222-4222-8222-222222222222',preparedAt:timestamp,
-    localRepositoryId:anchor.startsWith('local:')?anchor:'local:11111111-1111-4111-8111-111111111111'};
-  const prepared=await prepareActivationHistorySuccessor(plan,Buffer.from(plan.manifest.content),preparation,'2026-09-02T00:00:00.000Z');
-  for(const mutation of prepared.mutations){
-    if(mutation.type==='write')await writeFixtureBytes(directory,mutation.pathParts,mutation.content,mutation.mode);
-    else await fs.rm(path.join(directory,...mutation.pathParts),{force:true});
-  }
-  for(const file of core)await writeFixtureBytes(directory,file.pathParts,file.content);
-  await writeFixtureBytes(directory,['liftoff.manifest.json'],prepared.manifestBytes);
-  return {root:directory,prepared,plan};
+  return writeModernSuccessor(await root(),version,retained,nested,overlap);
 }
+
+async function targetHistoryFormatFixture(){
+  const f=await successor(3),manifestPath=path.join(f.root,'liftoff.manifest.json');
+  const original=await fs.readFile(manifestPath),mode=(await fs.stat(manifestPath)).mode&0o777;
+  const reference=validateActivationTargetHistoryReference({
+    schemaVersion:1,kind:'activation-target-history',manifestDigest:rawHistoryDigest(original),bytes:original.length,mode
+  });
+  const parts=activationTargetHistoryPathParts(reference);
+  const managed=f.plan.manifest.manifest.managedArtifacts.map(file=>({kind:'retain' as const,logicalName:file.logicalName}));
+  const current=createManifestV8Candidate({
+    origin:'maintenance',source:f.plan.manifest.manifest,managed,activationTargetHistory:reference
+  });
+  await writeFixtureBytes(f.root,parts,original,mode);
+  await writeFixtureBytes(f.root,['liftoff.manifest.json'],current.content,mode);
+  return {...f,original,mode,reference,parts,current,managed};
+}
+
+describe('original activation target history',()=>{
+  it('requires a closed bounded reference and derives its reserved path from all reference fields',()=>{
+    const value={schemaVersion:1,kind:'activation-target-history',manifestDigest:'a'.repeat(64),bytes:123,mode:0o640};
+    const reference=validateActivationTargetHistoryReference(value);
+    expect(Object.isFrozen(reference)).toBe(true);
+    expect(activationTargetHistoryPathParts(reference)).toEqual(activationTargetHistoryPathParts({...value}));
+    expect(activationTargetHistoryPathParts(reference).slice(0,2)).toEqual(['.liftoff','activation-target-history']);
+    expect(activationTargetHistoryPathParts({...reference,mode:0o600})).not.toEqual(activationTargetHistoryPathParts(reference));
+    for(const invalid of [
+      null,{}, {...value,pathParts:['outside']},{...value,schemaVersion:2},{...value,kind:'manifest-history'},
+      {...value,manifestDigest:'A'.repeat(64)},{...value,bytes:0},{...value,bytes:8*1024*1024+1},
+      {...value,bytes:1.5},{...value,mode:-0},{...value,mode:0o1000},{...value,mode:'640'}
+    ])expect(()=>validateActivationTargetHistoryReference(invalid)).toThrow();
+    let invoked=false;
+    const accessor={...value};Object.defineProperty(accessor,'bytes',{enumerable:true,get(){invoked=true;return 123;}});
+    expect(()=>validateActivationTargetHistoryReference(accessor)).toThrow();
+    expect(invoked).toBe(false);
+  });
+
+  it('reconstructs the original journal from actual preserved bytes, independently of current metadata',async()=>{
+    const f=await targetHistoryFormatFixture(),journal=await fs.readFile(path.join(f.root,'governance/migration-state.json'));
+    const observed=await inspectModernInstalledActivation(f.root);
+    expect(observed).toMatchObject({status:'observed',classification:'successor'});
+    expect(rawHistoryDigest(Buffer.from(f.current.content))).not.toBe(f.reference.manifestDigest);
+    const original=readPreservedActivationTargetManifest(f.current.manifest,{pathParts:[...f.parts],content:f.original,mode:f.mode});
+    expect(original.content).toEqual(f.original);
+    expect(original.mode).toBe(f.mode);
+    expect(original.manifest).not.toHaveProperty('activationTargetHistory');
+    expect(await fs.readFile(path.join(f.root,'governance/migration-state.json'))).toEqual(journal);
+    expect((await fs.stat(path.join(f.root,...f.parts))).mode&0o777).toBe(f.mode);
+    const next=createManifestV8Candidate({origin:'maintenance',source:f.current.manifest,managed:f.managed});
+    expect(next.content).toBe(f.current.content);
+    expect(()=>createManifestV8Candidate({
+      origin:'maintenance',source:f.current.manifest,managed:f.managed,
+      activationTargetHistory:{...f.reference,bytes:f.reference.bytes+1}
+    })).toThrow(/cannot replace/u);
+  });
+
+  it.each(['missing','changed-bytes','reserialized','reference-digest','reference-size','reference-mode'] as const)(
+    'blocks $0 target history in both readiness and maintenance inspection',async fault=>{
+      const f=await targetHistoryFormatFixture();
+      if(fault==='missing')await fs.rm(path.join(f.root,...f.parts));
+      if(fault==='changed-bytes')await writeFixtureBytes(f.root,f.parts,Buffer.concat([f.original,Buffer.from('\n')]),f.mode);
+      if(fault==='reserialized')await writeFixtureBytes(f.root,f.parts,JSON.stringify(JSON.parse(f.original.toString('utf8'))),f.mode);
+      if(fault.startsWith('reference-')){
+        const reference={...f.reference,...(fault==='reference-digest'?{manifestDigest:'b'.repeat(64)}:
+          fault==='reference-size'?{bytes:f.reference.bytes+1}:{mode:f.mode===0o600?0o640:0o600})};
+        await writeFixtureBytes(f.root,['liftoff.manifest.json'],canonicalJson({...f.current.manifest,activationTargetHistory:reference}),f.mode);
+      }
+      expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
+      expect(await inspectModernMaintenanceSource(f.root)).toMatchObject({status:'blocked'});
+    }
+  );
+
+  it('rejects omitted observations and copy-mode substitutions without manufacturing absence',async()=>{
+    const f=await targetHistoryFormatFixture(),installed=await inspectModernInstalledActivation(f.root);
+    if(installed.status!=='observed')throw new Error('Expected preserved target observation.');
+    const snapshot={...installed.snapshot,files:installed.snapshot.files.filter(file=>file.pathParts.join('/')!==f.parts.join('/'))};
+    await expect(validateCapturedModernInstalledActivation(snapshot)).rejects.toThrow(/not independently captured/u);
+    await expect(validateCapturedModernMaintenanceSource(snapshot)).rejects.toThrow(/not independently captured/u);
+    expect(()=>readPreservedActivationTargetManifest(f.current.manifest,{
+      pathParts:[...f.parts],content:f.original,mode:f.mode===0o600?0o640:0o600
+    })).toThrow(/path, bytes or mode/u);
+    expect(()=>readPreservedActivationTargetManifest(f.current.manifest,{
+      pathParts:['.liftoff','foreign.json'],content:f.original,mode:f.mode
+    })).toThrow(/path, bytes or mode/u);
+  });
+
+  it('refuses a self-consistent journal retagged to the latest manifest digest',async()=>{
+    const f=await targetHistoryFormatFixture(),parts=['governance','migration-state.json'];
+    const journal=JSON.parse(await fs.readFile(path.join(f.root,...parts),'utf8'));
+    journal.semanticInput.targetManifestDigest=rawHistoryDigest(Buffer.from(f.current.content));
+    journal.semanticTransitionDigest=canonicalSha256(journal.semanticInput);
+    await writeFixtureBytes(f.root,parts,canonicalJson(journal));
+    expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
+    expect(await inspectModernMaintenanceSource(f.root)).toMatchObject({status:'blocked'});
+  });
+
+  it.each(['chain','project'] as const)('rejects a validly hashed %s copy that is not the original target',async fault=>{
+    const f=await targetHistoryFormatFixture();
+    const original=JSON.parse(f.original.toString('utf8'));
+    if(fault==='chain')original.activationTargetHistory=f.reference;
+    else{
+      original.project.name='Different original project';
+      const leaf=createManifestV8ProjectReader(projectCatalog).validateManifestV8Project({
+        project:original.project,framework:original.framework
+      });
+      original.governance.activationIdentity=createModernGovernanceContextContract(contracts).buildModernGovernanceContext({
+        selection:{...leaf,profile:'single-maintainer-gitflow'},plugins:original.plugins,activeLayout:original.activeLayout
+      }).governance.activationIdentity;
+      expect(()=>createManifestV8Reader(contracts).parseManifestV8(original)).not.toThrow();
+    }
+    const content=Buffer.from(canonicalJson(original));
+    const reference=validateActivationTargetHistoryReference({...f.reference,manifestDigest:rawHistoryDigest(content),bytes:content.length});
+    expect(()=>readPreservedActivationTargetManifest({...f.current.manifest,activationTargetHistory:reference},{
+      pathParts:[...activationTargetHistoryPathParts(reference)],content,mode:f.mode
+    })).toThrow(fault==='chain'?/preservation chain/u:/current project/u);
+  });
+
+  it.each(['none','single-maintainer-gitflow'] as const)('does not add target history to fresh %s metadata',async profile=>{
+    const f=await fixture('manual',profile);
+    const reference={schemaVersion:1,kind:'activation-target-history',manifestDigest:'a'.repeat(64),bytes:10,mode:0o600};
+    expect(()=>createManifestV8Reader(contracts).parseManifestV8({...f.manifest,activationTargetHistory:reference}))
+      .toThrow(/enabled activation-history successor/u);
+    expect(()=>readPreservedActivationTargetManifest(f.manifest,{pathParts:['liftoff.manifest.json']}))
+      .toThrow(/no original target reference/u);
+  });
+});
+
+describe('separate active maintenance source observation',()=>{
+  it.each((['single-maintainer-gitflow','team-gitflow'] as const).flatMap(profile=>
+    (['manual','openspec','spec-kit'] as const).flatMap(workflow=>
+      (['missing','modified'] as const).map(drift=>({profile,workflow,drift}))
+    )
+  ))('observes $drift core in $profile/$workflow without granting readiness',async({profile,workflow,drift})=>{
+    const f=await fixture(workflow,profile);
+    await f.write(['governance','activation-state.json'],canonicalJson(f.state));
+    const parts=f.manifest.managedArtifacts[0].pathParts;
+    if(drift==='missing')await fs.rm(path.join(f.root,...parts));
+    else await f.write(parts,'Actual changed managed bytes.\n');
+    const manifestBefore=await fs.readFile(path.join(f.root,'liftoff.manifest.json'));
+    const stateBefore=await fs.readFile(path.join(f.root,'governance/activation-state.json'));
+    expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
+    const observed=await inspectModernMaintenanceSource(f.root);
+    expect(observed).toMatchObject({
+      kind:'liftoff-modern-maintenance-source',classification:'current',manifest:f.manifest,
+      current:{state:f.state},execution:'not-authorized'
+    });
+    expect(observed).not.toHaveProperty('localPublication');
+    if(!('kind' in observed))throw new Error('Expected an actual maintenance source.');
+    expect(await validateCapturedModernMaintenanceSource(observed.snapshot)).toEqual(observed);
+    await expect(validateCapturedModernInstalledActivation(observed.snapshot))
+      .rejects.toThrow(/Installed managed core|installed input is missing/u);
+    expect(await fs.readFile(path.join(f.root,'liftoff.manifest.json'))).toEqual(manifestBefore);
+    expect(await fs.readFile(path.join(f.root,'governance/activation-state.json'))).toEqual(stateBefore);
+    if(drift==='missing')await expect(fs.lstat(path.join(f.root,...parts))).rejects.toMatchObject({code:'ENOENT'});
+    else expect(await fs.readFile(path.join(f.root,...parts),'utf8')).toBe('Actual changed managed bytes.\n');
+  });
+
+  it('requires captured core observations even though drift is not readiness',async()=>{
+    const f=await completedCurrent(),installed=await inspectModernInstalledActivation(f.root);
+    if(installed.status!=='observed')throw new Error('Expected current installed inputs.');
+    const observed=await validateCapturedModernMaintenanceSource(installed.snapshot);
+    expect(observed.binding).not.toBe(installed.binding);
+    const missing=f.manifest.managedArtifacts[0].pathParts.join('/');
+    const snapshot={...installed.snapshot,files:installed.snapshot.files.filter(file=>file.pathParts.join('/')!==missing)};
+    await expect(validateCapturedModernMaintenanceSource(snapshot)).rejects.toThrow(/was not captured/u);
+  });
+
+  it.each([1,2,3] as const)('preserves the original v%s successor transition while observing core drift',async version=>{
+    const f=await successor(version),installed=await inspectModernInstalledActivation(f.root);
+    if(installed.status!=='observed')throw new Error('Expected actual successor inputs.');
+    const manifest=f.plan.manifest.manifest,parts=manifest.managedArtifacts[0].pathParts;
+    const journalBefore=await fs.readFile(path.join(f.root,'governance/migration-state.json'));
+    await fs.rm(path.join(f.root,...parts));
+    const observed=await inspectModernMaintenanceSource(f.root);
+    expect(observed).toMatchObject({kind:'liftoff-modern-maintenance-source',classification:'successor',current:installed.current});
+    expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
+    expect(await fs.readFile(path.join(f.root,'governance/migration-state.json'))).toEqual(journalBefore);
+    for(const file of installed.snapshot.files.filter(file=>file.pathParts.slice(0,2).join('/')==='governance/history')){
+      expect(await fs.readFile(path.join(f.root,...file.pathParts))).toEqual(Buffer.from(file.content!,'base64'));
+    }
+  });
+
+  it.each(installedRecordFaults)(
+    'still blocks $0 rather than treating malformed activation as core drift',async fault=>{
+      const f=await completedCurrent();
+      await fs.rm(path.join(f.root,...f.manifest.managedArtifacts[0].pathParts));
+      await corruptCurrentRecord(f,fault);
+      expect(await inspectModernMaintenanceSource(f.root)).toMatchObject({status:'blocked'});
+    }
+  );
+
+  it.each(['fresh','none','released'] as const)('does not reinterpret %s sources as active modern maintenance',async kind=>{
+    const directory=kind==='released'?await source(3):(await fixture('manual',kind==='none'?'none':'single-maintainer-gitflow')).root;
+    expect(await inspectModernMaintenanceSource(directory)).toMatchObject({status:'blocked'});
+  });
+
+  it('retains pending-transaction and invalid-root admission before payload reads',async()=>{
+    const f=await completedCurrent();await f.write([...reservedLocalVerificationJournalPath],'Pending transaction.');
+    io.opens=[];
+    expect(await inspectModernMaintenanceSource(f.root)).toMatchObject({status:'blocked'});
+    expect(io.opens).toEqual([]);
+    await expect(inspectModernMaintenanceSource('')).rejects.toThrow(/bounded root string/u);
+  });
+});
 
 describe('actual read-only installed activation classification',()=>{
   it.each((['single-maintainer-gitflow','team-gitflow'] as const).flatMap(profile=>(['manual','openspec','spec-kit'] as const).map(workflow=>({profile,workflow}))))(
@@ -162,18 +318,10 @@ describe('actual read-only installed activation classification',()=>{
     const f=await completedCurrent(),result=await inspectModernInstalledActivation(f.root);
     expect(result).toMatchObject({status:'observed',classification:'current',current:{state:f.state},localPublication:'codec-unavailable-not-authorized'});
   });
-  it.each(['missing-proof','missing-plan','wrong-repository','future-state','mixed-identity','bad-json','orphan','duplicate-plan','reconciliation'] as const)(
+  it.each(installedRecordFaults)(
     'rejects $0 installed record fault',async fault=>{
       const f=await completedCurrent();
-      if(fault==='missing-proof')await fs.rm(path.join(f.root,'governance/evidence/original-local-input.json'));
-      if(fault==='missing-plan')await fs.rm(path.join(f.root,'governance/plans/plan.json'));
-      if(fault==='wrong-repository')await f.write(['governance','evidence','original-local-input.json'],canonicalJson({...f.proof,header:{...f.proof.header,repositoryId:'other'}}));
-      if(fault==='future-state')await f.write(['governance','activation-state.json'],canonicalJson({...f.state,schemaVersion:99}));
-      if(fault==='mixed-identity')await f.write(['governance','activation-state.json'],canonicalJson({...f.state,identity:{...f.state.identity,policyVersion:'future'}}));
-      if(fault==='bad-json')await f.write(['governance','activation-state.json'],'not JSON');
-      if(fault==='orphan')await fs.rm(path.join(f.root,'governance/activation-state.json'));
-      if(fault==='duplicate-plan')await f.write(['governance','plans','duplicate.json'],canonicalJson(f.plan));
-      if(fault==='reconciliation')await f.write(['governance','reconciliation','future.json'],'{}');
+      await corruptCurrentRecord(f,fault);
       expect((await inspectModernInstalledActivation(f.root)).status).toBe('blocked');
     }
   );

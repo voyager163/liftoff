@@ -106,6 +106,24 @@ describe('developer activation-completeness guidance', () => {
     expect(section).toContain(`outer journal schema ${localVerificationTransactionSchemaVersion}`);
   });
 
+  it('keeps active maintenance, original target preservation and execution readiness separate', () => {
+    const manifests = readFileSync(path.join(process.cwd(), 'docs/configuration-and-manifests.md'), 'utf8');
+    const state = readFileSync(path.join(process.cwd(), 'src/application/state-migration/README.md'), 'utf8');
+    for (const phrase of [
+      '`active-core-manifest-maintenance-only`', '`inspectModernMaintenanceSource`',
+      'source data, not installed\nexecution readiness', 'captured JSON collection membership',
+      'original transition', 'preparation, successor anchor', 'Exact existing\nmaterial can be reused, never overwritten',
+      'No-op/core-only maintenance creates no copy', 'An existing reference is preserved, not chained',
+      'Public routing and modern finite local revalidation remain unwired'
+    ]) expect(developer).toContain(phrase);
+    for (const document of [developer, manifests, state]) {
+      expect(document).toContain('`activationTargetHistory`');
+      expect(document).toContain('.liftoff/activation-target-history/');
+    }
+    expect(manifests).toContain('Active maintenance returns `committed-incomplete`, not\nrevalidated success');
+    expect(state).toContain('cannot reconstruct\nmissing originals from an audit, retag proof, authorize state access');
+  });
+
   it('separates actual private execution consent from publication and readiness', () => {
     const section = developer.split('### Private modern local execution and consent')[1]?.split('\n## ')[0] ?? '';
     for (const phrase of [
