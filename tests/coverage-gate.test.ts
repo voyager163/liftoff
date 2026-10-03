@@ -266,6 +266,7 @@ describe('coverage source inventories', () => {
   });
 
   it('fails when the shared contract disappears from the gateway build input', async () => {
+    await mkdir(path.join(repository, '.cache'), { recursive: true });
     const root = await mkdtemp(path.join(repository, '.cache', 'coverage gateway inventory '));
     fixtures.push(root);
     const service = path.join(root, 'services', 'telemetry-ingest');
@@ -592,10 +593,12 @@ describe('independent CI and release coverage gates', () => {
 
   it('measures the CLI on the same pinned toolchain as the platform test lane', async () => {
     const ci = await workflow('ci.yml');
-    const pins = (job: Job) => job.steps.filter((step) => step.uses || /npm@|uv==/.test(step.run ?? '')).map((step) => ({
+    const pins = (job: Job) => job.steps.filter((step) =>
+      step.uses && !step.uses.startsWith('actions/upload-artifact@') || /npm@|uv==/.test(step.run ?? '')
+    ).map((step) => ({
       uses: step.uses, with: step.with && Object.fromEntries(Object.entries(step.with).filter(([key]) => /version/.test(key))), run: step.run
     }));
-    expect(pins(ci.jobs['coverage-cli']).filter((step) => !step.uses?.startsWith('actions/upload-artifact@')))
+    expect(pins(ci.jobs['coverage-cli']))
       .toEqual(pins(ci.jobs.test).filter((step) => step.uses || /npm@12\.0\.2|uv==0\.12\.7/.test(step.run ?? ''))
         .filter((step) => step.run === undefined || !step.run.includes('RUNNER_TEMP')));
     expect(runs(ci.jobs['coverage-cli'])).toEqual(expect.arrayContaining([

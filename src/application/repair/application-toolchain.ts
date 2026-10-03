@@ -3,6 +3,7 @@ import { constants } from 'node:fs';
 import { lstat, mkdir, open, realpath, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { nativeExecutableObserver } from '../../adapters/filesystem/executables.js';
+import { workspaceFileIdentity } from '../../adapters/filesystem/repair-workspaces.js';
 import { canonicalSha256, isRecord } from '../../domain/governance/activation/canonical-json.js';
 import { compareVersionCores, extractVersion, isPrereleaseVersion, matchesReleaseLine } from '../../domain/workstation/versions.js';
 import { NodeCommandRunner } from '../../process-runner.js';
@@ -13,6 +14,7 @@ import {
 import { createApplicationEnvironment } from './application-environment.js';
 import { applicationCommandFailure } from './application-diagnostics.js';
 import { applicationPreparationBounds, applicationToolRequirement } from './application-preparation-policy.js';
+import { sameWorkspaceFileIdentity } from './workspaces-records.js';
 import type {
   ApplicationInspectionOptions, ApplicationResolvedPreparation, ApplicationToolFileIdentity,
   ApplicationToolId, ApplicationToolIdentity
@@ -128,7 +130,7 @@ async function resolveApplicationToolValues(
   }
   await assertApplicationNoLinkAncestors(path.dirname(probeRoot));
   await mkdir(probeRoot, { mode: 0o700 });
-  const created = await lstat(probeRoot);
+  const created = workspaceFileIdentity(await lstat(probeRoot, { bigint: true }));
   const tools: ApplicationToolIdentity[] = [];
   let unsafeCleanup = false;
   try {
@@ -229,8 +231,8 @@ async function resolveApplicationToolValues(
     if (unsafeCleanup) {
       throw new ApplicationInspectionError(`[tool-probe-cleanup] Tool probe termination is uncertain; probe workspace was retained at ${probeRoot}. No preparation or project checks were authorized.`);
     }
-    const current = await lstat(probeRoot);
-    if (!current.isDirectory() || current.isSymbolicLink() || current.dev !== created.dev || current.ino !== created.ino) {
+    const current = await lstat(probeRoot, { bigint: true });
+    if (!current.isDirectory() || current.isSymbolicLink() || !sameWorkspaceFileIdentity(created, workspaceFileIdentity(current))) {
       throw new ApplicationInspectionError('[tool-probe-cleanup] Probe workspace identity changed; cleanup was refused.');
     }
     await rm(probeRoot, { recursive: true, force: true });

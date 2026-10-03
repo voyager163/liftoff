@@ -314,6 +314,11 @@ Declared network effects require their own distinct permission (the network ques
 interactively; `--allow-network` for automation). Neither project-check consent
 nor file-write consent implies preparation or network authority.
 
+Tool metadata probes use a separate private directory. Before removing it,
+Liftoff checks its device, inode, and creation time; a reused inode alone does
+not establish ownership. A replaced directory or uncertain probe termination
+blocks cleanup and is reported instead of deleting the replacement.
+
 ### Actionable failures without raw diagnostic output
 
 Verification classifies allowlisted launch errors, exit statuses, and bounded

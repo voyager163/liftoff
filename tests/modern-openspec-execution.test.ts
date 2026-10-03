@@ -7,6 +7,7 @@ import {executeModernLocalExecution} from '../src/application/governance/modern-
 import {createModernLocalWorkspace} from '../src/adapters/filesystem/modern-local-workspaces.js';
 import {createLocalExecutionRecordStore} from '../src/adapters/filesystem/update-previews.js';
 import {inspectModernOpenSpecRuntime} from '../src/application/governance/modern-local-inputs.js';
+import {deriveCompleteOpenSpecInputs} from '../src/application/governance/modern-openspec-inputs.js';
 import {NodeCommandRunner} from '../src/process-runner.js';
 import {projectCatalog} from '../src/application/project/catalog.js';
 import {composeModernManifestPlugins} from '../src/application/project/plugins.js';
@@ -21,12 +22,16 @@ import {frameworkOutputPaths} from '../src/framework-validation.js';
 import {rawLocalDigest,capturedFileBytes} from '../src/domain/governance/activation/modern-local-inputs.js';
 import {canonicalSha256} from '../src/domain/governance/activation/canonical-json.js';
 import {assertExecutableLocalExecutionPreview,validateLocalExecutionPreview,validateLocalExecutionResult,validateLocalExecutionConsentRecord,openSpecMetadataEnvironment} from '../src/domain/governance/activation/modern-local-runtime.js';
-import {validateOpenSpecCommandOutput,validateOpenSpecExecutionInputs,type OpenSpecExecutionInputs} from '../src/domain/governance/activation/modern-openspec-execution.js';
+import {openSpecExecutionChecks,validateOpenSpecCommandOutput,validateOpenSpecExecutionInputs,type OpenSpecExecutionInputs} from '../src/domain/governance/activation/modern-openspec-execution.js';
 import {observeModernLocalTools,assertModernLocalToolsCurrent} from '../src/adapters/process/modern-local-tools.js';
 import {createApplicationEnvironment} from '../src/application/repair/application-environment.js';
+import {hclComputationPolicy} from '../src/adapters/hcl/isolated-parser.js';
 
 const native=process.env.LIFTOFF_OPENSPEC_B_TESTS==='1'&&process.env.LIFTOFF_HCL_TEST_LANE!=='portable';
 if(native&&(process.platform!=='darwin'||process.arch!=='arm64'||process.versions.node!=='24.21.0'))throw new Error('OpenSpec B native qualification requires the recorded runtime.');
+const parserRuntime=hclComputationPolicy.qualifiedRuntime;
+const parserAvailable=process.env.LIFTOFF_HCL_TEST_LANE!=='portable'&&process.platform===parserRuntime.platform&&
+  process.arch===parserRuntime.arch&&process.versions.node===parserRuntime.node;
 const nativeIt=it.skipIf(!native),roots:{path:string;ino:number;dev:number}[]=[];
 afterEach(async()=>{
   vi.restoreAllMocks();
@@ -83,7 +88,7 @@ async function fixture(profile:'none'|'single-maintainer-gitflow'|'team-gitflow'
   }
   await change(selected,capability);await change('unrelated-change','unrelated-capability');
   await put(['openspec','specs','existing-capability','spec.md'],spec('Preserve existing capability'));
-  return {root,put,change};
+  return {root,put,change,manifest};
 }
 async function originalFiles(root:string){
   const out:Record<string,unknown>={};
@@ -115,14 +120,30 @@ describe('complete OpenSpec read-set admission',()=>{
     const paths=inspection.local.snapshot.files.map(f=>f.pathParts.join('/'));
     expect(paths).toContain('openspec/changes/unrelated-change/specs/unrelated-capability/spec.md');
     expect(paths).toContain('openspec/specs/existing-capability/spec.md');
+    const inputs=deriveCompleteOpenSpecInputs(inspection.local.snapshot,f.manifest);
+    expect(inputs.subjects).toEqual(expect.arrayContaining([
+      {id:selected,type:'change'},{id:'unrelated-change',type:'change'},{id:'existing-capability',type:'spec'}
+    ]));
+    expect(inputs.subjects).toHaveLength(3);
+    expect(inputs.tasks).toEqual([
+      {id:'1',description:'1.1 Review source.',done:false},
+      {id:'2',description:'1.2 Run separately authorized tofu init before finalization.',done:false}
+    ]);
+    expect(openSpecExecutionChecks(inputs).map(c=>c.id)).toEqual(['openspec-status','openspec-apply','openspec-selected','openspec-all']);
+  });
+  it.skipIf(!parserAvailable)('assembles complete runtime checks on the qualified HCL host without executing project tools',async()=>{
+    const f=await fixture();
+    const run=vi.spyOn(NodeCommandRunner.prototype,'run').mockImplementation(async()=>{throw new Error('Project tool dispatch is not part of input planning.');});
     const runtime=await captureLocalExecutionRuntime(f.root,true);
     expect(runtime.plan.localPlan!.checks.slice(0,6).map(c=>c.id)).toEqual(['source-consistency','framework-source','openspec-status','openspec-apply','openspec-selected','openspec-all']);
+    expect(run).not.toHaveBeenCalled();
   });
 });
 describe('explicit actual OpenSpec B execution',()=>{
   nativeIt('qualifies actual readonly OpenSpec outputs without claiming full B or tofu eligibility',async()=>{
     const f=await fixture(),captured=await captureLocalExecutionRuntime(f.root,true),original=await originalFiles(f.root);
     if(captured.inspection.status!=='observed'||captured.inspection.local.status!=='modern-observed'||!captured.openSpecInputs)throw new Error('Missing full source.');
+    expect(captured.plan.localPlan!.checks.slice(0,6).map(c=>c.id)).toEqual(['source-consistency','framework-source','openspec-status','openspec-apply','openspec-selected','openspec-all']);
     const checks=captured.plan.localPlan!.checks.filter(c=>c.command?.executable==='openspec'),
       tools=await observeModernLocalTools(f.root,checks,[]),tool=tools.find(t=>t.id==='openspec')!;
     const workspace=path.join(path.dirname(f.root),'readonly-workspace'),project=path.join(workspace,'project');

@@ -25,7 +25,7 @@ Depends on 1. References: design D1-D2; liftoff-bundled-plugins, liftoff-templat
 - [x] 2.4 Move plugin-specific templates/locks to one canonical asset inventory and shared material to shared assets; verify before/after generation parity and exact logical-name/lifecycle snapshots.
 - [x] 2.5 Extend baseline/audit/package inventories for every plugin asset and installable dependency set; verify missing locks/assets and omitted packaged dependencies fail smoke/audit checks.
 - [x] 2.6 Enforce dependency direction and prohibit runtime project/plugin-directory discovery; verify import-boundary tests and a repository-supplied executable plugin are rejected without execution.
-- [ ] 2.7 Add Windows native path/case/junction collision tests for plugin composition and packaged lookup; verify equivalent portable identities on macOS/Linux and no broad directory ownership.
+- [x] 2.7 Add Windows native path/case/junction collision tests for plugin composition and packaged lookup; verify equivalent portable identities on macOS/Linux and no broad directory ownership.
 - [x] 2.8 Document plugin/core/adapter responsibilities and one-copy template locations in the contributor/module guide; verify examples point to real files and describe first-party trust rather than sandboxing.
 
 ## 3. Introduce current project and activation compatibility contracts

@@ -1,6 +1,6 @@
 import { appendFile, chmod, lstat, mkdir, readdir, realpath, rm, symlink, unlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { inspectApplicationPatch, verifyApplicationPatch } from '../src/application/repair/application-patch.js';
 import { applicationVerificationFixtureContext, putApplicationFixtureFile } from './fixtures/repair-application.js';
 import { createPreparationFixture, type PreparationFixture } from './fixtures/repair-preparation.js';
@@ -9,8 +9,13 @@ import {
   simulateNpmCi, snapshotTree, type ProbeVersions, type RunnerScript
 } from './fixtures/repair-branches.js';
 
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, lstat: vi.fn(actual.lstat) };
+});
+
 const directories = new TemporaryDirectories();
-afterEach(async () => { await directories.cleanup(); });
+afterEach(async () => { vi.mocked(lstat).mockReset(); await directories.cleanup(); });
 const posix = process.platform !== 'win32';
 const exe = (name: string) => process.platform === 'win32' ? `${name}.exe` : name;
 const searchPath = (...entries: string[]) => [...entries, process.env.PATH ?? process.env.Path ?? ''].filter(Boolean).join(path.delimiter);
@@ -237,6 +242,34 @@ describe('tool identity drift', () => {
     expect(candidate.blockers.join(' ')).toContain('[tool-probe-cleanup] Probe workspace identity changed; cleanup was refused.');
     expect(path.dirname(replaced)).toBe(f.directory);
     expect((await lstat(path.join(replaced, 'replacement-marker.txt'))).isFile()).toBe(true);
+  });
+
+  it('preserves a replacement probe directory when its inode is reused but its creation time differs', async () => {
+    const f = await fixture();
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    let replaced = '';
+    const { candidate } = await inspect(f, undefined, async call => {
+      if (!replaced) {
+        replaced = call.options!.cwd!;
+        const created = await actual.lstat(replaced, { bigint: true });
+        await rm(replaced, { recursive: true });
+        await putApplicationFixtureFile(replaced, ['replacement-marker.txt'], 'not owned by the probe\n');
+        // Replay inode reuse deterministically; the replacement and marker are real files.
+        vi.mocked(lstat).mockImplementation(async (file, options) => {
+          const details = await actual.lstat(file, options);
+          if (file === replaced) {
+            Object.defineProperties(details, {
+              ino: { value: typeof details.ino === 'bigint' ? created.ino : Number(created.ino) },
+              birthtimeNs: { value: created.birthtimeNs + 1n }
+            });
+          }
+          return details;
+        });
+      }
+      return undefined;
+    });
+    expect(candidate.blockers.join(' ')).toContain('[tool-probe-cleanup] Probe workspace identity changed; cleanup was refused.');
+    expect((await actual.lstat(path.join(replaced, 'replacement-marker.txt'))).isFile()).toBe(true);
   });
 
   it('blocks registered effects when an approved tool reports a different version at execution time', async () => {
