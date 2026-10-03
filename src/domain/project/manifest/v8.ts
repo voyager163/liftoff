@@ -8,6 +8,7 @@ import { createManifestArtifactReader } from './artifacts.js';
 import type { ManifestContractContext } from './context.js';
 import { denseArray, exactRecord, isRecord, requiredString, SEMVER_PATTERN } from './fields.js';
 import { validateManifestSourceHistoryReference, type ManifestSourceHistoryReference } from './history.js';
+import { validateActivationTargetHistoryReference, type ActivationTargetHistoryReference } from './activation-target-history.js';
 import { manifestActiveLayoutDigest, manifestLayoutBounds, manifestPathAliasKey, validateManifestActiveLayout, validateManifestPathParts } from './layout.js';
 import { manifestPluginMetadataMatches, readManifestPluginMetadata, type ManifestPluginMetadata } from './plugins.js';
 import { createManifestV8ProjectReader, type ManifestV8ProjectLeaf } from './v8-project.js';
@@ -44,6 +45,7 @@ export type LiftoffManifestV8 = ManifestV8ProjectLeaf & {
   readonly projectArtifacts: readonly ReadonlyArtifact<ManifestProjectArtifact>[];
   readonly adoptionObservations: readonly ManifestAdoptionObservation[];
   readonly sourceManifestHistory?: ManifestSourceHistoryReference;
+  readonly activationTargetHistory?: ActivationTargetHistoryReference;
 };
 
 export interface ManifestV8SourceContract {
@@ -149,7 +151,8 @@ export function createManifestV8Reader(context: ManifestV8ReaderContext) {
     const root = exactRecord(value, [
       'artifactVersion', 'generatedBy', 'liftoffVersion', 'project', 'framework', 'governance',
       'plugins', 'activeLayout', 'managedArtifacts', 'projectArtifacts', 'adoptionObservations',
-      ...(isRecord(value) && Object.hasOwn(value, 'sourceManifestHistory') ? ['sourceManifestHistory'] : [])
+      ...(isRecord(value) && Object.hasOwn(value, 'sourceManifestHistory') ? ['sourceManifestHistory'] : []),
+      ...(isRecord(value) && Object.hasOwn(value, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
     ], 'Manifest v8');
     if (root.artifactVersion !== 8 || root.generatedBy !== 'Mission Control Liftoff') {
       throw new FileSystemError('Manifest v8 requires artifactVersion 8 and generatedBy "Mission Control Liftoff".');
@@ -243,13 +246,19 @@ export function createManifestV8Reader(context: ManifestV8ReaderContext) {
     }
     const sourceManifestHistory = Object.hasOwn(root, 'sourceManifestHistory')
       ? validateManifestSourceHistoryReference(root.sourceManifestHistory) : undefined;
+    const activationTargetHistory = Object.hasOwn(root, 'activationTargetHistory')
+      ? validateActivationTargetHistoryReference(root.activationTargetHistory) : undefined;
+    if (activationTargetHistory && (governance.profile === 'none' || sourceManifestHistory?.kind !== 'activation-history')) {
+      throw new FileSystemError('Original activation target history requires an enabled activation-history successor.');
+    }
     return Object.freeze({
       artifactVersion: 8, generatedBy: 'Mission Control Liftoff', liftoffVersion,
       ...leaf, governance, plugins, activeLayout,
       managedArtifacts: freezeArtifacts(managedArtifacts),
       projectArtifacts: freezeArtifacts(projectArtifacts),
       adoptionObservations: Object.freeze(adoptionObservations),
-      ...(sourceManifestHistory ? { sourceManifestHistory } : {})
+      ...(sourceManifestHistory ? { sourceManifestHistory } : {}),
+      ...(activationTargetHistory ? { activationTargetHistory } : {})
     });
   }
 

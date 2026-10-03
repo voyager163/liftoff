@@ -910,13 +910,34 @@ cleanup-failure outcome. `not-required-no-activation` describes the lack of
 activation revalidation for this scoped operation, not application readiness
 or successful deployment. Active record collections are rechecked before each
 maintenance mutation and before commit; fixed source/history preconditions retain the existing
-transaction checks. Active-state maintenance is still blocked, including
-successors whose immutable journal2 transition binds the initially published
-manifest digest. Ordinary maintenance cannot rewrite that transition or use an
-approval audit to infer historical target bytes.
+transaction checks.
 
-Public routing, stateful current-v8 maintenance and modern finite local revalidation
-remain unwired for this modern lane.
+Active v8 projects use the separate `active-core-manifest-maintenance-only` scope.
+`inspectModernMaintenanceSource` validates actual active/history relationships
+while allowing captured managed-core drift; it returns source data, not installed
+execution readiness. The strict installed preflight continues to require exact
+current core. Reviewed maintenance protects existing record bytes and rechecks
+the captured JSON collection membership before every mutation and commit.
+Reserved transaction journals are checked at admission, not supplied as ordinary
+data preconditions. The update codec owns its journal's absence-to-present
+transition; competing repair/local-verification journals must remain absent
+during maintenance.
+
+Before the first metadata-changing maintenance of an activation-history
+successor, the transaction preserves the actual original target manifest under
+`.liftoff/activation-target-history/<reference-digest>/manifest.json`. The strict
+optional `activationTargetHistory` reference binds its raw digest, length and
+mode; the complete reference determines the reserved path. Exact existing
+material can be reused, never overwritten. Later reads check the actual copy,
+unchanged project/framework/profile/plugin/layout/provenance intent, and the
+original journal2 transition against those bytes. The original transition,
+preparation, successor anchor, source history and proof remain unchanged.
+No-op/core-only maintenance creates no copy, and fresh active projects acquire
+no invented migration history. An existing reference is preserved, not chained.
+
+Active maintenance reports `committed-incomplete` with separately required
+revalidation; preservation is neither proof nor permission to execute.
+Public routing and modern finite local revalidation remain unwired for this lane.
 
 Public catalog, v2-v7 readers, v7 writer, activation-v3 and policy-6 behavior
 remain unchanged, including original graph/policy bytes and generation output.

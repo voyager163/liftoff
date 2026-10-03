@@ -56,6 +56,7 @@ import { localSeedPhaseLabel } from '../../governance-activation/seed-lifecycle.
 import { prepareStandaloneManifestHistory } from './manifest-history.js';
 import { collectStandaloneManifestHistoryInput } from './manifest-history-capture.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
+import { assertActiveMaintenanceCollections, verifyActiveMaintenanceTarget } from './active-manifest-maintenance.js';
 
 export interface UpdateRequest {
   check: boolean;
@@ -110,7 +111,9 @@ export async function previewModernSuccessorUpdate(
       ? 'history-core-state-manifest-publication-only' as const
       : inspection.kind === 'manifest-successor'
         ? 'history-core-manifest-publication-only' as const
-        : 'core-manifest-maintenance-only' as const,
+        : inspection.kind === 'manifest-maintenance'
+          ? 'core-manifest-maintenance-only' as const
+          : 'active-core-manifest-maintenance-only' as const,
     revalidation: inspection.kind === 'manifest-maintenance'
       ? 'not-required-no-activation' as const : 'separate-reviewed-operation-required' as const
   };
@@ -165,7 +168,9 @@ export async function applyModernSuccessorUpdate(
     ...(request.approvePlan === undefined ? {} : { approvePlan: request.approvePlan }),
     message: inspection.kind === 'manifest-maintenance'
       ? `Apply this exact ${review.mutations.length}-operation managed maintenance (${review.descriptor.fingerprint})? Application and history bytes remain protected; no activation is started.`
-      : `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
+      : inspection.kind === 'active-manifest-maintenance'
+        ? `Apply this exact ${review.mutations.length}-operation active managed maintenance (${review.descriptor.fingerprint})? Original activation, transition and history remain protected; local revalidation is separate.`
+        : `Publish this exact ${review.mutations.length}-operation successor (${review.descriptor.fingerprint})? Historical bytes remain protected; local revalidation is separate.`
   }, approvalContext);
   if (approval.status !== 'approved') return { status: 'approval-blocked' as const, approval };
 
@@ -181,7 +186,12 @@ export async function applyModernSuccessorUpdate(
     const preserved = { index, indexDigest: rawHistoryDigest(inspection.source.indexContent) };
     return (mutation: { pathParts: readonly string[] }) =>
       verifyActivationHistoryBeforeReplacement(projectRoot, preserved, mutation);
-  })() : inspection.kind === 'manifest-maintenance' ? async () => {
+  })() : inspection.kind === 'active-manifest-maintenance' ? async (mutation: { pathParts: readonly string[] }) => {
+    await assertActiveMaintenanceCollections(inspection.activeSnapshot);
+    if (mutation.pathParts.join('/') === 'liftoff.manifest.json') {
+      await verifyActiveMaintenanceTarget(projectRoot, inspection.successorPlan.manifest.manifest);
+    }
+  } : inspection.kind === 'manifest-maintenance' ? async () => {
     await assertManifestOnlyActivationCollectionsEmpty(projectRoot);
   } : async (mutation: { pathParts: readonly string[] }) => {
     if (mutation.pathParts.join('/') !== 'liftoff.manifest.json') return;
@@ -204,7 +214,9 @@ export async function applyModernSuccessorUpdate(
       }
     },
     onBeforeMutation: verifyPreservation,
-    ...(inspection.kind !== 'activation-successor' ? {
+    ...(inspection.kind === 'active-manifest-maintenance' ? {
+      onBeforeCommit: () => assertActiveMaintenanceCollections(inspection.activeSnapshot)
+    } : inspection.kind !== 'activation-successor' ? {
       onBeforeCommit: () => assertManifestOnlyActivationCollectionsEmpty(projectRoot)
     } : {}),
     ...(onCheckpoint ? { onCheckpoint } : {})

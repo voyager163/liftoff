@@ -8,8 +8,10 @@ import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-tran
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
 import { createManifestV8ProjectReader } from '../../domain/project/manifest/v8-project.js';
 import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
+import { activationTargetHistoryPathParts } from '../../domain/project/manifest/activation-target-history.js';
 import { validateManifestPathParts } from '../../domain/project/manifest/layout.js';
 import { readPreservedStandaloneManifest } from '../update/manifest-history.js';
+import { readPreservedActivationTargetManifest } from '../update/activation-target-history.js';
 import { parseManifest, resolveModernManifestV8SourceContract } from '../project/manifest.js';
 import { projectCatalog } from '../project/catalog.js';
 import { buildModernManagedCore } from '../project/modern-managed-core.js';
@@ -90,8 +92,9 @@ async function validateHistory(snapshot:InstalledLocalSnapshot,reference:{snapsh
   return {inventories,firstIndex:firstIndex!};
 }
 
-/** Reconstructs record and source relations from bounded captured bytes, never embedded success flags. */
-export async function validateCapturedModernInstalledActivation(input:InstalledLocalSnapshot):Promise<Extract<InstalledLocalPreflight,{status:'observed'}>>{
+async function validateCapturedModernActivation(
+  input:InstalledLocalSnapshot, requireCurrentCore:boolean
+):Promise<Extract<InstalledLocalPreflight,{status:'observed'}>>{
   const snapshot=copyModernLocalData(input);validateInstalledLocalSnapshot(snapshot);
   const files=new Map(snapshot.files.map(file=>[key(file.pathParts),file]));
   function bytes(parts:readonly string[],required=false):Buffer|undefined{
@@ -134,9 +137,10 @@ export async function validateCapturedModernInstalledActivation(input:InstalledL
   const core=buildModernManagedCore({selection:{project:manifest.project,framework:manifest.framework,profile:manifest.governance.profile},
     plugins:manifest.plugins,activeLayout:manifest.activeLayout});
   for(const artifact of core){
-    const observed=bytes(artifact.pathParts,true)!;
+    const observed=bytes(artifact.pathParts,requireCurrentCore);
     const recorded=manifest.managedArtifacts.find(file=>file.logicalName===artifact.logicalName);
-    if(!observed.equals(Buffer.from(artifact.content))||recorded?.contentHash!==`sha256:${rawLocalDigest(observed)}`)localInputFailure('Installed managed core differs from its exact source bytes.');
+    if(requireCurrentCore&&(!observed||!observed.equals(Buffer.from(artifact.content))||
+      recorded?.contentHash!==`sha256:${rawLocalDigest(observed)}`))localInputFailure('Installed managed core differs from its exact source bytes.');
   }
   let retained:InstalledRetentionObligation[]=[];
   if(manifest.sourceManifestHistory?.kind==='manifest-history'){
@@ -186,7 +190,13 @@ export async function validateCapturedModernInstalledActivation(input:InstalledL
       key(link.journalPathParts)!==key(journalPath) ||
       canonicalJson(link.sourceActiveChange)!==canonicalJson(first.state.activeChange))localInputFailure('Modern state and immutable history source disagree.');
     const contract=createModernHistoryContract(projectCatalog,context(manifest));
-    const expected=contract.semanticInput(history.firstIndex.sourceIdentity,reference,rawLocalDigest(manifestBytes));
+    let originalTargetBytes=manifestBytes;
+    if(manifest.activationTargetHistory){
+      const parts=activationTargetHistoryPathParts(manifest.activationTargetHistory),copy=files.get(key(parts));
+      if(!copy)localInputFailure('Original activation target was not independently captured.');
+      originalTargetBytes=readPreservedActivationTargetManifest(manifest,present(copy)).content;
+    }
+    const expected=contract.semanticInput(history.firstIndex.sourceIdentity,reference,rawLocalDigest(originalTargetBytes));
     const journal=contract.readJournal(parseHistoryJson(journalBytes,'modern migration journal'),expected,snapshot.observedAt,{state,records:refs});
     if(journal.successor.repositoryId!==state.repository.id||journal.successor.createdAt!==state.createdAt)localInputFailure('Installed successor state differs from its preparation anchor.');
     retained.push(...history.inventories.flatMap(source=>retention(canonicalSha256(source.state.identity),source.state.repository.id,source.state.bootstrapState)));
@@ -196,11 +206,38 @@ export async function validateCapturedModernInstalledActivation(input:InstalledL
   return result('current',retained,{state,records:refs});
 }
 
-/** Storage truth only. Pending journals are checked before any installed record interpretation. */
-export async function inspectModernInstalledActivation(root:string):Promise<InstalledLocalPreflight>{
+/** Reconstructs record and source relations from bounded captured bytes, never embedded success flags. */
+export async function validateCapturedModernInstalledActivation(input:InstalledLocalSnapshot):Promise<Extract<InstalledLocalPreflight,{status:'observed'}>>{
+  return validateCapturedModernActivation(input,true);
+}
+
+/** Source observation permits core drift, but cannot be supplied as installed execution readiness. */
+export async function validateCapturedModernMaintenanceSource(input:InstalledLocalSnapshot){
+  const observed=await validateCapturedModernActivation(input,false);
+  if((observed.classification!=='current'&&observed.classification!=='successor')||!observed.current){
+    localInputFailure('Active maintenance requires a valid current activation boundary.');
+  }
+  const file=observed.snapshot.files.find(file=>key(file.pathParts)==='liftoff.manifest.json');
+  if(!file)localInputFailure('Active maintenance source manifest was not captured.');
+  const content=capturedFileBytes(file);
+  if(!content||file.mode===null)localInputFailure('Active maintenance source manifest is missing.');
+  const manifest=reader.parseManifestV8(parseHistoryJson(content,'active maintenance source manifest'));
+  return {
+    kind:'liftoff-modern-maintenance-source' as const,
+    classification:observed.classification,manifest,snapshot:observed.snapshot,
+    original:{pathParts:[...file.pathParts],content,mode:file.mode},
+    captures:observed.snapshot.files.map(present),
+    binding:canonicalSha256({kind:'liftoff-modern-maintenance-source',installedBinding:observed.binding}),
+    retention:observed.retention,current:observed.current,execution:'not-authorized' as const
+  };
+}
+export type ModernMaintenanceSource=Awaited<ReturnType<typeof validateCapturedModernMaintenanceSource>>;
+
+function validateInstalledRoot(root:string):void{
   if(typeof root!=='string'||!root||root.length>4096||/[\u0000-\u001f]/u.test(root))localInputFailure('Installed preflight requires a bounded root string.');
+}
+async function collectModernInstalledActivation(root:string):Promise<InstalledLocalSnapshot>{
   const requested=root;
-  try{
     const resolved=path.resolve(requested),initial=await lstat(resolved);
     if(!initial.isDirectory()||initial.isSymbolicLink())localInputFailure('Installed root must be a real directory.');
     const canonical=await realpath(resolved),files=new Map<string,ModernLocalFile>(),directories=new Map<string,ModernLocalDirectory>(),physical=new Map<string,ModernLocalPhysical>();
@@ -317,16 +354,28 @@ export async function inspectModernInstalledActivation(root:string):Promise<Inst
           id=inventory.sourceMigration.snapshotId;
         }
       }
+      if(manifest.activationTargetHistory)await capture(activationTargetHistoryPathParts(manifest.activationTargetHistory));
     }
     for(const entry of physical.values())if(canonicalJson(await stamp(entry.path))!==canonicalJson(entry))localInputFailure('Installed physical inputs changed during collection.');
     const snapshot:InstalledLocalSnapshot={kind:'liftoff-modern-installed-inputs',schemaVersion:1,root:canonical,observedAt:new Date().toISOString(),
       files:[...files.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),directories:[...directories.values()].sort((a,b)=>compare(key(a.pathParts),key(b.pathParts))),
       physical:[...physical.values()].sort((a,b)=>compare(a.path,b.path))};
-    return await validateCapturedModernInstalledActivation(snapshot);
-  }catch(error){
-    const code=errorCode(error);
-    return {status:'blocked',blockers:[error instanceof ModernLocalInputError?error.message:
-      code==='EACCES'||code==='EPERM'?'Installed preflight control access was denied; no readiness is inferred.':
-        'Installed preflight rejected invalid, unsupported or unavailable control/history records; source values were omitted.']};
-  }
+    return snapshot;
+}
+function blockedObservation(error:unknown):Extract<InstalledLocalPreflight,{status:'blocked'}>{
+  const code=errorCode(error);
+  return {status:'blocked',blockers:[error instanceof ModernLocalInputError?error.message:
+    code==='EACCES'||code==='EPERM'?'Installed preflight control access was denied; no readiness is inferred.':
+      'Installed preflight rejected invalid, unsupported or unavailable control/history records; source values were omitted.']};
+}
+/** Storage truth only. Pending journals are checked before any installed record interpretation. */
+export async function inspectModernInstalledActivation(root:string):Promise<InstalledLocalPreflight>{
+  validateInstalledRoot(root);
+  try{return await validateCapturedModernInstalledActivation(await collectModernInstalledActivation(root));}
+  catch(error){return blockedObservation(error);}
+}
+export async function inspectModernMaintenanceSource(root:string):Promise<ModernMaintenanceSource|Extract<InstalledLocalPreflight,{status:'blocked'}>>{
+  validateInstalledRoot(root);
+  try{return await validateCapturedModernMaintenanceSource(await collectModernInstalledActivation(root));}
+  catch(error){return blockedObservation(error);}
 }

@@ -299,7 +299,13 @@ describe('actual guarded prepared successor publication', () => {
     }
     const after = await projectBytes(fixture.root);
     expect(after['package.json']).toEqual(before['package.json']);
-    await expect(previewModernSuccessorUpdate(fixture.root, fixture.selection, fixture.options)).rejects.toThrow();
+    const maintenance = await previewModernSuccessorUpdate(fixture.root, fixture.selection, fixture.options);
+    expect(maintenance.scope).toBe('active-core-manifest-maintenance-only');
+    expect(maintenance.plans.every(plan => plan.writeCount === 0)).toBe(true);
+    expect(await applyModernSuccessorUpdate({
+      projectRoot: fixture.root, selection: fixture.selection, force: false
+    }, approvalContext(async () => { throw new Error('Compatible active maintenance must not prompt.'); }), fixture.options))
+      .toEqual({ status: 'current', committed: false, revalidation: 'separate-reviewed-operation-required' });
     expect(await projectBytes(fixture.root)).toEqual(after);
   });
 

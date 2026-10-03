@@ -314,9 +314,20 @@ project provenance, compatible bindings and plugin identity remain unchanged.
 No-op apply preserves original formatting and reports `current` without approval
 or an audit; approved core/metadata changes report scoped `committed` without
 inventing activation or duplicate history. This does not establish application
-readiness. These APIs do not enable public routing, active-state maintenance or
-finite modern revalidation; a prior activation transition cannot be rewritten
-merely to accept a later manifest digest.
+readiness.
+
+Active v8 maintenance has a separate private scope. Its source observer accepts
+captured core drift only while validating the actual active records and history;
+it is not installed execution readiness. Exact approval protects original proof
+and collection membership. Metadata-changing maintenance of an activation-history
+successor first preserves its original target bytes and mode, then records the
+strict `activationTargetHistory` reference. The single copy's reserved path is
+derived from that reference under `.liftoff/activation-target-history/`.
+Readers use the actual copy to check the unchanged original transition and
+preparation, not a digest asserted by an audit. Missing, altered or contradictory
+copies block interpretation. No-op/core-only maintenance and fresh active projects
+create no such copy. Active maintenance returns `committed-incomplete`, not
+revalidated success. Public routing and finite modern revalidation remain gated.
 
 Private managed-context schema 2 is not the deferred activation
 source-metadata2/task-projection producer. MR1 independently observes captured

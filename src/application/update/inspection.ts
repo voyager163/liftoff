@@ -20,12 +20,18 @@ import type { ManagedManifestDecision } from '../project/manifest-writer.js';
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { rawHistoryDigest, parseHistoryJson, historyRecord, migrationStateFilePathParts } from '../../governance-activation/history-contracts.js';
 import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
+import { activationTargetHistoryPathParts } from '../../domain/project/manifest/activation-target-history.js';
 import { createManifestV8Reader } from '../../domain/project/manifest/v8.js';
 import { prepareManifestSchemaSuccessor, prepareStandaloneManifestHistory } from './manifest-history.js';
 import { collectStandaloneManifestHistoryInput } from './manifest-history-capture.js';
 import {
-  manifestOnlyAbsentControlPaths, prepareCurrentManifestMaintenance, readCurrentManifestMaintenanceSource
+  manifestOnlyAbsentControlPaths, prepareCurrentManifestMaintenance, prepareManifestMaintenanceCandidate, readCurrentManifestMaintenanceSource
 } from './manifest-maintenance.js';
+import { inspectModernMaintenanceSource } from '../governance/modern-installed-preflight.js';
+import {
+  activeMaintenanceFilePreconditions, assertActiveMaintenanceCollections, prepareActiveManifestMaintenance,
+  requiredActivationTargetPreservation
+} from './active-manifest-maintenance.js';
 import { projectCatalog } from '../project/catalog.js';
 import {
   activationSensitivePathExclusions, isSensitiveActivationPath, normalizeSensitivePathExclusions, readActivationInputSnapshot
@@ -90,6 +96,9 @@ export async function inspectModernSuccessorUpdate(projectRoot: string, selected
       return inspectCurrentManifestMaintenance(boundary.root, targetInput);
     }
     return inspectManifestSuccessorUpdate(boundary.root, targetInput);
+  }
+  if (historyRecord(parseHistoryJson(state.content, 'active source state'), 'active source state').schemaVersion === 4) {
+    return inspectActiveManifestMaintenance(boundary.root, targetInput);
   }
   const source = await readModernActivationSuccessorSource(projectRoot);
   const inventory = await validateCapturedReleasedSource(source.captures);
@@ -227,6 +236,36 @@ async function inspectCurrentManifestMaintenance(projectRoot: string, selected: 
     },
     target: { ...selected, managed: core.managed }, ...core, successorPlan,
     historyPathParts: null, sourceRepositoryId: null
+  };
+}
+
+async function inspectActiveManifestMaintenance(projectRoot: string, selected: ModernManagedCoreInput) {
+  const source = await inspectModernMaintenanceSource(projectRoot);
+  if (!('kind' in source)) throw new FileSystemError(source.blockers.join(' '));
+  await assertActiveMaintenanceCollections(source.snapshot);
+  const captures = activeMaintenanceFilePreconditions(source);
+  const core = await inspectModernManagedCore(source.snapshot.root, source.manifest, selected, captures);
+  const candidate = prepareManifestMaintenanceCandidate(source.original, selected, core.managed);
+  const reference = requiredActivationTargetPreservation(source, candidate.manifestChanged);
+  const reader = await createSourceHistoryCapture(source.snapshot.root);
+  const preservationObservation = reference ? await reader.capture(activationTargetHistoryPathParts(reference), true) : undefined;
+  const successorPlan = await prepareActiveManifestMaintenance(source.snapshot, selected, core.managed, preservationObservation);
+  await assertActiveMaintenanceCollections(source.snapshot);
+  await reader.assertRoot();
+  const snapshots = uniqueUpdateSnapshots([...core.snapshots, ...successorPlan.preconditions], reader.root);
+  return {
+    kind: 'active-manifest-maintenance' as const, projectRoot: reader.root, manifest: source.manifest,
+    source: {
+      projectRoot: reader.root, captures: snapshots,
+      sourceBinding: canonicalSha256({
+        kind: 'liftoff-active-manifest-source', installedBinding: source.binding,
+        preservation: preservationObservation ? sourceObservationIdentities([preservationObservation]) : []
+      })
+    },
+    target: { ...selected, managed: core.managed }, ...core, snapshots, successorPlan,
+    activeSnapshot: source.snapshot, preservationObservation,
+    historyPathParts: reference ? activationTargetHistoryPathParts(reference).slice(0, -1) : null,
+    sourceRepositoryId: source.current.state.repository.id
   };
 }
 

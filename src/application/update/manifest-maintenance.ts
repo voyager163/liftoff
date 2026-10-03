@@ -2,6 +2,7 @@ import type { ProjectFileSnapshot } from '../../adapters/filesystem/project-tran
 import { canonicalSha256 } from '../../domain/governance/activation/canonical-json.js';
 import { FileSystemError } from '../../domain/project/errors.js';
 import { manifestHistoryPaths } from '../../domain/project/manifest/history.js';
+import type { ActivationTargetHistoryReference } from '../../domain/project/manifest/activation-target-history.js';
 import { createManifestV8Reader } from '../../domain/project/manifest/v8.js';
 import { activationStateFilePathParts } from '../../governance-activation/activation-state.js';
 import { migrationStateFilePathParts, parseHistoryJson, rawHistoryDigest } from '../../governance-activation/history-contracts.js';
@@ -53,26 +54,42 @@ export function readCurrentManifestMaintenanceSource(captures: readonly ProjectF
   return { manifest, original, snapshots };
 }
 
-export function prepareCurrentManifestMaintenance(
-  captures: readonly ProjectFileSnapshot[], selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[]
+export function prepareManifestMaintenanceCandidate(
+  original: CapturedPresentFile, selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[],
+  activationTargetHistory?: ActivationTargetHistoryReference
 ) {
-  const source = readCurrentManifestMaintenanceSource(captures);
+  const [captured] = copySourceHistoryObservations([{
+    pathParts: [...original.pathParts], content: original.content, mode: original.mode
+  }]);
+  if (captured.pathParts.join('/') !== 'liftoff.manifest.json' || captured.content === undefined || captured.mode === undefined) {
+    fail('requires an actual captured source manifest.');
+  }
+  const source = reader.parseManifestV8(parseHistoryJson(captured.content, 'current source manifest'));
   const resolved = resolveModernManagedCoreInput(copySourceHistoryData(selected, 'current maintenance selection'));
   const selection: ModernManagedCoreInput = {
     selection: resolved.selection, plugins: resolved.plugins, activeLayout: resolved.activeLayout
   };
   const recorded = {
-    selection: { project: source.manifest.project, framework: source.manifest.framework, profile: source.manifest.governance.profile },
-    plugins: source.manifest.plugins, activeLayout: source.manifest.activeLayout
+    selection: { project: source.project, framework: source.framework, profile: source.governance.profile },
+    plugins: source.plugins, activeLayout: source.activeLayout
   };
   if (canonicalSha256(recorded) !== canonicalSha256(selection)) fail('cannot change the recorded project, framework, profile, plugins or active layout.');
   const candidate = createManifestV8Candidate({
-    origin: 'maintenance', source: parseHistoryJson(source.original.content, 'current source manifest'),
-    managed: copySourceHistoryData(managed, 'current maintenance managed decisions')
+    origin: 'maintenance', source: parseHistoryJson(captured.content, 'current source manifest'),
+    managed: copySourceHistoryData(managed, 'current maintenance managed decisions'),
+    ...(activationTargetHistory ? { activationTargetHistory } : {})
   });
-  const manifestChanged = canonicalSha256(candidate.manifest) !== canonicalSha256(source.manifest);
-  const content = manifestChanged ? candidate.content : source.original.content.toString('utf8');
+  const manifestChanged = canonicalSha256(candidate.manifest) !== canonicalSha256(source);
+  const content = manifestChanged ? candidate.content : captured.content.toString('utf8');
   const manifest = { ...candidate, content, digest: rawHistoryDigest(Buffer.from(content)) };
+  return { manifest, manifestChanged };
+}
+
+export function prepareCurrentManifestMaintenance(
+  captures: readonly ProjectFileSnapshot[], selected: ModernManagedCoreInput, managed: readonly ManagedManifestDecision[]
+) {
+  const source = readCurrentManifestMaintenanceSource(captures);
+  const { manifest, manifestChanged } = prepareManifestMaintenanceCandidate(source.original, selected, managed);
   return {
     manifest, manifestChanged, preconditions: source.snapshots,
     semanticTransitionDigest: canonicalSha256({

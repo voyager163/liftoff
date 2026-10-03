@@ -54,11 +54,13 @@ do not qualify dependency internals, Node preloading or external toolchains.
 
 The root Vitest configuration limits Windows to two concurrent file workers.
 Within the same test invocation, ordered projects run the other root files first,
-then `tests/repair-preparation-execution.test.ts`, then
+then `tests/repair-cancellation.test.ts`, then `tests/repair-preparation-execution.test.ts`, then
 `tests/installed-tool-distribution.test.ts`, then the intact
 `tests/migration-inspection.test.ts` file without competing filesystem-heavy
 suites or native builds. The full distribution-limit fixtures retain their
 30-second production scan deadline rather than competing with other file workers.
+Cancellation and exact receipt reuse retain their original 30-second test deadline
+without concurrent native stack builds competing for the same filesystem.
 Interpreter-copy preparation retains its original test timeout and reports
 phase timings; its actual fixture creation and verification are not moved into hooks.
 Each file belongs to exactly one

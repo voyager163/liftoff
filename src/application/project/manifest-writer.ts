@@ -9,6 +9,7 @@ import { FileSystemError } from '../../domain/project/errors.js';
 import { toSafeProjectName } from '../../domain/project/planning.js';
 import { denseArray, exactRecord, isRecord, requiredString } from '../../domain/project/manifest/fields.js';
 import { manifestHistoryMaximumSourceBytes, validateManifestSourceHistoryReference, type ManifestSourceHistoryReference } from '../../domain/project/manifest/history.js';
+import { validateActivationTargetHistoryReference, type ActivationTargetHistoryReference } from '../../domain/project/manifest/activation-target-history.js';
 import { manifestActiveLayoutDigest } from '../../domain/project/manifest/layout.js';
 import { readManifestPluginMetadata } from '../../domain/project/manifest/plugins.js';
 import { createManifestV8Reader, type LiftoffManifestV8 } from '../../domain/project/manifest/v8.js';
@@ -42,7 +43,10 @@ export type ManifestV8WriteRequest =
       readonly sourceManifestHistory: ManifestSourceHistoryReference;
       readonly managed: readonly ManagedManifestDecision[];
     }
-  | { readonly origin: 'maintenance'; readonly source: unknown; readonly managed: readonly ManagedManifestDecision[] };
+  | {
+      readonly origin: 'maintenance'; readonly source: unknown; readonly managed: readonly ManagedManifestDecision[];
+      readonly activationTargetHistory?: ActivationTargetHistoryReference;
+    };
 
 export interface ManifestV8Candidate {
   readonly manifest: LiftoffManifestV8;
@@ -228,11 +232,14 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   }
   const request = exactRecord(input, origin === 'fresh' ? ['origin', 'selection', 'generatedArtifacts'] :
     origin === 'historical-successor' ? ['origin', 'source', 'profile', 'activeLayout', 'sourceManifestHistory', 'managed'] :
-      ['origin', 'source', 'managed'], 'Manifest writer request');
+      ['origin', 'source', 'managed',
+        ...(isRecord(input) && Object.hasOwn(input, 'activationTargetHistory') ? ['activationTargetHistory'] : [])
+      ], 'Manifest writer request');
   let leaf: ManifestV8ProjectLeaf;
   let profile: 'none' | ModernGovernanceProfile;
   let source: HistoricalLiftoffManifest | LiftoffManifestV8 | undefined;
   let originalReference: ManifestSourceHistoryReference | undefined;
+  let activationTargetHistory: ActivationTargetHistoryReference | undefined;
   if (origin === 'fresh') {
     const selection = exactRecord(request.selection, ['project', 'framework', 'profile'], 'Fresh manifest selection');
     leaf = projectReader.validateManifestV8Project({ project: selection.project, framework: selection.framework });
@@ -259,6 +266,14 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
     profile = source.governance.profile;
     leaf = projectReader.validateManifestV8Project({ project: source.project, framework: source.framework });
     originalReference = source.sourceManifestHistory;
+    activationTargetHistory = source.activationTargetHistory;
+    if (Object.hasOwn(request, 'activationTargetHistory')) {
+      const requested = validateActivationTargetHistoryReference(request.activationTargetHistory);
+      if (activationTargetHistory && canonicalJson(requested) !== canonicalJson(activationTargetHistory)) {
+        throw new FileSystemError('Maintenance cannot replace its original activation target history.');
+      }
+      activationTargetHistory = requested;
+    }
   }
   const target = targetFor(leaf, profile);
   const generated = origin === 'fresh' ? generatedInput(request.generatedArtifacts, target.composition.expected) : undefined;
@@ -294,7 +309,8 @@ export function createManifestV8Candidate(input: unknown): ManifestV8Candidate {
   const manifest = rootReader.parseManifestV8({
     artifactVersion: 8, generatedBy: 'Mission Control Liftoff', liftoffVersion,
     ...leaf, governance, plugins: target.plugins, activeLayout, managedArtifacts, projectArtifacts, adoptionObservations,
-    ...(originalReference ? { sourceManifestHistory: originalReference } : {})
+    ...(originalReference ? { sourceManifestHistory: originalReference } : {}),
+    ...(activationTargetHistory ? { activationTargetHistory } : {})
   });
   if (source) {
     for (const [name, previous, next] of [

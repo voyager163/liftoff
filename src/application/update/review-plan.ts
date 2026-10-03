@@ -16,6 +16,7 @@ import { FileSystemError } from '../../domain/project/errors.js';
 import { copySourceHistoryData, copySourceHistoryObservations } from '../../governance-activation/source-history-capture.js';
 import { prepareManifestSchemaSuccessor } from './manifest-history.js';
 import { prepareCurrentManifestMaintenance } from './manifest-maintenance.js';
+import { prepareActiveManifestMaintenance } from './active-manifest-maintenance.js';
 
 export type UpdateCandidateAdmission =
   | { status: 'complete'; candidate: ReviewedUpdateCandidate }
@@ -49,7 +50,9 @@ export async function prepareModernSuccessorReview(
     )
     : inspection.kind === 'manifest-successor'
       ? prepareManifestSuccessor(inspection, preparation, observedAt)
-      : prepareManifestMaintenance(inspection, preparation, observedAt);
+      : inspection.kind === 'manifest-maintenance'
+        ? prepareManifestMaintenance(inspection, preparation, observedAt)
+        : await prepareActiveMaintenance(inspection, preparation, observedAt);
   const history = prepared.mutations.filter(mutation => historyRoot !== null && mutation.pathParts.join('\0').startsWith(historyRoot));
   const successor = prepared.mutations.filter(mutation => historyRoot === null || !mutation.pathParts.join('\0').startsWith(historyRoot));
   const mutations: ProjectFileMutation[] = [
@@ -130,6 +133,26 @@ function prepareManifestMaintenance(
     preparation: validateSuccessorPreparation(preparation, observedAt),
     manifestChanged: prepared.manifestChanged,
     mutations: [] as ProjectFileMutation[], preconditions: prepared.preconditions,
+    manifestBytes: Buffer.from(prepared.manifest.content)
+  };
+}
+
+async function prepareActiveMaintenance(
+  inspection: Extract<ModernSuccessorUpdateInspection, { kind: 'active-manifest-maintenance' }>,
+  preparation: SuccessorPreparationV1, observedAt: string
+) {
+  const prepared = await prepareActiveManifestMaintenance(inspection.activeSnapshot, {
+    selection: inspection.target.selection, plugins: inspection.target.plugins, activeLayout: inspection.target.activeLayout
+  }, inspection.managed, inspection.preservationObservation);
+  if (prepared.manifest.content !== inspection.successorPlan.manifest.content ||
+    prepared.semanticTransitionDigest !== inspection.successorPlan.semanticTransitionDigest ||
+    prepared.manifestChanged !== inspection.successorPlan.manifestChanged) {
+    throw new FileSystemError('Active manifest source or target changed after its captured construction.');
+  }
+  return {
+    semanticTransitionDigest: prepared.semanticTransitionDigest,
+    preparation: validateSuccessorPreparation(preparation, observedAt),
+    manifestChanged: prepared.manifestChanged, mutations: prepared.mutations, preconditions: prepared.preconditions,
     manifestBytes: Buffer.from(prepared.manifest.content)
   };
 }
